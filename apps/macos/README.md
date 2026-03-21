@@ -41,14 +41,12 @@ FORCE_PNPM_INSTALL=1 scripts/package-mac-app.sh
 ## Signing behavior
 
 Auto-selects identity (first match):
-
-1. Developer ID Application
-2. Apple Distribution
-3. Apple Development
-4. first available identity
+1) Developer ID Application
+2) Apple Distribution
+3) Apple Development
+4) first available identity
 
 If none found:
-
 - errors by default
 - set `ALLOW_ADHOC_SIGNING=1` or `SIGN_IDENTITY="-"` to ad-hoc sign
 
@@ -58,7 +56,6 @@ After signing, we read the app bundle Team ID and compare every Mach-O inside th
 If any embedded binary has a different Team ID, signing fails.
 
 Skip the audit:
-
 ```bash
 SKIP_TEAM_ID_CHECK=1 scripts/package-mac-app.sh
 ```

@@ -9,11 +9,18 @@ title: "Installer Internals"
 
 # Installer internals
 
-ArgentOS ships two installer scripts (served from `argentos.ai`):
+Current source-controlled installer surface in this repo:
+
+- repo-root `install.sh` — macOS installer for a built checkout/tarball runtime
+- `pnpm test:install:local:smoke` — isolated macOS smoke for that repo-local installer
+
+Hosted distribution installers used for release verification:
 
 - `https://argentos.ai/install.sh` — “recommended” installer (global npm install by default; can also install from a GitHub checkout)
 - `https://argentos.ai/install-cli.sh` — non-root-friendly CLI installer (installs into a prefix with its own Node)
 - `https://argentos.ai/install.ps1` — Windows PowerShell installer (npm by default; optional git install)
+
+The hosted one-liners are release artifacts. They are not yet mirrored in this repo as first-class source files, so treat them as a separate validation rail from the repo-local macOS installer.
 
 To see the current flags/behavior, run:
 
