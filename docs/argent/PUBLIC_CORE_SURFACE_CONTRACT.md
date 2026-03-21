@@ -178,6 +178,7 @@ Use this contract together with:
 
 - `docs/argent/public-core-denylist.json`
 - `docs/argent/public-core.manifest.example.json`
+- `docs/argent/README_PUBLIC_CORE.md`
 - `scripts/export-public-core.ts`
 
 That gives you:
@@ -186,6 +187,8 @@ That gives you:
 - define what should ship
 - keep the staged Core repo reviewable before any public flip
 - automatically exclude `deferredReview` paths from the staged mirror until they are explicitly cleared
+- allow public-repo-specific files such as `README.md` to be sourced intentionally from private
+  boundary-owned templates via `targetOverrides`
 
 Example dry-run against the eventual staging repo:
 

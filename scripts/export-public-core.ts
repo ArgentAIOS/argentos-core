@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
   defaultPublicCoreManifestPath,
+  type PublicCoreTargetOverride,
   resolvePublicCoreRepoRoot,
   resolveManifestEntryPath,
 } from "../src/infra/public-core-export.js";
@@ -21,6 +22,7 @@ type Manifest = {
   exclude?: string[];
   denylistFiles?: string[];
   preserveInTarget?: string[];
+  targetOverrides?: PublicCoreTargetOverride[];
   deferredReview?: string[];
   notes?: string[];
 };
@@ -239,6 +241,16 @@ function classifyFiles(files: string[], manifest: Manifest, denyPatterns: string
   return { included, excluded };
 }
 
+function normalizeTargetOverrides(
+  manifestPath: string,
+  overrides: PublicCoreTargetOverride[] | undefined,
+): Array<{ target: string; source: string }> {
+  return (overrides ?? []).map((entry) => ({
+    target: normalizeSlashes(entry.target.replace(/\/+$/, "")),
+    source: resolveManifestEntryPath(manifestPath, entry.source),
+  }));
+}
+
 function flattenDenyPatterns(rules: DenylistRule[]): string[] {
   return rules.flatMap((rule) => rule.paths);
 }
@@ -268,6 +280,8 @@ async function main() {
   const preserve = new Set(
     (manifest.preserveInTarget ?? []).map((entry) => normalizeSlashes(entry.replace(/\/$/, ""))),
   );
+  const targetOverrides = normalizeTargetOverrides(manifestPath, manifest.targetOverrides);
+  const overrideTargets = new Set(targetOverrides.map((entry) => entry.target));
   const denyMatches = denyRules.map((rule) => ({
     id: rule.id,
     matchedCount: sourceFiles.filter((relPath) => matchesAny(relPath, rule.paths)).length,
@@ -286,6 +300,7 @@ async function main() {
         denyPatternCount: denyPatterns.length,
         deferredReviewExcludedCount: manifest.deferredReview?.length ?? 0,
         deferredReviewCount: manifest.deferredReview?.length ?? 0,
+        targetOverrideCount: targetOverrides.length,
         apply: options.apply,
       },
       null,
@@ -317,7 +332,7 @@ async function main() {
 
   await fs.mkdir(targetRepoRoot, { recursive: true });
   const targetFiles = await walkTargetFiles(targetRepoRoot);
-  const includedSet = new Set(included);
+  const includedSet = new Set([...included, ...overrideTargets]);
   let copied = 0;
   let deleted = 0;
   let preserved = 0;
@@ -341,6 +356,12 @@ async function main() {
     const sourcePath = path.join(sourceRepoRoot, relPath);
     const targetPath = path.join(targetRepoRoot, relPath);
     await copyFile(sourcePath, targetPath);
+    copied += 1;
+  }
+
+  for (const entry of targetOverrides) {
+    const targetPath = path.join(targetRepoRoot, entry.target);
+    await copyFile(entry.source, targetPath);
     copied += 1;
   }
 

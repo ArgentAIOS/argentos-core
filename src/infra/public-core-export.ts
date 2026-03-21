@@ -16,6 +16,11 @@ export function resolveManifestEntryPath(manifestPath: string, entry: string): s
   return path.resolve(path.dirname(manifestPath), entry);
 }
 
+export type PublicCoreTargetOverride = {
+  target: string;
+  source: string;
+};
+
 export function resolvePublicCoreRepoRoot(
   manifestPath: string,
   configuredRoot: string,

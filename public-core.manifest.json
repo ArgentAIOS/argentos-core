@@ -102,7 +102,13 @@
     "vendor/**",
     "~/**"
   ],
-  "preserveInTarget": ["README.md", "public-core.manifest.json"],
+  "preserveInTarget": ["public-core.manifest.json"],
+  "targetOverrides": [
+    {
+      "target": "README.md",
+      "source": "/Users/sem/code/argentos/docs/argent/README_PUBLIC_CORE.md"
+    }
+  ],
   "deferredReview": [
     "dashboard/src/components/ConfigPanel.tsx",
     "src/agents/intent.ts",

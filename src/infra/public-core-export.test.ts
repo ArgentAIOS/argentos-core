@@ -2,6 +2,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   defaultPublicCoreManifestPath,
+  type PublicCoreTargetOverride,
   repoRootFromModule,
   resolveManifestEntryPath,
   resolvePublicCoreRepoRoot,
@@ -51,5 +52,18 @@ describe("public core export helpers", () => {
         "/Users/sem/code/argentos-core",
       ),
     ).toBe("/Users/sem/code/argentos-core");
+  });
+
+  it("supports manifest-relative target override entries", () => {
+    const manifestPath = "/Users/sem/code/argentos/docs/argent/public-core.manifest.example.json";
+    const override: PublicCoreTargetOverride = {
+      target: "README.md",
+      source: "./README_PUBLIC_CORE.md",
+    };
+
+    expect(resolveManifestEntryPath(manifestPath, override.source)).toBe(
+      "/Users/sem/code/argentos/docs/argent/README_PUBLIC_CORE.md",
+    );
+    expect(override.target).toBe("README.md");
   });
 });
