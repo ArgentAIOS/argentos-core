@@ -1,0 +1,122 @@
+{
+  "tool": "aos-mailchimp",
+  "backend": "mailchimp-marketing",
+  "manifest_schema_version": "1.0.0",
+  "connector": {
+    "label": "Mailchimp",
+    "category": "marketing-publishing",
+    "categories": ["marketing-publishing", "crm-revenue"],
+    "resources": ["account", "audience", "campaign", "member"]
+  },
+  "delivery_model": "poll",
+  "risk_tier": "bounded-write",
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["MAILCHIMP_API_KEY"],
+    "interactive_setup": [
+      "Create a Mailchimp API key in the target account.",
+      "Set MAILCHIMP_API_KEY, or the legacy AOS_MAILCHIMP_API_KEY, for the worker.",
+      "Optionally set MAILCHIMP_SERVER_PREFIX if you do not want the connector to infer the datacenter from the API key suffix.",
+      "Keep write actions disabled until the target audiences and campaigns are reviewed."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "List connector capabilities",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "account",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Check Mailchimp API connectivity",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "account",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run Mailchimp connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "account",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted Mailchimp connector config",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "account",
+      "action_class": "read"
+    },
+    {
+      "id": "audience.list",
+      "summary": "List Mailchimp audiences",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "audience",
+      "action_class": "read"
+    },
+    {
+      "id": "audience.read",
+      "summary": "Read a Mailchimp audience",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "audience",
+      "action_class": "read"
+    },
+    {
+      "id": "campaign.list",
+      "summary": "List Mailchimp campaigns",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "campaign",
+      "action_class": "read"
+    },
+    {
+      "id": "campaign.read",
+      "summary": "Read a Mailchimp campaign",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "campaign",
+      "action_class": "read"
+    },
+    {
+      "id": "member.list",
+      "summary": "List Mailchimp audience members",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "member",
+      "action_class": "read"
+    },
+    {
+      "id": "member.read",
+      "summary": "Read a Mailchimp audience member",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "member",
+      "action_class": "read"
+    },
+    {
+      "id": "audience.create",
+      "summary": "Create a Mailchimp audience",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "audience",
+      "action_class": "write"
+    },
+    {
+      "id": "campaign.create",
+      "summary": "Create a Mailchimp campaign",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "campaign",
+      "action_class": "write"
+    }
+  ]
+}

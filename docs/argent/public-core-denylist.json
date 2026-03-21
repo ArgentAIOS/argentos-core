@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "date": "2026-03-15",
+  "purpose": "Conservative denylist for anything that must not ship in a public ArgentOS Core repo until the boundary is intentionally split.",
+  "notes": [
+    "This denylist is intentionally stricter than the current staging manifest.",
+    "If a path is denylisted here, the exporter should exclude it even if a broad include glob would otherwise copy it.",
+    "Some denylisted files are mixed hotspots that will need refactoring before a public Core build can be complete."
+  ],
+  "rules": [
+    {
+      "id": "internal-operator-and-strategy-docs",
+      "reason": "Internal operator guidance, handoff notes, and packaging strategy docs are not public product assets and can leak operating detail you do not need to ship.",
+      "paths": [
+        "AGENTS.md",
+        "AGENT_BLUEPRINT.md",
+        "CLAUDE.md",
+        "docs/argent/CODE_PROTECTION_*.md",
+        "docs/argent/MEMORY_LANE_HANDOFF_*.md",
+        "docs/argent/CORE_BUSINESS_SHARED_CLASSIFICATION.md",
+        "docs/argent/core-business-shared-paths.json"
+      ]
+    },
+    {
+      "id": "licensing-and-commercial-control",
+      "reason": "Commercial licensing, activation, and secret-sync logic is part of the paid boundary and should not ship in public Core as-is.",
+      "paths": ["src/licensing/**", "src/infra/license.ts", "src/agents/tools/marketplace-tool.ts"]
+    },
+    {
+      "id": "intent-governance-and-simulation",
+      "reason": "Hierarchical policy, simulation gates, and intent administration are Business control-plane features rather than public Core magic.",
+      "paths": [
+        "src/agents/intent.ts",
+        "src/agents/intent-runtime-gate.ts",
+        "src/agents/intent-simulation.ts",
+        "src/agents/tools/intent-tool.ts",
+        "src/infra/intent-simulation-runner.ts",
+        "src/infra/intent-simulation-scenarios-t1.ts"
+      ]
+    },
+    {
+      "id": "workforce-jobs-approvals-and-intake",
+      "reason": "Workforce setup, job orchestration, approval flows, and guided intake belong on the Business side until the product boundary is deliberately exposed.",
+      "paths": [
+        "src/data/jobs.ts",
+        "src/agents/tools/jobs-tool.ts",
+        "src/agents/tools/workforce-setup-tool.ts",
+        "src/agents/tools/copilot-system-tool.ts",
+        "src/agents/tools/onboarding-pack-tool.ts",
+        "src/agents/tools/specforge-tool.ts",
+        "src/infra/exec-approval-forwarder.ts",
+        "src/infra/execution-worker-runner.ts",
+        "src/infra/specforge-conductor.ts",
+        "src/infra/specforge-session-store.ts"
+      ]
+    },
+    {
+      "id": "business-dashboard-and-admin-api",
+      "reason": "The current settings/admin surfaces and dashboard API are mixed with Business-only controls. Exclude them until the Core-safe slices are separated.",
+      "paths": [
+        "dashboard/api-server.cjs",
+        "dashboard/src/components/ConfigPanel.tsx",
+        "dashboard/src/components/LicensePanel.tsx",
+        "dashboard/src/components/WorkforceBoard.tsx",
+        "dashboard/src/components/worker-wizard/**"
+      ]
+    },
+    {
+      "id": "mixed-enterprise-persistence-blockers",
+      "reason": "These storage files still embed workforce and org-only schema. Keeping them public before they are carved apart would leak more of the Business boundary than intended.",
+      "paths": ["src/data/pg-adapter.ts", "src/data/pg/schema.ts"]
+    }
+  ]
+}

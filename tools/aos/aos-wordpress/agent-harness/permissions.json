@@ -1,0 +1,26 @@
+{
+  "tool": "aos-wordpress",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "config.show": "readonly",
+    "site.info": "readonly",
+    "post.list": "readonly",
+    "post.read": "readonly",
+    "post.create": "write",
+    "post.update": "write",
+    "post.publish": "full",
+    "page.list": "readonly",
+    "page.read": "readonly",
+    "page.create": "write",
+    "page.update": "write",
+    "page.publish": "full",
+    "media.list": "readonly",
+    "media.read": "readonly",
+    "media.upload": "write",
+    "comment.list": "readonly",
+    "comment.read": "readonly",
+    "comment.reply": "write",
+    "comment.moderate": "full"
+  }
+}

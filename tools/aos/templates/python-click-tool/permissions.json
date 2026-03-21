@@ -1,0 +1,9 @@
+{
+  "tool": "aos-template-tool",
+  "permissions": {
+    "example.read": "readonly",
+    "example.write": "write",
+    "example.delete": "full",
+    "system.config": "admin"
+  }
+}

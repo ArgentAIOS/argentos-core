@@ -1,0 +1,24 @@
+{
+  "action": "generate_video",
+  "default_avatar_id": "885b0ad5cd61488b8a9828ff0e244e15",
+  "aspect_ratio": "16:9",
+  "scenes": [
+    {
+      "script": "Opening anchor scene from Argent.",
+      "voice_id": "REPLACE_HEYGEN_VOICE_ID",
+      "background_type": "color",
+      "background_value": "#0F172A"
+    },
+    {
+      "script": "Cut to B-roll context while continuing narration.",
+      "voice_id": "REPLACE_HEYGEN_VOICE_ID",
+      "background_type": "video",
+      "background_value": "https://cdn.example.com/broll.mp4",
+      "background_play_style": "fit_to_scene",
+      "character_scale": 0.72,
+      "character_offset_x": -0.56,
+      "character_offset_y": -0.1,
+      "character_matting": true
+    }
+  ]
+}

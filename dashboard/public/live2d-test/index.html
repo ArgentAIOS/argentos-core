@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live2D Model Test - Alexia</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+        min-height: 100vh;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: white;
+        display: flex;
+        flex-direction: column;
+      }
+      header {
+        padding: 20px;
+        background: rgba(0, 0, 0, 0.3);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      h1 {
+        font-size: 1.5rem;
+        font-weight: 600;
+      }
+      .subtitle {
+        color: rgba(255, 255, 255, 0.5);
+        font-size: 0.9rem;
+        margin-top: 4px;
+      }
+
+      .container {
+        display: flex;
+        flex: 1;
+        gap: 20px;
+        padding: 20px;
+      }
+
+      #canvas-container {
+        flex: 1;
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        position: relative;
+        min-height: 500px;
+      }
+      #canvas-container canvas {
+        width: 100%;
+        height: 100%;
+      }
+
+      .controls {
+        width: 300px;
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 20px;
+        overflow-y: auto;
+      }
+
+      .section {
+        margin-bottom: 20px;
+      }
+      .section-title {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: rgba(255, 255, 255, 0.5);
+        margin-bottom: 10px;
+      }
+
+      .btn {
+        display: block;
+        width: 100%;
+        padding: 10px 16px;
+        margin-bottom: 8px;
+        background: rgba(168, 85, 247, 0.2);
+        border: 1px solid rgba(168, 85, 247, 0.4);
+        border-radius: 8px;
+        color: #c4b5fd;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-align: left;
+      }
+      .btn:hover {
+        background: rgba(168, 85, 247, 0.3);
+        border-color: rgba(168, 85, 247, 0.6);
+      }
+      .btn.active {
+        background: rgba(168, 85, 247, 0.4);
+        border-color: #a855f7;
+      }
+
+      .param-slider {
+        margin-bottom: 12px;
+      }
+      .param-slider label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.85rem;
+        margin-bottom: 4px;
+      }
+      .param-slider input[type="range"] {
+        width: 100%;
+        accent-color: #a855f7;
+      }
+
+      #status {
+        padding: 10px 16px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 8px;
+        font-size: 0.85rem;
+        color: rgba(255, 255, 255, 0.6);
+      }
+      #status.error {
+        color: #f87171;
+      }
+      #status.success {
+        color: #4ade80;
+      }
+
+      .drop-zone {
+        border: 2px dashed rgba(168, 85, 247, 0.4);
+        border-radius: 12px;
+        padding: 40px 20px;
+        text-align: center;
+        color: rgba(255, 255, 255, 0.5);
+        margin-bottom: 20px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .drop-zone:hover,
+      .drop-zone.dragover {
+        border-color: #a855f7;
+        background: rgba(168, 85, 247, 0.1);
+      }
+      .drop-zone p {
+        margin-bottom: 8px;
+      }
+      .drop-zone small {
+        font-size: 0.8rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>⚡ Live2D Model Test</h1>
+      <div class="subtitle">Drop your model folder or select to preview</div>
+    </header>
+
+    <div class="container">
+      <div id="canvas-container">
+        <div class="drop-zone" id="dropZone">
+          <p>📁 Drop model folder here</p>
+          <small>Or click to select the .model3.json file</small>
+          <input type="file" id="fileInput" accept=".json" style="display: none" />
+        </div>
+      </div>
+
+      <div class="controls">
+        <div id="status">Waiting for model...</div>
+
+        <div class="section" id="expressions-section" style="display: none">
+          <div class="section-title">Expressions</div>
+          <div id="expressions-list"></div>
+        </div>
+
+        <div class="section" id="motions-section" style="display: none">
+          <div class="section-title">Motions</div>
+          <div id="motions-list"></div>
+        </div>
+
+        <div class="section" id="params-section" style="display: none">
+          <div class="section-title">Parameters</div>
+          <div id="params-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
+    <script>
+      // Make PIXI available globally for pixi-live2d-display
+      window.PIXI = PIXI;
+
+      let app = null;
+      let model = null;
+
+      const dropZone = document.getElementById("dropZone");
+      const fileInput = document.getElementById("fileInput");
+      const canvasContainer = document.getElementById("canvas-container");
+      const statusEl = document.getElementById("status");
+
+      function setStatus(msg, type = "") {
+        statusEl.textContent = msg;
+        statusEl.className = type;
+      }
+
+      // Drag and drop handling
+      dropZone.addEventListener("click", () => fileInput.click());
+      dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("dragover");
+      });
+      dropZone.addEventListener("dragleave", () => {
+        dropZone.classList.remove("dragover");
+      });
+      dropZone.addEventListener("drop", async (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("dragover");
+
+        const items = e.dataTransfer.items;
+        for (const item of items) {
+          if (item.kind === "file") {
+            const entry = item.webkitGetAsEntry();
+            if (entry.isDirectory) {
+              await handleDirectory(entry);
+              return;
+            } else if (entry.name.endsWith(".model3.json")) {
+              const file = item.getAsFile();
+              await loadModelFromFile(file);
+              return;
+            }
+          }
+        }
+        setStatus("Please drop a folder or .model3.json file", "error");
+      });
+
+      fileInput.addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (file && file.name.endsWith(".model3.json")) {
+          await loadModelFromFile(file);
+        }
+      });
+
+      async function handleDirectory(dirEntry) {
+        setStatus("Scanning folder...");
+        const files = await readDirectory(dirEntry);
+        const modelFile = files.find((f) => f.name.endsWith(".model3.json"));
+        if (modelFile) {
+          // For directory drops, we need to load via URL
+          // This is tricky in browser - suggest using file input instead
+          setStatus("Found model file. Please use file input for now.", "error");
+        } else {
+          setStatus("No .model3.json found in folder", "error");
+        }
+      }
+
+      function readDirectory(dirEntry) {
+        return new Promise((resolve) => {
+          const reader = dirEntry.createReader();
+          reader.readEntries((entries) => resolve(entries));
+        });
+      }
+
+      async function loadModelFromFile(file) {
+        setStatus("Loading model...");
+        dropZone.style.display = "none";
+
+        try {
+          // Create blob URL
+          const url = URL.createObjectURL(file);
+          await loadModel(url);
+        } catch (err) {
+          setStatus("Error: " + err.message, "error");
+          console.error(err);
+          dropZone.style.display = "block";
+        }
+      }
+
+      async function loadModel(url) {
+        // Initialize PIXI app
+        if (!app) {
+          app = new PIXI.Application({
+            view: document.createElement("canvas"),
+            autoStart: true,
+            resizeTo: canvasContainer,
+            backgroundAlpha: 0,
+          });
+          canvasContainer.appendChild(app.view);
+        }
+
+        // Clear existing model
+        if (model) {
+          app.stage.removeChild(model);
+          model.destroy();
+        }
+
+        // Load new model
+        model = await PIXI.live2d.Live2DModel.from(url);
+
+        // Position and scale
+        model.anchor.set(0.5, 0.5);
+        model.position.set(app.screen.width / 2, app.screen.height / 2);
+
+        const scale = Math.min(
+          (app.screen.width / model.width) * 0.8,
+          (app.screen.height / model.height) * 0.9,
+        );
+        model.scale.set(scale);
+
+        app.stage.addChild(model);
+
+        setStatus("Model loaded! ✨", "success");
+
+        // Populate controls
+        populateExpressions();
+        populateMotions();
+        populateParameters();
+      }
+
+      function populateExpressions() {
+        const section = document.getElementById("expressions-section");
+        const list = document.getElementById("expressions-list");
+        list.innerHTML = "";
+
+        if (!model?.internalModel?.motionManager?.expressionManager) {
+          section.style.display = "none";
+          return;
+        }
+
+        const expressions = model.internalModel.motionManager.expressionManager.definitions;
+        if (!expressions || expressions.length === 0) {
+          section.style.display = "none";
+          return;
+        }
+
+        section.style.display = "block";
+
+        // Reset button
+        const resetBtn = document.createElement("button");
+        resetBtn.className = "btn";
+        resetBtn.textContent = "↺ Reset Expression";
+        resetBtn.onclick = () => model.expression();
+        list.appendChild(resetBtn);
+
+        expressions.forEach((exp, i) => {
+          const btn = document.createElement("button");
+          btn.className = "btn";
+          btn.textContent = exp.Name || exp.name || `Expression ${i}`;
+          btn.onclick = () => model.expression(i);
+          list.appendChild(btn);
+        });
+      }
+
+      function populateMotions() {
+        const section = document.getElementById("motions-section");
+        const list = document.getElementById("motions-list");
+        list.innerHTML = "";
+
+        if (!model?.internalModel?.motionManager) {
+          section.style.display = "none";
+          return;
+        }
+
+        const motionGroups = model.internalModel.settings.motions;
+        if (!motionGroups || Object.keys(motionGroups).length === 0) {
+          section.style.display = "none";
+          return;
+        }
+
+        section.style.display = "block";
+
+        Object.entries(motionGroups).forEach(([group, motions]) => {
+          motions.forEach((motion, i) => {
+            const btn = document.createElement("button");
+            btn.className = "btn";
+            btn.textContent = `${group} #${i}`;
+            btn.onclick = () => model.motion(group, i);
+            list.appendChild(btn);
+          });
+        });
+      }
+
+      function populateParameters() {
+        const section = document.getElementById("params-section");
+        const list = document.getElementById("params-list");
+        list.innerHTML = "";
+
+        if (!model?.internalModel?.coreModel) {
+          section.style.display = "none";
+          return;
+        }
+
+        section.style.display = "block";
+
+        const coreModel = model.internalModel.coreModel;
+        const paramCount = coreModel.getParameterCount();
+
+        // Show key parameters for lip sync and expressions
+        const keyParams = [
+          "ParamMouthOpenY",
+          "ParamEyeLOpen",
+          "ParamEyeROpen",
+          "ParamBrowLY",
+          "ParamBrowRY",
+        ];
+
+        for (let i = 0; i < paramCount; i++) {
+          const id = coreModel.getParameterId(i);
+          const min = coreModel.getParameterMinimumValue(i);
+          const max = coreModel.getParameterMaximumValue(i);
+          const val = coreModel.getParameterValue(i);
+
+          // Only show key params to avoid overwhelming the UI
+          if (!keyParams.some((p) => id.includes(p.replace("Param", "")))) continue;
+
+          const div = document.createElement("div");
+          div.className = "param-slider";
+          div.innerHTML = `
+          <label>
+            <span>${id}</span>
+            <span id="val-${i}">${val.toFixed(2)}</span>
+          </label>
+          <input type="range" min="${min}" max="${max}" step="0.01" value="${val}" 
+                 oninput="setParam(${i}, this.value)">
+        `;
+          list.appendChild(div);
+        }
+      }
+
+      window.setParam = function (index, value) {
+        if (!model?.internalModel?.coreModel) return;
+        const coreModel = model.internalModel.coreModel;
+        coreModel.setParameterValueByIndex(index, parseFloat(value));
+        document.getElementById(`val-${index}`).textContent = parseFloat(value).toFixed(2);
+      };
+
+      // Handle window resize
+      window.addEventListener("resize", () => {
+        if (model && app) {
+          model.position.set(app.screen.width / 2, app.screen.height / 2);
+        }
+      });
+    </script>
+  </body>
+</html>

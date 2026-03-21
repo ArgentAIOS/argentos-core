@@ -1,0 +1,39 @@
+{
+  "id": "response-validator",
+  "name": "Response Validator",
+  "version": "1.0.0",
+  "description": "Enforces response format requirements (reports, audio, canvas)",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "description": "Enable/disable validation"
+      },
+      "reportKeywords": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Keywords that trigger report validation"
+      },
+      "docKeywords": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Keywords that trigger canvas validation"
+      },
+      "audioMaxLength": {
+        "type": "number",
+        "description": "Max response length when audio enabled (default: 300)"
+      },
+      "enabledChannels": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Channels where validation is active (e.g., ['webchat', 'discord'] or ['*'] for all)"
+      },
+      "logContext": {
+        "type": "boolean",
+        "description": "Enable debug logging to see available context data"
+      }
+    }
+  }
+}

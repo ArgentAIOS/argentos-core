@@ -1,0 +1,20 @@
+{
+  "description_style": "creator_longform",
+  "divider_line": "........................",
+  "cta": "If this episode helped, subscribe and drop your take in the comments.",
+  "style_notes": "Open with strong hooks, emphasize what changed and why it matters, then close with operator-focused implications.",
+  "extra_sections": [
+    {
+      "heading": "CONNECT",
+      "lines": [
+        "Twitter: https://x.com/your-handle",
+        "YouTube: https://youtube.com/@your-channel",
+        "LinkedIn: https://linkedin.com/in/your-profile"
+      ]
+    },
+    {
+      "heading": "TOOLS USED",
+      "lines": ["HeyGen: https://heygen.com", "ElevenLabs: https://elevenlabs.io"]
+    }
+  ]
+}

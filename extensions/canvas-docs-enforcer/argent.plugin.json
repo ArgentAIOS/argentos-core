@@ -1,0 +1,21 @@
+{
+  "id": "canvas-docs-enforcer",
+  "name": "Canvas Documentation Enforcer",
+  "version": "1.0.0",
+  "description": "Forces canvas usage for documentation tasks instead of inline markdown",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "description": "Enable/disable enforcement"
+      },
+      "docKeywords": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Keywords that trigger canvas enforcement"
+      }
+    }
+  }
+}

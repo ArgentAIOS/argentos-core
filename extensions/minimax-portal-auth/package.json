@@ -1,0 +1,14 @@
+{
+  "name": "@argentos/minimax-portal-auth",
+  "version": "2026.2.4",
+  "description": "ArgentOS MiniMax Portal OAuth provider plugin",
+  "type": "module",
+  "devDependencies": {
+    "argentos": "workspace:*"
+  },
+  "argent": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}
