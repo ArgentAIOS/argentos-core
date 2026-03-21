@@ -12,15 +12,18 @@ title: "Installer Internals"
 Current source-controlled installer surface in this repo:
 
 - repo-root `install.sh` — macOS installer for a built checkout/tarball runtime
-- `pnpm test:install:local:smoke` — isolated macOS smoke for that repo-local installer
+- `scripts/install-hosted.sh` — hosted shell installer source for `argentos.ai/install.sh`
+- repo-root `install-cli.sh` — prefix-scoped CLI installer for hosted/app-driven installs
+- repo-root `install.ps1` — Windows PowerShell npm installer
+- `pnpm test:install:local:smoke` — isolated macOS smoke for the repo-local runtime installer
+- `pnpm test:install:hosted:local:smoke` — isolated local smoke for the hosted shell installer source
+- `pnpm test:install:cli:local:smoke` — isolated local smoke for `install-cli.sh`
 
-Hosted distribution installers used for release verification:
+Hosted distribution URLs should now map to these source-controlled files:
 
-- `https://argentos.ai/install.sh` — “recommended” installer (global npm install by default; can also install from a GitHub checkout)
-- `https://argentos.ai/install-cli.sh` — non-root-friendly CLI installer (installs into a prefix with its own Node)
-- `https://argentos.ai/install.ps1` — Windows PowerShell installer (npm by default; optional git install)
-
-The hosted one-liners are release artifacts. They are not yet mirrored in this repo as first-class source files, so treat them as a separate validation rail from the repo-local macOS installer.
+- `https://argentos.ai/install.sh` → `scripts/install-hosted.sh`
+- `https://argentos.ai/install-cli.sh`
+- `https://argentos.ai/install.ps1`
 
 To see the current flags/behavior, run:
 
@@ -81,7 +84,22 @@ On some Linux setups (especially after installing Node via the system package ma
 
 ## install-cli.sh (non-root CLI installer)
 
-This script installs `argent` into a prefix (default: `~/.argentos`) and also installs a dedicated Node runtime under that prefix, so it can work on machines where you don’t want to touch the system Node/npm.
+This script installs `argent` into a prefix (default: `~/.argent`) and is the intended hosted/app-facing CLI install rail.
+
+Behavior:
+
+- Uses `ARGENT_NODE_BIN` if provided.
+- Otherwise reuses a system Node 22+ if one is already available.
+- Otherwise downloads a dedicated Node runtime into the chosen prefix.
+- Installs `argentos` under `<prefix>/runtime` and writes stable wrappers to `<prefix>/bin/argent` and `<prefix>/bin/argentos`.
+
+Useful flags:
+
+- `--prefix <path>`
+- `--version <version>`
+- `--json`
+- `--no-onboard`
+- `--set-npm-prefix`
 
 Help:
 
@@ -91,13 +109,11 @@ curl -fsSL https://argentos.ai/install-cli.sh | bash -s -- --help
 
 ## install.ps1 (Windows PowerShell)
 
-What it does (high level):
+What it does today:
 
-- Ensure Node.js **22+** (winget/Chocolatey/Scoop or manual).
-- Choose install method:
-  - `npm` (default): `npm install -g argentos@latest`
-  - `git`: clone/build a source checkout and install a wrapper script
-- Runs `argent doctor --non-interactive` on upgrades and git installs (best effort).
+- Requires an existing Node.js **22+** installation.
+- Installs `argentos` globally with npm.
+- Optionally runs onboarding after install.
 
 Examples:
 
@@ -106,25 +122,14 @@ iwr -useb https://argentos.ai/install.ps1 | iex
 ```
 
 ```powershell
-iwr -useb https://argentos.ai/install.ps1 | iex -InstallMethod git
+iwr -useb https://argentos.ai/install.ps1 | iex -Version "2026.3.2"
 ```
 
 ```powershell
-iwr -useb https://argentos.ai/install.ps1 | iex -InstallMethod git -GitDir "C:\\argent"
+iwr -useb https://argentos.ai/install.ps1 | iex -NoOnboard
 ```
-
-Environment variables:
-
-- `ARGENTOS_INSTALL_METHOD=git|npm`
-- `ARGENTOS_GIT_DIR=...`
-
-Git requirement:
-
-If you choose `-InstallMethod git` and Git is missing, the installer will print the
-Git for Windows link (`https://git-scm.com/download/win`) and exit.
 
 Common Windows issues:
 
-- **npm error spawn git / ENOENT**: install Git for Windows and reopen PowerShell, then rerun the installer.
 - **"argent" is not recognized**: your npm global bin folder is not on PATH. Most systems use
   `%AppData%\\npm`. You can also run `npm config get prefix` and add `\\bin` to PATH, then reopen PowerShell.

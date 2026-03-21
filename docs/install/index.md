@@ -58,6 +58,20 @@ Non-interactive (skip onboarding):
 curl -fsSL https://argentos.ai/install.sh | bash -s -- --no-onboard
 ```
 
+### 1a) Prefix-scoped CLI installer
+
+Use this when you want an isolated CLI install under a dedicated prefix, including app-driven installs:
+
+```bash
+curl -fsSL https://argentos.ai/install-cli.sh | bash
+```
+
+Useful flags:
+
+```bash
+curl -fsSL https://argentos.ai/install-cli.sh | bash -s -- --help
+```
+
 ### 2) Global install (manual)
 
 If you already have Node:
