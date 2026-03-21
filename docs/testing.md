@@ -46,7 +46,7 @@ curl -fsSL https://cli.coderabbit.ai/install.sh | sh
 # authenticate once
 cr auth login
 
-# normal interactive review
+# interactive review for the latest commit/diff
 pnpm review:coderabbit
 
 # prompt-only mode for Codex/Claude/Cursor loops
@@ -56,6 +56,7 @@ pnpm review:coderabbit:prompt
 Use CodeRabbit to catch material issues before push, not to churn on minor style cleanup. In this repo, the intended use is:
 
 - review uncommitted changes before opening a PR
+- review the latest commit/diff locally before opening a PR
 - focus on correctness, auth/session behavior, workflow safety, and cross-platform regressions
 - rerun once after fixes if you changed behavior in response to findings
 

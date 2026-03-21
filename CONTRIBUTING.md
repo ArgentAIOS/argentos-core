@@ -18,13 +18,13 @@ Welcome! We're building the operating system for personal AI.
 
 - Test locally with your ArgentOS instance
 - Run tests: `pnpm build && pnpm check && pnpm test`
-- Run a local CodeRabbit pass on your uncommitted diff before push
+- Run a local CodeRabbit pass on your most recent diff before pushing
 - Keep PRs focused (one thing per PR)
 - Describe what & why
 
 ## CodeRabbit
 
-This repo is configured for CodeRabbit via [`/.coderabbit.yaml`](./.coderabbit.yaml).
+This repo is configured for CodeRabbit via [`./.coderabbit.yaml`](./.coderabbit.yaml).
 
 Recommended local pre-push flow:
 
@@ -37,10 +37,10 @@ brew install coderabbit
 # authenticate once
 cr auth login
 
-# interactive local review
+# interactive local review for the latest commit/diff
 pnpm review:coderabbit
 
-# agent-oriented local review
+# prompt-only local review for AI-agent loops / CI-style handoff
 pnpm review:coderabbit:prompt
 ```
 

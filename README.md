@@ -85,8 +85,10 @@ pnpm test:install:smoke
 Pre-push review:
 
 ```bash
+# Interactive review for the latest commit/diff
 pnpm review:coderabbit
-# or for AI-agent loops
+
+# Prompt-only output for AI-agent loops or CI handoff
 pnpm review:coderabbit:prompt
 ```
 

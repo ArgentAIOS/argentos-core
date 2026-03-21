@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-base_branch="${CODERABBIT_BASE:-main}"
+base_commit="${CODERABBIT_BASE_COMMIT:-}"
+
+if [[ "${1:-}" == "--" ]]; then
+  shift
+fi
 
 if command -v cr >/dev/null 2>&1; then
   tool="cr"
@@ -13,9 +17,17 @@ else
   exit 1
 fi
 
-if [[ "${1:-}" == "--prompt-only" ]]; then
-  shift
-  exec "$tool" --prompt-only --type uncommitted --base "$base_branch" "$@"
+if [[ -z "$base_commit" ]]; then
+  if git rev-parse --verify --quiet HEAD~1 >/dev/null; then
+    base_commit="HEAD~1"
+  else
+    base_commit="HEAD"
+  fi
 fi
 
-exec "$tool" --base "$base_branch" "$@"
+if [[ "${1:-}" == "--prompt-only" ]]; then
+  shift
+  exec "$tool" --prompt-only --base-commit "$base_commit" "$@"
+fi
+
+exec "$tool" --base-commit "$base_commit" "$@"
