@@ -82,6 +82,14 @@ pnpm test:install:local:smoke
 pnpm test:install:smoke
 ```
 
+Pre-push review:
+
+```bash
+pnpm review:coderabbit
+# or for AI-agent loops
+pnpm review:coderabbit:prompt
+```
+
 ## Public-Core Boundary
 
 This repo is exported from the private source repo using a packaging boundary contract.

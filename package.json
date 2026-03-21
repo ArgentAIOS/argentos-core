@@ -73,6 +73,8 @@
     "protocol:gen": "node --import tsx scripts/protocol-gen.ts",
     "protocol:gen:swift": "node --import tsx scripts/protocol-gen-swift.ts",
     "release:check": "node --import tsx scripts/release-check.ts",
+    "review:coderabbit": "bash scripts/review-coderabbit-local.sh",
+    "review:coderabbit:prompt": "bash scripts/review-coderabbit-local.sh --prompt-only",
     "stack:reset": "bash scripts/dev/reset-stack.sh",
     "start": "node scripts/run-node.mjs",
     "test": "node scripts/test-parallel.mjs",

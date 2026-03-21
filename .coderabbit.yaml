@@ -1,0 +1,48 @@
+language: "en-US"
+
+reviews:
+  profile: assertive
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/dist/**"
+    - "!**/.build/**"
+    - "!**/coverage/**"
+    - "!dashboard/public/live2d/**"
+    - "!dashboard/public/backgrounds/**"
+    - "!docs/assets/**"
+    - "!docs/images/**"
+    - "!**/*.png"
+    - "!**/*.jpg"
+    - "!**/*.jpeg"
+    - "!**/*.gif"
+    - "!**/*.webp"
+    - "!**/*.icns"
+    - "!**/*.ico"
+    - "!**/*.cmo3"
+    - "!**/*.zip"
+    - "!**/*.dmg"
+    - "!**/*.pdf"
+  path_instructions:
+    - path: "src/**"
+      instructions: >
+        Focus on behavior regressions, storage and adapter boundaries, async cleanup,
+        websocket/session correctness, and cross-platform CLI behavior. Avoid style-only
+        feedback unless it hides a bug or maintainability problem.
+    - path: "dashboard/src/**"
+      instructions: >
+        Prioritize state consistency, session routing, authenticated gateway behavior,
+        task actions, and regressions that would break the Swift/macOS shell surface.
+        Do not spend review budget on visual nitpicks without a behavioral impact.
+    - path: "apps/**/*.swift"
+      instructions: >
+        Prioritize launchd/service integration, token/auth flow, native permission
+        handling, and bridge correctness between the Swift shell and the dashboard.
+    - path: "apps/android/**"
+      instructions: >
+        Prioritize startup stability, permission flow, network/auth handling, and
+        lifecycle-safe state updates over style comments.
+    - path: ".github/workflows/**"
+      instructions: >
+        Treat workflow safety as high priority. Flag secret exposure, unsafe
+        pull_request_target usage, over-broad permissions, and missing fork PR
+        isolation before discussing minor workflow cleanup.
