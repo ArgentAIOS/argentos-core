@@ -1,0 +1,36 @@
+{
+  "name": "@argentos/zalouser",
+  "version": "2026.2.4",
+  "description": "ArgentOS Zalo Personal Account plugin via zca-cli",
+  "type": "module",
+  "dependencies": {
+    "@sinclair/typebox": "0.34.48",
+    "argentos": "workspace:*"
+  },
+  "devDependencies": {
+    "argentos": "workspace:*"
+  },
+  "argent": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "channel": {
+      "id": "zalouser",
+      "label": "Zalo Personal",
+      "selectionLabel": "Zalo (Personal Account)",
+      "docsPath": "/channels/zalouser",
+      "docsLabel": "zalouser",
+      "blurb": "Zalo personal account via QR code login.",
+      "aliases": [
+        "zlu"
+      ],
+      "order": 85,
+      "quickstartAllowFrom": true
+    },
+    "install": {
+      "npmSpec": "@argentos/zalouser",
+      "localPath": "extensions/zalouser",
+      "defaultChoice": "npm"
+    }
+  }
+}

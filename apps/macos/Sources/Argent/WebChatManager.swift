@@ -1,0 +1,166 @@
+import AppKit
+import Foundation
+
+/// A borderless panel that can still accept key focus (needed for typing).
+final class WebChatPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
+enum WebChatPresentation {
+    case window
+    case panel(anchorProvider: () -> NSRect?)
+
+    var isPanel: Bool {
+        if case .panel = self { return true }
+        return false
+    }
+}
+
+@MainActor
+final class WebChatManager {
+    static let shared = WebChatManager()
+
+    private var windowController: WebChatSwiftUIWindowController?
+    private var windowSessionKey: String?
+    private var panelController: WebChatSwiftUIWindowController?
+    private var panelSessionKey: String?
+    private var cachedPreferredSessionKey: String?
+
+    var onPanelVisibilityChanged: ((Bool) -> Void)?
+
+    var activeSessionKey: String? {
+        self.panelSessionKey ?? self.windowSessionKey
+    }
+
+    func syncVisibleSession(to sessionKey: String) {
+        self.cachedPreferredSessionKey = sessionKey
+
+        if let controller = self.windowController, self.windowSessionKey != sessionKey {
+            let wasVisible = controller.isVisible
+            controller.close()
+            self.windowController = nil
+            self.windowSessionKey = nil
+            if wasVisible {
+                self.show(sessionKey: sessionKey)
+            }
+        }
+    }
+
+    func show(sessionKey: String) {
+        self.closePanel()
+        if let controller = self.windowController {
+            if self.windowSessionKey == sessionKey {
+                controller.show()
+                return
+            }
+
+            controller.close()
+            self.windowController = nil
+            self.windowSessionKey = nil
+        }
+        let controller = WebChatSwiftUIWindowController(sessionKey: sessionKey, presentation: .window)
+        controller.onVisibilityChanged = { [weak self] visible in
+            self?.onPanelVisibilityChanged?(visible)
+        }
+        self.windowController = controller
+        self.windowSessionKey = sessionKey
+        controller.show()
+    }
+
+    func hasVisibleChatSurface() -> Bool {
+        (self.panelController?.isVisible ?? false) || (self.windowController?.isVisible ?? false)
+    }
+
+    func latestAssistantMessage(sessionKey: String, since: Double? = nil) async -> (text: String, timestamp: Double?)? {
+        if self.panelSessionKey == sessionKey, let controller = self.panelController {
+            return controller.latestAssistantMessage(since: since)
+        }
+        if self.windowSessionKey == sessionKey, let controller = self.windowController {
+            return controller.latestAssistantMessage(since: since)
+        }
+        return nil
+    }
+
+    func sendMessage(_ content: String) async -> (ok: Bool, sessionKey: String?, error: String?) {
+        if let controller = self.panelController, controller.isVisible {
+            return await controller.sendMessage(content)
+        }
+        if let controller = self.windowController, controller.isVisible {
+            return await controller.sendMessage(content)
+        }
+        return (false, nil, "webchat-not-open")
+    }
+
+    func togglePanel(sessionKey: String, anchorProvider: @escaping () -> NSRect?) {
+        if let controller = self.panelController {
+            if self.panelSessionKey != sessionKey {
+                controller.close()
+                self.panelController = nil
+                self.panelSessionKey = nil
+            } else {
+                if controller.isVisible {
+                    controller.close()
+                } else {
+                    controller.presentAnchored(anchorProvider: anchorProvider)
+                }
+                return
+            }
+        }
+
+        let controller = WebChatSwiftUIWindowController(
+            sessionKey: sessionKey,
+            presentation: .panel(anchorProvider: anchorProvider))
+        controller.onClosed = { [weak self] in
+            self?.panelHidden()
+        }
+        controller.onVisibilityChanged = { [weak self] visible in
+            self?.onPanelVisibilityChanged?(visible)
+        }
+        self.panelController = controller
+        self.panelSessionKey = sessionKey
+        controller.presentAnchored(anchorProvider: anchorProvider)
+    }
+
+    func closePanel() {
+        self.panelController?.close()
+    }
+
+    func preferredSessionKey() async -> String {
+        if let dashboardSessionKey = await DashboardManager.shared.activeSessionKey(),
+           !dashboardSessionKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            self.cachedPreferredSessionKey = dashboardSessionKey
+            return dashboardSessionKey
+        }
+        if let cachedPreferredSessionKey { return cachedPreferredSessionKey }
+        let key = await GatewayConnection.shared.mainSessionKey()
+        self.cachedPreferredSessionKey = key
+        return key
+    }
+
+    func resetTunnels() {
+        self.windowController?.close()
+        self.windowController = nil
+        self.windowSessionKey = nil
+        self.panelController?.close()
+        self.panelController = nil
+        self.panelSessionKey = nil
+        self.cachedPreferredSessionKey = nil
+    }
+
+    func close() {
+        self.windowController?.close()
+        self.windowController = nil
+        self.windowSessionKey = nil
+        self.panelController?.close()
+        self.panelController = nil
+        self.panelSessionKey = nil
+        self.cachedPreferredSessionKey = nil
+    }
+
+    private func panelHidden() {
+        self.onPanelVisibilityChanged?(false)
+        // Keep panel controller cached so reopening doesn't re-bootstrap.
+    }
+}

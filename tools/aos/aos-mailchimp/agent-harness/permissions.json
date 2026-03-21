@@ -1,0 +1,18 @@
+{
+  "tool": "aos-mailchimp",
+  "backend": "mailchimp-marketing",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "config.show": "readonly",
+    "audience.list": "readonly",
+    "audience.read": "readonly",
+    "campaign.list": "readonly",
+    "campaign.read": "readonly",
+    "member.list": "readonly",
+    "member.read": "readonly",
+    "audience.create": "write",
+    "campaign.create": "write"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "tool": "aos-google",
+  "backend": "gws",
+  "permissions": {
+    "doctor": "readonly",
+    "health": "readonly",
+    "config.show": "readonly",
+    "gmail.search": "readonly",
+    "gmail.read": "readonly",
+    "gmail.send": "write",
+    "gmail.delete": "admin",
+    "drive.list": "readonly",
+    "drive.read": "readonly",
+    "drive.upload": "write",
+    "drive.share": "full",
+    "drive.delete": "admin",
+    "calendar.list": "readonly",
+    "calendar.create": "write",
+    "calendar.delete": "full"
+  }
+}

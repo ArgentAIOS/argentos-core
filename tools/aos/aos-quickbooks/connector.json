@@ -1,0 +1,177 @@
+{
+  "backend": "quickbooks-online",
+  "delivery_model": "poll",
+  "risk_tier": "bounded-write",
+  "connector": {
+    "label": "QuickBooks",
+    "category": "accounting",
+    "categories": ["accounting", "finance-backoffice"],
+    "resources": [
+      "company",
+      "customer",
+      "invoice",
+      "payment",
+      "bill",
+      "vendor",
+      "account",
+      "report"
+    ]
+  },
+  "auth": {
+    "kind": "oauth",
+    "required": true,
+    "service_keys": ["QBO_CLIENT_ID", "QBO_CLIENT_SECRET"],
+    "interactive_setup": [
+      "Create or select an Intuit app for QuickBooks Online.",
+      "Configure the OAuth redirect URI for the local connector flow.",
+      "Complete QuickBooks OAuth login and persist refresh token material.",
+      "Select the QuickBooks realm/company and store QBO_REALM_ID."
+    ]
+  },
+  "commands": [
+    {
+      "id": "company.read",
+      "summary": "Read company profile and base accounting settings",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "company",
+      "action_class": "read"
+    },
+    {
+      "id": "customer.list",
+      "summary": "List customers in the selected QuickBooks company",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "customer",
+      "action_class": "read"
+    },
+    {
+      "id": "customer.read",
+      "summary": "Read a customer record",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "customer",
+      "action_class": "read"
+    },
+    {
+      "id": "invoice.list",
+      "summary": "List invoices by status, customer, or recency",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "invoice",
+      "action_class": "read"
+    },
+    {
+      "id": "invoice.read",
+      "summary": "Read invoice details",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "invoice",
+      "action_class": "read"
+    },
+    {
+      "id": "invoice.create",
+      "summary": "Create a new invoice draft",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "invoice",
+      "action_class": "write"
+    },
+    {
+      "id": "invoice.update",
+      "summary": "Update an existing invoice",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "invoice",
+      "action_class": "write"
+    },
+    {
+      "id": "payment.list",
+      "summary": "List payments for the selected company",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "payment",
+      "action_class": "read"
+    },
+    {
+      "id": "payment.read",
+      "summary": "Read payment details",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "payment",
+      "action_class": "read"
+    },
+    {
+      "id": "payment.create",
+      "summary": "Create a payment linked to a customer or invoice",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "payment",
+      "action_class": "write"
+    },
+    {
+      "id": "bill.list",
+      "summary": "List bills by vendor or status",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "bill",
+      "action_class": "read"
+    },
+    {
+      "id": "bill.read",
+      "summary": "Read bill details",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "bill",
+      "action_class": "read"
+    },
+    {
+      "id": "bill.create",
+      "summary": "Create a vendor bill draft",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "bill",
+      "action_class": "write"
+    },
+    {
+      "id": "vendor.list",
+      "summary": "List vendors in the selected company",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "vendor",
+      "action_class": "read"
+    },
+    {
+      "id": "vendor.read",
+      "summary": "Read vendor details",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "vendor",
+      "action_class": "read"
+    },
+    {
+      "id": "account.list",
+      "summary": "List chart-of-accounts entries",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "account",
+      "action_class": "read"
+    },
+    {
+      "id": "report.profit-and-loss",
+      "summary": "Read a profit and loss report",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "report",
+      "action_class": "read"
+    },
+    {
+      "id": "report.ar-aging-summary",
+      "summary": "Read accounts receivable aging summary",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "report",
+      "action_class": "read"
+    }
+  ]
+}

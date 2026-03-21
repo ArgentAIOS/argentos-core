@@ -1,0 +1,16 @@
+{
+  "id": "dashboard-canvas-bridge",
+  "name": "Dashboard Canvas Bridge",
+  "version": "1.0.0",
+  "description": "Bridges ArgentOS agent with Argent Dashboard DocPanel system. Provides doc_panel tool and canvas event broadcasting.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "description": "Enable/disable the plugin"
+      }
+    }
+  }
+}

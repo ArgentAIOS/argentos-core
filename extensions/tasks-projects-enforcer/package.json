@@ -1,0 +1,13 @@
+{
+  "name": "@argentos/tasks-projects-enforcer",
+  "version": "1.0.0",
+  "description": "ArgentOS plugin to inject task and project instructions into agent bootstrap",
+  "license": "MIT",
+  "author": "Titanium Computing",
+  "main": "index.ts",
+  "argentos": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

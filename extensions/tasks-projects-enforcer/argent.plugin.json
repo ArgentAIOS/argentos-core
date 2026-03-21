@@ -1,0 +1,16 @@
+{
+  "id": "tasks-projects-enforcer",
+  "name": "Tasks & Projects Bootstrap",
+  "version": "1.0.0",
+  "description": "Injects dashboard task/project instructions into agent bootstrap",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "description": "Enable/disable bootstrap injection"
+      }
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "argent.moc3",
+    "Textures": ["textures/texture_00.png", "textures/texture_01.png"],
+    "Physics": "argent.physics3.json",
+    "DisplayInfo": "argent.cdi3.json",
+    "Expressions": [
+      { "Name": "star_eyes", "File": "star_eyes.exp3.json" },
+      { "Name": "heart_eyes", "File": "heart_eyes.exp3.json" },
+      { "Name": "sparkle_eyes", "File": "sparkle_eyes.exp3.json" },
+      { "Name": "tongue_out", "File": "tongue_out.exp3.json" },
+      { "Name": "blush", "File": "blush.exp3.json" },
+      { "Name": "blush_heavy", "File": "blush_heavy.exp3.json" },
+      { "Name": "dark_face", "File": "dark_face.exp3.json" },
+      { "Name": "dizzy", "File": "dizzy.exp3.json" },
+      { "Name": "glasses", "File": "glasses.exp3.json" },
+      { "Name": "headphones", "File": "headphones.exp3.json" },
+      { "Name": "headphones_antenna", "File": "headphones_antenna.exp3.json" },
+      { "Name": "headphones_mic", "File": "headphones_mic.exp3.json" },
+      { "Name": "heart_gesture", "File": "heart_gesture.exp3.json" },
+      { "Name": "fist", "File": "fist.exp3.json" },
+      { "Name": "hand_on_hip_left", "File": "hand_on_hip_left.exp3.json" },
+      { "Name": "hand_on_hip_right", "File": "hand_on_hip_right.exp3.json" },
+      { "Name": "hand_on_chest_left", "File": "hand_on_chest_left.exp3.json" },
+      { "Name": "hand_on_chest_right", "File": "hand_on_chest_right.exp3.json" },
+      { "Name": "weapon", "File": "weapon.exp3.json" },
+      { "Name": "bikini", "File": "bikini.exp3.json" },
+      { "Name": "black_mesh", "File": "black_mesh.exp3.json" },
+      { "Name": "leg_mesh", "File": "leg_mesh.exp3.json" },
+      { "Name": "bubbles", "File": "bubbles.exp3.json" },
+      { "Name": "bangs", "File": "bangs.exp3.json" },
+      { "Name": "long_hair", "File": "long_hair.exp3.json" },
+      { "Name": "twintails", "File": "twintails.exp3.json" },
+      { "Name": "ponytail_short", "File": "ponytail_short.exp3.json" },
+      { "Name": "ponytail_long", "File": "ponytail_long.exp3.json" }
+    ]
+  },
+  "Groups": [
+    {
+      "Target": "Parameter",
+      "Name": "LipSync",
+      "Ids": ["ParamMouthOpenY"]
+    },
+    {
+      "Target": "Parameter",
+      "Name": "EyeBlink",
+      "Ids": ["ParamEyeLOpen", "ParamEyeROpen"]
+    }
+  ]
+}

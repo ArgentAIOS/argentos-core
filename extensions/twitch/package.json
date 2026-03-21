@@ -1,0 +1,20 @@
+{
+  "name": "@argentos/twitch",
+  "version": "2026.2.4",
+  "description": "ArgentOS Twitch channel plugin",
+  "type": "module",
+  "dependencies": {
+    "@twurple/api": "^8.0.3",
+    "@twurple/auth": "^8.0.3",
+    "@twurple/chat": "^8.0.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "argentos": "workspace:*"
+  },
+  "argent": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

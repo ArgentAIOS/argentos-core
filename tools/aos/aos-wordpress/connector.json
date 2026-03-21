@@ -1,0 +1,179 @@
+{
+  "tool": "aos-wordpress",
+  "backend": "wordpress-rest",
+  "manifest_schema_version": "1.0.0",
+  "connector": {
+    "label": "WordPress",
+    "category": "marketing-publishing",
+    "categories": ["marketing-publishing", "knowledge-docs"],
+    "primary_bucket": "marketing-publishing",
+    "secondary_buckets": ["knowledge-docs"],
+    "vertical_overlays": [
+      "seo-agency",
+      "writing-content",
+      "marketing-agency",
+      "creative-media",
+      "web-dev-agency"
+    ],
+    "resources": ["site", "post", "page", "media", "comment"]
+  },
+  "delivery_model": "poll",
+  "scope_model": ["site", "content-type", "status-filter", "author"],
+  "risk_tier": "bounded-write",
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["AOS_WORDPRESS_USERNAME", "AOS_WORDPRESS_APP_PASSWORD"],
+    "interactive_setup": [
+      "Set the WordPress site URL with --site-url or AOS_WORDPRESS_SITE_URL.",
+      "Create an application password for the WordPress user that ArgentOS should use.",
+      "Set AOS_WORDPRESS_USERNAME and AOS_WORDPRESS_APP_PASSWORD, or provide AOS_WORDPRESS_BEARER_TOKEN for plugin-backed auth."
+    ]
+  },
+  "commands": [
+    {
+      "id": "site.info",
+      "summary": "Read site identity and available API namespaces",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "site",
+      "action_class": "read"
+    },
+    {
+      "id": "post.list",
+      "summary": "List WordPress posts in scope",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "post",
+      "action_class": "read"
+    },
+    {
+      "id": "post.read",
+      "summary": "Read a WordPress post",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "post",
+      "action_class": "read"
+    },
+    {
+      "id": "post.create",
+      "summary": "Create a draft WordPress post",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "post",
+      "action_class": "write"
+    },
+    {
+      "id": "post.update",
+      "summary": "Update a WordPress post draft or scheduled entry",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "post",
+      "action_class": "write"
+    },
+    {
+      "id": "post.publish",
+      "summary": "Publish a WordPress post",
+      "required_mode": "full",
+      "supports_json": true,
+      "resource": "post",
+      "action_class": "write"
+    },
+    {
+      "id": "page.list",
+      "summary": "List WordPress pages in scope",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "page",
+      "action_class": "read"
+    },
+    {
+      "id": "page.read",
+      "summary": "Read a WordPress page",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "page",
+      "action_class": "read"
+    },
+    {
+      "id": "page.create",
+      "summary": "Create a draft WordPress page",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "page",
+      "action_class": "write"
+    },
+    {
+      "id": "page.update",
+      "summary": "Update a WordPress page draft",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "page",
+      "action_class": "write"
+    },
+    {
+      "id": "page.publish",
+      "summary": "Publish a WordPress page",
+      "required_mode": "full",
+      "supports_json": true,
+      "resource": "page",
+      "action_class": "write"
+    },
+    {
+      "id": "media.list",
+      "summary": "List WordPress media items",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "media",
+      "action_class": "read"
+    },
+    {
+      "id": "media.read",
+      "summary": "Read WordPress media metadata",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "media",
+      "action_class": "read"
+    },
+    {
+      "id": "media.upload",
+      "summary": "Upload a media item to WordPress",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "media",
+      "action_class": "write"
+    },
+    {
+      "id": "comment.list",
+      "summary": "List WordPress comments in scope",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "comment",
+      "action_class": "read"
+    },
+    {
+      "id": "comment.read",
+      "summary": "Read a WordPress comment",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "comment",
+      "action_class": "read"
+    },
+    {
+      "id": "comment.reply",
+      "summary": "Reply to a WordPress comment",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "comment",
+      "action_class": "write"
+    },
+    {
+      "id": "comment.moderate",
+      "summary": "Approve, hold, spam, or trash a WordPress comment",
+      "required_mode": "full",
+      "supports_json": true,
+      "resource": "comment",
+      "action_class": "write"
+    }
+  ]
+}

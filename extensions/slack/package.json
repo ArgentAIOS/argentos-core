@@ -1,0 +1,14 @@
+{
+  "name": "@argentos/slack",
+  "version": "2026.2.4",
+  "description": "ArgentOS Slack channel plugin",
+  "type": "module",
+  "devDependencies": {
+    "argentos": "workspace:*"
+  },
+  "argent": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

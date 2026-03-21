@@ -1,0 +1,64 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "yiota.moc3",
+    "Textures": [
+      "yiota.4096/texture_00.png",
+      "yiota.4096/texture_01.png",
+      "yiota.4096/texture_02.png",
+      "yiota.4096/texture_03.png",
+      "yiota.4096/texture_04.png",
+      "yiota.4096/texture_05.png",
+      "yiota.4096/texture_06.png",
+      "yiota.4096/texture_07.png",
+      "yiota.4096/texture_08.png",
+      "yiota.4096/texture_09.png",
+      "yiota.4096/texture_10.png",
+      "yiota.4096/texture_11.png",
+      "yiota.4096/texture_12.png",
+      "yiota.4096/texture_13.png",
+      "yiota.4096/texture_14.png",
+      "yiota.4096/texture_15.png",
+      "yiota.4096/texture_16.png",
+      "yiota.4096/texture_17.png",
+      "yiota.4096/texture_18.png",
+      "yiota.4096/texture_19.png",
+      "yiota.4096/texture_20.png",
+      "yiota.4096/texture_21.png",
+      "yiota.4096/texture_22.png",
+      "yiota.4096/texture_23.png",
+      "yiota.4096/texture_24.png",
+      "yiota.4096/texture_25.png",
+      "yiota.4096/texture_26.png",
+      "yiota.4096/texture_27.png",
+      "yiota.4096/texture_28.png",
+      "yiota.4096/texture_29.png",
+      "yiota.4096/texture_30.png"
+    ],
+    "Expressions": [
+      { "Name": "Blush", "File": "Blush.exp3.json" },
+      { "Name": "Crying", "File": "Crying.exp3.json" },
+      { "Name": "Dark", "File": "Dark.exp3.json" },
+      { "Name": "HeartEyes", "File": "HeartEyes.exp3.json" },
+      { "Name": "StarEyes", "File": "Star Eyes.exp3.json" }
+    ],
+    "Motions": {
+      "Idle": [{ "File": "Idle.motion3.json" }],
+      "Cry": [{ "File": "Cry.motion3.json" }]
+    },
+    "Physics": "yiota.physics3.json",
+    "DisplayInfo": "yiota.cdi3.json"
+  },
+  "Groups": [
+    {
+      "Target": "Parameter",
+      "Name": "LipSync",
+      "Ids": ["ParamMouthOpenY"]
+    },
+    {
+      "Target": "Parameter",
+      "Name": "EyeBlink",
+      "Ids": ["ParamEyeLOpen", "ParamEyeROpen"]
+    }
+  ]
+}

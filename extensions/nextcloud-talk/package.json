@@ -1,0 +1,33 @@
+{
+  "name": "@argentos/nextcloud-talk",
+  "version": "2026.2.4",
+  "description": "ArgentOS Nextcloud Talk channel plugin",
+  "type": "module",
+  "devDependencies": {
+    "argentos": "workspace:*"
+  },
+  "argent": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "channel": {
+      "id": "nextcloud-talk",
+      "label": "Nextcloud Talk",
+      "selectionLabel": "Nextcloud Talk (self-hosted)",
+      "docsPath": "/channels/nextcloud-talk",
+      "docsLabel": "nextcloud-talk",
+      "blurb": "Self-hosted chat via Nextcloud Talk webhook bots.",
+      "aliases": [
+        "nc-talk",
+        "nc"
+      ],
+      "order": 65,
+      "quickstartAllowFrom": true
+    },
+    "install": {
+      "npmSpec": "@argentos/nextcloud-talk",
+      "localPath": "extensions/nextcloud-talk",
+      "defaultChoice": "npm"
+    }
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://argentos.ai/schemas/docpanel-intake.schema.json",
+  "title": "ArgentOS Customer Intake Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "schemaVersion", "submittedAt", "payload"],
+  "properties": {
+    "kind": {
+      "const": "argentos.customer-intake"
+    },
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "submittedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "submittedBy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["company", "contacts", "painPoints", "outcomes"],
+      "properties": {
+        "company": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "industry"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "industry": { "type": "string", "minLength": 1 },
+            "headcount": { "type": "integer", "minimum": 1 },
+            "locations": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "contacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "role"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "role": { "type": "string", "minLength": 1 },
+              "email": { "type": "string", "format": "email" }
+            }
+          }
+        },
+        "stack": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ticketing": { "type": "string" },
+            "chat": { "type": "string" },
+            "email": { "type": "string" },
+            "monitoring": { "type": "string" },
+            "knowledge": { "type": "string" }
+          }
+        },
+        "integrations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "painPoints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["statement"],
+            "properties": {
+              "statement": { "type": "string", "minLength": 1 },
+              "frequency": { "type": "string" },
+              "severity": { "type": "string" }
+            }
+          }
+        },
+        "guardrails": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "neverDo": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "requiresApprovalFor": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "outcomes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["dayOneAnchor"],
+          "properties": {
+            "dayOneAnchor": { "type": "string", "minLength": 1 },
+            "success30d": { "type": "string" },
+            "success90d": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

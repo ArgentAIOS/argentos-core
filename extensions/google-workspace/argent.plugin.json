@@ -1,0 +1,23 @@
+{
+  "id": "google-workspace",
+  "name": "Google Workspace Admin",
+  "description": "Management-level Google Workspace administration: email activity reports, user directory lookups, and domain-wide reporting via service account with domain-wide delegation.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "serviceAccountKeyPath": {
+        "type": "string",
+        "description": "Absolute path to the Google service account JSON key file with domain-wide delegation."
+      },
+      "adminEmail": {
+        "type": "string",
+        "description": "Super admin email to impersonate for API access."
+      },
+      "domain": {
+        "type": "string",
+        "description": "Primary Google Workspace domain (e.g. example.com)."
+      }
+    }
+  }
+}

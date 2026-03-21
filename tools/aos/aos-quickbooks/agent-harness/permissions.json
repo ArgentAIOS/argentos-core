@@ -1,0 +1,26 @@
+{
+  "tool": "aos-quickbooks",
+  "backend": "quickbooks-online",
+  "permissions": {
+    "health": "readonly",
+    "config.show": "readonly",
+    "company.read": "readonly",
+    "customer.list": "readonly",
+    "customer.read": "readonly",
+    "invoice.list": "readonly",
+    "invoice.read": "readonly",
+    "invoice.create": "write",
+    "invoice.update": "write",
+    "payment.list": "readonly",
+    "payment.read": "readonly",
+    "payment.create": "write",
+    "bill.list": "readonly",
+    "bill.read": "readonly",
+    "bill.create": "write",
+    "vendor.list": "readonly",
+    "vendor.read": "readonly",
+    "account.list": "readonly",
+    "report.profit-and-loss": "readonly",
+    "report.ar-aging-summary": "readonly"
+  }
+}
