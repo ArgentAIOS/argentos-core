@@ -13,19 +13,19 @@ jobs:
 
     steps:
       - name: Checkout argentos (PR)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: argentos
 
       - name: Checkout formal models
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ArgentAIOS/argent-formal-models
           ref: main
           path: argent-formal-models
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
