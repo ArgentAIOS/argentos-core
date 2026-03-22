@@ -61,6 +61,73 @@ is_supported_runtime_node() {
   fi
   return 1
 }
+build_local_macos_app_bundle() {
+  local root_dir="$1"
+  local package_script="$root_dir/scripts/package-mac-app.sh"
+  local app_dist="$root_dir/dist/Argent.app"
+  local node_dir=""
+  local npm_dir=""
+
+  [[ -x "$package_script" ]] || return 1
+  command -v swift >/dev/null 2>&1 || return 1
+  command -v xcode-select >/dev/null 2>&1 || return 1
+  if [[ -n "${NODE_BIN:-}" ]]; then
+    node_dir="$(dirname "$NODE_BIN")"
+  fi
+  if [[ -n "${NPM_BIN:-}" ]]; then
+    npm_dir="$(dirname "$NPM_BIN")"
+  fi
+
+  info "Building Argent.app from local source checkout..." >&2
+  if (
+    cd "$root_dir" && \
+      PATH="${node_dir:+$node_dir:}${npm_dir:+$npm_dir:}$PATH" \
+      ALLOW_ADHOC_SIGNING=1 \
+      SKIP_TSC=1 \
+      SKIP_UI_BUILD=1 \
+      NODE_BIN="${NODE_BIN:-}" \
+      NPM_BIN="${NPM_BIN:-}" \
+      PNPM_RUNNER="${PNPM_RUNNER:-}" \
+      "$package_script" 1>&2
+  ); then
+    [[ -d "$app_dist" ]] || return 1
+    printf '%s\n' "$app_dist"
+    return 0
+  fi
+
+  return 1
+}
+is_valid_gateway_token() {
+  local token="${1:-}"
+  [[ "$token" =~ ^[0-9a-fA-F]{48}$ ]]
+}
+generate_gateway_token() {
+  local token=""
+  if command -v openssl >/dev/null 2>&1; then
+    if token="$(openssl rand -hex 24 2>/dev/null)" && is_valid_gateway_token "$token"; then
+      printf '%s\n' "$token"
+      return 0
+    fi
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    if token="$(python3 - <<'PY'
+import secrets
+print(secrets.token_hex(24))
+PY
+    )" && is_valid_gateway_token "$token"; then
+      printf '%s\n' "$token"
+      return 0
+    fi
+  fi
+  if command -v uuidgen >/dev/null 2>&1; then
+    if token="$(printf '%s%s\n' "$(uuidgen | tr -d '-')" "$(uuidgen | tr -d '-')" | cut -c1-48)" && is_valid_gateway_token "$token"; then
+      printf '%s\n' "$token"
+      return 0
+    fi
+  fi
+  err "Could not generate a gateway token (need openssl, python3, or uuidgen)"
+  exit 1
+}
 node_os() {
   case "$(uname -s)" in
     Darwin) printf 'darwin' ;;
@@ -237,15 +304,23 @@ CONFIG_FILE="$STATE_DIR/argent.json"
 if [[ -f "$CONFIG_FILE" ]]; then
   ok "Config already exists: $CONFIG_FILE"
 else
-  cat > "$CONFIG_FILE" << 'CONFIGJSON'
+  GATEWAY_TOKEN="$(generate_gateway_token)"
+  (
+    umask 077
+    cat > "$CONFIG_FILE" << CONFIGJSON
 {
   "gateway": {
     "mode": "local",
     "port": 18789,
-    "auth": { "mode": "token" }
+    "auth": {
+      "mode": "token",
+      "token": "$GATEWAY_TOKEN"
+    }
   }
 }
 CONFIGJSON
+  )
+  chmod 600 "$CONFIG_FILE"
   ok "Created default config: $CONFIG_FILE"
 fi
 
@@ -350,6 +425,7 @@ step 4 "Installing optional macOS app bundle"
 
 APP_BUNDLE_NEW="$ARGENT_HOME/app/Argent.app"
 APP_BUNDLE_LEGACY="$ARGENT_HOME/app/ArgentOS.app"
+APP_BUNDLE_DIST="$ARGENT_HOME/dist/Argent.app"
 APP_DEST="${ARGENT_APP_DEST:-/Applications/Argent.app}"
 APP_SOURCE=""
 
@@ -357,20 +433,50 @@ if [[ -d "$APP_BUNDLE_NEW" ]]; then
   APP_SOURCE="$APP_BUNDLE_NEW"
 elif [[ -d "$APP_BUNDLE_LEGACY" ]]; then
   APP_SOURCE="$APP_BUNDLE_LEGACY"
+elif [[ -d "$APP_BUNDLE_DIST" ]]; then
+  APP_SOURCE="$APP_BUNDLE_DIST"
 fi
 
 if is_truthy "$SKIP_APP_INSTALL"; then
   info "Skipping app bundle install (ARGENT_SKIP_APP_INSTALL=1)"
-elif [[ -n "$APP_SOURCE" ]]; then
-  if [[ -d "$APP_DEST" ]]; then
-    rm -rf "$APP_DEST"
+elif [[ -z "$APP_SOURCE" ]] && [[ -d "$ARGENT_HOME/apps/macos" ]]; then
+  if APP_SOURCE="$(build_local_macos_app_bundle "$ARGENT_HOME")"; then
+    ok "Built local Argent.app bundle"
+  else
+    warn "Failed to build Argent.app from local source checkout — continuing without app bundle"
   fi
-  cp -R "$APP_SOURCE" "$APP_DEST"
-  ok "Argent.app → $APP_DEST"
-  # Launch it so it appears in menu bar
-  open -a "$APP_DEST" 2>/dev/null || true
+fi
+
+if [[ -n "$APP_SOURCE" ]] && ! is_truthy "$SKIP_APP_INSTALL"; then
+  APP_DEST_PARENT="$(dirname "$APP_DEST")"
+  APP_TMP_DEST="${APP_DEST}.tmp.$$"
+  if mkdir -p "$APP_DEST_PARENT"; then
+    rm -rf "$APP_TMP_DEST"
+    if cp -R "$APP_SOURCE" "$APP_TMP_DEST"; then
+      if [[ -d "$APP_DEST" ]]; then
+        rm -rf "$APP_DEST" || warn "Could not remove existing app bundle at $APP_DEST"
+      fi
+      if mv "$APP_TMP_DEST" "$APP_DEST"; then
+        ok "Argent.app → $APP_DEST"
+        # Launch it so it appears in menu bar
+        open -a "$APP_DEST" 2>/dev/null || true
+      else
+        warn "Copied Argent.app but could not move it into place at $APP_DEST"
+        rm -rf "$APP_TMP_DEST" || true
+      fi
+    else
+      warn "Failed to copy Argent.app to $APP_DEST — continuing without app install"
+      rm -rf "$APP_TMP_DEST" || true
+    fi
+  else
+    warn "Could not create app destination directory for $APP_DEST — continuing without app install"
+  fi
+elif [[ -n "$APP_SOURCE" ]]; then
+  :
+elif is_truthy "$SKIP_APP_INSTALL"; then
+  :
 else
-  warn "No macOS app bundle embedded in runtime — install Argent.app from DMG if needed"
+  warn "No macOS app bundle available — install Argent.app from DMG if needed"
 fi
 
 # ============================================================================

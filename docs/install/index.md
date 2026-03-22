@@ -120,6 +120,11 @@ argent onboard --install-daemon
 
 `install.sh` will bootstrap a private supported Node runtime for the installed CLI/services when the active system Node is missing or outside the supported runtime range.
 
+On macOS source checkouts, `install.sh` now also installs `Argent.app` when a bundle
+is already present in the repo output or when the local Swift app sources can be built
+successfully. That keeps the Mac source-install path aligned with the flagship app-first
+experience instead of leaving the native app out by default.
+
 Tip: if you don’t have a global install yet, run repo commands via `pnpm argent ...`.
 
 ### 4) Other install options

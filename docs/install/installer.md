@@ -95,6 +95,8 @@ Behavior:
 
 - creates `~/.argentos` state and `~/argent` workspace
 - installs `~/bin/argent` and `~/bin/argentos`
+- installs `Argent.app` on macOS when a bundled app is already present or when the
+  local Swift app sources can be packaged successfully
 - installs gateway/dashboard LaunchAgents
 - bootstraps a private Node 22 runtime for the installed CLI/services when the active system Node is unsupported
 - rebuilds native addons against the selected runtime

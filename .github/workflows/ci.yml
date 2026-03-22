@@ -455,7 +455,7 @@ jobs:
       - name: iOS tests
         run: |
           set -euo pipefail
-          RESULT_BUNDLE_PATH="$RUNNER_TEMP/Clawdis-iOS.xcresult"
+          RESULT_BUNDLE_PATH="$RUNNER_TEMP/ArgentOS-iOS.xcresult"
           DEST_ID="$(
             python3 - <<'PY'
           import json
@@ -534,8 +534,8 @@ jobs:
           )"
           echo "Using iOS Simulator id: $DEST_ID"
           xcodebuild test \
-            -project apps/ios/Clawdis.xcodeproj \
-            -scheme Clawdis \
+            -project apps/ios/ArgentOS.xcodeproj \
+            -scheme ArgentOS \
             -destination "platform=iOS Simulator,id=$DEST_ID" \
             -resultBundlePath "$RESULT_BUNDLE_PATH" \
             -enableCodeCoverage YES
@@ -543,20 +543,20 @@ jobs:
       - name: iOS coverage summary
         run: |
           set -euo pipefail
-          RESULT_BUNDLE_PATH="$RUNNER_TEMP/Clawdis-iOS.xcresult"
+          RESULT_BUNDLE_PATH="$RUNNER_TEMP/ArgentOS-iOS.xcresult"
           xcrun xccov view --report --only-targets "$RESULT_BUNDLE_PATH"
 
       - name: iOS coverage gate (43%)
         run: |
           set -euo pipefail
-          RESULT_BUNDLE_PATH="$RUNNER_TEMP/Clawdis-iOS.xcresult"
+          RESULT_BUNDLE_PATH="$RUNNER_TEMP/ArgentOS-iOS.xcresult"
           RESULT_BUNDLE_PATH="$RESULT_BUNDLE_PATH" python3 - <<'PY'
           import json
           import os
           import subprocess
           import sys
 
-          target_name = "Clawdis.app"
+          target_name = "ArgentOS.app"
           minimum = 0.43
 
           report = json.loads(
