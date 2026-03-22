@@ -33,7 +33,7 @@
     "monaco-editor": "^0.52.2",
     "openai": "^6.17.0",
     "pixi-live2d-display": "^0.4.0",
-    "pixi.js": "^6.5.10",
+    "pixi.js": "^8.17.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
