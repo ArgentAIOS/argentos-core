@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   install-check:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -72,7 +72,7 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true
 
   checks:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
       matrix:
@@ -149,7 +149,7 @@ jobs:
         run: ${{ matrix.command }}
 
   secrets:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -176,7 +176,7 @@ jobs:
 
   checks-windows:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: windows-latest
+    runs-on: blacksmith-4vcpu-windows-2025
     env:
       NODE_OPTIONS: --max-old-space-size=4096
       CLAWDBOT_TEST_WORKERS: 1
@@ -583,7 +583,7 @@ jobs:
 
   android:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
       matrix:
