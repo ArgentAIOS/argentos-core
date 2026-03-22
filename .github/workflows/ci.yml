@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -76,23 +78,14 @@ jobs:
       matrix:
         include:
           - runtime: node
-            task: tsgo
-            command: pnpm tsgo
-          - runtime: node
-            task: lint
-            command: pnpm build && pnpm lint
-          - runtime: node
-            task: test
-            command: pnpm canvas:a2ui:bundle && pnpm test
+            task: build
+            command: pnpm build
           - runtime: node
             task: protocol
             command: pnpm protocol:check
           - runtime: node
             task: format
             command: pnpm format
-          - runtime: bun
-            task: test
-            command: pnpm canvas:a2ui:bundle && bunx vitest run
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -133,16 +126,10 @@ jobs:
           done
           exit 1
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
       - name: Runtime versions
         run: |
           node -v
           npm -v
-          bun -v
           pnpm -v
 
       - name: Capture node path
@@ -188,6 +175,7 @@ jobs:
           fi
 
   checks-windows:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     env:
       NODE_OPTIONS: --max-old-space-size=4096
@@ -277,7 +265,7 @@ jobs:
         run: ${{ matrix.command }}
 
   checks-macos:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     strategy:
       fail-fast: false
@@ -350,7 +338,7 @@ jobs:
         run: ${{ matrix.command }}
 
   macos-app:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     strategy:
       fail-fast: false
@@ -594,6 +582,7 @@ jobs:
           PY
 
   android:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

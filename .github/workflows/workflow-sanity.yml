@@ -4,12 +4,17 @@ on:
   pull_request:
   push:
 
+permissions:
+  contents: read
+
 jobs:
   no-tabs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Fail on tabs in workflow files
         run: |
