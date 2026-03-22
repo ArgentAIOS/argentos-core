@@ -20,7 +20,7 @@ The goal is simple:
 ## Preconditions
 
 - Clean Mac or a clean macOS user account
-- Node **22+**
+- Node **22.12+**
 - `git` available
 - No reliance on your existing `~/.argentos` state from the primary machine
 
@@ -77,7 +77,7 @@ Record failures with:
 ```bash
 node -v
 pnpm -v
-tail -n 100 ~/.argent/logs/gateway.log 2>/dev/null || true
+tail -n 100 ~/.argentos/logs/gateway.log 2>/dev/null || true
 ```
 
 ### 2) Onboarding
@@ -109,8 +109,8 @@ If the gateway fails, capture:
 ```bash
 argent gateway status
 argent health
-tail -n 120 ~/.argent/logs/gateway.log
-tail -n 120 ~/.argent/logs/dashboard-api.log 2>/dev/null || true
+tail -n 120 ~/.argentos/logs/gateway.log
+tail -n 120 ~/.argentos/logs/dashboard-api.log 2>/dev/null || true
 ```
 
 ### 4) Core boundary sanity
