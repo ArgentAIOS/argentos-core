@@ -10,6 +10,7 @@ onlyBuiltDependencies:
   - "@lydell/node-pty"
   - "@matrix-org/matrix-sdk-crypto-nodejs"
   - authenticate-pam
+  - better-sqlite3
   - esbuild
   - protobufjs
   - sharp
