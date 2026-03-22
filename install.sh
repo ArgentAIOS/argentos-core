@@ -65,17 +65,29 @@ build_local_macos_app_bundle() {
   local root_dir="$1"
   local package_script="$root_dir/scripts/package-mac-app.sh"
   local app_dist="$root_dir/dist/Argent.app"
+  local node_dir=""
+  local npm_dir=""
 
   [[ -x "$package_script" ]] || return 1
   command -v swift >/dev/null 2>&1 || return 1
   command -v xcode-select >/dev/null 2>&1 || return 1
+  if [[ -n "${NODE_BIN:-}" ]]; then
+    node_dir="$(dirname "$NODE_BIN")"
+  fi
+  if [[ -n "${NPM_BIN:-}" ]]; then
+    npm_dir="$(dirname "$NPM_BIN")"
+  fi
 
   info "Building Argent.app from local source checkout..." >&2
   if (
     cd "$root_dir" && \
+      PATH="${node_dir:+$node_dir:}${npm_dir:+$npm_dir:}$PATH" \
       ALLOW_ADHOC_SIGNING=1 \
       SKIP_TSC=1 \
       SKIP_UI_BUILD=1 \
+      NODE_BIN="${NODE_BIN:-}" \
+      NPM_BIN="${NPM_BIN:-}" \
+      PNPM_RUNNER="${PNPM_RUNNER:-}" \
       "$package_script" 1>&2
   ); then
     [[ -d "$app_dist" ]] || return 1
@@ -85,21 +97,33 @@ build_local_macos_app_bundle() {
 
   return 1
 }
+is_valid_gateway_token() {
+  local token="${1:-}"
+  [[ "$token" =~ ^[0-9a-fA-F]{48}$ ]]
+}
 generate_gateway_token() {
+  local token=""
   if command -v openssl >/dev/null 2>&1; then
-    openssl rand -hex 24
-    return 0
+    if token="$(openssl rand -hex 24 2>/dev/null)" && is_valid_gateway_token "$token"; then
+      printf '%s\n' "$token"
+      return 0
+    fi
   fi
   if command -v python3 >/dev/null 2>&1; then
-    python3 - <<'PY'
+    if token="$(python3 - <<'PY'
 import secrets
 print(secrets.token_hex(24))
 PY
-    return 0
+    )" && is_valid_gateway_token "$token"; then
+      printf '%s\n' "$token"
+      return 0
+    fi
   fi
   if command -v uuidgen >/dev/null 2>&1; then
-    printf '%s%s\n' "$(uuidgen | tr -d '-')" "$(uuidgen | tr -d '-')" | cut -c1-48
-    return 0
+    if token="$(printf '%s%s\n' "$(uuidgen | tr -d '-')" "$(uuidgen | tr -d '-')" | cut -c1-48)" && is_valid_gateway_token "$token"; then
+      printf '%s\n' "$token"
+      return 0
+    fi
   fi
   err "Could not generate a gateway token (need openssl, python3, or uuidgen)"
   exit 1
@@ -424,14 +448,29 @@ elif [[ -z "$APP_SOURCE" ]] && [[ -d "$ARGENT_HOME/apps/macos" ]]; then
 fi
 
 if [[ -n "$APP_SOURCE" ]] && ! is_truthy "$SKIP_APP_INSTALL"; then
-  mkdir -p "$(dirname "$APP_DEST")"
-  if [[ -d "$APP_DEST" ]]; then
-    rm -rf "$APP_DEST"
+  APP_DEST_PARENT="$(dirname "$APP_DEST")"
+  APP_TMP_DEST="${APP_DEST}.tmp.$$"
+  if mkdir -p "$APP_DEST_PARENT"; then
+    rm -rf "$APP_TMP_DEST"
+    if cp -R "$APP_SOURCE" "$APP_TMP_DEST"; then
+      if [[ -d "$APP_DEST" ]]; then
+        rm -rf "$APP_DEST" || warn "Could not remove existing app bundle at $APP_DEST"
+      fi
+      if mv "$APP_TMP_DEST" "$APP_DEST"; then
+        ok "Argent.app → $APP_DEST"
+        # Launch it so it appears in menu bar
+        open -a "$APP_DEST" 2>/dev/null || true
+      else
+        warn "Copied Argent.app but could not move it into place at $APP_DEST"
+        rm -rf "$APP_TMP_DEST" || true
+      fi
+    else
+      warn "Failed to copy Argent.app to $APP_DEST — continuing without app install"
+      rm -rf "$APP_TMP_DEST" || true
+    fi
+  else
+    warn "Could not create app destination directory for $APP_DEST — continuing without app install"
   fi
-  cp -R "$APP_SOURCE" "$APP_DEST"
-  ok "Argent.app → $APP_DEST"
-  # Launch it so it appears in menu bar
-  open -a "$APP_DEST" 2>/dev/null || true
 elif [[ -n "$APP_SOURCE" ]]; then
   :
 elif is_truthy "$SKIP_APP_INSTALL"; then
