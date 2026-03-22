@@ -61,6 +61,25 @@ is_supported_runtime_node() {
   fi
   return 1
 }
+generate_gateway_token() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 24
+    return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - <<'PY'
+import secrets
+print(secrets.token_hex(24))
+PY
+    return 0
+  fi
+  if command -v uuidgen >/dev/null 2>&1; then
+    printf '%s%s\n' "$(uuidgen | tr -d '-')" "$(uuidgen | tr -d '-')"
+    return 0
+  fi
+  err "Could not generate a gateway token (need openssl, python3, or uuidgen)"
+  exit 1
+}
 node_os() {
   case "$(uname -s)" in
     Darwin) printf 'darwin' ;;
@@ -237,15 +256,20 @@ CONFIG_FILE="$STATE_DIR/argent.json"
 if [[ -f "$CONFIG_FILE" ]]; then
   ok "Config already exists: $CONFIG_FILE"
 else
-  cat > "$CONFIG_FILE" << 'CONFIGJSON'
+  GATEWAY_TOKEN="$(generate_gateway_token)"
+  cat > "$CONFIG_FILE" << CONFIGJSON
 {
   "gateway": {
     "mode": "local",
     "port": 18789,
-    "auth": { "mode": "token" }
+    "auth": {
+      "mode": "token",
+      "token": "$GATEWAY_TOKEN"
+    }
   }
 }
 CONFIGJSON
+  chmod 600 "$CONFIG_FILE"
   ok "Created default config: $CONFIG_FILE"
 fi
 
