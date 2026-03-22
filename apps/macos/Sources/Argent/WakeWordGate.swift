@@ -105,12 +105,10 @@ enum WakeWordGate {
     }
 
     static func stripWake(text: String, triggers: [String]) -> String {
-        let lowercased = text.lowercased()
         for trigger in triggers {
             let trimmedTrigger = trigger.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmedTrigger.isEmpty else { continue }
-            let lowerTrigger = trimmedTrigger.lowercased()
-            guard let range = lowercased.range(of: lowerTrigger) else { continue }
+            guard let range = text.range(of: trimmedTrigger, options: .caseInsensitive) else { continue }
             let after = text[range.upperBound...]
             return after.trimmingCharacters(in: .whitespacesAndNewlines)
         }
@@ -137,7 +135,7 @@ enum WakeWordGate {
             return transcript[boundary...].trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        return transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ""
     }
 
     private static func normalizeTriggers(_ triggers: [String]) -> [Trigger] {

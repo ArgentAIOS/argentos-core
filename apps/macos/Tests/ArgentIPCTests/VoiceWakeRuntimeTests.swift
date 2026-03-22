@@ -40,6 +40,11 @@ import Testing
         #expect(WakeWordGate.matchesTextOnly(text: "hey there", triggers: triggers))
     }
 
+    @Test func stripWakeUsesOriginalTextRangeSafely() {
+        let stripped = WakeWordGate.stripWake(text: "HEY Argent write a note", triggers: ["argent"])
+        #expect(stripped == "write a note")
+    }
+
     @Test func gateRequiresGapBetweenTriggerAndCommand() {
         let transcript = "hey argent do thing"
         let segments = makeSegments(
@@ -66,6 +71,20 @@ import Testing
             ])
         let config = WakeWordGateConfig(triggers: ["argent"], minPostTriggerGap: 0.3)
         #expect(WakeWordGate.match(transcript: transcript, segments: segments, config: config)?.command == "do thing")
+    }
+
+    @Test func commandTextReturnsEmptyWhenNoPostTriggerBoundaryExists() {
+        let transcript = "hey argent"
+        let segments = makeSegments(
+            transcript: transcript,
+            words: [
+                ("hey", 0.0, 0.1),
+                ("argent", 0.2, 0.1),
+            ])
+        #expect(WakeWordGate.commandText(
+            transcript: transcript,
+            segments: segments,
+            triggerEndTime: 1.0) == "")
     }
 }
 
