@@ -173,7 +173,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@grammyjs/types": "^3.23.0",
+    "@grammyjs/types": "^3.25.0",
     "@lit-labs/signals": "^0.2.0",
     "@lit/context": "^1.1.6",
     "@types/better-sqlite3": "^7.6.13",
@@ -185,18 +185,18 @@
     "@types/qrcode-terminal": "^0.12.2",
     "@types/ws": "^8.18.1",
     "@typescript/native-preview": "7.0.0-dev.20260205.1",
-    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/coverage-v8": "^4.1.0",
     "drizzle-kit": "^0.31.9",
     "lit": "^3.3.2",
     "ollama": "^0.6.3",
-    "oxfmt": "0.28.0",
-    "oxlint": "^1.43.0",
-    "oxlint-tsgolint": "^0.11.4",
+    "oxfmt": "0.40.0",
+    "oxlint": "^1.55.0",
+    "oxlint-tsgolint": "^0.16.0",
     "rolldown": "1.0.0-rc.3",
-    "tsdown": "^0.20.3",
+    "tsdown": "^0.21.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.0"
   },
   "peerDependencies": {
     "@napi-rs/canvas": "^0.1.89",
