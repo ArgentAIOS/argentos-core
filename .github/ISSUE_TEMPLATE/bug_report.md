@@ -1,8 +1,10 @@
 ---
 name: Bug report
-about: Report a problem or unexpected behavior in Clawdbot.
+about: Report a problem or unexpected behavior in ArgentOS
 title: "[Bug]: "
 labels: bug
+assignees: ''
+
 ---
 
 ## Summary
