@@ -12,7 +12,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - name: Checkout argentos (PR)
+      - name: Checkout argentos-core (PR)
         uses: actions/checkout@v6
         with:
           path: argentos
@@ -31,7 +31,7 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Regenerate extracted constants from argentos
+      - name: Regenerate extracted constants from argentos-core
         run: |
           set -euo pipefail
           cd argent-formal-models
@@ -112,7 +112,7 @@ jobs:
             const body = [
               '⚠️ **Formal models conformance drift detected**',
               '',
-              'The formal models extracted constants (`generated/*`) do not match this ArgentOS PR.',
+              'The formal models extracted constants (`generated/*`) do not match this ArgentOS Core PR.',
               '',
               'This check is **informational** (not blocking merges yet).',
               'See the `formal-models-conformance-drift` artifact for the diff.',
