@@ -41,6 +41,124 @@ is_truthy() {
     *) return 1 ;;
   esac
 }
+version_ge() {
+  local left="$1"
+  local right="$2"
+  [[ "$(printf '%s\n%s\n' "$right" "$left" | sort -V | tail -n1)" == "$left" ]]
+}
+is_supported_runtime_node() {
+  local version="${1#v}"
+  local major="${version%%.*}"
+  local remainder="${version#*.}"
+  local minor="${remainder%%.*}"
+  [[ "$major" =~ ^[0-9]+$ ]] || return 1
+  [[ "$minor" =~ ^[0-9]+$ ]] || minor=0
+  if (( major == 22 && minor >= 12 )); then
+    return 0
+  fi
+  if (( major == 24 )); then
+    return 0
+  fi
+  return 1
+}
+node_os() {
+  case "$(uname -s)" in
+    Darwin) printf 'darwin' ;;
+    *) err "Unsupported OS for bundled runtime: $(uname -s)" ; exit 1 ;;
+  esac
+}
+node_arch() {
+  case "$(uname -m)" in
+    arm64|aarch64) printf 'arm64' ;;
+    x86_64|amd64) printf 'x64' ;;
+    *) err "Unsupported architecture for bundled runtime: $(uname -m)" ; exit 1 ;;
+  esac
+}
+resolve_requested_node() {
+  if [[ -n "${NODE_BIN_OVERRIDE:-}" ]]; then
+    printf '%s\n' "$NODE_BIN_OVERRIDE"
+    return 0
+  fi
+  command -v node 2>/dev/null || true
+}
+install_private_node_runtime() {
+  local runtime_root="$1"
+  local node_root="$runtime_root/node"
+  local os arch tarball url cache_dir cache_path tmp_dir node_bin extracted_root new_root backup_root
+  os="$(node_os)"
+  arch="$(node_arch)"
+  tarball="node-v${NODE_VERSION}-${os}-${arch}.tar.gz"
+  url="${NODE_DIST_URL_BASE}/v${NODE_VERSION}/${tarball}"
+  cache_dir="${HOME}/.cache/argent-node"
+  cache_path="${cache_dir}/${tarball}"
+
+  mkdir -p "$cache_dir" "$runtime_root"
+  if [[ ! -f "$cache_path" ]]; then
+    info "Downloading private Node runtime v${NODE_VERSION}..." >&2
+    curl -fsSL "$url" -o "$cache_path"
+  else
+    info "Using cached private Node runtime: $cache_path" >&2
+  fi
+
+  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/argent-node-runtime.XXXXXX")"
+  trap 'rm -rf "$tmp_dir"' RETURN
+  tar -xzf "$cache_path" -C "$tmp_dir" || {
+    err "Failed to extract private Node runtime"
+    exit 1
+  }
+  extracted_root="$tmp_dir/node-v${NODE_VERSION}-${os}-${arch}"
+  if [[ ! -d "$extracted_root" ]]; then
+    err "Extracted private Node runtime is missing expected directory: $extracted_root"
+    exit 1
+  fi
+
+  new_root="${runtime_root}/node.new.$$"
+  rm -rf "$new_root"
+  mv "$extracted_root" "$new_root"
+
+  backup_root=""
+  if [[ -d "$node_root" ]]; then
+    backup_root="${runtime_root}/node.old.$$"
+    rm -rf "$backup_root"
+    mv "$node_root" "$backup_root"
+  fi
+  if ! mv "$new_root" "$node_root"; then
+    rm -rf "$new_root"
+    if [[ -n "$backup_root" && -d "$backup_root" ]]; then
+      mv "$backup_root" "$node_root" || true
+    fi
+    err "Failed to activate private Node runtime at $node_root"
+    exit 1
+  fi
+  if [[ -n "$backup_root" && -d "$backup_root" ]]; then
+    rm -rf "$backup_root"
+  fi
+  rm -rf "$tmp_dir"
+  trap - RETURN
+
+  node_bin="$node_root/bin/node"
+  if [[ ! -x "$node_bin" ]]; then
+    err "Private Node runtime is missing $node_bin"
+    exit 1
+  fi
+
+  ok "Installed private Node runtime: $("$node_bin" --version)" >&2
+  printf '%s\n' "$node_bin"
+}
+resolve_pnpm_runner() {
+  local node_bin="$1"
+  local node_dir
+  node_dir="$(dirname "$node_bin")"
+  if [[ -x "$node_dir/corepack" ]]; then
+    printf '%s %s\n' "$node_dir/corepack" "pnpm"
+    return 0
+  fi
+  if command -v pnpm >/dev/null 2>&1; then
+    printf '%s\n' "$(command -v pnpm)"
+    return 0
+  fi
+  return 1
+}
 
 TOTAL_STEPS=10
 DASHBOARD_PORT="${DASHBOARD_PORT:-8080}"
@@ -55,6 +173,9 @@ SKIP_APP_INSTALL="${ARGENT_SKIP_APP_INSTALL:-0}"
 SKIP_DASHBOARD_DEPS="${ARGENT_SKIP_DASHBOARD_DEPS:-0}"
 SKIP_LAUNCH_AGENTS="${ARGENT_SKIP_LAUNCH_AGENTS:-0}"
 SKIP_SERVICE_START="${ARGENT_SKIP_SERVICE_START:-0}"
+NODE_VERSION="${ARGENT_NODE_VERSION:-22.22.0}"
+NODE_DIST_URL_BASE="${ARGENT_NODE_DIST_URL_BASE:-https://nodejs.org/dist}"
+NODE_BIN_OVERRIDE="${ARGENT_NODE_BIN:-}"
 
 # -- macOS only --
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -99,6 +220,7 @@ step 1 "Creating directory structure"
 
 STATE_DIR="${ARGENT_STATE_DIR:-$HOME/.argentos}"
 WORKSPACE_DIR="${ARGENT_WORKSPACE_DIR:-$HOME/argent}"
+RUNTIME_DIR="${ARGENT_RUNTIME_DIR:-$STATE_DIR/runtime}"
 
 mkdir -p "$STATE_DIR/data"
 ok "State dir: $STATE_DIR"
@@ -141,18 +263,32 @@ if [[ -x "$ARGENT_HOME/bin/node" ]]; then
   NODE_BIN="$ARGENT_HOME/bin/node"
   WRAPPER_NODE_BIN="\$ARGENT_HOME/bin/node"
   PATH_LINE='export PATH="$ARGENT_HOME/bin:$PATH"'
+  info "Using bundled Node runtime: $("$NODE_BIN" --version)"
 else
-  RESOLVED_NODE="$(command -v node 2>/dev/null || true)"
-  if [[ -z "$RESOLVED_NODE" ]]; then
-    err "No Node binary found. Install Node 22+ (e.g. via nvm) and retry."
-    exit 1
+  RESOLVED_NODE="$(resolve_requested_node)"
+  if [[ -n "$RESOLVED_NODE" && -x "$RESOLVED_NODE" ]]; then
+    SYSTEM_NODE_VERSION="$("$RESOLVED_NODE" -p 'process.versions.node' 2>/dev/null || true)"
+    if [[ -n "$SYSTEM_NODE_VERSION" ]] && is_supported_runtime_node "$SYSTEM_NODE_VERSION"; then
+      NODE_BIN="$RESOLVED_NODE"
+      info "Using compatible system Node: $RESOLVED_NODE (v$SYSTEM_NODE_VERSION)"
+    else
+      warn "System Node ${SYSTEM_NODE_VERSION:-unknown} at ${RESOLVED_NODE} is outside the supported runtime range; installing a private Node ${NODE_VERSION} runtime."
+      NODE_BIN="$(install_private_node_runtime "$RUNTIME_DIR")"
+    fi
+  else
+    info "No compatible system Node detected; installing a private Node ${NODE_VERSION} runtime."
+    NODE_BIN="$(install_private_node_runtime "$RUNTIME_DIR")"
   fi
-  NODE_BIN="$RESOLVED_NODE"
-  WRAPPER_NODE_BIN="$RESOLVED_NODE"
-  NODE_DIR="$(dirname "$RESOLVED_NODE")"
+  WRAPPER_NODE_BIN="$NODE_BIN"
+  NODE_DIR="$(dirname "$NODE_BIN")"
   PATH_LINE="export PATH=\"$NODE_DIR:\$PATH\""
-  info "Using system Node: $RESOLVED_NODE ($(node --version))"
 fi
+
+NPM_BIN="$(dirname "$NODE_BIN")/npm"
+if [[ ! -x "$NPM_BIN" ]]; then
+  NPM_BIN="$(command -v npm 2>/dev/null || true)"
+fi
+PNPM_RUNNER="$(resolve_pnpm_runner "$NODE_BIN" || true)"
 
 cat > "$CLI_WRAPPER" << WRAPPER
 #!/bin/bash
@@ -240,7 +376,32 @@ fi
 # ============================================================================
 # Step 5: Dashboard dependencies
 # ============================================================================
-step 5 "Installing dashboard dependencies"
+step 5 "Preparing runtime dependencies"
+
+if [[ -d "$ARGENT_HOME/node_modules" ]]; then
+  if [[ -n "$PNPM_RUNNER" ]]; then
+    info "Rebuilding CLI native addons for $("$NODE_BIN" --version)..."
+    if [[ "$PNPM_RUNNER" == *" "* ]]; then
+      IFS=' ' read -r PNPM_BIN PNPM_SUBCOMMAND <<< "$PNPM_RUNNER"
+      (cd "$ARGENT_HOME" && PATH="$(dirname "$NODE_BIN"):$PATH" "$PNPM_BIN" "$PNPM_SUBCOMMAND" rebuild better-sqlite3 2>&1 | tail -5) && \
+        ok "CLI native addons rebuilt" || \
+        warn "CLI native addon rebuild had errors — the CLI may fail to load better-sqlite3"
+    else
+      (cd "$ARGENT_HOME" && PATH="$(dirname "$NODE_BIN"):$PATH" "$PNPM_RUNNER" rebuild better-sqlite3 2>&1 | tail -5) && \
+        ok "CLI native addons rebuilt" || \
+        warn "CLI native addon rebuild had errors — the CLI may fail to load better-sqlite3"
+    fi
+  elif [[ -n "$NPM_BIN" && -x "$NPM_BIN" ]]; then
+    info "Rebuilding CLI native addons for $("$NODE_BIN" --version)..."
+    (cd "$ARGENT_HOME" && PATH="$(dirname "$NODE_BIN"):$PATH" "$NPM_BIN" rebuild better-sqlite3 2>&1 | tail -5) && \
+      ok "CLI native addons rebuilt" || \
+      warn "CLI native addon rebuild had errors — the CLI may fail to load better-sqlite3"
+  else
+    warn "Neither pnpm nor npm is available for the selected runtime; skipping CLI native addon rebuild"
+  fi
+else
+  warn "Repo dependencies are missing at $ARGENT_HOME/node_modules — run 'pnpm install' before install.sh"
+fi
 
 DASHBOARD_DIR="$ARGENT_HOME/dashboard"
 if [[ -d "$DASHBOARD_DIR" ]]; then
@@ -248,33 +409,27 @@ if [[ -d "$DASHBOARD_DIR" ]]; then
     info "Skipping dashboard dependency install/rebuild (ARGENT_SKIP_DASHBOARD_DEPS=1)"
   elif [[ ! -d "$DASHBOARD_DIR/node_modules" ]]; then
     info "Running npm install (compiles native addons for this machine)..."
-    # Use the system npm — bundled Node doesn't ship npm
-    if command -v npm &>/dev/null; then
+    if [[ -n "$NPM_BIN" && -x "$NPM_BIN" ]]; then
       # Full install (not --production) — vite+react are devDeps needed at runtime
-      (cd "$DASHBOARD_DIR" && npm install 2>&1 | tail -5) && \
+      (cd "$DASHBOARD_DIR" && PATH="$(dirname "$NODE_BIN"):$PATH" "$NPM_BIN" install 2>&1 | tail -5) && \
         ok "Dashboard dependencies installed" || \
         warn "npm install had errors — dashboard may not start cleanly"
     else
-      warn "npm not found — skipping dashboard deps (run 'npm install' in $DASHBOARD_DIR manually)"
+      warn "npm not found for the selected runtime — skipping dashboard deps"
     fi
   else
     ok "Dashboard dependencies already installed"
   fi
 
   if ! is_truthy "$SKIP_DASHBOARD_DEPS"; then
-    # Rebuild native addons for the Node binary that will actually run them.
-    # If the bundled Node exists, use it; otherwise fall back to system Node.
-    if [[ -x "$ARGENT_HOME/bin/node" ]]; then
-      REBUILD_NODE="$ARGENT_HOME/bin/node"
-      REBUILD_PATH="$ARGENT_HOME/bin:$PATH"
+    if [[ -n "$NPM_BIN" && -x "$NPM_BIN" ]]; then
+      info "Rebuilding dashboard native addons for $("$NODE_BIN" --version)..."
+      (cd "$DASHBOARD_DIR" && PATH="$(dirname "$NODE_BIN"):$PATH" "$NPM_BIN" rebuild 2>&1 | tail -3) && \
+        ok "Dashboard native addons rebuilt" || \
+        warn "npm rebuild had errors — dashboard API may fail to load better-sqlite3"
     else
-      REBUILD_NODE="$NODE_BIN"
-      REBUILD_PATH="$PATH"
+      warn "npm not found for the selected runtime — skipping dashboard native addon rebuild"
     fi
-    info "Rebuilding native addons for $("$REBUILD_NODE" --version)..."
-    (cd "$DASHBOARD_DIR" && PATH="$REBUILD_PATH" npm rebuild 2>&1 | tail -3) && \
-      ok "Native addons rebuilt" || \
-      warn "npm rebuild had errors — dashboard API may fail to load better-sqlite3"
   fi
 else
   warn "Dashboard directory not found at $DASHBOARD_DIR"
@@ -598,7 +753,7 @@ REDISPLIST
     fi
 
     if [[ -f "$CONFIG_FILE" ]]; then
-      ARGENT_CONFIG_FILE="$CONFIG_FILE" ARGENT_PG_PORT="$ARGENT_PG_PORT" ARGENT_PG_DB="$ARGENT_PG_DB" node << 'NODE'
+      ARGENT_CONFIG_FILE="$CONFIG_FILE" ARGENT_PG_PORT="$ARGENT_PG_PORT" ARGENT_PG_DB="$ARGENT_PG_DB" "$NODE_BIN" << 'NODE'
 const fs = require("node:fs");
 const path = process.env.ARGENT_CONFIG_FILE;
 if (!path) process.exit(0);

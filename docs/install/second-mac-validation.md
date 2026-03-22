@@ -17,10 +17,12 @@ The goal is simple:
 - prove the gateway and dashboard come online
 - capture any install or runtime regressions with exact evidence
 
+This runbook validates the **source checkout path**. It is not the primary end-user install story. End users should prefer the hosted installer or the macOS app distribution.
+
 ## Preconditions
 
 - Clean Mac or a clean macOS user account
-- Node **22.12+**
+- Node **22.12+** for `pnpm install` / `pnpm build`
 - `git` available
 - No reliance on your existing `~/.argentos` state from the primary machine
 
@@ -71,6 +73,7 @@ Expected:
 - `pnpm install` completes without lockfile drift
 - `pnpm build` completes
 - `bash install.sh` finishes without manual file surgery
+- `bash install.sh` bootstraps a supported private Node runtime when the active shell Node is unsupported for the installed CLI/runtime
 
 Record failures with:
 

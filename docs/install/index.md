@@ -10,7 +10,9 @@ title: "Install"
 
 Use the installer unless you have a reason not to. It sets up the CLI and runs onboarding.
 
-## Quick install (recommended)
+Treat source checkout installs as a contributor / validation path, not the primary end-user path.
+
+## Quick install (recommended for end users)
 
 ```bash
 curl -fsSL https://argentos.ai/install.sh | bash
@@ -30,13 +32,13 @@ argent onboard --install-daemon
 
 ## System requirements
 
-- **Node >=22**
+- **Node >=22.12.0** for source builds
 - macOS, Linux, or Windows via WSL2
 - `pnpm` only if you build from source
 
 ## Choose your install path
 
-### 1) Installer script (recommended)
+### 1) Installer script (recommended for end users)
 
 Installs `argent` globally via npm and runs onboarding.
 
@@ -105,14 +107,18 @@ argent onboard --install-daemon
 
 ### 3) From source (contributors/dev)
 
+This path is for contributors and clean-machine validation. End users should prefer the hosted installer or the macOS app distribution.
+
 ```bash
-git clone https://github.com/ArgentAIOS/argentos.git
-cd argentos
+git clone https://github.com/ArgentAIOS/argentos-core.git
+cd argentos-core
 pnpm install
-pnpm ui:build # auto-installs UI deps on first run
 pnpm build
+bash install.sh
 argent onboard --install-daemon
 ```
+
+`install.sh` will bootstrap a private supported Node runtime for the installed CLI/services when the active system Node is missing or outside the supported runtime range.
 
 Tip: if you don’t have a global install yet, run repo commands via `pnpm argent ...`.
 

@@ -33,9 +33,14 @@ This repo is intended to hold the public Core product boundary. Business and ent
 
 ## Current Install Status
 
-The currently validated install path in this repo is:
+There are two distinct install stories:
 
-- **macOS from a built checkout**
+- **end user install**: use the hosted installer or the macOS app distribution
+- **source checkout install**: contributor / validation path from this repo
+
+The currently validated path in this repo is:
+
+- **macOS from a built checkout (source validation path)**
 
 That path is exercised by:
 
@@ -43,7 +48,7 @@ That path is exercised by:
 pnpm test:install:local:smoke
 ```
 
-Hosted one-liner installers and update distribution are separate release rails and are still being hardened alongside this repo.
+Hosted one-liner installers and the macOS app distribution are separate release rails. End users should prefer those over a source checkout.
 
 Clean-machine validation checklist:
 
@@ -51,9 +56,11 @@ Clean-machine validation checklist:
 
 ## Install From Source (macOS)
 
-Runtime requirement:
+This is the contributor / clean-room validation path, not the primary end-user install path.
 
-- Node 22+
+Build requirement:
+
+- Node 22.12+
 
 ```bash
 git clone https://github.com/ArgentAIOS/argentos-core.git
@@ -64,7 +71,9 @@ pnpm build
 bash install.sh
 ```
 
-That installer sets up:
+`install.sh` now installs or reuses a supported runtime for the installed CLI/services. If the active shell Node is outside the supported runtime range, the installer bootstraps a private Node 22 runtime automatically.
+
+That source installer sets up:
 
 - state in `~/.argentos`
 - workspace in `~/argent`
