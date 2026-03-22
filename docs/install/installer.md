@@ -9,7 +9,7 @@ title: "Installer Internals"
 
 # Installer internals
 
-Current source-controlled installer surface in this repo:
+Current installer surface relevant to `argentos-core`:
 
 - repo-root `install.sh` — macOS installer for a built checkout/tarball runtime
 - `scripts/install-hosted.sh` — hosted shell installer source for `argentos.ai/install.sh`
@@ -19,11 +19,11 @@ Current source-controlled installer surface in this repo:
 - `pnpm test:install:hosted:local:smoke` — isolated local smoke for the hosted shell installer source
 - `pnpm test:install:cli:local:smoke` — isolated local smoke for the hosted `install-cli.sh` rail
 
-Hosted distribution URLs should now map to these source-controlled files:
+Hosted distribution URLs map to these installer rails:
 
 - `https://argentos.ai/install.sh` → `scripts/install-hosted.sh`
 - `https://argentos.ai/install-cli.sh` → hosted CLI installer rail
-- `https://argentos.ai/install.ps1`
+- `https://argentos.ai/install.ps1` → hosted Windows PowerShell installer rail
 
 To see the current flags/behavior, run:
 
@@ -39,7 +39,7 @@ Windows (PowerShell) help:
 
 If the installer completes but `argent` is not found in a new terminal, it’s usually a Node/npm PATH issue. See: [Install](/install#nodejs--npm-path-sanity).
 
-## install.sh (recommended)
+## scripts/install-hosted.sh / https://argentos.ai/install.sh (hosted installer)
 
 What it does (high level):
 
@@ -78,9 +78,28 @@ For `npm` installs, Git is _usually_ not required, but some environments still e
 
 On some Linux setups (especially after installing Node via the system package manager or NodeSource), npm's global prefix points at a root-owned location. Then `npm install -g ...` fails with `EACCES` / `mkdir` permission errors.
 
-`install.sh` mitigates this by switching the prefix to:
+The hosted installer mitigates this by switching the prefix to:
 
 - `~/.npm-global` (and adding it to `PATH` in `~/.bashrc` / `~/.zshrc` when present)
+
+## repo-root install.sh (macOS source-checkout installer)
+
+This script is different from the hosted installer.
+
+It is the macOS installer for:
+
+- a built git checkout
+- a tarball/runtime extract that already contains the ArgentOS files
+
+Behavior:
+
+- creates `~/.argentos` state and `~/argent` workspace
+- installs `~/bin/argent` and `~/bin/argentos`
+- installs gateway/dashboard LaunchAgents
+- bootstraps a private Node 22 runtime for the installed CLI/services when the active system Node is unsupported
+- rebuilds native addons against the selected runtime
+
+This is the source-validation / contributor path. It is not the cross-platform hosted installer.
 
 ## install-cli.sh (non-root CLI installer)
 

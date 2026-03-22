@@ -84,7 +84,7 @@ resolve_requested_node() {
 install_private_node_runtime() {
   local runtime_root="$1"
   local node_root="$runtime_root/node"
-  local os arch tarball url cache_dir cache_path tmp_dir node_bin
+  local os arch tarball url cache_dir cache_path tmp_dir node_bin extracted_root new_root backup_root
   os="$(node_os)"
   arch="$(node_arch)"
   tarball="node-v${NODE_VERSION}-${os}-${arch}.tar.gz"
@@ -100,14 +100,39 @@ install_private_node_runtime() {
     info "Using cached private Node runtime: $cache_path" >&2
   fi
 
-  rm -rf "$node_root"
   tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/argent-node-runtime.XXXXXX")"
   trap 'rm -rf "$tmp_dir"' RETURN
   tar -xzf "$cache_path" -C "$tmp_dir" || {
     err "Failed to extract private Node runtime"
     exit 1
   }
-  mv "$tmp_dir/node-v${NODE_VERSION}-${os}-${arch}" "$node_root"
+  extracted_root="$tmp_dir/node-v${NODE_VERSION}-${os}-${arch}"
+  if [[ ! -d "$extracted_root" ]]; then
+    err "Extracted private Node runtime is missing expected directory: $extracted_root"
+    exit 1
+  fi
+
+  new_root="${runtime_root}/node.new.$$"
+  rm -rf "$new_root"
+  mv "$extracted_root" "$new_root"
+
+  backup_root=""
+  if [[ -d "$node_root" ]]; then
+    backup_root="${runtime_root}/node.old.$$"
+    rm -rf "$backup_root"
+    mv "$node_root" "$backup_root"
+  fi
+  if ! mv "$new_root" "$node_root"; then
+    rm -rf "$new_root"
+    if [[ -n "$backup_root" && -d "$backup_root" ]]; then
+      mv "$backup_root" "$node_root" || true
+    fi
+    err "Failed to activate private Node runtime at $node_root"
+    exit 1
+  fi
+  if [[ -n "$backup_root" && -d "$backup_root" ]]; then
+    rm -rf "$backup_root"
+  fi
   rm -rf "$tmp_dir"
   trap - RETURN
 
@@ -728,7 +753,7 @@ REDISPLIST
     fi
 
     if [[ -f "$CONFIG_FILE" ]]; then
-      ARGENT_CONFIG_FILE="$CONFIG_FILE" ARGENT_PG_PORT="$ARGENT_PG_PORT" ARGENT_PG_DB="$ARGENT_PG_DB" node << 'NODE'
+      ARGENT_CONFIG_FILE="$CONFIG_FILE" ARGENT_PG_PORT="$ARGENT_PG_PORT" ARGENT_PG_DB="$ARGENT_PG_DB" "$NODE_BIN" << 'NODE'
 const fs = require("node:fs");
 const path = process.env.ARGENT_CONFIG_FILE;
 if (!path) process.exit(0);
