@@ -61,6 +61,30 @@ is_supported_runtime_node() {
   fi
   return 1
 }
+build_local_macos_app_bundle() {
+  local root_dir="$1"
+  local package_script="$root_dir/scripts/package-mac-app.sh"
+  local app_dist="$root_dir/dist/Argent.app"
+
+  [[ -x "$package_script" ]] || return 1
+  command -v swift >/dev/null 2>&1 || return 1
+  command -v xcode-select >/dev/null 2>&1 || return 1
+
+  info "Building Argent.app from local source checkout..." >&2
+  if (
+    cd "$root_dir" && \
+      ALLOW_ADHOC_SIGNING=1 \
+      SKIP_TSC=1 \
+      SKIP_UI_BUILD=1 \
+      "$package_script"
+  ); then
+    [[ -d "$app_dist" ]] || return 1
+    printf '%s\n' "$app_dist"
+    return 0
+  fi
+
+  return 1
+}
 generate_gateway_token() {
   if command -v openssl >/dev/null 2>&1; then
     openssl rand -hex 24
@@ -374,6 +398,7 @@ step 4 "Installing optional macOS app bundle"
 
 APP_BUNDLE_NEW="$ARGENT_HOME/app/Argent.app"
 APP_BUNDLE_LEGACY="$ARGENT_HOME/app/ArgentOS.app"
+APP_BUNDLE_DIST="$ARGENT_HOME/dist/Argent.app"
 APP_DEST="${ARGENT_APP_DEST:-/Applications/Argent.app}"
 APP_SOURCE=""
 
@@ -381,11 +406,22 @@ if [[ -d "$APP_BUNDLE_NEW" ]]; then
   APP_SOURCE="$APP_BUNDLE_NEW"
 elif [[ -d "$APP_BUNDLE_LEGACY" ]]; then
   APP_SOURCE="$APP_BUNDLE_LEGACY"
+elif [[ -d "$APP_BUNDLE_DIST" ]]; then
+  APP_SOURCE="$APP_BUNDLE_DIST"
 fi
 
 if is_truthy "$SKIP_APP_INSTALL"; then
   info "Skipping app bundle install (ARGENT_SKIP_APP_INSTALL=1)"
-elif [[ -n "$APP_SOURCE" ]]; then
+elif [[ -z "$APP_SOURCE" ]] && [[ -d "$ARGENT_HOME/apps/macos" ]]; then
+  if APP_SOURCE="$(build_local_macos_app_bundle "$ARGENT_HOME")"; then
+    ok "Built local Argent.app bundle"
+  else
+    warn "Failed to build Argent.app from local source checkout — continuing without app bundle"
+  fi
+fi
+
+if [[ -n "$APP_SOURCE" ]] && ! is_truthy "$SKIP_APP_INSTALL"; then
+  mkdir -p "$(dirname "$APP_DEST")"
   if [[ -d "$APP_DEST" ]]; then
     rm -rf "$APP_DEST"
   fi
@@ -393,8 +429,10 @@ elif [[ -n "$APP_SOURCE" ]]; then
   ok "Argent.app → $APP_DEST"
   # Launch it so it appears in menu bar
   open -a "$APP_DEST" 2>/dev/null || true
+elif [[ -n "$APP_SOURCE" ]]; then
+  :
 else
-  warn "No macOS app bundle embedded in runtime — install Argent.app from DMG if needed"
+  warn "No macOS app bundle available — install Argent.app from DMG if needed"
 fi
 
 # ============================================================================

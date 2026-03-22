@@ -73,6 +73,7 @@ Expected:
 - `pnpm install` completes without lockfile drift
 - `pnpm build` completes
 - `bash install.sh` finishes without manual file surgery
+- `bash install.sh` installs `/Applications/Argent.app` on macOS source checkouts when the app sources are buildable
 - `bash install.sh` bootstraps a supported private Node runtime when the active shell Node is unsupported for the installed CLI/runtime
 
 Record failures with:
