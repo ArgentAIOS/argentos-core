@@ -58,6 +58,20 @@ Non-interactive (skip onboarding):
 curl -fsSL https://argentos.ai/install.sh | bash -s -- --no-onboard
 ```
 
+### 1a) Prefix-scoped CLI installer
+
+Use this when you want an isolated CLI install under a dedicated prefix, including app-driven installs:
+
+```bash
+curl -fsSL https://argentos.ai/install-cli.sh | bash
+```
+
+Useful flags:
+
+```bash
+curl -fsSL https://argentos.ai/install-cli.sh | bash -s -- --help
+```
+
 ### 2) Global install (manual)
 
 If you already have Node:
@@ -181,6 +195,7 @@ Then open a new terminal (or `rehash` in zsh / `hash -r` in bash).
 ## Update / uninstall
 
 - Updates: [Updating](/install/updating)
+- Clean-machine validation: [Second Mac Validation](/install/second-mac-validation)
 - Partner RC handoff: [Partner RC Runbook](/install/partner-release-rc)
 - Migrate to a new machine: [Migrating](/install/migrating)
 - Uninstall: [Uninstall](/install/uninstall)

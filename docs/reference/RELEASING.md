@@ -46,6 +46,8 @@ When the operator says “release”, immediately do this preflight (no extra qu
 - [ ] `pnpm test` (or `pnpm test:coverage` if you need coverage output)
 - [ ] `pnpm release:check` (verifies npm pack contents)
 - [ ] `pnpm test:install:local:smoke` (repo-local macOS installer smoke; required whenever `install.sh` changes)
+- [ ] `pnpm test:install:hosted:local:smoke` (hosted shell installer smoke; required whenever `scripts/install-hosted.sh` changes)
+- [ ] `pnpm test:install:cli:local:smoke` (repo-local hosted CLI installer smoke; required whenever `install-cli.sh` changes)
 - [ ] `ARGENTOS_INSTALL_SMOKE_SKIP_NONROOT=1 pnpm test:install:smoke` (Docker install smoke test, fast path; required before release)
   - If the immediate previous npm release is known broken, set `ARGENTOS_INSTALL_SMOKE_PREVIOUS=<last-good-version>` or `ARGENTOS_INSTALL_SMOKE_SKIP_PREVIOUS=1` for the preinstall step.
 - [ ] (Optional) Full installer smoke (adds non-root + CLI coverage): `pnpm test:install:smoke`
