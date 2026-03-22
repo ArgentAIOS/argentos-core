@@ -4,9 +4,9 @@
   "description": "ArgentOS LanceDB-backed long-term memory plugin with auto-recall/capture",
   "type": "module",
   "dependencies": {
-    "@lancedb/lancedb": "^0.23.0",
+    "@lancedb/lancedb": "^0.26.2",
     "@sinclair/typebox": "0.34.48",
-    "openai": "^6.17.0"
+    "openai": "^6.29.0"
   },
   "devDependencies": {
     "argentos": "workspace:*"

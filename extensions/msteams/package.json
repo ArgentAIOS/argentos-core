@@ -4,9 +4,9 @@
   "description": "Argent Microsoft Teams channel plugin",
   "type": "module",
   "dependencies": {
-    "@microsoft/agents-hosting": "^1.2.3",
-    "@microsoft/agents-hosting-express": "^1.2.3",
-    "@microsoft/agents-hosting-extensions-teams": "^1.2.3",
+    "@microsoft/agents-hosting": "^1.3.1",
+    "@microsoft/agents-hosting-express": "^1.3.1",
+    "@microsoft/agents-hosting-extensions-teams": "^1.3.1",
     "argentos": "workspace:*",
     "express": "^5.2.1",
     "proper-lockfile": "^4.1.2"
