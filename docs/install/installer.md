@@ -1,5 +1,5 @@
 ---
-summary: "How the installer scripts work (install.sh + install-cli.sh), flags, and automation"
+summary: "How the installer scripts work (install.sh + hosted installer rails), flags, and automation"
 read_when:
   - You want to understand `argentos.ai/install.sh`
   - You want to automate installs (CI / headless)
@@ -13,16 +13,16 @@ Current source-controlled installer surface in this repo:
 
 - repo-root `install.sh` — macOS installer for a built checkout/tarball runtime
 - `scripts/install-hosted.sh` — hosted shell installer source for `argentos.ai/install.sh`
-- repo-root `install-cli.sh` — prefix-scoped CLI installer for hosted/app-driven installs
+- hosted `install-cli.sh` — prefix-scoped CLI installer for app-driven and isolated installs, sourced from the release rail
 - repo-root `install.ps1` — Windows PowerShell npm installer
 - `pnpm test:install:local:smoke` — isolated macOS smoke for the repo-local runtime installer
 - `pnpm test:install:hosted:local:smoke` — isolated local smoke for the hosted shell installer source
-- `pnpm test:install:cli:local:smoke` — isolated local smoke for `install-cli.sh`
+- `pnpm test:install:cli:local:smoke` — isolated local smoke for the hosted `install-cli.sh` rail
 
 Hosted distribution URLs should now map to these source-controlled files:
 
 - `https://argentos.ai/install.sh` → `scripts/install-hosted.sh`
-- `https://argentos.ai/install-cli.sh`
+- `https://argentos.ai/install-cli.sh` → hosted CLI installer rail
 - `https://argentos.ai/install.ps1`
 
 To see the current flags/behavior, run:
@@ -83,6 +83,8 @@ On some Linux setups (especially after installing Node via the system package ma
 - `~/.npm-global` (and adding it to `PATH` in `~/.bashrc` / `~/.zshrc` when present)
 
 ## install-cli.sh (non-root CLI installer)
+
+This is part of the hosted distribution rail. It is not stored at the repo root inside `argentos-core`.
 
 This script installs `argent` into a prefix (default: `~/.argent`) and is the intended hosted/app-facing CLI install rail.
 
