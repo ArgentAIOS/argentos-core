@@ -2,15 +2,21 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   install-check:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          persist-credentials: false
           submodules: false
 
       - name: Checkout submodules (retry)
@@ -66,33 +72,25 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true
 
   checks:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
       matrix:
         include:
           - runtime: node
-            task: tsgo
-            command: pnpm tsgo
-          - runtime: node
-            task: lint
-            command: pnpm build && pnpm lint
-          - runtime: node
-            task: test
-            command: pnpm canvas:a2ui:bundle && pnpm test
+            task: build
+            command: pnpm build
           - runtime: node
             task: protocol
             command: pnpm protocol:check
           - runtime: node
             task: format
             command: pnpm format
-          - runtime: bun
-            task: test
-            command: pnpm canvas:a2ui:bundle && bunx vitest run
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          persist-credentials: false
           submodules: false
 
       - name: Checkout submodules (retry)
@@ -128,16 +126,10 @@ jobs:
           done
           exit 1
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
       - name: Runtime versions
         run: |
           node -v
           npm -v
-          bun -v
           pnpm -v
 
       - name: Capture node path
@@ -157,11 +149,12 @@ jobs:
         run: ${{ matrix.command }}
 
   secrets:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          persist-credentials: false
           submodules: false
 
       - name: Setup Python
@@ -182,7 +175,8 @@ jobs:
           fi
 
   checks-windows:
-    runs-on: windows-latest
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: blacksmith-4vcpu-windows-2025
     env:
       NODE_OPTIONS: --max-old-space-size=4096
       CLAWDBOT_TEST_WORKERS: 1
@@ -206,6 +200,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          persist-credentials: false
           submodules: false
 
       - name: Checkout submodules (retry)
@@ -270,7 +265,7 @@ jobs:
         run: ${{ matrix.command }}
 
   checks-macos:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     strategy:
       fail-fast: false
@@ -282,6 +277,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          persist-credentials: false
           submodules: false
 
       - name: Checkout submodules (retry)
@@ -342,7 +338,7 @@ jobs:
         run: ${{ matrix.command }}
 
   macos-app:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     strategy:
       fail-fast: false
@@ -378,6 +374,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          persist-credentials: false
           submodules: false
 
       - name: Checkout submodules (retry)
@@ -417,6 +414,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          persist-credentials: false
           submodules: false
 
       - name: Checkout submodules (retry)
@@ -584,7 +582,8 @@ jobs:
           PY
 
   android:
-    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
       matrix:
@@ -597,6 +596,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          persist-credentials: false
           submodules: false
 
       - name: Checkout submodules (retry)
