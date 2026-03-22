@@ -88,10 +88,19 @@ enum WakeWordGate {
     }
 
     static func matchesTextOnly(text: String, triggers: [String]) -> Bool {
-        let normalizedText = self.normalizeFreeText(text)
-        guard !normalizedText.isEmpty else { return false }
+        let normalizedWords = self.normalizeFreeText(text)
+            .split(separator: " ")
+            .map(String.init)
+        guard !normalizedWords.isEmpty else { return false }
         return self.normalizeTriggers(triggers).contains { trigger in
-            !trigger.tokens.isEmpty && normalizedText.contains(trigger.tokens.joined(separator: " "))
+            guard !trigger.tokens.isEmpty, trigger.tokens.count <= normalizedWords.count else { return false }
+            let lastStart = normalizedWords.count - trigger.tokens.count
+            for start in 0...lastStart {
+                if Array(normalizedWords[start..<(start + trigger.tokens.count)]) == trigger.tokens {
+                    return true
+                }
+            }
+            return false
         }
     }
 

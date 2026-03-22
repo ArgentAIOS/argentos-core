@@ -44,7 +44,7 @@ test -L "$BIN_DIR/argentos"
 test ! -e "$LAUNCH_AGENTS_DIR/ai.argent.gateway.plist"
 test ! -e "$LAUNCH_AGENTS_DIR/ai.argent.dashboard-ui.plist"
 test ! -e "$LAUNCH_AGENTS_DIR/ai.argent.dashboard-api.plist"
-node -e 'const fs=require("fs"); const cfg=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const token=cfg?.gateway?.auth?.token; if (typeof token !== "string" || token.trim().length === 0) { process.exit(1); }' "$STATE_DIR/argent.json"
+node -e 'const fs=require("fs"); const cfg=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const token=cfg?.gateway?.auth?.token; if (typeof token !== "string" || !/^(?:[0-9a-fA-F]{48}|[0-9a-fA-F]{64})$/.test(token)) { console.error("invalid gateway token format"); process.exit(1); }' "$STATE_DIR/argent.json"
 
 "$BIN_DIR/argent" --help >/dev/null
 

@@ -76,7 +76,7 @@ build_local_macos_app_bundle() {
       ALLOW_ADHOC_SIGNING=1 \
       SKIP_TSC=1 \
       SKIP_UI_BUILD=1 \
-      "$package_script"
+      "$package_script" 1>&2
   ); then
     [[ -d "$app_dist" ]] || return 1
     printf '%s\n' "$app_dist"
@@ -281,7 +281,9 @@ if [[ -f "$CONFIG_FILE" ]]; then
   ok "Config already exists: $CONFIG_FILE"
 else
   GATEWAY_TOKEN="$(generate_gateway_token)"
-  cat > "$CONFIG_FILE" << CONFIGJSON
+  (
+    umask 077
+    cat > "$CONFIG_FILE" << CONFIGJSON
 {
   "gateway": {
     "mode": "local",
@@ -293,6 +295,7 @@ else
   }
 }
 CONFIGJSON
+  )
   chmod 600 "$CONFIG_FILE"
   ok "Created default config: $CONFIG_FILE"
 fi

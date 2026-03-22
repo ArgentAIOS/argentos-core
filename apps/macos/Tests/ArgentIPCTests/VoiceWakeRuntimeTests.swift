@@ -34,6 +34,12 @@ import Testing
         #expect(VoiceWakeRuntime._testHasContentAfterTrigger(text, triggers: triggers))
     }
 
+    @Test func textOnlyWakeMatchRequiresWholeWords() {
+        let triggers = ["hey"]
+        #expect(!WakeWordGate.matchesTextOnly(text: "they said hello", triggers: triggers))
+        #expect(WakeWordGate.matchesTextOnly(text: "hey there", triggers: triggers))
+    }
+
     @Test func gateRequiresGapBetweenTriggerAndCommand() {
         let transcript = "hey argent do thing"
         let segments = makeSegments(
