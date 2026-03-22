@@ -108,7 +108,17 @@ enum WakeWordGate {
         for trigger in triggers {
             let trimmedTrigger = trigger.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmedTrigger.isEmpty else { continue }
-            guard let range = text.range(of: trimmedTrigger, options: .caseInsensitive) else { continue }
+            let escapedTrigger = NSRegularExpression.escapedPattern(for: trimmedTrigger)
+            let pattern = #"\b\#(escapedTrigger)\b"#
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+                continue
+            }
+            let fullRange = NSRange(text.startIndex..<text.endIndex, in: text)
+            guard let match = regex.firstMatch(in: text, options: [], range: fullRange),
+                  let range = Range(match.range, in: text)
+            else {
+                continue
+            }
             let after = text[range.upperBound...]
             return after.trimmingCharacters(in: .whitespacesAndNewlines)
         }

@@ -45,6 +45,11 @@ import Testing
         #expect(stripped == "write a note")
     }
 
+    @Test func stripWakeDoesNotStripEmbeddedSubstrings() {
+        let stripped = WakeWordGate.stripWake(text: "they said hello", triggers: ["hey"])
+        #expect(stripped == "they said hello")
+    }
+
     @Test func gateRequiresGapBetweenTriggerAndCommand() {
         let transcript = "hey argent do thing"
         let segments = makeSegments(

@@ -98,7 +98,7 @@ PY
     return 0
   fi
   if command -v uuidgen >/dev/null 2>&1; then
-    printf '%s%s\n' "$(uuidgen | tr -d '-')" "$(uuidgen | tr -d '-')"
+    printf '%s%s\n' "$(uuidgen | tr -d '-')" "$(uuidgen | tr -d '-')" | cut -c1-48
     return 0
   fi
   err "Could not generate a gateway token (need openssl, python3, or uuidgen)"
@@ -433,6 +433,8 @@ if [[ -n "$APP_SOURCE" ]] && ! is_truthy "$SKIP_APP_INSTALL"; then
   # Launch it so it appears in menu bar
   open -a "$APP_DEST" 2>/dev/null || true
 elif [[ -n "$APP_SOURCE" ]]; then
+  :
+elif is_truthy "$SKIP_APP_INSTALL"; then
   :
 else
   warn "No macOS app bundle available — install Argent.app from DMG if needed"
