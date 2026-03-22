@@ -424,7 +424,7 @@ if [[ -d "$DASHBOARD_DIR" ]]; then
   if ! is_truthy "$SKIP_DASHBOARD_DEPS"; then
     if [[ -n "$NPM_BIN" && -x "$NPM_BIN" ]]; then
       info "Rebuilding dashboard native addons for $("$NODE_BIN" --version)..."
-      (cd "$DASHBOARD_DIR" && PATH="$(dirname "$NODE_BIN"):$PATH" "$NPM_BIN" rebuild 2>&1 | tail -3) && \
+      (cd "$DASHBOARD_DIR" && PATH="$(dirname "$NODE_BIN"):$PATH" HUSKY=0 "$NPM_BIN" rebuild better-sqlite3 2>&1 | tail -3) && \
         ok "Dashboard native addons rebuilt" || \
         warn "npm rebuild had errors — dashboard API may fail to load better-sqlite3"
     else
