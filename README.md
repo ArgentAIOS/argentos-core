@@ -45,6 +45,10 @@ pnpm test:install:local:smoke
 
 Hosted one-liner installers and update distribution are separate release rails and are still being hardened alongside this repo.
 
+Clean-machine validation checklist:
+
+- [Second Mac Validation](./docs/install/second-mac-validation.md)
+
 ## Install From Source (macOS)
 
 Runtime requirement:

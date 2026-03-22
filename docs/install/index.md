@@ -195,6 +195,7 @@ Then open a new terminal (or `rehash` in zsh / `hash -r` in bash).
 ## Update / uninstall
 
 - Updates: [Updating](/install/updating)
+- Clean-machine validation: [Second Mac Validation](/install/second-mac-validation)
 - Partner RC handoff: [Partner RC Runbook](/install/partner-release-rc)
 - Migrate to a new machine: [Migrating](/install/migrating)
 - Uninstall: [Uninstall](/install/uninstall)
