@@ -47,6 +47,7 @@ When the operator says “release”, immediately do this preflight (no extra qu
 - [ ] `pnpm release:check` (verifies npm pack contents)
 - [ ] `pnpm test:install:local:smoke` (repo-local macOS installer smoke; required whenever `install.sh` changes)
 - [ ] `pnpm test:install:hosted:local:smoke` (hosted shell installer smoke; required whenever `scripts/install-hosted.sh` changes)
+- [ ] `pnpm test:install:hosted:macos:artifact:local:smoke` (macOS hosted artifact rail smoke; required whenever `scripts/install-hosted.sh` or release manifest logic changes)
 - [ ] `pnpm test:install:cli:local:smoke` (repo-local hosted CLI installer smoke; required whenever `install-cli.sh` changes)
 - [ ] `ARGENTOS_INSTALL_SMOKE_SKIP_NONROOT=1 pnpm test:install:smoke` (Docker install smoke test, fast path; required before release)
   - If the immediate previous npm release is known broken, set `ARGENTOS_INSTALL_SMOKE_PREVIOUS=<last-good-version>` or `ARGENTOS_INSTALL_SMOKE_SKIP_PREVIOUS=1` for the preinstall step.
@@ -60,11 +61,13 @@ When the operator says “release”, immediately do this preflight (no extra qu
 5. **macOS app (Sparkle)**
 
 - [ ] Build + sign the macOS app, then zip it for distribution.
+- [ ] Publish the hosted installer artifact set (`zip`, `dmg`, manifest) to R2 for macOS shell installs.
 - [ ] Generate the Sparkle appcast (HTML notes via [`scripts/make_appcast.sh`](https://github.com/ArgentAIOS/argentos/blob/main/scripts/make_appcast.sh)) and update `appcast.xml`.
 - [ ] Keep the app zip (and optional dSYM zip) ready to attach to the GitHub release.
 - [ ] Follow [macOS release](/platforms/mac/release) for the exact commands and required env vars.
-  - `APP_BUILD` must be numeric + monotonic (no `-beta`) so Sparkle compares versions correctly.
-  - If notarizing, use the `argent-notary` keychain profile created from App Store Connect API env vars (see [macOS release](/platforms/mac/release)).
+- [ ] Follow [Hosted macOS Installer Artifacts](/platforms/mac/hosted-installer-artifacts) for the R2 manifest + shell-installer rail.
+- `APP_BUILD` must be numeric + monotonic (no `-beta`) so Sparkle compares versions correctly.
+- If notarizing, use the `argent-notary` keychain profile created from App Store Connect API env vars (see [macOS release](/platforms/mac/release)).
 
 6. **Publish (npm)**
 

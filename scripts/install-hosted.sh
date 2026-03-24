@@ -28,6 +28,8 @@ NODE_DIST_URL_BASE="${ARGENT_NODE_DIST_URL_BASE:-https://nodejs.org/dist}"
 NODE_BIN_OVERRIDE="${ARGENT_NODE_BIN:-}"
 RUNTIME_DIR="${ARGENT_RUNTIME_DIR:-$HOME/.argentos/runtime}"
 MACOS_APP_CLEAN_BUILD_STATE="${ARGENTOS_MAC_CLEAN_BUILD_STATE:-1}"
+MACOS_RELEASE_MANIFEST_URL="${ARGENTOS_MACOS_RELEASE_MANIFEST_URL:-}"
+MACOS_APP_TARGET="${ARGENTOS_MACOS_APP_TARGET:-/Applications/Argent.app}"
 
 NODE_BIN=""
 NPM_BIN=""
@@ -45,7 +47,9 @@ Usage:
   bash install-hosted.sh [options]
 
 Options:
-  --install-method <git|npm>  Install from a git checkout or globally via npm
+  --install-method <artifact|git|npm>
+                              Install a prebuilt macOS app artifact, a git checkout,
+                              or globally via npm
   --channel <stable|beta|dev> Select release channel (default: stable)
   --beta                      Alias for --channel beta
   --version <version>         Package version/tag/git ref (default: channel-dependent)
@@ -69,6 +73,8 @@ Environment equivalents:
   ARGENT_NODE_VERSION
   ARGENT_NODE_BIN
   ARGENTOS_MAC_CLEAN_BUILD_STATE
+  ARGENTOS_MACOS_RELEASE_MANIFEST_URL
+  ARGENTOS_MACOS_APP_TARGET
 EOF
 }
 
@@ -336,12 +342,20 @@ resolve_effective_install_method() {
     printf '%s\n' "$INSTALL_METHOD"
     return 0
   fi
+  if is_macos; then
+    printf 'artifact\n'
+    return 0
+  fi
   printf 'git\n'
 }
 
 resolve_effective_version() {
   if [[ -n "$VERSION" ]]; then
     printf '%s\n' "$VERSION"
+    return 0
+  fi
+  if [[ "$INSTALL_METHOD" == "artifact" ]]; then
+    printf 'latest\n'
     return 0
   fi
   if [[ "$INSTALL_METHOD" == "git" ]]; then
@@ -601,9 +615,191 @@ run_mac_quickstart_onboard() {
   run_cmd "$argent_bin" "${onboard_args[@]}"
 }
 
+resolve_macos_release_manifest_url() {
+  if [[ -n "$MACOS_RELEASE_MANIFEST_URL" ]]; then
+    printf '%s\n' "$MACOS_RELEASE_MANIFEST_URL"
+    return 0
+  fi
+  if [[ "$VERSION" == "latest" ]]; then
+    printf 'https://argentos.ai/releases/macos/latest.json\n'
+    return 0
+  fi
+  printf 'https://argentos.ai/releases/macos/%s.json\n' "$VERSION"
+}
+
+json_manifest_value() {
+  local manifest_path="$1"
+  local dotted_path="$2"
+  "$NODE_BIN" - "$manifest_path" "$dotted_path" <<'EOF'
+const fs = require("node:fs");
+
+const [manifestPath, dottedPath] = process.argv.slice(2);
+const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+let current = manifest;
+for (const segment of dottedPath.split(".")) {
+  current = current?.[segment];
+}
+if (current === undefined || current === null) {
+  process.exit(2);
+}
+if (typeof current === "object") {
+  process.stdout.write(JSON.stringify(current));
+} else {
+  process.stdout.write(String(current));
+}
+EOF
+}
+
+download_file() {
+  local url="$1"
+  local output_path="$2"
+  if is_truthy "$DRY_RUN"; then
+    printf 'DRY-RUN: curl -fsSL %q -o %q\n' "$url" "$output_path"
+    return 0
+  fi
+  curl -fsSL "$url" -o "$output_path"
+}
+
+write_app_wrapper() {
+  local bin_dir="$1"
+  local app_path="$2"
+  local runtime_dir="$app_path/Contents/Resources/argent-runtime"
+  local node_bin="$runtime_dir/bin/node"
+  local entry_script="$runtime_dir/argent.mjs"
+  local escaped_node_bin escaped_entry
+
+  if is_truthy "$DRY_RUN"; then
+    printf 'DRY-RUN: mkdir -p %q\n' "$bin_dir"
+    printf 'DRY-RUN: write wrapper %q\n' "$bin_dir/argent"
+    printf 'DRY-RUN: chmod +x %q\n' "$bin_dir/argent"
+    printf 'DRY-RUN: ln -sf %q %q\n' "$bin_dir/argent" "$bin_dir/argentos"
+    return 0
+  fi
+
+  if [[ ! -x "$node_bin" || ! -f "$entry_script" ]]; then
+    warn "Skipping CLI wrapper: embedded runtime missing in $app_path"
+    return 1
+  fi
+
+  mkdir -p "$bin_dir"
+  printf -v escaped_node_bin '%q' "$node_bin"
+  printf -v escaped_entry '%q' "$entry_script"
+  cat > "$bin_dir/argent" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+exec ${escaped_node_bin} ${escaped_entry} "\$@"
+EOF
+  chmod +x "$bin_dir/argent"
+  ln -sf "$bin_dir/argent" "$bin_dir/argentos"
+}
+
+install_macos_app_bundle() {
+  local app_bundle="$1"
+  local install_target="${2:-$MACOS_APP_TARGET}"
+  local should_open="${3:-1}"
+
+  if is_truthy "$DRY_RUN"; then
+    printf 'DRY-RUN: rm -rf %q\n' "$install_target"
+    printf 'DRY-RUN: ditto %q %q\n' "$app_bundle" "$install_target"
+    printf 'DRY-RUN: xattr -dr com.apple.quarantine %q\n' "$install_target"
+    if is_truthy "$should_open"; then
+      printf 'DRY-RUN: open -a %q\n' "$install_target"
+    fi
+    return 0
+  fi
+
+  rm -rf "$install_target"
+  ditto "$app_bundle" "$install_target"
+  xattr -dr com.apple.quarantine "$install_target" 2>/dev/null || true
+  ok "Installed Argent.app: $install_target"
+
+  if is_truthy "$should_open"; then
+    open -a "$install_target"
+    ok "Opened Argent.app"
+  else
+    info "Skipped launching Argent.app"
+  fi
+}
+
+install_macos_artifact() {
+  local manifest_url manifest_path artifact_url artifact_sha artifact_version tmp_dir zip_path unpack_dir app_bundle should_open
+
+  if ! is_macos; then
+    err "Artifact installs are currently supported only on macOS."
+    exit 1
+  fi
+
+  manifest_url="$(resolve_macos_release_manifest_url)"
+  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/argent-macos-artifact.XXXXXX")"
+  trap 'rm -rf "$tmp_dir"' RETURN
+  manifest_path="$tmp_dir/macos-release.json"
+  zip_path="$tmp_dir/Argent.zip"
+  unpack_dir="$tmp_dir/unpack"
+  should_open="$([[ "$NO_ONBOARD" == "0" ]] && printf '1' || printf '0')"
+
+  if ! is_truthy "$NO_ONBOARD"; then
+    info "Deferring onboarding to Argent.app first-run setup"
+  fi
+
+  info "Fetching macOS release manifest: $manifest_url"
+  download_file "$manifest_url" "$manifest_path"
+
+  if is_truthy "$DRY_RUN"; then
+    artifact_version="${VERSION}"
+    artifact_url="<manifest-zip-url>"
+    artifact_sha="<manifest-zip-sha256>"
+  else
+    artifact_version="$(json_manifest_value "$manifest_path" "version")" || {
+      err "Manifest is missing version: $manifest_url"
+      exit 1
+    }
+    artifact_url="$(json_manifest_value "$manifest_path" "macos.artifacts.zip.url")" || {
+      err "Manifest is missing macos.artifacts.zip.url: $manifest_url"
+      exit 1
+    }
+    artifact_sha="$(json_manifest_value "$manifest_path" "macos.artifacts.zip.sha256")" || {
+      err "Manifest is missing macos.artifacts.zip.sha256: $manifest_url"
+      exit 1
+    }
+  fi
+
+  info "Downloading Argent.app ${artifact_version} zip"
+  download_file "$artifact_url" "$zip_path"
+
+  if ! is_truthy "$DRY_RUN"; then
+    local actual_sha
+    actual_sha="$(compute_sha256 "$zip_path")"
+    if [[ "$actual_sha" != "$artifact_sha" ]]; then
+      err "SHA-256 verification failed for ${artifact_url}"
+      err "Expected: ${artifact_sha}"
+      err "Actual:   ${actual_sha}"
+      exit 1
+    fi
+    mkdir -p "$unpack_dir"
+    ditto -x -k "$zip_path" "$unpack_dir"
+    app_bundle="$unpack_dir/Argent.app"
+    if [[ ! -d "$app_bundle" ]]; then
+      err "Downloaded archive does not contain Argent.app"
+      exit 1
+    fi
+  else
+    app_bundle="$unpack_dir/Argent.app"
+  fi
+
+  install_macos_app_bundle "$app_bundle" "$MACOS_APP_TARGET" "$should_open"
+  if write_app_wrapper "$BIN_DIR_OVERRIDE" "$MACOS_APP_TARGET"; then
+    ok "Installed app-backed CLI wrapper: $BIN_DIR_OVERRIDE/argent"
+    info "Add this to PATH if needed: $BIN_DIR_OVERRIDE"
+  fi
+
+  if ! is_truthy "$DRY_RUN"; then
+    trap - RETURN
+    rm -rf "$tmp_dir"
+  fi
+}
+
 install_mac_app_from_checkout() {
   local app_bundle="${GIT_DIR}/dist/Argent.app"
-  local install_target="/Applications/Argent.app"
   local should_open="${1:-1}"
 
   if ! is_macos; then
@@ -613,9 +809,9 @@ install_mac_app_from_checkout() {
   info "Packaging Argent.app for macOS"
   if is_truthy "$DRY_RUN"; then
     printf 'DRY-RUN: (cd %q && ALLOW_ADHOC_SIGNING=1 DISABLE_LIBRARY_VALIDATION=1 SKIP_TSC=1 SKIP_UI_BUILD=1 ./scripts/package-mac-app.sh)\n' "$GIT_DIR"
-    printf 'DRY-RUN: rm -rf %q\n' "$install_target"
-    printf 'DRY-RUN: ditto %q %q\n' "$app_bundle" "$install_target"
-    printf 'DRY-RUN: open -a %q\n' "$install_target"
+    printf 'DRY-RUN: rm -rf %q\n' "$MACOS_APP_TARGET"
+    printf 'DRY-RUN: ditto %q %q\n' "$app_bundle" "$MACOS_APP_TARGET"
+    printf 'DRY-RUN: open -a %q\n' "$MACOS_APP_TARGET"
     return 0
   fi
 
@@ -638,16 +834,7 @@ install_mac_app_from_checkout() {
     exit 1
   fi
 
-  rm -rf "$install_target"
-  ditto "$app_bundle" "$install_target"
-  ok "Installed Argent.app: $install_target"
-
-  if is_truthy "$should_open"; then
-    open -a "$install_target"
-    ok "Opened Argent.app"
-  else
-    info "Skipped launching Argent.app"
-  fi
+  install_macos_app_bundle "$app_bundle" "$MACOS_APP_TARGET" "$should_open"
 }
 
 write_git_wrapper() {
@@ -812,6 +999,9 @@ info "Channel: $CHANNEL"
 info "Version/ref: $VERSION"
 
 case "$INSTALL_METHOD" in
+  artifact)
+    install_macos_artifact
+    ;;
   npm)
     install_npm
     ;;

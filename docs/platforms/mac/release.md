@@ -94,6 +94,24 @@ APP_BUILD="$(git rev-list --count HEAD)" \
 scripts/release-argent-manager.sh
 ```
 
+## Hosted installer artifact rail
+
+For the public macOS shell installer, do not require Xcode on the user's machine.
+
+Use the hosted artifact rail documented in [Hosted macOS Installer Artifacts](/platforms/mac/hosted-installer-artifacts):
+
+1. build, sign, and notarize `Argent.app` on a controlled Mac
+2. publish the `zip`, `dmg`, and manifest to R2
+3. let `install.sh` download the `zip` and install `/Applications/Argent.app`
+
+Release helper:
+
+```bash
+APP_VERSION="2026.3.2" \
+R2_PUBLIC_BASE_URL="https://downloads.argentos.ai/releases/macos" \
+scripts/publish-macos-release-to-r2.sh
+```
+
 ## Appcast entry
 
 Use the release note generator so Sparkle renders formatted HTML notes:
