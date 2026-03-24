@@ -72,7 +72,7 @@ Example:
 
 ```bash
 node --import tsx scripts/write-macos-release-manifest.ts \
-  --base-url "https://downloads.argentos.ai/releases/macos/2026.3.2" \
+  --base-url "https://argentos.ai/releases/macos/2026.3.2" \
   --bundle-id "ai.argent.mac" \
   --channel stable \
   --dist-dir dist \
@@ -93,11 +93,11 @@ Manifest shape:
     "installTarget": "/Applications/Argent.app",
     "artifacts": {
       "zip": {
-        "url": "https://downloads.argentos.ai/releases/macos/2026.3.2/Argent-2026.3.2.zip",
+        "url": "https://argentos.ai/releases/macos/2026.3.2/Argent-2026.3.2.zip",
         "sha256": "<zip sha256>"
       },
       "dmg": {
-        "url": "https://downloads.argentos.ai/releases/macos/2026.3.2/Argent-2026.3.2.dmg",
+        "url": "https://argentos.ai/releases/macos/2026.3.2/Argent-2026.3.2.dmg",
         "sha256": "<dmg sha256>"
       }
     }
@@ -114,7 +114,7 @@ export R2_ACCOUNT_ID="..."
 export R2_BUCKET_NAME="argentos-licensing-marketplace"
 export R2_ACCESS_KEY_ID="..."
 export R2_SECRET_ACCESS_KEY="..."
-export R2_PUBLIC_BASE_URL="https://downloads.argentos.ai/releases/macos"
+export R2_PUBLIC_BASE_URL="https://argentos.ai/releases/macos"
 
 APP_VERSION="2026.3.2" \
 ARGENTOS_INSTALL_CHANNEL=stable \
@@ -161,7 +161,7 @@ The website repo must keep the served `install.sh` in sync with `scripts/install
 If the website serves `/install.sh` from a different repository:
 
 - sync the updated installer script after merge
-- ensure `https://argentos.ai/releases/macos/latest.json` exists, or set `ARGENTOS_MACOS_RELEASE_MANIFEST_URL` in the served installer to the public R2 or custom-domain manifest URL
+- ensure the website proxies `https://argentos.ai/releases/macos/*` from the R2 bucket, or set `ARGENTOS_MACOS_RELEASE_MANIFEST_URL` in the served installer to another public manifest URL
 
 ## Verification
 

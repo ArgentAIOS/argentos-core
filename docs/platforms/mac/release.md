@@ -108,7 +108,7 @@ Release helper:
 
 ```bash
 APP_VERSION="2026.3.2" \
-R2_PUBLIC_BASE_URL="https://downloads.argentos.ai/releases/macos" \
+R2_PUBLIC_BASE_URL="https://argentos.ai/releases/macos" \
 scripts/publish-macos-release-to-r2.sh
 ```
 

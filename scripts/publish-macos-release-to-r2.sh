@@ -14,6 +14,69 @@ ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:-}"
 SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:-}"
 ENDPOINT=""
 
+upload_with_boto3() {
+  local source_path="$1"
+  local object_key="$2"
+  local content_type="$3"
+  local cache_control="$4"
+
+  python3 - "$source_path" "$object_key" "$content_type" "$cache_control" <<'PY'
+import os
+import sys
+
+import boto3
+from botocore.config import Config
+
+source_path, object_key, content_type, cache_control = sys.argv[1:5]
+
+client = boto3.client(
+    "s3",
+    aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+    aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+    endpoint_url=os.environ["R2_ENDPOINT_URL"],
+    region_name="auto",
+    config=Config(signature_version="s3v4"),
+)
+
+with open(source_path, "rb") as fh:
+    client.put_object(
+        Bucket=os.environ["R2_BUCKET_NAME"],
+        Key=object_key,
+        Body=fh,
+        ContentType=content_type,
+        CacheControl=cache_control,
+    )
+PY
+}
+
+upload_object() {
+  local source_path="$1"
+  local object_key="$2"
+  local content_type="$3"
+  local cache_control="$4"
+
+  if command -v aws >/dev/null 2>&1; then
+    aws s3 cp "$source_path" "s3://${BUCKET}/${object_key}" \
+      --endpoint-url "$ENDPOINT" \
+      --content-type "$content_type" \
+      --cache-control "$cache_control"
+    return 0
+  fi
+
+  if command -v python3 >/dev/null 2>&1 && python3 - <<'PY' >/dev/null 2>&1
+import importlib.util
+import sys
+sys.exit(0 if importlib.util.find_spec("boto3") else 1)
+PY
+  then
+    upload_with_boto3 "$source_path" "$object_key" "$content_type" "$cache_control"
+    return 0
+  fi
+
+  echo "ERROR: need either aws CLI or python3+boto3 to upload release artifacts." >&2
+  exit 1
+}
+
 usage() {
   cat <<'EOF'
 Publish signed/notarized macOS release artifacts to Cloudflare R2.
@@ -46,11 +109,6 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   exit 0
 fi
 
-command -v aws >/dev/null 2>&1 || {
-  echo "ERROR: aws CLI is required to publish release artifacts." >&2
-  exit 1
-}
-
 [[ -n "$R2_PUBLIC_BASE_URL" ]] || {
   echo "ERROR: R2_PUBLIC_BASE_URL is required." >&2
   exit 1
@@ -81,33 +139,39 @@ node --import tsx ./scripts/write-macos-release-manifest.ts \
 
 export AWS_ACCESS_KEY_ID="$ACCESS_KEY_ID"
 export AWS_SECRET_ACCESS_KEY="$SECRET_ACCESS_KEY"
+export R2_ENDPOINT_URL="$ENDPOINT"
 
-aws s3 cp "$ZIP_PATH" "s3://${BUCKET}/${VERSION_PREFIX}/$(basename "$ZIP_PATH")" \
-  --endpoint-url "$ENDPOINT" \
-  --content-type application/zip \
-  --cache-control "public,max-age=31536000,immutable"
+upload_object \
+  "$ZIP_PATH" \
+  "${VERSION_PREFIX}/$(basename "$ZIP_PATH")" \
+  "application/zip" \
+  "public,max-age=31536000,immutable"
 
-aws s3 cp "$DMG_PATH" "s3://${BUCKET}/${VERSION_PREFIX}/$(basename "$DMG_PATH")" \
-  --endpoint-url "$ENDPOINT" \
-  --content-type application/x-apple-diskimage \
-  --cache-control "public,max-age=31536000,immutable"
+upload_object \
+  "$DMG_PATH" \
+  "${VERSION_PREFIX}/$(basename "$DMG_PATH")" \
+  "application/x-apple-diskimage" \
+  "public,max-age=31536000,immutable"
 
 if [[ -f "$DSYM_PATH" ]]; then
-  aws s3 cp "$DSYM_PATH" "s3://${BUCKET}/${VERSION_PREFIX}/$(basename "$DSYM_PATH")" \
-    --endpoint-url "$ENDPOINT" \
-    --content-type application/zip \
-    --cache-control "private,max-age=31536000,immutable"
+  upload_object \
+    "$DSYM_PATH" \
+    "${VERSION_PREFIX}/$(basename "$DSYM_PATH")" \
+    "application/zip" \
+    "private,max-age=31536000,immutable"
 fi
 
-aws s3 cp "$MANIFEST_PATH" "s3://${BUCKET}/${R2_PREFIX%/}/${VERSION}.json" \
-  --endpoint-url "$ENDPOINT" \
-  --content-type application/json \
-  --cache-control "public,max-age=300"
+upload_object \
+  "$MANIFEST_PATH" \
+  "${R2_PREFIX%/}/${VERSION}.json" \
+  "application/json" \
+  "public,max-age=300"
 
-aws s3 cp "$MANIFEST_PATH" "s3://${BUCKET}/${R2_PREFIX%/}/latest.json" \
-  --endpoint-url "$ENDPOINT" \
-  --content-type application/json \
-  --cache-control "no-store,max-age=0"
+upload_object \
+  "$MANIFEST_PATH" \
+  "${R2_PREFIX%/}/latest.json" \
+  "application/json" \
+  "no-store,max-age=0"
 
 cat <<EOF
 Published macOS release artifacts to R2.
