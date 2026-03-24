@@ -27,6 +27,7 @@ NODE_VERSION="${ARGENT_NODE_VERSION:-22.22.0}"
 NODE_DIST_URL_BASE="${ARGENT_NODE_DIST_URL_BASE:-https://nodejs.org/dist}"
 NODE_BIN_OVERRIDE="${ARGENT_NODE_BIN:-}"
 RUNTIME_DIR="${ARGENT_RUNTIME_DIR:-$HOME/.argentos/runtime}"
+MACOS_APP_CLEAN_BUILD_STATE="${ARGENTOS_MAC_CLEAN_BUILD_STATE:-1}"
 
 NODE_BIN=""
 NPM_BIN=""
@@ -67,6 +68,7 @@ Environment equivalents:
   ARGENT_INSTALL_BIN_DIR
   ARGENT_NODE_VERSION
   ARGENT_NODE_BIN
+  ARGENTOS_MAC_CLEAN_BUILD_STATE
 EOF
 }
 
@@ -615,6 +617,15 @@ install_mac_app_from_checkout() {
     printf 'DRY-RUN: ditto %q %q\n' "$app_bundle" "$install_target"
     printf 'DRY-RUN: open -a %q\n' "$install_target"
     return 0
+  fi
+
+  if is_truthy "$MACOS_APP_CLEAN_BUILD_STATE"; then
+    info "Resetting macOS app build caches for a clean package build"
+    rm -rf \
+      "$GIT_DIR/apps/macos/.build" \
+      "$GIT_DIR/apps/macos/.build-swift" \
+      "$GIT_DIR/apps/macos/.swiftpm" \
+      "$GIT_DIR/apps/argent-audio-capture/.build"
   fi
 
   (
