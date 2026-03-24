@@ -165,6 +165,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let setupView = SetupView(setupComplete: { [weak self] in
             self?.setupWindow?.close()
             self?.setupWindow = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                openDashboardURL()
+            }
         })
 
         let window = NSWindow(
