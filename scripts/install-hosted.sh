@@ -602,6 +602,7 @@ run_mac_quickstart_onboard() {
 install_mac_app_from_checkout() {
   local app_bundle="${GIT_DIR}/dist/Argent.app"
   local install_target="/Applications/Argent.app"
+  local should_open="${1:-1}"
 
   if ! is_macos; then
     return 0
@@ -630,8 +631,12 @@ install_mac_app_from_checkout() {
   ditto "$app_bundle" "$install_target"
   ok "Installed Argent.app: $install_target"
 
-  open -a "$install_target"
-  ok "Opened Argent.app"
+  if is_truthy "$should_open"; then
+    open -a "$install_target"
+    ok "Opened Argent.app"
+  else
+    info "Skipped launching Argent.app"
+  fi
 }
 
 write_git_wrapper() {
@@ -722,16 +727,13 @@ install_git() {
   ok "Installed git wrapper: $BIN_DIR_OVERRIDE/argent"
   info "Add this to PATH if needed: $BIN_DIR_OVERRIDE"
 
-  if ! is_truthy "$NO_ONBOARD"; then
-    if is_macos; then
-      run_mac_quickstart_onboard "$BIN_DIR_OVERRIDE/argent"
-    else
-      run_onboard "$BIN_DIR_OVERRIDE/argent"
-    fi
-  fi
-
   if is_macos; then
-    install_mac_app_from_checkout
+    if ! is_truthy "$NO_ONBOARD"; then
+      info "Deferring onboarding to Argent.app first-run setup"
+    fi
+    install_mac_app_from_checkout "$([[ "$NO_ONBOARD" == "0" ]] && printf '1' || printf '0')"
+  elif ! is_truthy "$NO_ONBOARD"; then
+    run_onboard "$BIN_DIR_OVERRIDE/argent"
   fi
 }
 
