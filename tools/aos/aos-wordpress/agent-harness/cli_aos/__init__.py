@@ -1,1 +1,1 @@
-"""Namespace package for vendored AOS CLI harnesses."""
+from __future__ import annotations

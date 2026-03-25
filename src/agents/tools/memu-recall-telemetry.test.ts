@@ -67,6 +67,8 @@ describe("memu-recall-telemetry", () => {
           answerStrategy: "favorite-slot",
           answerSourceId: "item-1",
           vectorFallbackUsed: true,
+          observationFallbackUsed: true,
+          observationFallbackCount: 1,
         },
         topResults: [
           {

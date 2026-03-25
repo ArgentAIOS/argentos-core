@@ -28,12 +28,6 @@ function hasDependencies(dir: string): boolean {
   return fs.existsSync(path.join(dir, "node_modules"));
 }
 
-/** Resolve the actual Vite JS entrypoint for LaunchAgent use */
-function resolveViteEntrypoint(dir: string): string | null {
-  const candidate = path.join(dir, "node_modules", "vite", "bin", "vite.js");
-  return fs.existsSync(candidate) ? candidate : null;
-}
-
 /** Install dependencies */
 function installDependencies(dir: string): void {
   console.log("Installing dashboard dependencies...");
@@ -78,19 +72,10 @@ async function installDashboardServices(options: {
     }
   }
 
-  // Resolve the actual Vite JS entrypoint. The .bin wrapper is a shell script and
-  // cannot be passed directly to `node` from a LaunchAgent.
-  const viteEntrypoint = resolveViteEntrypoint(dashboardDir);
-  if (!viteEntrypoint) {
-    console.error(
-      `ERROR: vite entrypoint not found at ${path.join(
-        dashboardDir,
-        "node_modules",
-        "vite",
-        "bin",
-        "vite.js",
-      )}`,
-    );
+  // Verify vite binary exists before writing plists
+  const viteBin = path.join(dashboardDir, "node_modules", ".bin", "vite");
+  if (!fs.existsSync(viteBin)) {
+    console.error(`ERROR: vite binary not found at ${viteBin}`);
     console.error(
       "Fix: run 'npm install' in the dashboard directory, then retry 'argent cs install'",
     );
@@ -111,7 +96,7 @@ async function installDashboardServices(options: {
   await uiService.install({
     env,
     stdout: process.stdout,
-    programArguments: [nodePath, viteEntrypoint, "--port", uiPort],
+    programArguments: [nodePath, viteBin, "--port", uiPort],
     workingDirectory: dashboardDir,
     environment: {
       ...uiEnv,

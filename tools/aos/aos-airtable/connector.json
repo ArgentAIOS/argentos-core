@@ -1,0 +1,167 @@
+{
+  "backend": "airtable-rest-api",
+  "connector": {
+    "label": "Airtable",
+    "category": "data-ops",
+    "categories": ["data-ops", "spreadsheet-database", "ops-automation"],
+    "resources": ["base", "table", "record", "field", "view"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["AIRTABLE_API_TOKEN", "AIRTABLE_BASE_ID"],
+    "interactive_setup": [
+      "Create a dedicated Airtable personal access token for the target workspace.",
+      "Grant the token access to the base this worker should operate on.",
+      "Add AIRTABLE_API_TOKEN and AIRTABLE_BASE_ID in API Keys.",
+      "Optionally set AIRTABLE_TABLE_NAME to pin a default table scope for worker commands.",
+      "Keep table scope narrow until live read/write support is intentionally enabled.",
+      "This scaffold does not implement live writes yet; commands are setup-oriented only."
+    ]
+  },
+  "scope": {
+    "kind": "base-table-record",
+    "required": ["AIRTABLE_API_TOKEN", "AIRTABLE_BASE_ID"],
+    "optional": ["AIRTABLE_WORKSPACE_ID", "AIRTABLE_TABLE_NAME"],
+    "workerFields": ["base_id", "table_name", "workspace_id"],
+    "commandDefaults": {
+      "base.read": {
+        "args": ["AIRTABLE_BASE_ID"]
+      },
+      "table.read": {
+        "args": ["AIRTABLE_TABLE_NAME"]
+      },
+      "record.list": {
+        "options": {
+          "table": "AIRTABLE_TABLE_NAME"
+        }
+      },
+      "record.search": {
+        "options": {
+          "table": "AIRTABLE_TABLE_NAME"
+        }
+      },
+      "record.read": {
+        "options": {
+          "table": "AIRTABLE_TABLE_NAME"
+        }
+      },
+      "record.create_draft": {
+        "options": {
+          "table": "AIRTABLE_TABLE_NAME"
+        }
+      },
+      "record.update_draft": {
+        "options": {
+          "table": "AIRTABLE_TABLE_NAME"
+        }
+      }
+    }
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector setup and readiness status",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "base.list",
+      "summary": "List Airtable bases visible to the configured token",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "base",
+      "action_class": "read"
+    },
+    {
+      "id": "base.read",
+      "summary": "Read Airtable base metadata",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "base",
+      "action_class": "read"
+    },
+    {
+      "id": "table.list",
+      "summary": "List tables in the configured Airtable base",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "table",
+      "action_class": "read"
+    },
+    {
+      "id": "table.read",
+      "summary": "Read Airtable table metadata",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "table",
+      "action_class": "read"
+    },
+    {
+      "id": "record.list",
+      "summary": "List records from a table",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "record",
+      "action_class": "read"
+    },
+    {
+      "id": "record.search",
+      "summary": "Search records in a table",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "record",
+      "action_class": "read"
+    },
+    {
+      "id": "record.read",
+      "summary": "Read a single record",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "record",
+      "action_class": "read"
+    },
+    {
+      "id": "record.create_draft",
+      "summary": "Create a draft record payload",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "record",
+      "action_class": "write"
+    },
+    {
+      "id": "record.update_draft",
+      "summary": "Update a draft record payload",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "record",
+      "action_class": "write"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
-import { note as clackNote } from "@clack/prompts";
 import { visibleWidth } from "./ansi.js";
 import { stylePromptTitle } from "./prompt-style.js";
+import { isRich, theme } from "./theme.js";
 
 function splitLongWord(word: string, maxLen: number): string[] {
   if (maxLen <= 0) {
@@ -93,5 +93,28 @@ export function wrapNoteMessage(
 }
 
 export function note(message: string, title?: string) {
-  clackNote(wrapNoteMessage(message), stylePromptTitle(title));
+  const wrapped = wrapNoteMessage(message);
+  const lines = wrapped.split("\n");
+  const columns = process.stdout.columns ?? 80;
+  const contentWidth = Math.max(
+    28,
+    Math.min(96, columns - 6),
+    ...lines.map((line) => visibleWidth(line)),
+    title ? visibleWidth(title) : 0,
+  );
+  const top = `╭${"─".repeat(contentWidth + 2)}╮`;
+  const bottom = `╰${"─".repeat(contentWidth + 2)}╯`;
+  const border = isRich() ? theme.muted : (value: string) => value;
+  const titleText = stylePromptTitle(title) ?? title;
+
+  if (titleText) {
+    process.stdout.write(`${border(`◇  ${titleText}\n`)}│\n`);
+  }
+
+  process.stdout.write(`${border(`${top}\n`)}`);
+  for (const line of lines) {
+    const pad = " ".repeat(Math.max(0, contentWidth - visibleWidth(line)));
+    process.stdout.write(`${border("│")} ${line}${pad} ${border("│")}\n`);
+  }
+  process.stdout.write(`${border(`${bottom}\n`)}`);
 }

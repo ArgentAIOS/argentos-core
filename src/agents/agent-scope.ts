@@ -104,6 +104,30 @@ export function resolveSessionAgentId(params: {
   return resolveSessionAgentIds(params).sessionAgentId;
 }
 
+export function resolveMemoryAgentId(params: {
+  sessionKey?: string;
+  agentId?: string | null;
+  config?: ArgentConfig;
+}): string {
+  const cfg = params.config ?? {};
+  const resolvedAgentId = params.agentId?.trim()
+    ? normalizeAgentId(params.agentId)
+    : resolveSessionAgentId({
+        sessionKey: params.sessionKey,
+        config: cfg,
+      });
+  const defaultAgentId = resolveDefaultAgentId(cfg);
+
+  // Legacy webchat/Discord sessions often still use agent:main:* keys even after
+  // Argent becomes the configured default agent. Memory should follow the live
+  // default agent in that case instead of splitting recall across main/argent.
+  if (resolvedAgentId === DEFAULT_AGENT_ID && defaultAgentId === "argent") {
+    return "argent";
+  }
+
+  return resolvedAgentId;
+}
+
 function resolveAgentEntry(cfg: ArgentConfig, agentId: string): AgentEntry | undefined {
   const id = normalizeAgentId(agentId);
   return listAgents(cfg).find((entry) => normalizeAgentId(entry.id) === id);

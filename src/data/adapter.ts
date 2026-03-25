@@ -12,6 +12,7 @@
 import type {
   CreateCategoryInput,
   CreateEntityInput,
+  CreateKnowledgeObservationInput,
   CreateLessonInput,
   CreateLiveCandidateInput,
   CreateMemoryItemInput,
@@ -19,6 +20,10 @@ import type {
   CreateResourceInput,
   Entity,
   EntityType,
+  KnowledgeObservation,
+  KnowledgeObservationEvidence,
+  KnowledgeObservationSearchOptions,
+  KnowledgeObservationSearchResult,
   Lesson,
   LiveCandidate,
   MemoryCategory,
@@ -167,6 +172,28 @@ export interface MemoryAdapter {
     mergedTags: string[],
   ): Promise<void>;
   deleteLesson(id: string): Promise<void>;
+
+  // Knowledge observations
+  getKnowledgeObservation(id: string): Promise<KnowledgeObservation | null>;
+  listKnowledgeObservations(filter?: {
+    kinds?: KnowledgeObservation["kind"][];
+    subjectType?: KnowledgeObservation["subjectType"];
+    subjectId?: string;
+    status?: KnowledgeObservation["status"];
+    limit?: number;
+  }): Promise<KnowledgeObservation[]>;
+  searchKnowledgeObservations(
+    query: string,
+    options?: KnowledgeObservationSearchOptions,
+  ): Promise<KnowledgeObservationSearchResult[]>;
+  getKnowledgeObservationEvidence(observationId: string): Promise<KnowledgeObservationEvidence[]>;
+  upsertKnowledgeObservation(input: CreateKnowledgeObservationInput): Promise<KnowledgeObservation>;
+  supersedeKnowledgeObservation(params: {
+    id: string;
+    successor: CreateKnowledgeObservationInput;
+  }): Promise<KnowledgeObservation>;
+  markKnowledgeObservationStale(id: string): Promise<void>;
+  invalidateKnowledgeObservation(id: string, reason?: string): Promise<void>;
 
   // Live Inbox
   createLiveCandidate?(input: CreateLiveCandidateInput): Promise<void>;

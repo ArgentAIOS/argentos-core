@@ -825,6 +825,7 @@ const mockStore = {
 const mockMemoryAdapter: any = {
   withAgentId: () => mockMemoryAdapter,
   searchByKeyword: async (query: string, limit: number) => mockRecall({ query, limit }),
+  searchKnowledgeObservations: vi.fn(async () => []),
   listItems: async (filter?: { memoryType?: MemoryType; limit?: number; offset?: number }) => {
     const offset = filter?.offset ?? 0;
     const limit = filter?.limit ?? 100;
@@ -916,6 +917,8 @@ describe("MRQL Gold-Set Regression", () => {
   let tool: NonNullable<ReturnType<typeof createMemoryRecallTool>>;
 
   beforeEach(() => {
+    mockMemoryAdapter.searchKnowledgeObservations.mockReset();
+    mockMemoryAdapter.searchKnowledgeObservations.mockResolvedValue([]);
     gatewayCallMock.mockReset();
     gatewayCallMock.mockResolvedValue({
       success: true,
@@ -958,6 +961,7 @@ describe("MRQL Gold-Set Regression", () => {
       for (const r of data.results) {
         expect(r.type).toBe("event");
       }
+      expect(mockMemoryAdapter.searchKnowledgeObservations).not.toHaveBeenCalled();
     });
 
     it("preferences mode auto-filters to behavior and profile types", async () => {
@@ -1718,5 +1722,52 @@ describe("MRQL Gold-Set Regression", () => {
       const types = (data.results as Array<{ type: string }>).map((r) => r.type);
       expect(types).toContain("event");
     });
+  });
+
+  it("surfaces observation fallback for identity/property recall when enabled", async () => {
+    mockMemoryAdapter.searchKnowledgeObservations.mockResolvedValue([
+      {
+        observation: {
+          id: "obs-1",
+          summary: "Jason prefers Discord for quick project updates",
+          confidence: 0.88,
+          freshness: 0.91,
+          canonicalKey: "entity:jason:operator_preference:delivery_preference",
+          status: "active",
+        },
+        topEvidence: [
+          {
+            stance: "support",
+            excerpt: "Jason prefers Discord for quick project updates",
+            itemId: "k10",
+            lessonId: null,
+            reflectionId: null,
+            entityId: null,
+          },
+        ],
+      },
+    ]);
+
+    const cfg = {
+      agents: { list: [{ id: "main", default: true }] },
+      memory: {
+        observations: {
+          enabled: true,
+          retrieval: { enabled: true },
+        },
+      },
+    } as any;
+    const result = createMemoryRecallTool({ config: cfg, agentId: "main" });
+    expect(result).not.toBeNull();
+
+    const call = await result!.execute("call_obs_1", {
+      query: "What do I like for quick project updates?",
+    });
+    const data = call.details as any;
+
+    expect(data.observationFallback?.used).toBe(true);
+    expect(data.currentBeliefs).toHaveLength(1);
+    expect(data.currentBeliefs[0]?.summary).toContain("prefers Discord");
+    expect(data.recallTelemetry?.knowledgeObservationCount).toBe(1);
   });
 });

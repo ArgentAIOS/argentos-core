@@ -66,32 +66,26 @@ export function handleMessageUpdate(
 
   const hasTextLikeType =
     evtType.includes("text") || evtType.includes("output") || evtType.includes("message");
-  const allowsGenericDelta = hasTextLikeType && !evtType.includes("toolcall");
   const hasTextLikePayload =
+    typeof assistantRecord?.delta === "string" ||
+    typeof assistantRecord?.content === "string" ||
     typeof assistantRecord?.text === "string" ||
-    typeof assistantRecord?.output_text === "string" ||
-    typeof assistantRecord?.text_delta === "string" ||
-    typeof assistantRecord?.output_text_delta === "string" ||
-    typeof assistantRecord?.content_delta === "string" ||
-    (hasTextLikeType && typeof assistantRecord?.content === "string") ||
-    (allowsGenericDelta && typeof assistantRecord?.delta === "string");
+    typeof assistantRecord?.output_text === "string";
   if (!hasTextLikeType && !hasTextLikePayload) {
     return;
   }
 
   const delta =
+    (typeof assistantRecord?.delta === "string" ? assistantRecord.delta : "") ||
     (typeof assistantRecord?.text_delta === "string" ? assistantRecord.text_delta : "") ||
     (typeof assistantRecord?.output_text_delta === "string"
       ? assistantRecord.output_text_delta
       : "") ||
-    (typeof assistantRecord?.content_delta === "string" ? assistantRecord.content_delta : "") ||
-    (allowsGenericDelta && typeof assistantRecord?.delta === "string" ? assistantRecord.delta : "");
+    (typeof assistantRecord?.content_delta === "string" ? assistantRecord.content_delta : "");
   const content =
+    (typeof assistantRecord?.content === "string" ? assistantRecord.content : "") ||
     (typeof assistantRecord?.text === "string" ? assistantRecord.text : "") ||
-    (typeof assistantRecord?.output_text === "string" ? assistantRecord.output_text : "") ||
-    (hasTextLikeType && typeof assistantRecord?.content === "string"
-      ? assistantRecord.content
-      : "");
+    (typeof assistantRecord?.output_text === "string" ? assistantRecord.output_text : "");
 
   appendRawStream({
     ts: Date.now(),

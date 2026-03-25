@@ -89,7 +89,7 @@ export async function ensureArgentModelsJson(
   const agentDir = agentDirOverride?.trim() ? agentDirOverride.trim() : resolveArgentAgentDir();
 
   const explicitProviders = cfg.models?.providers ?? {};
-  const implicitProviders = await resolveImplicitProviders({ agentDir });
+  const implicitProviders = await resolveImplicitProviders({ agentDir, config: cfg });
   const providers: Record<string, ProviderConfig> = mergeProviders({
     implicit: implicitProviders,
     explicit: explicitProviders,

@@ -127,4 +127,30 @@ describe("resolveModel", () => {
     expect(result.model?.provider).toBe("custom");
     expect(result.model?.id).toBe("missing-model");
   });
+
+  it("creates a dynamic lmstudio model from kernel runtime config", () => {
+    const cfg = {
+      agents: {
+        defaults: {
+          kernel: {
+            localModel: "lmstudio/qwen/qwen3.5-35b-a3b",
+          },
+          memorySearch: {
+            provider: "lmstudio",
+            remote: {
+              baseUrl: "http://127.0.0.1:1234/v1",
+            },
+          },
+        },
+      },
+    } as ArgentConfig;
+
+    const result = resolveModel("lmstudio", "qwen/qwen3.5-35b-a3b", "/tmp/agent", cfg);
+
+    expect(result.error).toBeUndefined();
+    expect(result.model?.provider).toBe("lmstudio");
+    expect(result.model?.id).toBe("qwen/qwen3.5-35b-a3b");
+    expect(result.model?.baseUrl).toBe("http://127.0.0.1:1234/v1");
+    expect(result.model?.api).toBe("openai-completions");
+  });
 });

@@ -76,6 +76,11 @@ export const MOONSHOT_DEFAULT_COST = _moonshotSeed?.models[0]?.cost ?? {
 // ---------------------------------------------------------------------------
 
 const MINIMAX_MODEL_CATALOG = {
+  "MiniMax-M2.7": { name: "MiniMax M2.7", reasoning: false },
+  "MiniMax-M2.7-highspeed": {
+    name: "MiniMax M2.7 Highspeed",
+    reasoning: false,
+  },
   "MiniMax-M2.1": { name: "MiniMax M2.1", reasoning: false },
   "MiniMax-M2.1-lightning": {
     name: "MiniMax M2.1 Lightning",

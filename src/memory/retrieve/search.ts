@@ -46,6 +46,8 @@ export interface RetrievalOptions extends MemorySearchOptions {
   embedder?: MemuEmbedder | null;
   /** External store (skips singleton if provided) */
   store?: MemuStore;
+  /** External memory adapter (skips singleton resolution if provided) */
+  adapter?: MemoryAdapter | null;
 }
 
 export interface RetrievalResult {
@@ -72,7 +74,12 @@ export interface RetrievalResult {
  * checks and re-ranking.
  */
 export async function retrieveMemory(options: RetrievalOptions): Promise<RetrievalResult> {
-  const memoryAdapter = options.store ? null : await resolveMemoryAdapter(options.config);
+  const memoryAdapter =
+    options.adapter !== undefined
+      ? options.adapter
+      : options.store
+        ? null
+        : await resolveMemoryAdapter(options.config);
   const store = options.store ?? null;
   const limit = options.limit ?? 20;
   const minScore = options.minScore ?? 0;

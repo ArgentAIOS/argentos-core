@@ -1,0 +1,103 @@
+{
+  "backend": "slack-web-api",
+  "connector": {
+    "label": "Slack",
+    "category": "general",
+    "categories": ["general", "messaging"],
+    "resources": ["message", "channel", "mention", "reaction", "people"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["SLACK_BOT_TOKEN"],
+    "interactive_setup": [
+      "Create or install a Slack app for the target workspace.",
+      "Add SLACK_BOT_TOKEN in API Keys.",
+      "Grant the bot the read scopes it needs: channels:read, search:read, users:read, and reactions:read.",
+      "Add chat:write if you plan to use message.reply.",
+      "Optional: add SLACK_APP_TOKEN only if you later wire Socket Mode or event ingestion."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and backend readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "message.search",
+      "summary": "Search Slack messages",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "message",
+      "action_class": "read"
+    },
+    {
+      "id": "message.reply",
+      "summary": "Reply in a Slack channel or thread",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "message",
+      "action_class": "write"
+    },
+    {
+      "id": "channel.list",
+      "summary": "List Slack channels visible to the bot",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "channel",
+      "action_class": "read"
+    },
+    {
+      "id": "mention.scan",
+      "summary": "Scan for direct mentions of the bot user",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "mention",
+      "action_class": "read"
+    },
+    {
+      "id": "people.list",
+      "summary": "List Slack people available as mention targets",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "people",
+      "action_class": "read"
+    },
+    {
+      "id": "reaction.list",
+      "summary": "List reactions made by the bot user",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "reaction",
+      "action_class": "read"
+    }
+  ]
+}

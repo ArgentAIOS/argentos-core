@@ -202,7 +202,7 @@ struct MenuContentView: View {
                 .padding(.vertical, 4)
 
             Button {
-                openDashboardURL()
+                NSWorkspace.shared.open(URL(string: "http://localhost:8080")!)
             } label: {
                 Label("Open Dashboard", systemImage: "globe")
             }

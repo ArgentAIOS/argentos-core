@@ -4,8 +4,7 @@ import type { AnyAgentTool } from "./tools/common.js";
 import { createConnectorTools } from "../connectors/tools.js";
 import { getPluginToolMeta, resolvePluginTools } from "../plugins/tools.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
-import { resolveSessionAgentId } from "./agent-scope.js";
-import { loadOptionalToolFactory } from "./optional-tool-factory.js";
+import { resolveMemoryAgentId, resolveSessionAgentId } from "./agent-scope.js";
 import {
   filterPublicCorePluginTools,
   resolveBuiltinToolAllowlist,
@@ -92,6 +91,10 @@ import { createYoutubeMetadataTool } from "./tools/youtube-metadata-tool.js";
 import { createYoutubeNotebookLmTool } from "./tools/youtube-notebooklm-tool.js";
 import { createYoutubeThumbnailTool } from "./tools/youtube-thumbnail-tool.js";
 
+// Public core intentionally omits Business-only tools whose implementations are
+// excluded by the export denylist. Keep this file aligned with argent-tools.ts
+// except for those explicit boundary removals.
+
 export function createArgentTools(options?: {
   sandboxBrowserBridgeUrl?: string;
   allowHostBrowserControl?: boolean;
@@ -133,33 +136,6 @@ export function createArgentTools(options?: {
   /** If true, omit the message tool from the tool list. */
   disableMessageTool?: boolean;
 }): AnyAgentTool[] {
-  const createOnboardingPackTool = loadOptionalToolFactory<
-    (params: { agentSessionKey?: string }) => AnyAgentTool
-  >("./tools/onboarding-pack-tool.js", "createOnboardingPackTool");
-  const createJobsTool = loadOptionalToolFactory<() => AnyAgentTool>(
-    "./tools/jobs-tool.js",
-    "createJobsTool",
-  );
-  const createWorkforceSetupTool = loadOptionalToolFactory<() => AnyAgentTool>(
-    "./tools/workforce-setup-tool.js",
-    "createWorkforceSetupTool",
-  );
-  const createIntentTool = loadOptionalToolFactory<() => AnyAgentTool>(
-    "./tools/intent-tool.js",
-    "createIntentTool",
-  );
-  const createCopilotSystemTool = loadOptionalToolFactory<() => AnyAgentTool>(
-    "./tools/copilot-system-tool.js",
-    "createCopilotSystemTool",
-  );
-  const createSpecforgeTool = loadOptionalToolFactory<
-    (params: { agentSessionKey?: string; agentId?: string }) => AnyAgentTool
-  >("./tools/specforge-tool.js", "createSpecforgeTool");
-  const createMarketplaceTool = loadOptionalToolFactory<() => AnyAgentTool>(
-    "./tools/marketplace-tool.js",
-    "createMarketplaceTool",
-  );
-
   const imageTool = options?.agentDir?.trim()
     ? createImageTool({
         config: options?.config,
@@ -201,13 +177,6 @@ export function createArgentTools(options?: {
       agentSessionKey: options?.agentSessionKey,
       config: options?.config,
     }),
-    ...(createOnboardingPackTool
-      ? [
-          createOnboardingPackTool({
-            agentSessionKey: options?.agentSessionKey,
-          }),
-        ]
-      : []),
     createCronTool({
       agentSessionKey: options?.agentSessionKey,
     }),
@@ -298,21 +267,6 @@ export function createArgentTools(options?: {
         config: options?.config,
       }),
     }),
-    ...(createJobsTool ? [createJobsTool()] : []),
-    ...(createWorkforceSetupTool ? [createWorkforceSetupTool()] : []),
-    ...(createIntentTool ? [createIntentTool()] : []),
-    ...(createCopilotSystemTool ? [createCopilotSystemTool()] : []),
-    ...(createSpecforgeTool
-      ? [
-          createSpecforgeTool({
-            agentSessionKey: options?.agentSessionKey,
-            agentId: resolveSessionAgentId({
-              sessionKey: options?.agentSessionKey,
-              config: options?.config,
-            }),
-          }),
-        ]
-      : []),
     createAccountabilityTool({
       config: options?.config,
       agentId: resolveSessionAgentId({
@@ -423,7 +377,6 @@ export function createArgentTools(options?: {
     createSkillsTool({ config: options?.config }),
     createTerminalTool(),
     createGithubIssueTool(),
-    ...(createMarketplaceTool ? [createMarketplaceTool()] : []),
     createMeetingRecorderTool({ agentSessionKey: options?.agentSessionKey }),
     createOsDocsTool(),
     // Agent Family — multi-agent registration, messaging, shared knowledge, spawn
@@ -455,7 +408,7 @@ export function createArgentTools(options?: {
   ];
 
   // MemU — three-layer long-term memory tools
-  const memoryAgentId = resolveSessionAgentId({
+  const memoryAgentId = resolveMemoryAgentId({
     sessionKey: options?.agentSessionKey,
     config: options?.config,
   });
@@ -477,7 +430,12 @@ export function createArgentTools(options?: {
     tools.push(contemplationTool);
   }
 
-  tools.push(...createConnectorTools());
+  tools.push(
+    ...createConnectorTools({
+      config: options?.config,
+      agentSessionKey: options?.agentSessionKey,
+    }),
+  );
 
   const builtinToolAllowlist = resolveBuiltinToolAllowlist({
     config: options?.config,

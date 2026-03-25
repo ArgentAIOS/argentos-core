@@ -193,24 +193,25 @@ const STRUCTURED_ACTION_ONLY_JSON_RE = /^\s*\{[\s\S]{0,2400}\}\s*$/i;
 const FENCED_JSON_BLOCK_RE = /```(?:json)?\s*([\s\S]{1,2400}?)\s*```/gi;
 const STRUCTURED_ACTION_COMMAND_RE =
   /^(?:list|get|create|update|delete|generate|render|publish|upload|download|open|close|start|stop|click|type|press|scroll|navigate|snapshot|screenshot|focus|search|fetch|send|post|run|exec|plan|mix|compose|transcribe|summarize|analyze|convert)(?:[_-]|$)/i;
-const STRUCTURED_ACTION_CONTROL_KEYS = new Set([
+const STRUCTURED_ACTION_ENVELOPE_KEYS = new Set([
   "request",
   "params",
   "arguments",
   "targetId",
+  "ref",
+]);
+const STRUCTURED_ACTION_ROUTING_KEYS = new Set([
   "profile",
   "kind",
-  "ref",
   "tool",
   "tool_name",
   "voice_id",
   "video_id",
+]);
+const STRUCTURED_ACTION_EXECUTION_SUPPORT_KEYS = new Set([
   "max_items",
   "include_raw",
   "output_path",
-  "url",
-  "path",
-  "command",
   "workdir",
   "yieldMs",
   "timeout",
@@ -218,29 +219,56 @@ const STRUCTURED_ACTION_CONTROL_KEYS = new Set([
   "pty",
   "shell",
 ]);
+const STRUCTURED_ACTION_RESOURCE_KEYS = new Set(["url", "path"]);
 const TRUNCATED_TOOL_JSON_FRAGMENT_RE =
   /^\s*"?(?:command|action|request|params|arguments|path|url|workdir|yieldMs|timeout|background|pty|shell)"?\s*:/i;
 const TRUNCATED_TOOL_JSON_AUX_KEY_RE =
-  /"(?:workdir|yieldMs|timeout|request|params|arguments|path|url|background|pty|shell|tool|action)"/i;
+  /"(?:command|workdir|yieldMs|timeout|request|params|arguments|background|pty|shell|tool|tool_name|ref|targetId)"/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function isLikelyStructuredToolActionRecord(value: Record<string, unknown>): boolean {
+  const keys = Object.keys(value);
+  const hasEnvelopeKey = keys.some((key) => STRUCTURED_ACTION_ENVELOPE_KEYS.has(key));
+  const hasRoutingKey = keys.some((key) => STRUCTURED_ACTION_ROUTING_KEYS.has(key));
+  const hasExecutionSupportKey = keys.some((key) =>
+    STRUCTURED_ACTION_EXECUTION_SUPPORT_KEYS.has(key),
+  );
+  const hasResourceKey = keys.some((key) => STRUCTURED_ACTION_RESOURCE_KEYS.has(key));
   const action = value.action;
+  const nestedPayload =
+    isRecord(value.request) || isRecord(value.params) || isRecord(value.arguments);
+  const command = value.command;
+  const hasExecutableCommand = typeof command === "string" && command.trim().length > 0;
   if (typeof action === "string") {
     const normalizedAction = action.trim();
     if (
       normalizedAction &&
       normalizedAction.length <= 80 &&
-      STRUCTURED_ACTION_COMMAND_RE.test(normalizedAction)
+      STRUCTURED_ACTION_COMMAND_RE.test(normalizedAction) &&
+      (hasEnvelopeKey || hasRoutingKey || hasExecutionSupportKey || hasResourceKey)
     ) {
       return true;
     }
   }
 
-  return Object.keys(value).some((key) => STRUCTURED_ACTION_CONTROL_KEYS.has(key));
+  if (
+    hasEnvelopeKey &&
+    (hasRoutingKey || hasExecutionSupportKey || hasResourceKey || nestedPayload)
+  ) {
+    return true;
+  }
+
+  if (
+    hasRoutingKey &&
+    (hasExecutableCommand || hasExecutionSupportKey || hasResourceKey || nestedPayload)
+  ) {
+    return true;
+  }
+
+  return hasExecutableCommand && hasExecutionSupportKey;
 }
 
 function shouldStripStandaloneStructuredToolActionJson(candidate: string): boolean {

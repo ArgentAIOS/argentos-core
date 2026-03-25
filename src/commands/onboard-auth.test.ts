@@ -179,8 +179,14 @@ describe("applyMinimaxApiConfig", () => {
   });
 
   it("sets correct primary model", () => {
-    const cfg = applyMinimaxApiConfig({}, "MiniMax-M2.1-lightning");
-    expect(cfg.agents?.defaults?.model?.primary).toBe("minimax/MiniMax-M2.1-lightning");
+    const cfg = applyMinimaxApiConfig({}, "MiniMax-M2.7-highspeed");
+    expect(cfg.agents?.defaults?.model?.primary).toBe("minimax/MiniMax-M2.7-highspeed");
+  });
+
+  it("supports MiniMax M2.7", () => {
+    const cfg = applyMinimaxApiConfig({}, "MiniMax-M2.7");
+    expect(cfg.agents?.defaults?.model?.primary).toBe("minimax/MiniMax-M2.7");
+    expect(cfg.models?.providers?.minimax?.models.some((m) => m.id === "MiniMax-M2.7")).toBe(true);
   });
 
   it("does not set reasoning for non-reasoning models", () => {
@@ -256,6 +262,17 @@ describe("applyMinimaxApiConfig", () => {
       "old-model",
       "MiniMax-M2.1",
     ]);
+  });
+
+  it("builds MiniMax M2.7 metadata from the shared catalog", () => {
+    const cfg = applyMinimaxApiConfig({}, "MiniMax-M2.7");
+    expect(
+      cfg.models?.providers?.minimax?.models.find((m) => m.id === "MiniMax-M2.7"),
+    ).toMatchObject({
+      id: "MiniMax-M2.7",
+      name: "MiniMax M2.7",
+      contextWindow: 204800,
+    });
   });
 
   it("preserves other providers when adding minimax", () => {

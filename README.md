@@ -1,195 +1,210 @@
-<p align="center">
-  <img src="https://argentos.ai/img/Argent_OS_ICON.webp" width="120" alt="ArgentOS" />
-</p>
-
-<h1 align="center">ArgentOS</h1>
+# ArgentOS - The Operating System for Personal AI
 
 <p align="center">
-  <strong>The Operating System for Personal AI</strong><br/>
-  <em>One continuous, truthful, self-directed mind.</em>
+  <strong>https://argentos.ai</strong>
 </p>
 
 <p align="center">
-  <a href="https://argentos.ai">Website</a> ·
-  <a href="https://docs.argentos.ai">Docs</a> ·
-  <a href="https://marketplace.argentos.ai">Marketplace</a> ·
-  <a href="https://discord.gg/argentos">Discord</a> ·
-  <a href="https://x.com/argentAIOS">Twitter</a>
+  <a href="https://github.com/ArgentAIOS/argentos/actions/workflows/ci.yml?branch=main"><img src="https://img.shields.io/github/actions/workflow/status/ArgentAIOS/argentos/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://github.com/ArgentAIOS/argentos/releases"><img src="https://img.shields.io/github/v/release/ArgentAIOS/argentos?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-<p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License" /></a>
-  <a href="https://marketplace.argentos.ai"><img src="https://img.shields.io/badge/marketplace-54%2B%20skills-28c840?style=flat-square" alt="Marketplace" /></a>
-  <a href="https://discord.gg/argentos"><img src="https://img.shields.io/badge/discord-join-5865F2?style=flat-square" alt="Discord" /></a>
-</p>
+**ArgentOS** is an always-on personal AI operating system. It manages your AI agent the way an OS manages processes: persistent memory, scheduled tasks, model routing, self-improving behavior, and a visual dashboard — all running locally on your hardware.
 
----
+Built on the [pi-mono](https://github.com/badlogic/pi-mono) agent toolkit with 20+ messaging channels, it adds the layers that turn a chat assistant into a true AI operating system.
 
-A self-hosted AI that runs on your hardware. Persistent memory, autonomous thinking, voice interaction, and multi-channel communication — all under your complete control.
+## The OS Metaphor
 
-Most AI tools forget you between sessions. ArgentOS remembers everything.
-Most agents wait for commands. ArgentOS thinks on its own.
-Most frameworks need a cloud. ArgentOS runs on your Mac.
-
-## Install
-
-```bash
-curl -fsSL https://argentos.ai/install.sh | bash
-```
-
-That's it. Clones the repo, provisions a private Node 22 runtime, installs dependencies, and runs onboarding.
-
-```bash
-# Beta channel
-curl -fsSL https://argentos.ai/install.sh | bash -s -- --beta
-
-# Skip onboarding
-curl -fsSL https://argentos.ai/install.sh | bash -s -- --no-onboard
-
-# Quiet mode (no prompts)
-curl -fsSL https://argentos.ai/install.sh | bash -s -- --no-prompt
-```
-
-<details>
-<summary><strong>Build from source (contributors)</strong></summary>
-
-```bash
-git clone https://github.com/ArgentAIOS/core.git
-cd core && pnpm install && pnpm build
-pnpm argent
-```
-
-Requires Node 22.12+. Sets up state in `~/.argentos`, workspace in `~/argent`, CLI in `~/bin`, and gateway + dashboard as LaunchAgents.
-
-</details>
-
-## What Makes It Different
-
-### Memory That Never Forgets
-
-12,500+ lines of memory system. SQLite FTS5 + pgvector hybrid search. Every conversation, observation, and lesson is captured automatically. Entity tracking, emotional context, embeddings, significance scoring. Your AI builds a real understanding of who you are — not just what you said five minutes ago.
-
-### A Mind That Thinks On Its Own
-
-The contemplation loop runs every 30 minutes when idle. Journals episodes, extracts lessons, consolidates patterns through the Self-Improving System. Your AI doesn't just respond to prompts — it reflects, learns, and grows.
-
-### Voice
-
-Talk naturally. ElevenLabs TTS, speech recognition, wake word detection. It speaks back in the voice you choose.
-
-### Every Channel, One Mind
-
-Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Google Chat. Seven channels, unified context. One AI identity across every conversation.
-
-### 50+ Agent Tools
-
-Browser control, task management, web search, file operations, memory recall, code execution, media generation, calendar, email — and a [marketplace](https://marketplace.argentos.ai) with 54+ community skills you can install with one command.
-
-### Smart Model Routing
-
-Complexity scoring routes each request to the right tier:
-
-| Tier     | Models         | Cost | When              |
-| -------- | -------------- | ---- | ----------------- |
-| Local    | Ollama / Qwen3 | Free | Simple tasks      |
-| Fast     | Haiku          | $    | Quick responses   |
-| Balanced | Sonnet         | $$   | Most work         |
-| Powerful | Opus           | $$$  | Complex reasoning |
-
-15+ providers. Automatic failover. Rate-limit awareness.
-
-### Real Dashboard
-
-React web UI with AEVP particle avatar, chat panel, task board, project kanban, config panel, alignment docs editor, and execution worker controls. Not a terminal app — a proper operating surface.
+| OS Concept    | ArgentOS                                                                   |
+| ------------- | -------------------------------------------------------------------------- |
+| **Kernel**    | Always-On Loop — event queue with state machine                            |
+| **Memory**    | Memo — SQLite + FTS5, auto-capture, semantic search                        |
+| **Scheduler** | Task System — priority queue with projects & accountability                |
+| **Drivers**   | Channels — Telegram, Discord, Slack, Signal, WhatsApp, iMessage, + 14 more |
+| **Resources** | Model Router — local Llama, Haiku, Sonnet, Opus (cost-aware)               |
+| **Learning**  | SIS — lessons, patterns, feedback loops                                    |
+| **Backup**    | Phoenix — local, Git, S3, R2                                               |
+| **Shell**     | Dashboard — React + Live2D avatar + doc panel                              |
 
 ## Architecture
 
 ```
-  Channels (7+)     Cron        Webhooks       CLI
-       │              │              │           │
-       ▼              ▼              ▼           ▼
-  ┌─────────────────────────────────────────────────┐
-  │                   Gateway                       │
-  │              ws://localhost:18789                │
-  │                                                 │
-  │   Agent Runtime · Memory (MemU) · Model Router  │
-  │   Task Queue · Contemplation · SIS · Heartbeat  │
-  │   Knowledge RAG · Intent Engine · Exec Worker   │
-  └──────────────────────┬──────────────────────────┘
-                         │
-          ┌──────────────┼──────────────┐
-          ▼              ▼              ▼
-      Dashboard        macOS         Mobile
-      (React)          App          (iOS/Android)
+  Channels        Schedule       Webhooks
+  (20+ platforms)  (cron)        (HTTP)
+       │              │              │
+       ▼              ▼              ▼
+  ┌──────────────────────────────────────┐
+  │              Gateway                 │
+  │         ws://127.0.0.1:18789         │
+  │                                      │
+  │  ┌────────┐  ┌──────┐  ┌─────────┐  │
+  │  │ Agent  │  │ Task │  │  Model  │  │
+  │  │Runtime │  │Queue │  │ Router  │  │
+  │  └───┬────┘  └──┬───┘  └────┬────┘  │
+  │      │          │           │        │
+  │  ┌───┴──────────┴───────────┴────┐   │
+  │  │         Memo (Memory)         │   │
+  │  │     SQLite + FTS5 search      │   │
+  │  └──────────────────────────────-┘   │
+  └──────────────┬───────────────────────┘
+                 │
+    ┌────────────┼────────────┐
+    ▼            ▼            ▼
+ Dashboard    CLI         Companion
+ (React +     (argent)    Apps (macOS,
+  Live2D)                  iOS, Android)
 ```
 
-## Marketplace
+## What's Built
 
-Every package scanned by [VirusTotal](https://www.virustotal.com) (70+ engines) and the ArgentOS AI Safety scanner.
+### Core Systems
+
+- **Persistent Memory (Memo)** — Every conversation, observation, and lesson stored in SQLite with FTS5 full-text search. Auto-capture from agent events. Semantic search across all history.
+
+- **Task System + Projects** — Full task lifecycle (pending, in_progress, blocked, completed, failed). Projects group related tasks with progress tracking. Agent creates, manages, and completes tasks autonomously. Dashboard shows real-time progress.
+
+- **Phoenix Backup** — Automated backup of agent state to local, Git, S3, or R2 targets. Scheduled via cron. Self-maintaining.
+
+- **Dashboard** — React web UI with Live2D avatar, chat panel, task board, projects tab, doc panel (slide-out documents), calendar, cron job management, and ElevenLabs TTS with voice selection.
+
+- **20+ Messaging Channels** — WhatsApp, Telegram, Slack, Discord, Signal, iMessage (BlueBubbles), Google Chat, Microsoft Teams, Matrix, WebChat, and more. Group routing, mention gating, DM pairing security.
+
+### Agent Capabilities
+
+- **Browser Control** — Dedicated Chrome/Chromium with CDP, snapshots, actions, uploads
+- **Voice Wake + Talk Mode** — Always-on speech for macOS/iOS/Android with ElevenLabs
+- **Live Canvas** — Agent-driven visual workspace on device screens
+- **Cron + Webhooks** — Scheduled tasks, Gmail Pub/Sub, HTTP triggers
+- **Skills Platform** — Bundled, managed, and workspace skills with install gating
+- **Doc Panel** — Agent writes reports, guides, and code to a slide-out panel in the dashboard
+
+### Model Support
+
+- **Anthropic** — Claude Opus, Sonnet, Haiku (recommended)
+- **Ollama** — Local models (Llama 3.2, DeepSeek, etc.) — auto-discovered
+- **OpenAI** — GPT-4, o1, etc.
+- **12+ Providers** — Google Gemini, AWS Bedrock, GitHub Copilot, MiniMax, Moonshot, Venice, Qwen, Xiaomi, Cloudflare
+- **Model Fallback** — Automatic retry with rate-limit awareness and profile cooldowns
+
+## Install
+
+Runtime: **Node 22+**
 
 ```bash
-argent marketplace install hubspot-api
-argent marketplace install deep-research-pro
-argent marketplace install self-improving-agent
+# Hosted installer (default rail: git checkout + private Node fallback when needed)
+curl -fsSL https://argentos.ai/install.sh | bash
 ```
 
-Browse, submit, and install: **[marketplace.argentos.ai](https://marketplace.argentos.ai)**
+The wizard walks through gateway, workspace, channels, and skills. Installs the Gateway daemon (launchd/systemd) so it stays running. Use `--no-onboard` to skip, or run `argent onboard --install-daemon` manually later.
+
+Manual npm install remains available when the package is published and resolvable:
+
+```bash
+npm install -g argentos@latest
+# or: pnpm add -g argentos@latest
+```
+
+### From Source
+
+```bash
+git clone https://github.com/ArgentAIOS/argentos.git
+cd argentos
+
+pnpm install
+pnpm build
+
+pnpm argent onboard --install-daemon
+
+# Dev loop (auto-reload on TS changes)
+pnpm gateway:watch
+```
+
+### Dashboard
+
+```bash
+cd dashboard
+npm install
+npm run dev
+# Opens at http://localhost:8080
+```
 
 ## Quick Start
 
 ```bash
-argent gateway start          # Start the gateway
-argent status                 # Check health
-argent chat "Hello"           # Talk to your agent
-argent marketplace install obsidian   # Add a skill
+# Start the gateway
+argent gateway --port 18789 --verbose
+
+# Start the dashboard
+cd dashboard && npm run dev
+
+# Send a message
+argent message send --to +1234567890 --message "Hello from ArgentOS"
+
+# Talk to the agent
+argent agent --message "Create a project for website redesign" --thinking high
+
+# Start the Command Center TUI
+argentos cs
 ```
 
-## Core vs Business
+## Configuration
 
-This repo is **ArgentOS Core** — the free, open-source relationship layer.
+Main config: `~/.argentos/argent.json`
 
-|                           | Core (this repo) | Business (coming soon) |
-| ------------------------- | ---------------- | ---------------------- |
-| Memory & contemplation    | ✓                | ✓                      |
-| Voice & channels          | ✓                | ✓                      |
-| Tasks & dashboard         | ✓                | ✓                      |
-| Model routing             | ✓                | ✓                      |
-| 54+ marketplace skills    | ✓                | ✓                      |
-| Intent governance         | —                | ✓                      |
-| Workforce orchestration   | —                | ✓                      |
-| Execution workers         | —                | ✓                      |
-| Simulation gates          | —                | ✓                      |
-| Team controls & approvals | —                | ✓                      |
-
-Start with Core for the relationship layer. Upgrade to Business when you need governance, workforce, and control.
-
-## Development
-
-```bash
-pnpm install && pnpm build && pnpm test
+```
+~/.argentos/
+├── argent.json        # Main configuration
+├── data/
+│   └── dashboard.db   # Tasks, projects, canvas docs
+├── extensions/        # Custom plugins
+├── memory/            # Memo database
+└── backup/            # Phoenix snapshots
 ```
 
-```bash
-# Install smoke test
-pnpm test:install:local:smoke
+## Security
 
-# Code review (CodeRabbit)
-pnpm review:coderabbit
-```
+ArgentOS connects to real messaging surfaces. Inbound DMs are **untrusted input**.
 
-## Links
+- **DM pairing** (default) — Unknown senders receive a pairing code. Approve with `argent pairing approve <channel> <code>`.
+- **Open DMs** — Explicit opt-in with `dmPolicy="open"` and allowlist.
+- Run `argent doctor` to check for risky configurations.
 
-|                   |                                                            |
-| ----------------- | ---------------------------------------------------------- |
-| **Website**       | [argentos.ai](https://argentos.ai)                         |
-| **Documentation** | [docs.argentos.ai](https://docs.argentos.ai)               |
-| **Marketplace**   | [marketplace.argentos.ai](https://marketplace.argentos.ai) |
-| **Discord**       | [discord.gg/argentos](https://discord.gg/argentos)         |
-| **Twitter**       | [@argentAIOS](https://x.com/argentAIOS)                    |
-| **Author**        | [Jason Brashear](https://jasonbrashear.com)                |
+Full guide: [Security](https://docs.argentos.ai/gateway/security)
+
+## Migration Status
+
+| Phase                    | Description                              | Status      |
+| ------------------------ | ---------------------------------------- | ----------- |
+| 1. Fork & Restructure    | Git reset, org created, rename           | Done        |
+| 2. Memory (Memo)         | Persistent memory with SQLite + FTS5     | Done        |
+| 3. Backup (Phoenix)      | Automated backup system                  | Done        |
+| 4. Dashboard             | React UI with Live2D, tasks, chat        | Done        |
+| 5. Task System           | Tasks, projects, agent tools             | Done        |
+| 6. Model Router          | Complexity-based routing (local to Opus) | In Progress |
+| 7. Always-On Loop        | Event queue, state machine, heartbeat    | Planned     |
+| 8. Self-Improving System | Lessons, patterns, feedback loops        | Planned     |
+
+## Documentation
+
+- [Architecture](ARGENT_ARCHITECTURE.md) — Full vision, always-on loop, model router design
+- [SIS Architecture](docs/argent/SIS_ARCHITECTURE.md) — Self-Improving System design
+- [Migration Guide](docs/argent/MIGRATION.md) — OpenClaw to ArgentOS migration
+- [Documentation Index](docs/argent/INDEX.md) — Complete doc reference
+- [ArgentOS Docs](https://docs.argentos.ai) — Channel setup, tools, gateway
+
+## Key Subsystems
+
+| Subsystem | Docs                                                                                                                                                              |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Gateway   | [Architecture](https://docs.argentos.ai/gateway), [Configuration](https://docs.argentos.ai/gateway/configuration)                                                 |
+| Channels  | [All channels](https://docs.argentos.ai/channels), [Troubleshooting](https://docs.argentos.ai/channels/troubleshooting)                                           |
+| Models    | [Config](https://docs.argentos.ai/concepts/models), [Failover](https://docs.argentos.ai/concepts/model-failover)                                                  |
+| Tools     | [Browser](https://docs.argentos.ai/tools/browser), [Canvas](https://docs.argentos.ai/platforms/mac/canvas), [Cron](https://docs.argentos.ai/automation/cron-jobs) |
+| Voice     | [Voice Wake](https://docs.argentos.ai/nodes/voicewake), [Talk Mode](https://docs.argentos.ai/nodes/talk)                                                          |
+| Apps      | [macOS](https://docs.argentos.ai/platforms/macos), [iOS](https://docs.argentos.ai/platforms/ios), [Android](https://docs.argentos.ai/platforms/android)           |
+| Nodes     | [Devices](https://docs.argentos.ai/nodes), [Camera](https://docs.argentos.ai/nodes/images), [Location](https://docs.argentos.ai/nodes/location-command)           |
 
 ## License
 
-MIT — free to use, modify, and distribute.
-
-Built by [Jason Brashear](https://jasonbrashear.com) · [Slick Funnelz LLC](https://argentos.ai)
+MIT

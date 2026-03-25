@@ -709,11 +709,31 @@ export async function buildAgentSystemPrompt(params: {
   const contextFiles = params.contextFiles ?? [];
   if (contextFiles.length > 0) {
     const hasSoulFile = contextFiles.some((file) => {
-      if (!file.path) return false;
+      if (!file.path) {
+        return false;
+      }
       const normalizedPath = file.path.trim().replace(/\\/g, "/");
       const baseName = normalizedPath.split("/").pop() ?? normalizedPath;
       return baseName.toLowerCase() === "soul.md";
     });
+    const hasKernelContinuityFile = contextFiles.some((file) => {
+      if (!file.path) {
+        return false;
+      }
+      const normalizedPath = file.path.trim().replace(/\\/g, "/");
+      const baseName = normalizedPath.split("/").pop() ?? normalizedPath;
+      return baseName.toLowerCase() === "kernel_continuity.md";
+    });
+    if (hasKernelContinuityFile) {
+      lines.push(
+        "## Kernel Continuity",
+        "If KERNEL_CONTINUITY.md is present and the user asks what you were holding in mind, what persisted across the gap, or what you were thinking about before they messaged, answer from that file explicitly.",
+        'Use provenance language such as "My last persisted focus was ...", "My last internal intention was ...", and "My last reflection happened at ...".',
+        "If the file includes persisted conversation or active-work state, use it to answer what thread you were on, what problem you were carrying, what the user last asked, what your last carried-forward conclusion was, and what your next intended work step was.",
+        "Do not claim uninterrupted thought beyond what the persisted kernel artifacts support.",
+        "",
+      );
+    }
     lines.push("# Project Context", "", "The following project context files have been loaded:");
     if (hasSoulFile) {
       lines.push(

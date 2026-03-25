@@ -1,0 +1,271 @@
+{
+  "tool": "aos-hootsuite",
+  "backend": "hootsuite-rest-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "social-scheduling",
+    "surface": "member-organizations-social-profiles-teams-messages",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": false,
+    "workerFields": ["member", "organization_id", "social_profile_id", "team_id", "message_id"],
+    "worker_visible_actions": [
+      "me.read",
+      "organization.list",
+      "organization.read",
+      "social_profile.list",
+      "social_profile.read",
+      "team.list",
+      "team.read",
+      "message.list",
+      "message.read"
+    ],
+    "fields": [
+      {
+        "id": "member",
+        "label": "Authenticated member",
+        "required": false,
+        "applies_to": ["me.read"],
+        "example": "authenticated member"
+      },
+      {
+        "id": "organization_id",
+        "label": "Organization ID",
+        "required": false,
+        "applies_to": ["team.list"],
+        "example": "626731"
+      },
+      {
+        "id": "social_profile_id",
+        "label": "Social profile ID",
+        "required": false,
+        "applies_to": ["social_profile.read", "message.list", "message.schedule"],
+        "example": "115185509"
+      },
+      {
+        "id": "team_id",
+        "label": "Team ID",
+        "required": false,
+        "applies_to": ["team.read"],
+        "example": "359493"
+      },
+      {
+        "id": "message_id",
+        "label": "Message ID",
+        "required": false,
+        "applies_to": ["message.read"],
+        "example": "4138476039"
+      }
+    ],
+    "commandDefaults": {
+      "me.read": {
+        "selection_surface": "member"
+      },
+      "organization.list": {
+        "selection_surface": "organization"
+      },
+      "organization.read": {
+        "selection_surface": "organization",
+        "args": ["HOOTSUITE_ORGANIZATION_ID"]
+      },
+      "social_profile.list": {
+        "selection_surface": "social_profile"
+      },
+      "social_profile.read": {
+        "selection_surface": "social_profile",
+        "args": ["HOOTSUITE_SOCIAL_PROFILE_ID"]
+      },
+      "team.list": {
+        "selection_surface": "team",
+        "args": ["HOOTSUITE_ORGANIZATION_ID"]
+      },
+      "team.read": {
+        "selection_surface": "team",
+        "args": ["HOOTSUITE_TEAM_ID"]
+      },
+      "message.list": {
+        "selection_surface": "message",
+        "limit": 25,
+        "default_window": "now-7d..now+7d"
+      },
+      "message.read": {
+        "selection_surface": "message",
+        "args": ["HOOTSUITE_MESSAGE_ID"]
+      },
+      "message.schedule": {
+        "selection_surface": "message",
+        "args": ["HOOTSUITE_SOCIAL_PROFILE_ID"]
+      }
+    },
+    "pickerHints": {
+      "member": {
+        "kind": "member",
+        "selection_surface": "member",
+        "resource": "hootsuite.member",
+        "source_command": "me.read",
+        "source_fields": ["id", "fullName", "email"]
+      },
+      "organization": {
+        "kind": "organization",
+        "selection_surface": "organization",
+        "resource": "hootsuite.organization",
+        "source_command": "organization.list",
+        "source_fields": ["id"]
+      },
+      "social_profile": {
+        "kind": "social_profile",
+        "selection_surface": "social_profile",
+        "resource": "hootsuite.social_profile",
+        "source_command": "social_profile.list",
+        "source_fields": ["id", "type", "socialNetworkUsername", "ownerId"]
+      },
+      "team": {
+        "kind": "team",
+        "selection_surface": "team",
+        "resource": "hootsuite.team",
+        "source_command": "team.list",
+        "source_fields": ["id", "name"]
+      },
+      "message": {
+        "kind": "message",
+        "selection_surface": "message",
+        "resource": "hootsuite.message",
+        "source_command": "message.list",
+        "source_fields": ["id", "state", "scheduledSendTime", "socialProfile.id"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Hootsuite",
+    "category": "marketing-publishing",
+    "categories": ["marketing-publishing", "social-publishing", "service-ops"],
+    "resources": ["member", "organization", "social_profile", "team", "message"]
+  },
+  "auth": {
+    "kind": "oauth-service-key",
+    "required": true,
+    "service_keys": ["HOOTSUITE_ACCESS_TOKEN"],
+    "interactive_setup": [
+      "Create a Hootsuite developer app and complete OAuth2 for the member and organization context this worker should use.",
+      "Add the resulting HOOTSUITE_ACCESS_TOKEN in API Keys before enabling live reads.",
+      "Optional: set HOOTSUITE_BASE_URL only if you need a non-default Hootsuite API host.",
+      "Optional: pin HOOTSUITE_ORGANIZATION_ID, HOOTSUITE_SOCIAL_PROFILE_ID, HOOTSUITE_TEAM_ID, and HOOTSUITE_MESSAGE_ID for worker scope defaults.",
+      "Live reads are enabled for member, organization, social profile, team, and outbound message discovery; keep message.schedule scaffolded until approval and publish safety rules are implemented."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and Hootsuite API readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "me.read",
+      "summary": "Read the authenticated Hootsuite member",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "member",
+      "action_class": "read"
+    },
+    {
+      "id": "organization.list",
+      "summary": "List organizations available to the authenticated Hootsuite member",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "organization",
+      "action_class": "read"
+    },
+    {
+      "id": "organization.read",
+      "summary": "Read a Hootsuite organization",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "organization",
+      "action_class": "read"
+    },
+    {
+      "id": "social_profile.list",
+      "summary": "List Hootsuite social profiles available to the authenticated member",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "social_profile",
+      "action_class": "read"
+    },
+    {
+      "id": "social_profile.read",
+      "summary": "Read a Hootsuite social profile",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "social_profile",
+      "action_class": "read"
+    },
+    {
+      "id": "team.list",
+      "summary": "List teams for a Hootsuite organization",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "team",
+      "action_class": "read"
+    },
+    {
+      "id": "team.read",
+      "summary": "Read a Hootsuite team",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "team",
+      "action_class": "read"
+    },
+    {
+      "id": "message.list",
+      "summary": "List Hootsuite outbound messages in a time window",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "message",
+      "action_class": "read"
+    },
+    {
+      "id": "message.read",
+      "summary": "Read a Hootsuite outbound message",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "message",
+      "action_class": "read"
+    },
+    {
+      "id": "message.schedule",
+      "summary": "Schedule a Hootsuite outbound message",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "message",
+      "action_class": "write"
+    }
+  ]
+}

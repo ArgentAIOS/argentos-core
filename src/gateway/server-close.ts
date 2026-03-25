@@ -1,10 +1,12 @@
 import type { Server as HttpServer } from "node:http";
 import type { WebSocketServer } from "ws";
 import type { CanvasHostHandler, CanvasHostServer } from "../canvas-host/server.js";
+import type { ConsciousnessKernelRunner } from "../infra/consciousness-kernel.js";
 import type { ContemplationRunner } from "../infra/contemplation-runner.js";
 import type { ExecutionWorkerRunner } from "../infra/execution-worker-runner.js";
 import type { HeartbeatRunner } from "../infra/heartbeat-runner.js";
 import type { JobOrchestratorRunner } from "../infra/job-orchestrator-runner.js";
+import type { KnowledgeObservationRunner } from "../infra/knowledge-observation-runner.js";
 import type { SisRunner } from "../infra/sis-runner.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import { type ChannelId, listChannelPlugins } from "../channels/plugins/index.js";
@@ -26,6 +28,8 @@ export function createGatewayCloseHandler(params: {
   executionWorkerRunner: ExecutionWorkerRunner;
   jobOrchestratorRunner: JobOrchestratorRunner;
   sisRunner: SisRunner;
+  knowledgeObservationRunner: KnowledgeObservationRunner;
+  consciousnessKernelRunner: ConsciousnessKernelRunner;
   healthCheckInterval?: ReturnType<typeof setInterval>;
   nodePresenceTimers: Map<string, ReturnType<typeof setInterval>>;
   broadcast: (event: string, payload: unknown, opts?: { dropIfSlow?: boolean }) => void;
@@ -87,6 +91,8 @@ export function createGatewayCloseHandler(params: {
     params.executionWorkerRunner.stop();
     params.jobOrchestratorRunner.stop();
     params.sisRunner.stop();
+    params.knowledgeObservationRunner.stop();
+    params.consciousnessKernelRunner.stop();
     // Close Redis connection (if initialized)
     try {
       const { closeRedisClient } = await import("../data/redis-client.js");

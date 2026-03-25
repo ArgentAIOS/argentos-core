@@ -485,48 +485,46 @@ export function StatusBar({
           <Boxes className="w-4 h-4 text-white/50" />
         </motion.button>
 
-        {onWorkforceClick && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            onClick={() => {
-              const focus =
-                workforceBlockedCount > 0 ? "blocked" : workforceDueCount > 0 ? "due-now" : "all";
-              onWorkforceClick(focus);
-            }}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-cyan-500/20 transition-colors cursor-pointer"
-            title="Workforce"
-          >
-            <div className="relative">
-              <Users2 className="w-4 h-4 text-cyan-300/80" />
-              {(workforceDueCount > 0 || workforceBlockedCount > 0) && (
-                <span
-                  className={`absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-semibold leading-4 text-center ${
-                    workforceBlockedCount > 0 ? "bg-red-500 text-white" : "bg-cyan-500 text-white"
-                  }`}
-                >
-                  {workforceBlockedCount > 0
-                    ? `!${Math.min(99, workforceBlockedCount)}`
-                    : Math.min(99, workforceDueCount)}
-                </span>
-              )}
-            </div>
-            <span className="text-xs font-medium text-cyan-100/90">Workforce</span>
-          </motion.button>
-        )}
+        {/* Workforce */}
+        <motion.button
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          onClick={() => {
+            const focus =
+              workforceBlockedCount > 0 ? "blocked" : workforceDueCount > 0 ? "due-now" : "all";
+            onWorkforceClick?.(focus);
+          }}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-cyan-500/20 transition-colors cursor-pointer"
+          title="Workforce"
+        >
+          <div className="relative">
+            <Users2 className="w-4 h-4 text-cyan-300/80" />
+            {(workforceDueCount > 0 || workforceBlockedCount > 0) && (
+              <span
+                className={`absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-semibold leading-4 text-center ${
+                  workforceBlockedCount > 0 ? "bg-red-500 text-white" : "bg-cyan-500 text-white"
+                }`}
+              >
+                {workforceBlockedCount > 0
+                  ? `!${Math.min(99, workforceBlockedCount)}`
+                  : Math.min(99, workforceDueCount)}
+              </span>
+            )}
+          </div>
+          <span className="text-xs font-medium text-cyan-100/90">Workforce</span>
+        </motion.button>
 
-        {onNewWorkerClick && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            onClick={onNewWorkerClick}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/20 transition-colors cursor-pointer"
-            title="New Worker"
-          >
-            <UserPlus className="w-4 h-4 text-purple-300" />
-            <span className="text-xs font-medium text-purple-200">+ Worker</span>
-          </motion.button>
-        )}
+        {/* New Worker */}
+        <motion.button
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          onClick={onNewWorkerClick}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/20 transition-colors cursor-pointer"
+          title="New Worker"
+        >
+          <UserPlus className="w-4 h-4 text-purple-300" />
+          <span className="text-xs font-medium text-purple-200">+ Worker</span>
+        </motion.button>
 
         {/* Activity Log */}
         <motion.button

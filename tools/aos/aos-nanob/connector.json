@@ -1,0 +1,103 @@
+{
+  "tool": "aos-nanob",
+  "backend": "google-genai",
+  "manifest_schema_version": "1.0.0",
+  "connector": {
+    "label": "Gemini Image Studio",
+    "category": "creative-media",
+    "categories": ["creative-media", "image-generation", "marketing-creative"],
+    "resources": ["image", "prompt", "session", "model"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["GEMINI_API_KEY"],
+    "interactive_setup": [
+      "Add GEMINI_API_KEY in API Keys before enabling live image generation or edits.",
+      "Install the Python harness in the connector's agent-harness directory with pip install -e .[dev].",
+      "Use readonly mode for prompt building, model inspection, and session review; switch to write mode for image generation, edits, and batch runs."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and Gemini API readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "models",
+      "summary": "List available Gemini image models",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "model",
+      "action_class": "read"
+    },
+    {
+      "id": "prompt",
+      "summary": "Build or flatten an image-generation prompt",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "prompt",
+      "action_class": "read"
+    },
+    {
+      "id": "generate",
+      "summary": "Generate one or more images from a prompt",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "image",
+      "action_class": "write"
+    },
+    {
+      "id": "edit",
+      "summary": "Edit an existing image with a natural-language instruction",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "image",
+      "action_class": "write"
+    },
+    {
+      "id": "batch",
+      "summary": "Run batch image generation from prompt files",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "image",
+      "action_class": "write"
+    },
+    {
+      "id": "sessions.list",
+      "summary": "List saved image-generation sessions",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "session",
+      "action_class": "read"
+    },
+    {
+      "id": "sessions.create",
+      "summary": "Create a new image-generation session",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "session",
+      "action_class": "write"
+    },
+    {
+      "id": "sessions.show",
+      "summary": "Show a saved image-generation session",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "session",
+      "action_class": "read"
+    }
+  ]
+}

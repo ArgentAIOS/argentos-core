@@ -1,0 +1,115 @@
+{
+  "tool": "aos-n8n",
+  "backend": "n8n-live-bridge",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "workflow-live-bridge",
+    "surface": "workflow",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "worker_visible_actions": ["workflow.list", "workflow.status", "workflow.trigger"]
+  },
+  "connector": {
+    "label": "n8n",
+    "category": "automation-orchestration",
+    "categories": ["automation-orchestration", "workflow-automation", "integrations"],
+    "resources": ["workflow", "execution", "trigger"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["N8N_API_URL", "N8N_API_KEY"],
+    "interactive_setup": [
+      "Create or connect an n8n instance for the workspace you want this worker to use.",
+      "Add N8N_API_URL and N8N_API_KEY in API Keys.",
+      "Set N8N_WEBHOOK_BASE_URL to the public base used by the workflow.trigger webhook bridge.",
+      "workflow.list and workflow.status use the live n8n API read path.",
+      "workflow.trigger posts a live webhook execution payload through the bridge."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "workflow.list",
+      "summary": "List workflows from the live n8n API",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "workflow",
+      "action_class": "read"
+    },
+    {
+      "id": "workflow.status",
+      "summary": "Read live workflow status from the n8n API",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "workflow",
+      "action_class": "read"
+    },
+    {
+      "id": "workflow.trigger",
+      "summary": "Trigger a live n8n workflow execution bridge with builder hints",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "workflow",
+      "action_class": "write",
+      "input_hints": {
+        "event": {
+          "type": "string",
+          "default": "manual",
+          "suggested_values": ["manual", "webhook", "schedule", "replay", "custom"],
+          "description": "Free-form event label passed through to the webhook body."
+        },
+        "payload": {
+          "type": "object",
+          "shape": "flat key-value map",
+          "description": "Repeated --payload key=value flags are merged into the JSON body as string fields.",
+          "example": { "source": "agent", "reason": "follow-up" }
+        }
+      },
+      "response_hints": {
+        "type": "json",
+        "normalized_fields": [
+          "ok",
+          "status_code",
+          "response_kind",
+          "execution_id",
+          "response_status",
+          "summary",
+          "trigger_url_redacted"
+        ],
+        "description": "The bridge normalizes response metadata so UI code can show success state and execution IDs without parsing raw JSON."
+      }
+    }
+  ]
+}

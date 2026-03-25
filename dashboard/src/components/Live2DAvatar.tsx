@@ -4,6 +4,7 @@ import * as PIXI from "pixi.js";
 import { useEffect, useRef, useState } from "react";
 import { loadConfig, getAllCustomizationParamIds } from "../lib/avatarConfig";
 import { buildPresetConfig } from "../lib/avatarPresets";
+import { getLive2dAssetPath } from "../lib/live2dAssets";
 import {
   getMoodColor,
   type MoodName,
@@ -927,7 +928,7 @@ export function Live2DAvatar({
   mood,
   width = 400,
   height = 500,
-  modelPath = loadConfig()?.modelPath ?? "/live2d/yiota/yiota.model3.json",
+  modelPath = loadConfig()?.modelPath ?? getLive2dAssetPath("yiota/yiota.model3.json"),
   audioElement,
   mode = "full",
   zoomPreset = "full",

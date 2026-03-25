@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ArgentConfig } from "../config/config.js";
 import { connectorCommandToolName, createConnectorTools, getConnectorToolMeta } from "./tools.js";
 
 const tempDirs: string[] = [];
@@ -54,33 +55,46 @@ function writeBinaryFixture(params: { binDir: string; tool: string }) {
   fs.writeFileSync(
     binaryPath,
     [
-      "#!/bin/sh",
-      'mode=""',
-      'if [ "$1" = "--json" ] && [ "$2" = "--mode" ]; then',
-      '  mode="$3"',
-      "  shift 3",
-      "fi",
-      'if [ "$1" = "queue" ] && [ "$2" = "list" ]; then',
-      "  shift 2",
-      '  printf \'%s\' "{\\"ok\\":true,\\"data\\":{\\"mode\\":\\"$mode\\",\\"argv\\":[\\""',
-      "  first=1",
-      '  for arg in "$@"; do',
-      '    if [ "$first" = "1" ]; then',
-      "      first=0",
-      "    else",
-      '      printf \'%s\' "\\",\\""',
-      "    fi",
-      "    printf '%s' \"$arg\"",
-      "  done",
-      '  printf \'%s\' "\\"]}}"',
-      "  exit 0",
-      "fi",
-      'if [ "$1" = "queue" ] && [ "$2" = "close" ]; then',
-      '  printf \'%s\' "{\\"ok\\":false,\\"error\\":{\\"message\\":\\"close failed\\"}}"',
-      "  exit 3",
-      "fi",
-      'printf \'%s\' "{\\"ok\\":false,\\"error\\":{\\"message\\":\\"unknown command\\"}}"',
-      "exit 2",
+      `#!${process.execPath}`,
+      "const args = process.argv.slice(2);",
+      'let mode = "";',
+      "const preMode = [];",
+      "while (args.length > 0) {",
+      "  const head = args[0];",
+      '  if (head === "--json") {',
+      "    args.shift();",
+      "    continue;",
+      "  }",
+      '  if (head === "--mode") {',
+      "    args.shift();",
+      '    mode = args.shift() ?? "";',
+      "    break;",
+      "  }",
+      "  preMode.push(args.shift());",
+      '  if (args.length > 0 && !String(args[0]).startsWith("--")) {',
+      "    preMode.push(args.shift());",
+      "  }",
+      "}",
+      "const command = args.shift();",
+      "const subcommand = args.shift();",
+      'if (command === "queue" && subcommand === "list") {',
+      "  console.log(JSON.stringify({",
+      "    ok: true,",
+      "    data: {",
+      "      mode,",
+      "      argv: args,",
+      "      preMode,",
+      '      envValue: process.env.CONNECTOR_TEST_ENV ?? "",',
+      "    },",
+      "  }));",
+      "  process.exit(0);",
+      "}",
+      'if (command === "queue" && subcommand === "close") {',
+      '  console.log(JSON.stringify({ ok: false, error: { message: "close failed" } }));',
+      "  process.exit(3);",
+      "}",
+      'console.log(JSON.stringify({ ok: false, error: { message: "unknown command" } }));',
+      "process.exit(2);",
       "",
     ].join("\n"),
   );
@@ -169,5 +183,92 @@ describe("createConnectorTools", () => {
         mode: "readonly",
       }),
     ).rejects.toThrow('connector command "queue.close" requires mode=write');
+  });
+
+  it("applies session-scoped connector defaults to argv, global flags, and env", async () => {
+    const root = makeTempDir("connector-tools-root-");
+    const binDir = makeTempDir("connector-tools-bin-");
+    const sessionDir = makeTempDir("connector-tools-session-");
+    writeRepoFixture({
+      root,
+      tool: "aos-queue",
+      permissions: {
+        "queue.list": "readonly",
+      },
+    });
+    writeBinaryFixture({ binDir, tool: "aos-queue" });
+    const sessionStorePath = path.join(sessionDir, "sessions.json");
+    fs.mkdirSync(path.dirname(sessionStorePath), { recursive: true });
+    fs.writeFileSync(
+      sessionStorePath,
+      JSON.stringify(
+        {
+          "agent:main:main": {
+            sessionId: "session-1",
+            updatedAt: Date.now(),
+            connectorSelections: [
+              {
+                tool: "aos-queue",
+                label: "Queue",
+                selectedCommands: ["queue.list"],
+                scope: {
+                  commandDefaults: {
+                    "queue.list": {
+                      positional: ["vip"],
+                      options: { includeClosed: true },
+                      globalOptions: { portalId: "demo-portal" },
+                      env: { CONNECTOR_TEST_ENV: "scoped-default" },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    vi.stubEnv("ARGENT_CONNECTOR_REPOS", root);
+    vi.stubEnv("PATH", binDir);
+
+    const config = {
+      session: {
+        store: sessionStorePath,
+      },
+    } as ArgentConfig;
+
+    const tool = createConnectorTools({
+      config,
+      agentSessionKey: "agent:main:main",
+    }).find((entry) => entry.name === connectorCommandToolName("aos-queue", "queue.list"));
+    expect(tool).toBeDefined();
+
+    const result = await tool!.execute("call-3", {
+      options: { maxResults: 5 },
+    });
+
+    expect(result.details).toMatchObject({
+      ok: true,
+      requested: {
+        positional: ["vip"],
+        options: {
+          includeClosed: true,
+          maxResults: 5,
+        },
+        globalOptions: {
+          portalId: "demo-portal",
+        },
+        env: {
+          CONNECTOR_TEST_ENV: "scoped-default",
+        },
+      },
+      data: {
+        mode: "readonly",
+        preMode: ["--portal-id", "demo-portal"],
+        argv: ["vip", "--include-closed", "--max-results", "5"],
+        envValue: "scoped-default",
+      },
+    });
   });
 });

@@ -9,6 +9,7 @@ import {
   X,
   Play,
   Square,
+  RotateCcw,
   Copy,
   Check,
   Menu,
@@ -770,20 +771,63 @@ const INGEST_OVERLAP_PRESETS: IngestPreset[] = [
 ];
 
 /** Collapsible TTS summary with inline audio player */
-function TTSSummary({ summary, audioUrl }: { summary: string; audioUrl?: string }) {
+function TTSSummary({
+  summary,
+  audioUrl,
+  isSpeaking = false,
+  onStop,
+  onReplay,
+}: {
+  summary: string;
+  audioUrl?: string;
+  isSpeaking?: boolean;
+  onStop?: () => void;
+  onReplay?: (summary: string, audioUrl?: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [playing, setPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const togglePlay = () => {
-    if (!audioRef.current || !audioUrl) return;
-    if (playing) {
-      audioRef.current.pause();
-      setPlaying(false);
-    } else {
-      audioRef.current.play();
-      setPlaying(true);
+  const handleTogglePlayPause = async () => {
+    if (audioUrl && audioRef.current) {
+      if (playing) {
+        audioRef.current.pause();
+        setPlaying(false);
+      } else {
+        await audioRef.current.play();
+      }
+      return;
     }
+
+    if (isSpeaking) {
+      onStop?.();
+    } else {
+      onReplay?.(summary, audioUrl);
+    }
+  };
+
+  const handleReplay = async () => {
+    if (audioUrl && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      await audioRef.current.play();
+      return;
+    }
+
+    onReplay?.(summary, audioUrl);
+  };
+
+  const handleStop = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      try {
+        audioRef.current.currentTime = 0;
+      } catch {
+        // Ignore seek failures from partially loaded media.
+      }
+    }
+    setPlaying(false);
+    onStop?.();
   };
 
   return (
@@ -799,30 +843,53 @@ function TTSSummary({ summary, audioUrl }: { summary: string; audioUrl?: string 
       {expanded && (
         <div className="mt-1.5 pl-1">
           <p className="text-[12px] text-white/60 leading-relaxed whitespace-pre-wrap">{summary}</p>
-          {audioUrl && (
+          {(audioUrl || onReplay || onStop) && (
             <div className="mt-1.5 flex items-center gap-2">
               <button
-                onClick={togglePlay}
+                onClick={() => void handleTogglePlayPause()}
                 className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-[10px] transition-colors"
               >
-                {playing ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                {playing ? "Pause" : "Replay"}
+                {playing || isSpeaking ? (
+                  <Pause className="w-3 h-3" />
+                ) : (
+                  <Play className="w-3 h-3" />
+                )}
+                {playing || isSpeaking ? "Pause" : "Play"}
               </button>
-              <a
-                href={audioUrl}
-                download={`argent-speech-${Date.now()}.mp3`}
+              <button
+                onClick={() => void handleReplay()}
                 className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-[10px] transition-colors"
               >
-                <Download className="w-3 h-3" />
-                Download
-              </a>
-              <audio
-                ref={audioRef}
-                src={audioUrl}
-                preload="none"
-                onEnded={() => setPlaying(false)}
-                onPause={() => setPlaying(false)}
-              />
+                <RotateCcw className="w-3 h-3" />
+                Replay
+              </button>
+              <button
+                onClick={handleStop}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-[10px] transition-colors"
+              >
+                <Square className="w-3 h-3" />
+                Stop
+              </button>
+              {audioUrl && (
+                <>
+                  <a
+                    href={audioUrl}
+                    download="argent-spoken-summary.mp3"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-[10px] transition-colors"
+                  >
+                    <Download className="w-3 h-3" />
+                    Download
+                  </a>
+                  <audio
+                    ref={audioRef}
+                    src={audioUrl}
+                    preload="none"
+                    onPlay={() => setPlaying(true)}
+                    onEnded={() => setPlaying(false)}
+                    onPause={() => setPlaying(false)}
+                  />
+                </>
+              )}
             </div>
           )}
         </div>
@@ -882,6 +949,7 @@ interface ChatPanelProps {
   // TTS interrupt
   isSpeaking?: boolean;
   onStopTTS?: () => void;
+  onReplayTTSSummary?: (summary: string, audioUrl?: string) => void;
   // Agent interrupt
   onInterrupt?: (message: string) => void;
   onSteer?: (message: string, image?: string, attachments?: ChatAttachment[]) => void;
@@ -945,6 +1013,7 @@ export function ChatPanel({
   onVoiceChange,
   isSpeaking = false,
   onStopTTS,
+  onReplayTTSSummary,
   onInterrupt,
   onSteer,
   busyMode = "cue",
@@ -1686,7 +1755,7 @@ export function ChatPanel({
             <h2 className="text-white/90 font-semibold text-lg truncate max-w-[120px] sm:max-w-[220px]">
               {sessionTitle || "Chat"}
             </h2>
-            {onChangeChatAgent && chatAgentOptions.length > 1 && (
+            {onChangeChatAgent && chatAgentOptions.length > 0 && (
               <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1">
                 <span className="text-[10px] uppercase tracking-[0.18em] text-white/35">
                   Chat Agent
@@ -2077,7 +2146,13 @@ export function ChatPanel({
                         </div>
                       )}
                     {msg.role === "assistant" && msg.ttsSummary && (
-                      <TTSSummary summary={msg.ttsSummary} audioUrl={msg.ttsAudioUrl} />
+                      <TTSSummary
+                        summary={msg.ttsSummary}
+                        audioUrl={msg.ttsAudioUrl}
+                        isSpeaking={isSpeaking}
+                        onStop={onStopTTS}
+                        onReplay={onReplayTTSSummary}
+                      />
                     )}
                     {/* Thumbs up/down feedback */}
                     {msg.role === "assistant" && (

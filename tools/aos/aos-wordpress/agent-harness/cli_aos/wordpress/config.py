@@ -29,7 +29,11 @@ def runtime_config() -> dict[str, Any]:
         LEGACY_APPLICATION_PASSWORD_ENV,
     )
     normalized_base_url = base_url.rstrip("/")
-    api_root_url = f"{normalized_base_url}/wp-json" if normalized_base_url else ""
+    if normalized_base_url.endswith("/wp-json"):
+        api_root_url = normalized_base_url
+        normalized_base_url = normalized_base_url[: -len("/wp-json")]
+    else:
+        api_root_url = f"{normalized_base_url}/wp-json" if normalized_base_url else ""
 
     return {
         "base_url": normalized_base_url,

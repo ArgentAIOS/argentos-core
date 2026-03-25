@@ -62,6 +62,11 @@ const SUBSYSTEM_GROUPS: Record<
   string,
   { label: string; color: string; match: (s: string) => boolean }
 > = {
+  kernel: {
+    label: "Kernel",
+    color: "bg-cyan-500/20 text-cyan-300",
+    match: (s) => s === "consciousness-kernel" || s.startsWith("gateway/consciousness-kernel"),
+  },
   agent: {
     label: "Agent",
     color: "bg-purple-500/20 text-purple-400",

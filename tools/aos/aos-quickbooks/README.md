@@ -1,74 +1,65 @@
 # aos-quickbooks
 
-`aos-quickbooks` is a first-pass vendored connector scaffold for QuickBooks.
+Agent-native QuickBooks Online accounting connector.
 
-This directory follows the existing `aos-*` layout:
+## Generated From ArgentOS
 
-- repo-visible connector metadata in `connector.json`
-- Python Click agent harness in `agent-harness/`
-- stable connector contract for `capabilities`, `health`, and `config show`
+- System: QuickBooks Online
+- Category: finance-backoffice
+- Backend: quickbooks-online
+- Target root: /Users/sem/code/argentos-wave2-rollout-20260318/tools/aos
 
-The scaffold is intentionally conservative. It exposes the Wave 2 bookkeeping/accounting surface in metadata and CLI shape, but it does not execute live QuickBooks API calls yet.
+## Commands
 
-## Intended Wave 2 surface
+- `capabilities` (readonly)
+- `health` (readonly)
+- `config show` (readonly)
+- `doctor` (readonly)
+- `company.read` (readonly)
+- `customer.list` (readonly)
+- `customer.search` (readonly)
+- `customer.read` (readonly)
+- `vendor.list` (readonly)
+- `vendor.search` (readonly)
+- `vendor.read` (readonly)
+- `invoice.list` (readonly)
+- `invoice.search` (readonly)
+- `invoice.read` (readonly)
+- `invoice.create_draft` (write)
+- `bill.list` (readonly)
+- `bill.search` (readonly)
+- `bill.read` (readonly)
+- `bill.create_draft` (write)
+- `payment.list` (readonly)
+- `payment.read` (readonly)
+- `account.list` (readonly)
+- `account.read` (readonly)
+- `transaction.list` (readonly)
+- `transaction.read` (readonly)
 
-Resources:
+Write paths remain scaffolded and permission-gated:
 
-- `company`
-- `customer`
-- `invoice`
-- `payment`
-- `bill`
-- `vendor`
-- `account`
-- `report`
+- `invoice.create_draft` (write)
+- `bill.create_draft` (write)
 
-Starter command families:
+## Auth
 
-- company info
-- customer lookup
-- invoice list/read/create/update
-- payment list/read/create
-- bill list/read/create
-- vendor list/read
-- account list
-- bookkeeping reports
+- Kind: oauth-service-key
+- Required: yes
+- Service keys:
+  - QBO_CLIENT_ID
+  - QBO_CLIENT_SECRET
+  - QBO_REFRESH_TOKEN
+  - QBO_REALM_ID
+- Interactive setup:
+- Create an Intuit developer app for QuickBooks Online.
+- Add QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REFRESH_TOKEN, and QBO_REALM_ID in API Keys.
+- Set QBO_API_BASE_URL to `https://sandbox-quickbooks.api.intuit.com` when targeting a sandbox company.
+- Keep company, account, and date-window scope narrow before enabling write actions.
 
-## Auth model
+## Next Steps
 
-The scaffold is wired for a QuickBooks Online OAuth setup.
-
-Expected environment variables:
-
-- `QBO_CLIENT_ID`
-- `QBO_CLIENT_SECRET`
-- `QBO_REFRESH_TOKEN` or `QBO_ACCESS_TOKEN`
-- `QBO_REALM_ID`
-- `AOS_QUICKBOOKS_ACCOUNT` optional account alias
-- `AOS_QUICKBOOKS_ENVIRONMENT` optional, default `sandbox`
-- `AOS_QUICKBOOKS_API_BASE` optional, default `https://quickbooks.api.intuit.com`
-
-## Install
-
-```bash
-cd tools/aos/aos-quickbooks/agent-harness
-python3 -m pip install -e .
-```
-
-## Examples
-
-```bash
-aos-quickbooks --json capabilities
-aos-quickbooks --json health
-aos-quickbooks --json --mode readonly config show
-```
-
-Example stub commands:
-
-```bash
-aos-quickbooks --json --mode readonly company read
-aos-quickbooks --json --mode readonly invoice list --status Open
-aos-quickbooks --json --mode write invoice create --customer-id 123 --amount 99.95
-```
-
-Until the backend bridge is implemented, resource commands return `NOT_IMPLEMENTED` after permission checks.
+1. Create a venv and install with `pip install -e '.[dev]'`.
+2. Run `aos-quickbooks --json doctor` to verify auth and backend readiness.
+3. Use readonly commands for live QuickBooks reads while write paths remain scaffolded.
+4. Add integration tests against QuickBooks Online when sandbox credentials are available.

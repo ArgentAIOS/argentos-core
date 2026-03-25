@@ -23,6 +23,7 @@ import { resolveAgentMainSessionKey } from "../config/sessions.js";
 import { getMemoryAdapter } from "../data/storage-factory.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { normalizeAgentId } from "../routing/session-key.js";
+import { isSisAutonomousSchedulingSuppressed } from "./consciousness-kernel-authority.js";
 import {
   type SisConsolidationContract,
   type SisParseFailureReason,
@@ -45,6 +46,24 @@ const MAX_EPISODES_PER_BATCH = 20; // Don't feed more than 20 at once
 export type SisRunner = {
   stop: () => void;
   updateConfig: (cfg: ArgentConfig) => void;
+  runNow: () => Promise<SisRunResult>;
+  getSnapshot: () => SisRunnerSnapshot;
+};
+
+export type SisRunResult = {
+  status: "ran" | "skipped";
+  reason?: string;
+  patternsFound?: number;
+  lessonsExtractedCount?: number;
+};
+
+export type SisRunnerSnapshot = {
+  enabled: boolean;
+  autonomousSchedulingSuppressed: boolean;
+  intervalMs: number | null;
+  nextDueMs: number | null;
+  running: boolean;
+  lastRunAt: string | null;
 };
 
 interface PatternResult {
@@ -543,6 +562,7 @@ export const __testing = {
   shouldSkipSisConsolidationCheckpoint,
   resetSisConsolidationMetrics,
   getSisConsolidationMetricsSnapshot,
+  isSisAutonomousSchedulingSuppressed,
 } as const;
 
 // ── Single Consolidation Cycle ────────────────────────────────────────────
@@ -552,12 +572,7 @@ let sisRunning = false;
 async function runConsolidationOnce(
   cfg: ArgentConfig,
   toolOutcomes?: ToolOutcome[],
-): Promise<{
-  status: "ran" | "skipped";
-  reason?: string;
-  patternsFound?: number;
-  lessonsExtractedCount?: number;
-}> {
+): Promise<SisRunResult> {
   if (sisRunning) {
     return { status: "skipped", reason: "already-running" };
   }
@@ -955,6 +970,8 @@ export function startSisRunner(opts: { cfg?: ArgentConfig }): SisRunner {
   let timer: NodeJS.Timeout | null = null;
   let stopped = false;
   let initialized = false;
+  let lastRunAt: string | null = null;
+  let nextDueMs: number | null = null;
 
   function resolveIntervalMs(): number {
     const raw = cfg.agents?.defaults?.sis?.every ?? "10m";
@@ -968,6 +985,17 @@ export function startSisRunner(opts: { cfg?: ArgentConfig }): SisRunner {
     );
   }
 
+  function getSnapshot(): SisRunnerSnapshot {
+    return {
+      enabled: isEnabled(),
+      autonomousSchedulingSuppressed: isSisAutonomousSchedulingSuppressed(cfg),
+      intervalMs: isEnabled() ? resolveIntervalMs() : null,
+      nextDueMs,
+      running: sisRunning,
+      lastRunAt,
+    };
+  }
+
   function scheduleNext() {
     if (stopped) return;
     if (timer) {
@@ -976,6 +1004,7 @@ export function startSisRunner(opts: { cfg?: ArgentConfig }): SisRunner {
     }
 
     if (!isEnabled()) {
+      nextDueMs = null;
       if (initialized) {
         log.info("sis: disabled (contemplation not enabled)");
       }
@@ -983,6 +1012,16 @@ export function startSisRunner(opts: { cfg?: ArgentConfig }): SisRunner {
     }
 
     const intervalMs = resolveIntervalMs();
+    nextDueMs = Date.now() + intervalMs;
+    if (isSisAutonomousSchedulingSuppressed(cfg)) {
+      if (!initialized) {
+        log.info("sis: autonomous scheduling suppressed by consciousness kernel shadow authority", {
+          intervalMs,
+        });
+        initialized = true;
+      }
+      return;
+    }
     timer = setTimeout(runCycle, intervalMs);
     timer.unref?.();
 
@@ -1000,6 +1039,9 @@ export function startSisRunner(opts: { cfg?: ArgentConfig }): SisRunner {
 
     const result = await runConsolidationOnce(cfg);
     if (result.status === "ran") {
+      lastRunAt = new Date().toISOString();
+    }
+    if (result.status === "ran") {
       log.info("sis: cycle result", { patternsFound: result.patternsFound });
     } else if (result.reason !== "already-running") {
       log.debug("sis: skipped", { reason: result.reason });
@@ -1016,13 +1058,26 @@ export function startSisRunner(opts: { cfg?: ArgentConfig }): SisRunner {
 
   const stop = () => {
     stopped = true;
+    nextDueMs = null;
     if (timer) {
       clearTimeout(timer);
       timer = null;
     }
   };
 
+  const runNow = async (): Promise<SisRunResult> => {
+    if (stopped) {
+      return { status: "skipped", reason: "runner-stopped" };
+    }
+    const result = await runConsolidationOnce(cfg);
+    if (result.status === "ran") {
+      lastRunAt = new Date().toISOString();
+    }
+    scheduleNext();
+    return result;
+  };
+
   scheduleNext();
 
-  return { stop, updateConfig };
+  return { stop, updateConfig, runNow, getSnapshot };
 }

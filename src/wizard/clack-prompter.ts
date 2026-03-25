@@ -9,6 +9,7 @@ import {
   select,
   spinner,
   text,
+  updateSettings,
 } from "@clack/prompts";
 import type { WizardProgress, WizardPrompter } from "./prompts.js";
 import { createCliProgress } from "../cli/progress.js";
@@ -25,7 +26,25 @@ function guardCancel<T>(value: T | symbol): T {
   return value;
 }
 
+let clackAliasesConfigured = false;
+
+function ensureClackAliases() {
+  if (clackAliasesConfigured) {
+    return;
+  }
+  updateSettings({
+    aliases: {
+      y: "right",
+      Y: "right",
+      n: "left",
+      N: "left",
+    },
+  });
+  clackAliasesConfigured = true;
+}
+
 export function createClackPrompter(): WizardPrompter {
+  ensureClackAliases();
   return {
     intro: async (title) => {
       intro(stylePromptTitle(title) ?? title);

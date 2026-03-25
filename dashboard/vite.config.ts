@@ -86,6 +86,10 @@ export default defineConfig({
           }
         },
       },
+      "/live2d-assets": {
+        target: "http://localhost:9242",
+        changeOrigin: true,
+      },
     },
   },
 });

@@ -12,6 +12,18 @@ describe("buildAuthChoiceOptions", () => {
 
     expect(options.find((opt) => opt.value === "github-copilot")).toBeDefined();
   });
+
+  it("includes local runtime choices", () => {
+    const store: AuthProfileStore = { version: 1, profiles: {} };
+    const options = buildAuthChoiceOptions({
+      store,
+      includeSkip: false,
+    });
+
+    expect(options.some((opt) => opt.value === "lmstudio")).toBe(true);
+    expect(options.some((opt) => opt.value === "ollama")).toBe(true);
+  });
+
   it("includes setup-token option for Anthropic", () => {
     const store: AuthProfileStore = { version: 1, profiles: {} };
     const options = buildAuthChoiceOptions({
@@ -59,8 +71,10 @@ describe("buildAuthChoiceOptions", () => {
       includeSkip: false,
     });
 
+    expect(options.some((opt) => opt.value === "minimax-api-m27")).toBe(true);
+    expect(options.some((opt) => opt.value === "minimax-api-m27-highspeed")).toBe(true);
     expect(options.some((opt) => opt.value === "minimax-api")).toBe(true);
-    expect(options.some((opt) => opt.value === "minimax-api-lightning")).toBe(true);
+    expect(options.some((opt) => opt.value === "minimax-api-lightning")).toBe(false);
   });
 
   it("includes Moonshot auth choice", () => {

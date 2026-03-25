@@ -47,6 +47,10 @@ export class AEVPRenderer {
   // Uniforms
   private ambientUniforms: UniformManager;
   private bloomUniforms: UniformManager;
+  private particleUniforms: {
+    presenceOffset: WebGLUniformLocation | null;
+    presenceScale: WebGLUniformLocation | null;
+  };
 
   // Geometry
   private quadVAO: WebGLVertexArrayObject;
@@ -67,6 +71,8 @@ export class AEVPRenderer {
   private lastFrameTime: number = 0;
   private contextLost: boolean = false;
   private orbCenter: [number, number] = [0.5, 0.65];
+  private presenceOffsetPx: [number, number] = [0, 0];
+  private presenceScale: number = 1;
 
   // Phase 3: lerped state transitions
   private targetState: AEVPRenderState | null = null;
@@ -109,6 +115,7 @@ export class AEVPRenderer {
     this.bloomProgram = null!;
     this.ambientUniforms = null!;
     this.bloomUniforms = null!;
+    this.particleUniforms = { presenceOffset: null, presenceScale: null };
     this.quadVAO = null!;
     this.particleVAO = null!;
     this.particleVBO = null!;
@@ -169,6 +176,12 @@ export class AEVPRenderer {
     this.orbCenter = [clamp(x), clamp(y)];
   }
 
+  /** Move/scale orb + particle composition without moving the background field. */
+  setPresenceTransform(offsetXPx: number, offsetYPx: number, scale: number): void {
+    this.presenceOffsetPx = [offsetXPx, offsetYPx];
+    this.presenceScale = Math.max(0.25, scale);
+  }
+
   /** Trigger temporary particle text/glyph formation mode. */
   requestFormation(request: ParticleFormationRequest): void {
     this.particles.startFormation(request);
@@ -219,6 +232,10 @@ export class AEVPRenderer {
     // Uniform managers
     this.ambientUniforms = new UniformManager(gl, this.ambientProgram);
     this.bloomUniforms = new UniformManager(gl, this.bloomProgram);
+    this.particleUniforms = {
+      presenceOffset: gl.getUniformLocation(this.particleProgram, "u_presenceOffset"),
+      presenceScale: gl.getUniformLocation(this.particleProgram, "u_presenceScale"),
+    };
 
     // Fullscreen quad
     this.quadVAO = createFullscreenQuad(gl);
@@ -346,6 +363,8 @@ export class AEVPRenderer {
     au.float("u_formExpansion", state.formExpansion);
     au.float("u_pulseIntensity", state.pulseIntensity);
     au.vec2("u_orbCenter", this.orbCenter[0], this.orbCenter[1]);
+    au.vec2("u_presenceOffset", this.presenceOffsetPx[0] / w, this.presenceOffsetPx[1] / h);
+    au.float("u_presenceScale", this.presenceScale);
     au.float("u_squash", state.squash);
     au.float("u_wobble", state.wobble);
     au.float("u_speechAmplitude", state.speechAmplitude);
@@ -364,6 +383,10 @@ export class AEVPRenderer {
       }
 
       gl.useProgram(this.particleProgram);
+      const particleOffsetX = (this.presenceOffsetPx[0] / w) * 2.0;
+      const particleOffsetY = -(this.presenceOffsetPx[1] / h) * 2.0;
+      gl.uniform2f(this.particleUniforms.presenceOffset, particleOffsetX, particleOffsetY);
+      gl.uniform1f(this.particleUniforms.presenceScale, this.presenceScale);
 
       // Upload particle data
       const data = this.particles.getBufferData();

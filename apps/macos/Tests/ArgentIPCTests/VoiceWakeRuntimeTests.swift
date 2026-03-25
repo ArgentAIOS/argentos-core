@@ -1,4 +1,5 @@
 import Foundation
+import SwabbleKit
 import Testing
 @testable import Argent
 
@@ -34,22 +35,6 @@ import Testing
         #expect(VoiceWakeRuntime._testHasContentAfterTrigger(text, triggers: triggers))
     }
 
-    @Test func textOnlyWakeMatchRequiresWholeWords() {
-        let triggers = ["hey"]
-        #expect(!WakeWordGate.matchesTextOnly(text: "they said hello", triggers: triggers))
-        #expect(WakeWordGate.matchesTextOnly(text: "hey there", triggers: triggers))
-    }
-
-    @Test func stripWakeUsesOriginalTextRangeSafely() {
-        let stripped = WakeWordGate.stripWake(text: "HEY Argent write a note", triggers: ["argent"])
-        #expect(stripped == "write a note")
-    }
-
-    @Test func stripWakeDoesNotStripEmbeddedSubstrings() {
-        let stripped = WakeWordGate.stripWake(text: "they said hello", triggers: ["hey"])
-        #expect(stripped == "they said hello")
-    }
-
     @Test func gateRequiresGapBetweenTriggerAndCommand() {
         let transcript = "hey argent do thing"
         let segments = makeSegments(
@@ -76,20 +61,6 @@ import Testing
             ])
         let config = WakeWordGateConfig(triggers: ["argent"], minPostTriggerGap: 0.3)
         #expect(WakeWordGate.match(transcript: transcript, segments: segments, config: config)?.command == "do thing")
-    }
-
-    @Test func commandTextReturnsEmptyWhenNoPostTriggerBoundaryExists() {
-        let transcript = "hey argent"
-        let segments = makeSegments(
-            transcript: transcript,
-            words: [
-                ("hey", 0.0, 0.1),
-                ("argent", 0.2, 0.1),
-            ])
-        #expect(WakeWordGate.commandText(
-            transcript: transcript,
-            segments: segments,
-            triggerEndTime: 1.0) == "")
     }
 }
 

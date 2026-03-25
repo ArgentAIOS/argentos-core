@@ -183,6 +183,23 @@ export const SisSchema = z
   })
   .optional();
 
+export const ConsciousnessKernelSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    mode: z
+      .union([z.literal("off"), z.literal("shadow"), z.literal("soft"), z.literal("full")])
+      .optional(),
+    localModel: z.string().optional(),
+    tickMs: z.number().int().min(1000).optional(),
+    maxEscalationsPerHour: z.number().int().positive().optional(),
+    dailyBudget: z.number().nonnegative().optional(),
+    hardwareHostRequired: z.boolean().optional(),
+    allowListening: z.boolean().optional(),
+    allowVision: z.boolean().optional(),
+  })
+  .strict()
+  .optional();
+
 export const SandboxDockerSchema = z
   .object({
     image: z.string().optional(),
@@ -425,6 +442,7 @@ export const MemorySearchSchema = z
         z.literal("local"),
         z.literal("gemini"),
         z.literal("ollama"),
+        z.literal("lmstudio"),
         z.literal("auto"),
       ])
       .optional(),
@@ -451,6 +469,7 @@ export const MemorySearchSchema = z
         z.literal("openai"),
         z.literal("gemini"),
         z.literal("ollama"),
+        z.literal("lmstudio"),
         z.literal("local"),
         z.literal("none"),
       ])

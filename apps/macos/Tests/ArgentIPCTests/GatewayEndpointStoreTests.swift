@@ -13,19 +13,18 @@ import Testing
     @Test func resolveGatewayTokenPrefersEnvAndFallsBackToLaunchd() {
         let snapshot = LaunchAgentPlistSnapshot(
             programArguments: [],
-            environment: ["ARGENT_GATEWAY_TOKEN": "launchd-token"],
+            environment: ["OPENCLAW_GATEWAY_TOKEN": "launchd-token"],
             stdoutPath: nil,
             stderrPath: nil,
             port: nil,
             bind: nil,
             token: "launchd-token",
-            password: nil,
-            dashboardApiToken: nil)
+            password: nil)
 
         let envToken = GatewayEndpointStore._testResolveGatewayToken(
             isRemote: false,
             root: [:],
-            env: ["ARGENT_GATEWAY_TOKEN": "env-token"],
+            env: ["OPENCLAW_GATEWAY_TOKEN": "env-token"],
             launchdSnapshot: snapshot)
         #expect(envToken == "env-token")
 
@@ -40,14 +39,13 @@ import Testing
     @Test func resolveGatewayTokenIgnoresLaunchdInRemoteMode() {
         let snapshot = LaunchAgentPlistSnapshot(
             programArguments: [],
-            environment: ["ARGENT_GATEWAY_TOKEN": "launchd-token"],
+            environment: ["OPENCLAW_GATEWAY_TOKEN": "launchd-token"],
             stdoutPath: nil,
             stderrPath: nil,
             port: nil,
             bind: nil,
             token: "launchd-token",
-            password: nil,
-            dashboardApiToken: nil)
+            password: nil)
 
         let token = GatewayEndpointStore._testResolveGatewayToken(
             isRemote: true,
@@ -60,14 +58,13 @@ import Testing
     @Test func resolveGatewayPasswordFallsBackToLaunchd() {
         let snapshot = LaunchAgentPlistSnapshot(
             programArguments: [],
-            environment: ["ARGENT_GATEWAY_PASSWORD": "launchd-pass"],
+            environment: ["OPENCLAW_GATEWAY_PASSWORD": "launchd-pass"],
             stdoutPath: nil,
             stderrPath: nil,
             port: nil,
             bind: nil,
             token: nil,
-            password: "launchd-pass",
-            dashboardApiToken: nil)
+            password: "launchd-pass")
 
         let password = GatewayEndpointStore._testResolveGatewayPassword(
             isRemote: false,
@@ -183,44 +180,5 @@ import Testing
         let url = GatewayRemoteConfig.normalizeGatewayUrl("ws://gateway")
         #expect(url?.port == 18789)
         #expect(url?.absoluteString == "ws://gateway:18789")
-    }
-
-    @Test func dashboardURLIncludesLocalDashboardApiTokenWhenAvailable() throws {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let launchAgents = home.appendingPathComponent("Library/LaunchAgents", isDirectory: true)
-        try FileManager.default.createDirectory(at: launchAgents, withIntermediateDirectories: true)
-        let plistURL = launchAgents.appendingPathComponent("\(gatewayLaunchdLabel).plist")
-        let backupURL = plistURL.appendingPathExtension("bak-\(UUID().uuidString)")
-        let hadOriginal = FileManager.default.fileExists(atPath: plistURL.path)
-        if hadOriginal {
-            try FileManager.default.copyItem(at: plistURL, to: backupURL)
-        }
-        defer {
-            try? FileManager.default.removeItem(at: plistURL)
-            if hadOriginal {
-                try? FileManager.default.copyItem(at: backupURL, to: plistURL)
-                try? FileManager.default.removeItem(at: backupURL)
-            }
-        }
-
-        let plist: [String: Any] = [
-            "ProgramArguments": ["/usr/bin/env", "node", "gateway", "--port", "18789"],
-            "EnvironmentVariables": [
-                "ARGENT_GATEWAY_TOKEN": "gateway-token",
-                "DASHBOARD_API_TOKEN": "dashboard-token",
-            ],
-        ]
-        let data = try PropertyListSerialization.data(
-            fromPropertyList: plist,
-            format: .xml,
-            options: 0)
-        try data.write(to: plistURL)
-
-        let url = try GatewayEndpointStore.dashboardURL(
-            for: (url: URL(string: "ws://127.0.0.1:18789")!, token: "gateway-token", password: nil))
-        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
-        let items = components.queryItems ?? []
-        #expect(items.contains(URLQueryItem(name: "token", value: "gateway-token")))
-        #expect(items.contains(URLQueryItem(name: "api_token", value: "dashboard-token")))
     }
 }

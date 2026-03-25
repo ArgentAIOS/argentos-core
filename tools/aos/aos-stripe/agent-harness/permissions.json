@@ -1,0 +1,21 @@
+{
+  "tool": "aos-stripe",
+  "backend": "stripe",
+  "permissions": {
+    "account.read": "readonly",
+    "capabilities": "readonly",
+    "health": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly",
+    "balance.read": "readonly",
+    "customer.list": "readonly",
+    "customer.search": "readonly",
+    "customer.read": "readonly",
+    "payment.list": "readonly",
+    "payment.read": "readonly",
+    "invoice.list": "readonly",
+    "invoice.read": "readonly",
+    "invoice.create_draft": "write",
+    "refund.create": "full"
+  }
+}

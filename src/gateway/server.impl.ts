@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 import path from "node:path";
 import type { CanvasHostServer } from "../canvas-host/server.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
@@ -33,6 +32,7 @@ import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import { initRedisAgentState } from "../data/redis-agent-state.js";
 import { getRedisClient } from "../data/redis-client.js";
 import { clearAgentRunContext, onAgentEvent } from "../infra/agent-events.js";
+import { startConsciousnessKernel } from "../infra/consciousness-kernel.js";
 import { startContemplationRunner, setEpisodeBroadcast } from "../infra/contemplation-runner.js";
 import {
   ensureControlUiAssetsBuilt,
@@ -41,9 +41,12 @@ import {
 } from "../infra/control-ui-assets.js";
 import { isDiagnosticsEnabled } from "../infra/diagnostic-events.js";
 import { logAcceptedEnvOption } from "../infra/env.js";
+import { createExecApprovalForwarder } from "../infra/exec-approval-forwarder.js";
+import { startExecutionWorkerRunner } from "../infra/execution-worker-runner.js";
 import { onHeartbeatEvent } from "../infra/heartbeat-events.js";
 import { startHeartbeatRunner } from "../infra/heartbeat-runner.js";
 import { startJobOrchestratorRunner } from "../infra/job-orchestrator-runner.js";
+import { startKnowledgeObservationRunner } from "../infra/knowledge-observation-runner.js";
 import { getMachineDisplayName } from "../infra/machine-name.js";
 import { ensureArgentCliOnPath } from "../infra/path-env.js";
 import { setGatewaySigusr1RestartPolicy } from "../infra/restart.js";
@@ -131,133 +134,6 @@ const logRelay = log.child("relay");
 const logWsControl = log.child("ws");
 const gatewayRuntime = runtimeForLogger(log);
 const canvasRuntime = runtimeForLogger(logCanvas);
-const requireModule = createRequire(import.meta.url);
-
-type ExecutionWorkerRunnerLike = {
-  stop: () => void;
-  updateConfig: (cfg: import("../config/config.js").ArgentConfig) => void;
-  getStatus: (opts?: { agentId?: string }) => {
-    enabled: boolean;
-    globalPaused: boolean;
-    agentCount: number;
-    agents: unknown[];
-  };
-  dispatchNow: (opts?: { agentId?: string; reason?: string }) => {
-    ok: boolean;
-    scope: "global" | "agent";
-    agentId?: string;
-    dispatched: number;
-    paused: boolean;
-    running: boolean;
-    reason?: string;
-  };
-  pause: (opts?: { agentId?: string }) => {
-    ok: boolean;
-    scope: "global" | "agent";
-    agentId?: string;
-    paused: boolean;
-  };
-  resume: (opts?: { agentId?: string }) => {
-    ok: boolean;
-    scope: "global" | "agent";
-    agentId?: string;
-    paused: boolean;
-  };
-  resetMetrics: (opts?: { agentId?: string }) => {
-    ok: boolean;
-    scope: "global" | "agent";
-    agentId?: string;
-    resetCount: number;
-  };
-};
-
-type ExecApprovalForwarderLike = {
-  handleRequested: (request: unknown) => Promise<void>;
-  handleResolved: (resolved: unknown) => Promise<void>;
-  stop: () => void;
-};
-
-function isMissingModuleError(error: unknown, specifier: string): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  const message = error.message || "";
-  return (
-    message.includes(`Cannot find module '${specifier}'`) ||
-    message.includes(`Cannot find module "${specifier}"`) ||
-    message.includes(`Cannot find package '${specifier}'`) ||
-    message.includes(`Cannot find package "${specifier}"`) ||
-    message.includes(specifier)
-  );
-}
-
-function loadOptionalGatewayExport<T>(specifier: string, exportName: string): T | null {
-  try {
-    const mod = requireModule(specifier) as Record<string, unknown>;
-    const candidate = mod[exportName];
-    return typeof candidate === "function" ? (candidate as T) : null;
-  } catch (error) {
-    if (isMissingModuleError(error, specifier)) {
-      return null;
-    }
-    throw error;
-  }
-}
-
-const startExecutionWorkerRunnerOptional = loadOptionalGatewayExport<
-  (params: { cfg: import("../config/config.js").ArgentConfig }) => ExecutionWorkerRunnerLike
->("../infra/execution-worker-runner.js", "startExecutionWorkerRunner");
-const createExecApprovalForwarderOptional = loadOptionalGatewayExport<
-  () => ExecApprovalForwarderLike
->("../infra/exec-approval-forwarder.js", "createExecApprovalForwarder");
-
-function createNoopExecutionWorkerRunner(): ExecutionWorkerRunnerLike {
-  return {
-    stop: () => {},
-    updateConfig: () => {},
-    getStatus: () => ({
-      enabled: false,
-      globalPaused: false,
-      agentCount: 0,
-      agents: [],
-    }),
-    dispatchNow: (opts) => ({
-      ok: false,
-      scope: opts?.agentId ? "agent" : "global",
-      agentId: opts?.agentId,
-      dispatched: 0,
-      paused: false,
-      running: false,
-      reason: "execution worker unavailable",
-    }),
-    pause: (opts) => ({
-      ok: false,
-      scope: opts?.agentId ? "agent" : "global",
-      agentId: opts?.agentId,
-      paused: false,
-    }),
-    resume: (opts) => ({
-      ok: false,
-      scope: opts?.agentId ? "agent" : "global",
-      agentId: opts?.agentId,
-      paused: false,
-    }),
-    resetMetrics: (opts) => ({
-      ok: false,
-      scope: opts?.agentId ? "agent" : "global",
-      agentId: opts?.agentId,
-      resetCount: 0,
-    }),
-  };
-}
-
-function createNoopExecApprovalForwarder(): ExecApprovalForwarderLike {
-  return {
-    handleRequested: async () => {},
-    handleResolved: async () => {},
-    stop: () => {},
-  };
-}
 
 function createAuthProfileStatusResolver(
   cfg: import("../config/config.js").ArgentConfig,
@@ -720,22 +596,32 @@ export async function startGatewayServer(
 
   let heartbeatRunner = startHeartbeatRunner({ cfg: cfgAtStart });
   let contemplationRunner = startContemplationRunner({ cfg: cfgAtStart });
-  let executionWorkerRunner = startExecutionWorkerRunnerOptional
-    ? startExecutionWorkerRunnerOptional({ cfg: cfgAtStart })
-    : createNoopExecutionWorkerRunner();
-  if (!startExecutionWorkerRunnerOptional) {
-    log.info("execution worker runner unavailable in this build; using no-op stub");
-  }
+  let executionWorkerRunner = startExecutionWorkerRunner({ cfg: cfgAtStart });
   let jobOrchestratorRunner = startJobOrchestratorRunner({
     cfg: cfgAtStart,
     executionWorkerRunner,
   });
   let sisRunner = startSisRunner({ cfg: cfgAtStart });
+  let knowledgeObservationRunner = startKnowledgeObservationRunner({ cfg: cfgAtStart });
+  let consciousnessKernelRunner = startConsciousnessKernel({
+    cfg: cfgAtStart,
+    schedulerHooks: {
+      contemplation: {
+        getSnapshot: () => contemplationRunner.getSnapshot(),
+        runNow: (agentId?: string) => contemplationRunner.runNow(agentId),
+      },
+      sis: {
+        getSnapshot: () => sisRunner.getSnapshot(),
+        runNow: () => sisRunner.runNow(),
+      },
+    },
+  });
 
   // Start periodic health checks (zombie reaper, Ollama ping, disk space, auth status)
   const healthCheckInterval = startHealthCheckTimer({
     broadcast,
     getAuthProfileStatus: createAuthProfileStatusResolver(cfgAtStart),
+    getConfig: () => loadConfig(),
   });
 
   // Agent state broadcaster — tracks processing/idle transitions for dashboard
@@ -752,12 +638,7 @@ export async function startGatewayServer(
   void cron.start().catch((err) => logCron.error(`failed to start: ${String(err)}`));
 
   const execApprovalManager = new ExecApprovalManager();
-  const execApprovalForwarder = createExecApprovalForwarderOptional
-    ? createExecApprovalForwarderOptional()
-    : createNoopExecApprovalForwarder();
-  if (!createExecApprovalForwarderOptional) {
-    log.info("exec approval forwarder unavailable in this build; using no-op stub");
-  }
+  const execApprovalForwarder = createExecApprovalForwarder();
   const execApprovalHandlers = createExecApprovalHandlers(execApprovalManager, {
     forwarder: execApprovalForwarder,
   });
@@ -884,6 +765,7 @@ export async function startGatewayServer(
   const { applyHotReload, requestGatewayRestart } = createGatewayReloadHandlers({
     deps,
     broadcast,
+    nodeSendToSession,
     getState: () => ({
       hooksConfig,
       heartbeatRunner,
@@ -891,6 +773,8 @@ export async function startGatewayServer(
       executionWorkerRunner,
       jobOrchestratorRunner,
       sisRunner,
+      knowledgeObservationRunner,
+      consciousnessKernelRunner,
       cronState,
       browserControl,
     }),
@@ -901,6 +785,8 @@ export async function startGatewayServer(
       executionWorkerRunner = nextState.executionWorkerRunner;
       jobOrchestratorRunner = nextState.jobOrchestratorRunner;
       sisRunner = nextState.sisRunner;
+      knowledgeObservationRunner = nextState.knowledgeObservationRunner;
+      consciousnessKernelRunner = nextState.consciousnessKernelRunner;
       cronState = nextState.cronState;
       cron = cronState.cron;
       cronStorePath = cronState.storePath;
@@ -941,6 +827,8 @@ export async function startGatewayServer(
     executionWorkerRunner,
     jobOrchestratorRunner,
     sisRunner,
+    knowledgeObservationRunner,
+    consciousnessKernelRunner,
     healthCheckInterval,
     nodePresenceTimers,
     broadcast,

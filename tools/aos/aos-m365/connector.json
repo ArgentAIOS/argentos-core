@@ -1,0 +1,174 @@
+{
+  "backend": "microsoft-graph",
+  "connector": {
+    "label": "Microsoft 365",
+    "category": "productivity-suite",
+    "categories": ["productivity-suite", "inbox", "calendar", "files-docs"],
+    "resources": ["mail", "calendar", "file", "excel", "teams"]
+  },
+  "auth": {
+    "kind": "oauth-service-key",
+    "required": true,
+    "service_keys": ["M365_TENANT_ID", "M365_CLIENT_ID", "M365_CLIENT_SECRET"],
+    "interactive_setup": [
+      "Register an application in Microsoft Entra ID.",
+      "Grant Microsoft Graph permissions for mail, calendar, files, Excel, and Teams as needed.",
+      "Add M365_TENANT_ID, M365_CLIENT_ID, and M365_CLIENT_SECRET in API Keys.",
+      "Use the live Teams and Excel picker commands to choose team, channel, workbook, worksheet, and range scope before going live."
+    ]
+  },
+  "commands": [
+    {
+      "id": "health",
+      "summary": "Report connector health and backend readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "mail.search",
+      "summary": "Search Outlook mail in Microsoft Graph",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "mail",
+      "action_class": "read"
+    },
+    {
+      "id": "mail.read",
+      "summary": "Read an Outlook message from Microsoft Graph",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "mail",
+      "action_class": "read"
+    },
+    {
+      "id": "mail.reply",
+      "summary": "Reply to an Outlook message",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "mail",
+      "action_class": "write"
+    },
+    {
+      "id": "mail.send",
+      "summary": "Send a new Outlook message",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "mail",
+      "action_class": "write"
+    },
+    {
+      "id": "calendar.list",
+      "summary": "List calendar events from Microsoft Graph",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "calendar",
+      "action_class": "read"
+    },
+    {
+      "id": "calendar.create",
+      "summary": "Create a calendar event",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "calendar",
+      "action_class": "write"
+    },
+    {
+      "id": "file.list",
+      "summary": "List OneDrive or SharePoint files from Microsoft Graph",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "file",
+      "action_class": "read"
+    },
+    {
+      "id": "excel.list_workbooks",
+      "summary": "List workbook candidates from OneDrive or SharePoint",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "excel",
+      "action_class": "read"
+    },
+    {
+      "id": "excel.list_worksheets",
+      "summary": "List worksheets for a workbook",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "excel",
+      "action_class": "read"
+    },
+    {
+      "id": "excel.used_range",
+      "summary": "Read the used range for a worksheet",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "excel",
+      "action_class": "read"
+    },
+    {
+      "id": "excel.read_rows",
+      "summary": "Read Excel rows when workbook context is configured",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "excel",
+      "action_class": "read"
+    },
+    {
+      "id": "excel.append_rows",
+      "summary": "Append Excel rows",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "excel",
+      "action_class": "write"
+    },
+    {
+      "id": "teams.list_messages",
+      "summary": "List Teams channel messages when channel context is configured",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "teams",
+      "action_class": "read"
+    },
+    {
+      "id": "teams.list_teams",
+      "summary": "List Teams teams available to the configured target user",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "teams",
+      "action_class": "read"
+    },
+    {
+      "id": "teams.list_channels",
+      "summary": "List channels for a Teams team",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "teams",
+      "action_class": "read"
+    },
+    {
+      "id": "teams.reply_message",
+      "summary": "Reply to a Teams message",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "teams",
+      "action_class": "write"
+    }
+  ]
+}

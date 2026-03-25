@@ -1,0 +1,18 @@
+{
+  "tool": "aos-monday",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly",
+    "account.read": "readonly",
+    "workspace.list": "readonly",
+    "board.list": "readonly",
+    "board.read": "readonly",
+    "item.read": "readonly",
+    "update.list": "readonly",
+    "item.create": "write",
+    "item.update": "write",
+    "update.create": "write"
+  }
+}

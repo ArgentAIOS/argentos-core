@@ -1,5 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import type { AnyAgentTool } from "../agents/tools/common.js";
+import type { ArgentConfig } from "../config/config.js";
 import {
   jsonResult,
   readNumberParam,
@@ -11,6 +12,7 @@ import {
   discoverConnectorRuntimeCatalogSync,
   runConnectorCommandJson,
 } from "./catalog.js";
+import { resolveSessionConnectorCommandDefaults } from "./session.js";
 
 const CONNECTOR_MODE_RANK = new Map<string, number>([
   ["readonly", 0],
@@ -107,7 +109,23 @@ function appendOptionArgs(argv: string[], options: Record<string, unknown>) {
   }
 }
 
-export function createConnectorTools(): AnyAgentTool[] {
+function mergeOptionRecords(
+  defaults: Record<string, unknown> | undefined,
+  explicit: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!defaults || Object.keys(defaults).length === 0) {
+    return explicit;
+  }
+  return {
+    ...defaults,
+    ...explicit,
+  };
+}
+
+export function createConnectorTools(options?: {
+  config?: ArgentConfig;
+  agentSessionKey?: string;
+}): AnyAgentTool[] {
   const catalog = discoverConnectorRuntimeCatalogSync();
   const tools: AnyAgentTool[] = [];
   const existingNames = new Set<string>();
@@ -147,8 +165,15 @@ export function createConnectorTools(): AnyAgentTool[] {
         parameters: ConnectorToolSchema,
         execute: async (_toolCallId, rawArgs) => {
           const params = rawArgs as Record<string, unknown>;
-          const positional = readStringArrayParam(params, "positional") ?? [];
-          const passthrough = readStringArrayParam(params, "args") ?? [];
+          const sessionDefaults = resolveSessionConnectorCommandDefaults({
+            config: options?.config,
+            sessionKey: options?.agentSessionKey,
+            connectorTool: connector.tool,
+            commandId: command.id,
+          });
+          const positional =
+            readStringArrayParam(params, "positional") ?? sessionDefaults?.positional ?? [];
+          const passthrough = readStringArrayParam(params, "args") ?? sessionDefaults?.args ?? [];
           const timeoutMs = Math.max(
             500,
             Math.min(60_000, readNumberParam(params, "timeout_ms") ?? 15_000),
@@ -157,14 +182,17 @@ export function createConnectorTools(): AnyAgentTool[] {
             params.options && typeof params.options === "object" && !Array.isArray(params.options)
               ? (params.options as Record<string, unknown>)
               : {};
-          const argv = [
-            "--json",
+          const mergedGlobalOptions = mergeOptionRecords(sessionDefaults?.globalOptions, {});
+          const mergedOptions = mergeOptionRecords(sessionDefaults?.options, optionsRaw);
+          const argv = ["--json"];
+          appendOptionArgs(argv, mergedGlobalOptions);
+          argv.push(
             "--mode",
             resolveCommandMode(command, readStringParam(params, "mode")),
             ...commandSegments,
             ...positional,
-          ];
-          appendOptionArgs(argv, optionsRaw);
+          );
+          appendOptionArgs(argv, mergedOptions);
           argv.push(...passthrough);
 
           const result = await runConnectorCommandJson({
@@ -172,6 +200,7 @@ export function createConnectorTools(): AnyAgentTool[] {
             args: argv,
             cwd: connector.discovery.harnessDir,
             timeoutMs,
+            env: sessionDefaults?.env,
           });
 
           return jsonResult({
@@ -184,8 +213,10 @@ export function createConnectorTools(): AnyAgentTool[] {
             requested: {
               argv,
               positional,
-              options: optionsRaw,
+              options: mergedOptions,
+              globalOptions: mergedGlobalOptions,
               args: passthrough,
+              env: sessionDefaults?.env,
             },
             ...(result.ok
               ? {

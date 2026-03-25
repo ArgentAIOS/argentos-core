@@ -1,3 +1,4 @@
+import type { KnowledgeObservationKind } from "../memory/memu-types.js";
 import type { SessionSendPolicyConfig } from "./types.base.js";
 
 export type MemoryBackend = "builtin" | "qmd";
@@ -8,9 +9,37 @@ export type MemoryConfig = {
   backend?: MemoryBackend;
   citations?: MemoryCitationsMode;
   memu?: MemoryMemuConfig;
+  observations?: MemoryObservationsConfig;
   qmd?: MemoryQmdConfig;
   vault?: MemoryVaultConfig;
   cognee?: MemoryCogneeConfig;
+};
+
+export type MemoryObservationsConfig = {
+  enabled?: boolean;
+  consolidation?: MemoryObservationsConsolidationConfig;
+  retrieval?: MemoryObservationsRetrievalConfig;
+  revalidation?: MemoryObservationsRevalidationConfig;
+};
+
+export type MemoryObservationsConsolidationConfig = {
+  enabled?: boolean;
+  debounceMs?: number;
+  interval?: string;
+  maxScopesPerRun?: number;
+};
+
+export type MemoryObservationsRetrievalConfig = {
+  enabled?: boolean;
+  maxResults?: number;
+  minConfidence?: number;
+  minFreshness?: number;
+};
+
+export type MemoryObservationsRevalidationConfig = {
+  enabled?: boolean;
+  interval?: string;
+  kindDays?: Partial<Record<KnowledgeObservationKind, number>>;
 };
 
 export type MemoryMemuConfig = {

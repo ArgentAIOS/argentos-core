@@ -257,6 +257,187 @@ export interface CreateLessonInput {
   agentId?: string;
 }
 
+// ── Knowledge Observations ──
+
+export type KnowledgeObservationKind =
+  | "operator_preference"
+  | "project_state"
+  | "world_fact"
+  | "self_model"
+  | "relationship_fact"
+  | "tooling_state";
+
+export const KNOWLEDGE_OBSERVATION_KINDS: readonly KnowledgeObservationKind[] = [
+  "operator_preference",
+  "project_state",
+  "world_fact",
+  "self_model",
+  "relationship_fact",
+  "tooling_state",
+] as const;
+
+export type KnowledgeObservationSubjectType = "entity" | "project" | "tool" | "agent" | "global";
+
+export const KNOWLEDGE_OBSERVATION_SUBJECT_TYPES: readonly KnowledgeObservationSubjectType[] = [
+  "entity",
+  "project",
+  "tool",
+  "agent",
+  "global",
+] as const;
+
+export type KnowledgeObservationStatus = "active" | "stale" | "superseded" | "invalidated";
+
+export const KNOWLEDGE_OBSERVATION_STATUSES: readonly KnowledgeObservationStatus[] = [
+  "active",
+  "stale",
+  "superseded",
+  "invalidated",
+] as const;
+
+export type KnowledgeObservationEvidenceStance = "support" | "contradict" | "context";
+
+export const KNOWLEDGE_OBSERVATION_EVIDENCE_STANCES: readonly KnowledgeObservationEvidenceStance[] =
+  ["support", "contradict", "context"] as const;
+
+export interface KnowledgeObservationConfidenceComponents extends Record<string, number> {
+  sourceCount: number;
+  sourceDiversity: number;
+  supportWeight: number;
+  contradictionWeight: number;
+  recencyWeight: number;
+  operatorConfirmedBoost: number;
+}
+
+export interface KnowledgeObservation {
+  id: string;
+  kind: KnowledgeObservationKind;
+  subjectType: KnowledgeObservationSubjectType;
+  subjectId: string | null;
+  canonicalKey: string;
+  summary: string;
+  detail: string | null;
+  confidence: number;
+  confidenceComponents: Record<string, unknown>;
+  freshness: number;
+  revalidationDueAt: string | null;
+  supportCount: number;
+  sourceDiversity: number;
+  contradictionWeight: number;
+  operatorConfirmed: boolean;
+  status: KnowledgeObservationStatus;
+  firstSupportedAt: string | null;
+  lastSupportedAt: string | null;
+  lastContradictedAt: string | null;
+  supersedesObservationId: string | null;
+  embedding: number[] | null;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  visibility: "private" | "team" | "family" | "public";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KnowledgeObservationEvidence {
+  id: string;
+  observationId: string;
+  stance: KnowledgeObservationEvidenceStance;
+  weight: number;
+  excerpt: string | null;
+  itemId: string | null;
+  lessonId: string | null;
+  reflectionId: string | null;
+  entityId: string | null;
+  sourceCreatedAt: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface CreateKnowledgeObservationEvidenceInput {
+  stance: KnowledgeObservationEvidenceStance;
+  weight?: number;
+  excerpt?: string;
+  itemId?: string;
+  lessonId?: string;
+  reflectionId?: string;
+  entityId?: string;
+  sourceCreatedAt?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CreateKnowledgeObservationInput {
+  kind: KnowledgeObservationKind;
+  subjectType: KnowledgeObservationSubjectType;
+  subjectId?: string | null;
+  canonicalKey: string;
+  summary: string;
+  detail?: string | null;
+  confidence?: number;
+  confidenceComponents?: Record<string, unknown>;
+  freshness?: number;
+  revalidationDueAt?: string | null;
+  supportCount?: number;
+  sourceDiversity?: number;
+  contradictionWeight?: number;
+  operatorConfirmed?: boolean;
+  status?: KnowledgeObservationStatus;
+  firstSupportedAt?: string | null;
+  lastSupportedAt?: string | null;
+  lastContradictedAt?: string | null;
+  supersedesObservationId?: string | null;
+  embedding?: number[] | null;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  visibility?: "private" | "team" | "family" | "public";
+  evidence?: CreateKnowledgeObservationEvidenceInput[];
+  agentId?: string;
+}
+
+export interface UpdateKnowledgeObservationInput {
+  summary?: string;
+  detail?: string | null;
+  confidence?: number;
+  confidenceComponents?: Record<string, unknown>;
+  freshness?: number;
+  revalidationDueAt?: string | null;
+  supportCount?: number;
+  sourceDiversity?: number;
+  contradictionWeight?: number;
+  operatorConfirmed?: boolean;
+  status?: KnowledgeObservationStatus;
+  firstSupportedAt?: string | null;
+  lastSupportedAt?: string | null;
+  lastContradictedAt?: string | null;
+  embedding?: number[] | null;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  visibility?: "private" | "team" | "family" | "public";
+}
+
+export interface KnowledgeObservationSearchOptions {
+  kinds?: KnowledgeObservationKind[];
+  subjectType?: KnowledgeObservationSubjectType;
+  subjectId?: string;
+  statuses?: KnowledgeObservationStatus[];
+  minConfidence?: number;
+  minFreshness?: number;
+  limit?: number;
+}
+
+export interface KnowledgeObservationSearchResult {
+  observation: KnowledgeObservation;
+  score: number;
+  topEvidence: KnowledgeObservationEvidence[];
+}
+
+export interface KnowledgeObservationConsolidationResult {
+  action: "create" | "reinforce" | "supersede" | "skip";
+  observation: KnowledgeObservation | null;
+  canonicalKey: string;
+  reason: string;
+  evidenceCount: number;
+}
+
 // ── Model Feedback ──
 
 /** Tracks model performance per request for routing optimization */

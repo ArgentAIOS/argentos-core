@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import Speech
+import SwabbleKit
 
 enum VoiceWakeTestState: Equatable {
     case idle

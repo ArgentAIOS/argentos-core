@@ -11,14 +11,17 @@ from .bridge import config_snapshot, doctor_snapshot, health_snapshot
 from .constants import COMMAND_SPECS, CONNECTOR_AUTH, CONNECTOR_CATEGORY, CONNECTOR_CATEGORIES, CONNECTOR_LABEL, CONNECTOR_RESOURCES, MANIFEST_SCHEMA_VERSION, MODE_ORDER, PERMISSIONS_PATH, TOOL_NAME
 from .errors import CliError
 from .runtime import (
-    create_draft_post,
+    create_draft_content,
     list_content,
+    list_media,
+    list_taxonomy_terms,
+    publish_content,
     publish_post,
     read_content,
     read_site,
     schedule_post,
     search_content,
-    update_draft_post,
+    update_draft_content,
 )
 
 
@@ -452,48 +455,63 @@ def _scaffold_result(command_id: str, resource: str, operation: str, inputs: dic
 
 
 @page_group.command("create_draft")
-@click.argument("items", nargs=-1)
+@click.option("--title", required=True, help="Page title")
+@click.option("--content", default=None, help="Page body")
+@click.option("--excerpt", default=None, help="Excerpt text")
+@click.option("--slug", default=None, help="Page slug")
 @click.pass_context
-def page_create_draft(ctx: click.Context, items: tuple[str, ...]) -> None:
-    require_mode(ctx, "page.create_draft")
-    payload = _result(
-        ok=True,
-        command="page.create_draft",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=_scaffold_result("page.create_draft", "page", "create_draft", {"items": list(items)}),
+def page_create_draft(
+    ctx: click.Context,
+    title: str,
+    content: str | None,
+    excerpt: str | None,
+    slug: str | None,
+) -> None:
+    _run(
+        ctx,
+        "page.create_draft",
+        create_draft_content,
+        "page",
+        title=title,
+        content=content,
+        excerpt=excerpt,
+        slug=slug,
     )
-    _emit(payload, ctx.obj["json"])
 
 
 @page_group.command("update_draft")
-@click.argument("items", nargs=-1)
+@click.argument("page_id")
+@click.option("--title", default=None, help="Page title")
+@click.option("--content", default=None, help="Page body")
+@click.option("--excerpt", default=None, help="Excerpt text")
+@click.option("--slug", default=None, help="Page slug")
 @click.pass_context
-def page_update_draft(ctx: click.Context, items: tuple[str, ...]) -> None:
-    require_mode(ctx, "page.update_draft")
-    payload = _result(
-        ok=True,
-        command="page.update_draft",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=_scaffold_result("page.update_draft", "page", "update_draft", {"items": list(items)}),
+def page_update_draft(
+    ctx: click.Context,
+    page_id: str,
+    title: str | None,
+    content: str | None,
+    excerpt: str | None,
+    slug: str | None,
+) -> None:
+    _run(
+        ctx,
+        "page.update_draft",
+        update_draft_content,
+        "page",
+        object_id=page_id,
+        title=title,
+        content=content,
+        excerpt=excerpt,
+        slug=slug,
     )
-    _emit(payload, ctx.obj["json"])
 
 
 @page_group.command("publish")
-@click.argument("items", nargs=-1)
+@click.argument("page_id")
 @click.pass_context
-def page_publish(ctx: click.Context, items: tuple[str, ...]) -> None:
-    require_mode(ctx, "page.publish")
-    payload = _result(
-        ok=True,
-        command="page.publish",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=_scaffold_result("page.publish", "page", "publish", {"items": list(items)}),
-    )
-    _emit(payload, ctx.obj["json"])
+def page_publish(ctx: click.Context, page_id: str) -> None:
+    _run(ctx, "page.publish", publish_content, "page", object_id=page_id)
 
 
 @cli.group("media")
@@ -502,18 +520,30 @@ def media_group() -> None:
 
 
 @media_group.command("list")
-@click.argument("items", nargs=-1)
+@click.option("--per-page", type=int, default=10, show_default=True)
+@click.option("--page", type=int, default=1, show_default=True)
+@click.option("--search", default="", help="Search text")
+@click.option("--media-type", default="", help="Optional media type filter such as image or file")
+@click.option("--mime-type", default="", help="Optional MIME type filter such as image/jpeg")
 @click.pass_context
-def media_list(ctx: click.Context, items: tuple[str, ...]) -> None:
-    require_mode(ctx, "media.list")
-    payload = _result(
-        ok=True,
-        command="media.list",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=_scaffold_result("media.list", "media", "list", {"items": list(items)}),
+def media_list_cmd(
+    ctx: click.Context,
+    per_page: int,
+    page: int,
+    search: str,
+    media_type: str,
+    mime_type: str,
+) -> None:
+    _run(
+        ctx,
+        "media.list",
+        list_media,
+        per_page=per_page,
+        page=page,
+        search=search or None,
+        media_type=media_type or None,
+        mime_type=mime_type or None,
     )
-    _emit(payload, ctx.obj["json"])
 
 
 @media_group.command("upload")
@@ -537,18 +567,19 @@ def taxonomy_group() -> None:
 
 
 @taxonomy_group.command("list")
-@click.argument("items", nargs=-1)
+@click.option("--per-page", type=int, default=25, show_default=True)
+@click.option("--page", type=int, default=1, show_default=True)
+@click.option("--search", default="", help="Search category or tag text")
 @click.pass_context
-def taxonomy_list(ctx: click.Context, items: tuple[str, ...]) -> None:
-    require_mode(ctx, "taxonomy.list")
-    payload = _result(
-        ok=True,
-        command="taxonomy.list",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=_scaffold_result("taxonomy.list", "taxonomy", "list", {"items": list(items)}),
+def taxonomy_list_cmd(ctx: click.Context, per_page: int, page: int, search: str) -> None:
+    _run(
+        ctx,
+        "taxonomy.list",
+        list_taxonomy_terms,
+        per_page=per_page,
+        page=page,
+        search=search or None,
     )
-    _emit(payload, ctx.obj["json"])
 
 
 @taxonomy_group.command("assign_terms")

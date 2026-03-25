@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ArgentConfig } from "../config/config.js";
 import {
   resolveAgentConfig,
+  resolveMemoryAgentId,
   resolveAgentModelFallbacksOverride,
   resolveAgentModelPrimary,
 } from "./agent-scope.js";
@@ -199,5 +200,64 @@ describe("resolveAgentConfig", () => {
     const result = resolveAgentConfig(cfg, "");
     expect(result).toBeDefined();
     expect(result?.workspace).toBe("~/argent");
+  });
+});
+
+describe("resolveMemoryAgentId", () => {
+  it("maps legacy main sessions to argent when argent is the configured default", () => {
+    const cfg: ArgentConfig = {
+      agents: {
+        list: [{ id: "argent", default: true }, { id: "main" }],
+      },
+    };
+
+    expect(
+      resolveMemoryAgentId({
+        sessionKey: "agent:main:webchat",
+        config: cfg,
+      }),
+    ).toBe("argent");
+    expect(
+      resolveMemoryAgentId({
+        agentId: "main",
+        config: cfg,
+      }),
+    ).toBe("argent");
+  });
+
+  it("keeps explicit non-legacy agents untouched", () => {
+    const cfg: ArgentConfig = {
+      agents: {
+        list: [{ id: "argent", default: true }, { id: "main" }, { id: "dario" }],
+      },
+    };
+
+    expect(
+      resolveMemoryAgentId({
+        sessionKey: "agent:dario:discord:dm:123",
+        config: cfg,
+      }),
+    ).toBe("dario");
+    expect(
+      resolveMemoryAgentId({
+        sessionKey: "agent:argent:webchat",
+        config: cfg,
+      }),
+    ).toBe("argent");
+  });
+
+  it("does not remap main when main is still the default agent", () => {
+    const cfg: ArgentConfig = {
+      agents: {
+        list: [{ id: "main", default: true }, { id: "argent" }],
+      },
+    };
+
+    expect(
+      resolveMemoryAgentId({
+        sessionKey: "agent:main:webchat",
+        config: cfg,
+      }),
+    ).toBe("main");
   });
 });

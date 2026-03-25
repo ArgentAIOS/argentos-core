@@ -596,6 +596,24 @@ export const MODELS: Record<string, Record<string, ModelDef>> = {
   },
 
   minimax: {
+    "MiniMax-M2.7": {
+      ...minimaxBase,
+      id: "MiniMax-M2.7",
+      name: "MiniMax-M2.7",
+      reasoning: true,
+      contextWindow: 204800,
+      maxTokens: 131072,
+      cost: { input: 0.3, output: 1.2, cacheRead: 0.075, cacheWrite: 0.3 },
+    },
+    "MiniMax-M2.7-highspeed": {
+      ...minimaxBase,
+      id: "MiniMax-M2.7-highspeed",
+      name: "MiniMax-M2.7-highspeed",
+      reasoning: true,
+      contextWindow: 204800,
+      maxTokens: 131072,
+      cost: { input: 0.3, output: 1.2, cacheRead: 0.075, cacheWrite: 0.3 },
+    },
     "MiniMax-M2.5": {
       ...minimaxBase,
       id: "MiniMax-M2.5",
@@ -832,6 +850,8 @@ export function modelsAreEqual<TApi extends Api>(
   a: Model<TApi> | null | undefined,
   b: Model<TApi> | null | undefined,
 ): boolean {
-  if (!a || !b) return false;
+  if (!a || !b) {
+    return false;
+  }
   return a.id === b.id && a.provider === b.provider;
 }

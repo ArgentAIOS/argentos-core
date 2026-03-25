@@ -17,6 +17,8 @@ export type AuthChoice =
   | "moonshot-api-key"
   | "moonshot-api-key-cn"
   | "kimi-code-api-key"
+  | "lmstudio"
+  | "ollama"
   | "synthetic-api-key"
   | "venice-api-key"
   | "codex-cli"
@@ -30,6 +32,9 @@ export type AuthChoice =
   | "minimax-cloud"
   | "minimax"
   | "minimax-api"
+  | "minimax-api-m27"
+  | "minimax-api-m27-highspeed"
+  // Legacy alias kept for backwards CLI compatibility.
   | "minimax-api-lightning"
   | "minimax-portal"
   | "opencode-zen"

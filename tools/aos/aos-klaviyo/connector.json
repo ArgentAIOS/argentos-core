@@ -1,0 +1,248 @@
+{
+  "tool": "aos-klaviyo",
+  "backend": "klaviyo-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "email-marketing",
+    "surface": "list-profile-campaign",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": false,
+    "workerFields": ["account", "list_id", "profile_id", "profile_email", "campaign_id"],
+    "worker_visible_actions": [
+      "account.read",
+      "list.list",
+      "list.read",
+      "profile.list",
+      "profile.read",
+      "campaign.list",
+      "campaign.read"
+    ],
+    "fields": [
+      {
+        "id": "account",
+        "label": "Account",
+        "required": false,
+        "applies_to": ["account.read"],
+        "example": "connected account"
+      },
+      {
+        "id": "list_id",
+        "label": "List ID",
+        "required": false,
+        "applies_to": ["list.read", "profile.list", "profile.read"],
+        "example": "01HZY3YB4J5R1A2B3C4D5E6F7G"
+      },
+      {
+        "id": "profile_id",
+        "label": "Profile ID",
+        "required": false,
+        "applies_to": ["profile.read"],
+        "example": "01HZY3Z3T5W7Q8R9S0T1U2V3W4"
+      },
+      {
+        "id": "profile_email",
+        "label": "Profile email",
+        "required": false,
+        "applies_to": ["profile.list", "profile.read"],
+        "example": "contact@example.com"
+      },
+      {
+        "id": "campaign_id",
+        "label": "Campaign ID",
+        "required": false,
+        "applies_to": ["campaign.read"],
+        "example": "01HZY402V9ABCD1234EFGH5678"
+      }
+    ],
+    "commandDefaults": {
+      "account.read": {
+        "selection_surface": "account"
+      },
+      "list.list": {
+        "selection_surface": "list",
+        "limit": 10
+      },
+      "list.read": {
+        "selection_surface": "list",
+        "args": ["KLAVIYO_LIST_ID"]
+      },
+      "profile.list": {
+        "selection_surface": "profile",
+        "args": ["KLAVIYO_LIST_ID"],
+        "limit": 10,
+        "email": "KLAVIYO_PROFILE_EMAIL"
+      },
+      "profile.read": {
+        "selection_surface": "profile",
+        "args": ["KLAVIYO_PROFILE_ID"],
+        "email": "KLAVIYO_PROFILE_EMAIL"
+      },
+      "campaign.list": {
+        "selection_surface": "campaign",
+        "limit": 10,
+        "channel": "email"
+      },
+      "campaign.read": {
+        "selection_surface": "campaign",
+        "args": ["KLAVIYO_CAMPAIGN_ID"]
+      }
+    },
+    "pickerHints": {
+      "account": {
+        "kind": "account",
+        "selection_surface": "account",
+        "resource": "klaviyo.account",
+        "source_command": "account.read",
+        "source_fields": ["id", "name", "timezone", "currency", "public_api_key"]
+      },
+      "list": {
+        "kind": "list",
+        "selection_surface": "list",
+        "resource": "klaviyo.list",
+        "source_command": "list.list",
+        "source_fields": ["id", "name", "created", "updated", "subscriptions"]
+      },
+      "profile": {
+        "kind": "profile",
+        "selection_surface": "profile",
+        "resource": "klaviyo.profile",
+        "source_command": "profile.list",
+        "source_fields": ["id", "email", "first_name", "last_name", "created", "updated"]
+      },
+      "campaign": {
+        "kind": "campaign",
+        "selection_surface": "campaign",
+        "resource": "klaviyo.campaign",
+        "source_command": "campaign.list",
+        "source_fields": ["id", "name", "status", "archived", "created", "updated"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Klaviyo",
+    "category": "marketing-publishing",
+    "categories": ["marketing-publishing", "email-marketing", "crm-revenue"],
+    "resources": ["account", "list", "profile", "campaign"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["KLAVIYO_API_KEY"],
+    "interactive_setup": [
+      "Create or choose a Klaviyo private API key for the target account.",
+      "Add KLAVIYO_API_KEY in API Keys before enabling live reads.",
+      "Optionally set KLAVIYO_REVISION to pin the API revision header used by the connector.",
+      "Set KLAVIYO_LIST_ID, KLAVIYO_PROFILE_ID, KLAVIYO_PROFILE_EMAIL, and KLAVIYO_CAMPAIGN_ID to give worker flows stable list, profile, and campaign scope defaults.",
+      "Keep campaign.create and profile.upsert scaffolded until Klaviyo write workflows are approved.",
+      "The connector is live-read-first and will report API failures instead of masking them."
+    ]
+  },
+  "commands": [
+    {
+      "id": "account.read",
+      "summary": "Read Klaviyo account metadata",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "account",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "list.list",
+      "summary": "List Klaviyo lists",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "list",
+      "action_class": "read"
+    },
+    {
+      "id": "list.read",
+      "summary": "Read a Klaviyo list",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "list",
+      "action_class": "read"
+    },
+    {
+      "id": "profile.list",
+      "summary": "List profiles in Klaviyo",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "profile",
+      "action_class": "read"
+    },
+    {
+      "id": "profile.read",
+      "summary": "Read a Klaviyo profile",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "profile",
+      "action_class": "read"
+    },
+    {
+      "id": "campaign.list",
+      "summary": "List Klaviyo email campaigns",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "campaign",
+      "action_class": "read"
+    },
+    {
+      "id": "campaign.read",
+      "summary": "Read a Klaviyo campaign",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "campaign",
+      "action_class": "read"
+    },
+    {
+      "id": "campaign.create",
+      "summary": "Create a draft Klaviyo campaign",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "campaign",
+      "action_class": "write"
+    },
+    {
+      "id": "profile.upsert",
+      "summary": "Create or update a Klaviyo profile",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "profile",
+      "action_class": "write"
+    }
+  ]
+}

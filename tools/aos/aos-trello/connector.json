@@ -1,0 +1,277 @@
+{
+  "tool": "aos-trello",
+  "backend": "trello-rest-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "project-tracking",
+    "surface": "member-board-list-card",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": false,
+    "workerFields": ["account", "member_id", "board_id", "list_id", "card_id"],
+    "worker_visible_actions": [
+      "account.read",
+      "member.list",
+      "member.read",
+      "board.list",
+      "board.read",
+      "list.list",
+      "list.read",
+      "card.list",
+      "card.read"
+    ],
+    "fields": [
+      {
+        "id": "account",
+        "label": "Account",
+        "required": false,
+        "applies_to": ["account.read"],
+        "example": "connected Trello member"
+      },
+      {
+        "id": "member_id",
+        "label": "Member ID",
+        "required": false,
+        "applies_to": ["member.read"],
+        "example": "5abbe4b7ddc1b351ef961414"
+      },
+      {
+        "id": "board_id",
+        "label": "Board ID",
+        "required": false,
+        "applies_to": ["member.list", "board.read", "list.list"],
+        "example": "5abbe4b7ddc1b351ef961414"
+      },
+      {
+        "id": "list_id",
+        "label": "List ID",
+        "required": false,
+        "applies_to": ["list.read", "card.list", "card.create_draft"],
+        "example": "5abbe4b7ddc1b351ef961415"
+      },
+      {
+        "id": "card_id",
+        "label": "Card ID",
+        "required": false,
+        "applies_to": ["card.read", "card.update_draft"],
+        "example": "5abbe4b7ddc1b351ef961416"
+      }
+    ],
+    "commandDefaults": {
+      "member.list": {
+        "selection_surface": "board",
+        "args": ["TRELLO_BOARD_ID"]
+      },
+      "member.read": {
+        "selection_surface": "member",
+        "args": ["TRELLO_MEMBER_ID"]
+      },
+      "board.read": {
+        "selection_surface": "board",
+        "args": ["TRELLO_BOARD_ID"]
+      },
+      "list.list": {
+        "selection_surface": "board",
+        "args": ["TRELLO_BOARD_ID"]
+      },
+      "list.read": {
+        "selection_surface": "list",
+        "args": ["TRELLO_LIST_ID"]
+      },
+      "card.list": {
+        "selection_surface": "list",
+        "args": ["TRELLO_LIST_ID"]
+      },
+      "card.read": {
+        "selection_surface": "card",
+        "args": ["TRELLO_CARD_ID"]
+      },
+      "card.create_draft": {
+        "selection_surface": "list",
+        "args": ["TRELLO_LIST_ID"]
+      },
+      "card.update_draft": {
+        "selection_surface": "card",
+        "args": ["TRELLO_CARD_ID"]
+      }
+    },
+    "pickerHints": {
+      "account": {
+        "kind": "account",
+        "selection_surface": "account",
+        "resource": "trello.account",
+        "source_command": "account.read",
+        "source_fields": ["id", "fullName", "username", "initials", "avatarUrl"]
+      },
+      "member": {
+        "kind": "member",
+        "selection_surface": "member",
+        "resource": "trello.member",
+        "source_command": "member.list",
+        "source_fields": ["id", "fullName", "username", "initials", "avatarUrl"]
+      },
+      "board": {
+        "kind": "board",
+        "selection_surface": "board",
+        "resource": "trello.board",
+        "source_command": "board.list",
+        "source_fields": ["id", "name", "closed", "url", "shortUrl"]
+      },
+      "list": {
+        "kind": "list",
+        "selection_surface": "list",
+        "resource": "trello.list",
+        "source_command": "list.list",
+        "source_fields": ["id", "name", "closed", "idBoard", "url"]
+      },
+      "card": {
+        "kind": "card",
+        "selection_surface": "card",
+        "resource": "trello.card",
+        "source_command": "card.list",
+        "source_fields": ["id", "name", "closed", "idBoard", "idList", "url"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Trello",
+    "category": "project-management",
+    "categories": ["project-management", "task-tracking", "collaboration"],
+    "resources": ["account", "member", "board", "list", "card"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["TRELLO_API_KEY", "TRELLO_TOKEN"],
+    "interactive_setup": [
+      "Create a Trello API key and user token for the workspace you want this worker to use.",
+      "Add TRELLO_API_KEY and TRELLO_TOKEN in API Keys before enabling live reads.",
+      "Optionally set TRELLO_BOARD_ID, TRELLO_LIST_ID, TRELLO_CARD_ID, and TRELLO_MEMBER_ID to give worker flows stable scope defaults.",
+      "Keep card.create_draft and card.update_draft scaffolded until a live Trello write bridge is implemented.",
+      "The connector is live-read-first and reports Trello API failures instead of masking them."
+    ]
+  },
+  "commands": [
+    {
+      "id": "account.read",
+      "summary": "Read the connected Trello account",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "account",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "member.list",
+      "summary": "List members on a Trello board",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "member",
+      "action_class": "read"
+    },
+    {
+      "id": "member.read",
+      "summary": "Read a Trello member",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "member",
+      "action_class": "read"
+    },
+    {
+      "id": "board.list",
+      "summary": "List boards visible to the connected member",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "board",
+      "action_class": "read"
+    },
+    {
+      "id": "board.read",
+      "summary": "Read a Trello board",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "board",
+      "action_class": "read"
+    },
+    {
+      "id": "list.list",
+      "summary": "List lists on a Trello board",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "list",
+      "action_class": "read"
+    },
+    {
+      "id": "list.read",
+      "summary": "Read a Trello list",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "list",
+      "action_class": "read"
+    },
+    {
+      "id": "card.list",
+      "summary": "List cards in a Trello list",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "card",
+      "action_class": "read"
+    },
+    {
+      "id": "card.read",
+      "summary": "Read a Trello card",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "card",
+      "action_class": "read"
+    },
+    {
+      "id": "card.create_draft",
+      "summary": "Create a draft card payload",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "card",
+      "action_class": "write"
+    },
+    {
+      "id": "card.update_draft",
+      "summary": "Update a draft card payload",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "card",
+      "action_class": "write"
+    }
+  ]
+}

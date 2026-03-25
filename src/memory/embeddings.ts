@@ -14,6 +14,7 @@ import {
 } from "./embeddings-ollama.js";
 import {
   createOpenAiEmbeddingProvider,
+  DEFAULT_LMSTUDIO_EMBEDDING_MODEL,
   DEFAULT_OPENAI_EMBEDDING_MODEL,
   type OpenAiEmbeddingClient,
 } from "./embeddings-openai.js";
@@ -41,8 +42,8 @@ export type EmbeddingProvider = {
 
 export type EmbeddingProviderResult = {
   provider: EmbeddingProvider;
-  requestedProvider: "openai" | "local" | "gemini" | "ollama" | "auto";
-  fallbackFrom?: "openai" | "local" | "gemini" | "ollama";
+  requestedProvider: "openai" | "local" | "gemini" | "ollama" | "lmstudio" | "auto";
+  fallbackFrom?: "openai" | "local" | "gemini" | "ollama" | "lmstudio";
   fallbackReason?: string;
   openAi?: OpenAiEmbeddingClient;
   gemini?: GeminiEmbeddingClient;
@@ -52,14 +53,14 @@ export type EmbeddingProviderResult = {
 export type EmbeddingProviderOptions = {
   config: ArgentConfig;
   agentDir?: string;
-  provider: "openai" | "local" | "gemini" | "ollama" | "auto";
+  provider: "openai" | "local" | "gemini" | "ollama" | "lmstudio" | "auto";
   remote?: {
     baseUrl?: string;
     apiKey?: string;
     headers?: Record<string, string>;
   };
   model: string;
-  fallback: "openai" | "gemini" | "local" | "ollama" | "none";
+  fallback: "openai" | "gemini" | "local" | "ollama" | "lmstudio" | "none";
   local?: {
     modelPath?: string;
     modelCacheDir?: string;
@@ -67,7 +68,7 @@ export type EmbeddingProviderOptions = {
 };
 
 const DEFAULT_LOCAL_MODEL = "hf:ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf";
-type ConcreteEmbeddingProvider = "openai" | "local" | "gemini" | "ollama";
+type ConcreteEmbeddingProvider = "openai" | "local" | "gemini" | "ollama" | "lmstudio";
 
 function canAutoSelectLocal(options: EmbeddingProviderOptions): boolean {
   const modelPath = options.local?.modelPath?.trim();
@@ -107,6 +108,9 @@ function defaultModelForProvider(
   if (provider === "ollama") {
     return DEFAULT_OLLAMA_EMBEDDING_MODEL;
   }
+  if (provider === "lmstudio") {
+    return DEFAULT_LMSTUDIO_EMBEDDING_MODEL;
+  }
   return options.local?.modelPath?.trim() || DEFAULT_LOCAL_MODEL;
 }
 
@@ -121,7 +125,12 @@ function resolveModelForProvider(
   }
 
   // In auto mode, don't reuse OpenAI-only embedding IDs for Gemini/Ollama attempts.
-  if (opts?.autoCandidate && provider !== "openai" && looksOpenAiEmbeddingModel(configured)) {
+  if (
+    opts?.autoCandidate &&
+    provider !== "openai" &&
+    provider !== "lmstudio" &&
+    looksOpenAiEmbeddingModel(configured)
+  ) {
     return defaultModelForProvider(provider, options);
   }
 
@@ -209,12 +218,18 @@ export async function createEmbeddingProvider(
       const { provider, client } = await createOllamaEmbeddingProvider(providerOptions);
       return { provider, ollama: client };
     }
-    const { provider, client } = await createOpenAiEmbeddingProvider(providerOptions);
+    if (id === "lmstudio") {
+      const { provider, client } = await createOpenAiEmbeddingProvider(providerOptions, "lmstudio");
+      return { provider, openAi: client };
+    }
+    const { provider, client } = await createOpenAiEmbeddingProvider(providerOptions, "openai");
     return { provider, openAi: client };
   };
 
-  const formatPrimaryError = (err: unknown, provider: "openai" | "local" | "gemini" | "ollama") =>
-    provider === "local" ? formatLocalSetupError(err) : formatError(err);
+  const formatPrimaryError = (
+    err: unknown,
+    provider: "openai" | "local" | "gemini" | "ollama" | "lmstudio",
+  ) => (provider === "local" ? formatLocalSetupError(err) : formatError(err));
 
   if (requestedProvider === "auto") {
     const missingKeyErrors: string[] = [];

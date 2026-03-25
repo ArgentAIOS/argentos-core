@@ -1,4 +1,10 @@
 import type { ArgentConfig } from "../config/config.js";
+import type {
+  ConsciousnessKernelDecisionKind,
+  ConsciousnessKernelMode,
+  ConsciousnessKernelStatus,
+  ConsciousnessKernelWakefulness,
+} from "./consciousness-kernel-state.js";
 
 export type DiagnosticSessionState = "idle" | "processing" | "waiting";
 
@@ -149,6 +155,30 @@ export type DiagnosticMemoryCandidateExpiredEvent = DiagnosticBaseEvent & {
   count: number;
 };
 
+export type DiagnosticKernelStateEvent = DiagnosticBaseEvent & {
+  type: "kernel.state";
+  state: ConsciousnessKernelStatus;
+  mode: ConsciousnessKernelMode;
+  enabled: boolean;
+  active: boolean;
+  defaultAgentId?: string;
+  blockedReason?: string;
+};
+
+export type DiagnosticKernelDecisionEvent = DiagnosticBaseEvent & {
+  type: "kernel.decision";
+  kind: ConsciousnessKernelDecisionKind;
+  mode: ConsciousnessKernelMode;
+  status: ConsciousnessKernelStatus;
+  active: boolean;
+  defaultAgentId?: string;
+  wakefulness: ConsciousnessKernelWakefulness;
+  tickCount: number;
+  totalTickCount: number;
+  summary: string;
+  blockedReason?: string;
+};
+
 export type DiagnosticEventPayload =
   | DiagnosticUsageEvent
   | DiagnosticWebhookReceivedEvent
@@ -164,7 +194,9 @@ export type DiagnosticEventPayload =
   | DiagnosticHeartbeatEvent
   | DiagnosticMemoryCandidateCapturedEvent
   | DiagnosticMemoryCandidatePromotedEvent
-  | DiagnosticMemoryCandidateExpiredEvent;
+  | DiagnosticMemoryCandidateExpiredEvent
+  | DiagnosticKernelStateEvent
+  | DiagnosticKernelDecisionEvent;
 
 export type DiagnosticEventInput = DiagnosticEventPayload extends infer Event
   ? Event extends DiagnosticEventPayload
