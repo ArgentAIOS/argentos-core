@@ -74,3 +74,4 @@ USER.md
 # local tooling
 .serena/
 __pycache__/
+dashboard/public/live2d/
