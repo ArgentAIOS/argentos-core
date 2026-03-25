@@ -1,7 +1,13 @@
+/**
+ * Public Core override for org-scope.ts.
+ *
+ * The Business licensing store is intentionally excluded from public core, so
+ * org scoping falls back to explicit ARGENT_ORG_ID and local allowlist files.
+ */
+
 import fs from "node:fs";
 import path from "node:path";
 import type { ArgentConfig } from "../config/config.js";
-import { LicenseStorage } from "../licensing/storage.js";
 import { resolveConfigDir } from "../utils.js";
 
 const ORG_ID_ENV = "ARGENT_ORG_ID";
@@ -29,26 +35,12 @@ function parseAllowlist(raw: unknown): Set<string> | null {
   );
 }
 
-function resolveOrgIdFromLicense(config: ArgentConfig): string | null {
-  try {
-    const storage = new LicenseStorage();
-    const license = storage.retrieveLicense(config as unknown as Record<string, unknown>);
-    const orgId = license?.metadata?.organizationId?.trim();
-    return orgId || null;
-  } catch {
-    return null;
-  }
-}
-
 export function resolveOrgId(
-  config: ArgentConfig,
+  _config: ArgentConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): string | null {
   const fromEnv = env[ORG_ID_ENV]?.trim();
-  if (fromEnv) {
-    return fromEnv;
-  }
-  return resolveOrgIdFromLicense(config);
+  return fromEnv || null;
 }
 
 export function resolveOrgPluginsDir(orgId: string): string {

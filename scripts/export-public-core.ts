@@ -15,6 +15,10 @@ type Manifest = {
   exclude?: string[];
   denylistFiles?: string[];
   preserveInTarget?: string[];
+  targetOverrides?: Array<{
+    target: string;
+    source: string;
+  }>;
   deferredReview?: string[];
   notes?: string[];
 };
@@ -157,6 +161,13 @@ async function copyFile(source: string, target: string): Promise<void> {
   await fs.copyFile(source, target);
 }
 
+function normalizeTargetOverrides(manifest: Manifest, manifestPath: string) {
+  return (manifest.targetOverrides ?? []).map((entry) => ({
+    target: normalizeSlashes(entry.target),
+    source: resolveManifestPath(manifestPath, entry.source),
+  }));
+}
+
 async function removeEmptyDirectories(root: string): Promise<void> {
   async function prune(current: string) {
     const entries = await fs.readdir(current, { withFileTypes: true });
@@ -208,6 +219,7 @@ async function main() {
   const denylists = await Promise.all(denylistPaths.map((entry) => readDenylist(entry)));
   const denyRules = denylists.flatMap((entry) => entry.rules);
   const denyPatterns = flattenDenyPatterns(denyRules);
+  const targetOverrides = normalizeTargetOverrides(manifest, manifestPath);
   const sourceRepoRoot = path.resolve(manifest.sourceRepoRoot);
   const targetRepoRoot = path.resolve(manifest.targetRepoRoot);
   const trackedFiles = await listTrackedFiles(sourceRepoRoot);
@@ -231,6 +243,7 @@ async function main() {
         denylistFileCount: denylistPaths.length,
         denyRuleCount: denyRules.length,
         denyPatternCount: denyPatterns.length,
+        targetOverrideCount: targetOverrides.length,
         deferredReviewCount: manifest.deferredReview?.length ?? 0,
         apply: options.apply,
       },
@@ -263,6 +276,9 @@ async function main() {
 
   const targetFiles = await walkTargetFiles(targetRepoRoot);
   const includedSet = new Set(included);
+  for (const override of targetOverrides) {
+    includedSet.add(override.target);
+  }
   let copied = 0;
   let deleted = 0;
   let preserved = 0;
@@ -282,6 +298,12 @@ async function main() {
     const sourcePath = path.join(sourceRepoRoot, relPath);
     const targetPath = path.join(targetRepoRoot, relPath);
     await copyFile(sourcePath, targetPath);
+    copied += 1;
+  }
+
+  for (const override of targetOverrides) {
+    const targetPath = path.join(targetRepoRoot, override.target);
+    await copyFile(override.source, targetPath);
     copied += 1;
   }
 
