@@ -1,0 +1,207 @@
+{
+  "tool": "aos-shopify",
+  "backend": "shopify-admin",
+  "manifest_schema_version": "1.0.0",
+  "connector": {
+    "label": "Shopify",
+    "category": "commerce-ops",
+    "categories": ["commerce-ops", "orders", "inventory"],
+    "resources": ["shop", "product", "order", "customer", "fulfillment"]
+  },
+  "scope": {
+    "kind": "store-catalog",
+    "summary": "Scope Shopify workers by store, catalog status, order status, customer email, and created date window.",
+    "fields": [
+      {
+        "id": "shop_domain",
+        "label": "Shop domain",
+        "required": true,
+        "applies_to": [
+          "shop.read",
+          "product.list",
+          "product.read",
+          "order.list",
+          "order.read",
+          "customer.list",
+          "customer.read"
+        ],
+        "example": "example.myshopify.com"
+      },
+      {
+        "id": "product_status",
+        "label": "Product status",
+        "required": false,
+        "applies_to": ["product.list"],
+        "example": "active, draft, archived, any"
+      },
+      {
+        "id": "order_status",
+        "label": "Order status",
+        "required": false,
+        "applies_to": ["order.list"],
+        "example": "open, closed, cancelled, any"
+      },
+      {
+        "id": "customer_email",
+        "label": "Customer email",
+        "required": false,
+        "applies_to": ["customer.list"],
+        "example": "vip@example.com"
+      },
+      {
+        "id": "created_after",
+        "label": "Created after",
+        "required": false,
+        "applies_to": ["order.list", "customer.list"],
+        "example": "2026-01-01 or 1704067200"
+      },
+      {
+        "id": "created_before",
+        "label": "Created before",
+        "required": false,
+        "applies_to": ["order.list", "customer.list"],
+        "example": "2026-01-31 or 1706745600"
+      }
+    ],
+    "command_defaults": {
+      "product.list": {
+        "status_env": "SHOPIFY_PRODUCT_STATUS"
+      },
+      "order.list": {
+        "status_env": "SHOPIFY_ORDER_STATUS",
+        "created_after_env": "SHOPIFY_CREATED_AFTER",
+        "created_before_env": "SHOPIFY_CREATED_BEFORE"
+      },
+      "customer.list": {
+        "email_env": "SHOPIFY_CUSTOMER_EMAIL",
+        "created_after_env": "SHOPIFY_CREATED_AFTER",
+        "created_before_env": "SHOPIFY_CREATED_BEFORE"
+      }
+    }
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["SHOPIFY_SHOP_DOMAIN", "SHOPIFY_ADMIN_ACCESS_TOKEN"],
+    "interactive_setup": [
+      "Create a Shopify custom app for the target store.",
+      "Add SHOPIFY_SHOP_DOMAIN and SHOPIFY_ADMIN_ACCESS_TOKEN in API Keys.",
+      "Grant the read scopes needed for products, orders, and customers before enabling any worker-visible actions.",
+      "Keep write scopes disabled until a live mutation bridge is implemented and reviewed."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "shop.read",
+      "summary": "Read Shopify shop setup metadata",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "shop",
+      "action_class": "read"
+    },
+    {
+      "id": "product.list",
+      "summary": "List Shopify products",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "product",
+      "action_class": "read"
+    },
+    {
+      "id": "product.read",
+      "summary": "Read a Shopify product",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "product",
+      "action_class": "read"
+    },
+    {
+      "id": "product.update",
+      "summary": "Update a Shopify product",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "product",
+      "action_class": "write"
+    },
+    {
+      "id": "order.list",
+      "summary": "List Shopify orders",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "order",
+      "action_class": "read"
+    },
+    {
+      "id": "order.read",
+      "summary": "Read a Shopify order",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "order",
+      "action_class": "read"
+    },
+    {
+      "id": "order.cancel",
+      "summary": "Cancel a Shopify order",
+      "required_mode": "full",
+      "supports_json": true,
+      "resource": "order",
+      "action_class": "write"
+    },
+    {
+      "id": "customer.list",
+      "summary": "List Shopify customers",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "customer",
+      "action_class": "read"
+    },
+    {
+      "id": "customer.read",
+      "summary": "Read a Shopify customer",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "customer",
+      "action_class": "read"
+    },
+    {
+      "id": "fulfillment.create",
+      "summary": "Create a Shopify fulfillment",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "fulfillment",
+      "action_class": "write"
+    }
+  ]
+}

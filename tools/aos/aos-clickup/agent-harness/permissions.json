@@ -1,0 +1,22 @@
+{
+  "tool": "aos-clickup",
+  "backend": "clickup-rest-api",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly",
+    "workspace.list": "readonly",
+    "workspace.read": "readonly",
+    "space.list": "readonly",
+    "space.read": "readonly",
+    "folder.list": "readonly",
+    "folder.read": "readonly",
+    "list.list": "readonly",
+    "list.read": "readonly",
+    "task.list": "readonly",
+    "task.read": "readonly",
+    "task.create_draft": "write",
+    "task.update_draft": "write"
+  }
+}

@@ -15,9 +15,27 @@ vi.mock("node:fs/promises", () => ({
 import { resolveGatewayProgramArguments } from "./program-args.js";
 
 const originalArgv = [...process.argv];
+const originalHome = process.env.HOME;
+const originalStateDir = process.env.ARGENT_STATE_DIR;
+const originalInstallPackageDir = process.env.ARGENT_INSTALL_PACKAGE_DIR;
 
 afterEach(() => {
   process.argv = [...originalArgv];
+  if (originalHome === undefined) {
+    delete process.env.HOME;
+  } else {
+    process.env.HOME = originalHome;
+  }
+  if (originalStateDir === undefined) {
+    delete process.env.ARGENT_STATE_DIR;
+  } else {
+    process.env.ARGENT_STATE_DIR = originalStateDir;
+  }
+  if (originalInstallPackageDir === undefined) {
+    delete process.env.ARGENT_INSTALL_PACKAGE_DIR;
+  } else {
+    process.env.ARGENT_INSTALL_PACKAGE_DIR = originalInstallPackageDir;
+  }
   vi.resetAllMocks();
 });
 
@@ -82,6 +100,99 @@ describe("resolveGatewayProgramArguments", () => {
     expect(result.programArguments).toEqual([
       process.execPath,
       indexPath,
+      "gateway",
+      "--port",
+      "18789",
+    ]);
+  });
+
+  it("prefers installed runtime snapshot over repo dist when available", async () => {
+    const repoDist = path.resolve("/Users/dev/argentos/dist/index.js");
+    const installedCli = path.resolve("/Users/test/.argentos/lib/node_modules/argentos/argent.mjs");
+    const installedDist = path.resolve(
+      "/Users/test/.argentos/lib/node_modules/argentos/dist/index.js",
+    );
+    process.argv = ["node", repoDist];
+    process.env.HOME = "/Users/test";
+    delete process.env.ARGENT_STATE_DIR;
+    fsMocks.realpath.mockImplementation(async (target: string) => target);
+    fsMocks.access.mockImplementation(async (target: string) => {
+      if (target === installedCli || target === installedDist) {
+        return;
+      }
+      throw new Error(`missing: ${target}`);
+    });
+
+    const result = await resolveGatewayProgramArguments({ port: 18789 });
+
+    expect(result.programArguments).toEqual([
+      process.execPath,
+      installedDist,
+      "gateway",
+      "--port",
+      "18789",
+    ]);
+  });
+
+  it("prefers ARGENT_INSTALL_PACKAGE_DIR over the default state snapshot path", async () => {
+    const repoDist = path.resolve("/Users/dev/argentos/dist/index.js");
+    const installPackageDir = path.resolve("/Users/custom/argent-runtime");
+    const installedCli = path.resolve(installPackageDir, "argent.mjs");
+    const installedDist = path.resolve(installPackageDir, "dist/index.js");
+    const defaultInstalledCli = path.resolve(
+      "/Users/test/.argentos/lib/node_modules/argentos/argent.mjs",
+    );
+    process.argv = ["node", repoDist];
+    process.env.HOME = "/Users/test";
+    delete process.env.ARGENT_STATE_DIR;
+    process.env.ARGENT_INSTALL_PACKAGE_DIR = installPackageDir;
+    fsMocks.realpath.mockImplementation(async (target: string) => target);
+    fsMocks.access.mockImplementation(async (target: string) => {
+      if (target === installedCli || target === installedDist) {
+        return;
+      }
+      if (target === defaultInstalledCli) {
+        throw new Error(`unexpected default snapshot probe: ${target}`);
+      }
+      throw new Error(`missing: ${target}`);
+    });
+
+    const result = await resolveGatewayProgramArguments({ port: 18789 });
+
+    expect(result.programArguments).toEqual([
+      process.execPath,
+      installedDist,
+      "gateway",
+      "--port",
+      "18789",
+    ]);
+  });
+
+  it("ignores installed runtime path when it resolves back into the same repo", async () => {
+    const repoDist = path.resolve("/Users/dev/argentos/dist/index.js");
+    const repoArgent = path.resolve("/Users/dev/argentos/argent.mjs");
+    const installedCli = path.resolve("/Users/test/.argentos/lib/node_modules/argentos/argent.mjs");
+    process.argv = ["node", repoDist];
+    process.env.HOME = "/Users/test";
+    delete process.env.ARGENT_STATE_DIR;
+    fsMocks.realpath.mockImplementation(async (target: string) => {
+      if (target === installedCli) {
+        return repoArgent;
+      }
+      return target;
+    });
+    fsMocks.access.mockImplementation(async (target: string) => {
+      if (target === installedCli || target === repoDist) {
+        return;
+      }
+      throw new Error(`missing: ${target}`);
+    });
+
+    const result = await resolveGatewayProgramArguments({ port: 18789 });
+
+    expect(result.programArguments).toEqual([
+      process.execPath,
+      repoDist,
       "gateway",
       "--port",
       "18789",

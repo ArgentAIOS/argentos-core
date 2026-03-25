@@ -25,6 +25,7 @@ const KEYCHAIN_ACCOUNT = "ArgentOS";
 const KEY_FILE_NAME = ".master-key";
 const SERVICE_KEYS_FILE_NAME = "service-keys.json";
 const KEYCHAIN_AUTO_MIGRATE_ENV = "ARGENT_KEYCHAIN_MIGRATE_FILE_KEY";
+const KEYCHAIN_DISABLE_WRITE_ENV = "ARGENT_KEYCHAIN_DISABLE_WRITE";
 
 let cachedKey: Buffer | null = null;
 
@@ -51,6 +52,11 @@ function readKeychainKey(): Buffer | null {
  */
 function writeKeychainKey(key: Buffer): boolean {
   if (process.platform !== "darwin") return false;
+  const disableRaw = process.env[KEYCHAIN_DISABLE_WRITE_ENV]?.trim().toLowerCase();
+  if (disableRaw === "1" || disableRaw === "true" || disableRaw === "yes" || disableRaw === "on") {
+    log.info("skipping macOS Keychain write because ARGENT_KEYCHAIN_DISABLE_WRITE is enabled");
+    return false;
+  }
   const hex = key.toString("hex");
   try {
     // -U updates in place when item exists; avoids delete+add double-prompt behavior.

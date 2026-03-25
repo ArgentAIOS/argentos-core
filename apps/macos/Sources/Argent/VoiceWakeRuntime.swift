@@ -2,6 +2,7 @@ import AVFoundation
 import Foundation
 import OSLog
 import Speech
+import SwabbleKit
 #if canImport(AppKit)
 import AppKit
 #endif

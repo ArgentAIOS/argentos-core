@@ -10,6 +10,8 @@ export type AuthChoiceOption = {
 export type AuthChoiceGroupId =
   | "openai"
   | "anthropic"
+  | "local-lmstudio"
+  | "local-ollama"
   | "google"
   | "mistral"
   | "copilot"
@@ -51,10 +53,22 @@ const AUTH_CHOICE_GROUP_DEFS: {
     choices: ["token", "apiKey"],
   },
   {
+    value: "local-lmstudio",
+    label: "LM Studio",
+    hint: "Local models via LM Studio",
+    choices: ["lmstudio"],
+  },
+  {
+    value: "local-ollama",
+    label: "Ollama",
+    hint: "Local models via Ollama",
+    choices: ["ollama"],
+  },
+  {
     value: "minimax",
     label: "MiniMax",
-    hint: "M2.1 (recommended)",
-    choices: ["minimax-portal", "minimax-api", "minimax-api-lightning"],
+    hint: "M2.7 and highspeed verified",
+    choices: ["minimax-portal", "minimax-api-m27", "minimax-api-m27-highspeed", "minimax-api"],
   },
   {
     value: "moonshot",
@@ -153,6 +167,16 @@ export function buildAuthChoiceOptions(params: {
     value: "openai-codex",
     label: "OpenAI Codex (ChatGPT OAuth)",
   });
+  options.push({
+    value: "lmstudio",
+    label: "LM Studio (local models)",
+    hint: "Recommended local runtime for MiniMax M2.1",
+  });
+  options.push({
+    value: "ollama",
+    label: "Ollama (local models)",
+    hint: "Run local Llama or Qwen models",
+  });
   options.push({ value: "chutes", label: "Chutes (OAuth)" });
   options.push({ value: "openai-api-key", label: "OpenAI API key" });
   options.push({ value: "mistral-api-key", label: "Mistral API key" });
@@ -207,6 +231,16 @@ export function buildAuthChoiceOptions(params: {
     label: "MiniMax OAuth",
     hint: "Oauth plugin for MiniMax",
   });
+  options.push({
+    value: "minimax-api-m27",
+    label: "MiniMax M2.7",
+    hint: "Verified on the Anthropic-compatible API",
+  });
+  options.push({
+    value: "minimax-api-m27-highspeed",
+    label: "MiniMax M2.7 Highspeed",
+    hint: "Verified on the Anthropic-compatible API",
+  });
   options.push({ value: "qwen-portal", label: "Qwen OAuth" });
   options.push({
     value: "copilot-proxy",
@@ -221,11 +255,6 @@ export function buildAuthChoiceOptions(params: {
     hint: "Claude, GPT, Gemini via opencode.ai/zen",
   });
   options.push({ value: "minimax-api", label: "MiniMax M2.1" });
-  options.push({
-    value: "minimax-api-lightning",
-    label: "MiniMax M2.1 Lightning",
-    hint: "Faster, higher output cost",
-  });
   if (params.includeSkip) {
     options.push({ value: "skip", label: "Skip for now" });
   }

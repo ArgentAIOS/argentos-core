@@ -20,6 +20,9 @@ type InlineProviderConfig = {
   models?: ModelDefinitionConfig[];
 };
 
+const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1";
+const DEFAULT_LMSTUDIO_BASE_URL = "http://127.0.0.1:1234/v1";
+
 export function buildInlineProviderModels(
   providers: Record<string, InlineProviderConfig>,
 ): InlineModelEntry[] {
@@ -56,6 +59,32 @@ export function buildModelAliasLines(cfg?: ArgentConfig) {
     .map((entry) => `- ${entry.alias}: ${entry.model}`);
 }
 
+function hasProviderRef(value: unknown, provider: "ollama" | "lmstudio"): boolean {
+  return typeof value === "string" && value.trim().toLowerCase().startsWith(`${provider}/`);
+}
+
+function resolveDynamicProviderBaseUrl(
+  provider: "ollama" | "lmstudio",
+  cfg?: ArgentConfig,
+): string {
+  const configured = cfg?.models?.providers?.[provider]?.baseUrl?.trim();
+  if (configured) {
+    return configured;
+  }
+  if (provider === "lmstudio") {
+    const memorySearch = cfg?.agents?.defaults?.memorySearch;
+    const usesLmstudioMemoryRuntime =
+      memorySearch?.provider === "lmstudio" ||
+      memorySearch?.fallback === "lmstudio" ||
+      hasProviderRef(memorySearch?.model, "lmstudio");
+    const remoteBaseUrl = memorySearch?.remote?.baseUrl?.trim();
+    if (usesLmstudioMemoryRuntime && remoteBaseUrl) {
+      return remoteBaseUrl;
+    }
+  }
+  return provider === "ollama" ? DEFAULT_OLLAMA_BASE_URL : DEFAULT_LMSTUDIO_BASE_URL;
+}
+
 export function resolveModel(
   provider: string,
   modelId: string,
@@ -89,6 +118,7 @@ export function resolveModel(
 
     // Fallback 2: Inline models from config providers.
     const providers = cfg?.models?.providers ?? {};
+    const providerCfg = providers[provider] ?? providers[normalizedProvider];
     const inlineModels = buildInlineProviderModels(providers);
     const inlineMatch = inlineModels.find(
       (entry) => normalizeProviderId(entry.provider) === normalizedProvider && entry.id === modelId,
@@ -101,24 +131,24 @@ export function resolveModel(
         modelRegistry,
       };
     }
-    // Ollama is a known local provider that doesn't need API key registration.
-    // Create a dynamic model entry when the model router routes to it.
-    if (normalizedProvider === "ollama") {
-      const ollamaModel: Model<Api> = normalizeModelCompat({
+    // Local OpenAI-compatible runtimes may be selected without a provider model catalog.
+    // Create a dynamic model entry when runtime config points at them directly.
+    if (normalizedProvider === "ollama" || normalizedProvider === "lmstudio") {
+      const dynamicProvider = normalizedProvider as "ollama" | "lmstudio";
+      const localModel: Model<Api> = normalizeModelCompat({
         id: modelId,
         name: modelId,
         api: "openai-completions",
-        provider: "ollama",
-        baseUrl: "http://127.0.0.1:11434/v1",
+        provider: dynamicProvider,
+        baseUrl: resolveDynamicProviderBaseUrl(dynamicProvider, cfg),
         reasoning: false,
         input: ["text"],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextWindow: 128_000,
         maxTokens: 8192,
       } as Model<Api>);
-      return { model: ollamaModel, authStorage, modelRegistry };
+      return { model: localModel, authStorage, modelRegistry };
     }
-    const providerCfg = providers[provider];
     if (providerCfg || modelId.startsWith("mock-")) {
       const fallbackModel: Model<Api> = normalizeModelCompat({
         id: modelId,

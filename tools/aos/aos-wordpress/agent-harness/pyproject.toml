@@ -5,9 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aos-wordpress"
 version = "0.1.0"
-description = "Agent-native WordPress CLI wrapper"
+description = "Agent-native WordPress publishing connector."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = ["click>=8.1"]
 
 [project.optional-dependencies]

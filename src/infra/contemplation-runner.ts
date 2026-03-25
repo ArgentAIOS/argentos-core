@@ -48,6 +48,7 @@ import { getQueueSize } from "../process/command-queue.js";
 import { CommandLane } from "../process/lanes.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { defaultRuntime } from "../runtime.js";
+import { isContemplationAutonomousSchedulingSuppressed } from "./consciousness-kernel-authority.js";
 import { runDiscoveryPhase } from "./contemplation-discovery.js";
 import {
   parseEpisodeFromResponse,
@@ -158,6 +159,7 @@ export type ContemplationRunner = {
   stop: () => void;
   updateConfig: (cfg: ArgentConfig) => void;
   runNow: (agentId?: string) => Promise<ContemplationRunResult>;
+  getSnapshot: () => ContemplationRunnerSnapshot;
 };
 
 export type ContemplationRunResult = {
@@ -167,6 +169,15 @@ export type ContemplationRunResult = {
   isOk?: boolean;
   lastRunMs?: number;
   nextDueMs?: number;
+};
+
+export type ContemplationRunnerSnapshot = {
+  defaultAgentId: string | null;
+  trackedAgentCount: number;
+  defaultAgentAutonomousSchedulingSuppressed: boolean;
+  defaultAgentNextDueMs: number | null;
+  nextAutonomousDueMs: number | null;
+  suppressedAgentIds: string[];
 };
 
 // ── AEVP Episode Broadcast ──────────────────────────────────────────────────
@@ -1271,6 +1282,48 @@ export function startContemplationRunner(opts: { cfg?: ArgentConfig }): Contempl
     return agentState.intervalMs;
   }
 
+  function resolveEffectiveDue(agentState: ContemplationAgentState): number {
+    return agentState.lastRunMs
+      ? agentState.lastRunMs + resolveCurrentInterval(agentState)
+      : agentState.nextDueMs;
+  }
+
+  function isAutonomousSchedulingSuppressedForAgent(agentId: string): boolean {
+    return isContemplationAutonomousSchedulingSuppressed(cfg, agentId);
+  }
+
+  function resolveNextAutonomousDueMs(): number | null {
+    let nextDue = Number.POSITIVE_INFINITY;
+    for (const [agentId, agent] of agents) {
+      if (isAutonomousSchedulingSuppressedForAgent(agentId)) {
+        continue;
+      }
+      const effectiveNext = resolveEffectiveDue(agent);
+      if (effectiveNext < nextDue) {
+        nextDue = effectiveNext;
+      }
+    }
+    return Number.isFinite(nextDue) ? nextDue : null;
+  }
+
+  function getSnapshot(): ContemplationRunnerSnapshot {
+    const defaultAgentId = resolveDefaultAgentId(cfg);
+    const defaultAgentState = defaultAgentId ? agents.get(defaultAgentId) : undefined;
+    const suppressedAgentIds = Array.from(agents.keys()).filter((agentId) =>
+      isAutonomousSchedulingSuppressedForAgent(agentId),
+    );
+    return {
+      defaultAgentId,
+      trackedAgentCount: agents.size,
+      defaultAgentAutonomousSchedulingSuppressed: defaultAgentId
+        ? isAutonomousSchedulingSuppressedForAgent(defaultAgentId)
+        : false,
+      defaultAgentNextDueMs: defaultAgentState ? resolveEffectiveDue(defaultAgentState) : null,
+      nextAutonomousDueMs: resolveNextAutonomousDueMs(),
+      suppressedAgentIds,
+    };
+  }
+
   async function ensureAgentState(agentId: string): Promise<ContemplationAgentState | null> {
     const existing = agents.get(agentId);
     if (existing) {
@@ -1304,19 +1357,12 @@ export function startContemplationRunner(opts: { cfg?: ArgentConfig }): Contempl
     }
     if (agents.size === 0) return;
 
-    const now = Date.now();
-    let nextDue = Number.POSITIVE_INFINITY;
-    for (const agent of agents.values()) {
-      const effectiveNext = agent.lastRunMs
-        ? agent.lastRunMs + resolveCurrentInterval(agent)
-        : agent.nextDueMs;
-      if (effectiveNext < nextDue) {
-        nextDue = effectiveNext;
-      }
+    const nextDue = resolveNextAutonomousDueMs();
+    if (typeof nextDue !== "number") {
+      return;
     }
-    if (!Number.isFinite(nextDue)) return;
 
-    const delay = Math.max(0, nextDue - now);
+    const delay = Math.max(0, nextDue - Date.now());
     timer = setTimeout(runCycle, delay);
     timer.unref?.();
   }
@@ -1360,9 +1406,11 @@ export function startContemplationRunner(opts: { cfg?: ArgentConfig }): Contempl
       if (stopped) break;
       if (agentState.running) continue;
 
-      const effectiveDue = agentState.lastRunMs
-        ? agentState.lastRunMs + resolveCurrentInterval(agentState)
-        : agentState.nextDueMs;
+      if (isAutonomousSchedulingSuppressedForAgent(agentId)) {
+        continue;
+      }
+
+      const effectiveDue = resolveEffectiveDue(agentState);
 
       if (now < effectiveDue) continue;
 
@@ -1600,5 +1648,5 @@ export function startContemplationRunner(opts: { cfg?: ArgentConfig }): Contempl
   }
   scheduleNext();
 
-  return { stop, updateConfig, runNow };
+  return { stop, updateConfig, runNow, getSnapshot };
 }

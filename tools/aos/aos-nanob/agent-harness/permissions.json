@@ -1,0 +1,16 @@
+{
+  "tool": "aos-nanob",
+  "backend": "google-genai",
+  "permissions": {
+    "health": "readonly",
+    "capabilities": "readonly",
+    "models": "readonly",
+    "generate": "write",
+    "edit": "write",
+    "prompt": "readonly",
+    "batch": "write",
+    "sessions.list": "readonly",
+    "sessions.create": "write",
+    "sessions.show": "readonly"
+  }
+}

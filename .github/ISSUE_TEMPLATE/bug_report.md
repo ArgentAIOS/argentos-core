@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a problem or unexpected behavior in ArgentOS Core.
+about: Report a problem or unexpected behavior in Clawdbot.
 title: "[Bug]: "
 labels: bug
 ---
@@ -25,11 +25,9 @@ What actually happened?
 
 ## Environment
 
-- ArgentOS Core version or commit:
+- Clawdbot version:
 - OS:
-- Install method (Argent.app/install.sh/npm/source checkout/docker/etc):
-- Runtime mode (Ollama/LM Studio/cloud), if relevant:
-- Channel or feature area, if relevant:
+- Install method (pnpm/npx/docker/etc):
 
 ## Logs or screenshots
 

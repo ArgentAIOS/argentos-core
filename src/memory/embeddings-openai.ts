@@ -9,12 +9,22 @@ export type OpenAiEmbeddingClient = {
 };
 
 export const DEFAULT_OPENAI_EMBEDDING_MODEL = "text-embedding-3-small";
+export const DEFAULT_LMSTUDIO_EMBEDDING_MODEL = "text-embedding-nomic-embed-text-v1.5";
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
+const DEFAULT_LMSTUDIO_BASE_URL = "http://127.0.0.1:1234/v1";
 
-export function normalizeOpenAiModel(model: string): string {
+export function normalizeOpenAiCompatibleModel(
+  model: string,
+  providerId: "openai" | "lmstudio",
+): string {
   const trimmed = model.trim();
   if (!trimmed) {
-    return DEFAULT_OPENAI_EMBEDDING_MODEL;
+    return providerId === "lmstudio"
+      ? DEFAULT_LMSTUDIO_EMBEDDING_MODEL
+      : DEFAULT_OPENAI_EMBEDDING_MODEL;
+  }
+  if (providerId === "lmstudio" && trimmed.startsWith("lmstudio/")) {
+    return trimmed.slice("lmstudio/".length);
   }
   if (trimmed.startsWith("openai/")) {
     return trimmed.slice("openai/".length);
@@ -24,8 +34,9 @@ export function normalizeOpenAiModel(model: string): string {
 
 export async function createOpenAiEmbeddingProvider(
   options: EmbeddingProviderOptions,
+  providerId: "openai" | "lmstudio" = "openai",
 ): Promise<{ provider: EmbeddingProvider; client: OpenAiEmbeddingClient }> {
-  const client = await resolveOpenAiEmbeddingClient(options);
+  const client = await resolveOpenAiEmbeddingClient(options, providerId);
   const url = `${client.baseUrl.replace(/\/$/, "")}/embeddings`;
   const dimensions = resolveOpenAiEmbeddingDimensions(client.model, options.config);
 
@@ -58,7 +69,7 @@ export async function createOpenAiEmbeddingProvider(
 
   return {
     provider: {
-      id: "openai",
+      id: providerId,
       model: client.model,
       embedQuery: async (text) => {
         const [vec] = await embed([text]);
@@ -72,30 +83,36 @@ export async function createOpenAiEmbeddingProvider(
 
 export async function resolveOpenAiEmbeddingClient(
   options: EmbeddingProviderOptions,
+  providerId: "openai" | "lmstudio" = "openai",
 ): Promise<OpenAiEmbeddingClient> {
   const remote = options.remote;
   const remoteApiKey = remote?.apiKey?.trim();
   const remoteBaseUrl = remote?.baseUrl?.trim();
+  const providerConfig = options.config.models?.providers?.[providerId];
 
-  const apiKey = remoteApiKey
-    ? remoteApiKey
-    : requireApiKey(
-        await resolveApiKeyForProvider({
-          provider: "openai",
-          cfg: options.config,
-          agentDir: options.agentDir,
-        }),
-        "openai",
-      );
+  const apiKey =
+    remoteApiKey ||
+    (providerId === "lmstudio"
+      ? providerConfig?.apiKey?.trim() || process.env.LMSTUDIO_API_KEY?.trim() || "lmstudio"
+      : requireApiKey(
+          await resolveApiKeyForProvider({
+            provider: "openai",
+            cfg: options.config,
+            agentDir: options.agentDir,
+          }),
+          "openai",
+        ));
 
-  const providerConfig = options.config.models?.providers?.openai;
-  const baseUrl = remoteBaseUrl || providerConfig?.baseUrl?.trim() || DEFAULT_OPENAI_BASE_URL;
+  const baseUrl =
+    remoteBaseUrl ||
+    providerConfig?.baseUrl?.trim() ||
+    (providerId === "lmstudio" ? DEFAULT_LMSTUDIO_BASE_URL : DEFAULT_OPENAI_BASE_URL);
   const headerOverrides = Object.assign({}, providerConfig?.headers, remote?.headers);
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${apiKey}`,
     ...headerOverrides,
   };
-  const model = normalizeOpenAiModel(options.model);
+  const model = normalizeOpenAiCompatibleModel(options.model, providerId);
   return { baseUrl, headers, model };
 }

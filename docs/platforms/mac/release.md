@@ -99,7 +99,7 @@ scripts/release-argent-manager.sh
 Use the release note generator so Sparkle renders formatted HTML notes:
 
 ```bash
-SPARKLE_PRIVATE_KEY_FILE=/path/to/ed25519-private-key scripts/make_appcast.sh dist/ArgentOS-2026.2.4.zip https://raw.githubusercontent.com/ArgentAIOS/argentos/main/appcast.xml
+SPARKLE_PRIVATE_KEY_FILE=/path/to/ed25519-private-key scripts/make_appcast.sh dist/ArgentOS-2026.2.4.zip https://raw.githubusercontent.com/argent/argent/main/appcast.xml
 ```
 
 Generates HTML release notes from `CHANGELOG.md` (via [`scripts/changelog-to-html.sh`](https://github.com/ArgentAIOS/argentos/blob/main/scripts/changelog-to-html.sh)) and embeds them in the appcast entry.
@@ -108,9 +108,9 @@ Commit the updated `appcast.xml` alongside the release assets (zip + dSYM) when 
 ## Publish & verify
 
 - Upload `ArgentOS-2026.2.4.zip` (and `ArgentOS-2026.2.4.dSYM.zip`) to the GitHub release for tag `v2026.2.4`.
-- Ensure the raw appcast URL matches the baked feed: `https://raw.githubusercontent.com/ArgentAIOS/argentos/main/appcast.xml`.
+- Ensure the raw appcast URL matches the baked feed: `https://raw.githubusercontent.com/argent/argent/main/appcast.xml`.
 - Sanity checks:
-  - `curl -I https://raw.githubusercontent.com/ArgentAIOS/argentos/main/appcast.xml` returns 200.
+  - `curl -I https://raw.githubusercontent.com/argent/argent/main/appcast.xml` returns 200.
   - `curl -I <enclosure url>` returns 200 after assets upload.
   - On a previous public build, run “Check for Updates…” from the About tab and verify Sparkle installs the new build cleanly.
 

@@ -274,7 +274,7 @@ function mapStatusFromDb(status) {
 
 // List all tasks
 function listTasks(options = {}) {
-  const { includeCompleted = true, limit = 100, assignee } = options;
+  const { includeCompleted = true, limit = 100, offset = 0, assignee } = options;
 
   let sql = "SELECT * FROM tasks";
   const conditions = [];
@@ -302,6 +302,10 @@ function listTasks(options = {}) {
   if (limit) {
     sql += " LIMIT ?";
     params.push(limit);
+    if (offset > 0) {
+      sql += " OFFSET ?";
+      params.push(offset);
+    }
   }
 
   const rows = db.prepare(sql).all(...params);
@@ -435,7 +439,7 @@ function completeTask(id) {
 }
 
 // Search tasks
-function searchTasks(query, limit = 20) {
+function searchTasks(query, limit = 20, offset = 0) {
   try {
     const sql = `
       SELECT t.* FROM tasks t
@@ -443,8 +447,9 @@ function searchTasks(query, limit = 20) {
       WHERE tasks_fts MATCH ?
       ORDER BY rank
       LIMIT ?
+      OFFSET ?
     `;
-    const rows = db.prepare(sql).all(query, limit);
+    const rows = db.prepare(sql).all(query, limit, Math.max(0, Number(offset) || 0));
     return rows.map(rowToTask);
   } catch (err) {
     // Fallback to LIKE search
@@ -455,8 +460,9 @@ function searchTasks(query, limit = 20) {
       WHERE title LIKE ? OR description LIKE ?
       ORDER BY created_at DESC
       LIMIT ?
+      OFFSET ?
     `)
-      .all(pattern, pattern, limit);
+      .all(pattern, pattern, limit, Math.max(0, Number(offset) || 0));
     return rows.map(rowToTask);
   }
 }

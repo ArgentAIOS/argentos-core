@@ -1,0 +1,19 @@
+{
+  "tool": "aos-airtable",
+  "backend": "airtable-rest-api",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly",
+    "base.list": "readonly",
+    "base.read": "readonly",
+    "table.list": "readonly",
+    "table.read": "readonly",
+    "record.list": "readonly",
+    "record.search": "readonly",
+    "record.read": "readonly",
+    "record.create_draft": "write",
+    "record.update_draft": "write"
+  }
+}

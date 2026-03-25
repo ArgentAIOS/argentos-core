@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aos-nanob"
+version = "0.1.0"
+description = "Agent-native Gemini image generation CLI"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["click>=8.1", "google-genai>=1.0", "rich>=13.0", "InquirerPy>=0.3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+aos-nanob = "cli_aos.nanob.cli:cli"
+
+[tool.setuptools]
+package-dir = { "" = "." }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cli_aos*"]

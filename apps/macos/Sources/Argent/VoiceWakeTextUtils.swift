@@ -1,4 +1,5 @@
 import Foundation
+import SwabbleKit
 
 enum VoiceWakeTextUtils {
     private static let whitespaceAndPunctuation = CharacterSet.whitespacesAndNewlines

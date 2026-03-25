@@ -1,0 +1,17 @@
+{
+  "tool": "aos-notion",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly",
+    "database.list": "readonly",
+    "database.query": "readonly",
+    "page.read": "readonly",
+    "page.create": "write",
+    "page.update": "write",
+    "block.read": "readonly",
+    "block.append": "write",
+    "search.query": "readonly"
+  }
+}

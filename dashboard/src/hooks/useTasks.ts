@@ -35,10 +35,17 @@ interface UseTasksReturn {
 interface UseTasksOptions {
   enabled?: boolean;
   pollMs?: number;
+  includeWorkerTasks?: boolean;
+  workerOnly?: boolean;
 }
 
 export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
-  const { enabled = true, pollMs = 15000 } = options;
+  const {
+    enabled = true,
+    pollMs = 15000,
+    includeWorkerTasks = false,
+    workerOnly = false,
+  } = options;
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,27 +53,48 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
   const refreshInFlightRef = useRef(false);
   const refreshAbortRef = useRef<AbortController | null>(null);
 
-  // Fetch projects (internal, called by refreshTasks)
-  const fetchProjectsInternal = useCallback(async (signal?: AbortSignal) => {
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    try {
-      const controller = signal ? null : new AbortController();
-      const activeSignal = signal ?? controller!.signal;
-      timeout = setTimeout(() => controller?.abort(), 8_000);
-      const res = await fetchLocalApi(`${API_BASE}/projects`, { signal: activeSignal }, 8_000);
-      if (!res.ok) return;
-      const data = await res.json();
-      setProjects(data.projects || []);
-    } catch (err) {
-      if (!(err instanceof Error && err.name === "AbortError")) {
-        console.error("[useTasks] Error fetching projects:", err);
-      }
-    } finally {
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-    }
+  const isWorkerLaneTask = useCallback((task: Task | Project) => {
+    const source = (task as Task).source;
+    if (source === "job") return true;
+    const metadata = (task as Task & { metadata?: Record<string, unknown> }).metadata;
+    return Boolean(metadata && typeof metadata === "object" && metadata.jobAssignmentId);
   }, []);
+
+  const filterByLane = useCallback(
+    <T extends Task | Project>(items: T[]): T[] => {
+      if (!workerOnly) return items;
+      return items.filter((item) => isWorkerLaneTask(item));
+    },
+    [isWorkerLaneTask, workerOnly],
+  );
+
+  // Fetch projects (internal, called by refreshTasks)
+  const fetchProjectsInternal = useCallback(
+    async (signal?: AbortSignal) => {
+      let timeout: ReturnType<typeof setTimeout> | null = null;
+      try {
+        const controller = signal ? null : new AbortController();
+        const activeSignal = signal ?? controller!.signal;
+        timeout = setTimeout(() => controller?.abort(), 8_000);
+        const params = new URLSearchParams();
+        if (includeWorkerTasks) params.set("includeWorkerTasks", "true");
+        const url = `${API_BASE}/projects${params.size > 0 ? `?${params.toString()}` : ""}`;
+        const res = await fetchLocalApi(url, { signal: activeSignal }, 8_000);
+        if (!res.ok) return;
+        const data = await res.json();
+        setProjects(filterByLane(data.projects || []));
+      } catch (err) {
+        if (!(err instanceof Error && err.name === "AbortError")) {
+          console.error("[useTasks] Error fetching projects:", err);
+        }
+      } finally {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+      }
+    },
+    [filterByLane, includeWorkerTasks],
+  );
 
   // Fetch all tasks + projects from API
   const refreshTasks = useCallback(async () => {
@@ -78,7 +106,10 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
     refreshAbortRef.current = controller;
     const timeout = setTimeout(() => controller.abort(), 10_000);
     try {
-      const res = await fetchLocalApi(`${API_BASE}/tasks`, { signal: controller.signal }, 10_000);
+      const params = new URLSearchParams();
+      if (includeWorkerTasks) params.set("includeWorkerTasks", "true");
+      const url = `${API_BASE}/tasks${params.size > 0 ? `?${params.toString()}` : ""}`;
+      const res = await fetchLocalApi(url, { signal: controller.signal }, 10_000);
       if (!res.ok) throw new Error("Failed to fetch tasks");
       const data = await res.json();
       // Convert date strings back to Date objects
@@ -88,7 +119,7 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
         completedAt: t.completedAt ? new Date(t.completedAt) : undefined,
         startedAt: t.startedAt ? new Date(t.startedAt) : undefined,
       }));
-      setTasks(tasksWithDates);
+      setTasks(filterByLane(tasksWithDates));
       setError(null);
     } catch (err) {
       if (!(err instanceof Error && err.name === "AbortError")) {
@@ -105,7 +136,7 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
     }
     // Also refresh projects
     void fetchProjectsInternal(controller.signal);
-  }, [fetchProjectsInternal]);
+  }, [fetchProjectsInternal, filterByLane, includeWorkerTasks]);
 
   // Initial fetch + polling + SSE listener
   useEffect(() => {
@@ -170,7 +201,9 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
           ...data.task,
           createdAt: new Date(data.task.createdAt),
         };
-        setTasks((prev) => [newTask, ...prev]);
+        if (!workerOnly || isWorkerLaneTask(newTask)) {
+          setTasks((prev) => [newTask, ...prev]);
+        }
         return newTask;
       } catch (err) {
         console.error("[useTasks] Error creating task:", err);
@@ -178,7 +211,7 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
         return null;
       }
     },
-    [],
+    [isWorkerLaneTask, workerOnly],
   );
 
   // Add a child task to a project
@@ -201,7 +234,9 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
           ...data.task,
           createdAt: new Date(data.task.createdAt),
         };
-        setTasks((prev) => [newTask, ...prev]);
+        if (!workerOnly || isWorkerLaneTask(newTask)) {
+          setTasks((prev) => [newTask, ...prev]);
+        }
         void fetchProjectsInternal();
         return newTask;
       } catch (err) {
@@ -210,7 +245,7 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
         return null;
       }
     },
-    [fetchProjectsInternal],
+    [fetchProjectsInternal, isWorkerLaneTask, workerOnly],
   );
 
   // Update a task
@@ -229,7 +264,13 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
           createdAt: new Date(data.task.createdAt),
           completedAt: data.task.completedAt ? new Date(data.task.completedAt) : undefined,
         };
-        setTasks((prev) => prev.map((t) => (t.id === taskId ? updatedTask : t)));
+        setTasks((prev) =>
+          prev.flatMap((t) => {
+            if (t.id !== taskId) return [t];
+            if (workerOnly && !isWorkerLaneTask(updatedTask)) return [];
+            return [updatedTask];
+          }),
+        );
         return updatedTask;
       } catch (err) {
         console.error("[useTasks] Error updating task:", err);
@@ -237,7 +278,7 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
         return null;
       }
     },
-    [],
+    [isWorkerLaneTask, workerOnly],
   );
 
   // Delete a task
@@ -322,10 +363,13 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
   const startTaskByTitle = useCallback(
     async (title: string): Promise<Task | null> => {
       try {
-        const res = await fetchLocalApi(`${API_BASE}/tasks`);
+        const params = new URLSearchParams();
+        if (includeWorkerTasks) params.set("includeWorkerTasks", "true");
+        const url = `${API_BASE}/tasks${params.size > 0 ? `?${params.toString()}` : ""}`;
+        const res = await fetchLocalApi(url);
         if (!res.ok) return null;
         const data = await res.json();
-        const freshTasks: Task[] = data.tasks || [];
+        const freshTasks: Task[] = filterByLane(data.tasks || []);
         const task = freshTasks.find((t) => t.title === title && t.status === "pending");
         if (task) {
           return startTask(task.id);
@@ -335,7 +379,7 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
       }
       return null;
     },
-    [startTask],
+    [filterByLane, includeWorkerTasks, startTask],
   );
 
   // Complete a task by title (for [TASK_DONE:title] markers)
@@ -343,10 +387,13 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
   const completeTaskByTitle = useCallback(
     async (title: string): Promise<Task | null> => {
       try {
-        const res = await fetchLocalApi(`${API_BASE}/tasks`);
+        const params = new URLSearchParams();
+        if (includeWorkerTasks) params.set("includeWorkerTasks", "true");
+        const url = `${API_BASE}/tasks${params.size > 0 ? `?${params.toString()}` : ""}`;
+        const res = await fetchLocalApi(url);
         if (!res.ok) return null;
         const data = await res.json();
-        const freshTasks: Task[] = data.tasks || [];
+        const freshTasks: Task[] = filterByLane(data.tasks || []);
         const task = freshTasks.find((t) => t.title === title && t.status !== "completed");
         if (task) {
           return completeTask(task.id);
@@ -356,7 +403,7 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
       }
       return null;
     },
-    [completeTask],
+    [completeTask, filterByLane, includeWorkerTasks],
   );
 
   return {

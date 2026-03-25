@@ -9,10 +9,9 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      pull-requests: write
 
     steps:
-      - name: Checkout argentos-core (PR)
+      - name: Checkout argentos (PR)
         uses: actions/checkout@v6
         with:
           path: argentos
@@ -31,7 +30,7 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Regenerate extracted constants from argentos-core
+      - name: Regenerate extracted constants from argentos
         run: |
           set -euo pipefail
           cd argent-formal-models
@@ -103,29 +102,6 @@ jobs:
         with:
           name: formal-models-conformance-drift
           path: formal-models-drift.diff
-
-      - name: Comment on PR (informational)
-        if: false
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const body = [
-              '⚠️ **Formal models conformance drift detected**',
-              '',
-              'The formal models extracted constants (`generated/*`) do not match this ArgentOS Core PR.',
-              '',
-              'This check is **informational** (not blocking merges yet).',
-              'See the `formal-models-conformance-drift` artifact for the diff.',
-              '',
-              'If this change is intentional, follow up by updating the formal models repo or regenerating the extracted artifacts there.',
-            ].join('\n');
-
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
-              body,
-            });
 
       - name: Summary
         run: |

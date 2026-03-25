@@ -110,6 +110,11 @@ interface AEVPPresenceProps {
   onAmplitudeTargetReady?: (setter: (v: number) => void) => void;
   /** Orb anchor Y in normalized canvas space (0 bottom, 1 top). */
   orbCenterY?: number;
+  /** Pixel offsets applied to orb + particle composition only. */
+  presenceOffsetX?: number;
+  presenceOffsetY?: number;
+  /** Additional scale applied to orb + particle composition only. */
+  presenceScale?: number;
 }
 
 export function AEVPPresence({
@@ -122,6 +127,9 @@ export function AEVPPresence({
   onPreSpeechCueReady,
   onAmplitudeTargetReady,
   orbCenterY,
+  presenceOffsetX = 0,
+  presenceOffsetY = 0,
+  presenceScale = 1,
 }: AEVPPresenceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -191,6 +199,10 @@ export function AEVPPresence({
   useEffect(() => {
     rendererRef.current?.setOrbCenter(0.5, resolvedOrbCenterY);
   }, [resolvedOrbCenterY]);
+
+  useEffect(() => {
+    rendererRef.current?.setPresenceTransform(presenceOffsetX, presenceOffsetY, presenceScale);
+  }, [presenceOffsetX, presenceOffsetY, presenceScale]);
 
   // Phase 6: Tonal presence engine lifecycle
   useEffect(() => {

@@ -4,7 +4,7 @@ import type { WizardPrompter } from "../wizard/prompts.js";
 import { installSkill } from "../agents/skills-install.js";
 import { buildWorkspaceSkillStatus } from "../agents/skills-status.js";
 import { formatCliCommand } from "../cli/command-format.js";
-import { detectBinary, resolveNodeManagerOptions } from "./onboard-helpers.js";
+import { detectBinary } from "./onboard-helpers.js";
 
 function summarizeInstallFailure(message: string): string | undefined {
   const cleaned = message.replace(/^Install failed(?:\s*\([^)]*\))?\s*:?\s*/i, "").trim();
@@ -64,18 +64,35 @@ export async function setupSkills(
 
   await prompter.note(
     [
-      `Eligible: ${eligible.length}`,
-      `Missing requirements: ${missing.length}`,
+      "Skills are installed from the Argent marketplace.",
+      "This onboarding step only checks bundled skills already present in your workspace and whether they need local dependencies.",
+      "",
+      `Bundled skills ready: ${eligible.length}`,
+      `Bundled skills missing local requirements: ${missing.length}`,
       `Blocked by allowlist: ${blocked.length}`,
+      "",
+      "You can install marketplace skills later after activation/sign-in.",
     ].join("\n"),
-    "Skills status",
+    "Marketplace skills",
   );
 
-  const shouldConfigure = await prompter.confirm({
-    message: "Configure skills now? (recommended)",
-    initialValue: true,
+  const skillAction = await prompter.select({
+    message: "Skills setup",
+    options: [
+      {
+        value: "skip",
+        label: "Skip for now",
+        hint: "Install marketplace skills later",
+      },
+      {
+        value: "install-local",
+        label: "Install bundled skill dependencies",
+        hint: "Advanced local setup for built-in skills",
+      },
+    ],
+    initialValue: "skip",
   });
-  if (!shouldConfigure) {
+  if (skillAction === "skip") {
     return cfg;
   }
 
@@ -102,10 +119,7 @@ export async function setupSkills(
     }
   }
 
-  const nodeManager = (await prompter.select({
-    message: "Preferred node manager for skill installs",
-    options: resolveNodeManagerOptions(),
-  })) as "npm" | "pnpm" | "bun";
+  const nodeManager = await resolveDefaultNodeManager(cfg);
 
   let next: ArgentConfig = {
     ...cfg,
@@ -195,4 +209,21 @@ export async function setupSkills(
   }
 
   return next;
+}
+
+async function resolveDefaultNodeManager(cfg: ArgentConfig): Promise<"npm" | "pnpm" | "bun"> {
+  const configured = cfg.skills?.install?.nodeManager;
+  if (configured === "npm" || configured === "pnpm" || configured === "bun") {
+    return configured;
+  }
+  if (await detectBinary("pnpm")) {
+    return "pnpm";
+  }
+  if (await detectBinary("npm")) {
+    return "npm";
+  }
+  if (await detectBinary("bun")) {
+    return "bun";
+  }
+  return "npm";
 }

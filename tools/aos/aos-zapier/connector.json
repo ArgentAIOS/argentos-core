@@ -1,0 +1,149 @@
+{
+  "tool": "aos-zapier",
+  "backend": "zapier-bridge",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "zapier-bridge",
+    "surface": "zap",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "worker_visible_actions": ["zap.list", "zap.status", "zap.trigger"],
+    "commandDefaults": {
+      "zap.list": {
+        "selection_surface": "zap",
+        "limit": 10
+      },
+      "zap.status": {
+        "selection_surface": "zap"
+      },
+      "zap.trigger": {
+        "selection_surface": "zap",
+        "event": "manual",
+        "payload_mode": "key_value_pairs_or_json",
+        "event_hints": ["manual", "scheduled", "webhook", "test"],
+        "payload_example": {
+          "source": "agent",
+          "reason": "manual"
+        }
+      }
+    },
+    "triggerHints": {
+      "zap.trigger": {
+        "event": {
+          "default": "manual",
+          "suggested_values": ["manual", "scheduled", "webhook", "test"],
+          "description": "Trigger label forwarded to the configured Zapier bridge."
+        },
+        "payload": {
+          "kind": "object",
+          "input_mode": "key_value_pairs_or_json",
+          "example": {
+            "source": "agent",
+            "reason": "manual"
+          },
+          "description": "Repeated --payload key=value entries become a JSON object; --payload-json can supply the object directly."
+        },
+        "response": {
+          "acknowledged_from": ["status", "state", "result", "message"],
+          "result_from": ["response", "result"]
+        }
+      }
+    },
+    "pickerHints": {
+      "workspace": {
+        "kind": "workspace",
+        "selection_surface": "workspace",
+        "items": [
+          {
+            "value": "current",
+            "label": "Current Zapier workspace",
+            "resource": "zap.workspace"
+          }
+        ]
+      },
+      "zap": {
+        "kind": "zap",
+        "selection_surface": "zap",
+        "resource": "zap.zap",
+        "source_fields": ["zap_id", "zap_name", "zap_status"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Zapier",
+    "category": "automation-orchestration",
+    "categories": ["automation-orchestration", "workflow-automation", "integrations"],
+    "resources": ["zap", "trigger", "workspace"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["ZAPIER_API_URL", "ZAPIER_API_KEY"],
+    "interactive_setup": [
+      "Add ZAPIER_API_URL and ZAPIER_API_KEY in API Keys to point at the live Zapier bridge.",
+      "Set ZAPIER_WEBHOOK_BASE_URL if you want future webhook URLs to use a stable public base.",
+      "Set ZAPIER_WORKSPACE_NAME, ZAPIER_ZAP_ID, ZAPIER_ZAP_NAME, and ZAPIER_ZAP_STATUS to preview the zap scope shown to workers.",
+      "zap.trigger now uses the configured bridge when POST /trigger is available."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "zap.list",
+      "summary": "List Zapier zaps through the configured bridge",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "zap",
+      "action_class": "read"
+    },
+    {
+      "id": "zap.status",
+      "summary": "Read Zapier zap status through the configured bridge",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "zap",
+      "action_class": "read"
+    },
+    {
+      "id": "zap.trigger",
+      "summary": "Trigger a Zapier zap through the configured bridge",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "zap",
+      "action_class": "write"
+    }
+  ]
+}

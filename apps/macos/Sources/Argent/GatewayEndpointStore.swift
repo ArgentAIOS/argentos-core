@@ -627,7 +627,6 @@ extension GatewayEndpointStore {
 
     static func dashboardURL(for config: GatewayConnection.Config) throws -> URL {
         let components: URLComponents
-        let launchdSnapshot = GatewayLaunchAgentManager.launchdConfigSnapshot()
         if self.isLoopbackHost(config.url.host) {
             // For local installs, always open the full Dashboard UI service (port 8080),
             // not the Gateway control UI hosted on the gateway port.
@@ -666,12 +665,6 @@ extension GatewayEndpointStore {
            !password.isEmpty
         {
             queryItems.append(URLQueryItem(name: "password", value: password))
-        }
-        if self.isLoopbackHost(config.url.host),
-           let dashboardApiToken = launchdSnapshot?.dashboardApiToken?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !dashboardApiToken.isEmpty
-        {
-            queryItems.append(URLQueryItem(name: "api_token", value: dashboardApiToken))
         }
         resolved.queryItems = queryItems.isEmpty ? nil : queryItems
         guard let url = resolved.url else {

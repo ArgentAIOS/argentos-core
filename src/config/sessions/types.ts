@@ -122,6 +122,16 @@ export type SessionEntry = {
   sessionClearedReason?: string;
   /** Tool names discovered via tool_search (deferred tool loading). */
   discoveredTools?: string[];
+  /**
+   * Connector selections bound to the current session, typically injected for
+   * worker runs so connector tools can apply assignment-scoped defaults.
+   */
+  connectorSelections?: Array<{
+    tool: string;
+    label?: string;
+    selectedCommands?: string[];
+    scope?: Record<string, unknown>;
+  }>;
 };
 
 export function mergeSessionEntry(

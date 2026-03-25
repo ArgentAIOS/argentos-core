@@ -13,6 +13,7 @@ import type { MemuStore } from "../memory/memu-store.js";
 import type {
   CreateCategoryInput,
   CreateEntityInput,
+  CreateKnowledgeObservationInput,
   CreateLessonInput,
   CreateLiveCandidateInput,
   CreateMemoryItemInput,
@@ -20,6 +21,10 @@ import type {
   CreateResourceInput,
   Entity,
   EntityType,
+  KnowledgeObservation,
+  KnowledgeObservationEvidence,
+  KnowledgeObservationSearchOptions,
+  KnowledgeObservationSearchResult,
   Lesson,
   LiveCandidate,
   MemoryCategory,
@@ -68,6 +73,10 @@ import type {
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("data/sqlite-adapter");
+
+function unsupportedKnowledgeObservations(): never {
+  throw new Error("Knowledge observations require PostgreSQL");
+}
 
 // ── Memory Adapter (wraps MemuStore) ─────────────────────────────────────
 
@@ -305,6 +314,48 @@ class SQLiteMemoryAdapter implements MemoryAdapter {
 
   async deleteLesson(id: string): Promise<void> {
     this.store.deleteLesson(id);
+  }
+
+  async getKnowledgeObservation(_id: string): Promise<KnowledgeObservation | null> {
+    return null;
+  }
+
+  async listKnowledgeObservations(): Promise<KnowledgeObservation[]> {
+    return [];
+  }
+
+  async searchKnowledgeObservations(
+    _query: string,
+    _options?: KnowledgeObservationSearchOptions,
+  ): Promise<KnowledgeObservationSearchResult[]> {
+    return [];
+  }
+
+  async getKnowledgeObservationEvidence(
+    _observationId: string,
+  ): Promise<KnowledgeObservationEvidence[]> {
+    return [];
+  }
+
+  async upsertKnowledgeObservation(
+    _input: CreateKnowledgeObservationInput,
+  ): Promise<KnowledgeObservation> {
+    return unsupportedKnowledgeObservations();
+  }
+
+  async supersedeKnowledgeObservation(_params: {
+    id: string;
+    successor: CreateKnowledgeObservationInput;
+  }): Promise<KnowledgeObservation> {
+    return unsupportedKnowledgeObservations();
+  }
+
+  async markKnowledgeObservationStale(_id: string): Promise<void> {
+    return unsupportedKnowledgeObservations();
+  }
+
+  async invalidateKnowledgeObservation(_id: string, _reason?: string): Promise<void> {
+    return unsupportedKnowledgeObservations();
   }
 
   // --- Live Inbox ---

@@ -21,6 +21,7 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.8.1"),
         .package(url: "https://github.com/steipete/Peekaboo.git", branch: "main"),
         .package(path: "../shared/ArgentKit"),
+        .package(path: "../../Swabble"),
     ],
     targets: [
         .target(
@@ -46,6 +47,7 @@ let package = Package(
                 .product(name: "ArgentKit", package: "ArgentKit"),
                 .product(name: "ArgentChatUI", package: "ArgentKit"),
                 .product(name: "ArgentProtocol", package: "ArgentKit"),
+                .product(name: "SwabbleKit", package: "swabble"),
                 .product(name: "MenuBarExtraAccess", package: "MenuBarExtraAccess"),
                 .product(name: "Subprocess", package: "swift-subprocess"),
                 .product(name: "Logging", package: "swift-log"),
@@ -81,6 +83,7 @@ let package = Package(
                 "Argent",
                 "ArgentDiscovery",
                 .product(name: "ArgentProtocol", package: "ArgentKit"),
+                .product(name: "SwabbleKit", package: "swabble"),
             ],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),

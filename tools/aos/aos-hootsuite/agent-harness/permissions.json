@@ -1,0 +1,20 @@
+{
+  "tool": "aos-hootsuite",
+  "backend": "hootsuite-rest-api",
+  "permissions": {
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "me.read": "readonly",
+    "organization.list": "readonly",
+    "organization.read": "readonly",
+    "social_profile.list": "readonly",
+    "social_profile.read": "readonly",
+    "team.list": "readonly",
+    "team.read": "readonly",
+    "message.list": "readonly",
+    "message.read": "readonly",
+    "message.schedule": "write"
+  }
+}

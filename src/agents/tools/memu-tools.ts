@@ -8,7 +8,7 @@
 import { Type } from "@sinclair/typebox";
 import type { ArgentConfig } from "../../config/config.js";
 import type { MemoryAdapter } from "../../data/adapter.js";
-import type { Entity, MemoryType } from "../../memory/memu-types.js";
+import type { Entity, KnowledgeObservationKind, MemoryType } from "../../memory/memu-types.js";
 import type { AnyAgentTool } from "./common.js";
 import {
   getKnowledgeAclSnapshot,
@@ -21,7 +21,7 @@ import { contentHash } from "../../memory/memu-store.js";
 import { MEMORY_TYPES } from "../../memory/memu-types.js";
 import { buildCogneeSupplement, runCogneeSearch } from "../../memory/retrieve/cognee.js";
 import { resolveUserTimezone } from "../date-time.js";
-import { resolveEffectiveIntentForAgentIfAvailable } from "../optional-intent.js";
+import { resolveEffectiveIntentForAgent } from "../intent.js";
 import { inferDepartmentKnowledgeCollections } from "../support-rag-routing.js";
 import { jsonResult, readStringParam, readStringArrayParam, readNumberParam } from "./common.js";
 import { appendMemoryRecallTelemetry } from "./memu-recall-telemetry.js";
@@ -123,6 +123,27 @@ type RecallResultSnapshot = {
   summary: string;
   score: number;
 };
+
+function shouldUseObservationRetrieval(cfg: ArgentConfig): boolean {
+  return (
+    cfg.memory?.observations?.enabled === true &&
+    cfg.memory?.observations?.retrieval?.enabled === true
+  );
+}
+
+function inferObservationKindsForRecall(params: {
+  intent: RecallIntentSignal | null;
+  query: string;
+}): KnowledgeObservationKind[] {
+  switch (params.intent?.queryClass) {
+    case "identity_property":
+      return ["operator_preference", "relationship_fact"];
+    case "decision_project":
+      return ["project_state"];
+    default:
+      return [];
+  }
+}
 
 type KnowledgeSearchHit = {
   id: string;
@@ -2815,10 +2836,12 @@ export function createMemoryRecallTool(options: {
       const query = readStringParam(params, "query", { required: true });
       const entityFilter = readStringParam(params, "entity");
       const explicitCollectionFilter = readStringParam(params, "collection");
-      const resolvedIntent = resolveEffectiveIntentForAgentIfAvailable({
-        config: cfg,
-        agentId: options.agentId,
-      });
+      const resolvedIntent = options.agentId
+        ? resolveEffectiveIntentForAgent({
+            config: cfg,
+            agentId: options.agentId,
+          })
+        : null;
       const collectionFilters = inferDepartmentKnowledgeCollections({
         departmentId: resolvedIntent?.departmentId,
         query,
@@ -3465,6 +3488,75 @@ export function createMemoryRecallTool(options: {
           timelineWindow,
           finalResults,
         });
+        let observationFallbackUsed = false;
+        let observationFallbackCount = 0;
+        let observationFallbackQueries: string[] = [];
+        let observationResults:
+          | Array<{
+              summary: string;
+              confidence: number;
+              freshness: number;
+              canonicalKey: string;
+              status: string;
+              evidence: Array<{
+                stance: string;
+                excerpt: string | null;
+                itemId: string | null;
+                lessonId: string | null;
+                reflectionId: string | null;
+                entityId: string | null;
+              }>;
+            }>
+          | undefined;
+        if (
+          shouldUseObservationRetrieval(cfg) &&
+          normalizedCollectionFilters.size === 0 &&
+          typeof memory.searchKnowledgeObservations === "function"
+        ) {
+          const observationKinds = inferObservationKindsForRecall({
+            intent: intentSignal,
+            query,
+          });
+          if (observationKinds.length > 0) {
+            const observationHits = await memory.searchKnowledgeObservations(query, {
+              kinds: observationKinds,
+              limit: cfg.memory?.observations?.retrieval?.maxResults ?? 3,
+              minConfidence: cfg.memory?.observations?.retrieval?.minConfidence ?? 0.45,
+              minFreshness: cfg.memory?.observations?.retrieval?.minFreshness ?? 0.2,
+            });
+            if (observationHits.length > 0) {
+              observationFallbackUsed = true;
+              observationFallbackCount = observationHits.length;
+              observationFallbackQueries = [...queryVariants];
+              observationResults = observationHits.map((hit) => ({
+                summary: hit.observation.summary,
+                confidence: hit.observation.confidence,
+                freshness: hit.observation.freshness,
+                canonicalKey: hit.observation.canonicalKey,
+                status: hit.observation.status,
+                evidence: hit.topEvidence.map((evidence) => ({
+                  stance: evidence.stance,
+                  excerpt: evidence.excerpt ?? null,
+                  itemId: evidence.itemId ?? null,
+                  lessonId: evidence.lessonId ?? null,
+                  reflectionId: evidence.reflectionId ?? null,
+                  entityId: evidence.entityId ?? null,
+                })),
+              }));
+              if (!answerCandidate || answerCandidate.confidence < 0.8) {
+                const topObservation = observationHits[0]!.observation;
+                answerCandidate = {
+                  value: topObservation.summary,
+                  strategy: "summary-best-hit",
+                  confidence: Math.max(0.7, Math.min(0.96, topObservation.confidence)),
+                  sourceId: topObservation.id,
+                  sourceType: "knowledge_observation",
+                  sourceSummary: topObservation.summary,
+                };
+              }
+            }
+          }
+        }
         let knowledgeFallbackUsed = false;
         let knowledgeFallbackCount = 0;
         let knowledgeFallbackQueries: string[] = [];
@@ -3540,6 +3632,9 @@ export function createMemoryRecallTool(options: {
         if (answerCandidate) {
           response.answer = answerCandidate;
         }
+        if (observationResults && observationResults.length > 0) {
+          response.currentBeliefs = observationResults;
+        }
         response.recallTelemetry = {
           queryClass,
           queryVariants,
@@ -3559,9 +3654,13 @@ export function createMemoryRecallTool(options: {
           answerStrategy: answerCandidate?.strategy ?? null,
           answerSourceId: answerCandidate?.sourceId ?? null,
           vectorFallbackUsed,
+          observationFallbackUsed,
+          observationFallbackQueries,
+          observationFallbackCount,
           knowledgeFallbackUsed,
           knowledgeFallbackQueries,
           knowledgeFallbackCount,
+          knowledgeObservationCount: observationResults?.length ?? 0,
         };
 
         if (mode !== requestedMode) {
@@ -3596,6 +3695,13 @@ export function createMemoryRecallTool(options: {
             used: true,
             count: knowledgeFallbackCount,
             queryVariants: knowledgeFallbackQueries,
+          };
+        }
+        if (observationFallbackUsed) {
+          response.observationFallback = {
+            used: true,
+            count: observationFallbackCount,
+            queryVariants: observationFallbackQueries,
           };
         }
         if (cogneeRetrieval.used || cogneeRetrieval.error) {

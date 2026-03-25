@@ -68,12 +68,6 @@ Helper scripts:
 - `scripts/release-argent-manager.sh`
 - `scripts/notarize-mac-artifact.sh`
 
-Repository note:
-
-- `appcast.xml` in the repo should be treated as the Sparkle feed source file.
-- Keep the checked-in file as either the latest generated ArgentOS appcast or a neutral placeholder.
-- Do not leave inherited/upstream feed entries in place, because that silently points clients at the wrong product.
-
 ## Private Repo Constraints
 
 If `ArgentAIOS/argentos` stays private:

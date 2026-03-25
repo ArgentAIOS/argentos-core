@@ -1,3 +1,5 @@
+import json
+
 from click.testing import CliRunner
 
 import cli_aos.hubspot.bridge as bridge
@@ -81,6 +83,72 @@ def test_contact_list_uses_runtime(monkeypatch):
     assert '"id": "1"' in result.output
 
 
+def test_owner_list_exposes_picker_options_and_scope_preview(monkeypatch):
+    monkeypatch.setenv("HUBSPOT_PORTAL_ID", "123")
+    monkeypatch.setenv("HUBSPOT_ACCESS_TOKEN", "token")
+    monkeypatch.setenv("HUBSPOT_ACCOUNT_ALIAS", "north-america-crm")
+    monkeypatch.setattr(
+        runtime,
+        "_request_json",
+        lambda *_args, **_kwargs: {
+            "results": [
+                {"id": "11", "firstName": "Ada", "lastName": "Lovelace", "email": "ada@example.com", "teams": [{"id": "t1"}]},
+                {"id": "12", "firstName": "Grace", "lastName": "Hopper", "email": "grace@example.com", "teams": []},
+            ],
+            "paging": {},
+        },
+    )
+
+    result = CliRunner().invoke(cli, ["--json", "owner", "list", "--limit", "2"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)["data"]
+    assert payload["scope"]["portal_id"] == "123"
+    assert payload["scope"]["preview"]["command_id"] == "owner.list"
+    assert payload["scope"]["preview"]["picker"]["kind"] == "owner"
+    assert payload["scope_candidates"][0]["kind"] == "portal"
+    assert payload["scope_candidates"][0]["label"] == "Portal 123"
+    assert any(candidate["kind"] == "account_alias" and candidate["label"] == "north-america-crm" for candidate in payload["scope_candidates"])
+    assert any(candidate["kind"] == "team" and candidate["value"] == "t1" for candidate in payload["scope_candidates"])
+    assert any(candidate["kind"] == "owner" and candidate["label"] == "Ada Lovelace" for candidate in payload["scope_candidates"])
+    assert payload["picker_options"][0]["label"] == "Ada Lovelace"
+    assert payload["picker_options"][0]["subtitle"] == "ada@example.com | t1 | teams=1"
+    assert payload["scope_preview"]["candidate_count"] == 2
+    assert payload["scope_preview"]["scope_candidate_count"] == 5
+
+
+def test_pipeline_list_exposes_picker_options(monkeypatch):
+    monkeypatch.setenv("HUBSPOT_PORTAL_ID", "123")
+    monkeypatch.setenv("HUBSPOT_ACCESS_TOKEN", "token")
+    monkeypatch.setenv("HUBSPOT_ACCOUNT_ALIAS", "north-america-crm")
+    monkeypatch.setattr(
+        runtime,
+        "_request_json",
+        lambda *_args, **_kwargs: {
+            "results": [
+                {
+                    "id": "default",
+                    "label": "Sales Pipeline",
+                    "displayOrder": 0,
+                    "stages": [{"id": "1", "label": "Open"}, {"id": "2", "label": "Closed"}],
+                }
+            ]
+        },
+    )
+
+    result = CliRunner().invoke(cli, ["--json", "pipeline", "list", "--object-type", "deal"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)["data"]
+    assert payload["object_type"] == "deal"
+    assert payload["scope"]["preview"]["picker"]["kind"] == "pipeline"
+    assert any(candidate["kind"] == "portal" for candidate in payload["scope_candidates"])
+    assert any(candidate["kind"] == "account_alias" and candidate["label"] == "north-america-crm" for candidate in payload["scope_candidates"])
+    assert any(candidate["kind"] == "object_type" and candidate["label"] == "deal pipelines" for candidate in payload["scope_candidates"])
+    assert payload["picker_options"][0]["label"] == "Sales Pipeline"
+    assert payload["picker_options"][0]["subtitle"] == "stages=2 | Open"
+    assert payload["scope_preview"]["candidate_count"] == 1
+    assert payload["scope_preview"]["scope_candidate_count"] == 4
+
+
 def test_contact_search_uses_runtime(monkeypatch):
     monkeypatch.setattr(
         commands,
@@ -91,6 +159,124 @@ def test_contact_search_uses_runtime(monkeypatch):
     assert result.exit_code == 0
     assert '"operation": "search"' in result.output
     assert '"id": "2"' in result.output
+
+
+def test_contact_list_exposes_picker_options(monkeypatch):
+    monkeypatch.setenv("HUBSPOT_PORTAL_ID", "123")
+    monkeypatch.setenv("HUBSPOT_ACCESS_TOKEN", "token")
+    monkeypatch.setenv("HUBSPOT_ACCOUNT_ALIAS", "north-america-crm")
+
+    def fake_request_json(ctx_obj, method, path, *, query=None, payload=None):
+        if path == "/crm/v3/objects/contacts":
+            return {
+                "results": [
+                    {
+                        "id": "1",
+                        "createdAt": "2026-03-18T00:00:00Z",
+                        "updatedAt": "2026-03-18T00:00:00Z",
+                        "properties": {
+                            "firstname": "Ada",
+                            "lastname": "Lovelace",
+                            "email": "ada@example.com",
+                            "hubspot_owner_id": "11",
+                        },
+                    }
+                ],
+                "paging": {},
+            }
+        raise AssertionError(path)
+
+    monkeypatch.setattr(runtime, "_request_json", fake_request_json)
+
+    result = CliRunner().invoke(cli, ["--json", "contact", "list", "--limit", "1"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)["data"]
+    assert payload["scope"]["preview"]["picker"]["kind"] == "contact"
+    assert any(candidate["kind"] == "portal" for candidate in payload["scope_candidates"])
+    assert any(candidate["kind"] == "owner" and candidate["value"] == "11" for candidate in payload["scope_candidates"])
+    assert any(candidate["kind"] == "contact" and candidate["label"] == "Ada" for candidate in payload["scope_candidates"])
+    assert payload["picker_options"][0]["label"] == "Ada"
+    assert payload["picker_options"][0]["resource"] == "contact"
+    assert payload["scope_preview"]["candidate_count"] == 1
+    assert payload["scope_preview"]["scope_candidate_count"] == 4
+
+
+def test_deal_list_exposes_pipeline_owner_and_scope_preview(monkeypatch):
+    monkeypatch.setenv("HUBSPOT_PORTAL_ID", "123")
+    monkeypatch.setenv("HUBSPOT_ACCESS_TOKEN", "token")
+    monkeypatch.setenv("HUBSPOT_ACCOUNT_ALIAS", "north-america-crm")
+
+    def fake_request_json(_ctx_obj, method, path, *, query=None, payload=None):
+        assert method == "GET"
+        assert path == "/crm/v3/objects/deals"
+        return {
+            "results": [
+                {
+                    "id": "deal-1",
+                    "createdAt": "2026-03-18T00:00:00Z",
+                    "updatedAt": "2026-03-18T00:00:00Z",
+                    "properties": {
+                        "dealname": "Enterprise Renewal",
+                        "dealstage": "open",
+                        "pipeline": "default",
+                        "hubspot_owner_id": "11",
+                    },
+                }
+            ],
+            "paging": {},
+        }
+
+    monkeypatch.setattr(runtime, "_request_json", fake_request_json)
+
+    result = CliRunner().invoke(cli, ["--json", "deal", "list", "--limit", "1"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)["data"]
+    assert payload["scope"]["preview"]["picker"]["kind"] == "deal"
+    assert any(candidate["kind"] == "portal" for candidate in payload["scope_candidates"])
+    assert any(candidate["kind"] == "account_alias" and candidate["label"] == "north-america-crm" for candidate in payload["scope_candidates"])
+    assert any(candidate["kind"] == "owner" and candidate["value"] == "11" for candidate in payload["scope_candidates"])
+    assert any(candidate["kind"] == "pipeline" and candidate["value"] == "default" for candidate in payload["scope_candidates"])
+    assert payload["picker_options"][0]["label"] == "Enterprise Renewal"
+    assert payload["picker_options"][0]["subtitle"] == "open | default | 11"
+    assert payload["scope_preview"]["candidate_count"] == 1
+    assert payload["scope_preview"]["scope_candidate_count"] == 5
+
+
+def test_ticket_read_exposes_pipeline_owner_scope_candidates(monkeypatch):
+    monkeypatch.setenv("HUBSPOT_PORTAL_ID", "123")
+    monkeypatch.setenv("HUBSPOT_ACCESS_TOKEN", "token")
+    monkeypatch.setenv("HUBSPOT_ACCOUNT_ALIAS", "north-america-crm")
+
+    def fake_request_json(_ctx_obj, method, path, *, query=None, payload=None):
+        assert method == "GET"
+        assert path == "/crm/v3/objects/tickets/77"
+        return {
+            "id": "77",
+            "createdAt": "2026-03-18T00:00:00Z",
+            "updatedAt": "2026-03-18T00:00:00Z",
+            "properties": {
+                "subject": "Escalation",
+                "hs_pipeline": "support",
+                "hs_pipeline_stage": "waiting",
+                "hubspot_owner_id": "77",
+            },
+        }
+
+    monkeypatch.setattr(runtime, "_request_json", fake_request_json)
+
+    result = CliRunner().invoke(cli, ["--json", "ticket", "read", "77"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)["data"]
+    assert payload["scope"]["preview"]["picker"]["kind"] == "ticket"
+    assert any(candidate["kind"] == "portal" for candidate in payload["scope_candidates"])
+    assert any(candidate["kind"] == "account_alias" and candidate["label"] == "north-america-crm" for candidate in payload["scope_candidates"])
+    assert any(candidate["kind"] == "owner" and candidate["value"] == "77" for candidate in payload["scope_candidates"])
+    assert any(candidate["kind"] == "pipeline" and candidate["value"] == "support" for candidate in payload["scope_candidates"])
+    assert any(candidate["kind"] == "queue" and candidate["value"] == "waiting" for candidate in payload["scope_candidates"])
+    assert payload["picker_options"][0]["label"] == "Escalation"
+    assert payload["picker_options"][0]["subtitle"] == "support | waiting | 77"
+    assert payload["scope_preview"]["candidate_count"] == 1
+    assert payload["scope_preview"]["scope_candidate_count"] == 6
 
 
 def test_company_read_uses_runtime(monkeypatch):

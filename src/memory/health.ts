@@ -1,5 +1,6 @@
 import type { ArgentConfig } from "../config/config.js";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { readSessionUpdatedAt, resolveDefaultSessionStorePath } from "../config/sessions.js";
 import { getPgClient, setAgentContext } from "../data/pg-client.js";
 import { resolveStorageConfig } from "../data/storage-config.js";
@@ -32,8 +33,8 @@ export type MemoryHealthSummary = {
       model: string;
     };
     embeddings: {
-      provider: "ollama";
-      model: "nomic-embed-text";
+      provider: string;
+      model: string;
     };
   };
 };
@@ -47,10 +48,14 @@ type MemoryHealthSignals = {
   sisParseFailures24h: number;
   memuProvider: string;
   memuModel: string;
+  embeddingsProvider: string;
+  embeddingsModel: string;
 };
 
 function parseIsoMs(value: string | null): number | null {
-  if (!value) return null;
+  if (!value) {
+    return null;
+  }
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -84,7 +89,9 @@ function readContemplationSessionUpdatedIso(config: ArgentConfig): string | null
 }
 
 function clampCount(value: number): number {
-  if (!Number.isFinite(value)) return 0;
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
   return Math.max(0, Math.floor(value));
 }
 
@@ -113,7 +120,8 @@ export function classifyMemoryLaneStatus(params: {
 
   const redFailureCount = params.redFailureCount ?? 5;
   const yellowFailureCount = params.yellowFailureCount ?? 1;
-  if (failureCount24h >= redFailureCount || staleHours >= params.redAfterHours) {
+  const staleHoursValue = staleHours ?? 0;
+  if (failureCount24h >= redFailureCount || staleHoursValue >= params.redAfterHours) {
     return {
       status: "red",
       lastSuccessAt: params.lastSuccessAt,
@@ -121,7 +129,7 @@ export function classifyMemoryLaneStatus(params: {
       failureCount24h,
     };
   }
-  if (failureCount24h >= yellowFailureCount || staleHours >= params.yellowAfterHours) {
+  if (failureCount24h >= yellowFailureCount || staleHoursValue >= params.yellowAfterHours) {
     return {
       status: "yellow",
       lastSuccessAt: params.lastSuccessAt,
@@ -194,8 +202,8 @@ export function buildMemoryHealthSummaryFromSignals(
         model: signals.memuModel,
       },
       embeddings: {
-        provider: "ollama",
-        model: "nomic-embed-text",
+        provider: signals.embeddingsProvider,
+        model: signals.embeddingsModel,
       },
     },
   };
@@ -207,13 +215,19 @@ async function collectMemoryHealthSignalsPostgres(
   const memuPrimaryAttempt = buildMemuLlmRunAttempts(config, { timeoutMs: 30_000 })[0];
   const memuProvider = String(memuPrimaryAttempt?.provider ?? "ollama").trim() || "ollama";
   const memuModel = String(memuPrimaryAttempt?.model ?? "qwen3:14b").trim() || "qwen3:14b";
-  const storage = resolveStorageConfig(config.storage);
+  const storage = resolveStorageConfig(
+    (config as ArgentConfig & { storage?: Parameters<typeof resolveStorageConfig>[0] }).storage,
+  );
   if (!storage.postgres) {
     throw new Error("PostgreSQL configuration is required for memory health signals");
   }
 
   const sql = getPgClient(storage.postgres);
   const agentId = resolveDefaultAgentId(config);
+  const resolvedMemorySearch = resolveMemorySearchConfig(config, agentId);
+  const embeddingsProvider = String(resolvedMemorySearch?.provider ?? "ollama").trim() || "ollama";
+  const embeddingsModel =
+    String(resolvedMemorySearch?.model ?? "nomic-embed-text").trim() || "nomic-embed-text";
   await setAgentContext(sql, agentId);
 
   const lastContemplationFromSession = readContemplationSessionUpdatedIso(config);
@@ -291,6 +305,8 @@ async function collectMemoryHealthSignalsPostgres(
     sisParseFailures24h: Math.max(0, Math.min(sisAttempts24h, sisFailures24h)),
     memuProvider,
     memuModel,
+    embeddingsProvider,
+    embeddingsModel,
   };
 }
 

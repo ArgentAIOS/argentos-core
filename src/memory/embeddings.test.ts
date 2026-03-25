@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_GEMINI_EMBEDDING_MODEL } from "./embeddings-gemini.js";
+import { DEFAULT_LMSTUDIO_EMBEDDING_MODEL } from "./embeddings-openai.js";
 
 vi.mock("../agents/model-auth.js", () => ({
   resolveApiKeyForProvider: vi.fn(),
@@ -237,6 +238,53 @@ describe("embedding provider remote overrides", () => {
     expect(headers.Authorization).toBe("Bearer profile-key");
     expect(headers["Content-Type"]).toBe("application/json");
     expect(headers["X-Ollama-Provider"]).toBe("p");
+  });
+
+  it("builds LM Studio embeddings requests from models.providers.lmstudio settings", async () => {
+    const fetchMock = createFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { createEmbeddingProvider } = await import("./embeddings.js");
+    const authModule = await import("../agents/model-auth.js");
+    vi.mocked(authModule.resolveApiKeyForProvider).mockResolvedValue({
+      apiKey: "should-not-be-used",
+      mode: "api-key",
+      source: "test",
+    });
+
+    const cfg = {
+      models: {
+        providers: {
+          lmstudio: {
+            baseUrl: "http://127.0.0.1:1234/v1",
+            apiKey: "lmstudio",
+            headers: {
+              "X-LMStudio-Provider": "p",
+            },
+          },
+        },
+      },
+    };
+
+    const result = await createEmbeddingProvider({
+      config: cfg as never,
+      provider: "lmstudio",
+      model: `lmstudio/${DEFAULT_LMSTUDIO_EMBEDDING_MODEL}`,
+      fallback: "none",
+    });
+
+    await result.provider.embedQuery("hello");
+
+    expect(result.provider.id).toBe("lmstudio");
+    expect(authModule.resolveApiKeyForProvider).not.toHaveBeenCalled();
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("http://127.0.0.1:1234/v1/embeddings");
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer lmstudio");
+    expect(headers["Content-Type"]).toBe("application/json");
+    expect(headers["X-LMStudio-Provider"]).toBe("p");
+    const payload = JSON.parse(String(init?.body ?? "{}")) as { model?: string };
+    expect(payload.model).toBe(DEFAULT_LMSTUDIO_EMBEDDING_MODEL);
   });
 });
 

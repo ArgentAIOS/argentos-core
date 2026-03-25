@@ -1,0 +1,326 @@
+{
+  "tool": "aos-make",
+  "backend": "make-live-bridge",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "make-live-bridge",
+    "surface": "scenario",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "worker_visible_actions": [
+      "organization.list",
+      "team.list",
+      "scenario.list",
+      "scenario.status",
+      "connection.list",
+      "execution.list",
+      "execution.status",
+      "scenario.trigger",
+      "execution.run"
+    ],
+    "commandDefaults": {
+      "organization.list": {
+        "selection_surface": "organization",
+        "limit": 10
+      },
+      "team.list": {
+        "selection_surface": "team",
+        "limit": 10
+      },
+      "scenario.list": {
+        "selection_surface": "scenario",
+        "limit": 10,
+        "status": "active"
+      },
+      "scenario.status": {
+        "selection_surface": "scenario"
+      },
+      "connection.list": {
+        "selection_surface": "connection",
+        "limit": 10
+      },
+      "execution.list": {
+        "selection_surface": "execution",
+        "limit": 10
+      },
+      "execution.status": {
+        "selection_surface": "execution"
+      },
+      "scenario.trigger": {
+        "selection_surface": "scenario",
+        "event": "manual",
+        "payload_mode": "key_value_pairs_or_json",
+        "event_hints": ["manual", "webhook", "scheduled", "replay", "custom"],
+        "payload_example": {
+          "source": "agent",
+          "reason": "manual"
+        }
+      },
+      "execution.run": {
+        "selection_surface": "scenario",
+        "event": "manual",
+        "payload_mode": "key_value_pairs_or_json",
+        "event_hints": ["manual", "webhook", "scheduled", "replay", "custom"],
+        "payload_example": {
+          "source": "agent",
+          "reason": "manual"
+        }
+      }
+    },
+    "pickerHints": {
+      "organization": {
+        "kind": "organization",
+        "selection_surface": "organization",
+        "resource": "organization",
+        "source_fields": ["organization_id", "organization_name", "organization_status"]
+      },
+      "team": {
+        "kind": "team",
+        "selection_surface": "team",
+        "resource": "team",
+        "source_fields": ["team_id", "team_name", "organization_name"]
+      },
+      "scenario": {
+        "kind": "scenario",
+        "selection_surface": "scenario",
+        "resource": "scenario",
+        "source_fields": ["scenario_id", "scenario_name", "scenario_status"]
+      },
+      "connection": {
+        "kind": "connection",
+        "selection_surface": "connection",
+        "resource": "connection",
+        "source_fields": ["connection_id", "connection_name", "connection_status"]
+      },
+      "execution": {
+        "kind": "execution",
+        "selection_surface": "execution",
+        "resource": "execution",
+        "source_fields": ["execution_id", "scenario_name", "execution_status"]
+      }
+    },
+    "triggerHints": {
+      "scenario.trigger": {
+        "event": {
+          "default": "manual",
+          "suggested_values": ["manual", "webhook", "scheduled", "replay", "custom"],
+          "description": "Free-form label forwarded to the live Make bridge when triggering a scenario."
+        },
+        "payload": {
+          "kind": "object",
+          "input_mode": "key_value_pairs_or_json",
+          "example": {
+            "source": "agent",
+            "reason": "follow-up"
+          },
+          "description": "Repeated --payload key=value entries become a JSON object; --payload-json can supply the object directly."
+        },
+        "response": {
+          "acknowledged_from": ["status", "state", "result", "message"],
+          "result_from": ["response", "result"]
+        }
+      },
+      "execution.run": {
+        "event": {
+          "default": "manual",
+          "suggested_values": ["manual", "webhook", "scheduled", "replay", "custom"],
+          "description": "Free-form label forwarded to the live Make bridge when creating a scenario execution."
+        },
+        "payload": {
+          "kind": "object",
+          "input_mode": "key_value_pairs_or_json",
+          "example": {
+            "source": "agent",
+            "reason": "follow-up"
+          },
+          "description": "Repeated --payload key=value entries become a JSON object; --payload-json can supply the object directly."
+        },
+        "response": {
+          "acknowledged_from": ["status", "state", "result", "message"],
+          "result_from": ["response", "result"]
+        }
+      }
+    }
+  },
+  "connector": {
+    "label": "Make",
+    "category": "automation-orchestration",
+    "categories": ["automation-orchestration", "workflow-automation", "integrations"],
+    "resources": ["organization", "team", "scenario", "connection", "execution", "run"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["MAKE_API_URL", "MAKE_API_KEY"],
+    "interactive_setup": [
+      "Connect or proxy a live Make bridge for the workspace you want this worker to use.",
+      "Add MAKE_API_URL and MAKE_API_KEY in API Keys.",
+      "Set MAKE_WEBHOOK_BASE_URL if you need a stable public base for trigger execution callbacks.",
+      "Set MAKE_ORGANIZATION_NAME, MAKE_TEAM_NAME, MAKE_SCENARIO_NAME, and MAKE_CONNECTION_NAME to preview the selected scope.",
+      "scenario.list, scenario.status, connection.list, and execution.list use the live Make read path.",
+      "scenario.trigger and execution.run post a live execution payload through the configured bridge."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "organization.list",
+      "summary": "List Make organizations from the live bridge",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "organization",
+      "action_class": "read"
+    },
+    {
+      "id": "team.list",
+      "summary": "List Make teams from the live bridge",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "team",
+      "action_class": "read"
+    },
+    {
+      "id": "scenario.list",
+      "summary": "List Make scenarios from the live bridge",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "scenario",
+      "action_class": "read"
+    },
+    {
+      "id": "scenario.status",
+      "summary": "Read Make scenario status from the live bridge",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "scenario",
+      "action_class": "read"
+    },
+    {
+      "id": "connection.list",
+      "summary": "List Make connections from the live bridge",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connection",
+      "action_class": "read"
+    },
+    {
+      "id": "execution.list",
+      "summary": "List Make executions from the live bridge",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "execution",
+      "action_class": "read"
+    },
+    {
+      "id": "execution.status",
+      "summary": "Read Make execution status from the live bridge",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "execution",
+      "action_class": "read"
+    },
+    {
+      "id": "scenario.trigger",
+      "summary": "Trigger a live Make scenario execution with builder hints",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "scenario",
+      "action_class": "write",
+      "input_hints": {
+        "event": {
+          "type": "string",
+          "default": "manual",
+          "suggested_values": ["manual", "webhook", "scheduled", "replay", "custom"],
+          "description": "Free-form event label passed through to the live bridge."
+        },
+        "payload": {
+          "type": "object",
+          "shape": "flat key-value map",
+          "description": "Repeated --payload key=value flags are merged into the JSON body as string fields.",
+          "example": { "source": "agent", "reason": "follow-up" }
+        }
+      },
+      "response_hints": {
+        "type": "json",
+        "normalized_fields": [
+          "ok",
+          "status_code",
+          "response_kind",
+          "execution_id",
+          "response_status",
+          "summary",
+          "trigger_url_redacted"
+        ],
+        "description": "The bridge normalizes response metadata so UI code can show success state and execution IDs without parsing raw JSON."
+      }
+    },
+    {
+      "id": "execution.run",
+      "summary": "Run a live Make scenario execution with builder hints",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "execution",
+      "action_class": "write",
+      "input_hints": {
+        "event": {
+          "type": "string",
+          "default": "manual",
+          "suggested_values": ["manual", "webhook", "scheduled", "replay", "custom"],
+          "description": "Free-form event label passed through to the live bridge."
+        },
+        "payload": {
+          "type": "object",
+          "shape": "flat key-value map",
+          "description": "Repeated --payload key=value flags are merged into the JSON body as string fields.",
+          "example": { "source": "agent", "reason": "follow-up" }
+        }
+      },
+      "response_hints": {
+        "type": "json",
+        "normalized_fields": [
+          "ok",
+          "status_code",
+          "response_kind",
+          "execution_id",
+          "response_status",
+          "summary",
+          "trigger_url_redacted"
+        ],
+        "description": "The bridge normalizes response metadata so UI code can show success state and execution IDs without parsing raw JSON."
+      }
+    }
+  ]
+}

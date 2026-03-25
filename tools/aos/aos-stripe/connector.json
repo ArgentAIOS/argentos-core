@@ -1,0 +1,242 @@
+{
+  "backend": "stripe",
+  "connector": {
+    "label": "Stripe",
+    "category": "finance-payments",
+    "categories": ["finance-payments", "billing", "revenue-ops"],
+    "resources": [
+      "account",
+      "balance",
+      "customer",
+      "invoice",
+      "payment",
+      "refund",
+      "subscription",
+      "dispute",
+      "payout"
+    ]
+  },
+  "scope": {
+    "kind": "payments-ledger",
+    "summary": "Scope Stripe workers by connected account, customer focus, invoice status, and created date window.",
+    "fields": [
+      {
+        "id": "connected_account",
+        "label": "Connected account",
+        "required": false,
+        "applies_to": [
+          "account.read",
+          "balance.read",
+          "customer.list",
+          "customer.search",
+          "customer.read",
+          "payment.list",
+          "payment.read",
+          "invoice.list",
+          "invoice.read"
+        ],
+        "example": "acct_123456789"
+      },
+      {
+        "id": "customer_focus",
+        "label": "Customer focus",
+        "required": false,
+        "applies_to": [
+          "customer.list",
+          "customer.search",
+          "customer.read",
+          "payment.list",
+          "invoice.list"
+        ],
+        "example": "cus_123, customer@example.com, or Acme Corp"
+      },
+      {
+        "id": "invoice_status",
+        "label": "Invoice status",
+        "required": false,
+        "applies_to": ["invoice.list"],
+        "example": "draft, open, paid, uncollectible, void"
+      },
+      {
+        "id": "created_after",
+        "label": "Created after",
+        "required": false,
+        "applies_to": ["payment.list", "invoice.list"],
+        "example": "2026-01-01 or 1704067200"
+      },
+      {
+        "id": "created_before",
+        "label": "Created before",
+        "required": false,
+        "applies_to": ["payment.list", "invoice.list"],
+        "example": "2026-01-31 or 1706745600"
+      }
+    ],
+    "command_defaults": {
+      "account.read": {
+        "account_env": "STRIPE_ACCOUNT_ID"
+      },
+      "balance.read": {
+        "account_env": "STRIPE_ACCOUNT_ID"
+      },
+      "customer.list": {
+        "account_env": "STRIPE_ACCOUNT_ID",
+        "customer_focus_env": "STRIPE_CUSTOMER_FOCUS"
+      },
+      "customer.search": {
+        "account_env": "STRIPE_ACCOUNT_ID",
+        "customer_focus_env": "STRIPE_CUSTOMER_FOCUS"
+      },
+      "customer.read": {
+        "account_env": "STRIPE_ACCOUNT_ID",
+        "customer_focus_env": "STRIPE_CUSTOMER_FOCUS"
+      },
+      "payment.list": {
+        "account_env": "STRIPE_ACCOUNT_ID",
+        "customer_focus_env": "STRIPE_CUSTOMER_FOCUS",
+        "created_after_env": "STRIPE_CREATED_AFTER",
+        "created_before_env": "STRIPE_CREATED_BEFORE"
+      },
+      "invoice.list": {
+        "account_env": "STRIPE_ACCOUNT_ID",
+        "customer_focus_env": "STRIPE_CUSTOMER_FOCUS",
+        "invoice_status_env": "STRIPE_INVOICE_STATUS",
+        "created_after_env": "STRIPE_CREATED_AFTER",
+        "created_before_env": "STRIPE_CREATED_BEFORE"
+      }
+    }
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["STRIPE_SECRET_KEY"],
+    "interactive_setup": [
+      "Create a restricted Stripe secret key for the target account.",
+      "Add STRIPE_SECRET_KEY in API Keys before enabling live reads or writes.",
+      "Optionally set STRIPE_WEBHOOK_SECRET and STRIPE_ACCOUNT_ID for webhook-backed and connected-account workflows.",
+      "Keep refund, invoice, and payout scopes narrow before enabling write actions."
+    ]
+  },
+  "commands": [
+    {
+      "id": "account.read",
+      "summary": "Read Stripe connected account context",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "account",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and configuration readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "balance.read",
+      "summary": "Read Stripe balance state",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "balance",
+      "action_class": "read"
+    },
+    {
+      "id": "customer.list",
+      "summary": "List Stripe customers",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "customer",
+      "action_class": "read"
+    },
+    {
+      "id": "customer.search",
+      "summary": "Search Stripe customers",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "customer",
+      "action_class": "read"
+    },
+    {
+      "id": "customer.read",
+      "summary": "Read a Stripe customer",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "customer",
+      "action_class": "read"
+    },
+    {
+      "id": "payment.list",
+      "summary": "List Stripe payments",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "payment",
+      "action_class": "read"
+    },
+    {
+      "id": "payment.read",
+      "summary": "Read a Stripe payment",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "payment",
+      "action_class": "read"
+    },
+    {
+      "id": "invoice.list",
+      "summary": "List Stripe invoices",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "invoice",
+      "action_class": "read"
+    },
+    {
+      "id": "invoice.read",
+      "summary": "Read a Stripe invoice",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "invoice",
+      "action_class": "read"
+    },
+    {
+      "id": "invoice.create_draft",
+      "summary": "Create a draft Stripe invoice",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "invoice",
+      "action_class": "write"
+    },
+    {
+      "id": "refund.create",
+      "summary": "Create a Stripe refund",
+      "required_mode": "full",
+      "supports_json": true,
+      "resource": "refund",
+      "action_class": "write"
+    }
+  ]
+}

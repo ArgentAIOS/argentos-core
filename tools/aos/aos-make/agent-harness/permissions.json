@@ -1,0 +1,18 @@
+{
+  "tool": "aos-make",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly",
+    "organization.list": "readonly",
+    "team.list": "readonly",
+    "scenario.list": "readonly",
+    "scenario.status": "readonly",
+    "connection.list": "readonly",
+    "execution.list": "readonly",
+    "execution.status": "readonly",
+    "scenario.trigger": "write",
+    "execution.run": "write"
+  }
+}

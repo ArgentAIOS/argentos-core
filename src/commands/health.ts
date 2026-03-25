@@ -26,6 +26,10 @@ import { loadSessionStore, resolveStorePath } from "../config/sessions.js";
 import { isPostgresEnabled, resolveStorageConfig } from "../data/storage-config.js";
 import { buildGatewayConnectionDetails, callGateway } from "../gateway/call.js";
 import { info } from "../globals.js";
+import {
+  getConsciousnessKernelSnapshot,
+  type ConsciousnessKernelSnapshot,
+} from "../infra/consciousness-kernel.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import {
@@ -99,6 +103,7 @@ export type HealthSummary = {
       age: number | null;
     }>;
   };
+  kernel?: ConsciousnessKernelSnapshot;
   memoryHealth?: MemoryHealthSummary;
   criticalAlerts: CriticalServiceAlert[];
 };
@@ -139,6 +144,42 @@ const formatDurationParts = (ms: number): string => {
   }
   return parts.join(" ");
 };
+
+const TRIVIAL_KERNEL_FOCUS_PATTERNS = [
+  /^i know[.! ]*$/i,
+  /^got it[.! ]*$/i,
+  /^understood[.! ]*$/i,
+  /^right[.! ]*$/i,
+  /^exactly[.! ]*$/i,
+  /^correct[.! ]*$/i,
+  /^(?:that )?makes sense[.! ]*$/i,
+  /^all right[.! ]*$/i,
+  /^alright[.! ]*$/i,
+];
+
+function resolveKernelWorkFocusFromSnapshot(work: {
+  threadTitle: string | null;
+  problemStatement: string | null;
+  nextStep: string | null;
+  lastConclusion: string | null;
+}): string | null {
+  for (const candidate of [
+    work.threadTitle,
+    work.problemStatement,
+    work.nextStep,
+    work.lastConclusion,
+  ]) {
+    const normalized = typeof candidate === "string" ? candidate.trim() : "";
+    if (!normalized) {
+      continue;
+    }
+    if (TRIVIAL_KERNEL_FOCUS_PATTERNS.some((pattern) => pattern.test(normalized))) {
+      continue;
+    }
+    return normalized;
+  }
+  return null;
+}
 
 const resolveHeartbeatSummary = (cfg: ReturnType<typeof loadConfig>, agentId: string) =>
   resolveHeartbeatSummaryForAgent(cfg, agentId);
@@ -515,7 +556,7 @@ export const formatHealthChannelLines = (
             .map((account) => formatAccountProbeTiming(account))
             .filter((value): value is string => Boolean(value))
         : [];
-    const failedSummary = listSummaries.find((summary) => isProbeFailure(summary));
+    const failedSummary = listSummaries.find((accountSummary) => isProbeFailure(accountSummary));
     if (failedSummary) {
       const failureLine = formatProbeLine(failedSummary.probe, { botUsernames });
       if (failureLine) {
@@ -760,6 +801,7 @@ export async function getHealthSnapshot(params?: {
       count: sessions.count,
       recent: sessions.recent,
     },
+    kernel: getConsciousnessKernelSnapshot() ?? undefined,
     memoryHealth: await (async () => {
       try {
         return await getMemoryHealthSummary(cfg);
@@ -985,6 +1027,140 @@ export async function healthCommand(
       .filter(Boolean);
     if (heartbeatParts.length > 0) {
       runtime.log(info(`Heartbeat interval: ${heartbeatParts.join(", ")}`));
+    }
+    if (summary.kernel) {
+      const kernelParts = [
+        `${summary.kernel.status}/${summary.kernel.mode}`,
+        `wakefulness=${summary.kernel.wakefulnessState}`,
+        `ticks=${summary.kernel.tickCount} runtime/${summary.kernel.totalTickCount} total`,
+        `decisions=${summary.kernel.decisionCount}`,
+      ];
+      if (summary.kernel.schedulerAuthorityActive) {
+        const managedSubsystems = [
+          summary.kernel.suppressesAutonomousContemplation ? "contemplation" : null,
+          summary.kernel.suppressesAutonomousSis ? "sis" : null,
+        ].filter((value): value is string => Boolean(value));
+        if (managedSubsystems.length > 0) {
+          kernelParts.push(`authority=${managedSubsystems.join("+")}`);
+        }
+      }
+      if (summary.kernel.lastTickAt) {
+        kernelParts.push(
+          `lastTick=${formatDurationParts(Math.max(0, Date.now() - Date.parse(summary.kernel.lastTickAt)))}`,
+        );
+      }
+      if (summary.kernel.lastPersistedAt) {
+        kernelParts.push(
+          `persisted=${formatDurationParts(
+            Math.max(0, Date.now() - Date.parse(summary.kernel.lastPersistedAt)),
+          )} ago`,
+        );
+      }
+      if (summary.kernel.desiredAction) {
+        kernelParts.push(`intent=${summary.kernel.desiredAction}`);
+      }
+      if (summary.kernel.effectiveFocus) {
+        kernelParts.push(`focus=${summary.kernel.effectiveFocus}`);
+      }
+      if (
+        summary.kernel.activeLaneFocus &&
+        summary.kernel.activeLaneFocus !== summary.kernel.effectiveFocus
+      ) {
+        kernelParts.push(`active=${summary.kernel.activeLaneFocus}`);
+      }
+      if (summary.kernel.continuityLane) {
+        kernelParts.push(`lane=${summary.kernel.continuityLane}`);
+      }
+      if (
+        summary.kernel.activeLane &&
+        summary.kernel.activeLane !== summary.kernel.continuityLane
+      ) {
+        kernelParts.push(`workingLane=${summary.kernel.activeLane}`);
+      }
+      if (summary.kernel.continuitySource) {
+        kernelParts.push(`owner=${summary.kernel.continuitySource}`);
+      }
+      if (
+        summary.kernel.currentFocus &&
+        summary.kernel.currentFocus !== summary.kernel.effectiveFocus
+      ) {
+        kernelParts.push(`kernelFocus=${summary.kernel.currentFocus}`);
+      }
+      if (
+        summary.kernel.agendaActiveTitle &&
+        summary.kernel.agendaActiveTitle !== summary.kernel.effectiveFocus &&
+        summary.kernel.agendaActiveTitle !== summary.kernel.continuityThreadTitle
+      ) {
+        kernelParts.push(`agenda=${summary.kernel.agendaActiveTitle}`);
+      }
+      if (summary.kernel.agendaActiveSource) {
+        kernelParts.push(`agendaSource=${summary.kernel.agendaActiveSource}`);
+      }
+      if (summary.kernel.agendaActiveRationale) {
+        kernelParts.push(`agendaWhy=${summary.kernel.agendaActiveRationale}`);
+      }
+      if (summary.kernel.agendaOpenQuestions[0]) {
+        kernelParts.push(`question=${summary.kernel.agendaOpenQuestions[0]}`);
+      }
+      if (
+        summary.kernel.executiveWorkTitle &&
+        summary.kernel.executiveWorkTitle !== summary.kernel.effectiveFocus &&
+        summary.kernel.executiveWorkTitle !== summary.kernel.activeLaneFocus
+      ) {
+        kernelParts.push(`exec=${summary.kernel.executiveWorkTitle}`);
+      }
+      if (summary.kernel.executiveLastActionKind) {
+        kernelParts.push(`action=${summary.kernel.executiveLastActionKind}`);
+      }
+      if (summary.kernel.executiveLastArtifactType) {
+        kernelParts.push(`artifact=${summary.kernel.executiveLastArtifactType}`);
+      }
+      if (summary.kernel.executiveArtifactCount > 0) {
+        kernelParts.push(`artifacts=${summary.kernel.executiveArtifactCount}`);
+      }
+      if (summary.kernel.executivePendingSurfaceMode) {
+        kernelParts.push(`surface=${summary.kernel.executivePendingSurfaceMode}`);
+      }
+      if (summary.kernel.continuityThreadTitle) {
+        kernelParts.push(`thread=${summary.kernel.continuityThreadTitle}`);
+      } else {
+        const operatorWorkFocus = resolveKernelWorkFocusFromSnapshot({
+          threadTitle: summary.kernel.activeWorkThreadTitle,
+          problemStatement: summary.kernel.activeWorkProblemStatement,
+          nextStep: summary.kernel.activeWorkNextStep,
+          lastConclusion: summary.kernel.activeWorkLastConclusion,
+        });
+        if (operatorWorkFocus) {
+          kernelParts.push(`thread=${operatorWorkFocus}`);
+        }
+      }
+      const backgroundWorkFocus = resolveKernelWorkFocusFromSnapshot({
+        threadTitle: summary.kernel.backgroundWorkThreadTitle,
+        problemStatement: summary.kernel.backgroundWorkProblemStatement,
+        nextStep: summary.kernel.backgroundWorkNextStep,
+        lastConclusion: summary.kernel.backgroundWorkLastConclusion,
+      });
+      if (backgroundWorkFocus) {
+        kernelParts.push(`background=${backgroundWorkFocus}`);
+      }
+      if (summary.kernel.continuityNextStep) {
+        kernelParts.push(`next=${summary.kernel.continuityNextStep}`);
+      } else if (summary.kernel.activeWorkNextStep) {
+        kernelParts.push(`next=${summary.kernel.activeWorkNextStep}`);
+      }
+      if (summary.kernel.reflectionRepeatCount > 0) {
+        kernelParts.push(`stall=x${summary.kernel.reflectionRepeatCount + 1}`);
+      }
+      if (summary.kernel.activeConversationChannel) {
+        kernelParts.push(`channel=${summary.kernel.activeConversationChannel}`);
+      }
+      if (summary.kernel.lastAssistantConclusion) {
+        kernelParts.push(`carry=${summary.kernel.lastAssistantConclusion}`);
+      }
+      if (summary.kernel.lastError) {
+        kernelParts.push(`error=${summary.kernel.lastError}`);
+      }
+      runtime.log(info(`Kernel: ${kernelParts.join(", ")}`));
     }
     if (displayAgents.length === 0) {
       runtime.log(

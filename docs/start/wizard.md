@@ -51,7 +51,7 @@ The wizard starts with **QuickStart** (defaults) vs **Advanced** (full control).
 
 **Local mode (default)** walks you through:
 
-- Model/auth (OpenAI Code (Codex) subscription OAuth, Anthropic API key (recommended) or setup-token (paste), plus MiniMax/GLM/Moonshot/AI Gateway options)
+- Model/auth (OpenAI Code (Codex) subscription OAuth, Anthropic API key (recommended) or setup-token (paste), plus LM Studio, Ollama, MiniMax/GLM/Moonshot/AI Gateway options)
 - Workspace location + bootstrap files
 - Gateway settings (port/bind/auth/tailscale)
 - Providers (Telegram, WhatsApp, Discord, Google Chat, Mattermost (plugin), Signal)
@@ -84,6 +84,10 @@ Tip: `--json` does **not** imply non-interactive mode. Use `--non-interactive` (
      - Full reset (also removes workspace)
 
 2. **Model/Auth**
+   - **LM Studio**: first-class local runtime option; configures the local LM Studio server and recommends MiniMax M2.1.
+   - More detail: [Local models](/gateway/local-models)
+   - **Ollama**: first-class local runtime option; configures the local Ollama server and lets you pick a default local model.
+   - More detail: [Ollama](/providers/ollama)
    - **Anthropic API key (recommended)**: uses `ANTHROPIC_API_KEY` if present or prompts for a key, then saves it for daemon use.
    - **Anthropic OAuth (Claude Code CLI)**: on macOS the wizard checks Keychain item "Claude Code-credentials" (choose "Always Allow" so launchd starts don't block); on Linux/Windows it reuses `~/.claude/.credentials.json` if present.
    - **Anthropic token (paste setup-token)**: run `claude setup-token` on any machine, then paste the token (you can name it; blank = default).
@@ -146,9 +150,9 @@ Tip: `--json` does **not** imply non-interactive mode. Use `--non-interactive` (
    - Tip: `argent status --deep` adds gateway health probes to status output (requires a reachable gateway).
 
 8. **Skills (recommended)**
-   - Reads the available skills and checks requirements.
-   - Lets you choose a node manager: **npm / pnpm** (bun not recommended).
-   - Installs optional dependencies (some use Homebrew on macOS).
+   - Explains that skills are installed from the Argent marketplace.
+   - Checks bundled skills already present in the workspace.
+   - Optionally installs local dependencies for bundled skills (advanced; some use Homebrew on macOS).
 
 9. **Finish**
    - Summary + next steps, including iOS/Android/macOS apps for extra features.

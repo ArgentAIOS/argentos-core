@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  ConsciousnessKernelSchema,
   ContemplationIntervalSchema,
   ExecutionWorkerSchema,
   HeartbeatSchema,
@@ -329,6 +330,7 @@ export const AgentDefaultsSchema = z
       .optional(),
     contemplation: ContemplationIntervalSchema,
     sis: SisSchema,
+    kernel: ConsciousnessKernelSchema,
     loadProfile: z
       .object({
         active: z

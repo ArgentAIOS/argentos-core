@@ -91,6 +91,15 @@ function resolveCronDeliveryBestEffort(job: CronJob): boolean {
   return false;
 }
 
+function isAutonomousMainTaskLoop(job: CronJob): boolean {
+  if (job.name.trim().toLowerCase() === "autonomous task execution loop") {
+    return true;
+  }
+  if (job.payload.kind !== "agentTurn") return false;
+  const message = job.payload.message?.toLowerCase() ?? "";
+  return message.includes("autonomous execution loop for argent");
+}
+
 export type RunCronAgentTurnResult = {
   status: "ok" | "error" | "skipped";
   summary?: string;
@@ -294,6 +303,10 @@ export async function runCronIsolatedAgentTurn(params: {
   } else {
     // Internal/trusted source - use original format
     commandBody = `${base}\n${timeLine}`.trim();
+  }
+  if (isAutonomousMainTaskLoop(params.job)) {
+    commandBody =
+      `${commandBody}\n\nAutonomous main-loop boundary:\n- Stay on the operator/main task board only.\n- Do not request worker/job lane visibility.\n- Do not use tasks.list/search/project_* with includeWorkerTasks=true.\n- Ignore any task whose source is job or whose metadata indicates jobAssignmentId.\n- If a worker/team task somehow appears, do not update it; skip it and choose a non-worker task instead.`.trim();
   }
   if (deliveryRequested) {
     commandBody =

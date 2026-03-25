@@ -70,18 +70,18 @@ This page describes the current CLI behavior. If commands change, update this do
 
 ## Color palette
 
-ArgentOS uses a lobster palette for CLI output.
+ArgentOS uses a cool Argent palette for CLI output.
 
-- `accent` (#FF5A2D): headings, labels, primary highlights.
-- `accentBright` (#FF7A3D): command names, emphasis.
-- `accentDim` (#D14A22): secondary highlight text.
-- `info` (#FF8A5B): informational values.
+- `accent` (#8FB7FF): headings, labels, primary highlights.
+- `accentBright` (#C7DAFF): command names, emphasis.
+- `accentDim` (#6D8FCC): secondary highlight text.
+- `info` (#7FD1FF): informational values.
 - `success` (#2FBF71): success states.
-- `warn` (#FFB020): warnings, fallbacks, attention.
+- `warn` (#7FD1FF): warnings, fallbacks, attention.
 - `error` (#E23D2D): errors, failures.
-- `muted` (#8B7F77): de-emphasis, metadata.
+- `muted` (#98A4B5): de-emphasis, metadata.
 
-Palette source of truth: `src/terminal/palette.ts` (aka “lobster seam”).
+Palette source of truth: `src/terminal/palette.ts`.
 
 ## Command tree
 

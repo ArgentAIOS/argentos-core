@@ -1,12 +1,13 @@
 # aos-mailchimp
 
-Vendored Mailchimp connector scaffold for ArgentOS.
+Agent-native Mailchimp Marketing API connector.
 
-This package mirrors the existing `aos-*` harness pattern with a Python Click CLI under `agent-harness/`.
+This first pass gives ArgentOS a truthful Mailchimp surface for:
 
-## Scope
+- connector setup and health
+- audience reads
+- member/contact reads
+- campaign reads
+- report reads
 
-- API-key based Mailchimp Marketing API access
-- Live-read health, config, capabilities, and doctor checks
-- Read commands for audiences, campaigns, and members
-- Write commands are scaffolded but do not execute live mutations yet
+Write commands remain scaffolded until we decide which Mailchimp mutations are safe enough to expose directly in worker flows.

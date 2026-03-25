@@ -6,6 +6,7 @@ import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../auto-reply/tokens.j
 import { getMemoryAdapter } from "../../data/storage-factory.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import { sleepWithAbort } from "../../infra/backoff.js";
+import { recordConsciousnessKernelConversationTurn } from "../../infra/consciousness-kernel.js";
 import { runSelfEvaluation } from "../../infra/sis-self-eval.js";
 import { routeModel } from "../../models/router.js";
 import { enqueueCommandInLane } from "../../process/command-queue.js";
@@ -30,6 +31,7 @@ import {
 } from "../context-window-guard.js";
 import { DEFAULT_CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defaults.js";
 import { FailoverError, resolveFailoverStatus, resolveRetryAfterMs } from "../failover-error.js";
+import { resolveEffectiveIntentForAgent } from "../intent.js";
 import {
   ensureAuthProfileStore,
   getApiKeyForModel,
@@ -38,7 +40,6 @@ import {
 } from "../model-auth.js";
 import { normalizeProviderId, selectionDiffersFromConfiguredPrimary } from "../model-selection.js";
 import { ensureArgentModelsJson } from "../models-config.js";
-import { resolveEffectiveIntentForAgentIfAvailable } from "../optional-intent.js";
 import {
   classifyFailoverReason,
   formatAssistantErrorText,
@@ -65,6 +66,7 @@ import { log } from "./logger.js";
 import { resolveModel } from "./model.js";
 import { runEmbeddedAttempt } from "./run/attempt.js";
 import { buildEmbeddedRunPayloads } from "./run/payloads.js";
+import { inferSessionChannelFromKey } from "./run/session-context.js";
 import {
   buildSupportQualityGuardrailText,
   type SupportQualityValidation,
@@ -412,7 +414,7 @@ export async function runEmbeddedPiAgent(
           sessionKey: params.sessionKey,
           config: params.config,
         });
-        const resolvedIntent = resolveEffectiveIntentForAgentIfAvailable({
+        const resolvedIntent = resolveEffectiveIntentForAgent({
           config: params.config,
           agentId: sessionAgentId,
         });
@@ -1716,6 +1718,58 @@ export async function runEmbeddedPiAgent(
             }).catch(() => {
               /* non-fatal */
             });
+          }
+
+          const userFacingAssistantText = (() => {
+            const messagingText = attempt.messagingToolSentTexts
+              .map((text) => String(text ?? "").trim())
+              .filter(Boolean)
+              .join("\n")
+              .trim();
+            if (messagingText) {
+              return messagingText;
+            }
+            const payloadText = payloadsForReturn
+              .map((payload) => {
+                if (!payload || typeof payload !== "object" || !("text" in payload)) {
+                  return "";
+                }
+                const rawText = (payload as { text?: unknown }).text;
+                return typeof rawText === "string" ? rawText.trim() : "";
+              })
+              .filter(Boolean)
+              .join("\n")
+              .trim();
+            if (payloadText) {
+              return payloadText;
+            }
+            return responseText.trim() || emergencyAssistantText || "";
+          })();
+
+          const sessionAgentId = params.config
+            ? resolveSessionAgentIds({
+                sessionKey: params.sessionKey,
+                config: params.config,
+              }).sessionAgentId
+            : undefined;
+          if (sessionAgentId && params.config) {
+            try {
+              recordConsciousnessKernelConversationTurn({
+                cfg: params.config,
+                agentId: sessionAgentId,
+                sessionKey: params.sessionKey ?? params.sessionId,
+                channel: inferSessionChannelFromKey(
+                  params.sessionKey ?? params.sessionId,
+                  params.messageChannel ?? params.messageProvider,
+                ),
+                userMessageText: basePromptText,
+                assistantReplyText: userFacingAssistantText,
+              });
+            } catch (err) {
+              log.warn(
+                `kernel conversation sync failed for ${params.runId}: ${describeUnknownError(err)}`,
+              );
+            }
           }
 
           return {

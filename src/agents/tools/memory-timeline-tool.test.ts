@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ArgentConfig } from "../../config/config.js";
 
 const ITEMS = [
   {
@@ -83,6 +84,11 @@ const mockMemory = {
     async (name: string) =>
       ENTITIES.find((entity) => entity.name.toLowerCase() === name.toLowerCase()) ?? null,
   ),
+  listCategories: vi.fn(async () => []),
+  getCategoryItems: vi.fn(async () => []),
+  getItemCategories: vi.fn(async () => []),
+  searchByVector: vi.fn(async () => []),
+  reinforceItem: vi.fn(async () => {}),
   listEntities: vi.fn(async () => ENTITIES),
   getEntityItems: vi.fn(async (entityId: string) => {
     const itemIds = ENTITY_ITEMS[entityId] ?? [];
@@ -91,6 +97,7 @@ const mockMemory = {
       .filter((item): item is (typeof ITEMS)[number] => Boolean(item));
   }),
   searchByKeyword: vi.fn(async () => []),
+  searchKnowledgeObservations: vi.fn(async () => []),
   listItems: vi.fn(async () => ITEMS),
   getItemEntities: vi.fn(async (itemId: string) =>
     (ITEM_ENTITIES[itemId] ?? []).map((name, index) => ({
@@ -106,11 +113,30 @@ vi.mock("../../data/storage-factory.js", () => ({
   }),
 }));
 
+vi.mock("../../memory/memu-embed.js", () => ({
+  getMemuEmbedder: async () => ({
+    embed: async () => [0.1, 0.2, 0.3],
+  }),
+}));
+
 import { createMemoryTimelineTool } from "./memory-timeline-tool.js";
+
+type TimelineToolDetails = {
+  count: number;
+  days: number;
+  entityInferred?: boolean;
+  filters?: {
+    entity?: string;
+  };
+  timeline?: string;
+};
+
+const defaultConfig = { agents: { list: [{ id: "main", default: true }] } } as ArgentConfig;
 
 describe("memory timeline tool", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockMemory.searchKnowledgeObservations.mockResolvedValue([]);
   });
 
   it("infers entity and date range from a natural-language Richard query and suppresses linked-only contamination", async () => {
@@ -118,14 +144,16 @@ describe("memory timeline tool", () => {
     vi.setSystemTime(new Date("2026-03-15T14:30:00Z"));
     try {
       const tool = createMemoryTimelineTool({
-        config: { agents: { list: [{ id: "main", default: true }] } } as any,
+        config: defaultConfig,
       });
-      if (!tool) throw new Error("tool missing");
+      if (!tool) {
+        throw new Error("tool missing");
+      }
 
       const result = await tool.execute("call_timeline_1", {
         query: "Show me memories about Richard from the past month",
       });
-      const data = result.details as any;
+      const data = result.details as TimelineToolDetails;
 
       expect(data.count).toBe(2);
       expect(data.days).toBe(30);
@@ -146,14 +174,16 @@ describe("memory timeline tool", () => {
     vi.setSystemTime(new Date("2026-03-15T14:30:00Z"));
     try {
       const tool = createMemoryTimelineTool({
-        config: { agents: { list: [{ id: "main", default: true }] } } as any,
+        config: defaultConfig,
       });
-      if (!tool) throw new Error("tool missing");
+      if (!tool) {
+        throw new Error("tool missing");
+      }
 
       const result = await tool.execute("call_timeline_2", {
         query: "What do you remember about Richard from the last month?",
       });
-      const data = result.details as any;
+      const data = result.details as TimelineToolDetails;
 
       expect(data.count).toBe(2);
       expect(data.days).toBe(30);
@@ -164,6 +194,82 @@ describe("memory timeline tool", () => {
       expect(String(data.timeline)).not.toContain("maintenance windows");
       expect(String(data.timeline)).not.toContain("business partner and co-founder");
       expect(String(data.timeline)).not.toContain("Amp Telecom");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("adds a current-state header when observation retrieval is enabled", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-15T14:30:00Z"));
+    mockMemory.searchKnowledgeObservations.mockResolvedValue([
+      {
+        observation: {
+          summary: "Richard currently prefers async project status updates",
+          confidence: 0.87,
+          freshness: 0.92,
+        },
+      },
+    ]);
+
+    try {
+      const tool = createMemoryTimelineTool({
+        config: {
+          agents: { list: [{ id: "main", default: true }] },
+          memory: {
+            observations: {
+              enabled: true,
+              retrieval: { enabled: true },
+            },
+          },
+        } as ArgentConfig,
+      });
+      if (!tool) {
+        throw new Error("tool missing");
+      }
+
+      const result = await tool.execute("call_timeline_3", {
+        query: "Show me memories about Richard from the past month",
+      });
+      const data = result.details as TimelineToolDetails;
+
+      expect(String(data.timeline)).toContain("### Current State");
+      expect(String(data.timeline)).toContain("prefers async project status updates");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back to hybrid retrieval when keyword search misses a semantically relevant topic", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-15T14:30:00Z"));
+    mockMemory.searchByKeyword.mockResolvedValueOnce([]);
+    mockMemory.searchByVector.mockResolvedValueOnce([
+      {
+        item: ITEMS[0],
+        score: 0.88,
+      },
+    ]);
+
+    try {
+      const tool = createMemoryTimelineTool({
+        config: defaultConfig,
+      });
+      if (!tool) {
+        throw new Error("tool missing");
+      }
+
+      const result = await tool.execute("call_timeline_4", {
+        query: "Jasons, INFRA Data Rack",
+        limit: 10,
+        days: 365,
+      });
+      const data = result.details as TimelineToolDetails;
+
+      expect(data.count).toBe(1);
+      expect(String(data.timeline)).toContain("Richard asked for more visibility");
+      expect(mockMemory.searchByKeyword).toHaveBeenCalledWith("Jasons, INFRA Data Rack", 120);
+      expect(mockMemory.searchByVector).toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }

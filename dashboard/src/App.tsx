@@ -69,12 +69,21 @@ import {
 } from "./lib/avatarConfig";
 import { buildPresetConfig } from "./lib/avatarPresets";
 import {
+  isDashboardModeAllowed,
   isWorkforceSurfaceAllowed,
+  parseDashboardMode,
   parseDashboardSurfaceProfile,
+  type DashboardMode,
   type DashboardSurfaceProfile,
 } from "./lib/configSurfaceProfile";
 import { setCorsApprovalCallback } from "./lib/corsFetch";
 import { parseInlineTtsDirectives, stripInlineTtsDirectives } from "./lib/inlineTtsDirectives";
+import {
+  broadcastLive2dAssetStatus,
+  fetchLive2dAssetStatus,
+  installLive2dAssets,
+  type Live2dAssetStatus,
+} from "./lib/live2dAssets";
 import { applyMoodContinuity } from "./lib/moodContinuity";
 import { type MoodName, parseMoodName } from "./lib/moodSystem";
 import { resolvePrimaryChatAgentId } from "./lib/sessionVisibility";
@@ -483,6 +492,17 @@ const BARE_MOOD_RE =
 const AEVP_RENDERER_STORAGE_KEY = "aevp-renderer";
 const AEVP_RENDERER_MIGRATION_KEY = "aevp-renderer-migration-2026-02-27-force-aevp";
 const AEVP_FULL_ORB_CENTER_Y = 0.72;
+const DEFAULT_LIVE2D_ASSET_STATUS: Live2dAssetStatus = {
+  installed: false,
+  installing: false,
+  version: "latest",
+  assetBasePath: "/live2d-assets",
+  downloadUrl: "",
+  installDir: null,
+  sizeBytes: 0,
+  lastInstalledAt: null,
+  lastError: null,
+};
 
 type StructuredMarkerMatch = {
   full: string;
@@ -792,6 +812,20 @@ const initialLogs: LogEntry[] = [
 const GATEWAY_URL = `ws://${window.location.hostname}:18789`;
 const CONTROL_SETTINGS_KEY = "argent.control.settings.v1";
 const TTS_DISPLAY_MODE_KEY = "argent.tts-display-mode";
+const DASHBOARD_MODE_STORAGE_KEY = "argent.dashboard.mode";
+const OPERATIONS_PRESENCE_POSITION_STORAGE_KEY = "argent.operations.presence.position";
+const OPERATIONS_PRESENCE_SIZE_STORAGE_KEY = "argent.operations.presence.size";
+const OPERATIONS_PRESENCE_DEFAULT_WIDTH = 520;
+const OPERATIONS_PRESENCE_DEFAULT_HEIGHT = 500;
+const OPERATIONS_PRESENCE_MIN_WIDTH = 360;
+const OPERATIONS_PRESENCE_MIN_HEIGHT = 360;
+const OPERATIONS_PRESENCE_MAX_WIDTH = 820;
+const OPERATIONS_PRESENCE_MAX_HEIGHT = 820;
+const OPERATIONS_PRESENCE_PADDING = 16;
+const OPERATIONS_PRESENCE_STAGE_SCALE = 1.3;
+const OPERATIONS_PRESENCE_LOCKED_OFFSET_X = -89;
+const OPERATIONS_PRESENCE_LOCKED_OFFSET_Y = 10;
+const OPERATIONS_PRESENCE_LOCKED_SCALE = 1.33;
 
 function readStoredGatewayToken(): string {
   try {
@@ -838,6 +872,58 @@ function readStoredTtsDisplayMode(): TtsDisplayMode {
     // Ignore storage errors.
   }
   return "text-voice";
+}
+
+function readStoredDashboardMode(): DashboardMode | null {
+  try {
+    const raw = localStorage.getItem(DASHBOARD_MODE_STORAGE_KEY);
+    if (raw === "personal" || raw === "operations") {
+      return raw;
+    }
+  } catch {
+    // Ignore storage errors.
+  }
+  return null;
+}
+
+function persistDashboardMode(mode: DashboardMode) {
+  try {
+    localStorage.setItem(DASHBOARD_MODE_STORAGE_KEY, mode);
+  } catch {
+    // Best effort only.
+  }
+}
+
+function readStoredOperationsPresencePosition(): { x: number; y: number } | null {
+  try {
+    const raw = localStorage.getItem(OPERATIONS_PRESENCE_POSITION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { x?: unknown; y?: unknown };
+    const x = typeof parsed.x === "number" ? parsed.x : NaN;
+    const y = typeof parsed.y === "number" ? parsed.y : NaN;
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return { x, y };
+    }
+  } catch {
+    // Ignore storage errors.
+  }
+  return null;
+}
+
+function readStoredOperationsPresenceSize(): { width: number; height: number } | null {
+  try {
+    const raw = localStorage.getItem(OPERATIONS_PRESENCE_SIZE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { width?: unknown; height?: unknown };
+    const width = typeof parsed.width === "number" ? parsed.width : NaN;
+    const height = typeof parsed.height === "number" ? parsed.height : NaN;
+    if (Number.isFinite(width) && Number.isFinite(height)) {
+      return { width, height };
+    }
+  } catch {
+    // Ignore storage errors.
+  }
+  return null;
 }
 
 const GATEWAY_TOKEN = resolveGatewayToken();
@@ -908,6 +994,8 @@ function App() {
   const [avatarState, setAvatarState] = useState<AvatarState>("idle");
   const [avatarMood, setAvatarMood] = useState<MoodName | undefined>(undefined);
   const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("full");
+  const [dashboardMode, setDashboardMode] = useState<DashboardMode>("personal");
+  const [dashboardModeHydrated, setDashboardModeHydrated] = useState(false);
   const [configPanelOpen, setConfigPanelOpen] = useState(false);
   const [configPanelRequestedTab, setConfigPanelRequestedTab] = useState<"systems" | null>(null);
   const [workerFlowOpen, setWorkerFlowOpen] = useState(false);
@@ -926,6 +1014,8 @@ function App() {
     allowManualOverrides: true,
   });
   const pollingMultiplier = Math.max(1, runtimeLoadProfile.pollingMultiplier || 1);
+  const allowWorkforceSurface = dashboardModeHydrated && isWorkforceSurfaceAllowed(surfaceProfile);
+  const isOperationsDashboard = allowWorkforceSurface && dashboardMode === "operations";
 
   // Task management via backend API
   const {
@@ -942,17 +1032,50 @@ function App() {
     completeTaskByTitle,
     refreshTasks,
   } = useTasks({ enabled: backgroundPollingEnabled, pollMs: 15000 * pollingMultiplier });
+  const { tasks: workerTasks } = useTasks({
+    enabled: backgroundPollingEnabled && isOperationsDashboard,
+    pollMs: 15000 * pollingMultiplier,
+    includeWorkerTasks: true,
+    workerOnly: true,
+  });
 
   // Board view state
   const [showBoard, setShowBoard] = useState(false);
   const [showWorkforce, setShowWorkforce] = useState(false);
+  const [operationsChatOpen, setOperationsChatOpen] = useState(false);
+  const [operationsPresenceVisible, setOperationsPresenceVisible] = useState(false);
+  const [operationsPresencePosition, setOperationsPresencePosition] = useState(() => {
+    const stored = readStoredOperationsPresencePosition();
+    if (stored) return stored;
+    return {
+      x: Math.max(24, window.innerWidth - 584),
+      y: 112,
+    };
+  });
+  const [operationsPresenceSize, setOperationsPresenceSize] = useState(() => {
+    const stored = readStoredOperationsPresenceSize();
+    if (stored) return stored;
+    return {
+      width: OPERATIONS_PRESENCE_DEFAULT_WIDTH,
+      height: OPERATIONS_PRESENCE_DEFAULT_HEIGHT,
+    };
+  });
   const [showProjectKickoffModal, setShowProjectKickoffModal] = useState(false);
   const [workforceFocus, setWorkforceFocus] = useState<"all" | "due-now" | "blocked">("all");
   const [workforceBadge, setWorkforceBadge] = useState<{ dueNow: number; blocked: number }>({
     dueNow: 0,
     blocked: 0,
   });
-  const allowWorkforceSurface = isWorkforceSurfaceAllowed(surfaceProfile);
+  const operationsPresenceDragRef = useRef<{
+    pointerOffsetX: number;
+    pointerOffsetY: number;
+  } | null>(null);
+  const operationsPresenceResizeRef = useRef<{
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startHeight: number;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -961,11 +1084,23 @@ function App() {
         const response = await fetchLocalApi("/api/settings/agent/raw-config", {}, 0);
         const payload = (await response.json()) as { raw?: string };
         if (!cancelled) {
-          setSurfaceProfile(parseDashboardSurfaceProfile(payload?.raw));
+          const nextSurfaceProfile = parseDashboardSurfaceProfile(payload?.raw);
+          const configDashboardMode = parseDashboardMode(payload?.raw, nextSurfaceProfile);
+          const storedDashboardMode = readStoredDashboardMode();
+          const nextDashboardMode =
+            storedDashboardMode && isDashboardModeAllowed(storedDashboardMode, nextSurfaceProfile)
+              ? storedDashboardMode
+              : configDashboardMode;
+          setSurfaceProfile(nextSurfaceProfile);
+          setDashboardMode(nextDashboardMode);
+          setDashboardModeHydrated(true);
         }
       } catch {
         if (!cancelled) {
           setSurfaceProfile("full");
+          const storedDashboardMode = readStoredDashboardMode();
+          setDashboardMode(storedDashboardMode === "operations" ? "operations" : "personal");
+          setDashboardModeHydrated(true);
         }
       }
     };
@@ -974,6 +1109,193 @@ function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!dashboardModeHydrated) {
+      return;
+    }
+    if (!isDashboardModeAllowed(dashboardMode, surfaceProfile)) {
+      setDashboardMode("personal");
+      persistDashboardMode("personal");
+      return;
+    }
+    persistDashboardMode(dashboardMode);
+  }, [dashboardMode, dashboardModeHydrated, surfaceProfile]);
+
+  useEffect(() => {
+    if (!dashboardModeHydrated) {
+      return;
+    }
+    if (isOperationsDashboard) {
+      if (!showWorkforce && !showBoard) {
+        setShowWorkforce(true);
+      }
+      return;
+    }
+    if (operationsChatOpen) {
+      setOperationsChatOpen(false);
+    }
+    if (operationsPresenceVisible) {
+      setOperationsPresenceVisible(false);
+    }
+    if (showWorkforce) {
+      setShowWorkforce(false);
+    }
+    if (showBoard) {
+      setShowBoard(false);
+    }
+  }, [
+    isOperationsDashboard,
+    dashboardModeHydrated,
+    operationsChatOpen,
+    operationsPresenceVisible,
+    showBoard,
+    showWorkforce,
+  ]);
+
+  useEffect(() => {
+    if (!operationsChatOpen && operationsPresenceVisible) {
+      setOperationsPresenceVisible(false);
+    }
+  }, [operationsChatOpen, operationsPresenceVisible]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        OPERATIONS_PRESENCE_POSITION_STORAGE_KEY,
+        JSON.stringify(operationsPresencePosition),
+      );
+    } catch {
+      // Best effort only.
+    }
+  }, [operationsPresencePosition]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        OPERATIONS_PRESENCE_SIZE_STORAGE_KEY,
+        JSON.stringify(operationsPresenceSize),
+      );
+    } catch {
+      // Best effort only.
+    }
+  }, [operationsPresenceSize]);
+
+  useEffect(() => {
+    if (!operationsPresenceVisible) {
+      operationsPresenceDragRef.current = null;
+      operationsPresenceResizeRef.current = null;
+      return;
+    }
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const drag = operationsPresenceDragRef.current;
+      if (drag) {
+        const maxX = Math.max(
+          OPERATIONS_PRESENCE_PADDING,
+          window.innerWidth - operationsPresenceSize.width - OPERATIONS_PRESENCE_PADDING,
+        );
+        const maxY = Math.max(
+          OPERATIONS_PRESENCE_PADDING,
+          window.innerHeight - operationsPresenceSize.height - OPERATIONS_PRESENCE_PADDING,
+        );
+        const nextX = Math.min(
+          Math.max(OPERATIONS_PRESENCE_PADDING, event.clientX - drag.pointerOffsetX),
+          maxX,
+        );
+        const nextY = Math.min(
+          Math.max(OPERATIONS_PRESENCE_PADDING, event.clientY - drag.pointerOffsetY),
+          maxY,
+        );
+        setOperationsPresencePosition({ x: nextX, y: nextY });
+        return;
+      }
+
+      const resize = operationsPresenceResizeRef.current;
+      if (!resize) return;
+
+      const maxWidth = Math.min(
+        OPERATIONS_PRESENCE_MAX_WIDTH,
+        window.innerWidth - operationsPresencePosition.x - OPERATIONS_PRESENCE_PADDING,
+      );
+      const maxHeight = Math.min(
+        OPERATIONS_PRESENCE_MAX_HEIGHT,
+        window.innerHeight - operationsPresencePosition.y - OPERATIONS_PRESENCE_PADDING,
+      );
+      const nextWidth = Math.min(
+        Math.max(
+          OPERATIONS_PRESENCE_MIN_WIDTH,
+          resize.startWidth + (event.clientX - resize.startX),
+        ),
+        Math.max(OPERATIONS_PRESENCE_MIN_WIDTH, maxWidth),
+      );
+      const nextHeight = Math.min(
+        Math.max(
+          OPERATIONS_PRESENCE_MIN_HEIGHT,
+          resize.startHeight + (event.clientY - resize.startY),
+        ),
+        Math.max(OPERATIONS_PRESENCE_MIN_HEIGHT, maxHeight),
+      );
+      setOperationsPresenceSize({ width: nextWidth, height: nextHeight });
+    };
+
+    const handleMouseUp = () => {
+      operationsPresenceDragRef.current = null;
+      operationsPresenceResizeRef.current = null;
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [
+    operationsPresencePosition.x,
+    operationsPresencePosition.y,
+    operationsPresenceSize,
+    operationsPresenceVisible,
+  ]);
+
+  useEffect(() => {
+    const clampPresencePosition = () => {
+      const clampedWidth = Math.min(
+        Math.max(OPERATIONS_PRESENCE_MIN_WIDTH, operationsPresenceSize.width),
+        Math.min(
+          OPERATIONS_PRESENCE_MAX_WIDTH,
+          window.innerWidth - OPERATIONS_PRESENCE_PADDING * 2,
+        ),
+      );
+      const clampedHeight = Math.min(
+        Math.max(OPERATIONS_PRESENCE_MIN_HEIGHT, operationsPresenceSize.height),
+        Math.min(
+          OPERATIONS_PRESENCE_MAX_HEIGHT,
+          window.innerHeight - OPERATIONS_PRESENCE_PADDING * 2,
+        ),
+      );
+      const maxX = Math.max(
+        OPERATIONS_PRESENCE_PADDING,
+        window.innerWidth - clampedWidth - OPERATIONS_PRESENCE_PADDING,
+      );
+      const maxY = Math.max(
+        OPERATIONS_PRESENCE_PADDING,
+        window.innerHeight - clampedHeight - OPERATIONS_PRESENCE_PADDING,
+      );
+      setOperationsPresenceSize((prev) =>
+        prev.width === clampedWidth && prev.height === clampedHeight
+          ? prev
+          : { width: clampedWidth, height: clampedHeight },
+      );
+      setOperationsPresencePosition((prev) => ({
+        x: Math.min(Math.max(OPERATIONS_PRESENCE_PADDING, prev.x), maxX),
+        y: Math.min(Math.max(OPERATIONS_PRESENCE_PADDING, prev.y), maxY),
+      }));
+    };
+
+    clampPresencePosition();
+    window.addEventListener("resize", clampPresencePosition);
+    return () => window.removeEventListener("resize", clampPresencePosition);
+  }, [operationsPresenceSize.height, operationsPresenceSize.width]);
 
   useEffect(() => {
     if (allowWorkforceSurface) {
@@ -1364,9 +1686,88 @@ function App() {
       return "aevp";
     }
   });
+  const [live2dAssetStatus, setLive2dAssetStatus] = useState<Live2dAssetStatus>(
+    DEFAULT_LIVE2D_ASSET_STATUS,
+  );
   useEffect(() => {
     localStorage.setItem(AEVP_RENDERER_STORAGE_KEY, avatarRenderer);
   }, [avatarRenderer]);
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const status = await fetchLive2dAssetStatus();
+        if (cancelled) return;
+        setLive2dAssetStatus(status);
+        broadcastLive2dAssetStatus(status);
+      } catch (error) {
+        if (cancelled) return;
+        setLive2dAssetStatus((prev) => ({
+          ...prev,
+          installing: false,
+          lastError: error instanceof Error ? error.message : "Failed to read Live2D asset status",
+        }));
+      }
+    };
+    void refresh();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const live2dReady = live2dAssetStatus.installed;
+  const effectiveAvatarRenderer: "live2d" | "aevp" =
+    avatarRenderer === "live2d" && !live2dReady ? "aevp" : avatarRenderer;
+
+  const handleInstallLive2dAssets = useCallback(async () => {
+    setLive2dAssetStatus((prev) => ({
+      ...prev,
+      installing: true,
+      lastError: null,
+    }));
+    try {
+      const status = await installLive2dAssets();
+      setLive2dAssetStatus(status);
+      broadcastLive2dAssetStatus(status);
+      return status;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to install Live2D asset pack";
+      setLive2dAssetStatus((prev) => ({
+        ...prev,
+        installing: false,
+        lastError: message,
+      }));
+      throw error;
+    }
+  }, []);
+
+  const handleAvatarRendererChange = useCallback(
+    async (renderer: "live2d" | "aevp") => {
+      if (renderer !== "live2d") {
+        setAvatarRenderer(renderer);
+        return;
+      }
+      if (live2dReady) {
+        setAvatarRenderer("live2d");
+        return;
+      }
+      const shouldInstall = window.confirm(
+        "Live2D is optional and downloads about 799 MB. Install the avatar pack now?",
+      );
+      if (!shouldInstall) {
+        return;
+      }
+      try {
+        await handleInstallLive2dAssets();
+        setAvatarRenderer("live2d");
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to install the Live2D asset pack";
+        window.alert(message);
+      }
+    },
+    [handleInstallLive2dAssets, live2dReady],
+  );
 
   // Phase 5: Dynamic visual identity (persisted to localStorage)
   const [visualIdentity, setVisualIdentity] = useState<AgentVisualIdentity>(() => {
@@ -2266,10 +2667,32 @@ function App() {
     },
   });
 
+  const stopActiveSpeech = useCallback(() => {
+    if (isNativeVoiceActive()) {
+      postNativeVoiceCommand({ kind: "tts_stop" });
+    }
+    setNativeSpeaking(false);
+    tts.stop();
+    stopLipSync();
+    amplitudeTrackerRef.current?.detach();
+    setAvatarState("idle");
+    setIsSpeaking(false);
+    agentState.setIsSpeaking(false);
+    agentState.setSpeechAmplitude(0);
+    pendingTtsMsgRef.current = null;
+  }, [agentState, tts]);
+
   // Track pending restart for continuous listening
   const [shouldRestartListening, setShouldRestartListening] = useState(false);
   // Track intentional mic mute to prevent sending partial transcripts
   const intentionalMuteRef = useRef(false);
+  const stopActivePlayback = useCallback(() => {
+    if (isNativeVoiceActive()) {
+      postNativeVoiceCommand({ kind: "tts_stop" });
+    }
+    setNativeSpeaking(false);
+    tts.stop();
+  }, [tts]);
 
   // Speech recognition hook
   const speech = useSpeechRecognition({
@@ -2292,7 +2715,7 @@ function App() {
     },
     onStart: () => {
       // Stop any TTS when starting to listen
-      tts.stop();
+      stopActiveSpeech();
       addLog("info", `Listening (${recognitionMode})...`);
     },
     onEnd: () => {
@@ -2313,13 +2736,9 @@ function App() {
     const nextEnabled = !audioEnabled;
     setAudioEnabled(nextEnabled);
     if (!nextEnabled) {
-      if (isNativeVoiceActive()) {
-        postNativeVoiceCommand({ kind: "tts_stop" });
-      }
-      setNativeSpeaking(false);
-      tts.stop();
+      stopActiveSpeech();
     }
-  }, [audioEnabled, tts]);
+  }, [audioEnabled, stopActiveSpeech]);
 
   const handleToggleMic = useCallback(() => {
     const nativeSpeech = isNativeSpeechActive();
@@ -2328,6 +2747,7 @@ function App() {
       setNativeSpeechError(null);
       setMicEnabled(true);
       if (nativeSpeech) {
+        stopActivePlayback();
         setNativeSpeechListening(true);
         const sent = postNativeSpeechCommand({ kind: "start" });
         if (!sent) {
@@ -2349,7 +2769,7 @@ function App() {
       return;
     }
     speech.stop();
-  }, [micEnabled, speech]);
+  }, [micEnabled, speech, stopActivePlayback]);
 
   useEffect(() => {
     window.__argentNativeAttachTtsAudio = ({ msgId, audioUrl }) => {
@@ -2785,6 +3205,10 @@ function App() {
       const sanitizedContent = stripTtsControlMarkers(content);
       if (!sanitizedContent && !image && (!attachments || attachments.length === 0)) {
         return;
+      }
+
+      if (!isSilent) {
+        stopActiveSpeech();
       }
 
       if (!isSilent) {
@@ -3537,6 +3961,7 @@ function App() {
       refreshForgeApps,
       upsertForgeApp,
       currentSessionKey,
+      stopActiveSpeech,
     ],
   );
 
@@ -3570,6 +3995,8 @@ function App() {
     async (content: string, image?: string, attachments?: ChatAttachment[]) => {
       const trimmed = content.trim();
       if (!trimmed) return;
+
+      stopActiveSpeech();
 
       setMessages((prev) => [
         ...prev,
@@ -3642,6 +4069,7 @@ function App() {
       deepThinkMode,
       gateway,
       handleQueueMessage,
+      stopActiveSpeech,
     ],
   );
 
@@ -3892,7 +4320,7 @@ function App() {
   const handleInterrupt = useCallback(
     async (message: string) => {
       // Stop TTS if speaking
-      tts.stop();
+      stopActiveSpeech();
       // Server-side abort (also cleans up client-side stream)
       await gateway.stopCurrentRun(currentSessionKey);
       // Mark current response as done (partial)
@@ -3917,7 +4345,23 @@ function App() {
         });
       }
     },
-    [tts, gateway, handleSendMessage, currentSessionKey],
+    [stopActiveSpeech, gateway, handleSendMessage, currentSessionKey],
+  );
+
+  const handleReplayTtsSummary = useCallback(
+    (summary: string, audioUrl?: string) => {
+      const cleanedSummary = stripTtsControlMarkers(summary).trim();
+      if (!cleanedSummary && !audioUrl) return;
+
+      stopActiveSpeech();
+      if (audioUrl) {
+        void tts.playUrl(audioUrl);
+        return;
+      }
+
+      void tts.speak(cleanedSummary, avatarMood);
+    },
+    [avatarMood, stopActiveSpeech, tts],
   );
 
   // Keep ref updated for speech recognition callback
@@ -4231,7 +4675,7 @@ function App() {
           onActivityClick={() => setActivityPanelOpen(!activityPanelOpen)}
           onAppsClick={() => setAppForgeOpen(true)}
           onWorkforceClick={
-            allowWorkforceSurface
+            isOperationsDashboard
               ? (focus) => {
                   setShowBoard(false);
                   setWorkforceFocus(focus ?? "all");
@@ -4239,9 +4683,9 @@ function App() {
                 }
               : undefined
           }
-          workforceDueCount={allowWorkforceSurface ? workforceBadge.dueNow : 0}
-          workforceBlockedCount={allowWorkforceSurface ? workforceBadge.blocked : 0}
-          onNewWorkerClick={allowWorkforceSurface ? () => setWorkerFlowOpen(true) : undefined}
+          workforceDueCount={isOperationsDashboard ? workforceBadge.dueNow : 0}
+          workforceBlockedCount={isOperationsDashboard ? workforceBadge.blocked : 0}
+          onNewWorkerClick={isOperationsDashboard ? () => setWorkerFlowOpen(true) : undefined}
           onSettingsClick={() => setConfigPanelOpen(true)}
           onLockClick={lockScreen.lock}
           canLock={lockScreen.hasCredentials}
@@ -4257,8 +4701,150 @@ function App() {
         />
       </div>
 
+      {allowWorkforceSurface && (
+        <div className="flex-shrink-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/45">
+                Dashboard Mode
+              </div>
+              <div className="mt-1 text-sm text-white/75">
+                Personal is the individual desktop. Operations is the business control surface for
+                schedules, projects, workers, and task lanes.
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 p-1">
+              <button
+                onClick={() => setDashboardMode("personal")}
+                className={`rounded-lg px-3 py-2 text-sm transition-colors ${
+                  dashboardMode === "personal"
+                    ? "bg-purple-500/25 text-purple-100"
+                    : "text-white/60 hover:text-white"
+                }`}
+              >
+                Personal
+              </button>
+              <button
+                onClick={() => setDashboardMode("operations")}
+                className={`rounded-lg px-3 py-2 text-sm transition-colors ${
+                  dashboardMode === "operations"
+                    ? "bg-cyan-500/20 text-cyan-100"
+                    : "text-white/60 hover:text-white"
+                }`}
+              >
+                Operations
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
-      {showWorkforce && allowWorkforceSurface ? (
+      {isOperationsDashboard ? (
+        <div className="flex-1 grid min-h-0 grid-cols-12 gap-4 overflow-hidden">
+          <div className="col-span-4 flex min-h-0 flex-col gap-4 overflow-hidden">
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/45">
+                Operations Console
+              </div>
+              <div className="mt-1 text-sm text-white/70">
+                This mode is for business execution. Operator tasks, worker tasks, schedules, and
+                project lanes are surfaced here without the personal widget desktop.
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <TaskList
+                tasks={tasks}
+                workerTasks={workerTasks}
+                projects={projects}
+                showWorkerLane={true}
+                cronJobs={cronJobs}
+                cronFormatSchedule={cronFormatSchedule}
+                cronGetNextRun={cronGetNextRun}
+                onCronJobUpdate={updateCronJob}
+                onCronJobDelete={deleteCronJob}
+                onCronJobRun={runCronJob}
+                onTaskAdd={addTask}
+                onTaskDelete={deleteTask}
+                onTaskEdit={editTask}
+                onTaskExecute={executeTask}
+                onProjectDelete={deleteProject}
+                onProjectTaskAdd={addProjectTask}
+                onProjectKickoff={() => setShowProjectKickoffModal(true)}
+                onOpenBoard={() => {
+                  setShowWorkforce(false);
+                  setShowBoard(true);
+                }}
+                showBoard={showBoard}
+              />
+            </div>
+          </div>
+          <div className="col-span-8 flex min-h-0 flex-col gap-4 overflow-hidden">
+            <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <button
+                onClick={() => {
+                  setShowBoard(false);
+                  setWorkforceFocus("all");
+                  setShowWorkforce(true);
+                }}
+                className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
+                  showWorkforce
+                    ? "border-cyan-300/40 bg-cyan-500/10 text-cyan-100"
+                    : "border-white/15 text-white/70 hover:text-white"
+                }`}
+              >
+                Workforce
+              </button>
+              <button
+                onClick={() => {
+                  setShowWorkforce(false);
+                  setShowBoard(true);
+                }}
+                className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
+                  showBoard
+                    ? "border-purple-300/40 bg-purple-500/10 text-purple-100"
+                    : "border-white/15 text-white/70 hover:text-white"
+                }`}
+              >
+                Project Board
+              </button>
+              <button
+                onClick={() => setOperationsChatOpen((open) => !open)}
+                className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
+                  operationsChatOpen
+                    ? "border-emerald-300/40 bg-emerald-500/10 text-emerald-100"
+                    : "border-white/15 text-white/70 hover:text-white"
+                }`}
+              >
+                Chat
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden">
+              {showBoard ? (
+                <ProjectBoard
+                  tasks={tasks}
+                  projects={projects}
+                  onTaskUpdate={editTaskFull}
+                  onTaskDelete={(id) => deleteTask(id)}
+                  onTaskAdd={addTask}
+                  onTaskStart={(id) => startTask(id)}
+                  onTaskComplete={(id) => completeTask(id)}
+                  onClose={() => setShowBoard(false)}
+                />
+              ) : (
+                <WorkforceBoard
+                  gatewayRequest={gateway.request}
+                  focus={workforceFocus}
+                  onClose={() => {
+                    setShowWorkforce(false);
+                    setShowBoard(true);
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      ) : showWorkforce && allowWorkforceSurface ? (
         <div className="flex-1 min-h-0 relative">
           <WorkforceBoard
             gatewayRequest={gateway.request}
@@ -4273,7 +4859,9 @@ function App() {
             <div className="h-[calc(100vh-400px)] min-h-[400px] max-h-[600px] overflow-hidden">
               <TaskList
                 tasks={tasks}
+                workerTasks={workerTasks}
                 projects={projects}
+                showWorkerLane={false}
                 cronJobs={cronJobs}
                 cronFormatSchedule={cronFormatSchedule}
                 cronGetNextRun={cronGetNextRun}
@@ -4296,22 +4884,6 @@ function App() {
             </div>
 
             <div className="flex items-center gap-2">
-              {allowWorkforceSurface && (
-                <button
-                  onClick={() => {
-                    setShowBoard(false);
-                    setWorkforceFocus("all");
-                    setShowWorkforce(true);
-                  }}
-                  className={`text-xs px-2.5 py-1.5 rounded border ${
-                    showWorkforce
-                      ? "border-cyan-300/40 text-cyan-100 bg-cyan-500/10"
-                      : "border-white/15 text-white/70 hover:text-white"
-                  }`}
-                >
-                  Workforce
-                </button>
-              )}
               <button
                 onClick={() => {
                   setShowWorkforce(false);
@@ -4347,7 +4919,7 @@ function App() {
                 <>
                   {!avatarPreviewActive && (
                     <div className="absolute inset-0 flex items-center justify-center">
-                      {avatarRenderer === "aevp" ? (
+                      {effectiveAvatarRenderer === "aevp" ? (
                         <AEVPPresence
                           width={280}
                           height={280}
@@ -4526,11 +5098,13 @@ function App() {
                 {/* Center - Avatar (z-20 keeps it below CanvasPanel z-60 but above background) */}
                 <div className="flex flex-col items-center justify-center relative z-20">
                   {/* Background image — only for Live2D; AEVP has its own starfield */}
-                  {avatarMode === "full" && avatarRenderer !== "aevp" && <AvatarBackground />}
+                  {avatarMode === "full" && effectiveAvatarRenderer !== "aevp" && (
+                    <AvatarBackground />
+                  )}
 
                   {avatarMode === "full" &&
                     !avatarPreviewActive &&
-                    (avatarRenderer === "aevp" ? (
+                    (effectiveAvatarRenderer === "aevp" ? (
                       <AEVPPresence
                         fill
                         orbCenterY={AEVP_FULL_ORB_CENTER_Y}
@@ -4743,12 +5317,8 @@ function App() {
                     onOutputChange={setOutputDeviceId}
                     onVoiceChange={setSelectedVoice}
                     isSpeaking={effectiveIsSpeaking}
-                    onStopTTS={() => {
-                      if (isNativeVoiceActive()) {
-                        postNativeVoiceCommand({ kind: "tts_stop" });
-                      }
-                      tts.stop();
-                    }}
+                    onStopTTS={stopActiveSpeech}
+                    onReplayTTSSummary={handleReplayTtsSummary}
                     onInterrupt={handleInterrupt}
                     onSteer={handleSteerMessage}
                     busyMode={busyMessageMode}
@@ -4778,10 +5348,243 @@ function App() {
         </div>
       )}
 
+      {isOperationsDashboard && (
+        <div
+          className={`fixed inset-0 z-[70] transition-opacity duration-200 ${
+            operationsChatOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+          }`}
+        >
+          <div
+            className="absolute inset-0 bg-black/35"
+            onClick={() => setOperationsChatOpen(false)}
+          />
+          <div
+            className={`absolute right-4 top-40 bottom-4 w-[460px] max-w-[calc(100vw-2rem)] transform transition-transform duration-300 ${
+              operationsChatOpen ? "translate-x-0" : "translate-x-[110%]"
+            }`}
+          >
+            <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-gray-950/95 shadow-2xl backdrop-blur">
+              <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">
+                    Operations Drawer
+                  </div>
+                  <div className="text-sm font-medium text-white/80">Shared chat</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setOperationsPresenceVisible((visible) => !visible)}
+                    className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                      operationsPresenceVisible
+                        ? "border-cyan-300/40 bg-cyan-500/10 text-cyan-100"
+                        : "border-white/15 text-white/70 hover:text-white"
+                    }`}
+                  >
+                    Presence
+                  </button>
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1">
+                <ChatPanel
+                  messages={messages}
+                  onSend={handleSendMessage}
+                  onCommand={handleCommand}
+                  commands={slashCommands}
+                  isLoading={isLoading}
+                  activeTool={activeTool}
+                  activeModelInfo={activeModelInfo}
+                  onToggleSessions={() => setSessionDrawerOpen(true)}
+                  onNewChat={handleNewSession}
+                  chatAgentId={currentChatAgentId}
+                  chatAgentOptions={chatAgentOptions}
+                  onChangeChatAgent={handleChangeChatAgent}
+                  sessionTitle={
+                    sessions.find((s) => s.key === currentSessionKey)?.label ||
+                    sessions.find((s) => s.key === currentSessionKey)?.displayName ||
+                    (currentSessionKey === gateway.mainSessionKey ? "Chat" : undefined)
+                  }
+                  audioEnabled={audioEnabled}
+                  onToggleAudio={handleToggleAudio}
+                  ttsDisplayMode={ttsDisplayMode}
+                  onCycleTtsDisplayMode={cycleTtsDisplayMode}
+                  micEnabled={micEnabled}
+                  onToggleMic={handleToggleMic}
+                  isListening={effectiveIsListening}
+                  isProcessingSpeech={speech.isProcessing}
+                  speechError={effectiveSpeechError}
+                  deepThinkMode={deepThinkMode}
+                  onToggleDeepThink={() => setDeepThinkMode(!deepThinkMode)}
+                  deepResearchMode={deepResearchMode}
+                  onToggleDeepResearch={() => setDeepResearchMode(!deepResearchMode)}
+                  canvasOpen={canvasOpen}
+                  onToggleCanvas={() => (canvasOpen ? handleCanvasClose() : handleCanvasOpen())}
+                  selectedInput={inputDeviceId}
+                  selectedOutput={outputDeviceId}
+                  selectedVoice={selectedVoice}
+                  activeVoiceLabel={currentAgentTtsProfile?.label}
+                  voiceSelectionLocked={Boolean(currentAgentTtsProfile?.lockVoiceSelection)}
+                  onInputChange={setInputDeviceId}
+                  onOutputChange={setOutputDeviceId}
+                  onVoiceChange={setSelectedVoice}
+                  isSpeaking={effectiveIsSpeaking}
+                  onStopTTS={stopActiveSpeech}
+                  onReplayTTSSummary={handleReplayTtsSummary}
+                  onInterrupt={handleInterrupt}
+                  onSteer={handleSteerMessage}
+                  busyMode={busyMessageMode}
+                  onBusyModeChange={setBusyMessageMode}
+                  onQueue={handleQueueMessage}
+                  queuedMessages={messageQueue}
+                  onDequeue={handleDequeueMessage}
+                  onFeedback={handleFeedback}
+                  focusDoc={
+                    canvasOpen && activeCanvasDocId
+                      ? (() => {
+                          const doc = canvasDocuments.find((d) => d.id === activeCanvasDocId);
+                          return doc ? { id: doc.id, title: doc.title } : null;
+                        })()
+                      : null
+                  }
+                  onClearFocus={() => setActiveCanvasDocId(undefined)}
+                  onToggleCollapse={() => setOperationsChatOpen(false)}
+                  contextUsage={contextUsage}
+                  gatewayRequest={gateway.request}
+                  currentSessionKey={currentSessionKey}
+                />
+              </div>
+            </div>
+          </div>
+
+          {operationsPresenceVisible && (
+            <div
+              className="absolute z-30 w-[520px] overflow-hidden rounded-2xl border border-white/10 bg-[#070b16]/95 shadow-2xl backdrop-blur"
+              style={{
+                left: `${operationsPresencePosition.x}px`,
+                top: `${operationsPresencePosition.y}px`,
+                width: `${operationsPresenceSize.width}px`,
+              }}
+            >
+              <div
+                className="flex cursor-move items-center justify-between border-b border-white/10 px-4 py-3"
+                onMouseDown={(event) => {
+                  const rect = event.currentTarget.parentElement?.getBoundingClientRect();
+                  if (!rect) return;
+                  operationsPresenceDragRef.current = {
+                    pointerOffsetX: event.clientX - rect.left,
+                    pointerOffsetY: event.clientY - rect.top,
+                  };
+                }}
+              >
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">
+                    Presence
+                  </div>
+                  <div className="text-sm text-white/80">
+                    {effectiveAvatarRenderer === "aevp" ? "AEVP ambient mode" : "Live2D avatar"}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-xs text-white/55">
+                    {avatarMood ? `${avatarState} • ${avatarMood}` : avatarState}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setOperationsPresenceSize({
+                        width: OPERATIONS_PRESENCE_DEFAULT_WIDTH,
+                        height: OPERATIONS_PRESENCE_DEFAULT_HEIGHT,
+                      });
+                      setOperationsPresencePosition({
+                        x: Math.max(24, window.innerWidth - 584),
+                        y: 112,
+                      });
+                    }}
+                    className="rounded-md border border-white/10 px-2 py-1 text-xs text-white/60 transition-colors hover:text-white"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    onClick={() => setOperationsPresenceVisible(false)}
+                    className="rounded-md border border-white/10 px-2 py-1 text-xs text-white/60 transition-colors hover:text-white"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+              <div
+                className="relative overflow-hidden bg-[#0a1020]"
+                style={{ height: `${operationsPresenceSize.height - 80}px` }}
+              >
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(170,130,255,0.12),transparent_60%)]" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div
+                    className="relative overflow-hidden"
+                    style={{
+                      width: `${(operationsPresenceSize.width - 2) * OPERATIONS_PRESENCE_STAGE_SCALE}px`,
+                      height: `${(operationsPresenceSize.height - 134) * OPERATIONS_PRESENCE_STAGE_SCALE}px`,
+                    }}
+                  >
+                    {effectiveAvatarRenderer === "aevp" ? (
+                      <AEVPPresence
+                        width={(operationsPresenceSize.width - 2) * OPERATIONS_PRESENCE_STAGE_SCALE}
+                        height={
+                          (operationsPresenceSize.height - 82) * OPERATIONS_PRESENCE_STAGE_SCALE
+                        }
+                        orbCenterY={AEVP_FULL_ORB_CENTER_Y}
+                        presenceOffsetX={OPERATIONS_PRESENCE_LOCKED_OFFSET_X}
+                        presenceOffsetY={OPERATIONS_PRESENCE_LOCKED_OFFSET_Y}
+                        presenceScale={OPERATIONS_PRESENCE_LOCKED_SCALE}
+                        agentState={agentState}
+                        identity={visualIdentity}
+                        accessibilityConfig={accessibilityConfig}
+                        onPreSpeechCueReady={(fn) => {
+                          preSpeechCueRef.current = fn;
+                        }}
+                        onAmplitudeTargetReady={(fn) => {
+                          rendererAmplitudeSetterRef.current = fn;
+                        }}
+                      />
+                    ) : (
+                      <Live2DAvatar
+                        state={avatarState}
+                        mood={avatarMood}
+                        width={(operationsPresenceSize.width - 2) * OPERATIONS_PRESENCE_STAGE_SCALE}
+                        height={
+                          (operationsPresenceSize.height - 82) * OPERATIONS_PRESENCE_STAGE_SCALE
+                        }
+                        mode="full"
+                        zoomPreset={avatarZoom}
+                        customZoom={avatarCustomZoom}
+                        debugPresets={debugZoomPresets}
+                      />
+                    )}
+                  </div>
+                </div>
+                <button
+                  className="absolute bottom-3 right-3 h-6 w-6 cursor-se-resize rounded-md border border-white/10 bg-black/30 text-white/45"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    operationsPresenceResizeRef.current = {
+                      startX: event.clientX,
+                      startY: event.clientY,
+                      startWidth: operationsPresenceSize.width,
+                      startHeight: operationsPresenceSize.height,
+                    };
+                  }}
+                  title="Resize presence panel"
+                >
+                  <span className="block translate-y-[-1px] text-xs">↘</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Collapsed Chat Mini-bar — full-width bottom bar, slides up */}
       <div
         className={`fixed left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 bg-gray-900/90 backdrop-blur-xl border border-white/10 rounded-2xl px-4 py-2.5 shadow-2xl transition-all duration-300 ${
-          chatCollapsed
+          !isOperationsDashboard && chatCollapsed
             ? "bottom-4 opacity-100 translate-y-0"
             : "bottom-4 opacity-0 translate-y-16 pointer-events-none"
         }`}
@@ -4999,7 +5802,9 @@ function App() {
         avatarState={avatarState}
         avatarMood={avatarMood}
         avatarRenderer={avatarRenderer}
-        onRendererChange={setAvatarRenderer}
+        onRendererChange={handleAvatarRendererChange}
+        live2dAssets={live2dAssetStatus}
+        onInstallLive2dAssets={handleInstallLive2dAssets}
         widgets={{
           getWidget,
           updateWidget,
@@ -5015,7 +5820,7 @@ function App() {
       />
 
       {/* Worker Flow */}
-      {allowWorkforceSurface && (
+      {isOperationsDashboard && (
         <WorkerFlowModal
           isOpen={workerFlowOpen}
           onClose={() => setWorkerFlowOpen(false)}

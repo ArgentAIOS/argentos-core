@@ -7,6 +7,7 @@ type AvatarState = "idle" | "thinking" | "working" | "success" | "error";
 interface AvatarPreviewPaneProps {
   avatarState: AvatarState;
   avatarMood?: MoodName;
+  live2dAvailable?: boolean;
 }
 
 const moodButtons: { mood: MoodName; emoji: string; label: string }[] = [
@@ -21,7 +22,11 @@ const moodButtons: { mood: MoodName; emoji: string; label: string }[] = [
   { mood: "loving", emoji: "🥰", label: "Loving" },
 ];
 
-export function AvatarPreviewPane({ avatarState, avatarMood }: AvatarPreviewPaneProps) {
+export function AvatarPreviewPane({
+  avatarState,
+  avatarMood,
+  live2dAvailable = true,
+}: AvatarPreviewPaneProps) {
   const [viewMode, setViewMode] = useState<"full" | "bubble">("full");
   const [zoomPreset, setZoomPreset] = useState<"full" | "portrait" | "face">("full");
   const [activeMoodTest, setActiveMoodTest] = useState<MoodName | null>(null);
@@ -46,23 +51,33 @@ export function AvatarPreviewPane({ avatarState, avatarMood }: AvatarPreviewPane
 
       {/* Avatar display */}
       <div className="flex-1 flex items-center justify-center bg-gray-950 relative overflow-hidden min-h-0">
-        {isBubble ? (
-          <Live2DAvatar
-            state={avatarState}
-            mood={activeMoodTest ?? avatarMood}
-            width={200}
-            height={200}
-            mode="bubble"
-          />
+        {live2dAvailable ? (
+          isBubble ? (
+            <Live2DAvatar
+              state={avatarState}
+              mood={activeMoodTest ?? avatarMood}
+              width={200}
+              height={200}
+              mode="bubble"
+            />
+          ) : (
+            <Live2DAvatar
+              state={avatarState}
+              mood={activeMoodTest ?? avatarMood}
+              width={400}
+              height={550}
+              mode="full"
+              zoomPreset={zoomPreset}
+            />
+          )
         ) : (
-          <Live2DAvatar
-            state={avatarState}
-            mood={activeMoodTest ?? avatarMood}
-            width={400}
-            height={550}
-            mode="full"
-            zoomPreset={zoomPreset}
-          />
+          <div className="max-w-[280px] rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-center">
+            <div className="text-sm font-medium text-white">Live2D assets not installed</div>
+            <div className="mt-2 text-xs leading-5 text-white/55">
+              Install the optional avatar pack from Settings to preview the VTuber model. AEVP
+              remains available without any extra download.
+            </div>
+          </div>
         )}
       </div>
 

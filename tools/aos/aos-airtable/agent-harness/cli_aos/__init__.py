@@ -1,0 +1,1 @@
+"""AOS connector CLI namespace."""

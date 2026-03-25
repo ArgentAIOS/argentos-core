@@ -23,11 +23,11 @@ DRY_RUN="${ARGENTOS_DRY_RUN:-0}"
 PACKAGE_SPEC_OVERRIDE="${ARGENT_INSTALL_PACKAGE_SPEC:-}"
 NPM_PREFIX_OVERRIDE="${ARGENT_INSTALL_NPM_PREFIX:-}"
 BIN_DIR_OVERRIDE="${ARGENT_INSTALL_BIN_DIR:-$HOME/bin}"
+PACKAGE_DIR_OVERRIDE="${ARGENT_INSTALL_PACKAGE_DIR:-$HOME/.argentos/lib/node_modules/argentos}"
 NODE_VERSION="${ARGENT_NODE_VERSION:-22.22.0}"
 NODE_DIST_URL_BASE="${ARGENT_NODE_DIST_URL_BASE:-https://nodejs.org/dist}"
 NODE_BIN_OVERRIDE="${ARGENT_NODE_BIN:-}"
 RUNTIME_DIR="${ARGENT_RUNTIME_DIR:-$HOME/.argentos/runtime}"
-MACOS_APP_CLEAN_BUILD_STATE="${ARGENTOS_MAC_CLEAN_BUILD_STATE:-1}"
 
 NODE_BIN=""
 NPM_BIN=""
@@ -68,7 +68,6 @@ Environment equivalents:
   ARGENT_INSTALL_BIN_DIR
   ARGENT_NODE_VERSION
   ARGENT_NODE_BIN
-  ARGENTOS_MAC_CLEAN_BUILD_STATE
 EOF
 }
 
@@ -390,152 +389,6 @@ run_pnpm() {
   fi
 }
 
-is_macos() {
-  [[ "$(uname -s)" == "Darwin" ]]
-}
-
-drain_tty_input() {
-  if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
-    return 0
-  fi
-  while IFS= read -r -s -n 1 -t 0.01 _ </dev/tty 2>/dev/null; do
-    :
-  done
-}
-
-select_number_from_tty() {
-  local message="$1"
-  local default_value="$2"
-  shift 2
-  local options=("$@")
-  local answer index
-
-  if is_truthy "$NO_PROMPT"; then
-    printf '%s\n' "$default_value"
-    return 0
-  fi
-
-  if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
-    err "Interactive setup requires a terminal. Re-run in a terminal, or pass --no-prompt."
-    exit 1
-  fi
-
-  while true; do
-    printf '\n%s\n' "$message" >/dev/tty
-    index=1
-    for option in "${options[@]}"; do
-      printf '  %s) %s\n' "$index" "$option" >/dev/tty
-      index=$((index + 1))
-    done
-    printf 'Select [%s]: ' "$default_value" >/dev/tty
-    IFS= read -r answer </dev/tty || true
-    answer="${answer:-$default_value}"
-    if [[ "$answer" =~ ^[0-9]+$ ]] && (( answer >= 1 && answer <= ${#options[@]} )); then
-      printf '%s\n' "$answer"
-      return 0
-    fi
-    printf 'Invalid selection.\n' >/dev/tty
-  done
-}
-
-prompt_text_from_tty() {
-  local message="$1"
-  local default_value="$2"
-  local answer
-
-  if is_truthy "$NO_PROMPT"; then
-    printf '%s\n' "$default_value"
-    return 0
-  fi
-
-  if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
-    err "Interactive setup requires a terminal. Re-run in a terminal, or pass --no-prompt."
-    exit 1
-  fi
-
-  while true; do
-    printf '%s [%s]: ' "$message" "$default_value" >/dev/tty
-    IFS= read -r answer </dev/tty || true
-    answer="${answer:-$default_value}"
-    answer="${answer#"${answer%%[![:space:]]*}"}"
-    answer="${answer%"${answer##*[![:space:]]}"}"
-    if [[ -n "$answer" ]]; then
-      printf '%s\n' "$answer"
-      return 0
-    fi
-    printf 'Value is required.\n' >/dev/tty
-  done
-}
-
-select_local_runtime_choice() {
-  local selection
-  selection="$(
-    select_number_from_tty \
-      "Choose a local runtime for first launch:" \
-      "1" \
-      "LM Studio — curated local models with Nomic embeddings" \
-      "Ollama — local Qwen and Llama models sized for Mac Mini through Mac Studio" \
-      "Skip for now"
-  )"
-  case "$selection" in
-    1) printf 'lmstudio\n' ;;
-    2) printf 'ollama\n' ;;
-    *) printf 'skip\n' ;;
-  esac
-}
-
-select_lmstudio_model_id() {
-  local selection
-  selection="$(
-    select_number_from_tty \
-      "Choose an LM Studio model:" \
-      "1" \
-      "Qwen 3.5 9B — smallest recommended default" \
-      "Qwen 3.5 35B A3B — stronger local default for larger Macs" \
-      "Nemotron 3 Nano 4B — very small local footprint" \
-      "GPT OSS 20B — mid-size local model" \
-      "GLM 4.7 Flash — larger local option" \
-      "DeepSeek R1 Qwen3 8B — smaller reasoning-oriented option" \
-      "GPT OSS 120B — very large option for high-RAM Macs" \
-      "Enter model manually"
-  )"
-  case "$selection" in
-    1) printf 'qwen/qwen3.5-9b\n' ;;
-    2) printf 'qwen/qwen3.5-35b-a3b\n' ;;
-    3) printf 'nvidia/nemotron-3-nano-4b\n' ;;
-    4) printf 'openai/gpt-oss-20b\n' ;;
-    5) printf 'zai-org/glm-4.7-flash\n' ;;
-    6) printf 'deepseek/deepseek-r1-0528-qwen3-8b\n' ;;
-    7) printf 'openai/gpt-oss-120b\n' ;;
-    *)
-      prompt_text_from_tty "Enter LM Studio model id" "qwen/qwen3.5-9b"
-      ;;
-  esac
-}
-
-select_ollama_model_id() {
-  local selection
-  selection="$(
-    select_number_from_tty \
-      "Choose an Ollama model:" \
-      "1" \
-      "Qwen 3 1.7B — fits 16 GB Macs" \
-      "Qwen 3 14B — best general fit for 32–64 GB Macs" \
-      "Qwen 3 30B A3B — best local quality for 64 GB+ Macs" \
-      "Llama 3.3 — broad compatibility fallback" \
-      "Enter model manually"
-  )"
-  case "$selection" in
-    1) printf 'qwen3:1.7b\n' ;;
-    2) printf 'qwen3:14b\n' ;;
-    3) printf 'qwen3:30b-a3b-instruct-2507-q4_K_M\n' ;;
-    4) printf 'llama3.3\n' ;;
-    *)
-      prompt_text_from_tty "Enter Ollama model id" "qwen3:14b"
-      ;;
-  esac
-}
-
 run_onboard() {
   local argent_bin="$1"
   local onboard_args=(onboard --install-daemon)
@@ -562,97 +415,9 @@ run_onboard() {
   exit 1
 }
 
-run_mac_quickstart_onboard() {
-  local argent_bin="$1"
-  local auth_choice="skip"
-  local local_model_id=""
-  local onboard_args=(
-    onboard
-    --non-interactive
-    --accept-risk
-    --mode local
-    --flow quickstart
-    --install-daemon
-    --skip-channels
-    --skip-skills
-    --skip-ui
-  )
-
-  if is_truthy "$NO_PROMPT"; then
-    auth_choice="lmstudio"
-    local_model_id="qwen/qwen3.5-9b"
-  else
-    drain_tty_input
-    auth_choice="$(select_local_runtime_choice)"
-    if [[ "$auth_choice" == "lmstudio" ]]; then
-      local_model_id="$(select_lmstudio_model_id)"
-    elif [[ "$auth_choice" == "ollama" ]]; then
-      local_model_id="$(select_ollama_model_id)"
-    fi
-  fi
-
-  if [[ "$auth_choice" != "skip" ]]; then
-    onboard_args+=(--auth-choice "$auth_choice")
-    if [[ -n "$local_model_id" ]]; then
-      onboard_args+=(--local-model-id "$local_model_id")
-    fi
-  fi
-
-  run_cmd "$argent_bin" "${onboard_args[@]}"
-}
-
-install_mac_app_from_checkout() {
-  local app_bundle="${GIT_DIR}/dist/Argent.app"
-  local install_target="/Applications/Argent.app"
-  local should_open="${1:-1}"
-
-  if ! is_macos; then
-    return 0
-  fi
-
-  info "Packaging Argent.app for macOS"
-  if is_truthy "$DRY_RUN"; then
-    printf 'DRY-RUN: (cd %q && ALLOW_ADHOC_SIGNING=1 DISABLE_LIBRARY_VALIDATION=1 SKIP_TSC=1 SKIP_UI_BUILD=1 ./scripts/package-mac-app.sh)\n' "$GIT_DIR"
-    printf 'DRY-RUN: rm -rf %q\n' "$install_target"
-    printf 'DRY-RUN: ditto %q %q\n' "$app_bundle" "$install_target"
-    printf 'DRY-RUN: open -a %q\n' "$install_target"
-    return 0
-  fi
-
-  if is_truthy "$MACOS_APP_CLEAN_BUILD_STATE"; then
-    info "Resetting macOS app build caches for a clean package build"
-    rm -rf \
-      "$GIT_DIR/apps/macos/.build" \
-      "$GIT_DIR/apps/macos/.build-swift" \
-      "$GIT_DIR/apps/macos/.swiftpm" \
-      "$GIT_DIR/apps/argent-audio-capture/.build"
-  fi
-
-  (
-    cd "$GIT_DIR"
-    ALLOW_ADHOC_SIGNING=1 DISABLE_LIBRARY_VALIDATION=1 SKIP_TSC=1 SKIP_UI_BUILD=1 ./scripts/package-mac-app.sh
-  )
-
-  if [[ ! -d "$app_bundle" ]]; then
-    err "Packaged app bundle missing: $app_bundle"
-    exit 1
-  fi
-
-  rm -rf "$install_target"
-  ditto "$app_bundle" "$install_target"
-  ok "Installed Argent.app: $install_target"
-
-  if is_truthy "$should_open"; then
-    open -a "$install_target"
-    ok "Opened Argent.app"
-  else
-    info "Skipped launching Argent.app"
-  fi
-}
-
 write_git_wrapper() {
   local bin_dir="$1"
-  local escaped_git_dir escaped_node_bin escaped_entry
+  local escaped_package_dir escaped_node_bin escaped_entry
   if is_truthy "$DRY_RUN"; then
     printf 'DRY-RUN: mkdir -p %q\n' "$bin_dir"
     printf 'DRY-RUN: write wrapper %q\n' "$bin_dir/argent"
@@ -662,18 +427,58 @@ write_git_wrapper() {
   fi
 
   mkdir -p "$bin_dir"
-  printf -v escaped_git_dir '%q' "$GIT_DIR"
+  printf -v escaped_package_dir '%q' "$PACKAGE_DIR_OVERRIDE"
   printf -v escaped_node_bin '%q' "$WRAPPER_NODE_BIN"
-  printf -v escaped_entry '%q' "$GIT_DIR/argent.mjs"
+  printf -v escaped_entry '%q' "$PACKAGE_DIR_OVERRIDE/argent.mjs"
   cat > "$bin_dir/argent" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
 ${PATH_LINE}
-cd ${escaped_git_dir}
+cd ${escaped_package_dir}
 exec ${escaped_node_bin} ${escaped_entry} "\$@"
 EOF
   chmod +x "$bin_dir/argent"
   ln -sf "$bin_dir/argent" "$bin_dir/argentos"
+}
+
+snapshot_git_runtime() {
+  local source_dir="$1"
+  local target_dir="$2"
+  local parent_dir tmp_dir backup_dir
+  parent_dir="$(dirname "$target_dir")"
+  tmp_dir="${target_dir}.new.$$"
+  backup_dir="${target_dir}.old.$$"
+
+  if is_truthy "$DRY_RUN"; then
+    printf 'DRY-RUN: mkdir -p %q\n' "$parent_dir"
+    printf 'DRY-RUN: snapshot %q -> %q\n' "$source_dir" "$target_dir"
+    return 0
+  fi
+
+  mkdir -p "$parent_dir"
+  rm -rf "$tmp_dir" "$backup_dir"
+  mkdir -p "$tmp_dir"
+
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete --exclude '.git' "$source_dir/" "$tmp_dir/"
+  else
+    (
+      cd "$source_dir"
+      tar --exclude='.git' -cf - .
+    ) | (
+      cd "$tmp_dir"
+      tar -xf -
+    )
+  fi
+
+  if [[ -e "$target_dir" || -L "$target_dir" ]]; then
+    mv "$target_dir" "$backup_dir"
+  fi
+  if ! mv "$tmp_dir" "$target_dir"; then
+    mv "$backup_dir" "$target_dir" || true
+    exit 1
+  fi
+  rm -rf "$backup_dir"
 }
 
 install_npm() {
@@ -717,7 +522,7 @@ install_git() {
     run_cmd git -C "$GIT_DIR" fetch --tags --prune
   else
     info "Cloning source checkout to $GIT_DIR"
-    run_cmd git clone https://github.com/ArgentAIOS/argentos-core.git "$GIT_DIR"
+    run_cmd git clone https://github.com/ArgentAIOS/argentos.git "$GIT_DIR"
   fi
 
   if [[ -n "$VERSION" && "$VERSION" != "main" ]]; then
@@ -734,16 +539,13 @@ install_git() {
   run_pnpm "$GIT_DIR" install
   run_pnpm "$GIT_DIR" build
   run_pnpm "$GIT_DIR" rebuild better-sqlite3
+  snapshot_git_runtime "$GIT_DIR" "$PACKAGE_DIR_OVERRIDE"
+  ok "Installed stable runtime snapshot: $PACKAGE_DIR_OVERRIDE"
   write_git_wrapper "$BIN_DIR_OVERRIDE"
   ok "Installed git wrapper: $BIN_DIR_OVERRIDE/argent"
   info "Add this to PATH if needed: $BIN_DIR_OVERRIDE"
 
-  if is_macos; then
-    if ! is_truthy "$NO_ONBOARD"; then
-      info "Deferring onboarding to Argent.app first-run setup"
-    fi
-    install_mac_app_from_checkout "$([[ "$NO_ONBOARD" == "0" ]] && printf '1' || printf '0')"
-  elif ! is_truthy "$NO_ONBOARD"; then
+  if ! is_truthy "$NO_ONBOARD"; then
     run_onboard "$BIN_DIR_OVERRIDE/argent"
   fi
 }

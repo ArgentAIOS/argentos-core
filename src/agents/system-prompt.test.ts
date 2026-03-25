@@ -320,6 +320,19 @@ describe("buildAgentSystemPrompt", () => {
     );
   });
 
+  it("adds kernel continuity guidance when the kernel context file is present", async () => {
+    const prompt = await buildAgentSystemPrompt({
+      workspaceDir: "/tmp/argent",
+      contextFiles: [{ path: "KERNEL_CONTINUITY.md", content: "kernel continuity" }],
+    });
+
+    expect(prompt).toContain("## Kernel Continuity");
+    expect(prompt).toContain("My last persisted focus was ...");
+    expect(prompt).toContain(
+      "Do not claim uninterrupted thought beyond what the persisted kernel artifacts support.",
+    );
+  });
+
   it("summarizes the message tool when available", async () => {
     const prompt = await buildAgentSystemPrompt({
       workspaceDir: "/tmp/argent",

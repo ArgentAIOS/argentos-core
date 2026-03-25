@@ -15,6 +15,8 @@ uniform float u_edgeCoherence;
 uniform float u_formExpansion;
 uniform float u_pulseIntensity;
 uniform vec2  u_orbCenter;
+uniform vec2  u_presenceOffset;
+uniform float u_presenceScale;
 
 // Phase 4: Shape morphing uniforms
 uniform float u_squash;           // -1..1 aspect deformation
@@ -99,8 +101,10 @@ void main() {
   vec2 uv = v_uv;
   float aspect = u_resolution.x / u_resolution.y;
 
-  // Orb center offset: configurable from host (y=0 bottom, y=1 top)
-  vec2 centered = (uv - u_orbCenter) * vec2(aspect, 1.0);
+  // Background field remains anchored to the panel, not the orb transform.
+  vec2 bgCentered = (uv - vec2(0.5, 0.5)) * vec2(aspect, 1.0);
+  // Orb + particle composition can move independently over the anchored field.
+  vec2 centered = ((uv - (u_orbCenter + u_presenceOffset)) * vec2(aspect, 1.0)) / u_presenceScale;
 
   // ── Background: starfield + nebula ────────────────────────────────────
 
@@ -108,7 +112,7 @@ void main() {
   vec3 bgColor = vec3(0.01, 0.01, 0.02);
 
   // Nebula wisps tinted by the mood color (very subtle)
-  float neb = nebula(centered);
+  float neb = nebula(bgCentered);
   vec3 nebColor = mix(u_glowColor * 0.08, u_coreColor * 0.06, neb);
   // Fade nebula near orb center so it doesn't compete
   float nebFade = smoothstep(0.05, 0.25, length(centered));

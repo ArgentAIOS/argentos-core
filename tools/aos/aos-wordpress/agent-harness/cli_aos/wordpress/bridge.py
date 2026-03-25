@@ -3,7 +3,15 @@ from __future__ import annotations
 from typing import Any
 
 from .config import redacted_config_snapshot, runtime_config
-from .constants import CONNECTOR_AUTH, CONNECTOR_CATEGORY, CONNECTOR_CATEGORIES, CONNECTOR_LABEL, CONNECTOR_RESOURCES
+from .constants import (
+    CONNECTOR_AUTH,
+    CONNECTOR_CATEGORY,
+    CONNECTOR_CATEGORIES,
+    CONNECTOR_LABEL,
+    CONNECTOR_RESOURCES,
+    IMPLEMENTED_WRITE_COMMANDS,
+    SCAFFOLDED_WRITE_COMMANDS,
+)
 from .runtime import probe_api, probe_site
 
 
@@ -27,6 +35,8 @@ def config_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
             "site_probe": site_probe,
             "api_probe": api_probe,
             "runtime_ready": runtime_ready,
+            "implemented_write_commands": IMPLEMENTED_WRITE_COMMANDS,
+            "scaffolded_write_commands": SCAFFOLDED_WRITE_COMMANDS,
         },
     }
 
@@ -72,6 +82,14 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
             "ok": api_probe["ok"],
             "details": api_probe["details"],
         },
+        {
+            "name": "write_paths",
+            "ok": True,
+            "details": {
+                "implemented": IMPLEMENTED_WRITE_COMMANDS,
+                "scaffolded": SCAFFOLDED_WRITE_COMMANDS,
+            },
+        },
     ]
 
     next_steps = []
@@ -91,12 +109,12 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
     if not config["base_url_present"]:
         status = "needs_setup"
         summary = "Set the WordPress base URL before attempting live calls."
-    elif not site_probe["ok"]:
-        status = "backend_unavailable"
-        summary = f"WordPress REST root is not reachable: {site_probe['message']}"
     elif not config["auth_ready"]:
         status = "needs_setup"
         summary = "WordPress base URL is reachable, but username or application password is missing."
+    elif not site_probe["ok"]:
+        status = "backend_unavailable"
+        summary = f"WordPress REST root is not reachable: {site_probe['message']}"
     elif not api_probe["ok"]:
         status = "auth_error"
         summary = f"WordPress authentication failed: {api_probe['message']}"
@@ -138,10 +156,10 @@ def _status_from_probes(
 ) -> str:
     if not config["base_url_present"]:
         return "needs_setup"
-    if not site_probe["ok"]:
-        return "backend_unavailable"
     if not config["auth_ready"]:
         return "needs_setup"
+    if not site_probe["ok"]:
+        return "backend_unavailable"
     if not api_probe["ok"]:
         return "auth_error"
     return "ok"

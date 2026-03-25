@@ -19,6 +19,7 @@ import {
   Ban,
   XCircle,
   Sparkles,
+  Users,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
@@ -68,6 +69,7 @@ export interface Project {
 
 interface TaskListProps {
   tasks: Task[];
+  workerTasks?: Task[];
   projects?: Project[];
   cronJobs?: CronJob[];
   cronFormatSchedule?: (job: CronJob) => string;
@@ -106,6 +108,7 @@ interface TaskListProps {
   onProjectKickoff?: () => void;
   onOpenBoard?: () => void;
   showBoard?: boolean;
+  showWorkerLane?: boolean;
 }
 
 const statusIcons: Record<string, typeof Circle> = {
@@ -145,7 +148,7 @@ function getTaskOwner(task: Task): TaskOwner {
   return "agent";
 }
 
-type TabType = "tasks" | "schedule" | "projects";
+type TabType = "tasks" | "workers" | "schedule" | "projects";
 
 function resolveCronExecutionMode(job: CronJob): "live" | "paper_trade" {
   return job.executionMode === "paper_trade" ? "paper_trade" : "live";
@@ -179,8 +182,51 @@ function cronEveryMsToMinutes(everyMs?: number): string {
   return String(minutes);
 }
 
+function getCronPayloadPreview(job: CronJob): string {
+  const body =
+    typeof job.payload.message === "string" && job.payload.message.trim()
+      ? job.payload.message.trim()
+      : typeof job.payload.text === "string" && job.payload.text.trim()
+        ? job.payload.text.trim()
+        : typeof job.payload.title === "string" && job.payload.title.trim()
+          ? job.payload.title.trim()
+          : "";
+  if (body) {
+    return body;
+  }
+  return "No explicit payload text is stored for this job. Use the raw payload below to inspect the live scheduler input.";
+}
+
+function getCronPayloadSummary(job: CronJob): Array<{ label: string; value: string }> {
+  const rows: Array<{ label: string; value: string }> = [
+    { label: "Payload", value: job.payload.kind || "unknown" },
+    {
+      label: "Next run",
+      value: job.state?.nextRunAtMs
+        ? new Date(job.state.nextRunAtMs).toLocaleString()
+        : "Not scheduled",
+    },
+  ];
+  if (job.agentId) {
+    rows.push({ label: "Agent", value: job.agentId });
+  }
+  if (job.sessionTarget) {
+    rows.push({ label: "Session", value: job.sessionTarget });
+  }
+  if (job.wakeMode) {
+    rows.push({ label: "Wake mode", value: job.wakeMode });
+  }
+  if (job.delivery?.channel) {
+    rows.push({ label: "Delivery", value: job.delivery.channel });
+  } else if (job.delivery?.mode) {
+    rows.push({ label: "Delivery", value: job.delivery.mode });
+  }
+  return rows;
+}
+
 export function TaskList({
   tasks,
+  workerTasks = [],
   projects = [],
   cronJobs = [],
   cronFormatSchedule,
@@ -198,6 +244,7 @@ export function TaskList({
   onProjectKickoff,
   onOpenBoard,
   showBoard,
+  showWorkerLane = false,
 }: TaskListProps) {
   const [activeTab, setActiveTab] = useState<TabType>("tasks");
   const [showAddModal, setShowAddModal] = useState(false);
@@ -367,6 +414,194 @@ export function TaskList({
 
   const activeTasks = oneTimeTasks.filter((t) => t.status !== "completed");
   const completedTasks = oneTimeTasks.filter((t) => t.status === "completed");
+  const workerTopLevelTasks = workerTasks.filter((t) => !t.parentTaskId && t.type !== "project");
+  const workerOneTimeTasks = workerTopLevelTasks.filter((t) => t.type === "one-time" || !t.type);
+  const activeWorkerTasks = workerOneTimeTasks.filter((t) => t.status !== "completed");
+  const completedWorkerTasks = workerOneTimeTasks.filter((t) => t.status === "completed");
+
+  const renderTaskLane = (
+    laneActiveTasks: Task[],
+    laneCompletedTasks: Task[],
+    emptyState: { icon: string; title: string; subtitle: string },
+  ) => (
+    <>
+      <div className="flex-[7] min-h-0 overflow-y-auto space-y-2">
+        {laneActiveTasks.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-32 text-white/40 text-sm">
+            <span className="text-2xl mb-2">{emptyState.icon}</span>
+            <span>{emptyState.title}</span>
+            <span className="text-xs mt-1">{emptyState.subtitle}</span>
+          </div>
+        )}
+
+        <AnimatePresence mode="popLayout">
+          {laneActiveTasks.map((task) => {
+            const Icon = statusIcons[task.status] || Circle;
+            const color = statusColors[task.status] || "text-gray-400";
+            const isExpanded = expandedTasks.has(task.id);
+            const hasDetails = !!task.details;
+            const isTaskBusy = busyTaskIds.has(task.id);
+            return (
+              <motion.div
+                key={task.id}
+                layout
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="rounded-xl bg-white/5 hover:bg-white/10 transition-colors group"
+              >
+                <div
+                  className="flex items-center gap-3 p-3 cursor-pointer"
+                  onClick={() => (hasDetails ? toggleTaskExpand(task.id) : onTaskClick?.(task))}
+                >
+                  {hasDetails ? (
+                    <button
+                      type="button"
+                      className="text-white/40 hover:text-white/60 transition-colors"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleTaskExpand(task.id);
+                      }}
+                    >
+                      {isExpanded ? (
+                        <ChevronDown className="w-4 h-4" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4" />
+                      )}
+                    </button>
+                  ) : (
+                    <div className="w-4" />
+                  )}
+                  <Icon
+                    className={`w-5 h-5 flex-shrink-0 ${color} ${
+                      task.status === "in-progress" || task.status === "in_progress"
+                        ? "animate-spin"
+                        : ""
+                    }`}
+                  />
+                  <span className="text-white/80 text-sm flex-1 truncate group-hover:text-white transition-colors">
+                    {task.title}
+                  </span>
+                  {(() => {
+                    const owner = getTaskOwner(task);
+                    const badge = ownerBadge[owner];
+                    return (
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium border flex-shrink-0 ${badge.className}`}
+                      >
+                        {badge.label}
+                      </span>
+                    );
+                  })()}
+                  {hasDetails && !isExpanded && (
+                    <span title="Has details">
+                      <FileText className="w-3.5 h-3.5 text-white/30" />
+                    </span>
+                  )}
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {task.status === "pending" && (
+                      <button
+                        type="button"
+                        onClick={(e) => void handleExecuteClick(task, e)}
+                        className="p-1.5 rounded-md hover:bg-green-500/20 text-green-400 disabled:opacity-40"
+                        title="Execute task"
+                        disabled={isTaskBusy}
+                      >
+                        <Play className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => handleEditClick(task, e)}
+                      className="p-1.5 rounded-md hover:bg-white/10 text-white/50 disabled:opacity-40"
+                      title="Edit task"
+                      disabled={isTaskBusy}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => void handleDeleteClick(task.id, e)}
+                      className="p-1.5 rounded-md hover:bg-red-500/20 text-red-400 disabled:opacity-40"
+                      title="Delete task"
+                      disabled={isTaskBusy}
+                    >
+                      {isTaskBusy ? (
+                        <Loader className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+                <AnimatePresence>
+                  {isExpanded && hasDetails && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-4 pb-3 pt-1 ml-8 border-t border-white/5">
+                        <div
+                          className="prose prose-invert prose-sm max-w-none
+                          prose-pre:bg-black/30 prose-pre:border prose-pre:border-white/10 prose-pre:rounded-lg
+                          prose-code:text-purple-300 prose-code:bg-purple-500/10 prose-code:px-1 prose-code:rounded
+                          prose-headings:text-white/80 prose-p:text-white/60 prose-li:text-white/60
+                          prose-strong:text-white/80 prose-a:text-purple-400"
+                        >
+                          <ReactMarkdown>{task.details}</ReactMarkdown>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </div>
+
+      {laneCompletedTasks.length > 0 && (
+        <div className="flex-[3] min-h-0 border-t border-white/5 flex flex-col">
+          <div className="text-white/40 text-xs uppercase tracking-wider py-2 px-1 flex items-center gap-1 flex-shrink-0">
+            Recently Completed
+            <span className="text-white/20">({laneCompletedTasks.length})</span>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent pr-1">
+            {laneCompletedTasks.map((task) => (
+              <motion.div
+                key={task.id}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex items-center gap-3 p-1.5 rounded-lg opacity-50 group"
+              >
+                <CheckCircle className="w-4 h-4 text-green-400/50 flex-shrink-0" />
+                <span className="text-white/40 text-sm flex-1 truncate line-through">
+                  {task.title}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => void handleDeleteClick(task.id, e)}
+                  className="p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-red-400/50 transition-opacity disabled:opacity-40"
+                  title="Remove"
+                  disabled={busyTaskIds.has(task.id)}
+                >
+                  {busyTaskIds.has(task.id) ? (
+                    <Loader className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3 h-3" />
+                  )}
+                </button>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   const handleAddTask = async () => {
     if (!onTaskAdd) {
@@ -541,7 +776,6 @@ export function TaskList({
   };
 
   const handleDeleteClick = async (taskId: string, e: React.MouseEvent) => {
-    e.preventDefault();
     e.stopPropagation();
     if (!onTaskDelete) {
       setActionError("Task deletion is unavailable in this view.");
@@ -551,7 +785,6 @@ export function TaskList({
   };
 
   const handleExecuteClick = async (task: Task, e: React.MouseEvent) => {
-    e.preventDefault();
     e.stopPropagation();
     if (!onTaskExecute) {
       setActionError("Task execution is unavailable in this view.");
@@ -561,7 +794,6 @@ export function TaskList({
   };
 
   const handleCronDeleteClick = async (jobId: string, e: React.MouseEvent) => {
-    e.preventDefault();
     e.stopPropagation();
     if (!onCronJobDelete) {
       setActionError("Scheduled job deletion is unavailable in this view.");
@@ -581,7 +813,6 @@ export function TaskList({
   };
 
   const handleCronRunClick = async (job: CronJob, e: React.MouseEvent) => {
-    e.preventDefault();
     e.stopPropagation();
     if (!onCronJobRun) {
       setActionError("Running scheduled jobs is unavailable in this view.");
@@ -604,7 +835,6 @@ export function TaskList({
   };
 
   const handleMarkComplete = async (task: Task, e: React.MouseEvent) => {
-    e.preventDefault();
     e.stopPropagation();
     if (!onTaskEdit) {
       setActionError("Task updates are unavailable in this view.");
@@ -827,6 +1057,19 @@ export function TaskList({
     return task.schedule.cron || "Custom";
   };
 
+  const activeLaneMeta =
+    activeTab === "workers"
+      ? {
+          label: "Business Worker Lane",
+          body: "Job-assignment and worker-generated tasks live here. This lane is separate from the operator board and is hidden in CORE surfaces.",
+        }
+      : activeTab === "tasks"
+        ? {
+            label: "Operator Lane",
+            body: "Personal operator and main-agent tasks live here. Worker/job tasks are excluded from this board by default.",
+          }
+        : null;
+
   return (
     <div className="glass-panel rounded-2xl p-4 h-full flex flex-col">
       {/* Header with tabs */}
@@ -843,6 +1086,19 @@ export function TaskList({
             <Clock className="w-4 h-4 inline mr-1.5" />
             Tasks
           </button>
+          {showWorkerLane && (
+            <button
+              onClick={() => setActiveTab("workers")}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                activeTab === "workers"
+                  ? "bg-purple-500/30 text-purple-300"
+                  : "text-white/50 hover:text-white/70"
+              }`}
+            >
+              <Users className="w-4 h-4 inline mr-1.5" />
+              Workers
+            </button>
+          )}
           <button
             onClick={() => setActiveTab("schedule")}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
@@ -894,19 +1150,30 @@ export function TaskList({
             </button>
           )}
           {/* Add button */}
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="p-2 rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors"
-            title="Add task"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
+          {activeTab !== "workers" && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="p-2 rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors"
+              title="Add task"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
       {actionError && (
         <div className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           {actionError}
+        </div>
+      )}
+
+      {activeLaneMeta && (
+        <div className="mb-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-white/45">
+            {activeLaneMeta.label}
+          </div>
+          <div className="mt-1 text-xs text-white/60">{activeLaneMeta.body}</div>
         </div>
       )}
 
@@ -1096,7 +1363,6 @@ export function TaskList({
                                       <div className="ml-auto flex gap-1 opacity-0 group-hover/task:opacity-100 transition-opacity">
                                         {canExecute && (
                                           <button
-                                            type="button"
                                             onClick={(e) => void handleExecuteClick(task, e)}
                                             className="p-1 rounded-md hover:bg-green-500/20 text-green-400 disabled:opacity-40"
                                             title="Execute task"
@@ -1107,7 +1373,6 @@ export function TaskList({
                                         )}
                                         {canComplete && (
                                           <button
-                                            type="button"
                                             onClick={(e) => void handleMarkComplete(task, e)}
                                             className="p-1 rounded-md hover:bg-green-500/20 text-green-400 disabled:opacity-40"
                                             title="Mark complete"
@@ -1117,7 +1382,6 @@ export function TaskList({
                                           </button>
                                         )}
                                         <button
-                                          type="button"
                                           onClick={(e) => handleEditClick(task, e)}
                                           className="p-1 rounded-md hover:bg-white/10 text-white/50 disabled:opacity-40"
                                           title="Edit task"
@@ -1126,7 +1390,6 @@ export function TaskList({
                                           <Pencil className="w-3 h-3" />
                                         </button>
                                         <button
-                                          type="button"
                                           onClick={(e) => void handleDeleteClick(task.id, e)}
                                           className="p-1 rounded-md hover:bg-red-500/20 text-red-400 disabled:opacity-40"
                                           title="Delete task"
@@ -1156,192 +1419,17 @@ export function TaskList({
             </AnimatePresence>
           </div>
         ) : activeTab === "tasks" ? (
-          <>
-            {/* Active Tasks Section (~70% height) */}
-            <div className="flex-[7] min-h-0 overflow-y-auto space-y-2">
-              {/* Empty State */}
-              {oneTimeTasks.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-32 text-white/40 text-sm">
-                  <span className="text-2xl mb-2">✨</span>
-                  <span>No tasks queued</span>
-                  <span className="text-xs mt-1">Give me a task or add one</span>
-                </div>
-              )}
-
-              <AnimatePresence mode="popLayout">
-                {activeTasks.map((task) => {
-                  const Icon = statusIcons[task.status] || Circle;
-                  const color = statusColors[task.status] || "text-gray-400";
-                  const isExpanded = expandedTasks.has(task.id);
-                  const hasDetails = !!task.details;
-                  const isTaskBusy = busyTaskIds.has(task.id);
-                  return (
-                    <motion.div
-                      key={task.id}
-                      layout
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, x: -20 }}
-                      className="rounded-xl bg-white/5 hover:bg-white/10 transition-colors group"
-                    >
-                      <div
-                        className="flex items-center gap-3 p-3 cursor-pointer"
-                        onClick={() =>
-                          hasDetails ? toggleTaskExpand(task.id) : onTaskClick?.(task)
-                        }
-                      >
-                        {/* Expand/collapse indicator for tasks with details */}
-                        {hasDetails ? (
-                          <button
-                            type="button"
-                            className="text-white/40 hover:text-white/60 transition-colors"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              toggleTaskExpand(task.id);
-                            }}
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="w-4 h-4" />
-                            ) : (
-                              <ChevronRight className="w-4 h-4" />
-                            )}
-                          </button>
-                        ) : (
-                          <div className="w-4" />
-                        )}
-                        <Icon
-                          className={`w-5 h-5 flex-shrink-0 ${color} ${
-                            task.status === "in-progress" || task.status === "in_progress"
-                              ? "animate-spin"
-                              : ""
-                          }`}
-                        />
-                        <span className="text-white/80 text-sm flex-1 truncate group-hover:text-white transition-colors">
-                          {task.title}
-                        </span>
-                        {/* Owner badge */}
-                        {(() => {
-                          const owner = getTaskOwner(task);
-                          const badge = ownerBadge[owner];
-                          return (
-                            <span
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-medium border flex-shrink-0 ${badge.className}`}
-                            >
-                              {badge.label}
-                            </span>
-                          );
-                        })()}
-                        {hasDetails && !isExpanded && (
-                          <span title="Has details">
-                            <FileText className="w-3.5 h-3.5 text-white/30" />
-                          </span>
-                        )}
-                        {/* Action buttons */}
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {task.status === "pending" && (
-                            <button
-                              type="button"
-                              onClick={(e) => void handleExecuteClick(task, e)}
-                              className="p-1.5 rounded-md hover:bg-green-500/20 text-green-400 disabled:opacity-40"
-                              title="Execute task"
-                              disabled={isTaskBusy}
-                            >
-                              <Play className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={(e) => handleEditClick(task, e)}
-                            className="p-1.5 rounded-md hover:bg-white/10 text-white/50 disabled:opacity-40"
-                            title="Edit task"
-                            disabled={isTaskBusy}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => void handleDeleteClick(task.id, e)}
-                            className="p-1.5 rounded-md hover:bg-red-500/20 text-red-400 disabled:opacity-40"
-                            title="Delete task"
-                            disabled={isTaskBusy}
-                          >
-                            {isTaskBusy ? (
-                              <Loader className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                      {/* Expandable details section */}
-                      <AnimatePresence>
-                        {isExpanded && hasDetails && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="overflow-hidden"
-                          >
-                            <div className="px-4 pb-3 pt-1 ml-8 border-t border-white/5">
-                              <div
-                                className="prose prose-invert prose-sm max-w-none
-                                prose-pre:bg-black/30 prose-pre:border prose-pre:border-white/10 prose-pre:rounded-lg
-                                prose-code:text-purple-300 prose-code:bg-purple-500/10 prose-code:px-1 prose-code:rounded
-                                prose-headings:text-white/80 prose-p:text-white/60 prose-li:text-white/60
-                                prose-strong:text-white/80 prose-a:text-purple-400"
-                              >
-                                <ReactMarkdown>{task.details}</ReactMarkdown>
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
-            </div>
-
-            {/* Recently Completed Section (~30% height) */}
-            {completedTasks.length > 0 && (
-              <div className="flex-[3] min-h-0 border-t border-white/5 flex flex-col">
-                <div className="text-white/40 text-xs uppercase tracking-wider py-2 px-1 flex items-center gap-1 flex-shrink-0">
-                  Recently Completed
-                  <span className="text-white/20">({completedTasks.length})</span>
-                </div>
-                <div className="flex-1 min-h-0 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent pr-1">
-                  {completedTasks.map((task) => (
-                    <motion.div
-                      key={task.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="flex items-center gap-3 p-1.5 rounded-lg opacity-50 group"
-                    >
-                      <CheckCircle className="w-4 h-4 text-green-400/50 flex-shrink-0" />
-                      <span className="text-white/40 text-sm flex-1 truncate line-through">
-                        {task.title}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={(e) => void handleDeleteClick(task.id, e)}
-                        className="p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-red-400/50 transition-opacity disabled:opacity-40"
-                        title="Remove"
-                        disabled={busyTaskIds.has(task.id)}
-                      >
-                        {busyTaskIds.has(task.id) ? (
-                          <Loader className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <Trash2 className="w-3 h-3" />
-                        )}
-                      </button>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
+          renderTaskLane(activeTasks, completedTasks, {
+            icon: "✨",
+            title: "No tasks queued",
+            subtitle: "Give me a task or add one",
+          })
+        ) : activeTab === "workers" ? (
+          renderTaskLane(activeWorkerTasks, completedWorkerTasks, {
+            icon: "👷",
+            title: "No worker tasks queued",
+            subtitle: "Business worker jobs appear here",
+          })
         ) : (
           /* Schedule Tab */
           <div className="flex-1 overflow-y-auto space-y-2">
@@ -1975,9 +2063,51 @@ export function TaskList({
                   </div>
                 )}
 
-                <div className="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-xs text-white/50">
-                  <div>Payload: {editingCronJob.payload.kind}</div>
-                  <div>Next run: {cronGetNextRun?.(editingCronJob) || "Not scheduled"}</div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-white/45">
+                    Execution Summary
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 text-xs text-white/55 sm:grid-cols-2">
+                    {getCronPayloadSummary(editingCronJob).map((row) => (
+                      <div key={row.label}>
+                        <span className="text-white/35">{row.label}:</span> {row.value}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-white/45">
+                    What This Job Will Run
+                  </div>
+                  <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/20 px-3 py-2 text-xs leading-5 text-white/75">
+                    {getCronPayloadPreview(editingCronJob)}
+                  </pre>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-white/45">
+                    Raw Payload
+                  </div>
+                  <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/20 px-3 py-2 text-xs leading-5 text-white/65">
+                    {JSON.stringify(editingCronJob.payload, null, 2)}
+                  </pre>
+                </div>
+
+                {editingCronJob.delivery && (
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-white/45">
+                      Delivery
+                    </div>
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/20 px-3 py-2 text-xs leading-5 text-white/65">
+                      {JSON.stringify(editingCronJob.delivery, null, 2)}
+                    </pre>
+                  </div>
+                )}
+
+                <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-xs text-amber-100/85">
+                  Audit note: `agentTurn` jobs execute the payload text shown above. If this text is
+                  wrong or too broad, the job itself is unsafe even when the schedule looks correct.
                 </div>
 
                 <div className="flex gap-2">

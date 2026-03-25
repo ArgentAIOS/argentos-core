@@ -1,6 +1,16 @@
+# Dependabot configuration
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
 version: 2
 
+registries:
+  npm-npmjs:
+    type: npm-registry
+    url: https://registry.npmjs.org
+    replaces-base: true
+
 updates:
+  # npm dependencies (root)
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -19,37 +29,10 @@ updates:
           - minor
           - patch
     open-pull-requests-limit: 10
+    registries:
+      - npm-npmjs
 
-  - package-ecosystem: npm
-    directory: /dashboard
-    schedule:
-      interval: weekly
-    cooldown:
-      default-days: 7
-    groups:
-      dashboard-deps:
-        patterns:
-          - "*"
-        update-types:
-          - minor
-          - patch
-    open-pull-requests-limit: 5
-
-  - package-ecosystem: npm
-    directory: /ui
-    schedule:
-      interval: weekly
-    cooldown:
-      default-days: 7
-    groups:
-      ui-deps:
-        patterns:
-          - "*"
-        update-types:
-          - minor
-          - patch
-    open-pull-requests-limit: 5
-
+  # GitHub Actions
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -65,6 +48,7 @@ updates:
           - patch
     open-pull-requests-limit: 5
 
+  # Swift Package Manager - macOS app
   - package-ecosystem: swift
     directory: /apps/macos
     schedule:
@@ -80,8 +64,9 @@ updates:
           - patch
     open-pull-requests-limit: 5
 
+  # Swift Package Manager - shared MoltbotKit
   - package-ecosystem: swift
-    directory: /apps/shared/ArgentKit
+    directory: /apps/shared/MoltbotKit
     schedule:
       interval: weekly
     cooldown:
@@ -95,8 +80,9 @@ updates:
           - patch
     open-pull-requests-limit: 5
 
+  # Swift Package Manager - Swabble
   - package-ecosystem: swift
-    directory: /apps/argent-manager
+    directory: /Swabble
     schedule:
       interval: weekly
     cooldown:
@@ -110,21 +96,7 @@ updates:
           - patch
     open-pull-requests-limit: 5
 
-  - package-ecosystem: swift
-    directory: /apps/argent-audio-capture
-    schedule:
-      interval: weekly
-    cooldown:
-      default-days: 7
-    groups:
-      swift-deps:
-        patterns:
-          - "*"
-        update-types:
-          - minor
-          - patch
-    open-pull-requests-limit: 5
-
+  # Gradle - Android app
   - package-ecosystem: gradle
     directory: /apps/android
     schedule:

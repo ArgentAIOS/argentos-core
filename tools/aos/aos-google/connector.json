@@ -1,0 +1,128 @@
+{
+  "tool": "aos-google",
+  "backend": "gws",
+  "manifest_schema_version": "1.0.0",
+  "connector": {
+    "label": "Google Workspace",
+    "category": "inbox",
+    "categories": ["inbox", "files-docs", "calendar"],
+    "resources": ["gmail", "drive", "calendar"]
+  },
+  "scope": {
+    "kind": "google-workspace",
+    "workerFields": ["account"],
+    "commandDefaults": {
+      "config.show": {
+        "selection_surface": "account"
+      },
+      "gmail.search": {
+        "selection_surface": "mailbox",
+        "query": "newer_than:7d",
+        "max_results": 10
+      },
+      "gmail.read": {
+        "selection_surface": "message",
+        "format": "full"
+      },
+      "drive.list": {
+        "selection_surface": "file",
+        "page_size": 10
+      },
+      "calendar.list": {
+        "selection_surface": "event",
+        "calendar_id": "primary",
+        "max_results": 10
+      },
+      "calendar.create": {
+        "selection_surface": "calendar",
+        "calendar_id": "primary"
+      }
+    },
+    "pickerHints": {
+      "account": {
+        "kind": "account",
+        "selection_surface": "account",
+        "items": [
+          {
+            "value": "me",
+            "label": "Current Google account",
+            "resource": "gmail.mailbox"
+          }
+        ]
+      },
+      "gmail_label": {
+        "kind": "label",
+        "selection_surface": "label",
+        "resource": "gmail.label",
+        "source_command": "gmail.users.labels.list",
+        "source_fields": [
+          "id",
+          "name",
+          "type",
+          "labelListVisibility",
+          "messagesTotal",
+          "messagesUnread"
+        ]
+      },
+      "calendar": {
+        "kind": "calendar",
+        "selection_surface": "calendar",
+        "resource": "calendar.calendar",
+        "source_command": "calendar.calendarList.list",
+        "source_fields": ["id", "summary", "primary", "selected", "accessRole"]
+      }
+    }
+  },
+  "auth": {
+    "kind": "oauth-local",
+    "required": true,
+    "interactive_setup": [
+      "Install the upstream Google Workspace CLI (`gws`).",
+      "Configure a Google OAuth client with `gws auth setup --login` or place client_secret.json in ~/.config/gws.",
+      "Run `gws auth login -s drive,gmail,calendar,sheets,docs`.",
+      "Optional: configure Model Armor env vars for sanitize-by-default."
+    ]
+  },
+  "commands": [
+    {
+      "id": "gmail.search",
+      "summary": "Search Gmail messages",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "gmail",
+      "action_class": "read"
+    },
+    {
+      "id": "gmail.read",
+      "summary": "Read a Gmail message",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "gmail",
+      "action_class": "read"
+    },
+    {
+      "id": "drive.list",
+      "summary": "List Drive files",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "drive",
+      "action_class": "read"
+    },
+    {
+      "id": "calendar.list",
+      "summary": "List calendar events",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "calendar",
+      "action_class": "read"
+    },
+    {
+      "id": "calendar.create",
+      "summary": "Create a calendar event",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "calendar",
+      "action_class": "write"
+    }
+  ]
+}

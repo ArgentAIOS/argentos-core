@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly",
+    "shop.read": "readonly",
+    "product.list": "readonly",
+    "product.read": "readonly",
+    "product.update": "write",
+    "order.list": "readonly",
+    "order.read": "readonly",
+    "order.cancel": "full",
+    "customer.list": "readonly",
+    "customer.read": "readonly",
+    "fulfillment.create": "write"
+  }
+}

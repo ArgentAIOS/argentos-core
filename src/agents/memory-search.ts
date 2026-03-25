@@ -9,7 +9,7 @@ export type ResolvedMemorySearchConfig = {
   enabled: boolean;
   sources: Array<"memory" | "sessions">;
   extraPaths: string[];
-  provider: "openai" | "local" | "gemini" | "ollama" | "auto";
+  provider: "openai" | "local" | "gemini" | "ollama" | "lmstudio" | "auto";
   remote?: {
     baseUrl?: string;
     apiKey?: string;
@@ -25,7 +25,7 @@ export type ResolvedMemorySearchConfig = {
   experimental: {
     sessionMemory: boolean;
   };
-  fallback: "openai" | "gemini" | "ollama" | "local" | "none";
+  fallback: "openai" | "gemini" | "ollama" | "lmstudio" | "local" | "none";
   model: string;
   local: {
     modelPath?: string;
@@ -81,6 +81,9 @@ export type ResolvedMemorySearchConfig = {
 const DEFAULT_OPENAI_MODEL = "text-embedding-3-small";
 const DEFAULT_GEMINI_MODEL = "gemini-embedding-001";
 const DEFAULT_OLLAMA_MODEL = "nomic-embed-text";
+const DEFAULT_LMSTUDIO_MODEL = "text-embedding-nomic-embed-text-v1.5";
+const LMSTUDIO_LOCAL_PORT = "1234";
+const OLLAMA_LOCAL_PORT = "11434";
 const DEFAULT_CHUNK_TOKENS = 400;
 const DEFAULT_CHUNK_OVERLAP = 80;
 const DEFAULT_WATCH_DEBOUNCE_MS = 1500;
@@ -98,6 +101,43 @@ const DEFAULT_HYBRID_TEMPORAL_DECAY_ENABLED = false;
 const DEFAULT_HYBRID_TEMPORAL_DECAY_HALF_LIFE_DAYS = 30;
 const DEFAULT_CACHE_ENABLED = true;
 const DEFAULT_SOURCES: Array<"memory" | "sessions"> = ["memory"];
+
+function normalizeBaseUrl(raw?: string): URL | null {
+  const trimmed = raw?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    return new URL(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function resolveKnownLocalEmbeddingProvider(params: {
+  provider: ResolvedMemorySearchConfig["provider"];
+  baseUrl?: string;
+}): ResolvedMemorySearchConfig["provider"] {
+  if (params.provider !== "openai") {
+    return params.provider;
+  }
+  const parsed = normalizeBaseUrl(params.baseUrl);
+  if (!parsed) {
+    return params.provider;
+  }
+  const host = parsed.hostname.toLowerCase();
+  const isLocalHost = host === "127.0.0.1" || host === "localhost";
+  if (!isLocalHost) {
+    return params.provider;
+  }
+  if (parsed.port === LMSTUDIO_LOCAL_PORT) {
+    return "lmstudio";
+  }
+  if (parsed.port === OLLAMA_LOCAL_PORT) {
+    return "ollama";
+  }
+  return params.provider;
+}
 
 function normalizeSources(
   sources: Array<"memory" | "sessions"> | undefined,
@@ -137,9 +177,13 @@ function mergeConfig(
   const enabled = overrides?.enabled ?? defaults?.enabled ?? true;
   const sessionMemory =
     overrides?.experimental?.sessionMemory ?? defaults?.experimental?.sessionMemory ?? false;
-  const provider = overrides?.provider ?? defaults?.provider ?? "ollama";
+  const requestedProvider = overrides?.provider ?? defaults?.provider ?? "ollama";
   const defaultRemote = defaults?.remote;
   const overrideRemote = overrides?.remote;
+  const provider = resolveKnownLocalEmbeddingProvider({
+    provider: requestedProvider,
+    baseUrl: overrideRemote?.baseUrl ?? defaultRemote?.baseUrl,
+  });
   const hasRemoteConfig = Boolean(
     overrideRemote?.baseUrl ||
     overrideRemote?.apiKey ||
@@ -153,6 +197,7 @@ function mergeConfig(
     provider === "openai" ||
     provider === "gemini" ||
     provider === "ollama" ||
+    provider === "lmstudio" ||
     provider === "auto";
   const batch = {
     enabled: overrideRemote?.batch?.enabled ?? defaultRemote?.batch?.enabled ?? true,
@@ -182,7 +227,9 @@ function mergeConfig(
         ? DEFAULT_OPENAI_MODEL
         : provider === "ollama"
           ? DEFAULT_OLLAMA_MODEL
-          : undefined;
+          : provider === "lmstudio"
+            ? DEFAULT_LMSTUDIO_MODEL
+            : undefined;
   const model = overrides?.model ?? defaults?.model ?? modelDefault ?? "";
   const local = {
     modelPath: overrides?.local?.modelPath ?? defaults?.local?.modelPath,

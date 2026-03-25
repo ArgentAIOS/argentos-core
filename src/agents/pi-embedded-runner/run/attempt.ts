@@ -66,13 +66,10 @@ import {
 } from "../../channel-tools.js";
 import { resolveArgentDocsPath } from "../../docs-path.js";
 import { isTimeoutError } from "../../failover-error.js";
+import { evaluateIntentSimulationGateForConfig } from "../../intent-runtime-gate.js";
+import { buildIntentSystemPromptHint, resolveEffectiveIntentForAgent } from "../../intent.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { resolveDefaultModelForAgent } from "../../model-selection.js";
-import {
-  buildIntentSystemPromptHintIfAvailable,
-  evaluateIntentSimulationGateForConfigIfAvailable,
-  resolveEffectiveIntentForAgentIfAvailable,
-} from "../../optional-intent.js";
 import {
   isCloudCodeAssistFormatError,
   resolveBootstrapMaxChars,
@@ -240,7 +237,6 @@ type OpenAICodexModelRegistryLike = {
 type AuthStorageWithRuntimeOverrides = {
   runtimeOverrides?: Map<string, string>;
 };
-
 export function resolveOpenAICodexVisionModelId(params: {
   model: Pick<Model<Api>, "id" | "provider" | "input">;
   context: { messages?: unknown[] } | undefined;
@@ -459,7 +455,7 @@ export async function runEmbeddedAttempt(
       warn: makeBootstrapWarn({ sessionLabel, warn: (message) => log.warn(message) }),
     });
     const machineNamePromise = getMachineDisplayName();
-    const intentGatePromise = evaluateIntentSimulationGateForConfigIfAvailable({
+    const intentGatePromise = evaluateIntentSimulationGateForConfig({
       intent: params.config?.intent,
       workspaceDir: effectiveWorkspace,
     });
@@ -593,7 +589,7 @@ export async function runEmbeddedAttempt(
             return undefined;
           })()
         : undefined;
-    const intentResolution = resolveEffectiveIntentForAgentIfAvailable({
+    const intentResolution = resolveEffectiveIntentForAgent({
       config: params.config,
       agentId: sessionAgentId,
     });
@@ -631,7 +627,7 @@ export async function runEmbeddedAttempt(
     }
     const intentPromptHint =
       intentResolution && intentResolution.runtimeMode !== "off"
-        ? buildIntentSystemPromptHintIfAvailable(intentResolution.policy)
+        ? buildIntentSystemPromptHint(intentResolution.policy)
         : undefined;
 
     const crossChannelContextHint = crossChannelEvents

@@ -46,6 +46,9 @@ export type MemoryRecallTelemetryMeta = {
   answerStrategy?: string | null;
   answerSourceId?: string | null;
   vectorFallbackUsed?: boolean;
+  observationFallbackUsed?: boolean;
+  observationFallbackQueries?: string[];
+  observationFallbackCount?: number;
   knowledgeFallbackUsed?: boolean;
   knowledgeFallbackQueries?: string[];
   knowledgeFallbackCount?: number;
@@ -279,6 +282,19 @@ function sanitizeEntry(entry: MemoryRecallTelemetryEntry): MemoryRecallTelemetry
           answerSourceId:
             truncateText(entry.recallTelemetry.answerSourceId ?? undefined, 80) ?? null,
           vectorFallbackUsed: entry.recallTelemetry.vectorFallbackUsed,
+          observationFallbackUsed: entry.recallTelemetry.observationFallbackUsed,
+          observationFallbackQueries: Array.isArray(
+            entry.recallTelemetry.observationFallbackQueries,
+          )
+            ? entry.recallTelemetry.observationFallbackQueries
+                .slice(0, 12)
+                .map((value) => truncateText(value, 120) ?? "")
+            : undefined,
+          observationFallbackCount:
+            typeof entry.recallTelemetry.observationFallbackCount === "number" &&
+            Number.isFinite(entry.recallTelemetry.observationFallbackCount)
+              ? entry.recallTelemetry.observationFallbackCount
+              : undefined,
           knowledgeFallbackUsed: entry.recallTelemetry.knowledgeFallbackUsed,
           knowledgeFallbackQueries: Array.isArray(entry.recallTelemetry.knowledgeFallbackQueries)
             ? entry.recallTelemetry.knowledgeFallbackQueries

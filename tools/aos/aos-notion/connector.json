@@ -1,0 +1,120 @@
+{
+  "tool": "aos-notion",
+  "backend": "notion-api",
+  "manifest_schema_version": "1.0.0",
+  "connector": {
+    "label": "Notion",
+    "category": "productivity-suite",
+    "categories": ["productivity-suite", "knowledge-base", "notes"],
+    "resources": ["database", "page", "block", "search"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["NOTION_TOKEN"],
+    "interactive_setup": [
+      "Create a Notion internal integration for the workspace you want this worker to use.",
+      "Share the target databases and pages with that integration before enabling any worker-visible commands.",
+      "Add NOTION_TOKEN in API Keys; optionally set NOTION_VERSION if you want to pin a specific Notion API release.",
+      "Live reads are enabled now; keep write commands scaffolded until a live Notion write bridge is implemented."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "database.list",
+      "summary": "List Notion databases",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "database",
+      "action_class": "read"
+    },
+    {
+      "id": "database.query",
+      "summary": "Query rows in a Notion database",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "database",
+      "action_class": "read"
+    },
+    {
+      "id": "page.read",
+      "summary": "Read a Notion page",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "page",
+      "action_class": "read"
+    },
+    {
+      "id": "page.create",
+      "summary": "Create a Notion page",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "page",
+      "action_class": "write"
+    },
+    {
+      "id": "page.update",
+      "summary": "Update a Notion page",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "page",
+      "action_class": "write"
+    },
+    {
+      "id": "block.read",
+      "summary": "Read a Notion block tree",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "block",
+      "action_class": "read"
+    },
+    {
+      "id": "block.append",
+      "summary": "Append blocks to a Notion page or block",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "block",
+      "action_class": "write"
+    },
+    {
+      "id": "search.query",
+      "summary": "Search Notion pages and databases",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "search",
+      "action_class": "read"
+    }
+  ]
+}

@@ -196,29 +196,15 @@ async function createSQLiteAdapter(): Promise<StorageAdapter> {
 }
 
 async function createPgAdapter(config: StorageConfig): Promise<StorageAdapter> {
+  const { PgAdapter } = await import("./pg-adapter.js");
+
   if (!config.postgres) {
     throw new Error("StorageConfig: postgres config is required for PG adapter");
   }
-  let PgAdapter: new (postgres: NonNullable<StorageConfig["postgres"]>) => StorageAdapter;
-  try {
-    const dynamicImport = new Function("specifier", "return import(specifier)") as (
-      specifier: string,
-    ) => Promise<{
-      PgAdapter: new (postgres: NonNullable<StorageConfig["postgres"]>) => StorageAdapter;
-    }>;
-    ({ PgAdapter } = await dynamicImport("./pg-adapter.js"));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`PostgreSQL adapter unavailable: ${message}`);
-  }
-  try {
-    const adapter = new PgAdapter(config.postgres);
-    await adapter.init();
-    return adapter;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`PostgreSQL adapter unavailable: ${message}`);
-  }
+
+  const adapter = new PgAdapter(config.postgres);
+  await adapter.init();
+  return adapter;
 }
 
 /**

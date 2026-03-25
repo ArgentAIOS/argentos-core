@@ -159,11 +159,55 @@ const MemoryMemuSchema = z
   })
   .strict();
 
+const MemoryObservationsKindDaysSchema = z
+  .object({
+    operator_preference: z.number().int().positive().optional(),
+    project_state: z.number().int().positive().optional(),
+    world_fact: z.number().int().positive().optional(),
+    self_model: z.number().int().positive().optional(),
+    relationship_fact: z.number().int().positive().optional(),
+    tooling_state: z.number().int().positive().optional(),
+  })
+  .strict();
+
+const MemoryObservationsSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    consolidation: z
+      .object({
+        enabled: z.boolean().optional(),
+        debounceMs: z.number().int().nonnegative().optional(),
+        interval: z.string().optional(),
+        maxScopesPerRun: z.number().int().positive().optional(),
+      })
+      .strict()
+      .optional(),
+    retrieval: z
+      .object({
+        enabled: z.boolean().optional(),
+        maxResults: z.number().int().positive().optional(),
+        minConfidence: z.number().min(0).max(1).optional(),
+        minFreshness: z.number().min(0).max(1).optional(),
+      })
+      .strict()
+      .optional(),
+    revalidation: z
+      .object({
+        enabled: z.boolean().optional(),
+        interval: z.string().optional(),
+        kindDays: MemoryObservationsKindDaysSchema.optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 const MemorySchema = z
   .object({
     backend: z.union([z.literal("builtin"), z.literal("qmd")]).optional(),
     citations: z.union([z.literal("auto"), z.literal("on"), z.literal("off")]).optional(),
     memu: MemoryMemuSchema.optional(),
+    observations: MemoryObservationsSchema.optional(),
     qmd: MemoryQmdSchema.optional(),
     vault: MemoryVaultSchema.optional(),
     cognee: MemoryCogneeSchema.optional(),

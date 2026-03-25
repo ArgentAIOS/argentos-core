@@ -1,0 +1,171 @@
+{
+  "tool": "aos-elevenlabs",
+  "backend": "elevenlabs-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "voice-generation",
+    "surface": "voices-models-history-user",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "worker_visible_actions": [
+      "voice.list",
+      "voice.read",
+      "model.list",
+      "history.list",
+      "history.read",
+      "user.read",
+      "synthesize"
+    ],
+    "fields": [
+      {
+        "id": "voice_id",
+        "label": "Voice ID",
+        "required": false,
+        "applies_to": ["voice.read", "synthesize"],
+        "example": "21m00Tcm4TlvDq8ikWAM"
+      },
+      {
+        "id": "model_id",
+        "label": "Model ID",
+        "required": false,
+        "applies_to": ["synthesize"],
+        "example": "eleven_multilingual_v2"
+      },
+      {
+        "id": "output_path",
+        "label": "Output path",
+        "required": false,
+        "applies_to": ["synthesize"],
+        "example": "artifacts/demo.mp3"
+      },
+      {
+        "id": "history_item_id",
+        "label": "History item ID",
+        "required": false,
+        "applies_to": ["history.read"],
+        "example": "VW7YKqPnjY4h39yTbx2L"
+      }
+    ],
+    "commandDefaults": {
+      "voice.read": {
+        "args": ["ELEVENLABS_VOICE_ID"]
+      },
+      "history.read": {
+        "args": ["ELEVENLABS_HISTORY_ITEM_ID"]
+      },
+      "synthesize": {
+        "args": ["ELEVENLABS_VOICE_ID", "ELEVENLABS_MODEL_ID"]
+      }
+    }
+  },
+  "connector": {
+    "label": "ElevenLabs",
+    "category": "creative-media",
+    "categories": ["creative-media", "audio-generation", "voice-infrastructure"],
+    "resources": ["voice", "model", "history", "user", "audio"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["ELEVENLABS_API_KEY"],
+    "interactive_setup": [
+      "Create an ElevenLabs API key for the target workspace or account.",
+      "Add ELEVENLABS_API_KEY in API Keys before enabling live reads.",
+      "Optional: set ELEVENLABS_BASE_URL only if you need a non-default ElevenLabs API host.",
+      "Optional: pin ELEVENLABS_VOICE_ID, ELEVENLABS_MODEL_ID, and ELEVENLABS_HISTORY_ITEM_ID for worker defaults.",
+      "Use synthesize for live text-to-speech; return inline base64 by default or pass --output to write an audio file."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "user",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "user",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and ElevenLabs API readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "user",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "user",
+      "action_class": "read"
+    },
+    {
+      "id": "voice.list",
+      "summary": "List ElevenLabs voices",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "voice",
+      "action_class": "read"
+    },
+    {
+      "id": "voice.read",
+      "summary": "Read a single ElevenLabs voice",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "voice",
+      "action_class": "read"
+    },
+    {
+      "id": "model.list",
+      "summary": "List ElevenLabs models",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "model",
+      "action_class": "read"
+    },
+    {
+      "id": "history.list",
+      "summary": "List generated speech history items",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "history",
+      "action_class": "read"
+    },
+    {
+      "id": "history.read",
+      "summary": "Read a generated speech history item",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "history",
+      "action_class": "read"
+    },
+    {
+      "id": "user.read",
+      "summary": "Read ElevenLabs user and subscription info",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "user",
+      "action_class": "read"
+    },
+    {
+      "id": "synthesize",
+      "summary": "Generate ElevenLabs speech",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "audio",
+      "action_class": "write"
+    }
+  ]
+}

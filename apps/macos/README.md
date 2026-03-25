@@ -22,22 +22,6 @@ scripts/package-mac-app.sh
 
 Creates `dist/Argent.app` and signs it via `scripts/codesign-mac-app.sh`.
 
-Packaging no longer force-runs `pnpm install` in the active workspace.
-That is intentional: packaging from the same repo you are actively using should
-not rewrite the runtime dependency layout.
-
-Default behavior:
-
-- uses the existing workspace `node_modules`
-- fails fast if dependencies are missing
-
-If you explicitly want packaging to install dependencies in the current
-workspace, opt in:
-
-```bash
-FORCE_PNPM_INSTALL=1 scripts/package-mac-app.sh
-```
-
 ## Signing behavior
 
 Auto-selects identity (first match):

@@ -1,0 +1,129 @@
+{
+  "tool": "aos-monday",
+  "backend": "monday-api",
+  "manifest_schema_version": "1.0.0",
+  "connector": {
+    "label": "Monday.com",
+    "category": "productivity-suite",
+    "categories": ["productivity-suite", "project-management", "work-management"],
+    "resources": ["account", "board", "workspace", "item", "update"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["MONDAY_TOKEN"],
+    "interactive_setup": [
+      "Create or copy a monday.com personal API token from the Developer Center.",
+      "Add MONDAY_TOKEN in API Keys before enabling any worker-visible commands.",
+      "Optionally set MONDAY_API_VERSION to pin a stable monday API version; the scaffold defaults to the current stable release.",
+      "Share the boards and workspaces you want this worker to read with the account that owns the token.",
+      "Live reads are enabled now; keep item.create, item.update, and update.create scaffolded until a live write bridge is implemented."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and backend readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "account.read",
+      "summary": "Read the authenticated monday account",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "account",
+      "action_class": "read"
+    },
+    {
+      "id": "workspace.list",
+      "summary": "List monday workspaces",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "workspace",
+      "action_class": "read"
+    },
+    {
+      "id": "board.list",
+      "summary": "List monday boards",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "board",
+      "action_class": "read"
+    },
+    {
+      "id": "board.read",
+      "summary": "Read a monday board with item and update previews",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "board",
+      "action_class": "read"
+    },
+    {
+      "id": "item.read",
+      "summary": "Read a monday item",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "item",
+      "action_class": "read"
+    },
+    {
+      "id": "update.list",
+      "summary": "List monday updates",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "update",
+      "action_class": "read"
+    },
+    {
+      "id": "item.create",
+      "summary": "Create a monday item",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "item",
+      "action_class": "write"
+    },
+    {
+      "id": "item.update",
+      "summary": "Update a monday item",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "item",
+      "action_class": "write"
+    },
+    {
+      "id": "update.create",
+      "summary": "Create a monday update",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "update",
+      "action_class": "write"
+    }
+  ]
+}

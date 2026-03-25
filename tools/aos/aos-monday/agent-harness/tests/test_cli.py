@@ -1,0 +1,252 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from click.testing import CliRunner
+
+from cli_aos.monday.cli import cli
+import cli_aos.monday.runtime as runtime
+
+
+AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
+CONNECTOR_PATH = AGENT_HARNESS_ROOT.parent / "connector.json"
+PERMISSIONS_PATH = AGENT_HARNESS_ROOT / "permissions.json"
+
+
+class FakeMondayClient:
+    def me(self):
+        return {"id": "person_123", "name": "Alex", "email": "alex@example.com", "title": "Ops"}
+
+    def list_workspaces(self):
+        return [
+            {"id": "workspace_1", "name": "Ops", "is_default_workspace": True},
+            {"id": "workspace_2", "name": "Planning", "is_default_workspace": False},
+        ]
+
+    def list_boards(self):
+        return [
+            {"id": "board_1", "name": "Ops Board", "items_count": 2},
+            {"id": "board_2", "name": "Planning Board", "items_count": 1},
+        ]
+
+    def read_board(self, board_id: str, *, limit: int):
+        return {
+            "id": board_id,
+            "name": "Ops Board",
+            "items_page": {
+                "cursor": None,
+                "items": [
+                    {"id": "item_1", "name": "Launch prep"},
+                    {"id": "item_2", "name": "Weekly check-in"},
+                ][:limit],
+            },
+            "updates": [
+                {"id": "update_1", "body": "Board update one", "created_at": "2026-03-18T12:00:00Z"},
+                {"id": "update_2", "body": "Board update two", "created_at": "2026-03-18T13:00:00Z"},
+            ][:limit],
+        }
+
+    def read_item(self, item_id: str):
+        return {
+            "id": item_id,
+            "name": "Launch prep",
+            "board": {"id": "board_1", "name": "Ops Board"},
+        }
+
+    def list_updates(self, *, limit: int):
+        return [
+            {
+                "id": "update_1",
+                "body": "Kickoff posted",
+                "created_at": "2026-03-18T12:00:00Z",
+                "creator": {"id": "person_123", "name": "Alex"},
+            },
+            {
+                "id": "update_2",
+                "body": "Board note",
+                "created_at": "2026-03-18T13:00:00Z",
+                "creator": {"id": "person_123", "name": "Alex"},
+            },
+        ][:limit]
+
+
+def _invoke(args: list[str], monkeypatch):
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeMondayClient())
+    return CliRunner().invoke(cli, args)
+
+
+def test_manifest_and_permissions_are_in_sync():
+    manifest = json.loads(CONNECTOR_PATH.read_text())
+    permissions = json.loads(PERMISSIONS_PATH.read_text())["permissions"]
+    manifest_command_ids = [command["id"] for command in manifest["commands"]]
+
+    assert set(manifest_command_ids) == set(permissions.keys())
+    assert "capabilities" in manifest_command_ids
+    assert "update.create" in manifest_command_ids
+
+
+def test_capabilities_json_matches_manifest():
+    result = CliRunner().invoke(cli, ["--json", "capabilities"])
+    assert result.exit_code == 0
+
+    envelope = json.loads(result.output)
+    payload = envelope["data"]
+    manifest = json.loads(CONNECTOR_PATH.read_text())
+
+    assert envelope["tool"] == "aos-monday"
+    assert envelope["command"] == "capabilities"
+    assert payload["tool"] == manifest["tool"]
+    assert payload["backend"] == manifest["backend"]
+    assert payload["manifest_schema_version"] == manifest["manifest_schema_version"]
+    assert payload["connector"] == manifest["connector"]
+    assert payload["auth"] == manifest["auth"]
+    assert payload["commands"] == manifest["commands"]
+
+
+def test_health_reports_needs_setup_without_env(monkeypatch):
+    monkeypatch.delenv("MONDAY_TOKEN", raising=False)
+    monkeypatch.delenv("MONDAY_API_VERSION", raising=False)
+    monkeypatch.delenv("MONDAY_API_URL", raising=False)
+    monkeypatch.delenv("MONDAY_WORKSPACE_ID", raising=False)
+    monkeypatch.delenv("MONDAY_BOARD_ID", raising=False)
+
+    result = CliRunner().invoke(cli, ["--json", "health"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.output)
+    assert payload["data"]["status"] == "needs_setup"
+    assert payload["data"]["live_backend_available"] is False
+    assert "MONDAY_TOKEN" in payload["data"]["checks"][0]["details"]["missing_keys"]
+
+
+def test_health_reports_ready_when_probe_succeeds(monkeypatch):
+    monkeypatch.setenv("MONDAY_TOKEN", "secret_token")
+    monkeypatch.setenv("MONDAY_API_VERSION", "2026-01")
+    monkeypatch.setenv("MONDAY_API_URL", "https://api.monday.com/v2")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeMondayClient())
+
+    result = CliRunner().invoke(cli, ["--json", "health"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.output)
+    assert payload["data"]["status"] == "ready"
+    assert payload["data"]["runtime_ready"] is True
+    assert payload["data"]["live_backend_available"] is True
+    assert payload["data"]["connector"]["live_read_available"] is True
+
+
+def test_doctor_reports_ready_when_setup_is_complete(monkeypatch):
+    monkeypatch.setenv("MONDAY_TOKEN", "secret_token")
+    monkeypatch.setenv("MONDAY_API_VERSION", "2026-01")
+    monkeypatch.setenv("MONDAY_API_URL", "https://api.monday.com/v2")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeMondayClient())
+
+    result = CliRunner().invoke(cli, ["--json", "doctor"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.output)
+    assert payload["data"]["status"] == "ready"
+    assert payload["data"]["runtime_ready"] is True
+    assert payload["data"]["live_backend_available"] is True
+    assert "secret_token" not in result.output
+
+
+def test_config_show_redacts_token_values(monkeypatch):
+    monkeypatch.setenv("MONDAY_TOKEN", "secret_token")
+    monkeypatch.setenv("MONDAY_API_VERSION", "2026-01")
+    monkeypatch.setenv("MONDAY_API_URL", "https://api.monday.com/v2")
+    monkeypatch.setenv("MONDAY_WORKSPACE_ID", "workspace-123")
+    monkeypatch.setenv("MONDAY_BOARD_ID", "board-123")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeMondayClient())
+
+    result = CliRunner().invoke(cli, ["--json", "config", "show"])
+    assert result.exit_code == 0
+    assert "secret_token" not in result.output
+    assert '"token_present": true' in result.output
+    assert '"write_paths_scaffolded": true' in result.output
+
+
+def test_account_read_returns_live_payload(monkeypatch):
+    monkeypatch.setenv("MONDAY_TOKEN", "secret_token")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeMondayClient())
+
+    result = _invoke(["--json", "account", "read"], monkeypatch)
+    assert result.exit_code == 0
+    payload = json.loads(result.output)["data"]
+    assert payload["status"] == "ok"
+    assert payload["command"] == "account.read"
+    assert payload["account"]["name"] == "Alex"
+    assert payload["scope"]["kind"] == "account"
+
+
+def test_workspace_list_returns_live_payload(monkeypatch):
+    monkeypatch.setenv("MONDAY_TOKEN", "secret_token")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeMondayClient())
+
+    result = _invoke(["--json", "workspace", "list", "--limit", "2"], monkeypatch)
+    assert result.exit_code == 0
+    payload = json.loads(result.output)["data"]
+    assert payload["status"] == "ok"
+    assert payload["command"] == "workspace.list"
+    assert payload["scope"]["kind"] == "workspace"
+    assert payload["scope_preview"] == "Workspaces: Ops, Planning"
+    assert payload["items"][0]["name"] == "Ops"
+    assert payload["result_types"] == {"unknown": 2}
+
+
+def test_board_read_returns_live_payload(monkeypatch):
+    monkeypatch.setenv("MONDAY_TOKEN", "secret_token")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeMondayClient())
+
+    result = _invoke(["--json", "board", "read", "board_1", "--limit", "2"], monkeypatch)
+    assert result.exit_code == 0
+    payload = json.loads(result.output)["data"]
+    assert payload["status"] == "ok"
+    assert payload["command"] == "board.read"
+    assert payload["board"]["id"] == "board_1"
+    assert payload["scope"]["kind"] == "board"
+    assert payload["items"][0]["name"] == "Launch prep"
+    assert payload["updates"][0]["body"] == "Board update one"
+
+
+def test_item_read_returns_live_payload(monkeypatch):
+    monkeypatch.setenv("MONDAY_TOKEN", "secret_token")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeMondayClient())
+
+    result = _invoke(["--json", "item", "read", "item_1"], monkeypatch)
+    assert result.exit_code == 0
+    payload = json.loads(result.output)["data"]
+    assert payload["status"] == "ok"
+    assert payload["command"] == "item.read"
+    assert payload["item"]["id"] == "item_1"
+    assert payload["scope"]["kind"] == "item"
+
+
+def test_update_list_returns_live_payload(monkeypatch):
+    monkeypatch.setenv("MONDAY_TOKEN", "secret_token")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeMondayClient())
+
+    result = _invoke(["--json", "update", "list", "--limit", "2"], monkeypatch)
+    assert result.exit_code == 0
+    payload = json.loads(result.output)["data"]
+    assert payload["status"] == "ok"
+    assert payload["command"] == "update.list"
+    assert payload["scope"]["kind"] == "update"
+    assert payload["items"][0]["body"] == "Kickoff posted"
+
+
+def test_scaffolded_write_commands_fail_with_not_implemented(monkeypatch):
+    monkeypatch.setenv("MONDAY_TOKEN", "secret_token")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeMondayClient())
+
+    result = CliRunner().invoke(cli, ["--json", "--mode", "write", "item", "create", "--board-id", "board_1", "--name", "Draft item"])
+    assert result.exit_code == 10
+    assert "NOT_IMPLEMENTED" in result.output
+    assert "scaffolded" in result.output
+
+
+def test_permission_gate_blocks_write_for_readonly():
+    result = CliRunner().invoke(cli, ["--json", "--mode", "readonly", "update", "create", "item_1", "--body", "Hello"])
+    assert result.exit_code == 3
+    assert "PERMISSION_DENIED" in result.output

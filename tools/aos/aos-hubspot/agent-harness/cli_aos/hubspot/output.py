@@ -43,6 +43,12 @@ def emit(payload: dict, as_json: bool) -> None:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return
     if payload.get("ok"):
-        print("OK")
+        data = payload.get("data", {})
+        preview = data.get("scope_preview")
+        if isinstance(preview, dict):
+            preview_text = data.get("summary") or preview.get("command_id") or preview.get("resource") or "OK"
+        else:
+            preview_text = preview
+        print(preview_text or data.get("summary") or "OK")
     else:
         print(f"ERROR [{payload['error']['code']}]: {payload['error']['message']}")

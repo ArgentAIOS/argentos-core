@@ -2,7 +2,7 @@
  * MemU Embedding Provider
  *
  * Thin wrapper around ArgentOS's existing embedding infrastructure.
- * Routes embedding requests through the configured provider (OpenAI, Gemini, Ollama, local).
+ * Routes embedding requests through the configured provider (OpenAI, Gemini, Ollama, LM Studio, local).
  */
 
 import type { ArgentConfig } from "../config/config.js";
@@ -30,8 +30,12 @@ let _initPromise: Promise<MemuEmbedder> | null = null;
  * Reuses the existing ArgentOS embedding provider system.
  */
 export async function getMemuEmbedder(config?: ArgentConfig): Promise<MemuEmbedder> {
-  if (_embedder) return _embedder;
-  if (_initPromise) return _initPromise;
+  if (_embedder) {
+    return _embedder;
+  }
+  if (_initPromise) {
+    return _initPromise;
+  }
 
   _initPromise = initEmbedder(config);
   _embedder = await _initPromise;
@@ -44,7 +48,8 @@ async function initEmbedder(config?: ArgentConfig): Promise<MemuEmbedder> {
   const memoryConfig = config?.agents?.defaults?.memorySearch;
 
   const providerChoice =
-    (memoryConfig?.provider as "openai" | "gemini" | "ollama" | "local" | "auto") ?? "ollama";
+    (memoryConfig?.provider as "openai" | "gemini" | "ollama" | "lmstudio" | "local" | "auto") ??
+    "ollama";
   const model =
     (memoryConfig?.model as string) ??
     (providerChoice === "gemini"
@@ -53,9 +58,12 @@ async function initEmbedder(config?: ArgentConfig): Promise<MemuEmbedder> {
         ? "text-embedding-3-small"
         : providerChoice === "ollama"
           ? "nomic-embed-text"
-          : "");
+          : providerChoice === "lmstudio"
+            ? "text-embedding-nomic-embed-text-v1.5"
+            : "");
   const fallback =
-    (memoryConfig?.fallback as "openai" | "gemini" | "ollama" | "local" | "none") ?? "none";
+    (memoryConfig?.fallback as "openai" | "gemini" | "ollama" | "lmstudio" | "local" | "none") ??
+    "none";
 
   const result: EmbeddingProviderResult = await createEmbeddingProvider({
     config: config ?? ({} as ArgentConfig),

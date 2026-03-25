@@ -306,6 +306,23 @@ const FIELD_LABELS: Record<string, string> = {
   "memory.memu.llm.model": "MemU LLM Model",
   "memory.memu.llm.thinkLevel": "MemU LLM Think Level",
   "memory.memu.llm.timeoutMs": "MemU LLM Timeout (ms)",
+  "memory.observations": "Knowledge Observations",
+  "memory.observations.enabled": "Knowledge Observations Enabled",
+  "memory.observations.consolidation": "Observation Consolidation",
+  "memory.observations.consolidation.enabled": "Observation Consolidation Enabled",
+  "memory.observations.consolidation.debounceMs": "Observation Consolidation Debounce (ms)",
+  "memory.observations.consolidation.interval": "Observation Consolidation Interval",
+  "memory.observations.consolidation.maxScopesPerRun":
+    "Observation Consolidation Max Scopes Per Run",
+  "memory.observations.retrieval": "Observation Retrieval",
+  "memory.observations.retrieval.enabled": "Observation Retrieval Enabled",
+  "memory.observations.retrieval.maxResults": "Observation Retrieval Max Results",
+  "memory.observations.retrieval.minConfidence": "Observation Retrieval Min Confidence",
+  "memory.observations.retrieval.minFreshness": "Observation Retrieval Min Freshness",
+  "memory.observations.revalidation": "Observation Revalidation",
+  "memory.observations.revalidation.enabled": "Observation Revalidation Enabled",
+  "memory.observations.revalidation.interval": "Observation Revalidation Interval",
+  "memory.observations.revalidation.kindDays": "Observation Revalidation Days by Kind",
   "memory.vault.enabled": "Vault Integration Enabled",
   "memory.vault.path": "Vault Path",
   "memory.vault.knowledgeCollection": "Vault Knowledge Collection",
@@ -326,6 +343,16 @@ const FIELD_LABELS: Record<string, string> = {
     "Contemplation Discovery Every Episodes",
   "agents.defaults.contemplation.discoveryPhase.maxDurationMs":
     "Contemplation Discovery Max Duration (ms)",
+  "agents.defaults.kernel": "Consciousness Kernel",
+  "agents.defaults.kernel.enabled": "Consciousness Kernel Enabled",
+  "agents.defaults.kernel.mode": "Consciousness Kernel Mode",
+  "agents.defaults.kernel.localModel": "Consciousness Kernel Local Model",
+  "agents.defaults.kernel.tickMs": "Consciousness Kernel Tick (ms)",
+  "agents.defaults.kernel.maxEscalationsPerHour": "Consciousness Kernel Max Escalations / Hour",
+  "agents.defaults.kernel.dailyBudget": "Consciousness Kernel Daily Budget",
+  "agents.defaults.kernel.hardwareHostRequired": "Consciousness Kernel Hardware Host Required",
+  "agents.defaults.kernel.allowListening": "Consciousness Kernel Allow Listening",
+  "agents.defaults.kernel.allowVision": "Consciousness Kernel Allow Vision",
   license: "License",
   "license.encrypted": "License Data (Encrypted)",
   "license.machineId": "Machine ID",
@@ -685,14 +712,14 @@ const FIELD_HELP: Record<string, string> = {
   "agents.defaults.memorySearch.experimental.sessionMemory":
     "Enable experimental session transcript indexing for memory search (default: false).",
   "agents.defaults.memorySearch.provider":
-    'Embedding provider ("openai", "gemini", "ollama", "local", or "auto").',
+    'Embedding provider ("openai", "gemini", "ollama", "lmstudio", "local", or "auto"). Legacy OpenAI-compatible local endpoints on :1234/:11434 are auto-normalized to LM Studio/Ollama.',
   "agents.defaults.memorySearch.remote.baseUrl":
-    "Custom base URL for remote embeddings (OpenAI-compatible proxies or Gemini overrides).",
+    "Custom base URL for embeddings (OpenAI, OpenAI-compatible local endpoints such as LM Studio/Ollama, or Gemini overrides).",
   "agents.defaults.memorySearch.remote.apiKey": "Custom API key for the remote embedding provider.",
   "agents.defaults.memorySearch.remote.headers":
     "Extra headers for remote embeddings (merged; remote overrides OpenAI headers).",
   "agents.defaults.memorySearch.remote.batch.enabled":
-    "Enable batch API for memory embeddings (OpenAI/Gemini; default: true).",
+    "Enable batch API for memory embeddings (OpenAI/Gemini only; local LM Studio/Ollama runs use direct embedding calls).",
   "agents.defaults.memorySearch.remote.batch.wait":
     "Wait for batch completion when indexing (default: true).",
   "agents.defaults.memorySearch.remote.batch.concurrency":
@@ -704,7 +731,7 @@ const FIELD_HELP: Record<string, string> = {
   "agents.defaults.memorySearch.local.modelPath":
     "Local GGUF model path or hf: URI (node-llama-cpp).",
   "agents.defaults.memorySearch.fallback":
-    'Fallback provider when embeddings fail ("openai", "gemini", "ollama", "local", or "none").',
+    'Fallback provider when embeddings fail ("openai", "gemini", "ollama", "lmstudio", "local", or "none").',
   "agents.defaults.memorySearch.store.path":
     "SQLite index path (default: ~/.argentos/memory/{agentId}.sqlite).",
   "agents.defaults.memorySearch.store.vector.enabled":
@@ -744,6 +771,35 @@ const FIELD_HELP: Record<string, string> = {
     'Optional thinking level override for MemU LLM calls ("off", "minimal", "low", "medium", "high", "max", "xhigh").',
   "memory.memu.llm.timeoutMs":
     "Optional timeout for MemU LLM calls in milliseconds. Per-call defaults apply when unset.",
+  "memory.observations":
+    "PG-backed synthesized truth layer. Off by default in phase 1; stores current believed state with explicit evidence and supersession history.",
+  "memory.observations.enabled":
+    "Enable knowledge observations. Requires PostgreSQL-backed memory storage.",
+  "memory.observations.consolidation":
+    "Controls the background consolidator that derives knowledge observations from raw memory, lessons, and reflections.",
+  "memory.observations.consolidation.enabled": "Enable the background observation consolidator.",
+  "memory.observations.consolidation.debounceMs":
+    "Minimum delay before reprocessing the same observation scope after new evidence arrives.",
+  "memory.observations.consolidation.interval":
+    "Periodic sweep interval for observation consolidation runs (duration string).",
+  "memory.observations.consolidation.maxScopesPerRun":
+    "Maximum observation scopes processed in one consolidator run.",
+  "memory.observations.retrieval": "Retrieval thresholds for observation-first memory recall.",
+  "memory.observations.retrieval.enabled":
+    "Allow memory retrieval to consider knowledge observations before falling back to raw memory.",
+  "memory.observations.retrieval.maxResults":
+    "Maximum observation hits returned to recall callers.",
+  "memory.observations.retrieval.minConfidence":
+    "Minimum confidence required before an observation can surface in retrieval.",
+  "memory.observations.retrieval.minFreshness":
+    "Minimum freshness required before an observation can surface in retrieval.",
+  "memory.observations.revalidation":
+    "Controls stale/freshness scheduling for the knowledge observation layer.",
+  "memory.observations.revalidation.enabled": "Enable periodic observation revalidation checks.",
+  "memory.observations.revalidation.interval":
+    "Periodic revalidation sweep interval (duration string).",
+  "memory.observations.revalidation.kindDays":
+    "Override default revalidation cadence in days for each observation kind.",
   "memory.vault.enabled":
     "Enable Obsidian/knowledge-vault integration paths. When false (default), all V3 vault behavior is disabled.",
   "memory.vault.path":
@@ -805,6 +861,25 @@ const FIELD_HELP: Record<string, string> = {
     "Run discovery phase every N episodes (optional).",
   "agents.defaults.contemplation.discoveryPhase.maxDurationMs":
     "Max discovery phase runtime budget in milliseconds (optional).",
+  "agents.defaults.kernel":
+    "Main-agent-only continuous executive controls. Slice 4 keeps shadow mode non-outbound while moving contemplation and SIS scheduling authority into the kernel lane and adding private local-model inner reflection.",
+  "agents.defaults.kernel.enabled":
+    "Enable the consciousness kernel for the default main agent. Slice 4 lets shadow mode own main-agent contemplation and SIS scheduling, persist continuity, and run private inner reflection while later slices add broader authority and embodiment.",
+  "agents.defaults.kernel.mode":
+    "Desired kernel rollout mode. Slice 4 supports shadow only; soft/full remain blocked until later implementation slices.",
+  "agents.defaults.kernel.localModel":
+    "Optional low-cost local model preference used for private shadow-kernel inner reflection when a compatible local runtime is available.",
+  "agents.defaults.kernel.tickMs": "Kernel shadow tick cadence in milliseconds. Minimum: 1000 ms.",
+  "agents.defaults.kernel.maxEscalationsPerHour":
+    "Soft hourly cap for future kernel-triggered reasoning escalations.",
+  "agents.defaults.kernel.dailyBudget":
+    "Soft daily budget reserved for future kernel-triggered work.",
+  "agents.defaults.kernel.hardwareHostRequired":
+    "Require an attached hardware host before future embodied kernel modes can activate.",
+  "agents.defaults.kernel.allowListening":
+    "Allow future listening-capable kernel modes to request microphone context.",
+  "agents.defaults.kernel.allowVision":
+    "Allow future vision-capable kernel modes to request camera context.",
   "agents.defaults.memorySearch.cache.maxEntries":
     "Optional cap on cached embeddings (best-effort).",
   "agents.defaults.memorySearch.sync.onSearch":

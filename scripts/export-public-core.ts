@@ -2,14 +2,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import {
-  defaultPublicCoreManifestPath,
-  type PublicCoreTargetOverride,
-  resolvePublicCoreRepoRoot,
-  resolveManifestEntryPath,
-} from "../src/infra/public-core-export.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -22,7 +15,6 @@ type Manifest = {
   exclude?: string[];
   denylistFiles?: string[];
   preserveInTarget?: string[];
-  targetOverrides?: PublicCoreTargetOverride[];
   deferredReview?: string[];
   notes?: string[];
 };
@@ -43,34 +35,18 @@ type Denylist = {
 
 type Options = {
   manifestPath: string;
-  sourceRepoRootOverride: string | null;
-  targetRepoRootOverride: string | null;
   apply: boolean;
   verbose: boolean;
 };
 
 function parseArgs(argv: string[]): Options {
-  let manifestPath = defaultPublicCoreManifestPath(
-    path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
-  );
-  let sourceRepoRootOverride: string | null = null;
-  let targetRepoRootOverride: string | null = null;
+  let manifestPath = "/Users/sem/code/argentos-core/public-core.manifest.json";
   let apply = false;
   let verbose = false;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--manifest") {
       manifestPath = argv[index + 1] ?? manifestPath;
-      index += 1;
-      continue;
-    }
-    if (arg === "--source-repo-root") {
-      sourceRepoRootOverride = argv[index + 1] ?? null;
-      index += 1;
-      continue;
-    }
-    if (arg === "--target-repo-root") {
-      targetRepoRootOverride = argv[index + 1] ?? null;
       index += 1;
       continue;
     }
@@ -86,12 +62,12 @@ function parseArgs(argv: string[]): Options {
       printUsageAndExit(0);
     }
   }
-  return { manifestPath, sourceRepoRootOverride, targetRepoRootOverride, apply, verbose };
+  return { manifestPath, apply, verbose };
 }
 
 function printUsageAndExit(code: number): never {
   const lines = [
-    "Usage: node --import tsx scripts/export-public-core.ts [--manifest <path>] [--source-repo-root <path>] [--target-repo-root <path>] [--apply] [--verbose]",
+    "Usage: node --import tsx scripts/export-public-core.ts [--manifest <path>] [--apply] [--verbose]",
     "",
     "Default mode is dry-run.",
     "Use --apply to sync the selected files into the target repo.",
@@ -132,38 +108,18 @@ function matchesAny(relPath: string, patterns: string[] | undefined): boolean {
   return patterns.some((pattern) => path.matchesGlob(relPath, pattern));
 }
 
-function matchesSegmentDirectory(relPath: string, segment: string): boolean {
-  return (
-    relPath === segment || relPath.startsWith(`${segment}/`) || relPath.includes(`/${segment}/`)
-  );
-}
-
-function isTargetLocalArtifact(relPath: string): boolean {
-  const normalized = normalizeSlashes(relPath).replace(/\/+$/, "");
-  return (
-    matchesSegmentDirectory(normalized, "node_modules") ||
-    matchesSegmentDirectory(normalized, "dist") ||
-    matchesSegmentDirectory(normalized, ".build") ||
-    matchesSegmentDirectory(normalized, ".pnpm-store") ||
-    matchesSegmentDirectory(normalized, ".turbo") ||
-    matchesSegmentDirectory(normalized, ".cache") ||
-    matchesSegmentDirectory(normalized, "coverage")
-  );
-}
-
 function resolveManifestPath(basePath: string, entry: string): string {
-  return resolveManifestEntryPath(basePath, entry);
+  if (path.isAbsolute(entry)) {
+    return entry;
+  }
+  return path.resolve(path.dirname(basePath), entry);
 }
 
-async function listSourceFiles(repoRoot: string): Promise<string[]> {
-  const { stdout } = await execFile(
-    "git",
-    ["-C", repoRoot, "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-    {
-      cwd: repoRoot,
-      maxBuffer: 16 * 1024 * 1024,
-    },
-  );
+async function listTrackedFiles(repoRoot: string): Promise<string[]> {
+  const { stdout } = await execFile("git", ["-C", repoRoot, "ls-files", "-z"], {
+    cwd: repoRoot,
+    maxBuffer: 16 * 1024 * 1024,
+  });
   return stdout
     .split("\0")
     .map((entry) => entry.trim())
@@ -228,10 +184,7 @@ function classifyFiles(files: string[], manifest: Manifest, denyPatterns: string
   const excluded: string[] = [];
   for (const relPath of files) {
     const isIncluded = matchesAny(relPath, manifest.include);
-    const isExcluded =
-      matchesAny(relPath, manifest.exclude) ||
-      matchesAny(relPath, denyPatterns) ||
-      matchesAny(relPath, manifest.deferredReview);
+    const isExcluded = matchesAny(relPath, manifest.exclude) || matchesAny(relPath, denyPatterns);
     if (isIncluded && !isExcluded) {
       included.push(relPath);
     } else {
@@ -239,16 +192,6 @@ function classifyFiles(files: string[], manifest: Manifest, denyPatterns: string
     }
   }
   return { included, excluded };
-}
-
-function normalizeTargetOverrides(
-  manifestPath: string,
-  overrides: PublicCoreTargetOverride[] | undefined,
-): Array<{ target: string; source: string }> {
-  return (overrides ?? []).map((entry) => ({
-    target: normalizeSlashes(entry.target.replace(/\/+$/, "")),
-    source: resolveManifestEntryPath(manifestPath, entry.source),
-  }));
 }
 
 function flattenDenyPatterns(rules: DenylistRule[]): string[] {
@@ -265,26 +208,16 @@ async function main() {
   const denylists = await Promise.all(denylistPaths.map((entry) => readDenylist(entry)));
   const denyRules = denylists.flatMap((entry) => entry.rules);
   const denyPatterns = flattenDenyPatterns(denyRules);
-  const sourceRepoRoot = resolvePublicCoreRepoRoot(
-    manifestPath,
-    manifest.sourceRepoRoot,
-    options.sourceRepoRootOverride,
-  );
-  const targetRepoRoot = resolvePublicCoreRepoRoot(
-    manifestPath,
-    manifest.targetRepoRoot,
-    options.targetRepoRootOverride,
-  );
-  const sourceFiles = await listSourceFiles(sourceRepoRoot);
-  const { included, excluded } = classifyFiles(sourceFiles, manifest, denyPatterns);
+  const sourceRepoRoot = path.resolve(manifest.sourceRepoRoot);
+  const targetRepoRoot = path.resolve(manifest.targetRepoRoot);
+  const trackedFiles = await listTrackedFiles(sourceRepoRoot);
+  const { included, excluded } = classifyFiles(trackedFiles, manifest, denyPatterns);
   const preserve = new Set(
     (manifest.preserveInTarget ?? []).map((entry) => normalizeSlashes(entry.replace(/\/$/, ""))),
   );
-  const targetOverrides = normalizeTargetOverrides(manifestPath, manifest.targetOverrides);
-  const overrideTargets = new Set(targetOverrides.map((entry) => entry.target));
   const denyMatches = denyRules.map((rule) => ({
     id: rule.id,
-    matchedCount: sourceFiles.filter((relPath) => matchesAny(relPath, rule.paths)).length,
+    matchedCount: trackedFiles.filter((relPath) => matchesAny(relPath, rule.paths)).length,
   }));
 
   console.log(
@@ -298,9 +231,7 @@ async function main() {
         denylistFileCount: denylistPaths.length,
         denyRuleCount: denyRules.length,
         denyPatternCount: denyPatterns.length,
-        deferredReviewExcludedCount: manifest.deferredReview?.length ?? 0,
         deferredReviewCount: manifest.deferredReview?.length ?? 0,
-        targetOverrideCount: targetOverrides.length,
         apply: options.apply,
       },
       null,
@@ -330,19 +261,14 @@ async function main() {
     return;
   }
 
-  await fs.mkdir(targetRepoRoot, { recursive: true });
   const targetFiles = await walkTargetFiles(targetRepoRoot);
-  const includedSet = new Set([...included, ...overrideTargets]);
+  const includedSet = new Set(included);
   let copied = 0;
   let deleted = 0;
   let preserved = 0;
 
   for (const targetRelPath of targetFiles) {
     if (preserve.has(targetRelPath)) {
-      preserved += 1;
-      continue;
-    }
-    if (isTargetLocalArtifact(targetRelPath)) {
       preserved += 1;
       continue;
     }
@@ -356,12 +282,6 @@ async function main() {
     const sourcePath = path.join(sourceRepoRoot, relPath);
     const targetPath = path.join(targetRepoRoot, relPath);
     await copyFile(sourcePath, targetPath);
-    copied += 1;
-  }
-
-  for (const entry of targetOverrides) {
-    const targetPath = path.join(targetRepoRoot, entry.target);
-    await copyFile(entry.source, targetPath);
     copied += 1;
   }
 

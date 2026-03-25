@@ -1,0 +1,21 @@
+{
+  "tool": "aos-trello",
+  "backend": "trello-rest-api",
+  "permissions": {
+    "account.read": "readonly",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "member.list": "readonly",
+    "member.read": "readonly",
+    "board.list": "readonly",
+    "board.read": "readonly",
+    "list.list": "readonly",
+    "list.read": "readonly",
+    "card.list": "readonly",
+    "card.read": "readonly",
+    "card.create_draft": "write",
+    "card.update_draft": "write"
+  }
+}
