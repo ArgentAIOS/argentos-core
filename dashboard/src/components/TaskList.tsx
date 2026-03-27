@@ -19,6 +19,7 @@ import {
   Ban,
   XCircle,
   Sparkles,
+  Users,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
@@ -68,6 +69,7 @@ export interface Project {
 
 interface TaskListProps {
   tasks: Task[];
+  workerTasks?: Task[];
   projects?: Project[];
   cronJobs?: CronJob[];
   cronFormatSchedule?: (job: CronJob) => string;
@@ -106,6 +108,7 @@ interface TaskListProps {
   onProjectKickoff?: () => void;
   onOpenBoard?: () => void;
   showBoard?: boolean;
+  showWorkerLane?: boolean;
 }
 
 const statusIcons: Record<string, typeof Circle> = {
@@ -119,22 +122,29 @@ const statusIcons: Record<string, typeof Circle> = {
 };
 
 const statusColors: Record<string, string> = {
-  pending: "text-gray-400",
-  "in-progress": "text-purple-400",
-  in_progress: "text-purple-400",
+  pending: "text-[hsl(var(--muted-foreground))]",
+  "in-progress": "text-[hsl(var(--primary))]",
+  in_progress: "text-[hsl(var(--primary))]",
   completed: "text-green-400",
   blocked: "text-yellow-400",
   failed: "text-red-400",
-  cancelled: "text-gray-500",
+  cancelled: "text-[hsl(var(--muted-foreground))]",
 };
 
 type TaskOwner = "operator" | "agent" | "team" | "system";
 
 const ownerBadge: Record<TaskOwner, { label: string; className: string }> = {
   operator: { label: "Operator", className: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
-  agent: { label: "Agent", className: "bg-purple-500/20 text-purple-300 border-purple-500/30" },
+  agent: {
+    label: "Agent",
+    className:
+      "bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))] border-[hsl(var(--primary))]/30",
+  },
   team: { label: "Team", className: "bg-amber-500/20 text-amber-300 border-amber-500/30" },
-  system: { label: "System", className: "bg-gray-500/20 text-gray-400 border-gray-500/30" },
+  system: {
+    label: "System",
+    className: "bg-gray-500/20 text-[hsl(var(--muted-foreground))] border-gray-500/30",
+  },
 };
 
 function getTaskOwner(task: Task): TaskOwner {
@@ -145,7 +155,7 @@ function getTaskOwner(task: Task): TaskOwner {
   return "agent";
 }
 
-type TabType = "tasks" | "schedule" | "projects";
+type TabType = "tasks" | "workers" | "schedule" | "projects";
 
 function resolveCronExecutionMode(job: CronJob): "live" | "paper_trade" {
   return job.executionMode === "paper_trade" ? "paper_trade" : "live";
@@ -179,8 +189,51 @@ function cronEveryMsToMinutes(everyMs?: number): string {
   return String(minutes);
 }
 
+function getCronPayloadPreview(job: CronJob): string {
+  const body =
+    typeof job.payload.message === "string" && job.payload.message.trim()
+      ? job.payload.message.trim()
+      : typeof job.payload.text === "string" && job.payload.text.trim()
+        ? job.payload.text.trim()
+        : typeof job.payload.title === "string" && job.payload.title.trim()
+          ? job.payload.title.trim()
+          : "";
+  if (body) {
+    return body;
+  }
+  return "No explicit payload text is stored for this job. Use the raw payload below to inspect the live scheduler input.";
+}
+
+function getCronPayloadSummary(job: CronJob): Array<{ label: string; value: string }> {
+  const rows: Array<{ label: string; value: string }> = [
+    { label: "Payload", value: job.payload.kind || "unknown" },
+    {
+      label: "Next run",
+      value: job.state?.nextRunAtMs
+        ? new Date(job.state.nextRunAtMs).toLocaleString()
+        : "Not scheduled",
+    },
+  ];
+  if (job.agentId) {
+    rows.push({ label: "Agent", value: job.agentId });
+  }
+  if (job.sessionTarget) {
+    rows.push({ label: "Session", value: job.sessionTarget });
+  }
+  if (job.wakeMode) {
+    rows.push({ label: "Wake mode", value: job.wakeMode });
+  }
+  if (job.delivery?.channel) {
+    rows.push({ label: "Delivery", value: job.delivery.channel });
+  } else if (job.delivery?.mode) {
+    rows.push({ label: "Delivery", value: job.delivery.mode });
+  }
+  return rows;
+}
+
 export function TaskList({
   tasks,
+  workerTasks = [],
   projects = [],
   cronJobs = [],
   cronFormatSchedule,
@@ -198,6 +251,7 @@ export function TaskList({
   onProjectKickoff,
   onOpenBoard,
   showBoard,
+  showWorkerLane = false,
 }: TaskListProps) {
   const [activeTab, setActiveTab] = useState<TabType>("tasks");
   const [showAddModal, setShowAddModal] = useState(false);
@@ -367,6 +421,196 @@ export function TaskList({
 
   const activeTasks = oneTimeTasks.filter((t) => t.status !== "completed");
   const completedTasks = oneTimeTasks.filter((t) => t.status === "completed");
+  const workerTopLevelTasks = workerTasks.filter((t) => !t.parentTaskId && t.type !== "project");
+  const workerOneTimeTasks = workerTopLevelTasks.filter((t) => t.type === "one-time" || !t.type);
+  const activeWorkerTasks = workerOneTimeTasks.filter((t) => t.status !== "completed");
+  const completedWorkerTasks = workerOneTimeTasks.filter((t) => t.status === "completed");
+
+  const renderTaskLane = (
+    laneActiveTasks: Task[],
+    laneCompletedTasks: Task[],
+    emptyState: { icon: string; title: string; subtitle: string },
+  ) => (
+    <>
+      <div className="flex-[7] min-h-0 overflow-y-auto space-y-2">
+        {laneActiveTasks.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-32 text-[hsl(var(--muted-foreground))]/60 text-sm">
+            <span className="text-2xl mb-2">{emptyState.icon}</span>
+            <span>{emptyState.title}</span>
+            <span className="text-xs mt-1">{emptyState.subtitle}</span>
+          </div>
+        )}
+
+        <AnimatePresence mode="popLayout">
+          {laneActiveTasks.map((task) => {
+            const Icon = statusIcons[task.status] || Circle;
+            const color = statusColors[task.status] || "text-[hsl(var(--muted-foreground))]";
+            const isExpanded = expandedTasks.has(task.id);
+            const hasDetails = !!task.details;
+            const isTaskBusy = busyTaskIds.has(task.id);
+            return (
+              <motion.div
+                key={task.id}
+                layout
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="rounded-xl bg-[hsl(var(--card))] hover:bg-[hsl(var(--card))] transition-colors group"
+              >
+                <div
+                  className="flex items-center gap-3 p-3 cursor-pointer"
+                  onClick={() => (hasDetails ? toggleTaskExpand(task.id) : onTaskClick?.(task))}
+                >
+                  {hasDetails ? (
+                    <button
+                      type="button"
+                      className="text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--muted-foreground))]/80 transition-colors"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleTaskExpand(task.id);
+                      }}
+                    >
+                      {isExpanded ? (
+                        <ChevronDown className="w-4 h-4" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4" />
+                      )}
+                    </button>
+                  ) : (
+                    <div className="w-4" />
+                  )}
+                  <Icon
+                    className={`w-5 h-5 flex-shrink-0 ${color} ${
+                      task.status === "in-progress" || task.status === "in_progress"
+                        ? "animate-spin"
+                        : ""
+                    }`}
+                  />
+                  <span className="text-[hsl(var(--muted-foreground))] text-sm flex-1 truncate group-hover:text-white transition-colors">
+                    {task.title}
+                  </span>
+                  {(() => {
+                    const owner = getTaskOwner(task);
+                    const badge = ownerBadge[owner];
+                    return (
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium border flex-shrink-0 ${badge.className}`}
+                      >
+                        {badge.label}
+                      </span>
+                    );
+                  })()}
+                  {hasDetails && !isExpanded && (
+                    <span title="Has details">
+                      <FileText className="w-3.5 h-3.5 text-[hsl(var(--muted-foreground))]/40" />
+                    </span>
+                  )}
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {task.status === "pending" && (
+                      <button
+                        type="button"
+                        onClick={(e) => void handleExecuteClick(task, e)}
+                        className="p-1.5 rounded-md hover:bg-green-500/20 text-green-400 disabled:opacity-40"
+                        title="Execute task"
+                        disabled={isTaskBusy}
+                      >
+                        <Play className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => handleEditClick(task, e)}
+                      className="p-1.5 rounded-md hover:bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 disabled:opacity-40"
+                      title="Edit task"
+                      disabled={isTaskBusy}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => void handleDeleteClick(task.id, e)}
+                      className="p-1.5 rounded-md hover:bg-red-500/20 text-red-400 disabled:opacity-40"
+                      title="Delete task"
+                      disabled={isTaskBusy}
+                    >
+                      {isTaskBusy ? (
+                        <Loader className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+                <AnimatePresence>
+                  {isExpanded && hasDetails && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-4 pb-3 pt-1 ml-8 border-t border-[hsl(var(--border))]">
+                        <div
+                          className="prose prose-invert prose-sm max-w-none
+                          prose-pre:bg-[hsl(var(--background))]/80 prose-pre:border prose-pre:border-[hsl(var(--border))] prose-pre:rounded-lg
+                          prose-code:text-[hsl(var(--primary))] prose-code:bg-[hsl(var(--primary))]/10 prose-code:px-1 prose-code:rounded
+                          prose-headings:text-[hsl(var(--muted-foreground))] prose-p:text-[hsl(var(--muted-foreground))]/80 prose-li:text-[hsl(var(--muted-foreground))]/80
+                          prose-strong:text-[hsl(var(--muted-foreground))] prose-a:text-[hsl(var(--primary))]"
+                        >
+                          <ReactMarkdown>{task.details}</ReactMarkdown>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </div>
+
+      {laneCompletedTasks.length > 0 && (
+        <div className="flex-[3] min-h-0 border-t border-[hsl(var(--border))] flex flex-col">
+          <div className="text-[hsl(var(--muted-foreground))]/60 text-xs uppercase tracking-wider py-2 px-1 flex items-center gap-1 flex-shrink-0">
+            Recently Completed
+            <span className="text-[hsl(var(--muted-foreground))]/30">
+              ({laneCompletedTasks.length})
+            </span>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent pr-1">
+            {laneCompletedTasks.map((task) => (
+              <motion.div
+                key={task.id}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex items-center gap-3 p-1.5 rounded-lg opacity-50 group"
+              >
+                <CheckCircle className="w-4 h-4 text-green-400/50 flex-shrink-0" />
+                <span className="text-[hsl(var(--muted-foreground))]/60 text-sm flex-1 truncate line-through">
+                  {task.title}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => void handleDeleteClick(task.id, e)}
+                  className="p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-red-400/50 transition-opacity disabled:opacity-40"
+                  title="Remove"
+                  disabled={busyTaskIds.has(task.id)}
+                >
+                  {busyTaskIds.has(task.id) ? (
+                    <Loader className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3 h-3" />
+                  )}
+                </button>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   const handleAddTask = async () => {
     if (!onTaskAdd) {
@@ -827,28 +1071,54 @@ export function TaskList({
     return task.schedule.cron || "Custom";
   };
 
+  const activeLaneMeta =
+    activeTab === "workers"
+      ? {
+          label: "Business Worker Lane",
+          body: "Job-assignment and worker-generated tasks live here. This lane is separate from the operator board and is hidden in CORE surfaces.",
+        }
+      : activeTab === "tasks"
+        ? {
+            label: "Operator Lane",
+            body: "Personal operator and main-agent tasks live here. Worker/job tasks are excluded from this board by default.",
+          }
+        : null;
+
   return (
     <div className="glass-panel rounded-2xl p-4 h-full flex flex-col">
       {/* Header with tabs */}
       <div className="flex items-center justify-between mb-4">
-        <div className="flex gap-1 bg-white/5 rounded-lg p-1">
+        <div className="flex gap-1 bg-[hsl(var(--card))] rounded-lg p-1">
           <button
             onClick={() => setActiveTab("tasks")}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
               activeTab === "tasks"
-                ? "bg-purple-500/30 text-purple-300"
-                : "text-white/50 hover:text-white/70"
+                ? "bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))]"
+                : "text-[hsl(var(--muted-foreground))]/60 hover:text-white/70"
             }`}
           >
             <Clock className="w-4 h-4 inline mr-1.5" />
             Tasks
           </button>
+          {showWorkerLane && (
+            <button
+              onClick={() => setActiveTab("workers")}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                activeTab === "workers"
+                  ? "bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))]"
+                  : "text-[hsl(var(--muted-foreground))]/60 hover:text-white/70"
+              }`}
+            >
+              <Users className="w-4 h-4 inline mr-1.5" />
+              Workers
+            </button>
+          )}
           <button
             onClick={() => setActiveTab("schedule")}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
               activeTab === "schedule"
-                ? "bg-purple-500/30 text-purple-300"
-                : "text-white/50 hover:text-white/70"
+                ? "bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))]"
+                : "text-[hsl(var(--muted-foreground))]/60 hover:text-white/70"
             }`}
           >
             <Calendar className="w-4 h-4 inline mr-1.5" />
@@ -858,8 +1128,8 @@ export function TaskList({
             onClick={() => setActiveTab("projects")}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
               activeTab === "projects"
-                ? "bg-purple-500/30 text-purple-300"
-                : "text-white/50 hover:text-white/70"
+                ? "bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))]"
+                : "text-[hsl(var(--muted-foreground))]/60 hover:text-white/70"
             }`}
           >
             <FolderKanban className="w-4 h-4 inline mr-1.5" />
@@ -874,8 +1144,8 @@ export function TaskList({
               onClick={onOpenBoard}
               className={`p-2 rounded-lg transition-colors ${
                 showBoard
-                  ? "bg-purple-500/30 text-purple-300"
-                  : "bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/60"
+                  ? "bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))]"
+                  : "bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 hover:bg-[hsl(var(--card))] hover:text-[hsl(var(--muted-foreground))]/80"
               }`}
               title="Open project board"
             >
@@ -886,7 +1156,7 @@ export function TaskList({
           {activeTab === "projects" && onProjectKickoff && (
             <button
               onClick={onProjectKickoff}
-              className="px-2.5 py-1.5 flex items-center gap-1.5 rounded-lg bg-white/5 text-purple-400 border border-purple-500/20 hover:bg-purple-500/10 transition-colors text-sm font-medium"
+              className="px-2.5 py-1.5 flex items-center gap-1.5 rounded-lg bg-[hsl(var(--card))] text-[hsl(var(--primary))] border border-[hsl(var(--primary))]/20 hover:bg-[hsl(var(--primary))]/10 transition-colors text-sm font-medium"
               title="SpecForge Kickoff"
             >
               <Sparkles className="w-4 h-4" />
@@ -894,13 +1164,15 @@ export function TaskList({
             </button>
           )}
           {/* Add button */}
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="p-2 rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors"
-            title="Add task"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
+          {activeTab !== "workers" && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="p-2 rounded-lg bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/30 transition-colors"
+              title="Add task"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -910,13 +1182,24 @@ export function TaskList({
         </div>
       )}
 
+      {activeLaneMeta && (
+        <div className="mb-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-2">
+          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]/60">
+            {activeLaneMeta.label}
+          </div>
+          <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]/80">
+            {activeLaneMeta.body}
+          </div>
+        </div>
+      )}
+
       {/* Task list content */}
       <div className="flex-1 min-h-0 flex flex-col">
         {activeTab === "projects" ? (
           /* Projects Tab */
           <div className="flex-1 overflow-y-auto space-y-2">
             {projects.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-32 text-white/40 text-sm">
+              <div className="flex flex-col items-center justify-center h-32 text-[hsl(var(--muted-foreground))]/60 text-sm">
                 <span className="text-2xl mb-2">📁</span>
                 <span>No projects yet</span>
                 <span className="text-xs mt-1">Ask the agent to create one</span>
@@ -939,10 +1222,10 @@ export function TaskList({
                   statusColor = "text-green-400";
                 } else if (project.completedCount > 0) {
                   statusLabel = "Active";
-                  statusColor = "text-purple-400";
+                  statusColor = "text-[hsl(var(--primary))]";
                 } else {
                   statusLabel = "Pending";
-                  statusColor = "text-gray-400";
+                  statusColor = "text-[hsl(var(--muted-foreground))]";
                 }
 
                 return (
@@ -952,33 +1235,33 @@ export function TaskList({
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, x: -20 }}
-                    className="rounded-xl bg-white/5 hover:bg-white/10 transition-colors group"
+                    className="rounded-xl bg-[hsl(var(--card))] hover:bg-[hsl(var(--card))] transition-colors group"
                   >
                     <div
                       className="flex items-center gap-3 p-3 cursor-pointer"
                       onClick={() => toggleProjectExpand(project.id)}
                     >
-                      <button className="text-white/40 hover:text-white/60 transition-colors">
+                      <button className="text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--muted-foreground))]/80 transition-colors">
                         {isExpanded ? (
                           <ChevronDown className="w-4 h-4" />
                         ) : (
                           <ChevronRight className="w-4 h-4" />
                         )}
                       </button>
-                      <FolderKanban className="w-5 h-5 flex-shrink-0 text-purple-400" />
+                      <FolderKanban className="w-5 h-5 flex-shrink-0 text-[hsl(var(--primary))]" />
                       <div className="flex-1 min-w-0">
-                        <span className="text-white/80 text-sm block truncate">
+                        <span className="text-[hsl(var(--muted-foreground))] text-sm block truncate">
                           {project.title}
                         </span>
                         <div className="flex items-center gap-2 mt-1">
                           {/* Progress bar */}
-                          <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                          <div className="flex-1 h-1.5 bg-[hsl(var(--card))] rounded-full overflow-hidden">
                             <div
-                              className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                              className="h-full bg-[hsl(var(--primary))] rounded-full transition-all duration-500"
                               style={{ width: `${progress}%` }}
                             />
                           </div>
-                          <span className="text-white/40 text-xs whitespace-nowrap">
+                          <span className="text-[hsl(var(--muted-foreground))]/60 text-xs whitespace-nowrap">
                             {project.completedCount}/{project.taskCount}
                           </span>
                           <span className={`text-xs ${statusColor}`}>{statusLabel}</span>
@@ -987,7 +1270,7 @@ export function TaskList({
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={(e) => handleStartProjectTaskAdd(project.id, e)}
-                          className="p-1.5 rounded-md hover:bg-purple-500/20 text-purple-300 disabled:opacity-40"
+                          className="p-1.5 rounded-md hover:bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))] disabled:opacity-40"
                           title="Add project task"
                           disabled={busyProjectIds.has(project.id)}
                         >
@@ -1020,10 +1303,12 @@ export function TaskList({
                         >
                           <div className="px-3 pb-3 ml-8 space-y-1">
                             {project.details && (
-                              <p className="text-white/40 text-xs mb-2">{project.details}</p>
+                              <p className="text-[hsl(var(--muted-foreground))]/60 text-xs mb-2">
+                                {project.details}
+                              </p>
                             )}
                             {addingProjectId === project.id && (
-                              <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 p-2 mb-2 space-y-2">
+                              <div className="rounded-lg border border-[hsl(var(--primary))]/30 bg-[hsl(var(--primary))]/5 p-2 mb-2 space-y-2">
                                 <input
                                   type="text"
                                   value={newProjectTaskTitle}
@@ -1038,14 +1323,14 @@ export function TaskList({
                                     }
                                   }}
                                   placeholder="New project task..."
-                                  className="w-full bg-white/5 border border-white/10 rounded-md px-2.5 py-1.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                                  className="w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-md px-2.5 py-1.5 text-xs text-white placeholder-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--primary))]/50"
                                   autoFocus
                                 />
                                 <textarea
                                   value={newProjectTaskDetails}
                                   onChange={(e) => setNewProjectTaskDetails(e.target.value)}
                                   placeholder="Details (optional)"
-                                  className="w-full bg-white/5 border border-white/10 rounded-md px-2.5 py-1.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50 min-h-[60px] resize-y"
+                                  className="w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-md px-2.5 py-1.5 text-xs text-white placeholder-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--primary))]/50 min-h-[60px] resize-y"
                                 />
                                 <div className="flex justify-end gap-1.5">
                                   <button
@@ -1054,7 +1339,7 @@ export function TaskList({
                                       setNewProjectTaskTitle("");
                                       setNewProjectTaskDetails("");
                                     }}
-                                    className="px-2 py-1 text-xs rounded-md text-white/50 hover:text-white/70"
+                                    className="px-2 py-1 text-xs rounded-md text-[hsl(var(--muted-foreground))]/60 hover:text-white/70"
                                   >
                                     Cancel
                                   </button>
@@ -1063,7 +1348,7 @@ export function TaskList({
                                     disabled={
                                       !newProjectTaskTitle.trim() || busyProjectIds.has(project.id)
                                     }
-                                    className="px-2 py-1 text-xs rounded-md bg-purple-500/30 text-purple-300 hover:bg-purple-500/40 disabled:opacity-40"
+                                    className="px-2 py-1 text-xs rounded-md bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/40 disabled:opacity-40"
                                   >
                                     Add Task
                                   </button>
@@ -1072,25 +1357,29 @@ export function TaskList({
                             )}
                             {projectChildTasks[project.id] ? (
                               projectChildTasks[project.id].length === 0 ? (
-                                <div className="text-white/30 text-xs">No project tasks yet.</div>
+                                <div className="text-[hsl(var(--muted-foreground))]/40 text-xs">
+                                  No project tasks yet.
+                                </div>
                               ) : (
                                 projectChildTasks[project.id].map((task) => {
                                   const isTaskBusy = busyTaskIds.has(task.id);
                                   const canExecute = task.status === "pending";
                                   const canComplete = task.status !== "completed";
                                   const Icon = statusIcons[task.status] || Circle;
-                                  const color = statusColors[task.status] || "text-gray-400";
+                                  const color =
+                                    statusColors[task.status] ||
+                                    "text-[hsl(var(--muted-foreground))]";
                                   return (
                                     <div
                                       key={task.id}
-                                      className="flex items-center gap-2 py-1 rounded-md px-1 group/task hover:bg-white/5"
+                                      className="flex items-center gap-2 py-1 rounded-md px-1 group/task hover:bg-[hsl(var(--card))]"
                                     >
                                       <Icon
                                         className={`w-4 h-4 flex-shrink-0 ${color} ${
                                           task.status === "in-progress" ? "animate-spin" : ""
                                         }`}
                                       />
-                                      <span className="text-white/60 text-xs truncate">
+                                      <span className="text-[hsl(var(--muted-foreground))]/80 text-xs truncate">
                                         {task.title}
                                       </span>
                                       <div className="ml-auto flex gap-1 opacity-0 group-hover/task:opacity-100 transition-opacity">
@@ -1119,7 +1408,7 @@ export function TaskList({
                                         <button
                                           type="button"
                                           onClick={(e) => handleEditClick(task, e)}
-                                          className="p-1 rounded-md hover:bg-white/10 text-white/50 disabled:opacity-40"
+                                          className="p-1 rounded-md hover:bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 disabled:opacity-40"
                                           title="Edit task"
                                           disabled={isTaskBusy}
                                         >
@@ -1144,7 +1433,9 @@ export function TaskList({
                                 })
                               )
                             ) : (
-                              <div className="text-white/30 text-xs">Loading tasks...</div>
+                              <div className="text-[hsl(var(--muted-foreground))]/40 text-xs">
+                                Loading tasks...
+                              </div>
                             )}
                           </div>
                         </motion.div>
@@ -1156,197 +1447,22 @@ export function TaskList({
             </AnimatePresence>
           </div>
         ) : activeTab === "tasks" ? (
-          <>
-            {/* Active Tasks Section (~70% height) */}
-            <div className="flex-[7] min-h-0 overflow-y-auto space-y-2">
-              {/* Empty State */}
-              {oneTimeTasks.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-32 text-white/40 text-sm">
-                  <span className="text-2xl mb-2">✨</span>
-                  <span>No tasks queued</span>
-                  <span className="text-xs mt-1">Give me a task or add one</span>
-                </div>
-              )}
-
-              <AnimatePresence mode="popLayout">
-                {activeTasks.map((task) => {
-                  const Icon = statusIcons[task.status] || Circle;
-                  const color = statusColors[task.status] || "text-gray-400";
-                  const isExpanded = expandedTasks.has(task.id);
-                  const hasDetails = !!task.details;
-                  const isTaskBusy = busyTaskIds.has(task.id);
-                  return (
-                    <motion.div
-                      key={task.id}
-                      layout
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, x: -20 }}
-                      className="rounded-xl bg-white/5 hover:bg-white/10 transition-colors group"
-                    >
-                      <div
-                        className="flex items-center gap-3 p-3 cursor-pointer"
-                        onClick={() =>
-                          hasDetails ? toggleTaskExpand(task.id) : onTaskClick?.(task)
-                        }
-                      >
-                        {/* Expand/collapse indicator for tasks with details */}
-                        {hasDetails ? (
-                          <button
-                            type="button"
-                            className="text-white/40 hover:text-white/60 transition-colors"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              toggleTaskExpand(task.id);
-                            }}
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="w-4 h-4" />
-                            ) : (
-                              <ChevronRight className="w-4 h-4" />
-                            )}
-                          </button>
-                        ) : (
-                          <div className="w-4" />
-                        )}
-                        <Icon
-                          className={`w-5 h-5 flex-shrink-0 ${color} ${
-                            task.status === "in-progress" || task.status === "in_progress"
-                              ? "animate-spin"
-                              : ""
-                          }`}
-                        />
-                        <span className="text-white/80 text-sm flex-1 truncate group-hover:text-white transition-colors">
-                          {task.title}
-                        </span>
-                        {/* Owner badge */}
-                        {(() => {
-                          const owner = getTaskOwner(task);
-                          const badge = ownerBadge[owner];
-                          return (
-                            <span
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-medium border flex-shrink-0 ${badge.className}`}
-                            >
-                              {badge.label}
-                            </span>
-                          );
-                        })()}
-                        {hasDetails && !isExpanded && (
-                          <span title="Has details">
-                            <FileText className="w-3.5 h-3.5 text-white/30" />
-                          </span>
-                        )}
-                        {/* Action buttons */}
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {task.status === "pending" && (
-                            <button
-                              type="button"
-                              onClick={(e) => void handleExecuteClick(task, e)}
-                              className="p-1.5 rounded-md hover:bg-green-500/20 text-green-400 disabled:opacity-40"
-                              title="Execute task"
-                              disabled={isTaskBusy}
-                            >
-                              <Play className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={(e) => handleEditClick(task, e)}
-                            className="p-1.5 rounded-md hover:bg-white/10 text-white/50 disabled:opacity-40"
-                            title="Edit task"
-                            disabled={isTaskBusy}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => void handleDeleteClick(task.id, e)}
-                            className="p-1.5 rounded-md hover:bg-red-500/20 text-red-400 disabled:opacity-40"
-                            title="Delete task"
-                            disabled={isTaskBusy}
-                          >
-                            {isTaskBusy ? (
-                              <Loader className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                      {/* Expandable details section */}
-                      <AnimatePresence>
-                        {isExpanded && hasDetails && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="overflow-hidden"
-                          >
-                            <div className="px-4 pb-3 pt-1 ml-8 border-t border-white/5">
-                              <div
-                                className="prose prose-invert prose-sm max-w-none
-                                prose-pre:bg-black/30 prose-pre:border prose-pre:border-white/10 prose-pre:rounded-lg
-                                prose-code:text-purple-300 prose-code:bg-purple-500/10 prose-code:px-1 prose-code:rounded
-                                prose-headings:text-white/80 prose-p:text-white/60 prose-li:text-white/60
-                                prose-strong:text-white/80 prose-a:text-purple-400"
-                              >
-                                <ReactMarkdown>{task.details}</ReactMarkdown>
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
-            </div>
-
-            {/* Recently Completed Section (~30% height) */}
-            {completedTasks.length > 0 && (
-              <div className="flex-[3] min-h-0 border-t border-white/5 flex flex-col">
-                <div className="text-white/40 text-xs uppercase tracking-wider py-2 px-1 flex items-center gap-1 flex-shrink-0">
-                  Recently Completed
-                  <span className="text-white/20">({completedTasks.length})</span>
-                </div>
-                <div className="flex-1 min-h-0 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent pr-1">
-                  {completedTasks.map((task) => (
-                    <motion.div
-                      key={task.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="flex items-center gap-3 p-1.5 rounded-lg opacity-50 group"
-                    >
-                      <CheckCircle className="w-4 h-4 text-green-400/50 flex-shrink-0" />
-                      <span className="text-white/40 text-sm flex-1 truncate line-through">
-                        {task.title}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={(e) => void handleDeleteClick(task.id, e)}
-                        className="p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-red-400/50 transition-opacity disabled:opacity-40"
-                        title="Remove"
-                        disabled={busyTaskIds.has(task.id)}
-                      >
-                        {busyTaskIds.has(task.id) ? (
-                          <Loader className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <Trash2 className="w-3 h-3" />
-                        )}
-                      </button>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
+          renderTaskLane(activeTasks, completedTasks, {
+            icon: "✨",
+            title: "No tasks queued",
+            subtitle: "Give me a task or add one",
+          })
+        ) : activeTab === "workers" ? (
+          renderTaskLane(activeWorkerTasks, completedWorkerTasks, {
+            icon: "👷",
+            title: "No worker tasks queued",
+            subtitle: "Business worker jobs appear here",
+          })
         ) : (
           /* Schedule Tab */
           <div className="flex-1 overflow-y-auto space-y-2">
             {scheduledTasks.length === 0 && cronJobs.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-32 text-white/40 text-sm">
+              <div className="flex flex-col items-center justify-center h-32 text-[hsl(var(--muted-foreground))]/60 text-sm">
                 <span className="text-2xl mb-2">📅</span>
                 <span>No scheduled tasks</span>
                 <span className="text-xs mt-1">Add a recurring task</span>
@@ -1356,7 +1472,7 @@ export function TaskList({
             {/* Cron Jobs from ArgentOS */}
             {cronJobs.length > 0 && (
               <>
-                <div className="text-white/40 text-xs uppercase tracking-wider mb-2 px-1 flex items-center gap-1">
+                <div className="text-[hsl(var(--muted-foreground))]/60 text-xs uppercase tracking-wider mb-2 px-1 flex items-center gap-1">
                   <Bot className="w-3 h-3" />
                   Agent Jobs
                 </div>
@@ -1368,7 +1484,7 @@ export function TaskList({
                     job.state?.lastGateDecision === "simulated_paper_trade";
                   const statusBadgeClass = job.enabled
                     ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/20"
-                    : "bg-white/5 text-white/40 border-white/10";
+                    : "bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 border-[hsl(var(--border))]";
 
                   return (
                     <motion.div
@@ -1378,17 +1494,21 @@ export function TaskList({
                       animate={{ opacity: 1, y: 0 }}
                       className={`flex flex-col gap-2 p-3 rounded-xl border mb-2 group transition-colors ${
                         job.enabled
-                          ? "bg-purple-500/10 border-purple-500/20 hover:bg-purple-500/15"
-                          : "bg-white/5 border-white/10 hover:bg-white/10"
+                          ? "bg-[hsl(var(--primary))]/10 border-[hsl(var(--primary))]/20 hover:bg-[hsl(var(--primary))]/15"
+                          : "bg-[hsl(var(--card))] border-[hsl(var(--border))] hover:bg-[hsl(var(--card))]"
                       }`}
                     >
                       <div className="flex items-center gap-3">
                         <Bot
                           className={`w-4 h-4 flex-shrink-0 ${
-                            job.enabled ? "text-purple-400" : "text-white/30"
+                            job.enabled
+                              ? "text-[hsl(var(--primary))]"
+                              : "text-[hsl(var(--muted-foreground))]/40"
                           }`}
                         />
-                        <span className="text-white/80 text-sm flex-1 truncate">{job.name}</span>
+                        <span className="text-[hsl(var(--muted-foreground))] text-sm flex-1 truncate">
+                          {job.name}
+                        </span>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           {onCronJobRun && (
                             <button
@@ -1407,7 +1527,7 @@ export function TaskList({
                           {onCronJobUpdate && (
                             <button
                               onClick={(e) => handleCronEditClick(job, e)}
-                              className="p-1.5 rounded-md hover:bg-white/10 text-white/50 disabled:opacity-40"
+                              className="p-1.5 rounded-md hover:bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 disabled:opacity-40"
                               title="Edit job"
                               disabled={isCronJobBusy}
                             >
@@ -1430,14 +1550,14 @@ export function TaskList({
                           )}
                         </div>
                       </div>
-                      <div className="text-white/40 text-xs ml-7 flex justify-between gap-3">
+                      <div className="text-[hsl(var(--muted-foreground))]/60 text-xs ml-7 flex justify-between gap-3">
                         <span className="truncate">
                           {cronFormatSchedule?.(job) ||
                             job.schedule?.expr ||
                             job.schedule?.kind ||
                             "Scheduled"}
                         </span>
-                        <span className="text-purple-400 whitespace-nowrap">
+                        <span className="text-[hsl(var(--primary))] whitespace-nowrap">
                           {cronGetNextRun?.(job) || ""}
                         </span>
                       </div>
@@ -1456,7 +1576,7 @@ export function TaskList({
                         >
                           {executionMode === "live" ? "Live" : "Paper Trade"}
                         </span>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide border border-white/10 text-white/40 bg-white/5">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]/60 bg-[hsl(var(--card))]">
                           {job.payload.kind}
                         </span>
                         {isPaperTradeBlocked && (
@@ -1487,18 +1607,18 @@ export function TaskList({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, x: -20 }}
                     onClick={() => onTaskClick?.(task)}
-                    className="flex flex-col gap-1 p-3 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer transition-colors group"
+                    className="flex flex-col gap-1 p-3 rounded-xl bg-[hsl(var(--card))] hover:bg-[hsl(var(--card))] cursor-pointer transition-colors group"
                   >
                     <div className="flex items-center gap-3">
-                      <Calendar className="w-5 h-5 text-purple-400 flex-shrink-0" />
-                      <span className="text-white/80 text-sm flex-1 truncate group-hover:text-white transition-colors">
+                      <Calendar className="w-5 h-5 text-[hsl(var(--primary))] flex-shrink-0" />
+                      <span className="text-[hsl(var(--muted-foreground))] text-sm flex-1 truncate group-hover:text-white transition-colors">
                         {task.title}
                       </span>
                       {/* Action buttons */}
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={(e) => handleEditClick(task, e)}
-                          className="p-1.5 rounded-md hover:bg-white/10 text-white/50 disabled:opacity-40"
+                          className="p-1.5 rounded-md hover:bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 disabled:opacity-40"
                           title="Edit schedule"
                           disabled={isTaskBusy}
                         >
@@ -1518,7 +1638,9 @@ export function TaskList({
                         </button>
                       </div>
                     </div>
-                    <div className="text-white/40 text-xs ml-8">{formatSchedule(task)}</div>
+                    <div className="text-[hsl(var(--muted-foreground))]/60 text-xs ml-8">
+                      {formatSchedule(task)}
+                    </div>
                   </motion.div>
                 );
               })}
@@ -1541,14 +1663,14 @@ export function TaskList({
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-gray-900 rounded-2xl p-6 w-96 max-w-[90vw]"
+              className="bg-[hsl(var(--card))] rounded-2xl p-6 w-96 max-w-[90vw]"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-white font-semibold text-lg">Add Task</h3>
+                <h3 className="text-[hsl(var(--foreground))] font-semibold text-lg">Add Task</h3>
                 <button
                   onClick={() => setShowAddModal(false)}
-                  className="p-1 rounded-lg hover:bg-white/10 text-white/50"
+                  className="p-1 rounded-lg hover:bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1559,21 +1681,23 @@ export function TaskList({
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
                 placeholder="Task title..."
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50 mb-3"
+                className="w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl px-4 py-3 text-white placeholder-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--primary))]/50 mb-3"
                 autoFocus
               />
 
               {/* Details textarea with markdown support */}
               <div className="mb-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <FileText className="w-4 h-4 text-white/40" />
-                  <span className="text-white/40 text-xs">Details (Markdown supported)</span>
+                  <FileText className="w-4 h-4 text-[hsl(var(--muted-foreground))]/60" />
+                  <span className="text-[hsl(var(--muted-foreground))]/60 text-xs">
+                    Details (Markdown supported)
+                  </span>
                 </div>
                 <textarea
                   value={newTaskDetails}
                   onChange={(e) => setNewTaskDetails(e.target.value)}
                   placeholder="Add details, notes, code blocks..."
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50 text-sm font-mono min-h-[100px] resize-y"
+                  className="w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl px-4 py-3 text-white placeholder-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--primary))]/50 text-sm font-mono min-h-[100px] resize-y"
                 />
               </div>
 
@@ -1582,8 +1706,8 @@ export function TaskList({
                   onClick={() => setNewTaskType("one-time")}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
                     newTaskType === "one-time"
-                      ? "bg-purple-500/30 text-purple-300 border border-purple-500/50"
-                      : "bg-white/5 text-white/50 border border-white/10 hover:bg-white/10"
+                      ? "bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))] border border-[hsl(var(--primary))]/50"
+                      : "bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 border border-[hsl(var(--border))] hover:bg-[hsl(var(--card))]"
                   }`}
                 >
                   One-time
@@ -1592,8 +1716,8 @@ export function TaskList({
                   onClick={() => setNewTaskType("scheduled")}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
                     newTaskType === "scheduled"
-                      ? "bg-purple-500/30 text-purple-300 border border-purple-500/50"
-                      : "bg-white/5 text-white/50 border border-white/10 hover:bg-white/10"
+                      ? "bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))] border border-[hsl(var(--primary))]/50"
+                      : "bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 border border-[hsl(var(--border))] hover:bg-[hsl(var(--card))]"
                   }`}
                 >
                   Scheduled
@@ -1602,8 +1726,8 @@ export function TaskList({
                   onClick={() => setNewTaskType("interval")}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
                     newTaskType === "interval"
-                      ? "bg-purple-500/30 text-purple-300 border border-purple-500/50"
-                      : "bg-white/5 text-white/50 border border-white/10 hover:bg-white/10"
+                      ? "bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))] border border-[hsl(var(--primary))]/50"
+                      : "bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 border border-[hsl(var(--border))] hover:bg-[hsl(var(--card))]"
                   }`}
                 >
                   Interval
@@ -1612,7 +1736,7 @@ export function TaskList({
 
               {/* Assignee selector */}
               <div className="mb-4">
-                <label className="text-white/50 text-xs uppercase tracking-wider mb-2 block">
+                <label className="text-[hsl(var(--muted-foreground))]/60 text-xs uppercase tracking-wider mb-2 block">
                   Assign To
                 </label>
                 <div className="flex gap-2">
@@ -1621,7 +1745,7 @@ export function TaskList({
                     className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
                       newTaskAssignee === "operator"
                         ? "bg-blue-500/30 text-blue-300 border border-blue-500/50"
-                        : "bg-white/5 text-white/50 border border-white/10 hover:bg-white/10"
+                        : "bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 border border-[hsl(var(--border))] hover:bg-[hsl(var(--card))]"
                     }`}
                   >
                     Operator
@@ -1630,8 +1754,8 @@ export function TaskList({
                     onClick={() => setNewTaskAssignee("agent")}
                     className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
                       newTaskAssignee === "agent"
-                        ? "bg-purple-500/30 text-purple-300 border border-purple-500/50"
-                        : "bg-white/5 text-white/50 border border-white/10 hover:bg-white/10"
+                        ? "bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))] border border-[hsl(var(--primary))]/50"
+                        : "bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 border border-[hsl(var(--border))] hover:bg-[hsl(var(--card))]"
                     }`}
                   >
                     Agent
@@ -1644,7 +1768,7 @@ export function TaskList({
                 <div className="mb-4 space-y-4">
                   {/* Day selector circles */}
                   <div>
-                    <label className="text-white/50 text-xs uppercase tracking-wider mb-2 block">
+                    <label className="text-[hsl(var(--muted-foreground))]/60 text-xs uppercase tracking-wider mb-2 block">
                       Days
                     </label>
                     <div className="flex justify-between gap-1">
@@ -1654,8 +1778,8 @@ export function TaskList({
                           onClick={() => toggleDay(index)}
                           className={`w-9 h-9 rounded-full text-xs font-medium transition-all ${
                             selectedDays.includes(index)
-                              ? "bg-purple-500 text-white"
-                              : "bg-white/5 text-white/40 hover:bg-white/10"
+                              ? "bg-[hsl(var(--primary))] text-white"
+                              : "bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 hover:bg-[hsl(var(--card))]"
                           }`}
                         >
                           {label}
@@ -1666,14 +1790,14 @@ export function TaskList({
 
                   {/* Time picker */}
                   <div>
-                    <label className="text-white/50 text-xs uppercase tracking-wider mb-2 block">
+                    <label className="text-[hsl(var(--muted-foreground))]/60 text-xs uppercase tracking-wider mb-2 block">
                       Time
                     </label>
                     <div className="flex gap-2 items-center">
                       <select
                         value={scheduleTime}
                         onChange={(e) => setScheduleTime(e.target.value)}
-                        className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500/50"
+                        className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[hsl(var(--primary))]/50"
                       >
                         {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
                           <option key={h} value={h.toString().padStart(2, "0")}>
@@ -1681,11 +1805,11 @@ export function TaskList({
                           </option>
                         ))}
                       </select>
-                      <span className="text-white/50">:</span>
+                      <span className="text-[hsl(var(--muted-foreground))]/60">:</span>
                       <select
                         value={scheduleMinute}
                         onChange={(e) => setScheduleMinute(e.target.value)}
-                        className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500/50"
+                        className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[hsl(var(--primary))]/50"
                       >
                         {["00", "15", "30", "45"].map((m) => (
                           <option key={m} value={m}>
@@ -1693,13 +1817,13 @@ export function TaskList({
                           </option>
                         ))}
                       </select>
-                      <div className="flex bg-white/5 rounded-lg border border-white/10 overflow-hidden">
+                      <div className="flex bg-[hsl(var(--card))] rounded-lg border border-[hsl(var(--border))] overflow-hidden">
                         <button
                           onClick={() => setScheduleAmPm("AM")}
                           className={`px-3 py-2 text-sm font-medium transition-all ${
                             scheduleAmPm === "AM"
-                              ? "bg-purple-500/30 text-purple-300"
-                              : "text-white/50 hover:bg-white/10"
+                              ? "bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))]"
+                              : "text-[hsl(var(--muted-foreground))]/60 hover:bg-[hsl(var(--card))]"
                           }`}
                         >
                           AM
@@ -1708,8 +1832,8 @@ export function TaskList({
                           onClick={() => setScheduleAmPm("PM")}
                           className={`px-3 py-2 text-sm font-medium transition-all ${
                             scheduleAmPm === "PM"
-                              ? "bg-purple-500/30 text-purple-300"
-                              : "text-white/50 hover:bg-white/10"
+                              ? "bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))]"
+                              : "text-[hsl(var(--muted-foreground))]/60 hover:bg-[hsl(var(--card))]"
                           }`}
                         >
                           PM
@@ -1723,7 +1847,7 @@ export function TaskList({
               {/* Interval options - only show when Interval is selected */}
               {newTaskType === "interval" && (
                 <div className="mb-4">
-                  <label className="text-white/50 text-xs uppercase tracking-wider mb-2 block">
+                  <label className="text-[hsl(var(--muted-foreground))]/60 text-xs uppercase tracking-wider mb-2 block">
                     Repeat Every
                   </label>
                   <div className="flex gap-2">
@@ -1733,15 +1857,15 @@ export function TaskList({
                         onClick={() => setSelectedInterval(opt.value)}
                         className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
                           selectedInterval === opt.value
-                            ? "bg-purple-500 text-white"
-                            : "bg-white/5 text-white/50 hover:bg-white/10"
+                            ? "bg-[hsl(var(--primary))] text-white"
+                            : "bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 hover:bg-[hsl(var(--card))]"
                         }`}
                       >
                         {opt.label}
                       </button>
                     ))}
                   </div>
-                  <p className="text-white/30 text-xs mt-2">
+                  <p className="text-[hsl(var(--muted-foreground))]/40 text-xs mt-2">
                     Task will run continuously at this interval
                   </p>
                 </div>
@@ -1750,7 +1874,7 @@ export function TaskList({
               <button
                 onClick={() => void handleAddTask()}
                 disabled={!newTaskTitle.trim()}
-                className="w-full py-3 bg-purple-500/30 hover:bg-purple-500/40 disabled:bg-white/5 disabled:text-white/20 text-purple-300 rounded-xl font-medium transition-all"
+                className="w-full py-3 bg-[hsl(var(--primary))]/30 hover:bg-[hsl(var(--primary))]/40 disabled:bg-[hsl(var(--card))] disabled:text-[hsl(var(--muted-foreground))]/30 text-[hsl(var(--primary))] rounded-xl font-medium transition-all"
               >
                 Add Task
               </button>
@@ -1773,14 +1897,14 @@ export function TaskList({
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-gray-900 rounded-2xl p-6 w-96 max-w-[90vw]"
+              className="bg-[hsl(var(--card))] rounded-2xl p-6 w-96 max-w-[90vw]"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-white font-semibold text-lg">Edit Task</h3>
+                <h3 className="text-[hsl(var(--foreground))] font-semibold text-lg">Edit Task</h3>
                 <button
                   onClick={() => setEditingTask(null)}
-                  className="p-1 rounded-lg hover:bg-white/10 text-white/50"
+                  className="p-1 rounded-lg hover:bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1790,11 +1914,11 @@ export function TaskList({
                 type="text"
                 value={editingTitle}
                 onChange={(e) => setEditingTitle(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50 mb-4"
+                className="w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl px-4 py-3 text-white placeholder-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--primary))]/50 mb-4"
                 autoFocus
               />
 
-              <div className="text-white/50 text-sm mb-4">
+              <div className="text-[hsl(var(--muted-foreground))]/60 text-sm mb-4">
                 Type:{" "}
                 {editingTask.type === "scheduled"
                   ? "Scheduled"
@@ -1810,7 +1934,7 @@ export function TaskList({
                 <button
                   onClick={() => void handleEditSave()}
                   disabled={!editingTitle.trim() || busyTaskIds.has(editingTask.id)}
-                  className="flex-1 py-2 bg-purple-500/30 hover:bg-purple-500/40 disabled:bg-white/5 disabled:text-white/20 text-purple-300 rounded-xl font-medium transition-all"
+                  className="flex-1 py-2 bg-[hsl(var(--primary))]/30 hover:bg-[hsl(var(--primary))]/40 disabled:bg-[hsl(var(--card))] disabled:text-[hsl(var(--muted-foreground))]/30 text-[hsl(var(--primary))] rounded-xl font-medium transition-all"
                 >
                   {busyTaskIds.has(editingTask.id) ? "Saving..." : "Save Changes"}
                 </button>
@@ -1841,14 +1965,16 @@ export function TaskList({
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-gray-900 rounded-2xl p-6 w-[30rem] max-w-[92vw]"
+              className="bg-[hsl(var(--card))] rounded-2xl p-6 w-[30rem] max-w-[92vw]"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-white font-semibold text-lg">Edit Agent Job</h3>
+                <h3 className="text-[hsl(var(--foreground))] font-semibold text-lg">
+                  Edit Agent Job
+                </h3>
                 <button
                   onClick={() => setEditingCronJob(null)}
-                  className="p-1 rounded-lg hover:bg-white/10 text-white/50"
+                  className="p-1 rounded-lg hover:bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1856,21 +1982,21 @@ export function TaskList({
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs uppercase tracking-wide text-white/40 mb-1.5">
+                  <label className="block text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]/60 mb-1.5">
                     Name
                   </label>
                   <input
                     type="text"
                     value={editingCronTitle}
                     onChange={(e) => setEditingCronTitle(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                    className="w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl px-4 py-3 text-white placeholder-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--primary))]/50"
                     autoFocus
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs uppercase tracking-wide text-white/40 mb-1.5">
+                    <label className="block text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]/60 mb-1.5">
                       Mode
                     </label>
                     <select
@@ -1878,20 +2004,20 @@ export function TaskList({
                       onChange={(e) =>
                         setEditingCronExecutionMode(e.target.value as "live" | "paper_trade")
                       }
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-white focus:outline-none focus:border-purple-500/50"
+                      className="w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl px-3 py-3 text-white focus:outline-none focus:border-[hsl(var(--primary))]/50"
                     >
                       <option value="live">Live</option>
                       <option value="paper_trade">Paper Trade</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs uppercase tracking-wide text-white/40 mb-1.5">
+                    <label className="block text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]/60 mb-1.5">
                       Status
                     </label>
                     <select
                       value={editingCronEnabled ? "enabled" : "disabled"}
                       onChange={(e) => setEditingCronEnabled(e.target.value === "enabled")}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-white focus:outline-none focus:border-purple-500/50"
+                      className="w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl px-3 py-3 text-white focus:outline-none focus:border-[hsl(var(--primary))]/50"
                     >
                       <option value="enabled">Enabled</option>
                       <option value="disabled">Disabled</option>
@@ -1900,7 +2026,7 @@ export function TaskList({
                 </div>
 
                 <div>
-                  <label className="block text-xs uppercase tracking-wide text-white/40 mb-1.5">
+                  <label className="block text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]/60 mb-1.5">
                     Schedule Type
                   </label>
                   <select
@@ -1908,7 +2034,7 @@ export function TaskList({
                     onChange={(e) =>
                       setEditingCronScheduleKind(e.target.value as "cron" | "every" | "at")
                     }
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-white focus:outline-none focus:border-purple-500/50"
+                    className="w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl px-3 py-3 text-white focus:outline-none focus:border-[hsl(var(--primary))]/50"
                   >
                     <option value="cron">Cron Expression</option>
                     <option value="every">Interval</option>
@@ -1919,26 +2045,26 @@ export function TaskList({
                 {editingCronScheduleKind === "cron" && (
                   <div className="grid grid-cols-[2fr,1fr] gap-3">
                     <div>
-                      <label className="block text-xs uppercase tracking-wide text-white/40 mb-1.5">
+                      <label className="block text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]/60 mb-1.5">
                         Cron Expression
                       </label>
                       <input
                         type="text"
                         value={editingCronExpr}
                         onChange={(e) => setEditingCronExpr(e.target.value)}
-                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                        className="w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl px-4 py-3 text-white placeholder-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--primary))]/50"
                         placeholder="30 8 * * *"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs uppercase tracking-wide text-white/40 mb-1.5">
+                      <label className="block text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]/60 mb-1.5">
                         Timezone
                       </label>
                       <input
                         type="text"
                         value={editingCronTimezone}
                         onChange={(e) => setEditingCronTimezone(e.target.value)}
-                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                        className="w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl px-4 py-3 text-white placeholder-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--primary))]/50"
                         placeholder="America/Chicago"
                       />
                     </div>
@@ -1947,7 +2073,7 @@ export function TaskList({
 
                 {editingCronScheduleKind === "every" && (
                   <div>
-                    <label className="block text-xs uppercase tracking-wide text-white/40 mb-1.5">
+                    <label className="block text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]/60 mb-1.5">
                       Interval Minutes
                     </label>
                     <input
@@ -1956,35 +2082,78 @@ export function TaskList({
                       step="1"
                       value={editingCronEveryMinutes}
                       onChange={(e) => setEditingCronEveryMinutes(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                      className="w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl px-4 py-3 text-white placeholder-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--primary))]/50"
                     />
                   </div>
                 )}
 
                 {editingCronScheduleKind === "at" && (
                   <div>
-                    <label className="block text-xs uppercase tracking-wide text-white/40 mb-1.5">
+                    <label className="block text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]/60 mb-1.5">
                       Run At
                     </label>
                     <input
                       type="datetime-local"
                       value={editingCronAt}
                       onChange={(e) => setEditingCronAt(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                      className="w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl px-4 py-3 text-white placeholder-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--primary))]/50"
                     />
                   </div>
                 )}
 
-                <div className="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-xs text-white/50">
-                  <div>Payload: {editingCronJob.payload.kind}</div>
-                  <div>Next run: {cronGetNextRun?.(editingCronJob) || "Not scheduled"}</div>
+                <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3">
+                  <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]/60">
+                    Execution Summary
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 text-xs text-[hsl(var(--muted-foreground))]/70 sm:grid-cols-2">
+                    {getCronPayloadSummary(editingCronJob).map((row) => (
+                      <div key={row.label}>
+                        <span className="text-[hsl(var(--muted-foreground))]/50">{row.label}:</span>{" "}
+                        {row.value}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3">
+                  <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]/60">
+                    What This Job Will Run
+                  </div>
+                  <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-[hsl(var(--background))]/80 px-3 py-2 text-xs leading-5 text-[hsl(var(--muted-foreground))]">
+                    {getCronPayloadPreview(editingCronJob)}
+                  </pre>
+                </div>
+
+                <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3">
+                  <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]/60">
+                    Raw Payload
+                  </div>
+                  <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-[hsl(var(--background))]/80 px-3 py-2 text-xs leading-5 text-[hsl(var(--muted-foreground))]/80">
+                    {JSON.stringify(editingCronJob.payload, null, 2)}
+                  </pre>
+                </div>
+
+                {editingCronJob.delivery && (
+                  <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3">
+                    <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]/60">
+                      Delivery
+                    </div>
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-[hsl(var(--background))]/80 px-3 py-2 text-xs leading-5 text-[hsl(var(--muted-foreground))]/80">
+                      {JSON.stringify(editingCronJob.delivery, null, 2)}
+                    </pre>
+                  </div>
+                )}
+
+                <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-xs text-amber-100/85">
+                  Audit note: `agentTurn` jobs execute the payload text shown above. If this text is
+                  wrong or too broad, the job itself is unsafe even when the schedule looks correct.
                 </div>
 
                 <div className="flex gap-2">
                   <button
                     onClick={() => void handleCronEditSave()}
                     disabled={!editingCronTitle.trim() || busyCronJobIds.has(editingCronJob.id)}
-                    className="flex-1 py-2 bg-purple-500/30 hover:bg-purple-500/40 disabled:bg-white/5 disabled:text-white/20 text-purple-300 rounded-xl font-medium transition-all"
+                    className="flex-1 py-2 bg-[hsl(var(--primary))]/30 hover:bg-[hsl(var(--primary))]/40 disabled:bg-[hsl(var(--card))] disabled:text-[hsl(var(--muted-foreground))]/30 text-[hsl(var(--primary))] rounded-xl font-medium transition-all"
                   >
                     {busyCronJobIds.has(editingCronJob.id) ? "Saving..." : "Save Changes"}
                   </button>

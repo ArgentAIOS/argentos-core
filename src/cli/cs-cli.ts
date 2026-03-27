@@ -28,10 +28,20 @@ function hasDependencies(dir: string): boolean {
   return fs.existsSync(path.join(dir, "node_modules"));
 }
 
-/** Resolve the actual Vite JS entrypoint for LaunchAgent use */
+/** Resolve the actual Vite JS entrypoint for LaunchAgent use.
+ *  MUST return the real .js file, NOT the .bin/ shell wrapper —
+ *  LaunchAgents run it via `node <path>` which can't execute bash scripts. */
 function resolveViteEntrypoint(dir: string): string | null {
-  const candidate = path.join(dir, "node_modules", "vite", "bin", "vite.js");
-  return fs.existsSync(candidate) ? candidate : null;
+  // Primary: direct path to vite's JS entrypoint
+  const direct = path.join(dir, "node_modules", "vite", "bin", "vite.js");
+  if (fs.existsSync(direct)) return direct;
+  // Fallback: resolve through .bin symlink to find the real JS target
+  const binWrapper = path.join(dir, "node_modules", ".bin", "vite");
+  try {
+    const resolved = fs.realpathSync(binWrapper);
+    if (resolved.endsWith(".js") && fs.existsSync(resolved)) return resolved;
+  } catch {}
+  return null;
 }
 
 /** Install dependencies */
@@ -111,7 +121,7 @@ async function installDashboardServices(options: {
   await uiService.install({
     env,
     stdout: process.stdout,
-    programArguments: [nodePath, viteEntrypoint, "--port", uiPort],
+    programArguments: [nodePath, viteEntrypoint, "preview", "--port", uiPort],
     workingDirectory: dashboardDir,
     environment: {
       ...uiEnv,

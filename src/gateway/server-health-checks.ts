@@ -9,6 +9,7 @@
 import { execSync } from "node:child_process";
 import { statfsSync } from "node:fs";
 import path from "node:path";
+import type { ArgentConfig } from "../config/config.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("gateway/health-checks");
@@ -22,6 +23,8 @@ export interface HealthCheckResult {
   zombieProcesses: { killed: number; found: number };
   authProfiles: Array<{ name: string; available: boolean; cooldownUntil?: number }>;
   ollamaReachable: boolean;
+  ollamaProbed: boolean;
+  localRuntimeProvider: "ollama" | "lmstudio" | null;
   diskUsage: { path: string; usedPercent: number; warning: boolean };
 }
 
@@ -32,6 +35,7 @@ export interface HealthCheckTimerOptions {
     available: boolean;
     cooldownUntil?: number;
   }>;
+  getConfig?: () => ArgentConfig;
   intervalMs?: number;
 }
 
@@ -44,7 +48,9 @@ export interface HealthCheckTimerOptions {
  * Examples: "03:22" → 202, "01:03:22" → 3802, "2-01:03:22" → 176602
  */
 export function parseEtime(etime: string): number {
-  if (!etime) return 0;
+  if (!etime) {
+    return 0;
+  }
 
   let days = 0;
   let rest = etime;
@@ -98,7 +104,9 @@ export function reapZombieProcesses(): { killed: number; found: number } {
       { encoding: "utf-8", timeout: 5000 },
     ).trim();
 
-    if (!output) return { found: 0, killed: 0 };
+    if (!output) {
+      return { found: 0, killed: 0 };
+    }
 
     const myPid = process.pid;
     const lines = output.split("\n").filter(Boolean);
@@ -150,6 +158,41 @@ export async function pingOllama(): Promise<boolean> {
   }
 }
 
+function hasProviderRef(value: unknown, provider: "ollama" | "lmstudio"): boolean {
+  return typeof value === "string" && value.trim().toLowerCase().startsWith(`${provider}/`);
+}
+
+function resolvePreferredLocalRuntimeProvider(cfg?: ArgentConfig): "ollama" | "lmstudio" | null {
+  if (!cfg) {
+    return null;
+  }
+  const kernelLocalModel = cfg.agents?.defaults?.kernel?.localModel;
+  if (hasProviderRef(kernelLocalModel, "lmstudio")) {
+    return "lmstudio";
+  }
+  if (hasProviderRef(kernelLocalModel, "ollama")) {
+    return "ollama";
+  }
+  const memorySearch = cfg.agents?.defaults?.memorySearch;
+  if (memorySearch?.provider === "lmstudio") {
+    return "lmstudio";
+  }
+  if (memorySearch?.provider === "ollama") {
+    return "ollama";
+  }
+  return null;
+}
+
+function shouldProbeOllama(cfg?: ArgentConfig): boolean {
+  if (!cfg) {
+    return true;
+  }
+  if (cfg.models?.providers?.ollama) {
+    return true;
+  }
+  return resolvePreferredLocalRuntimeProvider(cfg) === "ollama";
+}
+
 /**
  * Check disk space for ~/.argentos/ partition.
  */
@@ -182,12 +225,15 @@ export function checkDiskSpace(): { path: string; usedPercent: number; warning: 
  */
 export async function runHealthCheck(
   getAuthProfileStatus?: () => Array<{ name: string; available: boolean; cooldownUntil?: number }>,
+  cfg?: ArgentConfig,
 ): Promise<HealthCheckResult> {
   const result: HealthCheckResult = {
     timestamp: Date.now(),
     zombieProcesses: { killed: 0, found: 0 },
     authProfiles: [],
     ollamaReachable: false,
+    ollamaProbed: false,
+    localRuntimeProvider: resolvePreferredLocalRuntimeProvider(cfg),
     diskUsage: { path: "", usedPercent: 0, warning: false },
   };
 
@@ -208,10 +254,13 @@ export async function runHealthCheck(
   }
 
   // 3. Ollama reachability
-  try {
-    result.ollamaReachable = await pingOllama();
-  } catch {
-    result.ollamaReachable = false;
+  if (shouldProbeOllama(cfg)) {
+    result.ollamaProbed = true;
+    try {
+      result.ollamaReachable = await pingOllama();
+    } catch {
+      result.ollamaReachable = false;
+    }
   }
 
   // 4. Disk space
@@ -250,7 +299,7 @@ export function startHealthCheckTimer(
     }
     running = true;
     try {
-      const result = await runHealthCheck(opts.getAuthProfileStatus);
+      const result = await runHealthCheck(opts.getAuthProfileStatus, opts.getConfig?.());
       lastResult = result;
 
       // Single-line log summary
@@ -258,9 +307,14 @@ export function startHealthCheckTimer(
       const authTotal = result.authProfiles.length;
       const diskPct = result.diskUsage.usedPercent.toFixed(1);
       const diskWarn = result.diskUsage.warning ? " WARNING" : "";
+      const localRuntimePart = result.ollamaProbed
+        ? `ollama=${result.ollamaReachable ? "up" : "down"}`
+        : result.localRuntimeProvider
+          ? `local=${result.localRuntimeProvider}`
+          : "local=none";
       log.info(
         `health: ok (zombies=${result.zombieProcesses.found}, disk=${diskPct}%${diskWarn}, ` +
-          `ollama=${result.ollamaReachable ? "up" : "down"}, auth=${authAvailable}/${authTotal})`,
+          `${localRuntimePart}, auth=${authAvailable}/${authTotal})`,
       );
 
       // Broadcast to dashboard for future visibility

@@ -2,9 +2,11 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const CONNECTOR_CATALOG_MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const DEFAULT_CONNECTOR_TIMEOUT_MS = 4_000;
 const MODE_FALLBACK = ["readonly", "write", "full", "admin"] as const;
@@ -138,21 +140,23 @@ function splitSearchPath(pathEnv?: string): string[] {
     .filter(Boolean);
 }
 
-function defaultRepoRoots(): string[] {
+export function defaultRepoRoots(): string[] {
   const envRoots = (process.env.ARGENT_CONNECTOR_REPOS ?? "")
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
   const home = os.homedir();
+  const vendoredRoots = [
+    path.resolve(process.cwd(), "tools", "aos"),
+    path.resolve(CONNECTOR_CATALOG_MODULE_DIR, "..", "..", "tools", "aos"),
+  ];
+  const userRoots = [path.join(home, ".argentos", "connectors")];
+  const externalRoots = [
+    path.join(home, "code", "agent-cli-tools"),
+    path.resolve(process.cwd(), "..", "agent-cli-tools"),
+  ];
   return Array.from(
-    new Set(
-      [
-        ...envRoots,
-        path.join(home, "code", "agent-cli-tools"),
-        path.resolve(process.cwd(), "..", "agent-cli-tools"),
-        path.join(home, ".argentos", "connectors"),
-      ].filter(Boolean),
-    ),
+    new Set([...envRoots, ...vendoredRoots, ...userRoots, ...externalRoots].filter(Boolean)),
   );
 }
 
@@ -302,19 +306,18 @@ function readRepoMetadata(candidate: RepoCandidate): RepoMetadata {
   const scripts = extractTomlScripts(scriptsSection);
   const declaredTool = scripts.find((entry) => entry.startsWith("aos-")) ?? candidate.tool;
   const mergedCommandMap = new Map<string, ConnectorCatalogCommand>();
-  for (const command of permissions.commands) {
-    mergedCommandMap.set(command.id, command);
-  }
-  for (const command of connectorMeta.commands) {
-    const previous = mergedCommandMap.get(command.id);
+  const repoVisibleCommands =
+    connectorMeta.commands.length > 0 ? connectorMeta.commands : permissions.commands;
+  for (const command of repoVisibleCommands) {
+    const permissionCommand = permissions.commands.find((entry) => entry.id === command.id);
     mergedCommandMap.set(command.id, {
-      ...(previous ?? { id: command.id }),
+      ...(permissionCommand ?? { id: command.id }),
       ...command,
-      requiredMode: command.requiredMode ?? previous?.requiredMode,
-      supportsJson: command.supportsJson ?? previous?.supportsJson,
-      summary: command.summary ?? previous?.summary,
-      resource: command.resource ?? previous?.resource,
-      actionClass: command.actionClass ?? previous?.actionClass,
+      requiredMode: command.requiredMode ?? permissionCommand?.requiredMode,
+      supportsJson: command.supportsJson ?? permissionCommand?.supportsJson,
+      summary: command.summary ?? permissionCommand?.summary,
+      resource: command.resource ?? permissionCommand?.resource,
+      actionClass: command.actionClass ?? permissionCommand?.actionClass,
     });
   }
   const commands = Array.from(mergedCommandMap.values()).sort((left, right) =>
@@ -415,6 +418,7 @@ export async function runConnectorCommandJson(params: {
   args: string[];
   cwd?: string;
   timeoutMs?: number;
+  env?: Record<string, string>;
 }): Promise<ConnectorCommandExecutionResult> {
   const timeoutMs = params.timeoutMs ?? DEFAULT_CONNECTOR_TIMEOUT_MS;
   try {
@@ -424,6 +428,7 @@ export async function runConnectorCommandJson(params: {
       maxBuffer: 1_000_000,
       env: {
         ...process.env,
+        ...(params.env ?? {}),
         NO_COLOR: "1",
       },
     });
@@ -604,6 +609,18 @@ function inferCategories(params: {
   };
 }
 
+function isWorkerVisibleConnectorCommand(commandId: string): boolean {
+  const normalized = commandId.trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized === "capabilities" || normalized === "health" || normalized === "doctor") {
+    return false;
+  }
+  if (normalized === "config" || normalized.startsWith("config.")) {
+    return false;
+  }
+  return true;
+}
+
 function normalizeConnectorCommands(raw: unknown): ConnectorCatalogCommand[] {
   if (!Array.isArray(raw)) {
     return [];
@@ -626,6 +643,7 @@ function normalizeConnectorCommands(raw: unknown): ConnectorCatalogCommand[] {
       } satisfies ConnectorCatalogCommand;
     })
     .filter((entry): entry is ConnectorCatalogCommand => Boolean(entry))
+    .filter((entry) => isWorkerVisibleConnectorCommand(entry.id))
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 

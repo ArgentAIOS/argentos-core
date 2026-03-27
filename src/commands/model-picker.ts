@@ -88,7 +88,7 @@ async function promptManualModel(params: {
   initialValue?: string;
 }): Promise<PromptDefaultModelResult> {
   const modelInput = await params.prompter.text({
-    message: params.allowBlank ? "Default model (blank to keep)" : "Default model",
+    message: params.allowBlank ? "Argent default model (blank to keep)" : "Argent default model",
     initialValue: params.initialValue,
     placeholder: "provider/model",
     validate: params.allowBlank ? undefined : (value) => (value?.trim() ? undefined : "Required"),
@@ -161,7 +161,7 @@ export async function promptDefaultModel(
     !hasPreferredProvider && providers.length > 1 && models.length > PROVIDER_FILTER_THRESHOLD;
   if (shouldPromptProvider) {
     const selection = await params.prompter.select({
-      message: "Filter models by provider",
+      message: "Which provider should Argent browse first?",
       options: [
         { value: "*", label: "All providers" },
         ...providers.map((provider) => {
@@ -279,7 +279,7 @@ export async function promptDefaultModel(
   }
 
   const selection = await params.prompter.select({
-    message: params.message ?? "Default model",
+    message: params.message ?? "Which model should Argent use by default?",
     options,
     initialValue,
   });
@@ -329,7 +329,7 @@ export async function promptModelAllowlist(params: {
     const raw = await params.prompter.text({
       message:
         params.message ??
-        "Allowlist models (comma-separated provider/model; blank to keep current)",
+        "Argent model allowlist (comma-separated provider/model; blank to keep current)",
       initialValue: existingKeys.join(", "),
       placeholder: "openai-codex/gpt-5.3-codex, anthropic/claude-opus-4-5",
     });
@@ -428,7 +428,7 @@ export async function promptModelAllowlist(params: {
   }
 
   const selection = await params.prompter.multiselect({
-    message: params.message ?? "Models in /model picker (multi-select)",
+    message: params.message ?? "Which models should Argent keep in the picker?",
     options,
     initialValues: initialKeys.length > 0 ? initialKeys : undefined,
   });
@@ -440,7 +440,7 @@ export async function promptModelAllowlist(params: {
     return { models: [] };
   }
   const confirmClear = await params.prompter.confirm({
-    message: "Clear the model allowlist? (shows all models)",
+    message: "Clear Argent's model allowlist and show every model?",
     initialValue: false,
   });
   if (!confirmClear) {

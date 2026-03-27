@@ -130,7 +130,7 @@ describe("onboard-hooks", () => {
       });
       expect(prompter.note).toHaveBeenCalledTimes(2);
       expect(prompter.multiselect).toHaveBeenCalledWith({
-        message: "Enable hooks?",
+        message: "Which hooks should Argent bring online?",
         options: [
           { value: "__skip__", label: "Skip for now" },
           {
@@ -174,8 +174,8 @@ describe("onboard-hooks", () => {
       expect(result).toEqual(cfg);
       expect(prompter.multiselect).not.toHaveBeenCalled();
       expect(prompter.note).toHaveBeenCalledWith(
-        "No eligible hooks found. You can configure hooks later in your config.",
-        "No Hooks Available",
+        "No ready-to-enable hooks were found. You can wire them in later from the hooks menu.",
+        "Argent hooks",
       );
     });
 
@@ -234,11 +234,11 @@ describe("onboard-hooks", () => {
       expect(noteCalls).toHaveLength(2);
 
       // First note should explain what hooks are
-      expect(noteCalls[0][0]).toContain("Hooks let you automate actions");
-      expect(noteCalls[0][0]).toContain("automate actions");
+      expect(noteCalls[0][0]).toContain("Hooks let Argent react automatically");
+      expect(noteCalls[0][0]).toContain("react automatically");
 
       // Second note should confirm configuration
-      expect(noteCalls[1][0]).toContain("Enabled 1 hook: session-memory");
+      expect(noteCalls[1][0]).toContain("Argent enabled 1 hook: session-memory");
       expect(noteCalls[1][0]).toMatch(/(?:argent|argent)( --profile isolated)? hooks list/);
     });
   });

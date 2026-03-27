@@ -688,7 +688,7 @@ export async function runEmbeddedAttempt(
       },
     });
     const isDefaultAgent = sessionAgentId === defaultAgentId;
-    const promptMode = isSubagentSessionKey(params.sessionKey) ? "minimal" : "full";
+    const promptMode = isSubagentSessionKey(params.sessionKey) ? "subagent" : "full";
     const ttsHint = params.config ? buildTtsSystemPromptHint(params.config) : undefined;
 
     const appendPrompt = await buildEmbeddedSystemPrompt({

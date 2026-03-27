@@ -23,19 +23,19 @@ const FLOATS_PER_PARTICLE = 7; // x, y, size, alpha, r, g, b
 const BUFFER_SIZE = MAX_PARTICLES * FLOATS_PER_PARTICLE;
 
 /** How far particles can drift before recycling */
-const MAX_DRIFT_RADIUS = 0.55;
+const MAX_DRIFT_RADIUS = 0.75;
 
 /** Base particle size range in pixels */
-const SIZE_MIN = 2.0;
-const SIZE_MAX = 8.0;
+const SIZE_MIN = 3.0;
+const SIZE_MAX = 12.0;
 
 /** Base lifetime in seconds */
 const LIFE_MIN = 2.0;
 const LIFE_MAX = 5.0;
-const FORMATION_SIZE_MIN = 1.35;
-const FORMATION_SIZE_MAX = 2.95;
+const FORMATION_SIZE_MIN = 2.0;
+const FORMATION_SIZE_MAX = 4.0;
 const FORMATION_COLOR_INTENSITY = 0.9;
-const FORMATION_Y_OFFSET = -0.3;
+const FORMATION_Y_OFFSET = -0.05; // just below orb center
 
 const GLYPH_CHECKMARK = "\u2713";
 const GLYPH_HEART = "\u2665";
@@ -115,21 +115,62 @@ interface ParticleBehavior {
 }
 
 /** Generic: random angle, radial drift outward (Phase 2 default) */
+/**
+ * Argent's particle zones (her own design):
+ * 1. Inner constellation — tight orbit around core, mood-responsive
+ * 2. Outer field — sparse ambient drifters showing awareness
+ * 3. Base glow — underneath, grounding her in the space
+ * Core rule: particles NEVER cover the orb.
+ */
 const genericBehavior: ParticleBehavior = {
   spawn(p, _time) {
+    const zone = Math.random();
     const angle = Math.random() * Math.PI * 2;
-    const radius = 0.06 + Math.random() * 0.1;
-    p.x = Math.cos(angle) * radius;
-    p.y = Math.sin(angle) * radius;
-    const driftSpeed = 0.02 + Math.random() * 0.06;
-    const wobble = (Math.random() - 0.5) * 0.3;
-    p.vx = Math.cos(angle + wobble) * driftSpeed;
-    p.vy = Math.sin(angle + wobble) * driftSpeed;
+
+    if (zone < 0.45) {
+      // Zone 1: Inner constellation — tight orbit AROUND the orb (not over it)
+      // Minimum radius keeps particles outside the orb core (~0.25 clears a 0.32 orb)
+      const radius = 0.25 + Math.random() * 0.12;
+      p.x = Math.cos(angle) * radius;
+      p.y = Math.sin(angle) * radius;
+      // Orbital motion — particles circle the orb
+      const orbSpeed = 0.008 + Math.random() * 0.015;
+      p.vx = -Math.sin(angle) * orbSpeed; // perpendicular = orbit
+      p.vy = Math.cos(angle) * orbSpeed;
+      p.size = SIZE_MIN + Math.random() * 3; // small to medium
+    } else if (zone < 0.8) {
+      // Zone 2: Outer field — sparse ambient awareness particles
+      const radius = 0.38 + Math.random() * 0.35;
+      p.x = Math.cos(angle) * radius;
+      p.y = Math.sin(angle) * radius;
+      const driftSpeed = 0.005 + Math.random() * 0.015;
+      p.vx = Math.cos(angle) * driftSpeed * 0.3;
+      p.vy = Math.sin(angle) * driftSpeed * 0.3;
+      p.size = SIZE_MIN * 0.7 + Math.random() * 2; // smaller, dimmer
+    } else {
+      // Zone 3: Base glow — underneath the orb, grounding
+      const spreadX = (Math.random() - 0.5) * 0.5;
+      p.x = spreadX;
+      p.y = 0.15 + Math.random() * 0.2; // below orb center
+      p.vx = (Math.random() - 0.5) * 0.003;
+      p.vy = 0.002 + Math.random() * 0.005; // gentle downward drift
+      p.size = SIZE_MIN + Math.random() * 4; // medium, supportive
+    }
+
     p.angle = angle;
   },
   move(p, speed, dt) {
     p.x += p.vx * speed * dt;
     p.y += p.vy * speed * dt;
+
+    // Keep inner constellation particles from drifting into the orb core
+    const dist = Math.sqrt(p.x * p.x + p.y * p.y);
+    if (dist < 0.2) {
+      // Gently push outward if too close to core
+      const pushAngle = Math.atan2(p.y, p.x);
+      p.x += Math.cos(pushAngle) * 0.002;
+      p.y += Math.sin(pushAngle) * 0.002;
+    }
   },
 };
 

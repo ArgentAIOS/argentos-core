@@ -1,0 +1,12 @@
+{
+  "tool": "aos-zapier",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly",
+    "zap.list": "readonly",
+    "zap.status": "readonly",
+    "zap.trigger": "write"
+  }
+}

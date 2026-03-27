@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { discoverConnectorCatalog } from "./catalog.js";
+import { defaultRepoRoots, discoverConnectorCatalog } from "./catalog.js";
 
 const tempDirs: string[] = [];
 
@@ -70,6 +71,22 @@ afterEach(() => {
 });
 
 describe("discoverConnectorCatalog", () => {
+  it("includes the vendored tools/aos root in default discovery", () => {
+    const expectedVendoredRoot = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "..",
+      "tools",
+      "aos",
+    );
+    const externalRepoRoot = path.join(os.homedir(), "code", "agent-cli-tools");
+
+    expect(defaultRepoRoots()).toContain(expectedVendoredRoot);
+    expect(defaultRepoRoots().indexOf(expectedVendoredRoot)).toBeLessThan(
+      defaultRepoRoots().indexOf(externalRepoRoot),
+    );
+  });
+
   it("catalogs repo-only connectors when the adapter is not installed yet", async () => {
     const root = makeTempDir("connector-repo-only-");
     writeRepoFixture({
@@ -125,7 +142,6 @@ describe("discoverConnectorCatalog", () => {
           requiredMode: "readonly",
           summary: "List invoices",
         }),
-        expect.objectContaining({ id: "invoice.create", requiredMode: "write" }),
       ]),
       auth: expect.objectContaining({
         kind: "oauth",
@@ -136,6 +152,76 @@ describe("discoverConnectorCatalog", () => {
         repoDir: expect.stringContaining("aos-ledger"),
       }),
     });
+  });
+
+  it("uses connector metadata as the worker-visible command surface when provided", async () => {
+    const root = makeTempDir("connector-meta-surface-");
+    writeRepoFixture({
+      root,
+      tool: "aos-mailbox",
+      description: "Agent-native inbox connector",
+      permissions: {
+        "mail.search": "readonly",
+        health: "readonly",
+        "config.show": "readonly",
+      },
+      connectorMeta: {
+        connector: {
+          label: "Mailbox",
+          category: "inbox",
+          resources: ["mail"],
+        },
+        commands: [
+          {
+            id: "capabilities",
+            summary: "Describe connector capabilities",
+            required_mode: "readonly",
+            supports_json: true,
+            resource: "connector",
+            action_class: "read",
+          },
+          {
+            id: "health",
+            summary: "Check connector health",
+            required_mode: "readonly",
+            supports_json: true,
+            resource: "connector",
+            action_class: "read",
+          },
+          {
+            id: "config.show",
+            summary: "Show connector config",
+            required_mode: "readonly",
+            supports_json: true,
+            resource: "connector",
+            action_class: "read",
+          },
+          {
+            id: "mail.search",
+            summary: "Search mailbox messages",
+            required_mode: "readonly",
+            supports_json: true,
+            resource: "mail",
+            action_class: "read",
+          },
+        ],
+      },
+    });
+
+    const result = await discoverConnectorCatalog({
+      repoRoots: [root],
+      pathEnv: "",
+      timeoutMs: 500,
+    });
+
+    expect(result.total).toBe(1);
+    expect(result.connectors[0]?.commands).toEqual([
+      expect.objectContaining({
+        id: "mail.search",
+        summary: "Search mailbox messages",
+        requiredMode: "readonly",
+      }),
+    ]);
   });
 
   it("prefers live capabilities output when a runnable connector binary exists", async () => {
@@ -170,6 +256,14 @@ describe("discoverConnectorCatalog", () => {
               resources: ["queue"],
             },
             commands: [
+              {
+                id: "health",
+                summary: "Check connector health",
+                required_mode: "readonly",
+                supports_json: true,
+                resource: "connector",
+                action_class: "read",
+              },
               {
                 id: "queue.list",
                 summary: "List tickets",
@@ -222,5 +316,6 @@ describe("discoverConnectorCatalog", () => {
         label: "Ready",
       }),
     });
+    expect(result.connectors[0]?.commands).toHaveLength(1);
   });
 });

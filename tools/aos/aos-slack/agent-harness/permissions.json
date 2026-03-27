@@ -1,0 +1,16 @@
+{
+  "tool": "aos-slack",
+  "backend": "slack-native",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly",
+    "message.search": "readonly",
+    "message.reply": "write",
+    "channel.list": "readonly",
+    "mention.scan": "readonly",
+    "people.list": "readonly",
+    "reaction.list": "readonly"
+  }
+}

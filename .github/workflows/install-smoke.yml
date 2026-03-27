@@ -43,6 +43,6 @@ jobs:
           ARGENT_INSTALL_CLI_URL: https://argentos.ai/install-cli.sh
           ARGENT_NO_ONBOARD: "1"
           ARGENT_INSTALL_SMOKE_SKIP_CLI: "1"
-          ARGENT_INSTALL_SMOKE_SKIP_NONROOT: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+          ARGENT_INSTALL_SMOKE_SKIP_NONROOT: "0"
           ARGENT_INSTALL_SMOKE_SKIP_PREVIOUS: "1"
         run: pnpm test:install:smoke

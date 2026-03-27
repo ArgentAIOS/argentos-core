@@ -1,0 +1,9 @@
+{
+  "tool": "aos-firecrawl",
+  "permissions": {
+    "health": "readonly",
+    "doctor": "readonly",
+    "config.show": "readonly",
+    "scrape": "readonly"
+  }
+}

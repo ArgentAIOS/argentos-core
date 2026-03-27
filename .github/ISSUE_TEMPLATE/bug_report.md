@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a problem or unexpected behavior in ArgentOS Core.
+about: Report a problem or unexpected behavior in ArgentOS.
 title: "[Bug]: "
 labels: bug
 ---
@@ -25,7 +25,7 @@ What actually happened?
 
 ## Environment
 
-- ArgentOS Core version or commit:
+- ArgentOS version or commit:
 - OS:
 - Install method (Argent.app/install.sh/npm/source checkout/docker/etc):
 - Runtime mode (Ollama/LM Studio/cloud), if relevant:

@@ -22,7 +22,7 @@ describe("noteMacLaunchctlGatewayEnvOverrides", () => {
     expect(getenv).toHaveBeenCalledTimes(6);
 
     const [message, title] = noteFn.mock.calls[0] ?? [];
-    expect(title).toBe("Gateway (macOS)");
+    expect(title).toBe("Argent gateway (macOS)");
     expect(message).toContain("launchctl environment overrides detected");
     expect(message).toContain("ARGENT_GATEWAY_TOKEN");
     expect(message).toContain("launchctl unsetenv ARGENT_GATEWAY_TOKEN");

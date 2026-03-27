@@ -83,6 +83,13 @@ const TasksToolSchema = Type.Object({
   ),
   limit: Type.Optional(Type.Number({ default: 20 })),
   includeCompleted: Type.Optional(Type.Boolean({ default: false })),
+  includeWorkerTasks: Type.Optional(
+    Type.Boolean({
+      default: false,
+      description:
+        "Include worker/job-assignment tasks. Leave false for the operator/main-agent board.",
+    }),
+  ),
   // For add/update actions
   title: Type.Optional(Type.String()),
   description: Type.Optional(Type.String()),
@@ -126,6 +133,16 @@ type TasksToolOptions = {
   agentSessionKey?: string;
   agentId?: string;
 };
+
+function isWorkerLaneTask(task: Task): boolean {
+  if (task.source === "job") return true;
+  if (!task.metadata || typeof task.metadata !== "object") return false;
+  return Boolean((task.metadata as Record<string, unknown>).jobAssignmentId);
+}
+
+function filterOperatorLaneTasks(tasks: Task[]): Task[] {
+  return tasks.filter((task) => !isWorkerLaneTask(task));
+}
 
 // ============================================================================
 // Formatting Helpers
@@ -280,6 +297,7 @@ function filterTasksByQuery(tasks: Task[], query: string): Task[] {
 
 async function listAllTasks(
   storage: Awaited<ReturnType<typeof getStorageAdapter>>,
+  options?: { includeWorkerTasks?: boolean },
 ): Promise<Task[]> {
   const all: Task[] = [];
   const pageSize = 200;
@@ -292,23 +310,26 @@ async function listAllTasks(
     if (page.length < pageSize) break;
   }
 
-  return all;
+  return options?.includeWorkerTasks ? all : filterOperatorLaneTasks(all);
 }
 
 async function getProjectWithChildrenFromStorage(
   storage: Awaited<ReturnType<typeof getStorageAdapter>>,
   projectId: string,
+  options?: { includeWorkerTasks?: boolean },
 ): Promise<ProjectWithChildren | null> {
   const project = await storage.tasks.get(projectId);
   if (!project) return null;
+  if (!options?.includeWorkerTasks && isWorkerLaneTask(project)) return null;
 
   const tasks = await storage.tasks.list({ parentTaskId: project.id, limit: 500 });
-  const completedCount = tasks.filter((t) => t.status === "completed").length;
+  const visibleTasks = options?.includeWorkerTasks ? tasks : filterOperatorLaneTasks(tasks);
+  const completedCount = visibleTasks.filter((t) => t.status === "completed").length;
 
   return {
     project,
-    tasks,
-    taskCount: tasks.length,
+    tasks: visibleTasks,
+    taskCount: visibleTasks.length,
     completedCount,
   };
 }
@@ -364,6 +385,7 @@ ACTIONS:
           const priorityParam = params.priority as TaskPriority | TaskPriority[] | undefined;
           const limit = typeof params.limit === "number" ? params.limit : 20;
           const includeCompleted = Boolean(params.includeCompleted);
+          const includeWorkerTasks = Boolean(params.includeWorkerTasks);
 
           const filter: TaskFilter = { limit };
 
@@ -377,7 +399,9 @@ ACTIONS:
             filter.priority = priorityParam;
           }
 
-          const tasks = await storage.tasks.list(filter);
+          const tasks = (await storage.tasks.list(filter)).filter(
+            (task) => includeWorkerTasks || !isWorkerLaneTask(task),
+          );
 
           if (tasks.length === 0) {
             return textResult("No tasks found matching the criteria.");
@@ -504,6 +528,7 @@ ACTIONS:
           const taskId = readStringParam(params, "taskId", { required: true });
           const title = readStringParam(params, "title");
           const description = readStringParam(params, "description");
+          const status = params.status as TaskStatus | undefined;
           const priority = params.priority as TaskPriority | undefined;
           const assignee =
             params.assignee !== undefined ? (params.assignee as string | null) : undefined;
@@ -513,6 +538,7 @@ ACTIONS:
           const task = await storage.tasks.update(taskId, {
             title,
             description,
+            status,
             priority,
             assignee,
             dueAt,
@@ -529,7 +555,11 @@ ACTIONS:
         case "search": {
           const query = readStringParam(params, "query", { required: true });
           const limit = typeof params.limit === "number" ? params.limit : 10;
-          const tasks = filterTasksByQuery(await listAllTasks(storage), query)
+          const includeWorkerTasks = Boolean(params.includeWorkerTasks);
+          const tasks = filterTasksByQuery(
+            await listAllTasks(storage, { includeWorkerTasks }),
+            query,
+          )
             .sort((a, b) => b.updatedAt - a.updatedAt)
             .slice(0, limit);
 
@@ -543,6 +573,7 @@ ACTIONS:
         }
 
         case "counts": {
+          const includeWorkerTasks = Boolean(params.includeWorkerTasks);
           const counts: Record<TaskStatus, number> = {
             pending: 0,
             in_progress: 0,
@@ -551,7 +582,7 @@ ACTIONS:
             failed: 0,
             cancelled: 0,
           };
-          for (const task of await listAllTasks(storage)) {
+          for (const task of await listAllTasks(storage, { includeWorkerTasks })) {
             counts[task.status] += 1;
           }
           const lines = Object.entries(counts)
@@ -562,8 +593,9 @@ ACTIONS:
         }
 
         case "overdue": {
+          const includeWorkerTasks = Boolean(params.includeWorkerTasks);
           const now = Date.now();
-          const tasks = (await listAllTasks(storage))
+          const tasks = (await listAllTasks(storage, { includeWorkerTasks }))
             .filter(
               (task) =>
                 (task.status === "pending" || task.status === "in_progress") &&
@@ -634,12 +666,13 @@ ACTIONS:
         case "project_list": {
           const statusParam = params.status as TaskStatus | TaskStatus[] | undefined;
           const limit = typeof params.limit === "number" ? params.limit : 20;
+          const includeWorkerTasks = Boolean(params.includeWorkerTasks);
           const statuses = statusParam
             ? Array.isArray(statusParam)
               ? statusParam
               : [statusParam]
             : null;
-          const allTasks = await listAllTasks(storage);
+          const allTasks = await listAllTasks(storage, { includeWorkerTasks });
           const childByParentId = new Map<string, Task[]>();
           for (const task of allTasks) {
             if (!task.parentTaskId) continue;
@@ -672,7 +705,10 @@ ACTIONS:
 
         case "project_detail": {
           const projectId = readStringParam(params, "projectId", { required: true });
-          const result = await getProjectWithChildrenFromStorage(storage, projectId);
+          const includeWorkerTasks = Boolean(params.includeWorkerTasks);
+          const result = await getProjectWithChildrenFromStorage(storage, projectId, {
+            includeWorkerTasks,
+          });
 
           if (!result) {
             return textResult(`Project not found: ${projectId}`);
@@ -703,6 +739,11 @@ ACTIONS:
             // Claim a specific task
             const task = await storage.tasks.get(taskId);
             if (!task) return textResult(`Task not found: ${taskId}`);
+            if (!effectiveTeamId && isWorkerLaneTask(task)) {
+              return textResult(
+                "Worker/job-assignment tasks must be claimed from a team-scoped worker session.",
+              );
+            }
             if (effectiveTeamId && task.teamId !== effectiveTeamId) {
               return textResult(`Task does not belong to team: ${effectiveTeamId}`);
             }
@@ -723,6 +764,7 @@ ACTIONS:
           if (effectiveTeamId) filter.teamId = effectiveTeamId;
 
           const candidates = (await storage.tasks.list(filter))
+            .filter((candidate) => effectiveTeamId || !isWorkerLaneTask(candidate))
             .filter((candidate) => !candidate.assignee)
             .sort((a, b) => a.createdAt - b.createdAt);
           if (candidates.length === 0) {

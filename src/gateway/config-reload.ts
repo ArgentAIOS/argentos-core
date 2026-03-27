@@ -23,6 +23,7 @@ export type GatewayReloadPlan = {
   restartContemplation: boolean;
   restartExecutionWorker: boolean;
   restartSis: boolean;
+  restartKernel: boolean;
   restartChannels: Set<ChannelKind>;
   noopPaths: string[];
 };
@@ -42,6 +43,7 @@ type ReloadAction =
   | "restart-contemplation"
   | "restart-execution-worker"
   | "restart-sis"
+  | "restart-kernel"
   | `restart-channel:${ChannelId}`;
 
 const DEFAULT_RELOAD_SETTINGS: GatewayReloadSettings = {
@@ -79,6 +81,11 @@ const BASE_RELOAD_RULES: ReloadRule[] = [
     prefix: "agents.defaults.sis",
     kind: "hot",
     actions: ["restart-sis"],
+  },
+  {
+    prefix: "agents.defaults.kernel",
+    kind: "hot",
+    actions: ["restart-kernel"],
   },
   { prefix: "cron", kind: "hot", actions: ["restart-cron"] },
   {
@@ -218,6 +225,7 @@ export function buildGatewayReloadPlan(changedPaths: string[]): GatewayReloadPla
     restartContemplation: false,
     restartExecutionWorker: false,
     restartSis: false,
+    restartKernel: false,
     restartChannels: new Set(),
     noopPaths: [],
   };
@@ -252,6 +260,9 @@ export function buildGatewayReloadPlan(changedPaths: string[]): GatewayReloadPla
         break;
       case "restart-sis":
         plan.restartSis = true;
+        break;
+      case "restart-kernel":
+        plan.restartKernel = true;
         break;
       default:
         break;

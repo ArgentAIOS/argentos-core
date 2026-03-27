@@ -19,7 +19,7 @@ import {
   type ChatAttachment,
   type TtsDisplayMode,
 } from "./components/ChatPanel";
-import { ConfigPanel, useConfig } from "./components/ConfigPanel";
+import { ConfigPanel, useConfig } from "./components/ConfigPanelBridge";
 import { ContemplationToast, type ContemplationEvent } from "./components/ContemplationToast";
 import { CorsApprovalToast } from "./components/CorsApprovalToast";
 import { useDebateState } from "./components/DebatePanel";
@@ -39,13 +39,20 @@ import { StatusBar } from "./components/StatusBar";
 import { TaskList, type Task } from "./components/TaskList";
 import { WeatherModal } from "./components/WeatherModal";
 import { CustomWidget } from "./components/widgets/CustomWidget";
+import { JobsBoardWidget } from "./components/widgets/JobsBoardWidget";
+import { OrgChartWidget } from "./components/widgets/OrgChartWidget";
+import { ScheduleWidget } from "./components/widgets/ScheduleWidget";
 import { SilverPriceWidget } from "./components/widgets/SilverPriceWidget";
+import { TaskManagerWidget } from "./components/widgets/TaskManagerWidget";
+import { WidgetGrid, createGridItem } from "./components/widgets/WidgetGrid";
+import { WidgetPicker } from "./components/widgets/WidgetPicker";
 import {
   getWidget as getWidgetComponent,
   getCustomWidgetId,
 } from "./components/widgets/widgetRegistry";
-import { WorkerFlowModal } from "./components/WorkerFlowModal";
-import { WorkforceBoard } from "./components/WorkforceBoard";
+import { WorkflowMapCanvas } from "./components/widgets/WorkflowMapCanvas";
+import { WorkerFlowModal } from "./components/WorkerFlowModalBridge";
+import { WorkforceBoard } from "./components/WorkforceBoardBridge";
 import { useAgentState } from "./hooks/useAgentState";
 import { useApps, type ForgeApp } from "./hooks/useApps";
 import { useAppWindows } from "./hooks/useAppWindows";
@@ -59,6 +66,18 @@ import { useTasks } from "./hooks/useTasks";
 import { useTTS } from "./hooks/useTTS";
 import { useWeather } from "./hooks/useWeather";
 import { useWidgets } from "./hooks/useWidgets";
+import {
+  WorkflowMapIcon,
+  WorkloadsIcon,
+  TaskManagerIcon,
+  OrgChartIcon,
+  ScheduleIcon,
+  WorkersIcon,
+  HomeIcon,
+  OperationsIcon,
+  ShieldIcon,
+  DocumentsIcon,
+} from "./icons/ArgentOS";
 import { resolveAgentTtsProfile } from "./lib/agentVoiceProfiles";
 import {
   loadDefaultZoom,
@@ -69,8 +88,11 @@ import {
 } from "./lib/avatarConfig";
 import { buildPresetConfig } from "./lib/avatarPresets";
 import {
+  isDashboardModeAllowed,
   isWorkforceSurfaceAllowed,
+  parseDashboardMode,
   parseDashboardSurfaceProfile,
+  type DashboardMode,
   type DashboardSurfaceProfile,
 } from "./lib/configSurfaceProfile";
 import { setCorsApprovalCallback } from "./lib/corsFetch";
@@ -482,7 +504,7 @@ const BARE_MOOD_RE =
 
 const AEVP_RENDERER_STORAGE_KEY = "aevp-renderer";
 const AEVP_RENDERER_MIGRATION_KEY = "aevp-renderer-migration-2026-02-27-force-aevp";
-const AEVP_FULL_ORB_CENTER_Y = 0.72;
+const AEVP_FULL_ORB_CENTER_Y = 0.55; // push orb down toward center (was 0.72)
 
 type StructuredMarkerMatch = {
   full: string;
@@ -792,6 +814,20 @@ const initialLogs: LogEntry[] = [
 const GATEWAY_URL = `ws://${window.location.hostname}:18789`;
 const CONTROL_SETTINGS_KEY = "argent.control.settings.v1";
 const TTS_DISPLAY_MODE_KEY = "argent.tts-display-mode";
+const DASHBOARD_MODE_STORAGE_KEY = "argent.dashboard.mode";
+const OPERATIONS_PRESENCE_POSITION_STORAGE_KEY = "argent.operations.presence.position";
+const OPERATIONS_PRESENCE_SIZE_STORAGE_KEY = "argent.operations.presence.size";
+const OPERATIONS_PRESENCE_DEFAULT_WIDTH = 520;
+const OPERATIONS_PRESENCE_DEFAULT_HEIGHT = 500;
+const OPERATIONS_PRESENCE_MIN_WIDTH = 360;
+const OPERATIONS_PRESENCE_MIN_HEIGHT = 360;
+const OPERATIONS_PRESENCE_MAX_WIDTH = 820;
+const OPERATIONS_PRESENCE_MAX_HEIGHT = 820;
+const OPERATIONS_PRESENCE_PADDING = 16;
+const OPERATIONS_PRESENCE_STAGE_SCALE = 1.3;
+const OPERATIONS_PRESENCE_LOCKED_OFFSET_X = -89;
+const OPERATIONS_PRESENCE_LOCKED_OFFSET_Y = 10;
+const OPERATIONS_PRESENCE_LOCKED_SCALE = 1.33;
 
 function readStoredGatewayToken(): string {
   try {
@@ -838,6 +874,58 @@ function readStoredTtsDisplayMode(): TtsDisplayMode {
     // Ignore storage errors.
   }
   return "text-voice";
+}
+
+function readStoredDashboardMode(): DashboardMode | null {
+  try {
+    const raw = localStorage.getItem(DASHBOARD_MODE_STORAGE_KEY);
+    if (raw === "personal" || raw === "operations") {
+      return raw;
+    }
+  } catch {
+    // Ignore storage errors.
+  }
+  return null;
+}
+
+function persistDashboardMode(mode: DashboardMode) {
+  try {
+    localStorage.setItem(DASHBOARD_MODE_STORAGE_KEY, mode);
+  } catch {
+    // Best effort only.
+  }
+}
+
+function readStoredOperationsPresencePosition(): { x: number; y: number } | null {
+  try {
+    const raw = localStorage.getItem(OPERATIONS_PRESENCE_POSITION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { x?: unknown; y?: unknown };
+    const x = typeof parsed.x === "number" ? parsed.x : NaN;
+    const y = typeof parsed.y === "number" ? parsed.y : NaN;
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return { x, y };
+    }
+  } catch {
+    // Ignore storage errors.
+  }
+  return null;
+}
+
+function readStoredOperationsPresenceSize(): { width: number; height: number } | null {
+  try {
+    const raw = localStorage.getItem(OPERATIONS_PRESENCE_SIZE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { width?: unknown; height?: unknown };
+    const width = typeof parsed.width === "number" ? parsed.width : NaN;
+    const height = typeof parsed.height === "number" ? parsed.height : NaN;
+    if (Number.isFinite(width) && Number.isFinite(height)) {
+      return { width, height };
+    }
+  } catch {
+    // Ignore storage errors.
+  }
+  return null;
 }
 
 const GATEWAY_TOKEN = resolveGatewayToken();
@@ -904,10 +992,199 @@ function saveMessages(messages: ChatMessage[], sessionKey = DEFAULT_MAIN_SESSION
   }
 }
 
+/** Memory stats — fetches from /api/memory/stats */
+/** Module-level cache so data survives tab switches (component unmount/remount) */
+let memoryStatsCache: {
+  memoryItems: number;
+  entities: number;
+  categories: number;
+  reflections: number;
+  resources: number;
+} | null = null;
+let memoryStatsInterval: ReturnType<typeof setInterval> | null = null;
+
+function startMemoryStatsPolling() {
+  if (memoryStatsInterval) return; // already polling
+  const load = async () => {
+    try {
+      const res = await fetch("/api/memory/stats");
+      if (res.ok) {
+        const data = await res.json();
+        memoryStatsCache = {
+          memoryItems: data.items ?? data.total ?? data.count ?? data.memoryItems ?? 0,
+          entities: data.entityCount ?? data.entities ?? 0,
+          categories: data.categoryCount ?? data.categories ?? 0,
+          reflections: data.reflectionCount ?? data.reflections ?? 0,
+          resources: data.resourceCount ?? data.resources ?? 0,
+        };
+      }
+    } catch {}
+  };
+  load();
+  memoryStatsInterval = setInterval(load, 30000);
+}
+
+/** Memory stats — 5 cards matching the V3 reference layout */
+function MemoryStatsCards() {
+  const [stats, setStats] = useState(memoryStatsCache);
+
+  useEffect(() => {
+    startMemoryStatsPolling();
+    // Poll the cache to pick up updates
+    const sync = setInterval(() => {
+      if (memoryStatsCache && memoryStatsCache !== stats) {
+        setStats(memoryStatsCache);
+      }
+    }, 1000);
+    // Immediately sync if cache already has data
+    if (memoryStatsCache) setStats(memoryStatsCache);
+    return () => clearInterval(sync);
+  }, []);
+
+  const cards: Array<{ label: string; value: number | undefined; color: string }> = [
+    { label: "Memory Items", value: stats?.memoryItems, color: "text-emerald-400" },
+    { label: "Entities", value: stats?.entities, color: "text-purple-400" },
+    { label: "Categories", value: stats?.categories, color: "text-cyan-400" },
+    { label: "Reflections", value: stats?.reflections, color: "text-amber-400" },
+    { label: "Resources", value: stats?.resources, color: "text-[hsl(var(--primary))]" },
+  ];
+
+  return (
+    <div className="flex-shrink-0">
+      <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-[hsl(var(--muted-foreground))] mb-2">
+        Memory
+      </div>
+      <div className="space-y-1.5">
+        {/* Row 1: Memory Items + Entities */}
+        <div className="flex gap-1.5">
+          {cards.slice(0, 2).map((c) => (
+            <div
+              key={c.label}
+              className="flex-1 px-3 py-2 rounded-lg bg-[hsl(var(--card))] border border-[hsl(var(--border))]"
+            >
+              <div className={`text-lg font-bold font-mono ${c.color}`}>
+                {c.value?.toLocaleString() ?? "—"}
+              </div>
+              <div className="text-[10px] text-[hsl(var(--muted-foreground))]">{c.label}</div>
+            </div>
+          ))}
+        </div>
+        {/* Row 2: Categories + Reflections */}
+        <div className="flex gap-1.5">
+          {cards.slice(2, 4).map((c) => (
+            <div
+              key={c.label}
+              className="flex-1 px-3 py-2 rounded-lg bg-[hsl(var(--card))] border border-[hsl(var(--border))]"
+            >
+              <div className={`text-lg font-bold font-mono ${c.color}`}>
+                {c.value?.toLocaleString() ?? "—"}
+              </div>
+              <div className="text-[10px] text-[hsl(var(--muted-foreground))]">{c.label}</div>
+            </div>
+          ))}
+        </div>
+        {/* Row 3: Resources */}
+        <div className="flex gap-1.5">
+          {cards.slice(4).map((c) => (
+            <div
+              key={c.label}
+              className="flex-1 px-3 py-2 rounded-lg bg-[hsl(var(--card))] border border-[hsl(var(--border))]"
+            >
+              <div className={`text-lg font-bold font-mono ${c.color}`}>
+                {c.value?.toLocaleString() ?? "—"}
+              </div>
+              <div className="text-[10px] text-[hsl(var(--muted-foreground))]">{c.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [avatarState, setAvatarState] = useState<AvatarState>("idle");
   const [avatarMood, setAvatarMood] = useState<MoodName | undefined>(undefined);
   const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("full");
+  const [dashboardMode, setDashboardMode] = useState<DashboardMode>("personal");
+
+  // Workspace tabs
+  interface WorkspaceTab {
+    id: string;
+    name: string;
+    icon: string;
+  }
+  const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>(() => {
+    try {
+      const stored = localStorage.getItem("argent-workspaces");
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return [{ id: "home", name: "Home", icon: "🏠" }];
+  });
+  const [activeWorkspace, setActiveWorkspace] = useState("home");
+
+  // Resizable column widths (percentages, must sum to ~100)
+  const [colWidths, setColWidths] = useState<[number, number, number]>(() => {
+    try {
+      const stored = localStorage.getItem("argent-col-widths");
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return [38, 32, 30]; // tasks%, avatar%, chat%
+  });
+  const [draggingCol, setDraggingCol] = useState<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem("argent-col-widths", JSON.stringify(colWidths));
+  }, [colWidths]);
+
+  // Column resize handler
+  const handleColDrag = useCallback(
+    (colIndex: number, e: React.MouseEvent) => {
+      e.preventDefault();
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const startX = e.clientX;
+      const startWidths = [...colWidths] as [number, number, number];
+
+      const onMove = (ev: MouseEvent) => {
+        const dx = ev.clientX - startX;
+        const pctDelta = (dx / rect.width) * 100;
+        const next = [...startWidths] as [number, number, number];
+
+        if (colIndex === 0) {
+          // Dragging between tasks and avatar
+          next[0] = Math.max(15, Math.min(45, startWidths[0] + pctDelta));
+          next[1] = startWidths[1] - (next[0] - startWidths[0]);
+        } else {
+          // Dragging between avatar and chat
+          next[1] = Math.max(20, Math.min(60, startWidths[1] + pctDelta));
+          next[2] = startWidths[2] - (next[1] - startWidths[1]);
+        }
+        // Clamp minimums
+        if (next[1] < 20) return;
+        if (next[2] < 15) return;
+        setColWidths(next);
+      };
+
+      const onUp = () => {
+        setDraggingCol(null);
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      };
+
+      setDraggingCol(colIndex);
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [colWidths],
+  );
+
+  // Persist workspace tabs
+  useEffect(() => {
+    localStorage.setItem("argent-workspaces", JSON.stringify(workspaceTabs));
+  }, [workspaceTabs]);
   const [configPanelOpen, setConfigPanelOpen] = useState(false);
   const [configPanelRequestedTab, setConfigPanelRequestedTab] = useState<"systems" | null>(null);
   const [workerFlowOpen, setWorkerFlowOpen] = useState(false);
@@ -926,6 +1203,15 @@ function App() {
     allowManualOverrides: true,
   });
   const pollingMultiplier = Math.max(1, runtimeLoadProfile.pollingMultiplier || 1);
+  const allowWorkforceSurface = isWorkforceSurfaceAllowed(surfaceProfile);
+  const isOperationsDashboard = allowWorkforceSurface && dashboardMode === "operations";
+
+  // Ensure Operations tab exists when workforce is allowed
+  useEffect(() => {
+    if (allowWorkforceSurface && !workspaceTabs.some((t) => t.id === "operations")) {
+      setWorkspaceTabs((prev) => [...prev, { id: "operations", name: "Operations", icon: "⚙️" }]);
+    }
+  }, [allowWorkforceSurface, workspaceTabs]);
 
   // Task management via backend API
   const {
@@ -942,17 +1228,54 @@ function App() {
     completeTaskByTitle,
     refreshTasks,
   } = useTasks({ enabled: backgroundPollingEnabled, pollMs: 15000 * pollingMultiplier });
+  const { tasks: workerTasks } = useTasks({
+    enabled: backgroundPollingEnabled && isOperationsDashboard,
+    pollMs: 15000 * pollingMultiplier,
+    includeWorkerTasks: true,
+    workerOnly: true,
+  });
 
   // Board view state
   const [showBoard, setShowBoard] = useState(false);
   const [showWorkforce, setShowWorkforce] = useState(false);
+  const [widgetPickerOpen, setWidgetPickerOpen] = useState(false);
+  const [opsView, setOpsView] = useState<"map" | "workers" | "jobs" | "tasks" | "org" | "schedule">(
+    "map",
+  );
+  const [operationsChatOpen, setOperationsChatOpen] = useState(false);
+  const [operationsPresenceVisible, setOperationsPresenceVisible] = useState(false);
+  const [operationsPresencePosition, setOperationsPresencePosition] = useState(() => {
+    const stored = readStoredOperationsPresencePosition();
+    if (stored) return stored;
+    return {
+      x: Math.max(24, window.innerWidth - 584),
+      y: 112,
+    };
+  });
+  const [operationsPresenceSize, setOperationsPresenceSize] = useState(() => {
+    const stored = readStoredOperationsPresenceSize();
+    if (stored) return stored;
+    return {
+      width: OPERATIONS_PRESENCE_DEFAULT_WIDTH,
+      height: OPERATIONS_PRESENCE_DEFAULT_HEIGHT,
+    };
+  });
   const [showProjectKickoffModal, setShowProjectKickoffModal] = useState(false);
   const [workforceFocus, setWorkforceFocus] = useState<"all" | "due-now" | "blocked">("all");
   const [workforceBadge, setWorkforceBadge] = useState<{ dueNow: number; blocked: number }>({
     dueNow: 0,
     blocked: 0,
   });
-  const allowWorkforceSurface = isWorkforceSurfaceAllowed(surfaceProfile);
+  const operationsPresenceDragRef = useRef<{
+    pointerOffsetX: number;
+    pointerOffsetY: number;
+  } | null>(null);
+  const operationsPresenceResizeRef = useRef<{
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startHeight: number;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -961,11 +1284,21 @@ function App() {
         const response = await fetchLocalApi("/api/settings/agent/raw-config", {}, 0);
         const payload = (await response.json()) as { raw?: string };
         if (!cancelled) {
-          setSurfaceProfile(parseDashboardSurfaceProfile(payload?.raw));
+          const nextSurfaceProfile = parseDashboardSurfaceProfile(payload?.raw);
+          const configDashboardMode = parseDashboardMode(payload?.raw, nextSurfaceProfile);
+          const storedDashboardMode = readStoredDashboardMode();
+          const nextDashboardMode =
+            storedDashboardMode && isDashboardModeAllowed(storedDashboardMode, nextSurfaceProfile)
+              ? storedDashboardMode
+              : configDashboardMode;
+          setSurfaceProfile(nextSurfaceProfile);
+          setDashboardMode(nextDashboardMode);
         }
       } catch {
         if (!cancelled) {
           setSurfaceProfile("full");
+          const storedDashboardMode = readStoredDashboardMode();
+          setDashboardMode(storedDashboardMode === "operations" ? "operations" : "personal");
         }
       }
     };
@@ -974,6 +1307,175 @@ function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!isDashboardModeAllowed(dashboardMode, surfaceProfile)) {
+      setDashboardMode("personal");
+      persistDashboardMode("personal");
+      return;
+    }
+    persistDashboardMode(dashboardMode);
+  }, [dashboardMode, surfaceProfile]);
+
+  // Reset operations panels when switching away from operations mode.
+  // IMPORTANT: showBoard and showWorkforce are NOT in the dependency array —
+  // they should only reset on mode transition, not on every state change.
+  // Having them as deps caused a flash bug where Project Board would
+  // immediately close in personal mode.
+  useEffect(() => {
+    if (isOperationsDashboard) {
+      setShowWorkforce(true);
+      return;
+    }
+    setOperationsChatOpen(false);
+    setOperationsPresenceVisible(false);
+    setShowWorkforce(false);
+    // Note: do NOT close showBoard here — personal mode uses it too
+  }, [isOperationsDashboard]);
+
+  useEffect(() => {
+    if (!operationsChatOpen && operationsPresenceVisible) {
+      setOperationsPresenceVisible(false);
+    }
+  }, [operationsChatOpen, operationsPresenceVisible]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        OPERATIONS_PRESENCE_POSITION_STORAGE_KEY,
+        JSON.stringify(operationsPresencePosition),
+      );
+    } catch {
+      // Best effort only.
+    }
+  }, [operationsPresencePosition]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        OPERATIONS_PRESENCE_SIZE_STORAGE_KEY,
+        JSON.stringify(operationsPresenceSize),
+      );
+    } catch {
+      // Best effort only.
+    }
+  }, [operationsPresenceSize]);
+
+  useEffect(() => {
+    if (!operationsPresenceVisible) {
+      operationsPresenceDragRef.current = null;
+      operationsPresenceResizeRef.current = null;
+      return;
+    }
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const drag = operationsPresenceDragRef.current;
+      if (drag) {
+        const maxX = Math.max(
+          OPERATIONS_PRESENCE_PADDING,
+          window.innerWidth - operationsPresenceSize.width - OPERATIONS_PRESENCE_PADDING,
+        );
+        const maxY = Math.max(
+          OPERATIONS_PRESENCE_PADDING,
+          window.innerHeight - operationsPresenceSize.height - OPERATIONS_PRESENCE_PADDING,
+        );
+        const nextX = Math.min(
+          Math.max(OPERATIONS_PRESENCE_PADDING, event.clientX - drag.pointerOffsetX),
+          maxX,
+        );
+        const nextY = Math.min(
+          Math.max(OPERATIONS_PRESENCE_PADDING, event.clientY - drag.pointerOffsetY),
+          maxY,
+        );
+        setOperationsPresencePosition({ x: nextX, y: nextY });
+        return;
+      }
+
+      const resize = operationsPresenceResizeRef.current;
+      if (!resize) return;
+
+      const maxWidth = Math.min(
+        OPERATIONS_PRESENCE_MAX_WIDTH,
+        window.innerWidth - operationsPresencePosition.x - OPERATIONS_PRESENCE_PADDING,
+      );
+      const maxHeight = Math.min(
+        OPERATIONS_PRESENCE_MAX_HEIGHT,
+        window.innerHeight - operationsPresencePosition.y - OPERATIONS_PRESENCE_PADDING,
+      );
+      const nextWidth = Math.min(
+        Math.max(
+          OPERATIONS_PRESENCE_MIN_WIDTH,
+          resize.startWidth + (event.clientX - resize.startX),
+        ),
+        Math.max(OPERATIONS_PRESENCE_MIN_WIDTH, maxWidth),
+      );
+      const nextHeight = Math.min(
+        Math.max(
+          OPERATIONS_PRESENCE_MIN_HEIGHT,
+          resize.startHeight + (event.clientY - resize.startY),
+        ),
+        Math.max(OPERATIONS_PRESENCE_MIN_HEIGHT, maxHeight),
+      );
+      setOperationsPresenceSize({ width: nextWidth, height: nextHeight });
+    };
+
+    const handleMouseUp = () => {
+      operationsPresenceDragRef.current = null;
+      operationsPresenceResizeRef.current = null;
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [
+    operationsPresencePosition.x,
+    operationsPresencePosition.y,
+    operationsPresenceSize,
+    operationsPresenceVisible,
+  ]);
+
+  useEffect(() => {
+    const clampPresencePosition = () => {
+      const clampedWidth = Math.min(
+        Math.max(OPERATIONS_PRESENCE_MIN_WIDTH, operationsPresenceSize.width),
+        Math.min(
+          OPERATIONS_PRESENCE_MAX_WIDTH,
+          window.innerWidth - OPERATIONS_PRESENCE_PADDING * 2,
+        ),
+      );
+      const clampedHeight = Math.min(
+        Math.max(OPERATIONS_PRESENCE_MIN_HEIGHT, operationsPresenceSize.height),
+        Math.min(
+          OPERATIONS_PRESENCE_MAX_HEIGHT,
+          window.innerHeight - OPERATIONS_PRESENCE_PADDING * 2,
+        ),
+      );
+      const maxX = Math.max(
+        OPERATIONS_PRESENCE_PADDING,
+        window.innerWidth - clampedWidth - OPERATIONS_PRESENCE_PADDING,
+      );
+      const maxY = Math.max(
+        OPERATIONS_PRESENCE_PADDING,
+        window.innerHeight - clampedHeight - OPERATIONS_PRESENCE_PADDING,
+      );
+      setOperationsPresenceSize((prev) =>
+        prev.width === clampedWidth && prev.height === clampedHeight
+          ? prev
+          : { width: clampedWidth, height: clampedHeight },
+      );
+      setOperationsPresencePosition((prev) => ({
+        x: Math.min(Math.max(OPERATIONS_PRESENCE_PADDING, prev.x), maxX),
+        y: Math.min(Math.max(OPERATIONS_PRESENCE_PADDING, prev.y), maxY),
+      }));
+    };
+
+    clampPresencePosition();
+    window.addEventListener("resize", clampPresencePosition);
+    return () => window.removeEventListener("resize", clampPresencePosition);
+  }, [operationsPresenceSize.height, operationsPresenceSize.width]);
 
   useEffect(() => {
     if (allowWorkforceSurface) {
@@ -1336,6 +1838,7 @@ function App() {
   const effectiveIsSpeaking = isSpeaking || nativeSpeaking;
 
   const [selectedVoice, setSelectedVoice] = useState<Voice>("jessica");
+
   const [weatherModalOpen, setWeatherModalOpen] = useState(false);
   const [calendarModalOpen, setCalendarModalOpen] = useState(false);
   const [alertsModalOpen, setAlertsModalOpen] = useState(false);
@@ -1474,9 +1977,9 @@ function App() {
 
   // Canvas debug positioning (enable for tuning)
   const [canvasDebug, setCanvasDebug] = useState(false); // Disabled - locked at user preference
-  const [canvasLeft, setCanvasLeft] = useState(25); // percentage - locked
-  const [canvasWidth, setCanvasWidth] = useState(50); // percentage - locked
-  const [canvasTop, setCanvasTop] = useState(7); // rem - locked
+  const [canvasLeft, setCanvasLeft] = useState(0); // percentage - flush left drawer
+  const [canvasWidth, setCanvasWidth] = useState(55); // percentage - ~55% width
+  const [canvasTop, setCanvasTop] = useState(0); // rem - full height
 
   // Avatar debug (disabled - bubble position locked)
   const [avatarDebug, setAvatarDebug] = useState(false);
@@ -1906,6 +2409,8 @@ function App() {
     token: GATEWAY_TOKEN,
   });
 
+  // Workflow Map data fetched by WorkflowMapCanvas via gateway WebSocket RPC
+
   const canonicalizeSessionKey = useCallback(
     (sessionKey: string | null | undefined) =>
       toCanonicalSessionKey(sessionKey, {
@@ -2266,6 +2771,21 @@ function App() {
     },
   });
 
+  const stopActiveSpeech = useCallback(() => {
+    if (isNativeVoiceActive()) {
+      postNativeVoiceCommand({ kind: "tts_stop" });
+    }
+    setNativeSpeaking(false);
+    tts.stop();
+    stopLipSync();
+    amplitudeTrackerRef.current?.detach();
+    setAvatarState("idle");
+    setIsSpeaking(false);
+    agentState.setIsSpeaking(false);
+    agentState.setSpeechAmplitude(0);
+    pendingTtsMsgRef.current = null;
+  }, [agentState, tts]);
+
   // Track pending restart for continuous listening
   const [shouldRestartListening, setShouldRestartListening] = useState(false);
   // Track intentional mic mute to prevent sending partial transcripts
@@ -2292,7 +2812,7 @@ function App() {
     },
     onStart: () => {
       // Stop any TTS when starting to listen
-      tts.stop();
+      stopActiveSpeech();
       addLog("info", `Listening (${recognitionMode})...`);
     },
     onEnd: () => {
@@ -2313,13 +2833,9 @@ function App() {
     const nextEnabled = !audioEnabled;
     setAudioEnabled(nextEnabled);
     if (!nextEnabled) {
-      if (isNativeVoiceActive()) {
-        postNativeVoiceCommand({ kind: "tts_stop" });
-      }
-      setNativeSpeaking(false);
-      tts.stop();
+      stopActiveSpeech();
     }
-  }, [audioEnabled, tts]);
+  }, [audioEnabled, stopActiveSpeech]);
 
   const handleToggleMic = useCallback(() => {
     const nativeSpeech = isNativeSpeechActive();
@@ -2785,6 +3301,10 @@ function App() {
       const sanitizedContent = stripTtsControlMarkers(content);
       if (!sanitizedContent && !image && (!attachments || attachments.length === 0)) {
         return;
+      }
+
+      if (!isSilent) {
+        stopActiveSpeech();
       }
 
       if (!isSilent) {
@@ -3537,6 +4057,7 @@ function App() {
       refreshForgeApps,
       upsertForgeApp,
       currentSessionKey,
+      stopActiveSpeech,
     ],
   );
 
@@ -3570,6 +4091,8 @@ function App() {
     async (content: string, image?: string, attachments?: ChatAttachment[]) => {
       const trimmed = content.trim();
       if (!trimmed) return;
+
+      stopActiveSpeech();
 
       setMessages((prev) => [
         ...prev,
@@ -3642,6 +4165,7 @@ function App() {
       deepThinkMode,
       gateway,
       handleQueueMessage,
+      stopActiveSpeech,
     ],
   );
 
@@ -3892,7 +4416,7 @@ function App() {
   const handleInterrupt = useCallback(
     async (message: string) => {
       // Stop TTS if speaking
-      tts.stop();
+      stopActiveSpeech();
       // Server-side abort (also cleans up client-side stream)
       await gateway.stopCurrentRun(currentSessionKey);
       // Mark current response as done (partial)
@@ -3917,7 +4441,23 @@ function App() {
         });
       }
     },
-    [tts, gateway, handleSendMessage, currentSessionKey],
+    [stopActiveSpeech, gateway, handleSendMessage, currentSessionKey],
+  );
+
+  const handleReplayTtsSummary = useCallback(
+    (summary: string, audioUrl?: string) => {
+      const cleanedSummary = stripTtsControlMarkers(summary).trim();
+      if (!cleanedSummary && !audioUrl) return;
+
+      stopActiveSpeech();
+      if (audioUrl) {
+        void tts.playUrl(audioUrl);
+        return;
+      }
+
+      void tts.speak(cleanedSummary, avatarMood);
+    },
+    [avatarMood, stopActiveSpeech, tts],
   );
 
   // Keep ref updated for speech recognition callback
@@ -4231,7 +4771,7 @@ function App() {
           onActivityClick={() => setActivityPanelOpen(!activityPanelOpen)}
           onAppsClick={() => setAppForgeOpen(true)}
           onWorkforceClick={
-            allowWorkforceSurface
+            isOperationsDashboard
               ? (focus) => {
                   setShowBoard(false);
                   setWorkforceFocus(focus ?? "all");
@@ -4239,9 +4779,9 @@ function App() {
                 }
               : undefined
           }
-          workforceDueCount={allowWorkforceSurface ? workforceBadge.dueNow : 0}
-          workforceBlockedCount={allowWorkforceSurface ? workforceBadge.blocked : 0}
-          onNewWorkerClick={allowWorkforceSurface ? () => setWorkerFlowOpen(true) : undefined}
+          workforceDueCount={isOperationsDashboard ? workforceBadge.dueNow : 0}
+          workforceBlockedCount={isOperationsDashboard ? workforceBadge.blocked : 0}
+          onNewWorkerClick={isOperationsDashboard ? () => setWorkerFlowOpen(true) : undefined}
           onSettingsClick={() => setConfigPanelOpen(true)}
           onLockClick={lockScreen.lock}
           canLock={lockScreen.hasCredentials}
@@ -4257,23 +4797,263 @@ function App() {
         />
       </div>
 
+      {/* Workspace tabs */}
+      <div className="flex-shrink-0 flex items-center gap-1 px-1">
+        {workspaceTabs.map((ws) => (
+          <button
+            key={ws.id}
+            onClick={() => {
+              setActiveWorkspace(ws.id);
+              if (ws.id === "operations") setDashboardMode("operations");
+              else setDashboardMode("personal");
+            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              activeWorkspace === ws.id
+                ? "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))] border border-[hsl(var(--primary))]/30 shadow-[0_0_6px_hsl(var(--primary)/0.15)]"
+                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--card))]"
+            }`}
+          >
+            {ws.id === "home" ? (
+              <HomeIcon size={16} />
+            ) : ws.id === "operations" ? (
+              <OperationsIcon size={16} />
+            ) : (
+              ws.icon
+            )}{" "}
+            {ws.name}
+          </button>
+        ))}
+        <button
+          onClick={() => {
+            const name = prompt("Workspace name:");
+            if (!name?.trim()) return;
+            const id = `ws-${Date.now()}`;
+            setWorkspaceTabs((prev) => [...prev, { id, name: name.trim(), icon: "📋" }]);
+            setActiveWorkspace(id);
+            setDashboardMode("personal");
+          }}
+          className="px-2 py-1.5 rounded-lg text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--primary))] hover:bg-[hsl(var(--card))] transition-colors"
+        >
+          +
+        </button>
+      </div>
+
       {/* Main Content */}
-      {showWorkforce && allowWorkforceSurface ? (
-        <div className="flex-1 min-h-0 relative">
-          <WorkforceBoard
-            gatewayRequest={gateway.request}
-            focus={workforceFocus}
-            onClose={() => setShowWorkforce(false)}
-          />
+      {isOperationsDashboard && activeWorkspace === "operations" ? (
+        /* Operations workspace — sub-nav tabs */
+        <div className="flex-1 min-h-0 flex flex-col">
+          {/* Sub-nav */}
+          <div className="flex-shrink-0 flex items-center gap-1 px-4 py-1.5 border-b border-[hsl(var(--border))]">
+            {(() => {
+              const OPS_TAB_ICONS: Record<string, React.ReactNode> = {
+                map: <WorkflowMapIcon size={16} />,
+                jobs: <WorkloadsIcon size={16} />,
+                tasks: <TaskManagerIcon size={16} />,
+                org: <OrgChartIcon size={16} />,
+                schedule: <ScheduleIcon size={16} />,
+              };
+              return (
+                [
+                  { id: "map", label: "Workflow Map" },
+                  { id: "jobs", label: "Workloads" },
+                  { id: "tasks", label: "Task Manager" },
+                  { id: "org", label: "Org Chart" },
+                  { id: "schedule", label: "Schedule" },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setOpsView(tab.id)}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${
+                    opsView === tab.id
+                      ? "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]"
+                      : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                  }`}
+                >
+                  {OPS_TAB_ICONS[tab.id]} {tab.label}
+                </button>
+              ));
+            })()}
+          </div>
+
+          {/* Tab content */}
+          {opsView === "map" ? (
+            <div className="flex-1 min-h-0 relative">
+              <WorkflowMapCanvas
+                agentName={
+                  chatAgentOptions.find(
+                    (a: { id: string; label: string }) => a.id === currentChatAgentId,
+                  )?.label ||
+                  currentChatAgentId ||
+                  "Agent"
+                }
+                connected={gateway.connected}
+                agentStatus={gateway.connected ? "Connected" : "Offline"}
+                gatewayRequest={gateway.request}
+              />
+            </div>
+          ) : opsView === "jobs" ? (
+            <div className="flex-1 min-h-0 overflow-auto p-4">
+              <JobsBoardWidget />
+            </div>
+          ) : opsView === "tasks" ? (
+            <div className="flex-1 min-h-0 overflow-auto p-4">
+              <TaskManagerWidget />
+            </div>
+          ) : opsView === "org" ? (
+            <div className="flex-1 min-h-0 overflow-auto p-4">
+              <OrgChartWidget />
+            </div>
+          ) : opsView === "schedule" ? (
+            <div className="flex-1 min-h-0 overflow-auto p-4">
+              <ScheduleWidget />
+            </div>
+          ) : null}
+        </div>
+      ) : isOperationsDashboard ? (
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* Operations sub-nav: switch between Map and Workers (Business only) */}
+          {activeWorkspace === "operations" && (
+            <div className="flex-shrink-0 flex items-center gap-1 px-4 py-1.5 border-b border-[hsl(var(--border))]">
+              <button
+                onClick={() => {
+                  setOpsView("map");
+                  setDashboardMode("operations");
+                }}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${opsView === "map" ? "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]" : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}
+              >
+                <WorkflowMapIcon size={16} /> Workflow Map
+              </button>
+              <button
+                onClick={() => setOpsView("workers")}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${opsView === "workers" ? "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]" : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}
+              >
+                <WorkersIcon size={16} /> Workers
+              </button>
+            </div>
+          )}
+          <div className="flex-1 grid min-h-0 grid-cols-12 gap-4 overflow-hidden">
+            <div className="col-span-4 flex min-h-0 flex-col gap-4 overflow-hidden">
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/45">
+                  Operations Console
+                </div>
+                <div className="mt-1 text-sm text-white/70">
+                  This mode is for business execution. Operator tasks, worker tasks, schedules, and
+                  project lanes are surfaced here without the personal widget desktop.
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <TaskList
+                  tasks={tasks}
+                  workerTasks={workerTasks}
+                  projects={projects}
+                  showWorkerLane={true}
+                  cronJobs={cronJobs}
+                  cronFormatSchedule={cronFormatSchedule}
+                  cronGetNextRun={cronGetNextRun}
+                  onCronJobUpdate={updateCronJob}
+                  onCronJobDelete={deleteCronJob}
+                  onCronJobRun={runCronJob}
+                  onTaskAdd={addTask}
+                  onTaskDelete={deleteTask}
+                  onTaskEdit={editTask}
+                  onTaskExecute={executeTask}
+                  onProjectDelete={deleteProject}
+                  onProjectTaskAdd={addProjectTask}
+                  onProjectKickoff={() => setShowProjectKickoffModal(true)}
+                  onOpenBoard={() => {
+                    setShowWorkforce(false);
+                    setShowBoard(true);
+                  }}
+                  showBoard={showBoard}
+                />
+              </div>
+            </div>
+            <div className="col-span-8 flex min-h-0 flex-col gap-4 overflow-hidden">
+              <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <button
+                  onClick={() => {
+                    setShowBoard(false);
+                    setWorkforceFocus("all");
+                    setShowWorkforce(true);
+                  }}
+                  className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
+                    showWorkforce
+                      ? "border-cyan-300/40 bg-cyan-500/10 text-cyan-100"
+                      : "border-white/15 text-white/70 hover:text-white"
+                  }`}
+                >
+                  Workforce
+                </button>
+                <button
+                  onClick={() => {
+                    setShowWorkforce(false);
+                    setShowBoard(true);
+                  }}
+                  className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
+                    showBoard
+                      ? "border-purple-300/40 bg-purple-500/10 text-purple-100"
+                      : "border-white/15 text-white/70 hover:text-white"
+                  }`}
+                >
+                  Project Board
+                </button>
+                <button
+                  onClick={() => setOperationsChatOpen((open) => !open)}
+                  className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
+                    operationsChatOpen
+                      ? "border-emerald-300/40 bg-emerald-500/10 text-emerald-100"
+                      : "border-white/15 text-white/70 hover:text-white"
+                  }`}
+                >
+                  Chat
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-hidden">
+                {showBoard ? (
+                  <ProjectBoard
+                    tasks={tasks}
+                    projects={projects}
+                    onTaskUpdate={editTaskFull}
+                    onTaskDelete={(id) => deleteTask(id)}
+                    onTaskAdd={addTask}
+                    onTaskStart={(id) => startTask(id)}
+                    onTaskComplete={(id) => completeTask(id)}
+                    onClose={() => setShowBoard(false)}
+                  />
+                ) : (
+                  <WorkforceBoard
+                    gatewayRequest={gateway.request}
+                    focus={workforceFocus}
+                    onClose={() => setShowWorkforce(false)}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+          ) : showWorkforce && allowWorkforceSurface ? (
+          <div className="flex-1 min-h-0 relative">
+            <WorkforceBoard
+              gatewayRequest={gateway.request}
+              focus={workforceFocus}
+              onClose={() => setShowWorkforce(false)}
+            />
+          </div>
         </div>
       ) : (
-        <div className="flex-1 grid grid-cols-12 grid-rows-1 gap-4 min-h-0 relative">
-          {/* Left Panel - Tasks - fixed height with widget space below */}
-          <div className="col-span-3 row-span-1 flex flex-col gap-4 min-h-0 overflow-hidden">
-            <div className="h-[calc(100vh-400px)] min-h-[400px] max-h-[600px] overflow-hidden">
+        <div ref={containerRef} className="flex-1 flex min-h-0 relative gap-0">
+          {/* ── Left Panel: Tasks + Memory ── */}
+          <div
+            className="flex flex-col gap-3 min-h-0 overflow-hidden px-2"
+            style={{ width: `${colWidths[0]}%` }}
+          >
+            <div className="flex-1 min-h-0 overflow-hidden">
               <TaskList
                 tasks={tasks}
+                workerTasks={workerTasks}
                 projects={projects}
+                showWorkerLane={false}
                 cronJobs={cronJobs}
                 cronFormatSchedule={cronFormatSchedule}
                 cronGetNextRun={cronGetNextRun}
@@ -4295,191 +5075,41 @@ function App() {
               />
             </div>
 
-            <div className="flex items-center gap-2">
-              {allowWorkforceSurface && (
-                <button
-                  onClick={() => {
-                    setShowBoard(false);
-                    setWorkforceFocus("all");
-                    setShowWorkforce(true);
-                  }}
-                  className={`text-xs px-2.5 py-1.5 rounded border ${
-                    showWorkforce
-                      ? "border-cyan-300/40 text-cyan-100 bg-cyan-500/10"
-                      : "border-white/15 text-white/70 hover:text-white"
-                  }`}
-                >
-                  Workforce
-                </button>
-              )}
+            {/* Memory stats — wired to /api/memory/stats */}
+            <MemoryStatsCards />
+
+            {/* Project Board toggle */}
+            <div className="flex-shrink-0">
               <button
                 onClick={() => {
                   setShowWorkforce(false);
-                  setShowBoard(true);
+                  setShowBoard((prev) => !prev);
                 }}
-                className={`text-xs px-2.5 py-1.5 rounded border ${
+                className={`text-xs px-2.5 py-1.5 rounded-lg border transition-all ${
                   showBoard
-                    ? "border-purple-300/40 text-purple-100 bg-purple-500/10"
-                    : "border-white/15 text-white/70 hover:text-white"
+                    ? "border-[hsl(var(--primary))]/50 text-[hsl(var(--primary))] bg-[hsl(var(--primary))]/15 shadow-[0_0_8px_hsl(var(--primary)/0.2)]"
+                    : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--muted-foreground))]/30"
                 }`}
               >
                 Project Board
               </button>
-              {(showBoard || (allowWorkforceSurface && showWorkforce)) && (
-                <button
-                  onClick={() => {
-                    setShowBoard(false);
-                    setShowWorkforce(false);
-                  }}
-                  className="text-xs px-2.5 py-1.5 rounded border border-white/15 text-white/60 hover:text-white"
-                >
-                  Close Panels
-                </button>
-              )}
-            </div>
-
-            {/* Position 7 widget - swaps with bubble when canvas is open */}
-            {/* When config panel is open + bubble mode, pop bubble above config panel (z-[55]) so user can see it while adjusting dock head sliders */}
-            <div
-              className={`relative h-[280px] flex items-center justify-center ${configPanelOpen && avatarMode === "bubble" ? "z-[55]" : ""}`}
-            >
-              {avatarMode === "bubble" ? (
-                <>
-                  {!avatarPreviewActive && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      {avatarRenderer === "aevp" ? (
-                        <AEVPPresence
-                          width={280}
-                          height={280}
-                          agentState={agentState}
-                          identity={visualIdentity}
-                          accessibilityConfig={accessibilityConfig}
-                          onPreSpeechCueReady={(fn) => {
-                            preSpeechCueRef.current = fn;
-                          }}
-                          onAmplitudeTargetReady={(fn) => {
-                            rendererAmplitudeSetterRef.current = fn;
-                          }}
-                        />
-                      ) : (
-                        <Live2DAvatar
-                          state={avatarState}
-                          mood={avatarMood}
-                          width={280}
-                          height={280}
-                          mode="bubble"
-                          bubbleOffsetX={bubbleOffsetX}
-                          bubbleOffsetY={bubbleOffsetY}
-                          bubbleScale={bubbleScale}
-                        />
-                      )}
-                    </div>
-                  )}
-
-                  {/* Bubble position debug controls - draggable */}
-                  {avatarDebug && (
-                    <div
-                      className="fixed bg-gray-800/90 backdrop-blur p-3 rounded-lg border border-white/10 z-50 min-w-[240px] cursor-move"
-                      style={{
-                        left: `${bubbleDebugPos.x}px`,
-                        top: `${bubbleDebugPos.y}px`,
-                        userSelect: isDraggingBubbleDebug ? "none" : "auto",
-                      }}
-                      onMouseDown={handleBubbleDebugMouseDown}
-                    >
-                      <div className="text-white/70 text-xs mb-2 font-mono font-semibold flex items-center gap-2">
-                        <span>⋮⋮</span> Bubble Position{" "}
-                        <span className="text-white/40">(drag to move)</span>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div>
-                          <label className="text-white/50 text-xs">Offset X: {bubbleOffsetX}</label>
-                          <input
-                            type="range"
-                            min="-150"
-                            max="150"
-                            step="5"
-                            value={bubbleOffsetX}
-                            onChange={(e) => setBubbleOffsetX(Number(e.target.value))}
-                            className="w-full"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-white/50 text-xs">Offset Y: {bubbleOffsetY}</label>
-                          <input
-                            type="range"
-                            min="-800"
-                            max="800"
-                            step="10"
-                            value={bubbleOffsetY}
-                            onChange={(e) => setBubbleOffsetY(Number(e.target.value))}
-                            className="w-full"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-white/50 text-xs">
-                            Scale: {bubbleScale.toFixed(4)}
-                          </label>
-                          <input
-                            type="range"
-                            min="0.10"
-                            max="0.35"
-                            step="0.001"
-                            value={bubbleScale}
-                            onChange={(e) => setBubbleScale(Number(e.target.value))}
-                            className="w-full"
-                          />
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          console.log(
-                            `Bubble: offsetX=${bubbleOffsetX}, offsetY=${bubbleOffsetY}, scale=${bubbleScale}`,
-                          );
-                          navigator.clipboard.writeText(
-                            `offsetX: ${bubbleOffsetX}, offsetY: ${bubbleOffsetY}, scale: ${bubbleScale.toFixed(4)}`,
-                          );
-                        }}
-                        className="mt-2 w-full px-2 py-1 bg-purple-600/50 hover:bg-purple-600/70 text-white text-xs rounded"
-                      >
-                        📋 Copy Values
-                      </button>
-
-                      <button
-                        onClick={() => setAvatarDebug(false)}
-                        className="mt-1 w-full px-2 py-1 bg-green-600/50 hover:bg-green-600/70 text-white text-xs rounded"
-                      >
-                        Lock
-                      </button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="w-full h-full">
-                  {(() => {
-                    const type7 = getWidget(7);
-                    const customId7 = getCustomWidgetId(type7);
-                    if (customId7) return <CustomWidget widgetId={customId7} />;
-
-                    // Position 7 widgets get size="large" prop for SilverPriceWidget
-                    if (type7 === "silver-price") {
-                      return <SilverPriceWidget size="large" />;
-                    }
-
-                    const Widget7 = getWidgetComponent(type7);
-                    return <Widget7 />;
-                  })()}
-                </div>
-              )}
             </div>
           </div>
-          {/* Board View OR Center+Right Panels */}
+          {/* Drag handle: tasks ↔ center */}
+          <div
+            className="w-1 cursor-col-resize hover:bg-[hsl(var(--primary))]/30 active:bg-[hsl(var(--primary))]/50 transition-colors flex-shrink-0 relative group"
+            onMouseDown={(e) => handleColDrag(0, e)}
+          >
+            {draggingCol === 0 && (
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 px-2 py-1 rounded bg-[hsl(var(--card))] border border-[hsl(var(--border))] text-[10px] text-[hsl(var(--primary))] font-mono whitespace-nowrap z-50">
+                {Math.round(colWidths[0])}% | {Math.round(colWidths[1])}%
+              </div>
+            )}
+          </div>
+
+          {/* ── Center + Right: Board OR Avatar+Chat ── */}
           {showBoard ? (
-            <div className="col-span-9 overflow-hidden">
+            <div className="flex-1 overflow-hidden">
               <ProjectBoard
                 tasks={tasks}
                 projects={projects}
@@ -4493,43 +5123,18 @@ function App() {
             </div>
           ) : (
             <>
-              {/* Center - Avatar area with flanking widgets */}
+              {/* ── Center: Avatar + Stats + Quick Access ── */}
               <div
-                className={`${chatCollapsed ? "col-span-9" : "col-span-6"} relative overflow-hidden`}
+                className="relative overflow-hidden flex flex-col items-center justify-end pb-4"
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1.5fr 1fr",
-                  columnGap: "0.25rem",
+                  width: chatCollapsed ? `${colWidths[1] + colWidths[2]}%` : `${colWidths[1]}%`,
                 }}
               >
-                {/* Left widgets column (positions 1-3) */}
-                <div className="flex flex-col gap-3">
-                  {[1, 2, 3].map((position) => {
-                    const widgetType = getWidget(position);
-                    const customId = getCustomWidgetId(widgetType);
-                    if (customId) {
-                      return (
-                        <div key={position} className="flex-1 min-h-0">
-                          <CustomWidget widgetId={customId} />
-                        </div>
-                      );
-                    }
-                    const WidgetComponent = getWidgetComponent(widgetType);
-                    return (
-                      <div key={position} className="flex-1 min-h-0">
-                        <WidgetComponent />
-                      </div>
-                    );
-                  })}
-                </div>
+                {/* Avatar area — fill center, minimum 60% height */}
+                <div className="relative flex-1 w-full min-h-[60%] flex items-center justify-center z-20">
+                  {avatarRenderer !== "aevp" && <AvatarBackground />}
 
-                {/* Center - Avatar (z-20 keeps it below CanvasPanel z-60 but above background) */}
-                <div className="flex flex-col items-center justify-center relative z-20">
-                  {/* Background image — only for Live2D; AEVP has its own starfield */}
-                  {avatarMode === "full" && avatarRenderer !== "aevp" && <AvatarBackground />}
-
-                  {avatarMode === "full" &&
-                    !avatarPreviewActive &&
+                  {!avatarPreviewActive &&
                     (avatarRenderer === "aevp" ? (
                       <AEVPPresence
                         fill
@@ -4556,151 +5161,141 @@ function App() {
                         debugPresets={debugZoomPresets}
                       />
                     ))}
+                </div>
 
-                  {/* Zoom preset debug controls */}
-                  {zoomDebug && avatarMode === "full" && (
-                    <div
-                      className="fixed bg-gray-800/90 backdrop-blur p-4 rounded-lg border border-white/10 z-50 max-w-sm cursor-move"
-                      style={{
-                        left: `${debugPanelPos.x}px`,
-                        top: `${debugPanelPos.y}px`,
-                        userSelect: isDraggingDebug ? "none" : "auto",
-                      }}
-                      onMouseDown={handleDebugMouseDown}
-                    >
-                      <div className="text-white/70 text-xs mb-3 font-semibold flex items-center gap-2">
-                        <span>⋮⋮</span> Zoom Preset Debug{" "}
-                        <span className="text-white/40">(drag to move)</span>
-                      </div>
-
-                      {(["full", "portrait", "face"] as const).map((preset) => {
-                        const current = debugZoomPresets[preset];
-                        return (
-                          <div
-                            key={preset}
-                            className="mb-4 pb-3 border-b border-white/10 last:border-0"
-                          >
-                            <div className="text-yellow-400 text-xs font-semibold mb-2 uppercase">
-                              {preset}
-                            </div>
-
-                            <div className="space-y-2">
-                              <div>
-                                <label className="text-white/50 text-xs">
-                                  Scale: {current.scale.toFixed(4)}
-                                </label>
-                                <input
-                                  type="range"
-                                  min="0.01"
-                                  max="0.5"
-                                  step="0.001"
-                                  value={current.scale}
-                                  onChange={(e) =>
-                                    setDebugZoomPresets((prev) => ({
-                                      ...prev,
-                                      [preset]: { ...prev[preset], scale: Number(e.target.value) },
-                                    }))
-                                  }
-                                  className="w-full h-1 bg-white/10 rounded"
-                                />
-                              </div>
-
-                              <div>
-                                <label className="text-white/50 text-xs">X: {current.x}</label>
-                                <input
-                                  type="range"
-                                  min="-500"
-                                  max="500"
-                                  value={current.x}
-                                  onChange={(e) =>
-                                    setDebugZoomPresets((prev) => ({
-                                      ...prev,
-                                      [preset]: { ...prev[preset], x: Number(e.target.value) },
-                                    }))
-                                  }
-                                  className="w-full h-1 bg-white/10 rounded"
-                                />
-                              </div>
-
-                              <div>
-                                <label className="text-white/50 text-xs">Y: {current.y}</label>
-                                <input
-                                  type="range"
-                                  min="-500"
-                                  max="800"
-                                  value={current.y}
-                                  onChange={(e) =>
-                                    setDebugZoomPresets((prev) => ({
-                                      ...prev,
-                                      [preset]: { ...prev[preset], y: Number(e.target.value) },
-                                    }))
-                                  }
-                                  className="w-full h-1 bg-white/10 rounded"
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      <button
-                        onClick={() => {
-                          console.log("Zoom presets:", JSON.stringify(debugZoomPresets, null, 2));
-                          navigator.clipboard.writeText(JSON.stringify(debugZoomPresets, null, 2));
-                          alert("Copied to clipboard!");
-                        }}
-                        className="w-full mt-2 px-3 py-2 bg-green-600/50 hover:bg-green-600/70 text-white text-xs rounded"
-                      >
-                        📋 Copy Values
-                      </button>
-
-                      <button
-                        onClick={() => setZoomDebug(false)}
-                        className="w-full mt-2 px-3 py-2 bg-red-600/50 hover:bg-red-600/70 text-white text-xs rounded"
-                      >
-                        Hide Debug
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Status indicator */}
-                  <div className="absolute bottom-2 left-2 text-white/40 text-xs">
-                    {!gateway.connected && gateway.connecting && "● Connecting..."}
-                    {!gateway.connected && gateway.reconnecting && "◐ Reconnecting..."}
-                    {!gateway.connected &&
-                      !gateway.connecting &&
-                      !gateway.reconnecting &&
-                      "○ Offline"}
-                    {gateway.connected && avatarState === "thinking" && "◉ Thinking..."}
-                    {gateway.connected && avatarState === "working" && "◉ Working..."}
+                {/* Agent name + status — follows chat agent selector, never hardcoded */}
+                <div className="text-center mt-2 mb-3 z-30 relative">
+                  <div className="text-xl font-semibold text-[hsl(var(--foreground))]">
+                    {chatAgentOptions.find((a) => a.id === currentChatAgentId)?.label ||
+                      currentChatAgentId ||
+                      "Agent"}
+                  </div>
+                  <div className="text-sm text-[hsl(var(--muted-foreground))]">
+                    {gateway.connected
+                      ? avatarState === "thinking"
+                        ? "Thinking..."
+                        : avatarState === "working"
+                          ? "Working..."
+                          : avatarState === "speaking"
+                            ? "Speaking..."
+                            : "Connected"
+                      : gateway.connecting
+                        ? "Connecting..."
+                        : "Offline"}
                   </div>
                 </div>
 
-                {/* Right widgets column (positions 4-6) */}
-                <div className="flex flex-col gap-3 relative z-50">
-                  {[4, 5, 6].map((position) => {
-                    const widgetType = getWidget(position);
-                    const customId = getCustomWidgetId(widgetType);
-                    if (customId) {
-                      return (
-                        <div key={position} className="flex-1 min-h-0">
-                          <CustomWidget widgetId={customId} />
-                        </div>
-                      );
-                    }
-                    const WidgetComponent = getWidgetComponent(widgetType);
-                    return (
-                      <div key={position} className="flex-1 min-h-0">
-                        <WidgetComponent />
+                {/* Stat cards — wired to real data where available */}
+                <div className="flex gap-2 mb-3 z-30 relative">
+                  {[
+                    {
+                      value: agentState.pendingApprovals ?? 0,
+                      label: "Approvals",
+                      color: agentState.pendingApprovals
+                        ? "text-amber-400"
+                        : "text-[hsl(var(--muted-foreground))]",
+                      urgent: (agentState.pendingApprovals ?? 0) > 0,
+                    },
+                    {
+                      value:
+                        tasks.filter((t) => t.status === "in_progress" || t.status === "active")
+                          .length || (gateway.connected ? 1 : 0),
+                      label: "Active",
+                      color: "text-[hsl(var(--primary))]",
+                      urgent: false,
+                    },
+                    {
+                      value: tasks.filter(
+                        (t) =>
+                          t.status === "overdue" ||
+                          (t.dueDate &&
+                            new Date(t.dueDate) < new Date() &&
+                            t.status !== "completed"),
+                      ).length,
+                      label: "Overdue",
+                      color: agentState.overdueTasks ? "text-red-400" : "text-emerald-400",
+                      urgent: (agentState.overdueTasks ?? 0) > 0,
+                    },
+                    {
+                      value: agentState.errorCount ?? 0,
+                      label: "Errors",
+                      color: agentState.errorCount
+                        ? "text-red-400"
+                        : "text-[hsl(var(--muted-foreground))]",
+                      urgent: (agentState.errorCount ?? 0) > 0,
+                    },
+                  ].map((stat) => (
+                    <div
+                      key={stat.label}
+                      className={`px-4 py-2 rounded-lg border text-center min-w-[70px] transition-colors ${
+                        stat.urgent
+                          ? "bg-red-500/5 border-red-500/30"
+                          : "bg-[hsl(var(--card))] border-[hsl(var(--border))]"
+                      }`}
+                    >
+                      <div className={`text-lg font-bold ${stat.color}`}>{stat.value}</div>
+                      <div className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                        {stat.label}
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Quick access — action verbs only, no settings duplicate */}
+                <div className="flex gap-2 z-30 relative">
+                  <button
+                    onClick={() => {
+                      setConfigPanelRequestedTab("safety");
+                      setConfigPanelOpen(true);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[hsl(var(--card))] border border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/30 transition-colors"
+                  >
+                    <ShieldIcon size={20} />
+                    <div className="text-left">
+                      <div className="text-xs font-medium text-[hsl(var(--foreground))]">
+                        Safety Rules
+                      </div>
+                      <div className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                        Configure
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => handleCanvasOpen()}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[hsl(var(--card))] border border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/30 transition-colors"
+                  >
+                    <DocumentsIcon size={20} />
+                    <div className="text-left">
+                      <div className="text-xs font-medium text-[hsl(var(--foreground))]">
+                        Documents
+                      </div>
+                      <div className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                        {canvasDocuments.length} docs
+                      </div>
+                    </div>
+                  </button>
                 </div>
               </div>
 
-              {/* Right Panel - Chat - FIXED on right, stays on top of canvas */}
+              {/* Drag handle: center ↔ chat */}
               {!chatCollapsed && (
-                <div className="col-span-3 overflow-hidden relative z-40">
+                <div
+                  className="w-1 cursor-col-resize hover:bg-[hsl(var(--primary))]/30 active:bg-[hsl(var(--primary))]/50 transition-colors flex-shrink-0 relative group"
+                  onMouseDown={(e) => handleColDrag(1, e)}
+                >
+                  {draggingCol === 1 && (
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 px-2 py-1 rounded bg-[hsl(var(--card))] border border-[hsl(var(--border))] text-[10px] text-[hsl(var(--primary))] font-mono whitespace-nowrap z-50">
+                      {Math.round(colWidths[1])}% | {Math.round(colWidths[2])}%
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Right Panel - Chat */}
+              {!chatCollapsed && (
+                <div
+                  className="overflow-hidden relative z-40"
+                  style={{ width: `${colWidths[2]}%` }}
+                >
                   <ChatPanel
                     messages={messages}
                     onSend={handleSendMessage}
@@ -4743,12 +5338,8 @@ function App() {
                     onOutputChange={setOutputDeviceId}
                     onVoiceChange={setSelectedVoice}
                     isSpeaking={effectiveIsSpeaking}
-                    onStopTTS={() => {
-                      if (isNativeVoiceActive()) {
-                        postNativeVoiceCommand({ kind: "tts_stop" });
-                      }
-                      tts.stop();
-                    }}
+                    onStopTTS={stopActiveSpeech}
+                    onReplayTTSSummary={handleReplayTtsSummary}
                     onInterrupt={handleInterrupt}
                     onSteer={handleSteerMessage}
                     busyMode={busyMessageMode}
@@ -4778,10 +5369,243 @@ function App() {
         </div>
       )}
 
+      {isOperationsDashboard && (
+        <div
+          className={`fixed inset-0 z-[70] transition-opacity duration-200 ${
+            operationsChatOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+          }`}
+        >
+          <div
+            className="absolute inset-0 bg-black/35"
+            onClick={() => setOperationsChatOpen(false)}
+          />
+          <div
+            className={`absolute right-4 top-40 bottom-4 w-[460px] max-w-[calc(100vw-2rem)] transform transition-transform duration-300 ${
+              operationsChatOpen ? "translate-x-0" : "translate-x-[110%]"
+            }`}
+          >
+            <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-gray-950/95 shadow-2xl backdrop-blur">
+              <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">
+                    Operations Drawer
+                  </div>
+                  <div className="text-sm font-medium text-white/80">Shared chat</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setOperationsPresenceVisible((visible) => !visible)}
+                    className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                      operationsPresenceVisible
+                        ? "border-cyan-300/40 bg-cyan-500/10 text-cyan-100"
+                        : "border-white/15 text-white/70 hover:text-white"
+                    }`}
+                  >
+                    Presence
+                  </button>
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1">
+                <ChatPanel
+                  messages={messages}
+                  onSend={handleSendMessage}
+                  onCommand={handleCommand}
+                  commands={slashCommands}
+                  isLoading={isLoading}
+                  activeTool={activeTool}
+                  activeModelInfo={activeModelInfo}
+                  onToggleSessions={() => setSessionDrawerOpen(true)}
+                  onNewChat={handleNewSession}
+                  chatAgentId={currentChatAgentId}
+                  chatAgentOptions={chatAgentOptions}
+                  onChangeChatAgent={handleChangeChatAgent}
+                  sessionTitle={
+                    sessions.find((s) => s.key === currentSessionKey)?.label ||
+                    sessions.find((s) => s.key === currentSessionKey)?.displayName ||
+                    (currentSessionKey === gateway.mainSessionKey ? "Chat" : undefined)
+                  }
+                  audioEnabled={audioEnabled}
+                  onToggleAudio={handleToggleAudio}
+                  ttsDisplayMode={ttsDisplayMode}
+                  onCycleTtsDisplayMode={cycleTtsDisplayMode}
+                  micEnabled={micEnabled}
+                  onToggleMic={handleToggleMic}
+                  isListening={effectiveIsListening}
+                  isProcessingSpeech={speech.isProcessing}
+                  speechError={effectiveSpeechError}
+                  deepThinkMode={deepThinkMode}
+                  onToggleDeepThink={() => setDeepThinkMode(!deepThinkMode)}
+                  deepResearchMode={deepResearchMode}
+                  onToggleDeepResearch={() => setDeepResearchMode(!deepResearchMode)}
+                  canvasOpen={canvasOpen}
+                  onToggleCanvas={() => (canvasOpen ? handleCanvasClose() : handleCanvasOpen())}
+                  selectedInput={inputDeviceId}
+                  selectedOutput={outputDeviceId}
+                  selectedVoice={selectedVoice}
+                  activeVoiceLabel={currentAgentTtsProfile?.label}
+                  voiceSelectionLocked={Boolean(currentAgentTtsProfile?.lockVoiceSelection)}
+                  onInputChange={setInputDeviceId}
+                  onOutputChange={setOutputDeviceId}
+                  onVoiceChange={setSelectedVoice}
+                  isSpeaking={effectiveIsSpeaking}
+                  onStopTTS={stopActiveSpeech}
+                  onReplayTTSSummary={handleReplayTtsSummary}
+                  onInterrupt={handleInterrupt}
+                  onSteer={handleSteerMessage}
+                  busyMode={busyMessageMode}
+                  onBusyModeChange={setBusyMessageMode}
+                  onQueue={handleQueueMessage}
+                  queuedMessages={messageQueue}
+                  onDequeue={handleDequeueMessage}
+                  onFeedback={handleFeedback}
+                  focusDoc={
+                    canvasOpen && activeCanvasDocId
+                      ? (() => {
+                          const doc = canvasDocuments.find((d) => d.id === activeCanvasDocId);
+                          return doc ? { id: doc.id, title: doc.title } : null;
+                        })()
+                      : null
+                  }
+                  onClearFocus={() => setActiveCanvasDocId(undefined)}
+                  onToggleCollapse={() => setOperationsChatOpen(false)}
+                  contextUsage={contextUsage}
+                  gatewayRequest={gateway.request}
+                  currentSessionKey={currentSessionKey}
+                />
+              </div>
+            </div>
+          </div>
+
+          {operationsPresenceVisible && (
+            <div
+              className="absolute z-30 w-[520px] overflow-hidden rounded-2xl border border-white/10 bg-[#070b16]/95 shadow-2xl backdrop-blur"
+              style={{
+                left: `${operationsPresencePosition.x}px`,
+                top: `${operationsPresencePosition.y}px`,
+                width: `${operationsPresenceSize.width}px`,
+              }}
+            >
+              <div
+                className="flex cursor-move items-center justify-between border-b border-white/10 px-4 py-3"
+                onMouseDown={(event) => {
+                  const rect = event.currentTarget.parentElement?.getBoundingClientRect();
+                  if (!rect) return;
+                  operationsPresenceDragRef.current = {
+                    pointerOffsetX: event.clientX - rect.left,
+                    pointerOffsetY: event.clientY - rect.top,
+                  };
+                }}
+              >
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">
+                    Presence
+                  </div>
+                  <div className="text-sm text-white/80">
+                    {avatarRenderer === "aevp" ? "AEVP ambient mode" : "Live2D avatar"}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-xs text-white/55">
+                    {avatarMood ? `${avatarState} • ${avatarMood}` : avatarState}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setOperationsPresenceSize({
+                        width: OPERATIONS_PRESENCE_DEFAULT_WIDTH,
+                        height: OPERATIONS_PRESENCE_DEFAULT_HEIGHT,
+                      });
+                      setOperationsPresencePosition({
+                        x: Math.max(24, window.innerWidth - 584),
+                        y: 112,
+                      });
+                    }}
+                    className="rounded-md border border-white/10 px-2 py-1 text-xs text-white/60 transition-colors hover:text-white"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    onClick={() => setOperationsPresenceVisible(false)}
+                    className="rounded-md border border-white/10 px-2 py-1 text-xs text-white/60 transition-colors hover:text-white"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+              <div
+                className="relative overflow-hidden bg-[#0a1020]"
+                style={{ height: `${operationsPresenceSize.height - 80}px` }}
+              >
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(170,130,255,0.12),transparent_60%)]" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div
+                    className="relative overflow-hidden"
+                    style={{
+                      width: `${(operationsPresenceSize.width - 2) * OPERATIONS_PRESENCE_STAGE_SCALE}px`,
+                      height: `${(operationsPresenceSize.height - 134) * OPERATIONS_PRESENCE_STAGE_SCALE}px`,
+                    }}
+                  >
+                    {avatarRenderer === "aevp" ? (
+                      <AEVPPresence
+                        width={(operationsPresenceSize.width - 2) * OPERATIONS_PRESENCE_STAGE_SCALE}
+                        height={
+                          (operationsPresenceSize.height - 82) * OPERATIONS_PRESENCE_STAGE_SCALE
+                        }
+                        orbCenterY={AEVP_FULL_ORB_CENTER_Y}
+                        presenceOffsetX={OPERATIONS_PRESENCE_LOCKED_OFFSET_X}
+                        presenceOffsetY={OPERATIONS_PRESENCE_LOCKED_OFFSET_Y}
+                        presenceScale={OPERATIONS_PRESENCE_LOCKED_SCALE}
+                        agentState={agentState}
+                        identity={visualIdentity}
+                        accessibilityConfig={accessibilityConfig}
+                        onPreSpeechCueReady={(fn) => {
+                          preSpeechCueRef.current = fn;
+                        }}
+                        onAmplitudeTargetReady={(fn) => {
+                          rendererAmplitudeSetterRef.current = fn;
+                        }}
+                      />
+                    ) : (
+                      <Live2DAvatar
+                        state={avatarState}
+                        mood={avatarMood}
+                        width={(operationsPresenceSize.width - 2) * OPERATIONS_PRESENCE_STAGE_SCALE}
+                        height={
+                          (operationsPresenceSize.height - 82) * OPERATIONS_PRESENCE_STAGE_SCALE
+                        }
+                        mode="full"
+                        zoomPreset={avatarZoom}
+                        customZoom={avatarCustomZoom}
+                        debugPresets={debugZoomPresets}
+                      />
+                    )}
+                  </div>
+                </div>
+                <button
+                  className="absolute bottom-3 right-3 h-6 w-6 cursor-se-resize rounded-md border border-white/10 bg-black/30 text-white/45"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    operationsPresenceResizeRef.current = {
+                      startX: event.clientX,
+                      startY: event.clientY,
+                      startWidth: operationsPresenceSize.width,
+                      startHeight: operationsPresenceSize.height,
+                    };
+                  }}
+                  title="Resize presence panel"
+                >
+                  <span className="block translate-y-[-1px] text-xs">↘</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Collapsed Chat Mini-bar — full-width bottom bar, slides up */}
       <div
         className={`fixed left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 bg-gray-900/90 backdrop-blur-xl border border-white/10 rounded-2xl px-4 py-2.5 shadow-2xl transition-all duration-300 ${
-          chatCollapsed
+          !isOperationsDashboard && chatCollapsed
             ? "bottom-4 opacity-100 translate-y-0"
             : "bottom-4 opacity-0 translate-y-16 pointer-events-none"
         }`}
@@ -4932,6 +5756,17 @@ function App() {
         />
       )}
 
+      {/* Widget Picker */}
+      <WidgetPicker
+        isOpen={widgetPickerOpen}
+        onClose={() => setWidgetPickerOpen(false)}
+        onAdd={(type) => {
+          // Widget added — grid handles persistence internally
+          setWidgetPickerOpen(false);
+        }}
+        customWidgets={customWidgets}
+      />
+
       {/* Modals */}
       <WeatherModal
         isOpen={weatherModalOpen}
@@ -5015,7 +5850,7 @@ function App() {
       />
 
       {/* Worker Flow */}
-      {allowWorkforceSurface && (
+      {isOperationsDashboard && (
         <WorkerFlowModal
           isOpen={workerFlowOpen}
           onClose={() => setWorkerFlowOpen(false)}
@@ -5034,7 +5869,7 @@ function App() {
         />
       )}
 
-      {/* Canvas Panel */}
+      {/* Canvas Panel — docked left, leaves chat visible */}
       <CanvasPanel
         isOpen={canvasOpen}
         documents={canvasDocuments}
@@ -5075,9 +5910,9 @@ function App() {
           }
         }}
         debateState={debate.state}
-        left={canvasLeft}
-        width={canvasWidth}
-        top={canvasTop}
+        left={0}
+        width={Math.round(colWidths[0] + colWidths[1])}
+        top={0}
       />
 
       {/* App Forge Desktop */}

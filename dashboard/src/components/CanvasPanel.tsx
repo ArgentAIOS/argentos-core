@@ -214,9 +214,9 @@ export function CanvasPanel({
   gateway,
   onNewTerminal,
   debateState,
-  left = 35,
-  width = 40,
-  top = 5,
+  left = 0,
+  width = 55,
+  top = 0,
 }: CanvasPanelProps) {
   const activeDoc = documents.find((d) => d.id === activeDocId) || documents[0];
   const [browserOpen, setBrowserOpen] = useState(false);
@@ -570,13 +570,14 @@ export function CanvasPanel({
     );
   }, [activeDoc?.id, activeDoc?.content, activeDoc?.type, activeDoc?.language]);
 
-  if (!isOpen) return null;
+  // Slide animation classes (mirrors activity log pattern but from the left)
+  const slideClass = `transition-transform duration-300 ease-out ${isOpen ? "translate-x-0" : "-translate-x-full"}`;
 
   // Empty state when no documents
   if (documents.length === 0) {
     return (
       <div
-        className="fixed bg-gray-900/95 border-l border-white/10 z-60 flex flex-col"
+        className={`fixed bg-[hsl(var(--card))]/98 backdrop-blur-xl border-r border-[hsl(var(--border))] shadow-2xl z-60 flex flex-col ${slideClass}`}
         style={{
           top: `${top}rem`,
           bottom: 0,
@@ -587,7 +588,7 @@ export function CanvasPanel({
         }}
       >
         {/* Header controls are still shown in empty mode so docs/tools remain reachable */}
-        <div className="border-b border-white/10 bg-gray-800/50 flex-shrink-0">
+        <div className="border-b border-[hsl(var(--border))] bg-[hsl(var(--card))]/80 backdrop-blur-sm flex-shrink-0">
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-3">
               <span className="px-2 py-1 rounded text-xs font-mono bg-white/10 text-white/60 border border-white/20">
@@ -699,18 +700,17 @@ export function CanvasPanel({
 
   return (
     <div
-      className="fixed bg-gray-900/95 border-l border-white/10 z-60 flex flex-col"
+      className={`fixed bg-[hsl(var(--card))]/98 backdrop-blur-xl border-r border-[hsl(var(--border))] shadow-2xl z-60 flex flex-col ${slideClass}`}
       style={{
         top: `${top}rem`,
         bottom: 0,
         left: `${left}vw`,
         width: `${width}vw`,
-        transform: "translateZ(0)", // Force GPU acceleration for smoother rendering
-        backfaceVisibility: "hidden", // Prevent flicker
+        backfaceVisibility: "hidden",
       }}
     >
       {/* Header with Controls */}
-      <div className="border-b border-white/10 bg-gray-800/50 flex-shrink-0">
+      <div className="border-b border-[hsl(var(--border))] bg-[hsl(var(--card))]/80 backdrop-blur-sm flex-shrink-0">
         {/* Document Tabs (if multiple) */}
         {documents.length > 1 && (
           <div className="flex gap-1 px-4 pt-3 overflow-x-auto">

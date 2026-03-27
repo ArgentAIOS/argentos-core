@@ -1,246 +1,432 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from .client import MailchimpClient
-from .config import runtime_config
-from .constants import CONNECTOR_CATEGORY, CONNECTOR_CATEGORIES, CONNECTOR_LABEL, CONNECTOR_RESOURCES
+from .client import MailchimpApiError, MailchimpClient
+from .config import config_snapshot, resolve_runtime_values
+from .constants import BACKEND_NAME, CONNECTOR_PATH
 from .errors import CliError
 
 
-def _scope(ctx_obj: dict[str, Any] | None) -> dict[str, Any]:
-    config = runtime_config(ctx_obj)
+def _load_manifest() -> dict[str, Any]:
+    return json.loads(CONNECTOR_PATH.read_text())
+
+
+def capabilities_snapshot() -> dict[str, Any]:
+    manifest = _load_manifest()
     return {
-        "base_url": config["base_url"] or None,
-        "server_prefix": config["resolved_server_prefix"],
+        "tool": manifest["tool"],
+        "backend": manifest["backend"],
+        "manifest_schema_version": manifest.get("manifest_schema_version", "1.0.0"),
+        "connector": manifest["connector"],
+        "auth": manifest["auth"],
+        "scope": manifest.get("scope", {}),
+        "commands": manifest["commands"],
+        "read_support": {
+            "account.read": True,
+            "audience.list": True,
+            "audience.read": True,
+            "member.list": True,
+            "member.read": True,
+            "campaign.list": True,
+            "campaign.read": True,
+            "report.list": True,
+            "report.read": True,
+        },
+        "write_support": {
+            "campaign.create_draft": "scaffold_only",
+            "member.upsert": "scaffold_only",
+        },
     }
 
 
-def _client(ctx_obj: dict[str, Any] | None) -> MailchimpClient:
-    return MailchimpClient.from_context(ctx_obj or {})
+def create_client(ctx_obj: dict[str, Any]) -> MailchimpClient:
+    runtime = resolve_runtime_values(ctx_obj)
+    missing = []
+    if not runtime["api_key_present"]:
+        missing.append(runtime["api_key_env"])
+    if not runtime["server_prefix_present"]:
+        missing.append(runtime["server_prefix_env"])
+    if missing:
+        raise CliError(
+            code="MAILCHIMP_SETUP_REQUIRED",
+            message="Mailchimp connector is missing required credentials",
+            exit_code=4,
+            details={"missing_keys": missing},
+        )
+    return MailchimpClient(api_key=runtime["api_key"], server_prefix=runtime["server_prefix"])
 
 
-def _collection_result(resource: str, operation: str, ctx_obj: dict[str, Any] | None, response: dict[str, Any]) -> dict[str, Any]:
-    items = response.get("lists") or response.get("campaigns") or response.get("members") or response.get("items") or []
-    if not isinstance(items, list):
-        items = []
-    count = response.get("total_items")
-    if count is None:
-        count = len(items)
-    return {
-        "status": "ok",
-        "backend": "mailchimp-marketing",
-        "resource": resource,
-        "operation": operation,
-        "scope": _scope(ctx_obj),
-        "count": count,
-        "results": items,
-        "raw": response,
-    }
-
-
-def _single_result(resource: str, operation: str, ctx_obj: dict[str, Any] | None, response: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "status": "ok",
-        "backend": "mailchimp-marketing",
-        "resource": resource,
-        "operation": operation,
-        "scope": _scope(ctx_obj),
-        "result": response,
-    }
-
-
-def probe_api(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
-    config = runtime_config(ctx_obj)
-    if not config["api_key_present"]:
+def probe_runtime(ctx_obj: dict[str, Any]) -> dict[str, Any]:
+    runtime = resolve_runtime_values(ctx_obj)
+    missing = []
+    if not runtime["api_key_present"]:
+        missing.append(runtime["api_key_env"])
+    if not runtime["server_prefix_present"]:
+        missing.append(runtime["server_prefix_env"])
+    if missing:
         return {
             "ok": False,
-            "code": "SETUP_REQUIRED",
-            "message": "MAILCHIMP_API_KEY is required",
-            "details": {"missing": ["MAILCHIMP_API_KEY"]},
+            "code": "MAILCHIMP_SETUP_REQUIRED",
+            "message": "Mailchimp connector is missing required credentials",
+            "details": {"missing_keys": missing, "live_backend_available": False},
         }
-    if not config["base_url_present"]:
-        return {
-            "ok": False,
-            "code": "SETUP_REQUIRED",
-            "message": "Unable to resolve a Mailchimp server prefix",
-            "details": {"missing": ["MAILCHIMP_SERVER_PREFIX"], "api_key_has_datacenter": bool(config["inferred_server_prefix"])},
-        }
-
-    client = _client(ctx_obj)
     try:
+        client = create_client(ctx_obj)
         ping = client.ping()
-        root = client.root()
     except CliError as err:
         return {"ok": False, "code": err.code, "message": err.message, "details": err.details}
-
+    except MailchimpApiError as err:
+        code = "MAILCHIMP_AUTH_FAILED" if err.status_code in {401, 403} else "MAILCHIMP_API_ERROR"
+        return {
+            "ok": False,
+            "code": code,
+            "message": err.message,
+            "details": {
+                **(err.details or {}),
+                "status_code": err.status_code,
+                "live_backend_available": False,
+            },
+        }
     return {
         "ok": True,
         "code": "OK",
-        "message": "Mailchimp API reachable",
+        "message": "Mailchimp live read runtime is ready",
         "details": {
+            "live_backend_available": True,
             "ping": ping,
-            "account": root,
+            "server_prefix": runtime["server_prefix"],
         },
     }
 
 
-def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
-    config = runtime_config(ctx_obj)
-    probe = probe_api(ctx_obj)
-
-    checks = [
-        {
-            "name": "api_key",
-            "ok": config["api_key_present"],
-            "details": {
-                "present": config["api_key_present"],
-                "source": config["api_key_source"],
-            },
-        },
-        {
-            "name": "server_prefix",
-            "ok": config["base_url_present"],
-            "details": {
-                "present": config["base_url_present"],
-                "source": config["server_prefix_source"],
-                "resolved_server_prefix": config["resolved_server_prefix"],
-            },
-        },
-        {
-            "name": "api_probe",
-            "ok": probe["ok"],
-            "details": probe,
-        },
-    ]
-
-    next_steps: list[str] = []
-    if not config["api_key_present"]:
-        next_steps.append("Set MAILCHIMP_API_KEY for the target account.")
-    if config["api_key_present"] and not config["base_url_present"]:
-        next_steps.append("Set MAILCHIMP_SERVER_PREFIX or use an API key that includes the datacenter suffix.")
-    if not probe["ok"] and probe["code"] not in {"SETUP_REQUIRED"}:
-        next_steps.append(f"Fix Mailchimp API access: {probe['message']}")
-
-    status = "ok"
-    summary = "Mailchimp API is reachable."
-    if not config["api_key_present"]:
-        status = "needs_setup"
-        summary = "Set MAILCHIMP_API_KEY before attempting live calls."
-    elif not config["base_url_present"]:
-        status = "needs_setup"
-        summary = "Set MAILCHIMP_SERVER_PREFIX or provide an API key with a datacenter suffix."
-    elif not probe["ok"]:
-        if probe["code"] in {"AUTH_ERROR"}:
-            status = "auth_error"
-        elif probe["code"] in {"BACKEND_UNAVAILABLE", "NETWORK_ERROR"}:
-            status = "backend_unavailable"
-        else:
-            status = "degraded"
-        summary = f"Mailchimp API probe failed: {probe['message']}"
-
+def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
+    runtime = resolve_runtime_values(ctx_obj)
+    probe = probe_runtime(ctx_obj)
+    status = "ready" if probe["ok"] else ("needs_setup" if probe["code"] == "MAILCHIMP_SETUP_REQUIRED" else "degraded")
     return {
         "status": status,
-        "summary": summary,
+        "summary": probe["message"],
         "connector": {
-            "label": CONNECTOR_LABEL,
-            "category": CONNECTOR_CATEGORY,
-            "categories": CONNECTOR_CATEGORIES,
-            "resources": CONNECTOR_RESOURCES,
+            "backend": BACKEND_NAME,
+            "live_backend_available": bool(probe.get("ok")),
+            "live_read_available": bool(probe.get("ok")),
+            "write_bridge_available": False,
+            "scaffold_only": False,
         },
-        "checks": checks,
-        "next_steps": next_steps,
-    }
-
-
-def doctor_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
-    config = runtime_config(ctx_obj)
-    probe = probe_api(ctx_obj)
-
-    checks = [
-        {
-            "name": "config",
-            "ok": config["api_key_present"] and config["base_url_present"],
-            "details": {
-                "api_key_present": config["api_key_present"],
-                "base_url_present": config["base_url_present"],
-                "resolved_server_prefix": config["resolved_server_prefix"],
+        "auth": {
+            "api_key_env": runtime["api_key_env"],
+            "api_key_present": runtime["api_key_present"],
+            "server_prefix_env": runtime["server_prefix_env"],
+            "server_prefix_present": runtime["server_prefix_present"],
+        },
+        "scope": {
+            "audience_id": runtime["audience_id"] or None,
+            "campaign_id": runtime["campaign_id"] or None,
+            "member_email": runtime["member_email"] or None,
+        },
+        "checks": [
+            {
+                "name": "required_env",
+                "ok": runtime["api_key_present"] and runtime["server_prefix_present"],
+                "details": {
+                    "missing_keys": [
+                        key
+                        for key, present in [
+                            (runtime["api_key_env"], runtime["api_key_present"]),
+                            (runtime["server_prefix_env"], runtime["server_prefix_present"]),
+                        ]
+                        if not present
+                    ]
+                },
             },
-        },
-        {
-            "name": "api_probe",
-            "ok": probe["ok"],
-            "details": probe,
-        },
-    ]
-
-    status = "healthy" if all(check["ok"] for check in checks) else "degraded"
-    if not config["api_key_present"] or not config["base_url_present"]:
-        status = "needs_setup"
-
-    recommendations = [
-        "Create a dedicated Mailchimp API key for the target account.",
-        "Set MAILCHIMP_SERVER_PREFIX when the API key suffix is not available or should be overridden.",
-    ]
-    if probe["ok"]:
-        account = probe["details"].get("account", {})
-        if isinstance(account, dict) and account.get("account_name"):
-            recommendations.append(f"Connected to account: {account['account_name']}")
-
-    return {
-        "status": status,
-        "backend": "mailchimp-marketing",
-        "connector": {
-            "label": CONNECTOR_LABEL,
-            "category": CONNECTOR_CATEGORY,
-            "categories": CONNECTOR_CATEGORIES,
-            "resources": CONNECTOR_RESOURCES,
-        },
-        "checks": checks,
-        "recommendations": recommendations,
-    }
-
-
-def config_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
-    config = runtime_config(ctx_obj)
-    probe = probe_api(ctx_obj)
-    return {
-        "status": "ok" if config["api_key_present"] else "needs_setup",
-        "connector": {
-            "label": CONNECTOR_LABEL,
-            "category": CONNECTOR_CATEGORY,
-            "categories": CONNECTOR_CATEGORIES,
-            "resources": CONNECTOR_RESOURCES,
-        },
-        "config": {
-            **config,
-            "api_key": None,
-        },
-        "api_probe": probe,
-        "runtime_ready": bool(probe["ok"]),
-    }
-
-
-def scaffold_result(
-    ctx_obj: dict[str, Any] | None,
-    *,
-    command_id: str,
-    resource: str,
-    operation: str,
-    inputs: dict[str, Any],
-) -> dict[str, Any]:
-    return {
-        "status": "scaffold",
-        "backend": "mailchimp-marketing",
-        "command": command_id,
-        "resource": resource,
-        "operation": operation,
-        "executed": False,
-        "inputs": inputs,
-        "scope": _scope(ctx_obj),
+            {"name": "live_backend", "ok": bool(probe.get("ok")), "details": probe.get("details", {})},
+        ],
+        "runtime_ready": bool(probe.get("ok")),
+        "live_backend_available": bool(probe.get("ok")),
+        "live_read_available": bool(probe.get("ok")),
+        "write_bridge_available": False,
+        "scaffold_only": False,
+        "probe": probe,
         "next_steps": [
-            "Wire this command to the Mailchimp Marketing API mutation once write behavior is validated.",
-            "Keep mode gating and audit output intact when the live write path is added.",
+            f"Set {runtime['api_key_env']} and {runtime['server_prefix_env']} in API Keys.",
+            "Optional: pin MAILCHIMP_AUDIENCE_ID, MAILCHIMP_CAMPAIGN_ID, and MAILCHIMP_MEMBER_EMAIL for worker scope defaults.",
+            "Keep Mailchimp write commands scaffolded until compliance and approval requirements are finalized.",
         ],
     }
 
+
+def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
+    runtime = resolve_runtime_values(ctx_obj)
+    probe = probe_runtime(ctx_obj)
+    return {
+        "status": "ready" if probe.get("ok") else ("needs_setup" if probe.get("code") == "MAILCHIMP_SETUP_REQUIRED" else "degraded"),
+        "summary": "Mailchimp connector diagnostics.",
+        "runtime": {
+            "implementation_mode": "live_read_with_scaffolded_writes",
+            "command_readiness": {
+                "account.read": bool(probe.get("ok")),
+                "audience.list": bool(probe.get("ok")),
+                "audience.read": bool(probe.get("ok")),
+                "member.list": bool(probe.get("ok")),
+                "member.read": bool(probe.get("ok")),
+                "campaign.list": bool(probe.get("ok")),
+                "campaign.read": bool(probe.get("ok")),
+                "report.list": bool(probe.get("ok")),
+                "report.read": bool(probe.get("ok")),
+                "campaign.create_draft": False,
+                "member.upsert": False,
+            },
+            "server_prefix_present": runtime["server_prefix_present"],
+            "audience_id_present": runtime["audience_id_present"],
+            "campaign_id_present": runtime["campaign_id_present"],
+            "member_email_present": runtime["member_email_present"],
+        },
+        "checks": [
+            {"name": "required_env", "ok": runtime["api_key_present"] and runtime["server_prefix_present"]},
+            {"name": "live_backend", "ok": bool(probe.get("ok")), "details": probe.get("details", {})},
+            {"name": "write_commands", "ok": True, "details": {"mode": "scaffold_only"}},
+        ],
+        "next_steps": [
+            f"Set {runtime['api_key_env']} and {runtime['server_prefix_env']} in API Keys.",
+            "Use account.read to confirm the connected Mailchimp account before choosing audience, campaign, and member scope pickers.",
+            "Decide whether campaign draft creation and member upserts should require approvals before enabling live writes.",
+        ],
+    }
+
+
+def _picker(items: list[dict[str, Any]], *, kind: str, label_key: str = "label") -> dict[str, Any]:
+    return {"kind": kind, "items": items, "count": len(items), "label_key": label_key}
+
+
+def _require_arg(value: str | None, *, code: str, message: str, detail_key: str, detail_value: str) -> str:
+    resolved = (value or "").strip()
+    if resolved:
+        return resolved
+    raise CliError(code=code, message=message, exit_code=4, details={detail_key: detail_value})
+
+
+def audience_list_result(ctx_obj: dict[str, Any], *, limit: int) -> dict[str, Any]:
+    client = create_client(ctx_obj)
+    payload = client.list_audiences(limit=limit)
+    lists = payload.get("lists", []) if isinstance(payload.get("lists"), list) else []
+    items = [
+        {
+            "id": str(item.get("id") or ""),
+            "label": f"{item.get('name', 'Audience')} ({item.get('id', '')})",
+            "member_count": item.get("stats", {}).get("member_count"),
+        }
+        for item in lists
+        if isinstance(item, dict)
+    ]
+    return {
+        "status": "live_read",
+        "backend": BACKEND_NAME,
+        "summary": f"Returned {len(lists)} Mailchimp audience{'' if len(lists) == 1 else 's' }.",
+        "audiences": lists,
+        "audience_count": len(lists),
+        "picker": _picker(items, kind="audience"),
+        "scope_preview": {
+            "selection_surface": "audience",
+            "command_id": "audience.list",
+            "audience_id": resolve_runtime_values(ctx_obj)["audience_id"] or None,
+        },
+    }
+
+
+def account_read_result(ctx_obj: dict[str, Any]) -> dict[str, Any]:
+    runtime = resolve_runtime_values(ctx_obj)
+    client = create_client(ctx_obj)
+    account = client.read_account()
+    account_label = str(account.get("account_name") or account.get("username") or runtime["server_prefix"] or "Mailchimp account")
+    return {
+        "status": "live_read",
+        "backend": BACKEND_NAME,
+        "summary": f"Read Mailchimp account {account_label}.",
+        "account": account,
+        "scope_preview": {
+            "selection_surface": "account",
+            "command_id": "account.read",
+            "server_prefix": runtime["server_prefix"] or None,
+            "account_label": account_label,
+        },
+    }
+
+
+def audience_read_result(ctx_obj: dict[str, Any], audience_id: str | None) -> dict[str, Any]:
+    runtime = resolve_runtime_values(ctx_obj)
+    resolved = _require_arg(audience_id or runtime["audience_id"], code="MAILCHIMP_AUDIENCE_REQUIRED", message="Audience ID is required", detail_key="env", detail_value=runtime["audience_env"])
+    client = create_client(ctx_obj)
+    audience = client.read_audience(resolved)
+    return {
+        "status": "live_read",
+        "backend": BACKEND_NAME,
+        "summary": f"Read Mailchimp audience {resolved}.",
+        "audience": audience,
+        "scope_preview": {
+            "selection_surface": "audience",
+            "command_id": "audience.read",
+            "audience_id": resolved,
+        },
+    }
+
+
+def member_list_result(ctx_obj: dict[str, Any], audience_id: str | None, *, limit: int) -> dict[str, Any]:
+    runtime = resolve_runtime_values(ctx_obj)
+    resolved = _require_arg(audience_id or runtime["audience_id"], code="MAILCHIMP_AUDIENCE_REQUIRED", message="Audience ID is required", detail_key="env", detail_value=runtime["audience_env"])
+    client = create_client(ctx_obj)
+    payload = client.list_members(resolved, limit=limit)
+    members = payload.get("members", []) if isinstance(payload.get("members"), list) else []
+    items = [
+        {
+            "id": str(item.get("id") or item.get("email_address") or ""),
+            "label": f"{item.get('email_address', 'member')} ({item.get('status', 'unknown')})",
+            "email": item.get("email_address"),
+        }
+        for item in members
+        if isinstance(item, dict)
+    ]
+    return {
+        "status": "live_read",
+        "backend": BACKEND_NAME,
+        "summary": f"Returned {len(members)} Mailchimp member{'' if len(members) == 1 else 's'} from audience {resolved}.",
+        "audience_id": resolved,
+        "members": members,
+        "member_count": len(members),
+        "picker": _picker(items, kind="member"),
+        "scope_preview": {
+            "selection_surface": "member",
+            "command_id": "member.list",
+            "audience_id": resolved,
+        },
+    }
+
+
+def member_read_result(ctx_obj: dict[str, Any], audience_id: str | None, email: str | None) -> dict[str, Any]:
+    runtime = resolve_runtime_values(ctx_obj)
+    resolved_audience = _require_arg(audience_id or runtime["audience_id"], code="MAILCHIMP_AUDIENCE_REQUIRED", message="Audience ID is required", detail_key="env", detail_value=runtime["audience_env"])
+    resolved_email = _require_arg(email or runtime["member_email"], code="MAILCHIMP_MEMBER_REQUIRED", message="Member email is required", detail_key="env", detail_value=runtime["member_email_env"])
+    client = create_client(ctx_obj)
+    member = client.read_member(resolved_audience, resolved_email)
+    return {
+        "status": "live_read",
+        "backend": BACKEND_NAME,
+        "summary": f"Read Mailchimp member {resolved_email} from audience {resolved_audience}.",
+        "audience_id": resolved_audience,
+        "member": member,
+        "scope_preview": {
+            "selection_surface": "member",
+            "command_id": "member.read",
+            "audience_id": resolved_audience,
+            "member_email": resolved_email,
+        },
+    }
+
+
+def campaign_list_result(ctx_obj: dict[str, Any], *, limit: int, status: str | None) -> dict[str, Any]:
+    client = create_client(ctx_obj)
+    payload = client.list_campaigns(limit=limit, status=status)
+    campaigns = payload.get("campaigns", []) if isinstance(payload.get("campaigns"), list) else []
+    items = [
+        {
+            "id": str(item.get("id") or ""),
+            "label": f"{item.get('settings', {}).get('title') or item.get('id', 'Campaign')} ({item.get('status', 'unknown')})",
+            "status": item.get("status"),
+        }
+        for item in campaigns
+        if isinstance(item, dict)
+    ]
+    return {
+        "status": "live_read",
+        "backend": BACKEND_NAME,
+        "summary": f"Returned {len(campaigns)} Mailchimp campaign{'' if len(campaigns) == 1 else 's'}.",
+        "campaigns": campaigns,
+        "campaign_count": len(campaigns),
+        "picker": _picker(items, kind="campaign"),
+        "scope_preview": {
+            "selection_surface": "campaign",
+            "command_id": "campaign.list",
+            "campaign_id": resolve_runtime_values(ctx_obj)["campaign_id"] or None,
+        },
+    }
+
+
+def campaign_read_result(ctx_obj: dict[str, Any], campaign_id: str | None) -> dict[str, Any]:
+    runtime = resolve_runtime_values(ctx_obj)
+    resolved = _require_arg(campaign_id or runtime["campaign_id"], code="MAILCHIMP_CAMPAIGN_REQUIRED", message="Campaign ID is required", detail_key="env", detail_value=runtime["campaign_env"])
+    client = create_client(ctx_obj)
+    campaign = client.read_campaign(resolved)
+    return {
+        "status": "live_read",
+        "backend": BACKEND_NAME,
+        "summary": f"Read Mailchimp campaign {resolved}.",
+        "campaign": campaign,
+        "scope_preview": {
+            "selection_surface": "campaign",
+            "command_id": "campaign.read",
+            "campaign_id": resolved,
+        },
+    }
+
+
+def report_list_result(ctx_obj: dict[str, Any], *, limit: int) -> dict[str, Any]:
+    client = create_client(ctx_obj)
+    payload = client.list_reports(limit=limit)
+    reports = payload.get("reports", []) if isinstance(payload.get("reports"), list) else []
+    items = [
+        {
+            "id": str(item.get("campaign_id") or item.get("id") or ""),
+            "label": f"{item.get('campaign_title') or item.get('campaign_id', 'Report')}",
+            "emails_sent": item.get("emails_sent"),
+        }
+        for item in reports
+        if isinstance(item, dict)
+    ]
+    return {
+        "status": "live_read",
+        "backend": BACKEND_NAME,
+        "summary": f"Returned {len(reports)} Mailchimp report{'' if len(reports) == 1 else 's'}.",
+        "reports": reports,
+        "report_count": len(reports),
+        "picker": _picker(items, kind="report"),
+        "scope_preview": {
+            "selection_surface": "campaign",
+            "command_id": "report.list",
+            "campaign_id": resolve_runtime_values(ctx_obj)["campaign_id"] or None,
+        },
+    }
+
+
+def report_read_result(ctx_obj: dict[str, Any], campaign_id: str | None) -> dict[str, Any]:
+    runtime = resolve_runtime_values(ctx_obj)
+    resolved = _require_arg(campaign_id or runtime["campaign_id"], code="MAILCHIMP_CAMPAIGN_REQUIRED", message="Campaign ID is required", detail_key="env", detail_value=runtime["campaign_env"])
+    client = create_client(ctx_obj)
+    report = client.read_report(resolved)
+    return {
+        "status": "live_read",
+        "backend": BACKEND_NAME,
+        "summary": f"Read Mailchimp report for campaign {resolved}.",
+        "report": report,
+        "scope_preview": {
+            "selection_surface": "campaign",
+            "command_id": "report.read",
+            "campaign_id": resolved,
+        },
+    }
+
+
+def scaffold_write_result(ctx_obj: dict[str, Any], *, command_id: str, inputs: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": "scaffold_write_only",
+        "backend": BACKEND_NAME,
+        "summary": f"{command_id} is scaffolded and does not perform live Mailchimp writes yet.",
+        "command": command_id,
+        "inputs": inputs,
+        "scope_preview": {
+            "audience_id": resolve_runtime_values(ctx_obj)["audience_id"] or None,
+            "campaign_id": resolve_runtime_values(ctx_obj)["campaign_id"] or None,
+            "member_email": resolve_runtime_values(ctx_obj)["member_email"] or None,
+        },
+        "next_step": "Keep Mailchimp write actions disabled until approval, compliance, and campaign safety rules are defined.",
+    }

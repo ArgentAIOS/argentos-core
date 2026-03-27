@@ -7,6 +7,7 @@ export function logNonInteractiveOnboardingJson(params: {
   mode: "local" | "remote";
   workspaceDir?: string;
   authChoice?: string;
+  localRuntime?: "ollama" | "lmstudio" | null;
   gateway?: {
     port: number;
     bind: string;
@@ -27,6 +28,7 @@ export function logNonInteractiveOnboardingJson(params: {
         mode: params.mode,
         workspace: params.workspaceDir,
         authChoice: params.authChoice,
+        localRuntime: params.localRuntime ?? undefined,
         gateway: params.gateway,
         installDaemon: Boolean(params.installDaemon),
         daemonRuntime: params.daemonRuntime,

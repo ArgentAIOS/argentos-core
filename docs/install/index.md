@@ -10,9 +10,7 @@ title: "Install"
 
 Use the installer unless you have a reason not to. It sets up the CLI and runs onboarding.
 
-Treat source checkout installs as a contributor / validation path, not the primary end-user path.
-
-## Quick install (recommended for end users)
+## Quick install (recommended)
 
 ```bash
 curl -fsSL https://argentos.ai/install.sh | bash
@@ -32,15 +30,18 @@ argent onboard --install-daemon
 
 ## System requirements
 
-- **Node >=22.12.0** for source builds
+- **Node >=22**
 - macOS, Linux, or Windows via WSL2
 - `pnpm` only if you build from source
 
 ## Choose your install path
 
-### 1) Installer script (recommended for end users)
+### 1) Installer script (recommended)
 
-Installs `argent` globally via npm and runs onboarding.
+Clones/builds ArgentOS from GitHub by default, installs the `argent` wrapper,
+and runs onboarding. If the current Node runtime is unsupported, the installer
+provisions a private Node 22 runtime and uses that runtime for the wrapper and
+native module rebuilds.
 
 ```bash
 curl -fsSL https://argentos.ai/install.sh | bash
@@ -58,20 +59,6 @@ Non-interactive (skip onboarding):
 
 ```bash
 curl -fsSL https://argentos.ai/install.sh | bash -s -- --no-onboard
-```
-
-### 1a) Prefix-scoped CLI installer
-
-Use this when you want an isolated CLI install under a dedicated prefix, including app-driven installs:
-
-```bash
-curl -fsSL https://argentos.ai/install-cli.sh | bash
-```
-
-Useful flags:
-
-```bash
-curl -fsSL https://argentos.ai/install-cli.sh | bash -s -- --help
 ```
 
 ### 2) Global install (manual)
@@ -107,23 +94,14 @@ argent onboard --install-daemon
 
 ### 3) From source (contributors/dev)
 
-This path is for contributors and clean-machine validation. End users should prefer the hosted installer or the macOS app distribution.
-
 ```bash
-git clone https://github.com/ArgentAIOS/argentos-core.git
-cd argentos-core
+git clone https://github.com/ArgentAIOS/argentos.git
+cd argentos
 pnpm install
+pnpm ui:build # auto-installs UI deps on first run
 pnpm build
-bash install.sh
 argent onboard --install-daemon
 ```
-
-`install.sh` will bootstrap a private supported Node runtime for the installed CLI/services when the active system Node is missing or outside the supported runtime range.
-
-On macOS source checkouts, `install.sh` now also installs `Argent.app` when a bundle
-is already present in the repo output or when the local Swift app sources can be built
-successfully. That keeps the Mac source-install path aligned with the flagship app-first
-experience instead of leaving the native app out by default.
 
 Tip: if you don’t have a global install yet, run repo commands via `pnpm argent ...`.
 
@@ -145,17 +123,17 @@ Tip: if you don’t have a global install yet, run repo commands via `pnpm argen
 
 The installer supports two methods:
 
-- `npm` (default): `npm install -g argentos@latest`
-- `git`: clone/build from GitHub and run from a source checkout
+- `git` (default): clone/build from GitHub and run from a source checkout
+- `npm`: `npm install -g argentos@latest`
 
 ### CLI flags
 
 ```bash
+# Default hosted rail
+curl -fsSL https://argentos.ai/install.sh | bash -s -- --install-method git
+
 # Explicit npm
 curl -fsSL https://argentos.ai/install.sh | bash -s -- --install-method npm
-
-# Install from GitHub (source checkout)
-curl -fsSL https://argentos.ai/install.sh | bash -s -- --install-method git
 ```
 
 Common flags:
@@ -206,7 +184,6 @@ Then open a new terminal (or `rehash` in zsh / `hash -r` in bash).
 ## Update / uninstall
 
 - Updates: [Updating](/install/updating)
-- Clean-machine validation: [Second Mac Validation](/install/second-mac-validation)
 - Partner RC handoff: [Partner RC Runbook](/install/partner-release-rc)
 - Migrate to a new machine: [Migrating](/install/migrating)
 - Uninstall: [Uninstall](/install/uninstall)

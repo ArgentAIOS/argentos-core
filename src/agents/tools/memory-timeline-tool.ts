@@ -7,9 +7,10 @@
 
 import { Type } from "@sinclair/typebox";
 import type { ArgentConfig } from "../../config/config.js";
-import type { MemoryItem, MemoryType } from "../../memory/memu-types.js";
+import type { KnowledgeObservationKind, MemoryItem, MemoryType } from "../../memory/memu-types.js";
 import type { AnyAgentTool } from "./common.js";
 import { getStorageAdapter } from "../../data/storage-factory.js";
+import { retrieveMemory } from "../../memory/retrieve/search.js";
 import { resolveUserTimezone } from "../date-time.js";
 import { jsonResult, readStringParam, readNumberParam } from "./common.js";
 
@@ -276,6 +277,37 @@ function scoreTimelineNarrativeValue(
   return score;
 }
 
+function shouldUseObservationRetrieval(cfg: ArgentConfig): boolean {
+  return (
+    cfg.memory?.observations?.enabled === true &&
+    cfg.memory?.observations?.retrieval?.enabled === true
+  );
+}
+
+function inferObservationKindsForTimeline(params: {
+  query: string | null | undefined;
+  entityName: string | null;
+  memoryType: string | null;
+}): KnowledgeObservationKind[] {
+  const kinds = new Set<KnowledgeObservationKind>();
+  if (params.entityName) {
+    kinds.add("operator_preference");
+    kinds.add("relationship_fact");
+  }
+  const haystack = `${params.query ?? ""} ${params.memoryType ?? ""}`;
+  if (
+    /\b(playwright|pnpm|docker|ollama|typescript|tsx|vitest|jest|tool|cli|command)\b/i.test(
+      haystack,
+    )
+  ) {
+    kinds.add("tooling_state");
+  }
+  if (/\b(project|build|launch|deployment|roadmap)\b/i.test(haystack)) {
+    kinds.add("project_state");
+  }
+  return [...kinds];
+}
+
 export function createMemoryTimelineTool(options: {
   config?: ArgentConfig;
   agentId?: string;
@@ -340,6 +372,7 @@ export function createMemoryTimelineTool(options: {
         }
 
         let items: MemoryItem[] = [];
+        let usedHybridTopicRetrieval = false;
         if (resolvedEntities.length > 0) {
           items = (
             await Promise.all(
@@ -367,8 +400,20 @@ export function createMemoryTimelineTool(options: {
           items = [...merged.values()];
         } else {
           if (normalizedQuery) {
-            const hits = await memory.searchByKeyword(normalizedQuery, limit * 6);
-            items = hits.map((h) => h.item);
+            const hybrid = await retrieveMemory({
+              query: rawQuery?.trim() || normalizedQuery,
+              config: cfg,
+              limit: limit * 6,
+              memoryTypes: memoryType ? ([memoryType] as MemoryType[]) : undefined,
+              reinforceOnAccess: false,
+              rerank: false,
+              sufficiencyCheck: false,
+              // Use the already-resolved agent-scoped adapter so timeline follows the
+              // same live store as the tool call/session.
+              adapter: memory,
+            });
+            items = hybrid.results.map((hit) => hit.item);
+            usedHybridTopicRetrieval = true;
           } else {
             items = await memory.listItems({
               memoryType: memoryType as MemoryType | undefined,
@@ -386,7 +431,7 @@ export function createMemoryTimelineTool(options: {
         if (memoryType) {
           items = items.filter((item) => item.memoryType === memoryType);
         }
-        if (normalizedQuery) {
+        if (normalizedQuery && !usedHybridTopicRetrieval) {
           items = items.filter(
             (item) => scoreTimelineTopicMatch(item.summary, normalizedQuery) > 0,
           );
@@ -454,8 +499,36 @@ export function createMemoryTimelineTool(options: {
           grouped.get(dateKey)!.push(item);
         }
 
+        let currentStateHeader = "";
+        if (
+          shouldUseObservationRetrieval(cfg) &&
+          typeof memory.searchKnowledgeObservations === "function"
+        ) {
+          const observationKinds = inferObservationKindsForTimeline({
+            query: rawQuery,
+            entityName: effectiveEntityName,
+            memoryType,
+          });
+          if (observationKinds.length > 0) {
+            const observationQuery = rawQuery ?? normalizedQuery ?? effectiveEntityName ?? "";
+            const observationHits = await memory.searchKnowledgeObservations(observationQuery, {
+              kinds: observationKinds,
+              limit: 2,
+              minConfidence: cfg.memory?.observations?.retrieval?.minConfidence ?? 0.45,
+              minFreshness: cfg.memory?.observations?.retrieval?.minFreshness ?? 0.2,
+            });
+            if (observationHits.length > 0) {
+              const lines = observationHits.map(
+                (hit) =>
+                  `- ${hit.observation.summary} (confidence ${hit.observation.confidence.toFixed(2)}, freshness ${hit.observation.freshness.toFixed(2)})`,
+              );
+              currentStateHeader = `### Current State\n\n${lines.join("\n")}\n\n`;
+            }
+          }
+        }
+
         // Format output
-        let text = "";
+        let text = currentStateHeader;
         let totalCount = 0;
 
         for (const [dateKey, dateRows] of grouped.entries()) {

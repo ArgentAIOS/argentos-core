@@ -11,6 +11,16 @@ ArgentOS requires Node 22 or newer.
 
 ## Install
 
+### macOS (recommended)
+
+1. Download the latest **Argent.app** from [GitHub Releases](https://github.com/ArgentAIOS/argentos/releases).
+2. Launch `Argent.app`.
+3. Complete onboarding and permissions.
+
+The app is the preferred macOS operator surface. It manages the local gateway and can install the CLI for terminal workflows.
+
+### CLI (cross-platform)
+
 <Tabs>
   <Tab title="npm">
     ```bash
@@ -23,6 +33,10 @@ ArgentOS requires Node 22 or newer.
     ```
   </Tab>
 </Tabs>
+
+Official package install: `npm install -g argentos@latest`
+
+The executable is `argent`. The official npm package is `argentos` because the unscoped npm package name `argent` is already taken.
 
 ## Onboard and run the Gateway
 

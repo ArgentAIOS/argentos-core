@@ -1,0 +1,18 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+TOOL_NAME = "aos-klaviyo"
+BACKEND_NAME = "klaviyo-api"
+DEFAULT_REVISION = "2025-10-15"
+KLAVIYO_API_KEY_ENV = "KLAVIYO_API_KEY"
+KLAVIYO_REVISION_ENV = "KLAVIYO_REVISION"
+KLAVIYO_LIST_ID_ENV = "KLAVIYO_LIST_ID"
+KLAVIYO_PROFILE_ID_ENV = "KLAVIYO_PROFILE_ID"
+KLAVIYO_PROFILE_EMAIL_ENV = "KLAVIYO_PROFILE_EMAIL"
+KLAVIYO_CAMPAIGN_ID_ENV = "KLAVIYO_CAMPAIGN_ID"
+
+MODE_ORDER = ["readonly", "write", "full", "admin"]
+HARNESS_ROOT = Path(__file__).resolve().parents[2]
+CONNECTOR_PATH = HARNESS_ROOT.parent / "connector.json"
+PERMISSIONS_PATH = HARNESS_ROOT / "permissions.json"

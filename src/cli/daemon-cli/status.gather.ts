@@ -1,3 +1,5 @@
+import os from "node:os";
+import type { ArgentConfig } from "../../config/config.js";
 import type { GatewayBindMode, GatewayControlUiConfig } from "../../config/types.js";
 import type { FindExtraGatewayServicesOptions } from "../../daemon/inspect.js";
 import type { ServiceConfigAudit } from "../../daemon/service-audit.js";
@@ -171,6 +173,66 @@ function shouldReportPortUsage(status: PortUsageStatus | undefined, rpcOk?: bool
   return true;
 }
 
+function normalizeMaybePath(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function resolveDoctorLikeConfigPort(cfg: ArgentConfig) {
+  return resolveGatewayPort(cfg, {} as NodeJS.ProcessEnv);
+}
+
+function isAlternateHomeScope(env: NodeJS.ProcessEnv): boolean {
+  const currentHome = normalizeMaybePath(env.HOME);
+  const primaryHome = normalizeMaybePath(os.userInfo().homedir);
+  return Boolean(currentHome && primaryHome && currentHome !== primaryHome);
+}
+
+function isServiceScopedToCurrentStatus(params: {
+  loaded: boolean;
+  command:
+    | {
+        programArguments: string[];
+        workingDirectory?: string;
+        environment?: Record<string, string>;
+        sourcePath?: string;
+      }
+    | null
+    | undefined;
+  env: NodeJS.ProcessEnv;
+  cliConfigPath: string;
+  cliStateDir: string;
+  cliPort: number;
+}): boolean {
+  if (!params.loaded) {
+    return true;
+  }
+
+  const serviceEnv = params.command?.environment ?? {};
+  const serviceConfigPath = normalizeMaybePath(serviceEnv.ARGENT_CONFIG_PATH);
+  const serviceStateDir = normalizeMaybePath(serviceEnv.ARGENT_STATE_DIR);
+  const servicePort = parsePortFromArgs(params.command?.programArguments) ?? null;
+
+  if (serviceConfigPath && serviceConfigPath !== normalizeMaybePath(params.cliConfigPath)) {
+    return false;
+  }
+  if (serviceStateDir && serviceStateDir !== normalizeMaybePath(params.cliStateDir)) {
+    return false;
+  }
+  if (servicePort && servicePort !== params.cliPort) {
+    return false;
+  }
+
+  if (!params.command && isAlternateHomeScope(params.env)) {
+    return false;
+  }
+
+  return true;
+}
+
 export async function gatherDaemonStatus(
   opts: {
     rpc: GatewayRpcOpts;
@@ -184,24 +246,43 @@ export async function gatherDaemonStatus(
     service.readCommand(process.env).catch(() => null),
     service.readRuntime(process.env).catch((err) => ({ status: "unknown", detail: String(err) })),
   ]);
-  const configAudit = await auditGatewayServiceConfig({
-    env: process.env,
+
+  const cliStateDir = resolveStateDir(process.env);
+  const cliConfigPath = resolveConfigPath(process.env, cliStateDir);
+  const cliIO = createConfigIO({ env: process.env, configPath: cliConfigPath });
+  const cliCfg = cliIO.loadConfig();
+  const cliPort = resolveDoctorLikeConfigPort(cliCfg);
+
+  const serviceScoped = isServiceScopedToCurrentStatus({
+    loaded,
     command,
+    env: process.env,
+    cliConfigPath,
+    cliStateDir,
+    cliPort,
   });
 
-  const serviceEnv = command?.environment ?? undefined;
+  const effectiveLoaded = serviceScoped ? loaded : false;
+  const effectiveCommand = serviceScoped ? command : null;
+  const effectiveRuntime = serviceScoped ? runtime : undefined;
+  const configAudit = serviceScoped
+    ? await auditGatewayServiceConfig({
+        env: process.env,
+        command,
+      })
+    : undefined;
+
+  const serviceEnv = effectiveCommand?.environment ?? undefined;
   const mergedDaemonEnv = {
     ...(process.env as Record<string, string | undefined>),
     ...(serviceEnv ?? undefined),
   } satisfies Record<string, string | undefined>;
 
-  const cliConfigPath = resolveConfigPath(process.env, resolveStateDir(process.env));
   const daemonConfigPath = resolveConfigPath(
     mergedDaemonEnv as NodeJS.ProcessEnv,
     resolveStateDir(mergedDaemonEnv as NodeJS.ProcessEnv),
   );
 
-  const cliIO = createConfigIO({ env: process.env, configPath: cliConfigPath });
   const daemonIO = createConfigIO({
     env: mergedDaemonEnv,
     configPath: daemonConfigPath,
@@ -211,7 +292,6 @@ export async function gatherDaemonStatus(
     cliIO.readConfigFileSnapshot().catch(() => null),
     daemonIO.readConfigFileSnapshot().catch(() => null),
   ]);
-  const cliCfg = cliIO.loadConfig();
   const daemonCfg = daemonIO.loadConfig();
 
   const cliConfigSummary: ConfigSummary = {
@@ -250,7 +330,7 @@ export async function gatherDaemonStatus(
   };
   const configMismatch = cliConfigSummary.path !== daemonConfigSummary.path;
 
-  const portFromArgs = parsePortFromArgs(command?.programArguments);
+  const portFromArgs = parsePortFromArgs(effectiveCommand?.programArguments);
   const daemonPort = portFromArgs ?? resolveGatewayPort(daemonCfg, mergedDaemonEnv);
   const portSource: GatewayStatusSummary["portSource"] = portFromArgs
     ? "service args"
@@ -276,7 +356,6 @@ export async function gatherDaemonStatus(
         ? "Loopback-only gateway; only local clients can connect."
         : undefined;
 
-  const cliPort = resolveGatewayPort(cliCfg, process.env);
   const [portDiagnostics, portCliDiagnostics] = await Promise.all([
     inspectPortUsage(daemonPort).catch(() => null),
     cliPort !== daemonPort ? inspectPortUsage(cliPort).catch(() => null) : null,
@@ -324,19 +403,24 @@ export async function gatherDaemonStatus(
   const authMisconfiguration = resolveAuthMisconfiguration(daemonConfigSummary);
 
   let lastError: string | undefined;
-  if (loaded && runtime?.status === "running" && portStatus && portStatus.status !== "busy") {
+  if (
+    effectiveLoaded &&
+    effectiveRuntime?.status === "running" &&
+    portStatus &&
+    portStatus.status !== "busy"
+  ) {
     lastError = (await readLastGatewayErrorLine(mergedDaemonEnv as NodeJS.ProcessEnv)) ?? undefined;
   }
 
   return {
     service: {
       label: service.label,
-      loaded,
+      loaded: effectiveLoaded,
       loadedText: service.loadedText,
       notLoadedText: service.notLoadedText,
-      command,
-      runtime,
-      configAudit,
+      command: effectiveCommand,
+      runtime: effectiveRuntime,
+      ...(configAudit ? { configAudit } : {}),
     },
     config: {
       cli: cliConfigSummary,
@@ -362,8 +446,8 @@ export async function gatherDaemonStatus(
             url: probeUrl,
             ...resolveRpcDiagnosis({
               rpcError: rpc.error,
-              serviceLoaded: loaded,
-              runtimeStatus: runtime?.status,
+              serviceLoaded: effectiveLoaded,
+              runtimeStatus: effectiveRuntime?.status,
               portBusy: portStatus?.status === "busy",
               authMisconfiguration,
             }),

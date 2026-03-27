@@ -108,12 +108,102 @@ describe("healthCommand", () => {
         },
       ],
       sessions: { path: "/tmp/sessions.json", count: 0, recent: [] },
+      kernel: {
+        configured: true,
+        enabled: true,
+        mode: "shadow",
+        status: "running",
+        active: true,
+        defaultAgentId: "main",
+        tickMs: 60_000,
+        localModel: null,
+        maxEscalationsPerHour: 4,
+        dailyBudget: 0,
+        hardwareHostRequired: false,
+        allowListening: false,
+        allowVision: false,
+        startedAt: "2026-03-19T12:00:00.000Z",
+        lastTickAt: "2026-03-19T12:01:00.000Z",
+        tickCount: 2,
+        wakefulnessState: "reflective",
+        statePath: "/tmp/kernel/self-state.json",
+        decisionLogPath: "/tmp/kernel/decision-ledger.jsonl",
+        lastPersistedAt: "2026-03-19T12:01:00.000Z",
+        bootCount: 1,
+        resumeCount: 0,
+        totalTickCount: 2,
+        decisionCount: 3,
+        lastDecisionAt: "2026-03-19T12:01:00.000Z",
+        lastDecisionKind: "tick",
+        lastReflectionAt: "2026-03-19T12:01:00.000Z",
+        reflectionModel: "ollama/qwen3.5:latest",
+        currentFocus: "Review current internal priorities",
+        effectiveFocus: "website launch blockers",
+        continuityLane: "operator",
+        continuitySource: "operator",
+        continuityUpdatedAt: "2026-03-19T12:01:10.000Z",
+        continuityThreadTitle: "website launch blockers",
+        continuityProblemStatement:
+          "Keep the website launch workflow moving while the operator is away.",
+        continuityLastConclusion: "Carry the website launch thread forward.",
+        continuityNextStep: "Trace the next deployment blocker and surface it clearly.",
+        desiredAction: "plan",
+        selfSummary: "Stay awake, keep continuity, and prepare the next move.",
+        agendaUpdatedAt: "2026-03-19T12:01:00.000Z",
+        agendaInterests: ["website launch resilience", "continuity polish"],
+        agendaOpenQuestions: ["Which blocker is ripest to move next?"],
+        agendaCandidateItems: [
+          {
+            title: "Trace website launch blockers",
+            source: "operator",
+            rationale: "This is still the best unresolved carried thread.",
+          },
+        ],
+        agendaActiveTitle: "website launch blockers",
+        agendaActiveSource: "operator",
+        agendaActiveRationale: "This is still the best unresolved carried thread.",
+        reflectionRepeatCount: 1,
+        activeWorkUpdatedAt: "2026-03-19T12:01:10.000Z",
+        activeWorkThreadTitle: "website launch blockers",
+        activeWorkProblemStatement:
+          "Keep the website launch workflow moving while the operator is away.",
+        activeWorkLastConclusion: "Carry the website launch thread forward.",
+        activeWorkNextStep: "Trace the next deployment blocker and surface it clearly.",
+        backgroundWorkUpdatedAt: null,
+        backgroundWorkThreadTitle: null,
+        backgroundWorkProblemStatement: null,
+        backgroundWorkLastConclusion: null,
+        backgroundWorkNextStep: null,
+        activeConversationSessionKey: "agent:main:webchat",
+        activeConversationChannel: "webchat",
+        lastConversationAt: "2026-03-19T12:01:10.000Z",
+        lastUserMessageAt: "2026-03-19T12:01:05.000Z",
+        lastAssistantReplyAt: "2026-03-19T12:01:10.000Z",
+        lastAssistantConclusion: "Carry the website launch thread forward.",
+        lastError: null,
+        schedulerAuthorityActive: true,
+        suppressesAutonomousContemplation: true,
+        suppressesAutonomousSis: true,
+      },
     } satisfies HealthSummary);
 
     await healthCommand({ json: false }, runtime as never);
 
     expect(runtime.exit).not.toHaveBeenCalled();
     expect(runtime.log).toHaveBeenCalled();
+    const output = runtime.log.mock.calls.map((call) => String(call[0])).join("\n");
+    expect(output).toContain("Kernel:");
+    expect(output).toContain("focus=website launch blockers");
+    expect(output).toContain("kernelFocus=Review current internal priorities");
+    expect(output).not.toContain("agenda=");
+    expect(output).toContain("agendaSource=operator");
+    expect(output).toContain("agendaWhy=This is still the best unresolved carried thread.");
+    expect(output).toContain("question=Which blocker is ripest to move next?");
+    expect(output).toContain("thread=website launch blockers");
+    expect(output).toContain("next=Trace the next deployment blocker and surface it clearly.");
+    expect(output).toContain("stall=x2");
+    expect(output).toContain("channel=webchat");
+    expect(output).toContain("carry=Carry the website launch thread forward.");
   });
 
   it("formats per-account probe timings", () => {

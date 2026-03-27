@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aos-elevenlabs"
+version = "0.1.0"
+description = "ArgentOS ElevenLabs connector"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["click>=8.1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+aos-elevenlabs = "cli_aos.elevenlabs.cli:cli"
+
+[tool.setuptools]
+package-dir = { "" = "." }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cli_aos*"]
+

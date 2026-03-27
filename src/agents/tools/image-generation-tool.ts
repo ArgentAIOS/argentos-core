@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AnyAgentTool } from "./common.js";
 import { readStringParam } from "./common.js";
+import { resolveServiceKey } from "../../infra/service-keys.js";
 
 const ImageGenSchema = Type.Object({
   prompt: Type.String({ description: "Description of the image to generate." }),
@@ -35,26 +36,43 @@ const ImageGenSchema = Type.Object({
 
 type Provider = "gemini" | "openai" | "fal";
 
-function resolveProvider(requested?: string): { provider: Provider; apiKey: string } | null {
+function resolveProvider(
+  requested?: string,
+  cfg?: Record<string, unknown>,
+  sessionKey?: string,
+): { provider: Provider; apiKey: string; source: string } | null {
   const order: { provider: Provider; envKey: string }[] = [
     { provider: "gemini", envKey: "GOOGLE_GEMINI_API_KEY" },
     { provider: "openai", envKey: "OPENAI_API_KEY" },
     { provider: "fal", envKey: "FAL_API_KEY" },
   ];
 
-  if (requested) {
-    const match = order.find((o) => o.provider === requested);
-    if (match) {
-      const key = process.env[match.envKey];
-      if (key) return { provider: match.provider, apiKey: key };
-      return null;
+  const resolveKey = (envKey: string): { apiKey: string; source: string } | null => {
+    const accessContext = {
+      sessionKey,
+      source: "image_generate",
+    };
+    const serviceKey = resolveServiceKey(envKey, cfg, accessContext)?.trim();
+    if (serviceKey) {
+      return { apiKey: serviceKey, source: `service-keys:${envKey}` };
+    }
+    const envKeyValue = process.env[envKey]?.trim();
+    if (envKeyValue) {
+      return { apiKey: envKeyValue, source: `env:${envKey}` };
     }
     return null;
+  };
+
+  if (requested) {
+    const match = order.find((o) => o.provider === requested);
+    if (!match) return null;
+    const key = resolveKey(match.envKey);
+    return key ? { provider: match.provider, ...key } : null;
   }
 
   for (const entry of order) {
-    const key = process.env[entry.envKey];
-    if (key) return { provider: entry.provider, apiKey: key };
+    const key = resolveKey(entry.envKey);
+    if (key) return { provider: entry.provider, ...key };
   }
   return null;
 }
@@ -215,7 +233,7 @@ Returns a MEDIA: path. Copy the MEDIA line exactly into your response.`,
       const quality = readStringParam(params, "quality") as "standard" | "hd" | undefined;
       const model = readStringParam(params, "model");
 
-      const resolved = resolveProvider(provider);
+      const resolved = resolveProvider(provider, undefined, _toolCallId);
       if (!resolved) {
         return {
           content: [

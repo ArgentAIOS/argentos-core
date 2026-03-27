@@ -68,7 +68,7 @@ export async function doctorCommand(
 ) {
   const prompter = createDoctorPrompter({ runtime, options });
   printWizardHeader(runtime);
-  intro("Argent doctor");
+  intro("Inspect Argent");
 
   const root = await resolveArgentPackageRoot({
     moduleUrl: import.meta.url,
@@ -100,14 +100,14 @@ export async function doctorCommand(
   const configPath = configResult.path ?? CONFIG_PATH;
   if (!cfg.gateway?.mode) {
     const lines = [
-      "gateway.mode is unset; gateway start will be blocked.",
-      `Fix: run ${formatCliCommand("argent configure")} and set Gateway mode (local/remote).`,
+      "gateway.mode is unset, so Argent cannot bring the gateway online.",
+      `Fix: run ${formatCliCommand("argent configure")} and choose where the Argent gateway should live.`,
       `Or set directly: ${formatCliCommand("argent config set gateway.mode local")}`,
     ];
     if (!fs.existsSync(configPath)) {
       lines.push(`Missing config: run ${formatCliCommand("argent setup")} first.`);
     }
-    note(lines.join("\n"), "Gateway");
+    note(lines.join("\n"), "Argent gateway");
   }
 
   cfg = await maybeRepairAnthropicOAuthProfileId(cfg, prompter);
@@ -119,7 +119,7 @@ export async function doctorCommand(
   });
   const gatewayDetails = buildGatewayConnectionDetails({ config: cfg });
   if (gatewayDetails.remoteFallbackNote) {
-    note(gatewayDetails.remoteFallbackNote, "Gateway");
+    note(gatewayDetails.remoteFallbackNote, "Argent gateway");
   }
   if (resolveMode(cfg) === "local") {
     const auth = resolveGatewayAuth({
@@ -129,8 +129,8 @@ export async function doctorCommand(
     const needsToken = auth.mode !== "password" && (auth.mode !== "token" || !auth.token);
     if (needsToken) {
       note(
-        "Gateway auth is off or missing a token. Token auth is now the recommended default (including loopback).",
-        "Gateway auth",
+        "Gateway auth is off or missing a token. Token auth is now the recommended Argent default, including loopback.",
+        "Argent gateway auth",
       );
       const shouldSetToken =
         options.generateGatewayToken === true
@@ -138,7 +138,7 @@ export async function doctorCommand(
           : options.nonInteractive === true
             ? false
             : await prompter.confirmRepair({
-                message: "Generate and configure a gateway token now?",
+                message: "Generate and configure an Argent gateway token now?",
                 initialValue: true,
               });
       if (shouldSetToken) {
@@ -154,19 +154,19 @@ export async function doctorCommand(
             },
           },
         };
-        note("Gateway token configured.", "Gateway auth");
+        note("Gateway token configured.", "Argent gateway auth");
       }
     }
   }
 
   const legacyState = await detectLegacyStateMigrations({ cfg });
   if (legacyState.preview.length > 0) {
-    note(legacyState.preview.join("\n"), "Legacy state detected");
+    note(legacyState.preview.join("\n"), "Legacy Argent state detected");
     const migrate =
       options.nonInteractive === true
         ? true
         : await prompter.confirm({
-            message: "Migrate legacy state (sessions/agent/WhatsApp auth) now?",
+            message: "Migrate legacy Argent state now? (sessions, agent files, WhatsApp auth)",
             initialValue: true,
           });
     if (migrate) {
@@ -174,10 +174,10 @@ export async function doctorCommand(
         detected: legacyState,
       });
       if (migrated.changes.length > 0) {
-        note(migrated.changes.join("\n"), "Doctor changes");
+        note(migrated.changes.join("\n"), "Argent repairs");
       }
       if (migrated.warnings.length > 0) {
-        note(migrated.warnings.join("\n"), "Doctor warnings");
+        note(migrated.warnings.join("\n"), "Argent warnings");
       }
     }
   }
@@ -188,7 +188,9 @@ export async function doctorCommand(
   noteSandboxScopeWarnings(cfg);
 
   await maybeScanExtraGatewayServices(options, runtime, prompter);
-  await maybeRepairGatewayServiceConfig(cfg, resolveMode(cfg), runtime, prompter);
+  await maybeRepairGatewayServiceConfig(cfg, resolveMode(cfg), runtime, prompter, {
+    configPath: configResult.path ?? CONFIG_PATH,
+  });
   await noteMacLaunchAgentOverrides();
   await noteMacLaunchctlGatewayEnvOverrides(cfg);
 
@@ -277,6 +279,7 @@ export async function doctorCommand(
     options,
     gatewayDetailsMessage: gatewayDetails.message,
     healthOk,
+    configPath: configResult.path ?? CONFIG_PATH,
   });
 
   const shouldWriteConfig = prompter.shouldRepair || configResult.shouldWriteConfig;
@@ -296,7 +299,7 @@ export async function doctorCommand(
     const workspaceDir = resolveAgentWorkspaceDir(cfg, resolveDefaultAgentId(cfg));
     noteWorkspaceBackupTip(workspaceDir);
     if (await shouldSuggestMemorySystem(workspaceDir)) {
-      note(MEMORY_SYSTEM_PROMPT, "Workspace");
+      note(MEMORY_SYSTEM_PROMPT, "Argent workspace");
     }
   }
 
@@ -309,5 +312,5 @@ export async function doctorCommand(
     }
   }
 
-  outro("Doctor complete.");
+  outro("Argent systems check complete.");
 }

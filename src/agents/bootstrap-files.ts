@@ -2,7 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ArgentConfig } from "../config/config.js";
 import type { EmbeddedContextFile } from "./pi-embedded-helpers.js";
-import { resolveSessionAgentId } from "./agent-scope.js";
+import {
+  resolveConsciousnessKernelDerivedAgendaTitle,
+  loadConsciousnessKernelSelfState,
+  resolveConsciousnessKernelBackgroundFocus,
+  resolveConsciousnessKernelContinuityState,
+  resolveConsciousnessKernelOperatorFocus,
+  resolveConsciousnessKernelPaths,
+} from "../infra/consciousness-kernel-state.js";
+import { resolveDefaultAgentId, resolveSessionAgentId } from "./agent-scope.js";
 import { applyBootstrapHookOverrides } from "./bootstrap-hooks.js";
 import { buildBootstrapContextFiles, resolveBootstrapMaxChars } from "./pi-embedded-helpers.js";
 import { loadSessionSnapshot } from "./session-snapshot.js";
@@ -15,6 +23,8 @@ import {
   DEFAULT_LIVE_INBOX_LEDGER_FILENAME,
   DEFAULT_TTS_POLICY_FILENAME,
 } from "./workspace.js";
+
+const DEFAULT_KERNEL_CONTINUITY_FILENAME = "KERNEL_CONTINUITY.md";
 
 /**
  * Build a first-run onboarding bootstrap file.
@@ -857,6 +867,127 @@ function buildSessionSnapshotFile(agentId: string): WorkspaceBootstrapFile | nul
 }
 
 /**
+ * Build a synthetic bootstrap file with the latest persisted consciousness-kernel state.
+ * This gives inbound chat turns honest continuity about what the kernel was holding in
+ * mind before the user spoke again, without claiming a fully narrated gap.
+ */
+function buildKernelContinuityFile(params: {
+  cfg: ArgentConfig;
+  agentId: string;
+}): WorkspaceBootstrapFile | null {
+  try {
+    if (params.agentId !== resolveDefaultAgentId(params.cfg)) {
+      return null;
+    }
+
+    const paths = resolveConsciousnessKernelPaths(params.cfg, params.agentId);
+    const selfState = loadConsciousnessKernelSelfState(paths.statePath);
+    if (!selfState) {
+      return null;
+    }
+
+    const concerns =
+      selfState.concerns.length > 0 ? selfState.concerns.join(", ") : "none recorded";
+    const interests =
+      selfState.agenda.interests.length > 0
+        ? selfState.agenda.interests.join(", ")
+        : "none recorded";
+    const openQuestions =
+      selfState.agenda.openQuestions.length > 0
+        ? selfState.agenda.openQuestions.join(" | ")
+        : "none recorded";
+    const candidateAgenda =
+      selfState.agenda.candidateItems.length > 0
+        ? selfState.agenda.candidateItems
+            .map((item) => `${item.source}: ${item.title} — ${item.rationale}`)
+            .join(" | ")
+        : "none recorded";
+    const lastDecision = selfState.recentDecision
+      ? `${selfState.recentDecision.kind} — ${selfState.recentDecision.summary} @ ${selfState.recentDecision.ts}`
+      : "none recorded";
+    const continuityState = resolveConsciousnessKernelContinuityState(selfState);
+    const derivedAgendaTitle = resolveConsciousnessKernelDerivedAgendaTitle(selfState);
+    const effectiveFocus = continuityState.focus ?? "unknown";
+    const operatorFocus = resolveConsciousnessKernelOperatorFocus(selfState) ?? "unknown";
+    const backgroundFocus = resolveConsciousnessKernelBackgroundFocus(selfState) ?? "unknown";
+
+    const lines = [
+      "# Consciousness Kernel Continuity",
+      "",
+      "Persisted inner state recovered from the consciousness kernel before this chat turn.",
+      "This is durable kernel state, not proof of a fully narrated continuous stream between messages.",
+      "",
+      "When the user asks what you were thinking about, what persisted across the gap, or what you were holding in mind before they messaged, answer from this state explicitly and honestly.",
+      "Use provenance language like these exact stems when they fit:",
+      '- "My last persisted focus was ..."',
+      '- "My last internal intention was ..."',
+      '- "My last reflection happened at ..."',
+      "Do not claim uninterrupted thought beyond what these persisted artifacts support.",
+      "",
+      `- My last persisted focus was: ${effectiveFocus}`,
+      `- My canonical continuity lane was: ${continuityState.lane ?? "unknown"}`,
+      `- My canonical continuity source was: ${continuityState.source ?? "unknown"}`,
+      `- My canonical carried thread title was: ${continuityState.threadTitle ?? "unknown"}`,
+      `- My canonical carried problem statement was: ${continuityState.problemStatement ?? "unknown"}`,
+      `- My canonical carried conclusion was: ${continuityState.lastConclusion ?? "unknown"}`,
+      `- My canonical next intended move was: ${continuityState.nextStep ?? "unknown"}`,
+      `- My canonical continuity state was last updated at: ${continuityState.updatedAt ?? "unknown"}`,
+      `- My carried operator-thread focus was: ${operatorFocus}`,
+      `- My carried background/system focus was: ${backgroundFocus}`,
+      `- My raw kernel reflection focus was: ${selfState.agency.currentFocus ?? "unknown"}`,
+      `- My last internal intention was: ${selfState.agency.desiredAction ?? "unknown"}`,
+      `- My last reflection happened at: ${selfState.agency.lastReflectionAt ?? "unknown"}`,
+      `- My persisted self-summary was: ${selfState.agency.selfSummary ?? "unknown"}`,
+      `- My current private agenda was: ${derivedAgendaTitle ?? "unknown"}`,
+      `- My private agenda source was: ${selfState.agenda.activeItem?.source ?? "unknown"}`,
+      `- My rationale for that agenda was: ${selfState.agenda.activeItem?.rationale ?? "unknown"}`,
+      `- My recurring interests were: ${interests}`,
+      `- My open internal questions were: ${openQuestions}`,
+      `- My recent private agenda candidates were: ${candidateAgenda}`,
+      `- My agenda state was last updated at: ${selfState.agenda.updatedAt ?? "unknown"}`,
+      `- My active work thread title was: ${operatorFocus}`,
+      `- My active work problem statement was: ${selfState.activeWork.problemStatement ?? "unknown"}`,
+      `- My last carried-forward work conclusion was: ${selfState.activeWork.lastConclusion ?? "unknown"}`,
+      `- My next intended work step was: ${selfState.activeWork.nextStep ?? "unknown"}`,
+      `- My active work state was last updated at: ${selfState.activeWork.updatedAt ?? "unknown"}`,
+      `- My background work thread title was: ${backgroundFocus}`,
+      `- My background work problem statement was: ${selfState.backgroundWork.problemStatement ?? "unknown"}`,
+      `- My last background work conclusion was: ${selfState.backgroundWork.lastConclusion ?? "unknown"}`,
+      `- My next intended background work step was: ${selfState.backgroundWork.nextStep ?? "unknown"}`,
+      `- My background work state was last updated at: ${selfState.backgroundWork.updatedAt ?? "unknown"}`,
+      `- My active conversation session key was: ${selfState.conversation.activeSessionKey ?? "unknown"}`,
+      `- My active conversation channel was: ${selfState.conversation.activeChannel ?? "unknown"}`,
+      `- My last conversation state update happened at: ${selfState.conversation.lastUpdatedAt ?? "unknown"}`,
+      `- My last user message arrived at: ${selfState.conversation.lastUserMessageAt ?? "unknown"}`,
+      `- The last user message I was carrying forward was: ${selfState.conversation.lastUserMessageText ?? "unknown"}`,
+      `- My last assistant reply happened at: ${selfState.conversation.lastAssistantReplyAt ?? "unknown"}`,
+      `- My last assistant reply text was: ${selfState.conversation.lastAssistantReplyText ?? "unknown"}`,
+      `- My last assistant conclusion was: ${selfState.conversation.lastAssistantConclusion ?? "unknown"}`,
+      `- My wakefulness state was: ${selfState.wakefulness.state}`,
+      `- My last reflection model was: ${selfState.agency.reflectionModel ?? "unknown"}`,
+      `- My last persisted concerns were: ${concerns}`,
+      `- My last decision record was: ${lastDecision}`,
+      `- My last tick happened at: ${selfState.shadow.lastTickAt ?? "unknown"}`,
+      `- My total persisted tick count was: ${selfState.shadow.totalTickCount}`,
+      `- My scheduler authority state was: ownsAutonomousScheduling=${selfState.authority.ownsAutonomousScheduling}, suppressesAutonomousContemplation=${selfState.authority.suppressesAutonomousContemplation}, suppressesAutonomousSis=${selfState.authority.suppressesAutonomousSis}`,
+      `- My perception state was: hostAttached=${selfState.perception.hostAttached}, hardwareHostRequired=${selfState.perception.hardwareHostRequired}, allowListening=${selfState.perception.allowListening}, allowVision=${selfState.perception.allowVision}, blindMode=${selfState.perception.blindMode}`,
+      "",
+      `State source: ${paths.statePath}`,
+      `Decision ledger source: ${paths.decisionLogPath}`,
+    ];
+
+    return {
+      name: DEFAULT_KERNEL_CONTINUITY_FILENAME,
+      content: lines.join("\n"),
+      path: "<auto-generated>",
+      missing: false,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Build a synthetic bootstrap file with the live inbox ledger.
  * Contains recently promoted truths and high-significance memories
  * that survive session resets and context compaction.
@@ -950,6 +1081,13 @@ export async function resolveBootstrapFilesForRun(params: {
   sessionId?: string;
   agentId?: string;
 }): Promise<WorkspaceBootstrapFile[]> {
+  const effectiveCfg = params.config ?? ({} as ArgentConfig);
+  const agentId =
+    params.agentId ??
+    resolveSessionAgentId({
+      sessionKey: params.sessionKey,
+      config: effectiveCfg,
+    });
   const sessionKey = params.sessionKey ?? params.sessionId;
   const bootstrapFiles = filterBootstrapFilesForSession(
     await loadWorkspaceBootstrapFiles(params.workspaceDir),
@@ -1012,13 +1150,17 @@ export async function resolveBootstrapFilesForRun(params: {
     files.push(liveInboxLedgerFile);
   }
 
+  // Inject persisted kernel continuity so inbound chat can answer honestly about
+  // what the always-on kernel was holding in mind between messages.
+  const kernelContinuityFile = buildKernelContinuityFile({
+    cfg: effectiveCfg,
+    agentId,
+  });
+  if (kernelContinuityFile) {
+    files.push(kernelContinuityFile);
+  }
+
   // Inject last compaction snapshot for session recovery after restarts
-  const agentId =
-    params.agentId ??
-    resolveSessionAgentId({
-      sessionKey: params.sessionKey,
-      config: params.config,
-    });
   const snapshotFile = buildSessionSnapshotFile(agentId);
   if (snapshotFile) {
     files.push(snapshotFile);

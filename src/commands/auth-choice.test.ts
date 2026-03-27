@@ -140,6 +140,94 @@ describe("applyAuthChoice", () => {
     expect(parsed.profiles?.["minimax:default"]?.key).toBe("sk-minimax-test");
   });
 
+  it("sets MiniMax M2.7 when selecting minimax-api-m27", async () => {
+    tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-auth-"));
+    process.env.ARGENT_STATE_DIR = tempStateDir;
+    process.env.ARGENT_AGENT_DIR = path.join(tempStateDir, "agent");
+    process.env.PI_CODING_AGENT_DIR = process.env.ARGENT_AGENT_DIR;
+
+    const text = vi.fn().mockResolvedValue("sk-minimax-test");
+    const select: WizardPrompter["select"] = vi.fn(
+      async (params) => params.options[0]?.value as never,
+    );
+    const multiselect: WizardPrompter["multiselect"] = vi.fn(async () => []);
+    const prompter: WizardPrompter = {
+      intro: vi.fn(noopAsync),
+      outro: vi.fn(noopAsync),
+      note: vi.fn(noopAsync),
+      select,
+      multiselect,
+      text,
+      confirm: vi.fn(async () => false),
+      progress: vi.fn(() => ({ update: noop, stop: noop })),
+    };
+    const runtime: RuntimeEnv = {
+      log: vi.fn(),
+      error: vi.fn(),
+      exit: vi.fn((code: number) => {
+        throw new Error(`exit:${code}`);
+      }),
+    };
+
+    const result = await applyAuthChoice({
+      authChoice: "minimax-api-m27",
+      config: {},
+      prompter,
+      runtime,
+      setDefaultModel: true,
+    });
+
+    expect(result.config.agents?.defaults?.model?.primary).toBe("minimax/MiniMax-M2.7");
+    expect(
+      result.config.models?.providers?.minimax?.models.some((m) => m.id === "MiniMax-M2.7"),
+    ).toBe(true);
+  });
+
+  it("sets MiniMax M2.7 highspeed when selecting minimax-api-m27-highspeed", async () => {
+    tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-auth-"));
+    process.env.ARGENT_STATE_DIR = tempStateDir;
+    process.env.ARGENT_AGENT_DIR = path.join(tempStateDir, "agent");
+    process.env.PI_CODING_AGENT_DIR = process.env.ARGENT_AGENT_DIR;
+
+    const text = vi.fn().mockResolvedValue("sk-minimax-test");
+    const select: WizardPrompter["select"] = vi.fn(
+      async (params) => params.options[0]?.value as never,
+    );
+    const multiselect: WizardPrompter["multiselect"] = vi.fn(async () => []);
+    const prompter: WizardPrompter = {
+      intro: vi.fn(noopAsync),
+      outro: vi.fn(noopAsync),
+      note: vi.fn(noopAsync),
+      select,
+      multiselect,
+      text,
+      confirm: vi.fn(async () => false),
+      progress: vi.fn(() => ({ update: noop, stop: noop })),
+    };
+    const runtime: RuntimeEnv = {
+      log: vi.fn(),
+      error: vi.fn(),
+      exit: vi.fn((code: number) => {
+        throw new Error(`exit:${code}`);
+      }),
+    };
+
+    const result = await applyAuthChoice({
+      authChoice: "minimax-api-m27-highspeed",
+      config: {},
+      prompter,
+      runtime,
+      setDefaultModel: true,
+    });
+
+    expect(result.config.agents?.defaults?.model?.primary).toBe("minimax/MiniMax-M2.7-highspeed");
+    expect(
+      result.config.models?.providers?.minimax?.models.some(
+        (m) => m.id === "MiniMax-M2.7-highspeed",
+      ),
+    ).toBe(true);
+  });
+
   it("prompts and writes Mistral API key when selecting mistral-api-key", async () => {
     tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-auth-"));
     process.env.ARGENT_STATE_DIR = tempStateDir;
@@ -811,9 +899,105 @@ describe("applyAuthChoice", () => {
       refresh: "refresh",
     });
   });
+
+  it("configures LM Studio as a first-class local runtime choice", async () => {
+    const prompter: WizardPrompter = {
+      intro: vi.fn(noopAsync),
+      outro: vi.fn(noopAsync),
+      note: vi.fn(noopAsync),
+      select: vi.fn(async () => "unused" as never),
+      multiselect: vi.fn(async () => []),
+      text: vi.fn(async () => ""),
+      confirm: vi.fn(async () => false),
+      progress: vi.fn(() => ({ update: noop, stop: noop })),
+    };
+    const runtime: RuntimeEnv = {
+      log: vi.fn(),
+      error: vi.fn(),
+      exit: vi.fn(),
+    };
+
+    const result = await applyAuthChoice({
+      authChoice: "lmstudio",
+      config: {},
+      prompter,
+      runtime,
+      setDefaultModel: true,
+    });
+
+    expect(result.config.agents?.defaults?.model?.primary).toBe("lmstudio/qwen/qwen3.5-35b-a3b");
+    expect(result.config.agents?.defaults?.kernel?.localModel).toBe(
+      "lmstudio/qwen/qwen3.5-35b-a3b",
+    );
+    expect(result.config.agents?.defaults?.memorySearch).toMatchObject({
+      provider: "lmstudio",
+      model: "text-embedding-nomic-embed-text-v1.5",
+      fallback: "none",
+    });
+    expect(result.config.models?.providers?.lmstudio).toMatchObject({
+      baseUrl: "http://127.0.0.1:1234/v1",
+      api: "openai-responses",
+    });
+  });
+
+  it("configures Ollama as a first-class local runtime choice", async () => {
+    const select = vi.fn(async (params: { message: string }) => {
+      if (params.message === "Default Ollama model") {
+        return "qwen3:30b-a3b-instruct-2507-q4_K_M";
+      }
+      return "unused";
+    });
+    const prompter: WizardPrompter = {
+      intro: vi.fn(noopAsync),
+      outro: vi.fn(noopAsync),
+      note: vi.fn(noopAsync),
+      select: select as WizardPrompter["select"],
+      multiselect: vi.fn(async () => []),
+      text: vi.fn(async () => ""),
+      confirm: vi.fn(async () => false),
+      progress: vi.fn(() => ({ update: noop, stop: noop })),
+    };
+    const runtime: RuntimeEnv = {
+      log: vi.fn(),
+      error: vi.fn(),
+      exit: vi.fn(),
+    };
+
+    const result = await applyAuthChoice({
+      authChoice: "ollama",
+      config: {},
+      prompter,
+      runtime,
+      setDefaultModel: true,
+    });
+
+    expect(result.config.agents?.defaults?.model?.primary).toBe(
+      "ollama/qwen3:30b-a3b-instruct-2507-q4_K_M",
+    );
+    expect(result.config.agents?.defaults?.kernel?.localModel).toBe(
+      "ollama/qwen3:30b-a3b-instruct-2507-q4_K_M",
+    );
+    expect(result.config.agents?.defaults?.memorySearch).toMatchObject({
+      provider: "ollama",
+      model: "nomic-embed-text",
+      fallback: "none",
+    });
+    expect(result.config.models?.providers?.ollama).toMatchObject({
+      baseUrl: "http://127.0.0.1:11434/v1",
+      apiKey: "ollama-local",
+    });
+  });
 });
 
 describe("resolvePreferredProviderForAuthChoice", () => {
+  it("maps lmstudio to the provider", () => {
+    expect(resolvePreferredProviderForAuthChoice("lmstudio")).toBe("lmstudio");
+  });
+
+  it("maps ollama to the provider", () => {
+    expect(resolvePreferredProviderForAuthChoice("ollama")).toBe("ollama");
+  });
+
   it("maps github-copilot to the provider", () => {
     expect(resolvePreferredProviderForAuthChoice("github-copilot")).toBe("github-copilot");
   });
@@ -824,6 +1008,14 @@ describe("resolvePreferredProviderForAuthChoice", () => {
 
   it("maps mistral-api-key to the provider", () => {
     expect(resolvePreferredProviderForAuthChoice("mistral-api-key")).toBe("mistral");
+  });
+
+  it("maps minimax-api-m27 to the provider", () => {
+    expect(resolvePreferredProviderForAuthChoice("minimax-api-m27")).toBe("minimax");
+  });
+
+  it("maps minimax-api-m27-highspeed to the provider", () => {
+    expect(resolvePreferredProviderForAuthChoice("minimax-api-m27-highspeed")).toBe("minimax");
   });
 
   it("returns undefined for unknown choices", () => {

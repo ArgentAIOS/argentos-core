@@ -35,31 +35,6 @@ When debugging real providers/models (requires real creds):
 
 Tip: when you only need one failing case, prefer narrowing live tests via the allowlist env vars described below.
 
-## CodeRabbit pre-push review
-
-For local review before you open a PR, run CodeRabbit against your current diff:
-
-```bash
-# install once
-curl -fsSL https://cli.coderabbit.ai/install.sh | sh
-
-# authenticate once
-cr auth login
-
-# interactive review for the latest commit/diff
-pnpm review:coderabbit
-
-# prompt-only mode for Codex/Claude/Cursor loops
-pnpm review:coderabbit:prompt
-```
-
-Use CodeRabbit to catch material issues before push, not to churn on minor style cleanup. In this repo, the intended use is:
-
-- review uncommitted changes before opening a PR
-- review the latest commit/diff locally before opening a PR
-- focus on correctness, auth/session behavior, workflow safety, and cross-platform regressions
-- rerun once after fixes if you changed behavior in response to findings
-
 ## Test suites (what runs where)
 
 Think of the suites as “increasing realism” (and increasing flakiness/cost):

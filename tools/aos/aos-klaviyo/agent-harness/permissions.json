@@ -1,0 +1,19 @@
+{
+  "tool": "aos-klaviyo",
+  "backend": "klaviyo-api",
+  "permissions": {
+    "account.read": "readonly",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "list.list": "readonly",
+    "list.read": "readonly",
+    "profile.list": "readonly",
+    "profile.read": "readonly",
+    "campaign.list": "readonly",
+    "campaign.read": "readonly",
+    "campaign.create": "write",
+    "profile.upsert": "write"
+  }
+}

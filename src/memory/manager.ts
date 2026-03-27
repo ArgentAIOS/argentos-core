@@ -28,7 +28,10 @@ import {
 } from "./batch-openai.js";
 import { DEFAULT_GEMINI_EMBEDDING_MODEL } from "./embeddings-gemini.js";
 import { DEFAULT_OLLAMA_EMBEDDING_MODEL } from "./embeddings-ollama.js";
-import { DEFAULT_OPENAI_EMBEDDING_MODEL } from "./embeddings-openai.js";
+import {
+  DEFAULT_LMSTUDIO_EMBEDDING_MODEL,
+  DEFAULT_OPENAI_EMBEDDING_MODEL,
+} from "./embeddings-openai.js";
 import {
   createEmbeddingProvider,
   type EmbeddingProvider,
@@ -115,8 +118,14 @@ export class MemoryIndexManager implements MemorySearchManager {
   private readonly workspaceDir: string;
   private readonly settings: ResolvedMemorySearchConfig;
   private provider: EmbeddingProvider;
-  private readonly requestedProvider: "openai" | "local" | "gemini" | "ollama" | "auto";
-  private fallbackFrom?: "openai" | "local" | "gemini" | "ollama";
+  private readonly requestedProvider:
+    | "openai"
+    | "local"
+    | "gemini"
+    | "ollama"
+    | "lmstudio"
+    | "auto";
+  private fallbackFrom?: "openai" | "local" | "gemini" | "ollama" | "lmstudio";
   private fallbackReason?: string;
   private openAi?: OpenAiEmbeddingClient;
   private gemini?: GeminiEmbeddingClient;
@@ -1392,16 +1401,18 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (this.fallbackFrom) {
       return false;
     }
-    const fallbackFrom = this.provider.id as "openai" | "gemini" | "ollama" | "local";
+    const fallbackFrom = this.provider.id as "openai" | "gemini" | "ollama" | "lmstudio" | "local";
 
     const fallbackModel =
       fallback === "gemini"
         ? DEFAULT_GEMINI_EMBEDDING_MODEL
         : fallback === "ollama"
           ? DEFAULT_OLLAMA_EMBEDDING_MODEL
-          : fallback === "openai"
-            ? DEFAULT_OPENAI_EMBEDDING_MODEL
-            : this.settings.model;
+          : fallback === "lmstudio"
+            ? DEFAULT_LMSTUDIO_EMBEDDING_MODEL
+            : fallback === "openai"
+              ? DEFAULT_OPENAI_EMBEDDING_MODEL
+              : this.settings.model;
 
     const fallbackResult = await createEmbeddingProvider({
       config: this.cfg,
@@ -1850,14 +1861,14 @@ export class MemoryIndexManager implements MemorySearchManager {
   }
 
   private computeProviderKey(): string {
-    if (this.provider.id === "openai" && this.openAi) {
+    if ((this.provider.id === "openai" || this.provider.id === "lmstudio") && this.openAi) {
       const entries = Object.entries(this.openAi.headers)
         .filter(([key]) => key.toLowerCase() !== "authorization")
         .toSorted(([a], [b]) => a.localeCompare(b))
         .map(([key, value]) => [key, value]);
       return hashText(
         JSON.stringify({
-          provider: "openai",
+          provider: this.provider.id,
           baseUrl: this.openAi.baseUrl,
           model: this.openAi.model,
           headers: entries,

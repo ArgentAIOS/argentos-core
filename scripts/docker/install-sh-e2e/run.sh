@@ -43,7 +43,7 @@ if [[ -n "$E2E_PREVIOUS_VERSION" ]]; then
 else
   PREVIOUS_VERSION="$(node - <<'NODE'
 const { execSync } = require("node:child_process");
-const versions = JSON.parse(execSync("npm view argent versions --json", { encoding: "utf8" }));
+const versions = JSON.parse(execSync("npm view argentos versions --json", { encoding: "utf8" }));
 if (!Array.isArray(versions) || versions.length === 0) process.exit(1);
 process.stdout.write(versions.length >= 2 ? versions[versions.length - 2] : versions[0]);
 NODE

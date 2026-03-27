@@ -247,6 +247,28 @@ export function createGatewayHttpServer(opts: {
     }
 
     try {
+      // Proxy /api/* to dashboard API server FIRST (before any other handler)
+      if (req.url && req.url.startsWith("/api/")) {
+        try {
+          const apiPort = process.env.API_PORT || "9242";
+          const proxyUrl = `http://127.0.0.1:${apiPort}${req.url}`;
+          const proxyRes = await fetch(proxyUrl, {
+            method: req.method || "GET",
+            headers: { "Content-Type": "application/json" },
+          });
+          if (proxyRes.ok) {
+            res.statusCode = proxyRes.status;
+            const ct = proxyRes.headers.get("content-type");
+            if (ct) res.setHeader("Content-Type", ct);
+            const body = await proxyRes.text();
+            res.end(body);
+            return;
+          }
+        } catch {
+          // API server not available — fall through to other handlers
+        }
+      }
+
       const configSnapshot = loadConfig();
       const trustedProxies = configSnapshot.gateway?.trustedProxies ?? [];
       if (await handleSisFeedbackRequest(req, res)) {

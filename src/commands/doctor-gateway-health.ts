@@ -21,8 +21,8 @@ export async function checkGatewayHealth(params: {
   } catch (err) {
     const message = String(err);
     if (message.includes("gateway closed")) {
-      note("Gateway not running.", "Gateway");
-      note(gatewayDetails.message, "Gateway connection");
+      note("Gateway not running.", "Argent gateway");
+      note(gatewayDetails.message, "Argent gateway connection");
     } else {
       params.runtime.error(formatHealthCheckFailure(err));
     }
@@ -46,7 +46,7 @@ export async function checkGatewayHealth(params: {
                 }`,
             )
             .join("\n"),
-          "Channel warnings",
+          "Argent channel warnings",
         );
       }
     } catch {

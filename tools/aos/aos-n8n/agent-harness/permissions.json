@@ -1,0 +1,12 @@
+{
+  "tool": "aos-n8n",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly",
+    "workflow.list": "readonly",
+    "workflow.status": "readonly",
+    "workflow.trigger": "write"
+  }
+}

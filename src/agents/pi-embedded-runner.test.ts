@@ -144,6 +144,7 @@ const nextSessionFile = () => {
 };
 
 const testSessionKey = "agent:test:embedded";
+const kernelSessionKey = "agent:main:webchat";
 const immediateEnqueue = async <T>(task: () => Promise<T>) => task();
 
 const textFromContent = (content: unknown) => {
@@ -252,6 +253,69 @@ describe("runEmbeddedPiAgent", () => {
       }
     },
   );
+
+  it("writes completed chat turns back into kernel continuity state", async () => {
+    const sessionFile = nextSessionFile();
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-kernel-turn-"));
+    vi.stubEnv("ARGENT_STATE_DIR", stateDir);
+    const cfg = {
+      ...makeOpenAiConfig(["mock-1"]),
+      agents: {
+        defaults: {
+          kernel: {
+            enabled: true,
+            mode: "shadow",
+          },
+        },
+        list: [{ id: "main", default: true }],
+      },
+    } satisfies ArgentConfig;
+    await ensureModels(cfg);
+
+    await runEmbeddedPiAgent({
+      sessionId: "session:test",
+      sessionKey: kernelSessionKey,
+      sessionFile,
+      workspaceDir,
+      config: cfg,
+      prompt: "What were you holding in mind before I came back?",
+      provider: "openai",
+      model: "mock-1",
+      timeoutMs: 5_000,
+      agentDir,
+      enqueue: immediateEnqueue,
+    });
+
+    const kernelStatePath = path.join(
+      stateDir,
+      "agents",
+      "main",
+      "agent",
+      "kernel",
+      "self-state.json",
+    );
+    const persisted = JSON.parse(await fs.readFile(kernelStatePath, "utf-8")) as {
+      conversation: {
+        activeSessionKey: string | null;
+        activeChannel: string | null;
+        lastUserMessageText: string | null;
+        lastAssistantReplyText: string | null;
+        lastAssistantConclusion: string | null;
+      };
+      recentDecision: { kind: string; summary: string } | null;
+      wakefulness: { state: string };
+    };
+
+    expect(persisted.wakefulness.state).toBe("engaged");
+    expect(persisted.conversation.activeSessionKey).toBe(kernelSessionKey);
+    expect(persisted.conversation.activeChannel).toBe("webchat");
+    expect(persisted.conversation.lastUserMessageText).toBe(
+      "What were you holding in mind before I came back?",
+    );
+    expect(persisted.conversation.lastAssistantReplyText).toBe("ok");
+    expect(persisted.conversation.lastAssistantConclusion).toBe("ok");
+    expect(persisted.recentDecision?.kind).toBe("conversation-sync");
+  });
 
   it("persists the user message when prompt fails before assistant output", async () => {
     const sessionFile = nextSessionFile();

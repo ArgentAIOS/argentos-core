@@ -160,6 +160,23 @@
         "wake": { "label": "wake", "detailKeys": ["text", "mode"] }
       }
     },
+    "scheduled_tasks": {
+      "emoji": "🗓️",
+      "title": "Scheduled Tasks",
+      "actions": {
+        "status": { "label": "status" },
+        "list": { "label": "list" },
+        "create": {
+          "label": "create",
+          "detailKeys": ["name", "recurrence", "runAt", "deliveryChannel", "deliveryTo"]
+        },
+        "update": { "label": "update", "detailKeys": ["id", "jobId", "name", "recurrence"] },
+        "pause": { "label": "pause", "detailKeys": ["id", "jobId"] },
+        "resume": { "label": "resume", "detailKeys": ["id", "jobId"] },
+        "remove": { "label": "remove", "detailKeys": ["id", "jobId"] },
+        "run": { "label": "run", "detailKeys": ["id", "jobId"] }
+      }
+    },
     "gateway": {
       "emoji": "🔌",
       "title": "Gateway",

@@ -58,9 +58,44 @@ interface OllamaTagsResponse {
   models: OllamaModel[];
 }
 
+interface OpenAICompatModelsResponse {
+  data?: Array<{ id?: string }>;
+}
+
 const OLLAMA_DEFAULT_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
-async function discoverOllamaModels(discoveryUrl: string): Promise<ModelDefinitionConfig[]> {
+function hasProviderRef(value: unknown, provider: "ollama" | "lmstudio"): boolean {
+  return typeof value === "string" && value.trim().toLowerCase().startsWith(`${provider}/`);
+}
+
+function usesConfiguredLocalRuntime(
+  cfg: ArgentConfig | undefined,
+  provider: "ollama" | "lmstudio",
+): boolean {
+  if (!cfg) {
+    return false;
+  }
+  if (cfg.models?.providers?.[provider]) {
+    return true;
+  }
+  const kernelLocalModel = cfg.agents?.defaults?.kernel?.localModel;
+  if (hasProviderRef(kernelLocalModel, provider)) {
+    return true;
+  }
+  const memorySearch = cfg.agents?.defaults?.memorySearch;
+  if (memorySearch?.provider === provider || memorySearch?.fallback === provider) {
+    return true;
+  }
+  if (hasProviderRef(memorySearch?.model, provider)) {
+    return true;
+  }
+  return false;
+}
+
+async function discoverOllamaModels(
+  discoveryUrl: string,
+  opts: { warnOnFailure: boolean },
+): Promise<ModelDefinitionConfig[]> {
   if (process.env.VITEST || process.env.NODE_ENV === "test") {
     return [];
   }
@@ -69,12 +104,16 @@ async function discoverOllamaModels(discoveryUrl: string): Promise<ModelDefiniti
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) {
-      console.warn(`Failed to discover Ollama models: ${response.status}`);
+      if (opts.warnOnFailure) {
+        console.warn(`Failed to discover Ollama models: ${response.status}`);
+      }
       return [];
     }
     const data = (await response.json()) as OllamaTagsResponse;
     if (!data.models || data.models.length === 0) {
-      console.warn("No Ollama models found on local instance");
+      if (opts.warnOnFailure) {
+        console.warn("No Ollama models found on local instance");
+      }
       return [];
     }
     return data.models.map((model) => {
@@ -92,7 +131,57 @@ async function discoverOllamaModels(discoveryUrl: string): Promise<ModelDefiniti
       };
     });
   } catch (error) {
-    console.warn(`Failed to discover Ollama models: ${String(error)}`);
+    if (opts.warnOnFailure) {
+      console.warn(`Failed to discover Ollama models: ${String(error)}`);
+    }
+    return [];
+  }
+}
+
+async function discoverOpenAICompatModels(
+  discoveryUrl: string,
+  opts: { warnOnFailure: boolean; providerLabel: string },
+): Promise<ModelDefinitionConfig[]> {
+  if (process.env.VITEST || process.env.NODE_ENV === "test") {
+    return [];
+  }
+  try {
+    const response = await fetch(discoveryUrl, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      if (opts.warnOnFailure) {
+        console.warn(`Failed to discover ${opts.providerLabel} models: ${response.status}`);
+      }
+      return [];
+    }
+    const data = (await response.json()) as OpenAICompatModelsResponse;
+    const models = Array.isArray(data.data) ? data.data : [];
+    if (models.length === 0) {
+      if (opts.warnOnFailure) {
+        console.warn(`No ${opts.providerLabel} models found on local instance`);
+      }
+      return [];
+    }
+    return models
+      .map((model) => {
+        const modelId = typeof model?.id === "string" ? model.id.trim() : "";
+        if (!modelId) return null;
+        return {
+          id: modelId,
+          name: modelId,
+          reasoning: false,
+          input: ["text"] as Array<"text" | "image">,
+          cost: OLLAMA_DEFAULT_COST,
+          contextWindow: 128000,
+          maxTokens: 8192,
+        } satisfies ModelDefinitionConfig;
+      })
+      .filter((entry): entry is ModelDefinitionConfig => entry !== null);
+  } catch (error) {
+    if (opts.warnOnFailure) {
+      console.warn(`Failed to discover ${opts.providerLabel} models: ${String(error)}`);
+    }
     return [];
   }
 }
@@ -259,15 +348,22 @@ async function resolveRegistryProvider(params: {
   name: string;
   entry: ProviderRegistryEntry;
   authStore: ReturnType<typeof ensureAuthProfileStore>;
+  config?: ArgentConfig;
 }): Promise<ProviderConfig | null> {
-  const { name, entry, authStore } = params;
+  const { name, entry, authStore, config } = params;
+  const allowNoAuthLocalRuntime =
+    entry.authType === "none" &&
+    name === "lmstudio" &&
+    usesConfiguredLocalRuntime(config, "lmstudio");
 
   // --- Resolve authentication ---
   let apiKey: string | undefined;
 
   if (entry.authType === "oauth") {
     const profiles = listProfilesForProvider(authStore, name);
-    if (profiles.length === 0) return null;
+    if (profiles.length === 0) {
+      return null;
+    }
     apiKey = entry.oauthPlaceholder ?? `${name}-oauth`;
   } else if (entry.authType === "api_key" || entry.authType === "token") {
     apiKey =
@@ -276,13 +372,17 @@ async function resolveRegistryProvider(params: {
     if (!apiKey && entry.envKeyVar && (await hasEnabledServiceKey(entry.envKeyVar))) {
       apiKey = entry.envKeyVar;
     }
-    if (!apiKey) return null;
+    if (!apiKey) {
+      return null;
+    }
   }
   // authType "none" — no key needed, but we still need auth to be explicitly configured
   // to avoid polluting models.json with providers the user hasn't set up.
   // For "none" auth, we still check if the user has the provider in their config.
   if (entry.authType === "none") {
-    return null;
+    if (!allowNoAuthLocalRuntime) {
+      return null;
+    }
   }
 
   // --- Resolve models (dynamic providers discover at runtime) ---
@@ -294,18 +394,29 @@ async function resolveRegistryProvider(params: {
         models = discovered;
       }
     } else if (name === "ollama" && entry.discoveryUrl) {
-      const discovered = await discoverOllamaModels(entry.discoveryUrl);
+      const warnOnFailure = usesConfiguredLocalRuntime(config, "ollama");
+      const discovered = warnOnFailure
+        ? await discoverOllamaModels(entry.discoveryUrl, { warnOnFailure: true })
+        : [];
+      if (discovered.length > 0) {
+        models = discovered;
+      }
+    } else if (name === "lmstudio" && entry.discoveryUrl && allowNoAuthLocalRuntime) {
+      const discovered = await discoverOpenAICompatModels(entry.discoveryUrl, {
+        warnOnFailure: true,
+        providerLabel: "LM Studio",
+      });
       if (discovered.length > 0) {
         models = discovered;
       }
     }
   }
 
-  const config = registryEntryToProviderConfig(entry, models);
+  const resolvedConfig = registryEntryToProviderConfig(entry, models);
   if (apiKey) {
-    return { ...config, apiKey };
+    return { ...resolvedConfig, apiKey };
   }
-  return config;
+  return resolvedConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -314,6 +425,7 @@ async function resolveRegistryProvider(params: {
 
 export async function resolveImplicitProviders(params: {
   agentDir: string;
+  config?: ArgentConfig;
 }): Promise<ModelsConfig["providers"]> {
   const providers: Record<string, ProviderConfig> = {};
   const authStore = ensureAuthProfileStore(params.agentDir, {
@@ -324,7 +436,12 @@ export async function resolveImplicitProviders(params: {
   const registry = loadProviderRegistry();
 
   for (const [name, entry] of Object.entries(registry.providers)) {
-    const resolved = await resolveRegistryProvider({ name, entry, authStore });
+    const resolved = await resolveRegistryProvider({
+      name,
+      entry,
+      authStore,
+      config: params.config,
+    });
     if (resolved) {
       providers[name] = resolved;
     }

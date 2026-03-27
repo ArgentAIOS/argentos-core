@@ -68,6 +68,8 @@ beforeEach(() => {
   });
   serviceInstall.mockReset().mockResolvedValue(undefined);
   serviceIsLoaded.mockReset().mockResolvedValue(false);
+  serviceReadCommand.mockReset().mockResolvedValue(null);
+  serviceReadRuntime.mockReset().mockResolvedValue({ status: "running" });
   serviceStop.mockReset().mockResolvedValue(undefined);
   serviceRestart.mockReset().mockResolvedValue(undefined);
   serviceUninstall.mockReset().mockResolvedValue(undefined);
@@ -155,6 +157,8 @@ const resolveGatewayProgramArguments = vi.fn().mockResolvedValue({
 });
 const serviceInstall = vi.fn().mockResolvedValue(undefined);
 const serviceIsLoaded = vi.fn().mockResolvedValue(false);
+const serviceReadCommand = vi.fn().mockResolvedValue(null);
+const serviceReadRuntime = vi.fn().mockResolvedValue({ status: "running" });
 const serviceStop = vi.fn().mockResolvedValue(undefined);
 const serviceRestart = vi.fn().mockResolvedValue(undefined);
 const serviceUninstall = vi.fn().mockResolvedValue(undefined);
@@ -241,8 +245,8 @@ vi.mock("../daemon/service.js", () => ({
     stop: serviceStop,
     restart: serviceRestart,
     isLoaded: serviceIsLoaded,
-    readCommand: vi.fn(),
-    readRuntime: vi.fn().mockResolvedValue({ status: "running" }),
+    readCommand: serviceReadCommand,
+    readRuntime: serviceReadRuntime,
   }),
 }));
 
@@ -353,7 +357,7 @@ describe("doctor command", () => {
       { nonInteractive: true, workspaceSuggestions: false },
     );
 
-    const stateNote = note.mock.calls.find((call) => call[1] === "State integrity");
+    const stateNote = note.mock.calls.find((call) => call[1] === "Argent state integrity");
     expect(stateNote).toBeTruthy();
     expect(String(stateNote?.[0])).toContain("CRITICAL");
   }, 30_000);
@@ -387,7 +391,7 @@ describe("doctor command", () => {
 
     const warned = note.mock.calls.some(
       ([message, title]) =>
-        title === "OpenCode Zen" && String(message).includes("models.providers.opencode"),
+        title === "Argent OpenCode Zen" && String(message).includes("models.providers.opencode"),
     );
     expect(warned).toBe(true);
   });
@@ -428,5 +432,52 @@ describe("doctor command", () => {
       String(message).includes("Gateway auth is off or missing a token"),
     );
     expect(warned).toBe(false);
+  });
+
+  it("treats alternate-home doctor runs as unmanaged by the live gateway service", async () => {
+    readConfigFileSnapshot.mockResolvedValue({
+      path: "/tmp/argent.json",
+      exists: true,
+      raw: "{}",
+      parsed: {},
+      valid: true,
+      config: {
+        gateway: { mode: "local", port: 19090 },
+      },
+      issues: [],
+      legacyIssues: [],
+    });
+
+    const previousHome = process.env.HOME;
+    const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "argent-doctor-home-"));
+    process.env.HOME = fakeHome;
+    serviceIsLoaded.mockResolvedValue(true);
+    serviceReadCommand.mockResolvedValue(null);
+    note.mockClear();
+
+    try {
+      const { doctorCommand } = await import("./doctor.js");
+      await doctorCommand(
+        { log: vi.fn(), error: vi.fn(), exit: vi.fn() },
+        { nonInteractive: true, workspaceSuggestions: false },
+      );
+    } finally {
+      if (previousHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = previousHome;
+      }
+      fs.rmSync(fakeHome, { recursive: true, force: true });
+    }
+
+    const notes = note.mock.calls.map(([message, title]) => ({
+      message: String(message),
+      title: String(title),
+    }));
+    expect(
+      notes.some(
+        ({ title, message }) => title === "Argent gateway" && message.includes("Runtime:"),
+      ),
+    ).toBe(false);
   });
 });

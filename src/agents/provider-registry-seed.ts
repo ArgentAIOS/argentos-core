@@ -11,7 +11,7 @@
 import type { ProviderRegistry, ProviderRegistryEntry } from "../config/types.models.js";
 
 // Current seed version. Bump this to force re-seed on next startup.
-export const SEED_VERSION = 7;
+export const SEED_VERSION = 8;
 
 // ---------------------------------------------------------------------------
 // Cost presets
@@ -55,12 +55,30 @@ const minimax: ProviderRegistryEntry = {
   envKeyVar: "MINIMAX_API_KEY",
   models: [
     {
+      id: "MiniMax-M2.7-highspeed",
+      name: "MiniMax M2.7 Highspeed",
+      reasoning: false,
+      input: ["text"],
+      cost: MINIMAX_API_COST,
+      contextWindow: 204800,
+      maxTokens: 8192,
+    },
+    {
+      id: "MiniMax-M2.7",
+      name: "MiniMax M2.7",
+      reasoning: false,
+      input: ["text"],
+      cost: MINIMAX_API_COST,
+      contextWindow: 204800,
+      maxTokens: 8192,
+    },
+    {
       id: "MiniMax-M2.5-highspeed",
       name: "MiniMax M2.5 Highspeed",
       reasoning: false,
       input: ["text"],
       cost: MINIMAX_API_COST,
-      contextWindow: 200000,
+      contextWindow: 204800,
       maxTokens: 8192,
     },
     {
@@ -69,7 +87,7 @@ const minimax: ProviderRegistryEntry = {
       reasoning: false,
       input: ["text"],
       cost: MINIMAX_API_COST,
-      contextWindow: 200000,
+      contextWindow: 204800,
       maxTokens: 8192,
     },
     {
@@ -78,7 +96,7 @@ const minimax: ProviderRegistryEntry = {
       reasoning: false,
       input: ["text"],
       cost: MINIMAX_API_COST,
-      contextWindow: 200000,
+      contextWindow: 204800,
       maxTokens: 8192,
     },
     {
@@ -87,7 +105,7 @@ const minimax: ProviderRegistryEntry = {
       reasoning: false,
       input: ["text"],
       cost: MINIMAX_API_COST,
-      contextWindow: 200000,
+      contextWindow: 204800,
       maxTokens: 8192,
     },
     {
@@ -96,7 +114,7 @@ const minimax: ProviderRegistryEntry = {
       reasoning: false,
       input: ["text", "image"],
       cost: MINIMAX_API_COST,
-      contextWindow: 200000,
+      contextWindow: 204800,
       maxTokens: 8192,
     },
     {
@@ -105,7 +123,7 @@ const minimax: ProviderRegistryEntry = {
       reasoning: false,
       input: ["text"],
       cost: MINIMAX_HER_COST,
-      contextWindow: 200000,
+      contextWindow: 204800,
       maxTokens: 2048,
     },
   ],

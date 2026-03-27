@@ -193,7 +193,7 @@ npm i -g argentos@<version>
 pnpm add -g argentos@<version>
 ```
 
-Tip: to see the current published version, run `npm view argent version`.
+Tip: to see the current published version, run `npm view argentos version`.
 
 Then restart + re-run doctor:
 

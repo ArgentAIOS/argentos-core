@@ -9,6 +9,7 @@ import type {
   CronPayloadPatch,
 } from "../types.js";
 import type { CronServiceState } from "./state.js";
+import { resolveCronArtifactWatchdogDueAtMs } from "../artifact-contract.js";
 import { parseAbsoluteTimeMs } from "../parse.js";
 import { computeNextRunAtMs } from "../schedule.js";
 import {
@@ -104,14 +105,23 @@ export function recomputeNextRuns(state: CronServiceState) {
 
 export function nextWakeAtMs(state: CronServiceState) {
   const jobs = state.store?.jobs ?? [];
-  const enabled = jobs.filter((j) => j.enabled && typeof j.state.nextRunAtMs === "number");
-  if (enabled.length === 0) {
+  const wakeTimes = jobs
+    .filter((job) => job.enabled)
+    .flatMap((job) => {
+      const times: number[] = [];
+      if (typeof job.state.nextRunAtMs === "number") {
+        times.push(job.state.nextRunAtMs);
+      }
+      const watchdogDueAtMs = resolveCronArtifactWatchdogDueAtMs(job);
+      if (typeof watchdogDueAtMs === "number") {
+        times.push(watchdogDueAtMs);
+      }
+      return times;
+    });
+  if (wakeTimes.length === 0) {
     return undefined;
   }
-  return enabled.reduce(
-    (min, j) => Math.min(min, j.state.nextRunAtMs as number),
-    enabled[0].state.nextRunAtMs as number,
-  );
+  return wakeTimes.reduce((min, next) => Math.min(min, next), wakeTimes[0] as number);
 }
 
 export function createJob(state: CronServiceState, input: CronJobCreate): CronJob {
@@ -285,6 +295,12 @@ function mergeCronPayload(existing: CronPayload, patch: CronPayloadPatch): CronP
   if (typeof patch.timeoutSeconds === "number") {
     next.timeoutSeconds = patch.timeoutSeconds;
   }
+  if ("artifactContract" in patch) {
+    next.artifactContract = mergeAgentTurnArtifactContract(
+      existing.artifactContract,
+      patch.artifactContract,
+    );
+  }
   if (typeof patch.deliver === "boolean") {
     next.deliver = patch.deliver;
   }
@@ -399,10 +415,34 @@ function buildPayloadFromPatch(patch: CronPayloadPatch): CronPayload {
     model: patch.model,
     thinking: patch.thinking,
     timeoutSeconds: patch.timeoutSeconds,
+    artifactContract: patch.artifactContract,
     deliver: patch.deliver,
     channel: patch.channel,
     to: patch.to,
     bestEffortDeliver: patch.bestEffortDeliver,
+  };
+}
+
+function mergeAgentTurnArtifactContract(
+  existing: Extract<CronPayload, { kind: "agentTurn" }>["artifactContract"],
+  patch: Extract<CronPayloadPatch, { kind: "agentTurn" }>["artifactContract"],
+): Extract<CronPayload, { kind: "agentTurn" }>["artifactContract"] {
+  if (!patch) {
+    return existing;
+  }
+  return {
+    ...existing,
+    ...patch,
+    required: patch.required ? { ...existing?.required, ...patch.required } : existing?.required,
+    watchdog: patch.watchdog
+      ? {
+          ...existing?.watchdog,
+          ...patch.watchdog,
+          required: patch.watchdog.required
+            ? { ...existing?.watchdog?.required, ...patch.watchdog.required }
+            : existing?.watchdog?.required,
+        }
+      : existing?.watchdog,
   };
 }
 

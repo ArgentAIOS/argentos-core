@@ -92,6 +92,8 @@ function requestUrl(input: RequestInfo): string {
 
 describe("web_fetch extraction fallbacks", () => {
   const priorFetch = global.fetch;
+  const priorDashboardApi = process.env.ARGENT_DASHBOARD_API;
+  const priorFirecrawlApiKey = process.env.FIRECRAWL_API_KEY;
 
   beforeEach(() => {
     vi.spyOn(ssrf, "resolvePinnedHostname").mockImplementation(async (hostname) => {
@@ -108,6 +110,16 @@ describe("web_fetch extraction fallbacks", () => {
   afterEach(() => {
     // @ts-expect-error restore
     global.fetch = priorFetch;
+    if (priorDashboardApi === undefined) {
+      delete process.env.ARGENT_DASHBOARD_API;
+    } else {
+      process.env.ARGENT_DASHBOARD_API = priorDashboardApi;
+    }
+    if (priorFirecrawlApiKey === undefined) {
+      delete process.env.FIRECRAWL_API_KEY;
+    } else {
+      process.env.FIRECRAWL_API_KEY = priorFirecrawlApiKey;
+    }
     vi.restoreAllMocks();
   });
 
@@ -220,6 +232,7 @@ describe("web_fetch extraction fallbacks", () => {
   // The sanitization of these fields is verified by external-content.test.ts tests.
 
   it("falls back to firecrawl when readability returns no content", async () => {
+    process.env.ARGENT_DASHBOARD_API = "disabled";
     const mockFetch = vi.fn((input: RequestInfo) => {
       const url = requestUrl(input);
       if (url.includes("api.firecrawl.dev")) {
@@ -305,6 +318,7 @@ describe("web_fetch extraction fallbacks", () => {
   });
 
   it("uses firecrawl when direct fetch fails", async () => {
+    process.env.ARGENT_DASHBOARD_API = "disabled";
     const mockFetch = vi.fn((input: RequestInfo) => {
       const url = requestUrl(input);
       if (url.includes("api.firecrawl.dev")) {
@@ -335,6 +349,47 @@ describe("web_fetch extraction fallbacks", () => {
     const details = result?.details as { extractor?: string; text?: string };
     expect(details.extractor).toBe("firecrawl");
     expect(details.text).toContain("firecrawl fallback");
+  });
+
+  it("uses dashboard firecrawl proxy fallback when direct fetch fails and no env key is present", async () => {
+    const mockFetch = vi.fn((input: RequestInfo) => {
+      const url = requestUrl(input);
+      if (url.includes("/api/proxy/fetch/firecrawl")) {
+        return Promise.resolve(
+          firecrawlResponse("proxy firecrawl fallback", "https://example.com/proxy"),
+        ) as Promise<Response>;
+      }
+      return Promise.reject(new TypeError("fetch failed")) as Promise<Response>;
+    });
+    // @ts-expect-error mock fetch
+    global.fetch = mockFetch;
+
+    delete process.env.FIRECRAWL_API_KEY;
+    delete process.env.ARGENT_DASHBOARD_API;
+
+    const tool = createWebFetchTool({
+      config: {
+        tools: {
+          web: {
+            fetch: {
+              cacheTtlMinutes: 0,
+            },
+          },
+        },
+      },
+      sandboxed: false,
+    });
+
+    const result = await tool?.execute?.("call", { url: "https://example.com/proxy" });
+    const details = result?.details as { extractor?: string; text?: string; finalUrl?: string };
+
+    expect(details.extractor).toBe("firecrawl");
+    expect(details.text).toContain("proxy firecrawl fallback");
+    expect(details.finalUrl).toBe("https://example.com/proxy");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:9242/api/proxy/fetch/firecrawl",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("wraps external content and clamps oversized maxChars", async () => {
@@ -438,6 +493,7 @@ describe("web_fetch extraction fallbacks", () => {
   });
 
   it("wraps firecrawl error details", async () => {
+    process.env.ARGENT_DASHBOARD_API = "disabled";
     const mockFetch = vi.fn((input: RequestInfo) => {
       const url = requestUrl(input);
       if (url.includes("api.firecrawl.dev")) {

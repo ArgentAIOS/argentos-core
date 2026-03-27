@@ -236,6 +236,77 @@ describe("applyJobPatch", () => {
     expect(() => applyJobPatch(job, patch)).not.toThrow();
     expect(job.executionMode).toBe("live");
   });
+
+  it("merges agentTurn artifact contract patches", () => {
+    const now = Date.now();
+    const job: CronJob = {
+      id: "job-7",
+      name: "job-7",
+      enabled: true,
+      createdAtMs: now,
+      updatedAtMs: now,
+      schedule: { kind: "every", everyMs: 60_000 },
+      sessionTarget: "isolated",
+      wakeMode: "now",
+      payload: {
+        kind: "agentTurn",
+        message: "do it",
+        artifactContract: {
+          required: {
+            docPanelDraft: { titleIncludes: "Morning Brief" },
+          },
+        },
+      },
+      delivery: { mode: "announce" },
+      state: {},
+    };
+
+    const patch: CronJobPatch = {
+      payload: {
+        kind: "agentTurn",
+        artifactContract: {
+          watchdog: {
+            afterMs: 30_000,
+            required: {
+              deliveryTask: { titleIncludes: "Morning Brief Delivery", status: "completed" },
+            },
+          },
+        },
+      },
+    };
+
+    expect(() => applyJobPatch(job, patch)).not.toThrow();
+    expect(job.payload.kind).toBe("agentTurn");
+    if (job.payload.kind === "agentTurn") {
+      expect(job.payload.artifactContract?.required?.docPanelDraft?.titleIncludes).toBe(
+        "Morning Brief",
+      );
+      expect(job.payload.artifactContract?.watchdog?.afterMs).toBe(30_000);
+      expect(job.payload.artifactContract?.watchdog?.required?.deliveryTask?.titleIncludes).toBe(
+        "Morning Brief Delivery",
+      );
+    }
+  });
+});
+
+describe("createJob", () => {
+  it("defaults execution mode to live", () => {
+    const state = {
+      deps: { nowMs: () => 1_700_000_000_000 },
+    } as unknown as CronServiceState;
+
+    const job = createJob(state, {
+      name: "default-live",
+      enabled: true,
+      schedule: { kind: "every", everyMs: 60_000 },
+      sessionTarget: "isolated",
+      wakeMode: "now",
+      payload: { kind: "agentTurn", message: "do it" },
+      delivery: { mode: "announce" },
+    });
+
+    expect(job.executionMode).toBe("live");
+  });
 });
 
 describe("createJob", () => {

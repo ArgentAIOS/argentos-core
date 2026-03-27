@@ -435,9 +435,15 @@ export const agentHandlers: GatewayRequestHandlers = {
       typeof request.threadId === "string" && request.threadId.trim()
         ? request.threadId.trim()
         : undefined;
+    // Webchat clients that don't specify a channel should stay on webchat —
+    // not fall through to "last" which may resolve to Discord from a previous session.
+    const clientId = client?.connect?.client?.id;
+    const isWebchatClient = clientId === "webchat" || clientId === "webchat-ui";
+    const requestedChannel =
+      request.replyChannel ?? request.channel ?? (isWebchatClient ? "webchat" : undefined);
     const deliveryPlan = resolveAgentDeliveryPlan({
       sessionEntry,
-      requestedChannel: request.replyChannel ?? request.channel,
+      requestedChannel,
       explicitTo,
       explicitThreadId,
       accountId: request.replyAccountId ?? request.accountId,

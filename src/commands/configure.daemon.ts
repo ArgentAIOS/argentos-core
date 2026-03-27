@@ -27,11 +27,11 @@ export async function maybeInstallDaemon(params: {
   if (loaded) {
     const action = guardCancel(
       await select({
-        message: "Gateway service already installed",
+        message: "Argent service is already installed",
         options: [
-          { value: "restart", label: "Restart" },
-          { value: "reinstall", label: "Reinstall" },
-          { value: "skip", label: "Skip" },
+          { value: "restart", label: "Restart Argent service" },
+          { value: "reinstall", label: "Reinstall Argent service" },
+          { value: "skip", label: "Leave it alone" },
         ],
       }),
       params.runtime,
@@ -74,7 +74,7 @@ export async function maybeInstallDaemon(params: {
       } else {
         daemonRuntime = guardCancel(
           await select({
-            message: "Gateway service runtime",
+            message: "Which runtime should power the Argent service?",
             options: GATEWAY_DAEMON_RUNTIME_OPTIONS,
             initialValue: DEFAULT_GATEWAY_DAEMON_RUNTIME,
           }),
@@ -114,8 +114,8 @@ export async function maybeInstallDaemon(params: {
       },
     );
     if (installError) {
-      note("Gateway service install failed: " + installError, "Gateway");
-      note(gatewayInstallErrorHint(), "Gateway");
+      note("Gateway service install failed: " + installError, "Argent service");
+      note(gatewayInstallErrorHint(), "Argent service");
       return;
     }
     shouldCheckLinger = true;

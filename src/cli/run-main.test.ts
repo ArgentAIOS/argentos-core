@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rewriteUpdateFlagArgv } from "./run-main.js";
+import { rewriteUpdateFlagArgv, shouldSkipGlobalPluginRegistration } from "./run-main.js";
 
 describe("rewriteUpdateFlagArgv", () => {
   it("leaves argv unchanged when --update is absent", () => {
@@ -32,5 +32,23 @@ describe("rewriteUpdateFlagArgv", () => {
       "update",
       "--json",
     ]);
+  });
+});
+
+describe("shouldSkipGlobalPluginRegistration", () => {
+  it("skips plugin registration for top-level help", () => {
+    expect(shouldSkipGlobalPluginRegistration(["node", "entry.js", "--help"], null)).toBe(true);
+  });
+
+  it("skips plugin registration for subcommand help", () => {
+    expect(
+      shouldSkipGlobalPluginRegistration(["node", "entry.js", "onboard", "--help"], "onboard"),
+    ).toBe(true);
+  });
+
+  it("does not skip plugin registration for normal command execution", () => {
+    expect(shouldSkipGlobalPluginRegistration(["node", "entry.js", "onboard"], "onboard")).toBe(
+      false,
+    );
   });
 });

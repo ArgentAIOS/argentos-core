@@ -55,6 +55,8 @@ describe("buildMemoryHealthSummaryFromSignals", () => {
         sisParseFailures24h: -1,
         memuProvider: "ollama",
         memuModel: "qwen3:14b",
+        embeddingsProvider: "lmstudio",
+        embeddingsModel: "text-embedding-nomic-embed-text-v1.5",
       },
       nowMs,
     );
@@ -78,11 +80,17 @@ describe("buildMemoryHealthSummaryFromSignals", () => {
         sisParseFailures24h: 0,
         memuProvider: "ollama",
         memuModel: "qwen3:14b",
+        embeddingsProvider: "ollama",
+        embeddingsModel: "nomic-embed-text",
       },
       nowMs,
     );
 
     expect(summary.lanes.memuExtraction.status).toBe("green");
     expect(summary.lanes.memuExtraction.failureCount24h).toBe(2);
+    expect(summary.activeModels.embeddings).toEqual({
+      provider: "ollama",
+      model: "nomic-embed-text",
+    });
   });
 });

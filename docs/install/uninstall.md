@@ -25,7 +25,7 @@ Non-interactive (automation / npx):
 
 ```bash
 argent uninstall --all --yes --non-interactive
-npx -y argent uninstall --all --yes --non-interactive
+npx -y argentos uninstall --all --yes --non-interactive
 ```
 
 Manual steps (same result):

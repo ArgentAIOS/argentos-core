@@ -1,4 +1,5 @@
 export type DashboardSurfaceProfile = "full" | "public-core";
+export type DashboardMode = "personal" | "operations";
 
 export const PUBLIC_CORE_BLOCKED_CONFIG_TABS = new Set<string>([
   "systems",
@@ -25,6 +26,25 @@ export function parseDashboardSurfaceProfile(
     return parsed?.distribution?.surfaceProfile === "public-core" ? "public-core" : "full";
   } catch {
     return "full";
+  }
+}
+
+export function parseDashboardMode(
+  rawConfigText: string | null | undefined,
+  surfaceProfile: DashboardSurfaceProfile,
+): DashboardMode {
+  if (!rawConfigText) {
+    return surfaceProfile === "public-core" ? "personal" : "personal";
+  }
+  try {
+    const parsed = JSON.parse(rawConfigText);
+    const rawMode = parsed?.distribution?.dashboardMode;
+    if (rawMode === "operations" && surfaceProfile !== "public-core") {
+      return "operations";
+    }
+    return "personal";
+  } catch {
+    return "personal";
   }
 }
 
@@ -56,4 +76,14 @@ export function isRawConfigEditorAllowed(surfaceProfile: DashboardSurfaceProfile
 
 export function isWorkforceSurfaceAllowed(surfaceProfile: DashboardSurfaceProfile): boolean {
   return surfaceProfile !== "public-core";
+}
+
+export function isDashboardModeAllowed(
+  mode: DashboardMode,
+  surfaceProfile: DashboardSurfaceProfile,
+): boolean {
+  if (mode === "operations") {
+    return surfaceProfile !== "public-core";
+  }
+  return true;
 }

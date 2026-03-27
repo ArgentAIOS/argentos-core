@@ -20,6 +20,9 @@ type InlineProviderConfig = {
   models?: ModelDefinitionConfig[];
 };
 
+const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1";
+const DEFAULT_LMSTUDIO_BASE_URL = "http://127.0.0.1:1234/v1";
+
 export function buildInlineProviderModels(
   providers: Record<string, InlineProviderConfig>,
 ): InlineModelEntry[] {
@@ -56,6 +59,32 @@ export function buildModelAliasLines(cfg?: ArgentConfig) {
     .map((entry) => `- ${entry.alias}: ${entry.model}`);
 }
 
+function hasProviderRef(value: unknown, provider: "ollama" | "lmstudio"): boolean {
+  return typeof value === "string" && value.trim().toLowerCase().startsWith(`${provider}/`);
+}
+
+function resolveDynamicProviderBaseUrl(
+  provider: "ollama" | "lmstudio",
+  cfg?: ArgentConfig,
+): string {
+  const configured = cfg?.models?.providers?.[provider]?.baseUrl?.trim();
+  if (configured) {
+    return configured;
+  }
+  if (provider === "lmstudio") {
+    const memorySearch = cfg?.agents?.defaults?.memorySearch;
+    const usesLmstudioMemoryRuntime =
+      memorySearch?.provider === "lmstudio" ||
+      memorySearch?.fallback === "lmstudio" ||
+      hasProviderRef(memorySearch?.model, "lmstudio");
+    const remoteBaseUrl = memorySearch?.remote?.baseUrl?.trim();
+    if (usesLmstudioMemoryRuntime && remoteBaseUrl) {
+      return remoteBaseUrl;
+    }
+  }
+  return provider === "ollama" ? DEFAULT_OLLAMA_BASE_URL : DEFAULT_LMSTUDIO_BASE_URL;
+}
+
 export function resolveModel(
   provider: string,
   modelId: string,
@@ -70,6 +99,16 @@ export function resolveModel(
   const resolvedAgentDir = agentDir ?? resolveArgentAgentDir();
   const authStorage = discoverAuthStorage(resolvedAgentDir);
   const modelRegistry = discoverModels(authStorage, resolvedAgentDir);
+  // Block unconfigured cloud providers from Pi's built-in catalog (e.g. amazon-bedrock)
+  // to avoid "No API key" errors when the user doesn't use them.
+  const BLOCKED_PROVIDERS = new Set(["amazon-bedrock", "azure-openai"]);
+  if (BLOCKED_PROVIDERS.has(provider)) {
+    return {
+      error: `Provider "${provider}" is not configured. Remove it from fallback chains or add credentials.`,
+      authStorage,
+      modelRegistry,
+    };
+  }
   const model = modelRegistry.find(provider, modelId) as Model<Api> | null;
   if (!model) {
     // Fallback 1: Check Argent's own models database (handles new models
@@ -101,22 +140,23 @@ export function resolveModel(
         modelRegistry,
       };
     }
-    // Ollama is a known local provider that doesn't need API key registration.
-    // Create a dynamic model entry when the model router routes to it.
-    if (normalizedProvider === "ollama") {
-      const ollamaModel: Model<Api> = normalizeModelCompat({
+    // Local OpenAI-compatible runtimes may be selected without a provider model catalog.
+    // Create a dynamic model entry when runtime config points at them directly.
+    if (normalizedProvider === "ollama" || normalizedProvider === "lmstudio") {
+      const dynamicProvider = normalizedProvider as "ollama" | "lmstudio";
+      const localModel: Model<Api> = normalizeModelCompat({
         id: modelId,
         name: modelId,
         api: "openai-completions",
-        provider: "ollama",
-        baseUrl: "http://127.0.0.1:11434/v1",
+        provider: dynamicProvider,
+        baseUrl: resolveDynamicProviderBaseUrl(dynamicProvider, cfg),
         reasoning: false,
         input: ["text"],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextWindow: 128_000,
         maxTokens: 8192,
       } as Model<Api>);
-      return { model: ollamaModel, authStorage, modelRegistry };
+      return { model: localModel, authStorage, modelRegistry };
     }
     const providerCfg = providers[provider];
     if (providerCfg || modelId.startsWith("mock-")) {

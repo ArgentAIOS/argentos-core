@@ -391,8 +391,12 @@ export async function detectAndLoadPromptImages(params: {
   const allRefs = [...promptRefs, ...uniqueHistoryRefs];
 
   if (allRefs.length === 0) {
+    // Sanitize user-uploaded images (e.g. Retina screenshots >5MB)
+    const sanitizedExisting = params.existingImages?.length
+      ? await sanitizeImagesWithLog(params.existingImages, "user:upload")
+      : [];
     return {
-      images: params.existingImages ?? [],
+      images: sanitizedExisting,
       historyImagesByIndex: new Map(),
       detectedRefs: [],
       loadedCount: 0,
@@ -404,8 +408,11 @@ export async function detectAndLoadPromptImages(params: {
     `Native image: detected ${allRefs.length} image refs (${promptRefs.length} in prompt, ${uniqueHistoryRefs.length} in history)`,
   );
 
-  // Load images for current prompt
-  const promptImages: ImageContent[] = [...(params.existingImages ?? [])];
+  // Load images for current prompt — sanitize user uploads first
+  const sanitizedExisting = params.existingImages?.length
+    ? await sanitizeImagesWithLog(params.existingImages, "user:upload")
+    : [];
+  const promptImages: ImageContent[] = [...sanitizedExisting];
   // Load images for history, grouped by message index
   const historyImagesByIndex = new Map<number, ImageContent[]>();
 

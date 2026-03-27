@@ -1,12 +1,11 @@
-// Lobster palette tokens for CLI/UI theming. "lobster seam" == use this palette.
-// Keep in sync with docs/cli/index.md (CLI palette section).
+// ArgentOS CLI palette tokens.
 export const LOBSTER_PALETTE = {
-  accent: "#FF5A2D",
-  accentBright: "#FF7A3D",
-  accentDim: "#D14A22",
-  info: "#FF8A5B",
+  accent: "#8FB7FF",
+  accentBright: "#C7DAFF",
+  accentDim: "#6D8FCC",
+  info: "#7FD1FF",
   success: "#2FBF71",
-  warn: "#FFB020",
+  warn: "#7FD1FF",
   error: "#E23D2D",
-  muted: "#8B7F77",
+  muted: "#98A4B5",
 } as const;

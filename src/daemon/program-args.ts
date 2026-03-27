@@ -8,6 +8,29 @@ type GatewayProgramArgs = {
 
 type GatewayRuntimePreference = "auto" | "node" | "bun";
 
+function isSameOrNestedPath(candidate: string, root: string): boolean {
+  const normalizedCandidate = path.resolve(candidate);
+  const normalizedRoot = path.resolve(root);
+  return (
+    normalizedCandidate === normalizedRoot ||
+    normalizedCandidate.startsWith(`${normalizedRoot}${path.sep}`)
+  );
+}
+
+function resolveProjectRootFromEntrypoint(entryPath: string): string {
+  const normalized = path.resolve(entryPath);
+  const segments = normalized.split(path.sep);
+  const distIndex = segments.lastIndexOf("dist");
+  if (distIndex > 0) {
+    return segments.slice(0, distIndex).join(path.sep) || path.sep;
+  }
+  const srcIndex = segments.lastIndexOf("src");
+  if (srcIndex > 0) {
+    return segments.slice(0, srcIndex).join(path.sep) || path.sep;
+  }
+  return path.dirname(normalized);
+}
+
 function isNodeRuntime(execPath: string): boolean {
   const base = path.basename(execPath).toLowerCase();
   return base === "node" || base === "node.exe";
@@ -19,6 +42,11 @@ function isBunRuntime(execPath: string): boolean {
 }
 
 async function resolveCliEntrypointPathForService(): Promise<string> {
+  const installedEntrypoint = await resolveInstalledCliEntrypointPathForService();
+  if (installedEntrypoint) {
+    return installedEntrypoint;
+  }
+
   const argv1 = process.argv[1];
   if (!argv1) {
     throw new Error("Unable to resolve CLI entrypoint path");
@@ -60,6 +88,53 @@ async function resolveCliEntrypointPathForService(): Promise<string> {
   throw new Error(
     `Cannot find built CLI at ${distCandidates.join(" or ")}. Run "pnpm build" first, or use dev mode.`,
   );
+}
+
+async function resolveInstalledCliEntrypointPathForService(): Promise<string | null> {
+  const stateDir =
+    process.env.ARGENT_STATE_DIR ||
+    (process.env.HOME ? path.join(process.env.HOME, ".argentos") : undefined);
+  const installPackageDir =
+    process.env.ARGENT_INSTALL_PACKAGE_DIR ||
+    (stateDir ? path.join(stateDir, "lib", "node_modules", "argentos") : undefined);
+  if (!installPackageDir) {
+    return null;
+  }
+
+  const installedCliPath = path.join(installPackageDir, "argent.mjs");
+  const normalizedInstalledCliPath = path.resolve(installedCliPath);
+  try {
+    await fs.access(normalizedInstalledCliPath);
+  } catch {
+    return null;
+  }
+
+  const resolvedInstalledCliPath = await resolveRealpathSafe(normalizedInstalledCliPath);
+  const currentArgv1 = process.argv[1]
+    ? await resolveRealpathSafe(path.resolve(process.argv[1]))
+    : undefined;
+  if (currentArgv1) {
+    const currentRoot = resolveProjectRootFromEntrypoint(currentArgv1);
+    const installedRoot = resolveProjectRootFromEntrypoint(resolvedInstalledCliPath);
+    if (
+      isSameOrNestedPath(resolvedInstalledCliPath, currentRoot) ||
+      isSameOrNestedPath(installedRoot, currentRoot)
+    ) {
+      return null;
+    }
+  }
+
+  const distCandidates = buildDistCandidates(normalizedInstalledCliPath, resolvedInstalledCliPath);
+  for (const candidate of distCandidates) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {
+      // keep going
+    }
+  }
+
+  return null;
 }
 
 async function resolveRealpathSafe(inputPath: string): Promise<string> {

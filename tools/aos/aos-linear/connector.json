@@ -1,0 +1,105 @@
+{
+  "tool": "aos-linear",
+  "backend": "linear",
+  "manifest_schema_version": "1.0.0",
+  "connector": {
+    "label": "Linear",
+    "category": "project-management",
+    "categories": ["project-management", "issue-tracking", "workflow"],
+    "resources": ["issues", "projects", "workflow-states"]
+  },
+  "delivery_model": "poll",
+  "risk_tier": "bounded-write",
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["LINEAR_API_KEY"],
+    "interactive_setup": [
+      "Add LINEAR_API_KEY in ArgentOS API Keys.",
+      "Optionally set LINEAR_TEAM_KEY if you want to override the default WEB team scope.",
+      "This connector talks to Linear GraphQL at https://api.linear.app/graphql using the service key resolved from ArgentOS service keys first, then process.env."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "List connector capabilities",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "projects",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Check Linear runtime readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "projects",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run Linear runtime diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "projects",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted Linear connector config",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "projects",
+      "action_class": "read"
+    },
+    {
+      "id": "list-projects",
+      "summary": "List Linear projects with issue counts",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "projects",
+      "action_class": "read"
+    },
+    {
+      "id": "list-issues",
+      "summary": "List Linear issues with project, status, or assignee filters",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "issues",
+      "action_class": "read"
+    },
+    {
+      "id": "create-issue",
+      "summary": "Create a Linear issue",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "issues",
+      "action_class": "write"
+    },
+    {
+      "id": "update-issue",
+      "summary": "Update a Linear issue",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "issues",
+      "action_class": "write"
+    },
+    {
+      "id": "search",
+      "summary": "Search Linear issues",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "issues",
+      "action_class": "read"
+    },
+    {
+      "id": "get-issue",
+      "summary": "Get a Linear issue by identifier",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "issues",
+      "action_class": "read"
+    }
+  ]
+}

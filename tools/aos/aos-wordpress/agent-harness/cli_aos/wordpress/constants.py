@@ -35,7 +35,7 @@ CONNECTOR_AUTH = {
     ],
 }
 
-COMMAND_SPECS = [
+GLOBAL_COMMAND_SPECS = [
     {
         "id": "health",
         "summary": "Check WordPress connectivity and auth readiness",
@@ -60,6 +60,9 @@ COMMAND_SPECS = [
         "resource": "site",
         "action_class": "read",
     },
+]
+
+WORKER_COMMAND_SPECS = [
     {
         "id": "site.read",
         "summary": "Read WordPress site info",
@@ -206,9 +209,32 @@ COMMAND_SPECS = [
     },
 ]
 
+COMMAND_SPECS = [*GLOBAL_COMMAND_SPECS, *WORKER_COMMAND_SPECS]
+
 PERMISSIONS_PATH = Path(__file__).resolve().parents[2] / "permissions.json"
 
 RESOURCE_PATHS = {
     "post": "posts",
     "page": "pages",
+    "media": "media",
 }
+
+TAXONOMY_PATHS = {
+    "categories": "categories",
+    "tags": "tags",
+}
+
+IMPLEMENTED_WRITE_COMMANDS = [
+    "post.create_draft",
+    "post.update_draft",
+    "post.schedule",
+    "post.publish",
+    "page.create_draft",
+    "page.update_draft",
+    "page.publish",
+]
+
+SCAFFOLDED_WRITE_COMMANDS = [
+    "media.upload",
+    "taxonomy.assign_terms",
+]

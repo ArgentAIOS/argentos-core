@@ -1,0 +1,17 @@
+{
+  "tool": "aos-elevenlabs",
+  "backend": "elevenlabs-api",
+  "permissions": {
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "voice.list": "readonly",
+    "voice.read": "readonly",
+    "model.list": "readonly",
+    "history.list": "readonly",
+    "history.read": "readonly",
+    "user.read": "readonly",
+    "synthesize": "write"
+  }
+}

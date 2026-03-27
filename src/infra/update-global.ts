@@ -9,8 +9,8 @@ export type CommandRunner = (
   options: { timeoutMs: number; cwd?: string; env?: NodeJS.ProcessEnv },
 ) => Promise<{ stdout: string; stderr: string; code: number | null }>;
 
-const PRIMARY_PACKAGE_NAME = "argent";
-const ALL_PACKAGE_NAMES = [PRIMARY_PACKAGE_NAME] as const;
+const PRIMARY_PACKAGE_NAME = "argentos";
+const ALL_PACKAGE_NAMES = [PRIMARY_PACKAGE_NAME, "argent"] as const;
 const GLOBAL_RENAME_PREFIX = ".";
 
 async function pathExists(targetPath: string): Promise<boolean> {
@@ -60,6 +60,12 @@ export async function resolveGlobalPackageRoot(
   const root = await resolveGlobalRoot(manager, runCommand, timeoutMs);
   if (!root) {
     return null;
+  }
+  for (const name of ALL_PACKAGE_NAMES) {
+    const candidate = path.join(root, name);
+    if (await pathExists(candidate)) {
+      return candidate;
+    }
   }
   return path.join(root, PRIMARY_PACKAGE_NAME);
 }

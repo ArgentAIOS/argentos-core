@@ -11,12 +11,14 @@ import { applyGoogleGeminiModelDefault } from "../../google-gemini-model-default
 import {
   applyAuthProfileConfig,
   applyCloudflareAiGatewayConfig,
+  applyLmStudioConfig,
   applyKimiCodeConfig,
   applyMistralConfig,
   applyMinimaxApiConfig,
   applyMinimaxConfig,
   applyMoonshotConfig,
   applyMoonshotConfigCn,
+  applyOllamaConfig,
   applyOpencodeZenConfig,
   applyOpenrouterConfig,
   applySyntheticConfig,
@@ -93,6 +95,14 @@ export async function applyNonInteractiveAuthChoice(params: {
       provider: "anthropic",
       mode: "api_key",
     });
+  }
+
+  if (authChoice === "lmstudio") {
+    return applyLmStudioConfig(nextConfig);
+  }
+
+  if (authChoice === "ollama") {
+    return applyOllamaConfig(nextConfig);
   }
 
   if (authChoice === "token") {
@@ -464,6 +474,8 @@ export async function applyNonInteractiveAuthChoice(params: {
   if (
     authChoice === "minimax-cloud" ||
     authChoice === "minimax-api" ||
+    authChoice === "minimax-api-m27" ||
+    authChoice === "minimax-api-m27-highspeed" ||
     authChoice === "minimax-api-lightning"
   ) {
     const resolved = await resolveNonInteractiveApiKey({
@@ -486,7 +498,11 @@ export async function applyNonInteractiveAuthChoice(params: {
       mode: "api_key",
     });
     const modelId =
-      authChoice === "minimax-api-lightning" ? "MiniMax-M2.1-lightning" : "MiniMax-M2.1";
+      authChoice === "minimax-api-m27-highspeed" || authChoice === "minimax-api-lightning"
+        ? "MiniMax-M2.7-highspeed"
+        : authChoice === "minimax-api-m27"
+          ? "MiniMax-M2.7"
+          : "MiniMax-M2.1";
     return applyMinimaxApiConfig(nextConfig, modelId);
   }
 

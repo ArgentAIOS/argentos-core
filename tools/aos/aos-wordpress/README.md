@@ -1,69 +1,55 @@
 # aos-wordpress
 
-`aos-wordpress` is a first-pass agent-native WordPress connector scaffold.
+Agent-native WordPress publishing connector with live REST connectivity.
 
-- Backend: `wordpress-rest`
-- Interface: stable `aos-*` CLI contract
-- Security: permission-gated operations by `--mode`
-- Output: structured JSON envelopes
+## Generated From ArgentOS
 
-This scaffold is intentionally limited to the new vendored connector directory.
-It establishes the manifest, harness, and initial publishing-domain command
-shape without wiring shared registries elsewhere in ArgentOS.
+- System: WordPress
+- Category: marketing-publishing
+- Backend: wordpress-rest-api
+- Target root: /Users/sem/code/argentos-connector-runtime-pack-20260318/tools/aos
 
-## Planned Connector Surface
+## Commands
 
-Resources:
+- `health` (readonly)
+- `doctor` (readonly)
+- `config.show` (readonly)
+- `site.read` (readonly)
+- `post.list` (readonly)
+- `post.search` (readonly)
+- `post.read` (readonly)
+- `post.create_draft` (write)
+- `post.update_draft` (write)
+- `post.schedule` (write)
+- `post.publish` (write)
+- `page.list` (readonly)
+- `page.search` (readonly)
+- `page.read` (readonly)
+- `page.create_draft` (write)
+- `page.update_draft` (write)
+- `page.publish` (write)
+- `media.list` (readonly)
+- `media.upload` (write)
+- `taxonomy.list` (readonly)
+- `taxonomy.assign_terms` (write)
 
-- `site`
-- `post`
-- `page`
-- `media`
-- `comment`
+## Auth
 
-Worker-facing patterns:
+- Kind: service-key
+- Required: yes
+- Service keys:
+  - WORDPRESS_BASE_URL
+  - WORDPRESS_USERNAME
+  - WORDPRESS_APPLICATION_PASSWORD
+- Interactive setup:
+  - Create a dedicated WordPress service user on the target site.
+  - Generate an Application Password for that user.
+  - Add WORDPRESS_BASE_URL, WORDPRESS_USERNAME, and WORDPRESS_APPLICATION_PASSWORD in API Keys.
+  - Restrict post types, status transitions, taxonomy scope, and media usage before going live.
 
-- draft-to-publish post workflows
-- editorial page updates
-- media library inspection
-- comment queue review and reply
+## Next Steps
 
-## Auth Model
-
-The first pass targets the WordPress REST API using:
-
-- site URL
-- username + application password
-
-Optional bearer-token auth is also scaffolded for sites that use a JWT or
-plugin-backed token flow.
-
-## Install (development)
-
-```bash
-cd tools/aos/aos-wordpress/agent-harness
-python3 -m pip install -e '.[dev]'
-aos-wordpress --help
-```
-
-## Examples
-
-```bash
-aos-wordpress --json capabilities
-aos-wordpress --json health
-aos-wordpress --json --site-url https://example.com config show
-aos-wordpress --json --site-url https://example.com site info
-aos-wordpress --json --site-url https://example.com post list --status draft
-```
-
-## Scope Notes
-
-The expected operator scope for this connector is:
-
-- site / tenant
-- content type
-- status filter
-- author or editorial subset where relevant
-
-Publishing and moderation actions exist in the scaffold, but operators should
-keep them review-gated in worker policy.
+1. Install dependencies with `python3 -m venv .venv && source .venv/bin/activate && pip install -e '.[dev]'`.
+2. Set `WORDPRESS_BASE_URL`, `WORDPRESS_USERNAME`, and `WORDPRESS_APPLICATION_PASSWORD`.
+3. Verify `aos-wordpress --json health`, `aos-wordpress --json config show`, and `aos-wordpress --json doctor`.
+4. Use the live post path: `post list`, `post search`, `post read`, `post create_draft`, `post update_draft`, `post schedule`, and `post publish`.

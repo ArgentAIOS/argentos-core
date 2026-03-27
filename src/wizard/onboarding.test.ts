@@ -177,7 +177,7 @@ describe("runOnboardingWizard", () => {
     await fs.writeFile(path.join(workspaceDir, DEFAULT_BOOTSTRAP_FILENAME), "{}");
 
     const select: WizardPrompter["select"] = vi.fn(async (opts) => {
-      if (opts.message === "How do you want to hatch your bot?") {
+      if (opts.message === "How do you want to meet Argent first?") {
         return "tui";
       }
       return "quickstart";
@@ -235,7 +235,7 @@ describe("runOnboardingWizard", () => {
     const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-onboard-"));
 
     const select: WizardPrompter["select"] = vi.fn(async (opts) => {
-      if (opts.message === "How do you want to hatch your bot?") {
+      if (opts.message === "How do you want to meet Argent first?") {
         return "tui";
       }
       return "quickstart";
@@ -334,5 +334,143 @@ describe("runOnboardingWizard", () => {
         process.env.BRAVE_API_KEY = prevBraveKey;
       }
     }
+  });
+
+  it("configures Ollama first when the user chooses a local runtime", async () => {
+    writeConfigFile.mockClear();
+
+    const select: WizardPrompter["select"] = vi.fn(async (opts) => {
+      if (opts.message === "Where should Argent run its brain?") {
+        return "ollama";
+      }
+      if (opts.message === "Choose Ollama's primary text model for Argent") {
+        return "qwen3:14b";
+      }
+      if (opts.message === "Choose Ollama's embedding model for memory") {
+        return "nomic-embed-text";
+      }
+      return "quickstart";
+    });
+    const text: WizardPrompter["text"] = vi.fn(async () => "");
+    const prompter: WizardPrompter = {
+      intro: vi.fn(async () => {}),
+      outro: vi.fn(async () => {}),
+      note: vi.fn(async () => {}),
+      select,
+      multiselect: vi.fn(async () => []),
+      text,
+      confirm: vi.fn(async () => false),
+      progress: vi.fn(() => ({ update: vi.fn(), stop: vi.fn() })),
+    };
+    const runtime: RuntimeEnv = {
+      log: vi.fn(),
+      error: vi.fn(),
+      exit: vi.fn((code: number) => {
+        throw new Error(`exit:${code}`);
+      }),
+    };
+
+    await runOnboardingWizard(
+      {
+        acceptRisk: true,
+        flow: "quickstart",
+        mode: "local",
+        installDaemon: false,
+        skipProviders: true,
+        skipSkills: true,
+        skipHealth: true,
+        skipUi: true,
+      },
+      runtime,
+      prompter,
+    );
+
+    const finalConfig = writeConfigFile.mock.calls.at(-1)?.[0];
+    expect(finalConfig?.agents?.defaults?.model?.primary).toBe("ollama/qwen3:14b");
+    expect(finalConfig?.agents?.defaults?.memorySearch).toMatchObject({
+      provider: "ollama",
+      model: "nomic-embed-text",
+      fallback: "none",
+    });
+    expect(finalConfig?.models?.providers?.ollama).toMatchObject({
+      baseUrl: "http://127.0.0.1:11434/v1",
+      apiKey: "ollama-local",
+    });
+    expect(finalConfig?.memory?.memu?.llm).toMatchObject({
+      provider: "ollama",
+      model: "qwen3:14b",
+    });
+    expect(text).not.toHaveBeenCalled();
+  });
+
+  it("configures LM Studio first when the user chooses that local runtime", async () => {
+    writeConfigFile.mockClear();
+
+    const select: WizardPrompter["select"] = vi.fn(async (opts) => {
+      if (opts.message === "Where should Argent run its brain?") {
+        return "lmstudio";
+      }
+      if (opts.message === "Choose LM Studio's primary text model for Argent") {
+        return "qwen3-32b";
+      }
+      if (opts.message === "Choose LM Studio's embedding model for memory") {
+        return "nomic-embed-text";
+      }
+      return "quickstart";
+    });
+    const text: WizardPrompter["text"] = vi.fn(async () => "");
+    const prompter: WizardPrompter = {
+      intro: vi.fn(async () => {}),
+      outro: vi.fn(async () => {}),
+      note: vi.fn(async () => {}),
+      select,
+      multiselect: vi.fn(async () => []),
+      text,
+      confirm: vi.fn(async () => false),
+      progress: vi.fn(() => ({ update: vi.fn(), stop: vi.fn() })),
+    };
+    const runtime: RuntimeEnv = {
+      log: vi.fn(),
+      error: vi.fn(),
+      exit: vi.fn((code: number) => {
+        throw new Error(`exit:${code}`);
+      }),
+    };
+
+    await runOnboardingWizard(
+      {
+        acceptRisk: true,
+        flow: "quickstart",
+        mode: "local",
+        installDaemon: false,
+        skipProviders: true,
+        skipSkills: true,
+        skipHealth: true,
+        skipUi: true,
+      },
+      runtime,
+      prompter,
+    );
+
+    const finalConfig = writeConfigFile.mock.calls.at(-1)?.[0];
+    expect(finalConfig?.agents?.defaults?.model?.primary).toBe("lmstudio/qwen3-32b");
+    expect(finalConfig?.agents?.defaults?.memorySearch).toMatchObject({
+      provider: "openai",
+      model: "nomic-embed-text",
+      fallback: "none",
+      remote: {
+        baseUrl: "http://127.0.0.1:1234/v1",
+        apiKey: "lmstudio",
+      },
+    });
+    expect(finalConfig?.models?.providers?.lmstudio).toMatchObject({
+      baseUrl: "http://127.0.0.1:1234/v1",
+      apiKey: "lmstudio",
+    });
+    expect(finalConfig?.memory?.memu?.llm).toMatchObject({
+      provider: "lmstudio",
+      model: "qwen3-32b",
+    });
+    expect(text).not.toHaveBeenCalled();
   });
 });

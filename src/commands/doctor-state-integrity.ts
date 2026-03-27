@@ -377,10 +377,10 @@ export async function noteStateIntegrity(
   }
 
   if (warnings.length > 0) {
-    note(warnings.join("\n"), "State integrity");
+    note(warnings.join("\n"), "Argent state integrity");
   }
   if (changes.length > 0) {
-    note(changes.join("\n"), "Doctor changes");
+    note(changes.join("\n"), "Argent repairs");
   }
 }
 
@@ -398,6 +398,6 @@ export function noteWorkspaceBackupTip(workspaceDir: string) {
       "- Keep ~/.argentos out of git; it contains credentials and session history.",
       "- Details: /concepts/agent-workspace#git-backup-recommended",
     ].join("\n"),
-    "Workspace",
+    "Argent workspace",
   );
 }

@@ -1,0 +1,25 @@
+{
+  "tool": "aos-m365",
+  "backend": "microsoft-graph",
+  "permissions": {
+    "mail.search": "readonly",
+    "mail.read": "readonly",
+    "mail.reply": "write",
+    "mail.send": "write",
+    "calendar.list": "readonly",
+    "calendar.create": "write",
+    "file.list": "readonly",
+    "excel.list_workbooks": "readonly",
+    "excel.list_worksheets": "readonly",
+    "excel.used_range": "readonly",
+    "excel.read_rows": "readonly",
+    "excel.append_rows": "write",
+    "teams.list_messages": "readonly",
+    "teams.list_teams": "readonly",
+    "teams.list_channels": "readonly",
+    "teams.reply_message": "write",
+    "health": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly"
+  }
+}

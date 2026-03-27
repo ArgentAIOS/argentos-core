@@ -33,6 +33,7 @@ import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import { initRedisAgentState } from "../data/redis-agent-state.js";
 import { getRedisClient } from "../data/redis-client.js";
 import { clearAgentRunContext, onAgentEvent } from "../infra/agent-events.js";
+import { startConsciousnessKernel } from "../infra/consciousness-kernel.js";
 import { startContemplationRunner, setEpisodeBroadcast } from "../infra/contemplation-runner.js";
 import {
   ensureControlUiAssetsBuilt,
@@ -731,11 +732,25 @@ export async function startGatewayServer(
     executionWorkerRunner,
   });
   let sisRunner = startSisRunner({ cfg: cfgAtStart });
+  let consciousnessKernelRunner = startConsciousnessKernel({
+    cfg: cfgAtStart,
+    schedulerHooks: {
+      contemplation: {
+        getSnapshot: () => contemplationRunner.getSnapshot(),
+        runNow: (agentId?: string) => contemplationRunner.runNow(agentId),
+      },
+      sis: {
+        getSnapshot: () => sisRunner.getSnapshot(),
+        runNow: () => sisRunner.runNow(),
+      },
+    },
+  });
 
   // Start periodic health checks (zombie reaper, Ollama ping, disk space, auth status)
   const healthCheckInterval = startHealthCheckTimer({
     broadcast,
     getAuthProfileStatus: createAuthProfileStatusResolver(cfgAtStart),
+    getConfig: () => loadConfig(),
   });
 
   // Agent state broadcaster — tracks processing/idle transitions for dashboard
@@ -884,6 +899,7 @@ export async function startGatewayServer(
   const { applyHotReload, requestGatewayRestart } = createGatewayReloadHandlers({
     deps,
     broadcast,
+    nodeSendToSession,
     getState: () => ({
       hooksConfig,
       heartbeatRunner,
@@ -891,6 +907,7 @@ export async function startGatewayServer(
       executionWorkerRunner,
       jobOrchestratorRunner,
       sisRunner,
+      consciousnessKernelRunner,
       cronState,
       browserControl,
     }),
@@ -901,6 +918,7 @@ export async function startGatewayServer(
       executionWorkerRunner = nextState.executionWorkerRunner;
       jobOrchestratorRunner = nextState.jobOrchestratorRunner;
       sisRunner = nextState.sisRunner;
+      consciousnessKernelRunner = nextState.consciousnessKernelRunner;
       cronState = nextState.cronState;
       cron = cronState.cron;
       cronStorePath = cronState.storePath;
@@ -941,6 +959,7 @@ export async function startGatewayServer(
     executionWorkerRunner,
     jobOrchestratorRunner,
     sisRunner,
+    consciousnessKernelRunner,
     healthCheckInterval,
     nodePresenceTimers,
     broadcast,

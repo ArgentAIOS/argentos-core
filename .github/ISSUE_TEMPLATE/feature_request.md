@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea or improvement for ArgentOS Core.
+about: Suggest an idea or improvement for ArgentOS.
 title: "[Feature]: "
 labels: enhancement
 ---
@@ -11,7 +11,7 @@ Describe the problem you are trying to solve or the opportunity you see.
 
 ## Proposed solution
 
-What would you like ArgentOS Core to do?
+What would you like ArgentOS to do?
 
 ## Why this matters
 

@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import Observation
 import Speech
+import SwabbleKit
 import SwiftUI
 import UniformTypeIdentifiers
 

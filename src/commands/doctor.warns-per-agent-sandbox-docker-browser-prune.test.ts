@@ -373,7 +373,7 @@ describe("doctor command", () => {
 
     expect(
       note.mock.calls.some(([message, title]) => {
-        if (title !== "Sandbox" || typeof message !== "string") {
+        if (title !== "Argent sandbox" || typeof message !== "string") {
           return false;
         }
         const normalized = message.replace(/\s+/g, " ").trim();

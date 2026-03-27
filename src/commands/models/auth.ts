@@ -86,7 +86,7 @@ export async function modelsAuthSetupTokenCommand(
 
   if (!opts.yes) {
     const proceed = await confirm({
-      message: "Have you run `claude setup-token` and copied the token?",
+      message: "Do you already have the `claude setup-token` value ready for Argent?",
       initialValue: true,
     });
     if (!proceed) {
@@ -95,7 +95,7 @@ export async function modelsAuthSetupTokenCommand(
   }
 
   const tokenInput = await text({
-    message: "Paste Anthropic setup-token",
+    message: "Paste the Anthropic setup-token for Argent",
     validate: (value) => validateAnthropicSetupToken(String(value ?? "")),
   });
   const token = String(tokenInput).trim();
@@ -138,7 +138,7 @@ export async function modelsAuthPasteTokenCommand(
   const profileId = opts.profileId?.trim() || resolveDefaultTokenProfileId(provider);
 
   const tokenInput = await text({
-    message: `Paste token for ${provider}`,
+    message: `Paste the token Argent should use for ${provider}`,
     validate: (value) => (value?.trim() ? undefined : "Required"),
   });
   const token = String(tokenInput).trim();
@@ -166,7 +166,7 @@ export async function modelsAuthPasteTokenCommand(
 
 export async function modelsAuthAddCommand(_opts: Record<string, never>, runtime: RuntimeEnv) {
   const provider = (await select({
-    message: "Token provider",
+    message: "Which provider should Argent authenticate with?",
     options: [
       { value: "anthropic", label: "anthropic" },
       { value: "custom", label: "custom (type provider id)" },
@@ -178,7 +178,7 @@ export async function modelsAuthAddCommand(_opts: Record<string, never>, runtime
       ? normalizeProviderId(
           String(
             await text({
-              message: "Provider id",
+              message: "Provider id for Argent",
               validate: (value) => (value?.trim() ? undefined : "Required"),
             }),
           ),
@@ -186,7 +186,7 @@ export async function modelsAuthAddCommand(_opts: Record<string, never>, runtime
       : provider;
 
   const method = (await select({
-    message: "Token method",
+    message: "How should Argent receive the credential?",
     options: [
       ...(providerId === "anthropic"
         ? [
@@ -209,14 +209,14 @@ export async function modelsAuthAddCommand(_opts: Record<string, never>, runtime
   const profileIdDefault = resolveDefaultTokenProfileId(providerId);
   const profileId = String(
     await text({
-      message: "Profile id",
+      message: "Auth profile id",
       initialValue: profileIdDefault,
       validate: (value) => (value?.trim() ? undefined : "Required"),
     }),
   ).trim();
 
   const wantsExpiry = await confirm({
-    message: "Does this token expire?",
+    message: "Does this credential expire?",
     initialValue: false,
   });
   const expiresIn = wantsExpiry

@@ -1,0 +1,289 @@
+{
+  "tool": "aos-clickup",
+  "backend": "clickup-rest-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "work-management",
+    "surface": "workspace-space-folder-list-task",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": false,
+    "workerFields": ["workspace_id", "space_id", "folder_id", "list_id", "task_id"],
+    "fields": [
+      {
+        "id": "workspace_id",
+        "label": "Workspace ID",
+        "required": false,
+        "applies_to": ["workspace.read", "space.list", "space.read"],
+        "example": "12345678"
+      },
+      {
+        "id": "space_id",
+        "label": "Space ID",
+        "required": false,
+        "applies_to": ["space.read", "folder.list", "folder.read"],
+        "example": "space_abc123"
+      },
+      {
+        "id": "folder_id",
+        "label": "Folder ID",
+        "required": false,
+        "applies_to": ["folder.read", "list.list"],
+        "example": "folder_abc123"
+      },
+      {
+        "id": "list_id",
+        "label": "List ID",
+        "required": false,
+        "applies_to": ["list.read", "task.list", "task.create_draft", "task.update_draft"],
+        "example": "list_abc123"
+      },
+      {
+        "id": "task_id",
+        "label": "Task ID",
+        "required": false,
+        "applies_to": ["task.read", "task.update_draft"],
+        "example": "task_abc123"
+      }
+    ],
+    "worker_visible_actions": [
+      "workspace.list",
+      "workspace.read",
+      "space.list",
+      "space.read",
+      "folder.list",
+      "folder.read",
+      "list.list",
+      "list.read",
+      "task.list",
+      "task.read",
+      "task.create_draft",
+      "task.update_draft"
+    ],
+    "commandDefaults": {
+      "workspace.read": {
+        "args": ["CLICKUP_WORKSPACE_ID", "CLICKUP_TEAM_ID"]
+      },
+      "space.list": {
+        "args": ["CLICKUP_WORKSPACE_ID", "CLICKUP_TEAM_ID"]
+      },
+      "space.read": {
+        "args": ["CLICKUP_SPACE_ID"]
+      },
+      "folder.list": {
+        "args": ["CLICKUP_SPACE_ID"]
+      },
+      "folder.read": {
+        "args": ["CLICKUP_FOLDER_ID"]
+      },
+      "list.list": {
+        "args": ["CLICKUP_FOLDER_ID", "CLICKUP_SPACE_ID"]
+      },
+      "list.read": {
+        "args": ["CLICKUP_LIST_ID"]
+      },
+      "task.list": {
+        "args": ["CLICKUP_LIST_ID"]
+      },
+      "task.read": {
+        "args": ["CLICKUP_TASK_ID"]
+      },
+      "task.create_draft": {
+        "options": {
+          "list_id": "CLICKUP_LIST_ID"
+        }
+      },
+      "task.update_draft": {
+        "options": {
+          "task_id": "CLICKUP_TASK_ID"
+        }
+      }
+    },
+    "pickerHints": {
+      "workspace": {
+        "kind": "workspace",
+        "selection_surface": "workspace",
+        "resource": "clickup.workspace",
+        "source_command": "workspace.list",
+        "source_fields": ["id", "name", "color", "avatar"]
+      },
+      "space": {
+        "kind": "space",
+        "selection_surface": "space",
+        "resource": "clickup.space",
+        "source_command": "space.list",
+        "source_fields": ["id", "name", "private", "statuses"]
+      },
+      "folder": {
+        "kind": "folder",
+        "selection_surface": "folder",
+        "resource": "clickup.folder",
+        "source_command": "folder.list",
+        "source_fields": ["id", "name"]
+      },
+      "list": {
+        "kind": "list",
+        "selection_surface": "list",
+        "resource": "clickup.list",
+        "source_command": "list.list",
+        "source_fields": ["id", "name", "status"]
+      },
+      "task": {
+        "kind": "task",
+        "selection_surface": "task",
+        "resource": "clickup.task",
+        "source_command": "task.list",
+        "source_fields": ["id", "name", "status", "url"]
+      }
+    }
+  },
+  "connector": {
+    "label": "ClickUp",
+    "category": "work-management",
+    "categories": ["work-management", "project-tracking", "task-management"],
+    "resources": ["workspace", "space", "folder", "list", "task"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["CLICKUP_API_TOKEN", "CLICKUP_ACCESS_TOKEN"],
+    "interactive_setup": [
+      "Create a ClickUp personal API token or OAuth access token for the workspace this worker should use.",
+      "Add CLICKUP_API_TOKEN or CLICKUP_ACCESS_TOKEN in API Keys before enabling live reads.",
+      "Pin CLICKUP_WORKSPACE_ID or CLICKUP_TEAM_ID so workspace, space, folder, list, and task reads have a stable scope.",
+      "Optionally set CLICKUP_SPACE_ID, CLICKUP_FOLDER_ID, CLICKUP_LIST_ID, and CLICKUP_TASK_ID for deeper worker defaults.",
+      "Live reads are enabled for workspace, space, folder, list, and task discovery; task.create_draft and task.update_draft remain scaffolded until a live write bridge is approved."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and ClickUp setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "workspace.list",
+      "summary": "List ClickUp workspaces available to the configured token",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "workspace",
+      "action_class": "read"
+    },
+    {
+      "id": "workspace.read",
+      "summary": "Read a ClickUp workspace summary",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "workspace",
+      "action_class": "read"
+    },
+    {
+      "id": "space.list",
+      "summary": "List spaces in a ClickUp workspace",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "space",
+      "action_class": "read"
+    },
+    {
+      "id": "space.read",
+      "summary": "Read a ClickUp space",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "space",
+      "action_class": "read"
+    },
+    {
+      "id": "folder.list",
+      "summary": "List folders in a ClickUp space",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "folder",
+      "action_class": "read"
+    },
+    {
+      "id": "folder.read",
+      "summary": "Read a ClickUp folder",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "folder",
+      "action_class": "read"
+    },
+    {
+      "id": "list.list",
+      "summary": "List lists in a ClickUp folder or space",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "list",
+      "action_class": "read"
+    },
+    {
+      "id": "list.read",
+      "summary": "Read a ClickUp list",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "list",
+      "action_class": "read"
+    },
+    {
+      "id": "task.list",
+      "summary": "List tasks in a ClickUp list",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "read"
+    },
+    {
+      "id": "task.read",
+      "summary": "Read a ClickUp task",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "read"
+    },
+    {
+      "id": "task.create_draft",
+      "summary": "Create a draft task payload",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "write"
+    },
+    {
+      "id": "task.update_draft",
+      "summary": "Update a draft task payload",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "write"
+    }
+  ]
+}

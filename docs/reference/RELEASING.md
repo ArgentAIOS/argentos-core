@@ -71,15 +71,20 @@ When the operator says “release”, immediately do this preflight (no extra qu
 - [ ] Confirm git status is clean; commit and push as needed.
 - [ ] `npm login` (verify 2FA) if needed.
 - [ ] `npm publish --access public` (use `--tag beta` for pre-releases).
-- [ ] Verify the registry: `npm view argent version`, `npm view argent dist-tags`, and `npx -y argent@X.Y.Z --version` (or `--help`).
+- [ ] Verify the registry: `npm view argentos version`, `npm view argentos dist-tags`, and `npx -y argentos@X.Y.Z --version` (or `--help`).
+- [ ] Export hosted installer payload: `pnpm export:hosted-installers`
+- [ ] Publish the exported files from `dist/hosted-installers/` to the `argentos.ai` host:
+  - `install.sh`
+  - `install-cli.sh`
+  - `install.ps1`
 
 ### Troubleshooting (notes from 2.0.0-beta2 release)
 
 - **npm pack/publish hangs or produces huge tarball**: the macOS app bundle in `dist/ArgentOS.app` (and release zips) get swept into the package. Fix by whitelisting publish contents via `package.json` `files` (include dist subdirs, docs, skills; exclude app bundles). Confirm with `npm pack --dry-run` that `dist/ArgentOS.app` is not listed.
 - **npm auth web loop for dist-tags**: use legacy auth to get an OTP prompt:
-  - `NPM_CONFIG_AUTH_TYPE=legacy npm dist-tag add argent@X.Y.Z latest`
+  - `NPM_CONFIG_AUTH_TYPE=legacy npm dist-tag add argentos@X.Y.Z latest`
 - **`npx` verification fails with `ECOMPROMISED: Lock compromised`**: retry with a fresh cache:
-  - `NPM_CONFIG_CACHE=/tmp/npm-cache-$(date +%s) npx -y argent@X.Y.Z --version`
+  - `NPM_CONFIG_CACHE=/tmp/npm-cache-$(date +%s) npx -y argentos@X.Y.Z --version`
 - **Tag needs repointing after a late fix**: force-update and push the tag, then ensure the GitHub release assets still match:
   - `git tag -f vX.Y.Z && git push -f origin vX.Y.Z`
 
@@ -89,7 +94,7 @@ When the operator says “release”, immediately do this preflight (no extra qu
 - [ ] Create/refresh the GitHub release for `vX.Y.Z` with **title `argent X.Y.Z`** (not just the tag); body should include the **full** changelog section for that version (Highlights + Changes + Fixes), inline (no bare links), and **must not repeat the title inside the body**.
 - [ ] Attach artifacts: `npm pack` tarball (optional), `ArgentOS-X.Y.Z.zip`, and `ArgentOS-X.Y.Z.dSYM.zip` (if generated).
 - [ ] Commit the updated `appcast.xml` and push it (Sparkle feeds from main).
-- [ ] From a clean temp directory (no `package.json`), run `npx -y argent@X.Y.Z send --help` to confirm install/CLI entrypoints work.
+- [ ] From a clean temp directory (no `package.json`), run `npx -y argentos@X.Y.Z send --help` to confirm install/CLI entrypoints work.
 - [ ] Announce/share release notes.
 
 ## Plugin publish scope (npm)

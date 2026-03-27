@@ -330,7 +330,7 @@ export async function compactEmbeddedPiSessionDirect(
       config: params.config,
     });
     const isDefaultAgent = sessionAgentId === defaultAgentId;
-    const promptMode = isSubagentSessionKey(params.sessionKey) ? "minimal" : "full";
+    const promptMode = isSubagentSessionKey(params.sessionKey) ? "subagent" : "full";
     const docsPath = await resolveArgentDocsPath({
       workspaceDir: effectiveWorkspace,
       argv1: process.argv[1],

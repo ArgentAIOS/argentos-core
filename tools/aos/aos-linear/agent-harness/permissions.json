@@ -1,0 +1,14 @@
+{
+  "tool": "aos-linear",
+  "permissions": {
+    "health": "readonly",
+    "doctor": "readonly",
+    "config.show": "readonly",
+    "list-projects": "readonly",
+    "list-issues": "readonly",
+    "create-issue": "write",
+    "update-issue": "write",
+    "search": "readonly",
+    "get-issue": "readonly"
+  }
+}

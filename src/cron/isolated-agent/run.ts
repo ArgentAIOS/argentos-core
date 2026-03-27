@@ -41,6 +41,7 @@ import {
 } from "../../auto-reply/thinking.js";
 import { createOutboundSendDeps, type CliDeps } from "../../cli/outbound-send-deps.js";
 import { resolveSessionTranscriptPath, updateSessionStore } from "../../config/sessions.js";
+import { getAgentFamily } from "../../data/agent-family.js";
 import { registerAgentRunContext } from "../../infra/agent-events.js";
 import { deliverOutboundPayloads } from "../../infra/outbound/deliver.js";
 import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
@@ -52,6 +53,7 @@ import {
   getHookType,
   isExternalHookSession,
 } from "../../security/external-content.js";
+import { verifyCronArtifactContract } from "../artifact-contract.js";
 import { resolveCronDeliveryPlan } from "../delivery.js";
 import { resolveDeliveryTarget } from "./delivery-target.js";
 import {
@@ -89,6 +91,15 @@ function resolveCronDeliveryBestEffort(job: CronJob): boolean {
     return job.payload.bestEffortDeliver;
   }
   return false;
+}
+
+function isAutonomousMainTaskLoop(job: CronJob): boolean {
+  if (job.name.trim().toLowerCase() === "autonomous task execution loop") {
+    return true;
+  }
+  if (job.payload.kind !== "agentTurn") return false;
+  const message = job.payload.message?.toLowerCase() ?? "";
+  return message.includes("autonomous execution loop for argent");
 }
 
 export type RunCronAgentTurnResult = {
@@ -295,6 +306,10 @@ export async function runCronIsolatedAgentTurn(params: {
     // Internal/trusted source - use original format
     commandBody = `${base}\n${timeLine}`.trim();
   }
+  if (isAutonomousMainTaskLoop(params.job)) {
+    commandBody =
+      `${commandBody}\n\nAutonomous main-loop boundary:\n- Stay on the operator/main task board only.\n- Do not request worker/job lane visibility.\n- Do not use tasks.list/search/project_* with includeWorkerTasks=true.\n- Ignore any task whose source is job or whose metadata indicates jobAssignmentId.\n- If a worker/team task somehow appears, do not update it; skip it and choose a non-worker task instead.`.trim();
+  }
   if (deliveryRequested) {
     commandBody =
       `${commandBody}\n\nReturn your summary as plain text; it will be delivered automatically. If the task explicitly calls for messaging a specific external recipient, note who/where it should go instead of sending it yourself.`.trim();
@@ -329,6 +344,18 @@ export async function runCronIsolatedAgentTurn(params: {
   await updateSessionStore(cronSession.storePath, (store) => {
     store[agentSessionKey] = cronSession.sessionEntry;
   });
+
+  // Set Redis presence so this agent lights up on the Workflow Map during execution
+  try {
+    const family = await getAgentFamily();
+    const redis = family.getRedis();
+    if (redis) {
+      const { refreshPresence } = await import("../../data/redis-client.js");
+      await refreshPresence(redis, agentId);
+    }
+  } catch {
+    /* Redis optional — cron proceeds without it */
+  }
 
   let runResult: Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
   let fallbackProvider = provider;
@@ -490,6 +517,33 @@ export async function runCronIsolatedAgentTurn(params: {
       if (!deliveryBestEffort) {
         return { status: "error", summary, outputText, error: String(err) };
       }
+    }
+  }
+
+  const requiredArtifactContract = agentPayload?.artifactContract?.required;
+  if (requiredArtifactContract) {
+    try {
+      const verification = await verifyCronArtifactContract({
+        agentId,
+        contract: requiredArtifactContract,
+      });
+      if (!verification.ok) {
+        return {
+          status: "error",
+          error: verification.error,
+          summary: verification.error,
+          outputText,
+        };
+      }
+      return { status: "ok", summary: summary ?? verification.summary, outputText };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        status: "error",
+        error: message,
+        summary: message,
+        outputText,
+      };
     }
   }
 

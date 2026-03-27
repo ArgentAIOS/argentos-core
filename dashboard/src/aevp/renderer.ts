@@ -67,6 +67,8 @@ export class AEVPRenderer {
   private lastFrameTime: number = 0;
   private contextLost: boolean = false;
   private orbCenter: [number, number] = [0.5, 0.65];
+  private presenceOffsetPx: [number, number] = [0, 0];
+  private presenceScale: number = 1;
 
   // Phase 3: lerped state transitions
   private targetState: AEVPRenderState | null = null;
@@ -167,6 +169,12 @@ export class AEVPRenderer {
   setOrbCenter(x: number, y: number): void {
     const clamp = (v: number) => Math.max(0, Math.min(1, v));
     this.orbCenter = [clamp(x), clamp(y)];
+  }
+
+  /** Move/scale orb + particle composition without moving the background field. */
+  setPresenceTransform(offsetXPx: number, offsetYPx: number, scale: number): void {
+    this.presenceOffsetPx = [offsetXPx, offsetYPx];
+    this.presenceScale = Math.max(0.25, scale);
   }
 
   /** Trigger temporary particle text/glyph formation mode. */
@@ -346,6 +354,8 @@ export class AEVPRenderer {
     au.float("u_formExpansion", state.formExpansion);
     au.float("u_pulseIntensity", state.pulseIntensity);
     au.vec2("u_orbCenter", this.orbCenter[0], this.orbCenter[1]);
+    au.vec2("u_presenceOffset", this.presenceOffsetPx[0] / w, this.presenceOffsetPx[1] / h);
+    au.float("u_presenceScale", this.presenceScale);
     au.float("u_squash", state.squash);
     au.float("u_wobble", state.wobble);
     au.float("u_speechAmplitude", state.speechAmplitude);
@@ -364,6 +374,12 @@ export class AEVPRenderer {
       }
 
       gl.useProgram(this.particleProgram);
+      const particleOffsetX = (this.presenceOffsetPx[0] / w) * 2.0;
+      const particleOffsetY = -(this.presenceOffsetPx[1] / h) * 2.0;
+      const particleOffsetLoc = gl.getUniformLocation(this.particleProgram, "u_presenceOffset");
+      const particleScaleLoc = gl.getUniformLocation(this.particleProgram, "u_presenceScale");
+      gl.uniform2f(particleOffsetLoc, particleOffsetX, particleOffsetY);
+      gl.uniform1f(particleScaleLoc, this.presenceScale);
 
       // Upload particle data
       const data = this.particles.getBufferData();

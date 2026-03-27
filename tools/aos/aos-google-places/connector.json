@@ -1,0 +1,81 @@
+{
+  "tool": "aos-google-places",
+  "backend": "google-places",
+  "manifest_schema_version": "1.0.0",
+  "connector": {
+    "label": "Google Places",
+    "category": "local-search",
+    "categories": ["local-search", "maps", "research"],
+    "resources": ["search", "place", "resolve"]
+  },
+  "delivery_model": "poll",
+  "risk_tier": "readonly-external",
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["GOOGLE_PLACES_API_KEY"],
+    "interactive_setup": [
+      "Add GOOGLE_PLACES_API_KEY in ArgentOS API Keys.",
+      "This connector reads the key from Argent Service Keys first, then process.env.",
+      "Keep this connector in readonly mode; it is intended for search and place lookup."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "List connector capabilities",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "search",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Check Google Places runtime readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "search",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run Google Places runtime diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "search",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted Google Places connector config",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "search",
+      "action_class": "read"
+    },
+    {
+      "id": "search",
+      "summary": "Search Google Places by text query",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "search",
+      "action_class": "read"
+    },
+    {
+      "id": "place",
+      "summary": "Get details for a Google Place by place id",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "place",
+      "action_class": "read"
+    },
+    {
+      "id": "resolve",
+      "summary": "Resolve a location string into canonical Google Places matches",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "resolve",
+      "action_class": "read"
+    }
+  ]
+}

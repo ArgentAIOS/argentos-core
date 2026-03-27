@@ -1,8 +1,11 @@
+import os from "node:os";
+import path from "node:path";
 import type { ArgentConfig } from "../config/config.js";
 import type { RuntimeEnv } from "../runtime.js";
 import type { DoctorOptions, DoctorPrompter } from "./doctor-prompter.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { resolveGatewayPort } from "../config/config.js";
+import { resolveStateDir } from "../config/paths.js";
 import {
   resolveGatewayLaunchAgentLabel,
   resolveNodeLaunchAgentLabel,
@@ -31,6 +34,76 @@ import { buildGatewayRuntimeHints, formatGatewayRuntimeSummary } from "./doctor-
 import { formatHealthCheckFailure } from "./health-format.js";
 import { healthCommand } from "./health.js";
 
+function normalizeMaybePath(value?: string): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? path.resolve(trimmed) : null;
+}
+
+function resolveServicePort(params: {
+  serviceEnv?: Record<string, string>;
+  programArguments?: string[];
+}): number | null {
+  const envPort = params.serviceEnv?.ARGENT_GATEWAY_PORT?.trim();
+  if (envPort) {
+    const parsed = Number.parseInt(envPort, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  const args = params.programArguments ?? [];
+  const index = args.indexOf("--port");
+  if (index >= 0) {
+    const raw = args[index + 1];
+    const parsed = Number.parseInt(String(raw), 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function isServiceScopedToCurrentDoctorRun(params: {
+  serviceEnv?: Record<string, string>;
+  programArguments?: string[];
+  configPath?: string;
+  stateDir?: string;
+  port?: number;
+}): boolean {
+  const serviceConfigPath = normalizeMaybePath(params.serviceEnv?.ARGENT_CONFIG_PATH);
+  const serviceStateDir = normalizeMaybePath(params.serviceEnv?.ARGENT_STATE_DIR);
+  const servicePort = resolveServicePort({
+    serviceEnv: params.serviceEnv,
+    programArguments: params.programArguments,
+  });
+  const currentConfigPath = normalizeMaybePath(params.configPath);
+  const currentStateDir = normalizeMaybePath(params.stateDir);
+
+  if (serviceConfigPath && currentConfigPath) {
+    return serviceConfigPath === currentConfigPath;
+  }
+  if (serviceStateDir && currentStateDir) {
+    return serviceStateDir === currentStateDir;
+  }
+  if (servicePort !== null && typeof params.port === "number") {
+    return servicePort === params.port;
+  }
+  return true;
+}
+
+function resolveDoctorConfigPort(cfg: ArgentConfig): number {
+  const port = cfg.gateway?.port;
+  if (typeof port === "number" && Number.isFinite(port) && port > 0) {
+    return port;
+  }
+  return resolveGatewayPort(cfg, {});
+}
+
+function isAlternateHomeScope(env: NodeJS.ProcessEnv): boolean {
+  const envHome = normalizeMaybePath(env.HOME);
+  const realHome = normalizeMaybePath(os.userInfo().homedir);
+  return Boolean(envHome && realHome && envHome !== realHome);
+}
+
 async function maybeRepairLaunchAgentBootstrap(params: {
   env: Record<string, string | undefined>;
   title: string;
@@ -56,10 +129,10 @@ async function maybeRepairLaunchAgentBootstrap(params: {
     return false;
   }
 
-  note("LaunchAgent is listed but not loaded in launchd.", `${params.title} LaunchAgent`);
+  note("LaunchAgent is listed but not loaded in launchd.", `Argent ${params.title} LaunchAgent`);
 
   const shouldFix = await params.prompter.confirmSkipInNonInteractive({
-    message: `Repair ${params.title} LaunchAgent bootstrap now?`,
+    message: `Repair Argent ${params.title} LaunchAgent bootstrap now?`,
     initialValue: true,
   });
   if (!shouldFix) {
@@ -81,7 +154,7 @@ async function maybeRepairLaunchAgentBootstrap(params: {
     return false;
   }
 
-  note(`${params.title} LaunchAgent repaired.`, `${params.title} LaunchAgent`);
+  note(`${params.title} LaunchAgent repaired.`, `Argent ${params.title} LaunchAgent`);
   return true;
 }
 
@@ -92,6 +165,7 @@ export async function maybeRepairGatewayDaemon(params: {
   options: DoctorOptions;
   gatewayDetailsMessage: string;
   healthOk: boolean;
+  configPath?: string;
 }) {
   if (params.healthOk) {
     return;
@@ -106,6 +180,54 @@ export async function maybeRepairGatewayDaemon(params: {
     loaded = false;
   }
   let serviceRuntime: Awaited<ReturnType<typeof service.readRuntime>> | undefined;
+  let serviceCommand: Awaited<ReturnType<typeof service.readCommand>> | null = null;
+  if (loaded) {
+    serviceCommand = await service.readCommand(process.env).catch(() => null);
+  }
+  if (loaded && !serviceCommand && isAlternateHomeScope(process.env)) {
+    note(
+      [
+        "- Existing Argent gateway service is loaded for the primary user home.",
+        `- Current HOME: ${process.env.HOME ?? ""}`,
+        `- Primary HOME: ${os.userInfo().homedir}`,
+        "- Skipping live service inspection for this alternate-home doctor run.",
+      ].join("\n"),
+      "Argent gateway",
+    );
+    loaded = false;
+  }
+  const currentStateDir = resolveStateDir(process.env, os.homedir);
+  if (
+    loaded &&
+    serviceCommand &&
+    !isServiceScopedToCurrentDoctorRun({
+      serviceEnv: serviceCommand.environment,
+      programArguments: serviceCommand.programArguments,
+      configPath: params.configPath,
+      stateDir: currentStateDir,
+      port: resolveDoctorConfigPort(params.cfg),
+    })
+  ) {
+    const serviceConfigPath = serviceCommand.environment?.ARGENT_CONFIG_PATH?.trim();
+    const serviceStateDir = serviceCommand.environment?.ARGENT_STATE_DIR?.trim();
+    const servicePort = resolveServicePort({
+      serviceEnv: serviceCommand.environment,
+      programArguments: serviceCommand.programArguments,
+    });
+    const currentPort = resolveDoctorConfigPort(params.cfg);
+    const lines = [
+      "- Existing Argent gateway service belongs to a different config/state scope.",
+      serviceConfigPath ? `- Service config: ${serviceConfigPath}` : null,
+      serviceStateDir ? `- Service state: ${serviceStateDir}` : null,
+      servicePort !== null ? `- Service port: ${servicePort}` : null,
+      params.configPath ? `- Current config: ${params.configPath}` : null,
+      `- Current port: ${currentPort}`,
+      "- Treating this doctor run as unmanaged by the live service.",
+    ].filter((line): line is string => Boolean(line));
+    note(lines.join("\n"), "Argent gateway");
+    loaded = false;
+    serviceCommand = null;
+  }
   if (loaded) {
     serviceRuntime = await service.readRuntime(process.env).catch(() => undefined);
   }
@@ -135,14 +257,14 @@ export async function maybeRepairGatewayDaemon(params: {
   }
 
   if (params.cfg.gateway?.mode !== "remote") {
-    const port = resolveGatewayPort(params.cfg, process.env);
+    const port = resolveDoctorConfigPort(params.cfg);
     const diagnostics = await inspectPortUsage(port);
     if (diagnostics.status === "busy") {
-      note(formatPortDiagnostics(diagnostics).join("\n"), "Gateway port");
+      note(formatPortDiagnostics(diagnostics).join("\n"), "Argent gateway port");
     } else if (loaded && serviceRuntime?.status === "running") {
       const lastError = await readLastGatewayErrorLine(process.env);
       if (lastError) {
-        note(`Last gateway error: ${lastError}`, "Gateway");
+        note(`Last gateway error: ${lastError}`, "Argent gateway");
       }
     }
   }
@@ -152,26 +274,26 @@ export async function maybeRepairGatewayDaemon(params: {
       const systemdAvailable = await isSystemdUserServiceAvailable().catch(() => false);
       if (!systemdAvailable) {
         const wsl = await isWSL();
-        note(renderSystemdUnavailableHints({ wsl }).join("\n"), "Gateway");
+        note(renderSystemdUnavailableHints({ wsl }).join("\n"), "Argent gateway");
         return;
       }
     }
-    note("Gateway service not installed.", "Gateway");
+    note("Gateway service is not installed.", "Argent gateway");
     if (params.cfg.gateway?.mode !== "remote") {
       const install = await params.prompter.confirmSkipInNonInteractive({
-        message: "Install gateway service now?",
+        message: "Install the Argent gateway service now?",
         initialValue: true,
       });
       if (install) {
         const daemonRuntime = await params.prompter.select<GatewayDaemonRuntime>(
           {
-            message: "Gateway service runtime",
+            message: "Which runtime should power the Argent gateway service?",
             options: GATEWAY_DAEMON_RUNTIME_OPTIONS,
             initialValue: DEFAULT_GATEWAY_DAEMON_RUNTIME,
           },
           DEFAULT_GATEWAY_DAEMON_RUNTIME,
         );
-        const port = resolveGatewayPort(params.cfg, process.env);
+        const port = resolveDoctorConfigPort(params.cfg);
         const { programArguments, workingDirectory, environment } = await buildGatewayInstallPlan({
           env: process.env,
           port,
@@ -189,8 +311,8 @@ export async function maybeRepairGatewayDaemon(params: {
             environment,
           });
         } catch (err) {
-          note(`Gateway service install failed: ${String(err)}`, "Gateway");
-          note(gatewayInstallErrorHint(), "Gateway");
+          note(`Gateway service install failed: ${String(err)}`, "Argent gateway");
+          note(gatewayInstallErrorHint(), "Argent gateway");
         }
       }
     }
@@ -208,12 +330,12 @@ export async function maybeRepairGatewayDaemon(params: {
       lines.push(`Runtime: ${summary}`);
     }
     lines.push(...hints);
-    note(lines.join("\n"), "Gateway");
+    note(lines.join("\n"), "Argent gateway");
   }
 
   if (serviceRuntime?.status !== "running") {
     const start = await params.prompter.confirmSkipInNonInteractive({
-      message: "Start gateway service now?",
+      message: "Start the Argent gateway service now?",
       initialValue: true,
     });
     if (start) {
@@ -229,13 +351,13 @@ export async function maybeRepairGatewayDaemon(params: {
     const label = resolveGatewayLaunchAgentLabel(process.env.ARGENT_PROFILE);
     note(
       `LaunchAgent loaded; stopping requires "${formatCliCommand("argent gateway stop")}" or launchctl bootout gui/$UID/${label}.`,
-      "Gateway",
+      "Argent gateway",
     );
   }
 
   if (serviceRuntime?.status === "running") {
     const restart = await params.prompter.confirmSkipInNonInteractive({
-      message: "Restart gateway service now?",
+      message: "Restart the Argent gateway service now?",
       initialValue: true,
     });
     if (restart) {
@@ -249,8 +371,8 @@ export async function maybeRepairGatewayDaemon(params: {
       } catch (err) {
         const message = String(err);
         if (message.includes("gateway closed")) {
-          note("Gateway not running.", "Gateway");
-          note(params.gatewayDetailsMessage, "Gateway connection");
+          note("Gateway not running.", "Argent gateway");
+          note(params.gatewayDetailsMessage, "Argent gateway connection");
         } else {
           params.runtime.error(formatHealthCheckFailure(err));
         }

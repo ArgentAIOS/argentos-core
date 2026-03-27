@@ -28,6 +28,16 @@ export {
   applyZaiConfig,
 } from "./onboard-auth.config-core.js";
 export {
+  applyLmStudioConfig,
+  applyLmStudioProviderConfig,
+  applyOllamaConfig,
+  applyOllamaProviderConfig,
+  LM_STUDIO_DEFAULT_MODEL_ID,
+  LM_STUDIO_DEFAULT_MODEL_REF,
+  OLLAMA_DEFAULT_MODEL_ID,
+  OLLAMA_DEFAULT_MODEL_REF,
+} from "./onboard-auth.config-local.js";
+export {
   applyMinimaxApiConfig,
   applyMinimaxApiProviderConfig,
   applyMinimaxConfig,

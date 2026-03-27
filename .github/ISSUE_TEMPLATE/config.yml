@@ -2,7 +2,7 @@ blank_issues_enabled: true
 contact_links:
   - name: Onboarding
     url: https://discord.gg/argentos
-    about: New to ArgentOS Core? Join Discord for install and onboarding help.
+    about: New to ArgentOS? Join Discord for install and onboarding help.
   - name: Support
     url: https://discord.gg/argentos
     about: Get help from the ArgentOS community on Discord.

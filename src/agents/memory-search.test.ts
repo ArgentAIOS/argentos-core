@@ -187,6 +187,64 @@ describe("memory search config", () => {
     });
   });
 
+  it("includes remote defaults for lmstudio without overrides", () => {
+    const cfg = {
+      agents: {
+        defaults: {
+          memorySearch: {
+            provider: "lmstudio",
+          },
+        },
+      },
+    };
+    const resolved = resolveMemorySearchConfig(cfg, "main");
+    expect(resolved?.provider).toBe("lmstudio");
+    expect(resolved?.model).toBe("text-embedding-nomic-embed-text-v1.5");
+    expect(resolved?.remote?.batch).toEqual({
+      enabled: true,
+      wait: true,
+      concurrency: 2,
+      pollIntervalMs: 2000,
+      timeoutMinutes: 60,
+    });
+  });
+
+  it("normalizes legacy OpenAI-compatible LM Studio configs", () => {
+    const cfg = {
+      agents: {
+        defaults: {
+          memorySearch: {
+            provider: "openai",
+            remote: {
+              baseUrl: "http://127.0.0.1:1234/v1",
+            },
+          },
+        },
+      },
+    };
+    const resolved = resolveMemorySearchConfig(cfg, "main");
+    expect(resolved?.provider).toBe("lmstudio");
+    expect(resolved?.model).toBe("text-embedding-nomic-embed-text-v1.5");
+  });
+
+  it("normalizes legacy OpenAI-compatible Ollama configs", () => {
+    const cfg = {
+      agents: {
+        defaults: {
+          memorySearch: {
+            provider: "openai",
+            remote: {
+              baseUrl: "http://127.0.0.1:11434/v1",
+            },
+          },
+        },
+      },
+    };
+    const resolved = resolveMemorySearchConfig(cfg, "main");
+    expect(resolved?.provider).toBe("ollama");
+    expect(resolved?.model).toBe("nomic-embed-text");
+  });
+
   it("defaults session delta thresholds", () => {
     const cfg = {
       agents: {

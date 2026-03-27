@@ -101,4 +101,20 @@ describe("config schema", () => {
     expect(defaultsHint?.help).toContain("last");
     expect(listHint?.help).toContain("bluebubbles");
   });
+
+  it("includes knowledge observation config hints", () => {
+    const res = buildConfigSchema();
+    expect(res.uiHints["memory.observations.enabled"]?.label).toBe(
+      "Knowledge Observations Enabled",
+    );
+    expect(res.uiHints["memory.observations.retrieval.minConfidence"]?.help).toContain(
+      "Minimum confidence",
+    );
+  });
+
+  it("includes consciousness kernel config hints", () => {
+    const res = buildConfigSchema();
+    expect(res.uiHints["agents.defaults.kernel.mode"]?.label).toBe("Consciousness Kernel Mode");
+    expect(res.uiHints["agents.defaults.kernel.mode"]?.help).toContain("shadow only");
+  });
 });

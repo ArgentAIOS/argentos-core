@@ -1,6 +1,6 @@
 import Foundation
+import SwabbleKit
 import Testing
-@testable import Argent
 
 struct VoiceWakeTesterTests {
     @Test func matchRespectsGapRequirement() {

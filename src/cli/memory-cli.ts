@@ -46,7 +46,9 @@ type MemorySourceScan = {
 };
 
 function truncate(text: string, max = 120): string {
-  if (text.length <= max) return text;
+  if (text.length <= max) {
+    return text;
+  }
   return `${text.slice(0, max - 1)}…`;
 }
 
@@ -103,6 +105,14 @@ function resolveAgentIds(cfg: ReturnType<typeof loadConfig>, agent?: string): st
 
 function formatExtraPaths(workspaceDir: string, extraPaths: string[]): string[] {
   return normalizeExtraMemoryPaths(workspaceDir, extraPaths).map((entry) => shortenHomePath(entry));
+}
+
+function formatProviderSummary(status: { provider: string; requestedProvider?: string }): string {
+  const requestedProvider = status.requestedProvider?.trim();
+  if (!requestedProvider || requestedProvider === status.provider) {
+    return status.provider;
+  }
+  return `${status.provider} (requested: ${requestedProvider})`;
 }
 
 async function checkReadableFile(pathname: string): Promise<{ exists: boolean; issue?: string }> {
@@ -382,7 +392,6 @@ export async function runMemoryStatus(opts: MemoryCommandOptions) {
       const line = indexError ? `Memory index failed: ${indexError}` : "Memory index complete.";
       defaultRuntime.log(line);
     }
-    const requestedProvider = status.requestedProvider ?? status.provider;
     const modelLabel = status.model ?? status.provider;
     const storePath = status.dbPath ? shortenHomePath(status.dbPath) : "<unknown>";
     const workspacePath = status.workspaceDir ? shortenHomePath(status.workspaceDir) : "<unknown>";
@@ -392,7 +401,7 @@ export async function runMemoryStatus(opts: MemoryCommandOptions) {
       : [];
     const lines = [
       `${heading("Memory Search")} ${muted(`(${agentId})`)}`,
-      `${label("Provider")} ${info(status.provider)} ${muted(`(requested: ${requestedProvider})`)}`,
+      `${label("Provider")} ${info(formatProviderSummary(status))}`,
       `${label("Model")} ${info(modelLabel)}`,
       sourceList ? `${label("Sources")} ${info(sourceList)}` : null,
       extraPaths.length ? `${label("Extra paths")} ${info(extraPaths.join(", "))}` : null,
@@ -614,13 +623,10 @@ export function registerMemoryCli(program: Command) {
                 const extraPaths = status.workspaceDir
                   ? formatExtraPaths(status.workspaceDir, status.extraPaths ?? [])
                   : [];
-                const requestedProvider = status.requestedProvider ?? status.provider;
                 const modelLabel = status.model ?? status.provider;
                 const lines = [
                   `${heading("Memory Index")} ${muted(`(${agentId})`)}`,
-                  `${label("Provider")} ${info(status.provider)} ${muted(
-                    `(requested: ${requestedProvider})`,
-                  )}`,
+                  `${label("Provider")} ${info(formatProviderSummary(status))}`,
                   `${label("Model")} ${info(modelLabel)}`,
                   sourceLabels.length
                     ? `${label("Sources")} ${info(sourceLabels.join(", "))}`

@@ -9,7 +9,7 @@ import urllib.request
 from typing import Any
 
 from .config import runtime_config
-from .constants import RESOURCE_PATHS, TOOL_NAME
+from .constants import RESOURCE_PATHS, TAXONOMY_PATHS, TOOL_NAME
 from .errors import CliError
 
 
@@ -130,7 +130,7 @@ def _request_json(
     if not body:
         return {}
     decoded = _decode_response_body(body)
-    if isinstance(decoded, dict):
+    if isinstance(decoded, (dict, list)):
         return decoded
     return {"value": decoded}
 
@@ -207,6 +207,38 @@ def _summarize_user(payload: dict[str, Any]) -> dict[str, Any]:
         "slug": payload.get("slug"),
         "roles": payload.get("roles", []),
     }
+
+
+def _normalize_results(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        candidate = payload.get("results")
+        if isinstance(candidate, list):
+            return [item for item in candidate if isinstance(item, dict)]
+    return []
+
+
+def _build_content_payload(
+    *,
+    title: str | None = None,
+    content: str | None = None,
+    excerpt: str | None = None,
+    slug: str | None = None,
+    status: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    if title is not None:
+        payload["title"] = _require_nonempty(title, field="title")
+    if content is not None:
+        payload["content"] = content
+    if excerpt is not None:
+        payload["excerpt"] = excerpt
+    if slug is not None:
+        payload["slug"] = slug
+    if status is not None:
+        payload["status"] = status
+    return payload
 
 
 def _require_auth_ready() -> dict[str, Any]:
@@ -327,7 +359,7 @@ def list_content(
     if statuses:
         query["status"] = ",".join(statuses)
     payload = _request_json("GET", f"/wp/v2/{resource_path}", query=query, config=runtime)
-    results = payload if isinstance(payload, list) else payload.get("results", []) if isinstance(payload, dict) else []
+    results = _normalize_results(payload)
     return {
         "status": "ok",
         "resource": resource,
@@ -418,6 +450,32 @@ def create_draft_post(
     }
 
 
+def create_draft_content(
+    resource: str,
+    *,
+    title: str,
+    content: str | None = None,
+    excerpt: str | None = None,
+    slug: str | None = None,
+) -> dict[str, Any]:
+    runtime = _require_auth_ready()
+    resource_path = _ensure_resource(resource)
+    payload = _build_content_payload(
+        title=title,
+        content=content,
+        excerpt=excerpt,
+        slug=slug,
+        status="draft",
+    )
+    result = _request_json("POST", f"/wp/v2/{resource_path}", payload=payload, config=runtime)
+    return {
+        "status": "ok",
+        "resource": resource,
+        "operation": "create_draft",
+        "result": result,
+    }
+
+
 def update_draft_post(
     *,
     post_id: str,
@@ -451,6 +509,42 @@ def update_draft_post(
         "resource": "post",
         "operation": "update_draft",
         "id": post_id,
+        "result": result,
+    }
+
+
+def update_draft_content(
+    resource: str,
+    *,
+    object_id: str,
+    title: str | None = None,
+    content: str | None = None,
+    excerpt: str | None = None,
+    slug: str | None = None,
+) -> dict[str, Any]:
+    runtime = _require_auth_ready()
+    resource_path = _ensure_resource(resource)
+    object_id = _require_nonempty(object_id, field=f"{resource}_id")
+    payload = _build_content_payload(
+        title=title,
+        content=content,
+        excerpt=excerpt,
+        slug=slug,
+        status="draft",
+    )
+    if not payload:
+        raise CliError(
+            code="INVALID_USAGE",
+            message="At least one field is required to update a draft",
+            exit_code=2,
+            details={"field_count": 0},
+        )
+    result = _request_json("POST", f"/wp/v2/{resource_path}/{object_id}", payload=payload, config=runtime)
+    return {
+        "status": "ok",
+        "resource": resource,
+        "operation": "update_draft",
+        "id": object_id,
         "result": result,
     }
 
@@ -513,4 +607,94 @@ def publish_post(
         "operation": "publish",
         "id": post_id,
         "result": result,
+    }
+
+
+def publish_content(
+    resource: str,
+    *,
+    object_id: str,
+) -> dict[str, Any]:
+    runtime = _require_auth_ready()
+    resource_path = _ensure_resource(resource)
+    object_id = _require_nonempty(object_id, field=f"{resource}_id")
+    result = _request_json("POST", f"/wp/v2/{resource_path}/{object_id}", payload={"status": "publish"}, config=runtime)
+    return {
+        "status": "ok",
+        "resource": resource,
+        "operation": "publish",
+        "id": object_id,
+        "result": result,
+    }
+
+
+def list_media(
+    *,
+    per_page: int = 10,
+    page: int = 1,
+    search: str | None = None,
+    media_type: str | None = None,
+    mime_type: str | None = None,
+) -> dict[str, Any]:
+    runtime = _require_auth_ready()
+    query: dict[str, Any] = {
+        "per_page": per_page,
+        "page": page,
+        "context": "view",
+    }
+    if search:
+        query["search"] = search
+    if media_type:
+        query["media_type"] = media_type
+    if mime_type:
+        query["mime_type"] = mime_type
+    payload = _request_json("GET", "/wp/v2/media", query=query, config=runtime)
+    results = _normalize_results(payload)
+    return {
+        "status": "ok",
+        "resource": "media",
+        "operation": "list",
+        "query": {
+            "per_page": per_page,
+            "page": page,
+            "search": search,
+            "media_type": media_type,
+            "mime_type": mime_type,
+        },
+        "count": len(results),
+        "results": results,
+    }
+
+
+def list_taxonomy_terms(
+    *,
+    per_page: int = 25,
+    page: int = 1,
+    search: str | None = None,
+) -> dict[str, Any]:
+    runtime = _require_auth_ready()
+    query: dict[str, Any] = {
+        "per_page": per_page,
+        "page": page,
+        "context": "view",
+        "hide_empty": "false",
+    }
+    if search:
+        query["search"] = search
+    categories = _request_json("GET", f"/wp/v2/{TAXONOMY_PATHS['categories']}", query=query, config=runtime)
+    tags = _request_json("GET", f"/wp/v2/{TAXONOMY_PATHS['tags']}", query=query, config=runtime)
+    category_results = _normalize_results(categories)
+    tag_results = _normalize_results(tags)
+    return {
+        "status": "ok",
+        "resource": "taxonomy",
+        "operation": "list",
+        "query": {
+            "per_page": per_page,
+            "page": page,
+            "search": search,
+        },
+        "categories": category_results,
+        "tags": tag_results,
+        "count": len(category_results) + len(tag_results),
     }

@@ -36,10 +36,6 @@ List the exact commands you ran and the result.
   - [ ] cloud/API provider
   - [ ] not applicable
 
-## Public-core impact
-
-Does this change alter the public/core boundary, exported files, or mirror behavior?
-
 ## Risk
 
 What could regress, and what should reviewers look at closely?

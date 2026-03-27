@@ -64,7 +64,10 @@ last_commit_error=''
 run_git_commit() {
   local stderr_log
   stderr_log=$(mktemp)
-  if git commit --no-verify -m "$commit_message" -- "${files[@]}" 2> >(tee "$stderr_log" >&2); then
+  # Commit the staged index only. Passing pathspecs here fights the pre-commit
+  # formatter hook, which may restage files and otherwise leave the index out of
+  # sync with HEAD/worktree after the commit completes.
+  if git commit -m "$commit_message" 2> >(tee "$stderr_log" >&2); then
     rm -f "$stderr_log"
     last_commit_error=''
     return 0
@@ -83,8 +86,6 @@ for file in "${files[@]}"; do
     fi
   fi
 done
-
-pnpm format:fix --no-error-on-unmatched-pattern "${files[@]}"
 
 git restore --staged :/
 git add --force -- "${files[@]}"

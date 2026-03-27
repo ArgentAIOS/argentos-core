@@ -1,0 +1,267 @@
+{
+  "tool": "aos-buffer",
+  "backend": "buffer-rest-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "social-publishing",
+    "surface": "account-channel-profile-post",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": false,
+    "workerFields": ["account", "channel_id", "profile_id", "post_id", "post_text"],
+    "worker_visible_actions": [
+      "account.read",
+      "channel.list",
+      "channel.read",
+      "profile.list",
+      "profile.read",
+      "post.list",
+      "post.read"
+    ],
+    "fields": [
+      {
+        "id": "account",
+        "label": "Account",
+        "required": false,
+        "applies_to": ["account.read"],
+        "example": "connected Buffer account"
+      },
+      {
+        "id": "channel_id",
+        "label": "Channel ID",
+        "required": false,
+        "applies_to": ["channel.read", "profile.read", "post.list", "post.read"],
+        "example": "4eb854340acb04e870000010"
+      },
+      {
+        "id": "profile_id",
+        "label": "Profile ID",
+        "required": false,
+        "applies_to": ["profile.read", "post.list", "post.read"],
+        "example": "4eb854340acb04e870000010"
+      },
+      {
+        "id": "post_id",
+        "label": "Post ID",
+        "required": false,
+        "applies_to": ["post.read"],
+        "example": "post_123"
+      },
+      {
+        "id": "post_text",
+        "label": "Post text",
+        "required": false,
+        "applies_to": ["post.create_draft", "post.schedule"],
+        "example": "Draft launch announcement"
+      }
+    ],
+    "commandDefaults": {
+      "account.read": {
+        "selection_surface": "account"
+      },
+      "channel.list": {
+        "selection_surface": "channel",
+        "limit": 10
+      },
+      "channel.read": {
+        "selection_surface": "channel",
+        "args": ["BUFFER_CHANNEL_ID"]
+      },
+      "profile.list": {
+        "selection_surface": "profile",
+        "limit": 10
+      },
+      "profile.read": {
+        "selection_surface": "profile",
+        "args": ["BUFFER_PROFILE_ID"]
+      },
+      "post.list": {
+        "selection_surface": "post",
+        "args": ["BUFFER_PROFILE_ID"],
+        "limit": 10,
+        "status": "pending"
+      },
+      "post.read": {
+        "selection_surface": "post",
+        "args": ["BUFFER_POST_ID"]
+      },
+      "post.create_draft": {
+        "selection_surface": "post",
+        "args": ["BUFFER_CHANNEL_ID", "BUFFER_POST_TEXT"]
+      },
+      "post.schedule": {
+        "selection_surface": "post",
+        "args": ["BUFFER_CHANNEL_ID", "BUFFER_POST_TEXT"]
+      }
+    },
+    "pickerHints": {
+      "account": {
+        "kind": "account",
+        "selection_surface": "account",
+        "resource": "buffer.account",
+        "source_command": "account.read",
+        "source_fields": ["id", "name", "email", "timezone", "locale"]
+      },
+      "channel": {
+        "kind": "channel",
+        "selection_surface": "channel",
+        "resource": "buffer.channel",
+        "source_command": "channel.list",
+        "source_fields": [
+          "id",
+          "service",
+          "service_username",
+          "formatted_username",
+          "default",
+          "timezone"
+        ]
+      },
+      "profile": {
+        "kind": "profile",
+        "selection_surface": "profile",
+        "resource": "buffer.profile",
+        "source_command": "profile.list",
+        "source_fields": [
+          "id",
+          "service",
+          "service_username",
+          "formatted_username",
+          "default",
+          "timezone"
+        ]
+      },
+      "post": {
+        "kind": "post",
+        "selection_surface": "post",
+        "resource": "buffer.post",
+        "source_command": "post.list",
+        "source_fields": ["id", "text", "status", "profile_id", "scheduled_at", "sent_at"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Buffer",
+    "category": "marketing-publishing",
+    "categories": ["marketing-publishing", "social-publishing", "service-ops"],
+    "resources": ["account", "channel", "profile", "post"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["BUFFER_API_KEY", "BUFFER_ACCESS_TOKEN"],
+    "interactive_setup": [
+      "Create or choose a Buffer API token for the workspace or account.",
+      "Add BUFFER_API_KEY or BUFFER_ACCESS_TOKEN in API Keys before enabling live reads.",
+      "Optional: set BUFFER_BASE_URL to pin a non-default Buffer REST host.",
+      "The connector uses the current public /user and /profiles REST surfaces for account, channel, and profile reads.",
+      "Keep post.create_draft and post.schedule scaffolded until the current Buffer post read/write contract is confirmed."
+    ]
+  },
+  "commands": [
+    {
+      "id": "account.read",
+      "summary": "Read Buffer account metadata",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "account",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and Buffer API readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "channel.list",
+      "summary": "List Buffer channels",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "channel",
+      "action_class": "read"
+    },
+    {
+      "id": "channel.read",
+      "summary": "Read a Buffer channel",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "channel",
+      "action_class": "read"
+    },
+    {
+      "id": "profile.list",
+      "summary": "List Buffer profiles",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "profile",
+      "action_class": "read"
+    },
+    {
+      "id": "profile.read",
+      "summary": "Read a Buffer profile",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "profile",
+      "action_class": "read"
+    },
+    {
+      "id": "post.list",
+      "summary": "List Buffer posts for a profile",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "post",
+      "action_class": "read"
+    },
+    {
+      "id": "post.read",
+      "summary": "Read a Buffer post",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "post",
+      "action_class": "read"
+    },
+    {
+      "id": "post.create_draft",
+      "summary": "Create a Buffer post draft",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "post",
+      "action_class": "write"
+    },
+    {
+      "id": "post.schedule",
+      "summary": "Schedule a Buffer post",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "post",
+      "action_class": "write"
+    }
+  ]
+}

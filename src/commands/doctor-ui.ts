@@ -30,24 +30,27 @@ export async function maybeRepairUiProtocolFreshness(
     ]);
 
     if (schemaStats && !uiStats) {
-      note(["- Control UI assets are missing.", "- Run: pnpm ui:build"].join("\n"), "UI");
+      note(
+        ["- Argent control surface assets are missing.", "- Run: pnpm ui:build"].join("\n"),
+        "Argent UI",
+      );
 
       // In slim/docker environments we may not have the UI source tree. Trying
       // to build would fail (and spam logs), so skip the interactive repair.
       const uiSourcesPath = path.join(root, "ui/package.json");
       const uiSourcesExist = await fs.stat(uiSourcesPath).catch(() => null);
       if (!uiSourcesExist) {
-        note("Skipping UI build: ui/ sources not present.", "UI");
+        note("Skipping UI build: ui/ sources are not present in this install.", "Argent UI");
         return;
       }
 
       const shouldRepair = await prompter.confirmRepair({
-        message: "Build Control UI assets now?",
+        message: "Build Argent control surface assets now?",
         initialValue: true,
       });
 
       if (shouldRepair) {
-        note("Building Control UI assets... (this may take a moment)", "UI");
+        note("Building Argent control surface assets... (this may take a moment)", "Argent UI");
         const uiScriptPath = path.join(root, "scripts/ui.js");
         const buildResult = await runCommandWithTimeout([process.execPath, uiScriptPath, "build"], {
           cwd: root,
@@ -55,7 +58,7 @@ export async function maybeRepairUiProtocolFreshness(
           env: { ...process.env, FORCE_COLOR: "1" },
         });
         if (buildResult.code === 0) {
-          note("UI build complete.", "UI");
+          note("Argent UI build complete.", "Argent UI");
         } else {
           const details = [
             `UI build failed (exit ${buildResult.code ?? "unknown"}).`,
@@ -63,7 +66,7 @@ export async function maybeRepairUiProtocolFreshness(
           ]
             .filter(Boolean)
             .join("\n");
-          note(details, "UI");
+          note(details, "Argent UI");
         }
       }
       return;
@@ -96,11 +99,11 @@ export async function maybeRepairUiProtocolFreshness(
             .split("\n")
             .map((l) => `- ${l}`)
             .join("\n")}`,
-          "UI Freshness",
+          "Argent UI freshness",
         );
 
         const shouldRepair = await prompter.confirmAggressive({
-          message: "Rebuild UI now? (Detected protocol mismatch requiring update)",
+          message: "Rebuild Argent UI now? (Detected protocol mismatch requiring update)",
           initialValue: true,
         });
 
@@ -108,11 +111,11 @@ export async function maybeRepairUiProtocolFreshness(
           const uiSourcesPath = path.join(root, "ui/package.json");
           const uiSourcesExist = await fs.stat(uiSourcesPath).catch(() => null);
           if (!uiSourcesExist) {
-            note("Skipping UI rebuild: ui/ sources not present.", "UI");
+            note("Skipping UI rebuild: ui/ sources are not present in this install.", "Argent UI");
             return;
           }
 
-          note("Rebuilding stale UI assets... (this may take a moment)", "UI");
+          note("Rebuilding stale Argent UI assets... (this may take a moment)", "Argent UI");
           // Use scripts/ui.js to build, assuming node is available as we are running in it.
           // We use the same node executable to run the script.
           const uiScriptPath = path.join(root, "scripts/ui.js");
@@ -125,7 +128,7 @@ export async function maybeRepairUiProtocolFreshness(
             },
           );
           if (buildResult.code === 0) {
-            note("UI rebuild complete.", "UI");
+            note("Argent UI rebuild complete.", "Argent UI");
           } else {
             const details = [
               `UI rebuild failed (exit ${buildResult.code ?? "unknown"}).`,
@@ -133,7 +136,7 @@ export async function maybeRepairUiProtocolFreshness(
             ]
               .filter(Boolean)
               .join("\n");
-            note(details, "UI");
+            note(details, "Argent UI");
           }
         }
       }

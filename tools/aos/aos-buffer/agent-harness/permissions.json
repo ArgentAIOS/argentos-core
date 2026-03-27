@@ -1,0 +1,19 @@
+{
+  "tool": "aos-buffer",
+  "backend": "buffer-rest-api",
+  "permissions": {
+    "account.read": "readonly",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "channel.list": "readonly",
+    "channel.read": "readonly",
+    "profile.list": "readonly",
+    "profile.read": "readonly",
+    "post.list": "readonly",
+    "post.read": "readonly",
+    "post.create_draft": "write",
+    "post.schedule": "write"
+  }
+}

@@ -63,6 +63,7 @@ import { createPodcastGenerateTool } from "./tools/podcast-generate-tool.js";
 import { createPodcastPlanTool } from "./tools/podcast-plan-tool.js";
 import { createPodcastPublishPipelineTool } from "./tools/podcast-publish-pipeline-tool.js";
 import { createRailwayDeployTool } from "./tools/railway-deploy-tool.js";
+import { createScheduledTasksTool } from "./tools/scheduled-tasks-tool.js";
 import { createSearchTool } from "./tools/search-tool.js";
 import { createSendPayloadTool } from "./tools/send-payload-tool.js";
 import { createServiceKeysTool } from "./tools/service-keys-tool.js";
@@ -201,6 +202,7 @@ export function createArgentTools(options?: {
       agentSessionKey: options?.agentSessionKey,
       config: options?.config,
     }),
+    createScheduledTasksTool(),
     ...(createOnboardingPackTool
       ? [
           createOnboardingPackTool({

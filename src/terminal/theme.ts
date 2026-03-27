@@ -1,5 +1,5 @@
 import chalk, { Chalk } from "chalk";
-import { LOBSTER_PALETTE } from "./palette.js";
+import { ARGENT_PALETTE } from "./palette.js";
 
 const hasForceColor =
   typeof process.env.FORCE_COLOR === "string" &&
@@ -11,17 +11,17 @@ const baseChalk = process.env.NO_COLOR && !hasForceColor ? new Chalk({ level: 0 
 const hex = (value: string) => baseChalk.hex(value);
 
 export const theme = {
-  accent: hex(LOBSTER_PALETTE.accent),
-  accentBright: hex(LOBSTER_PALETTE.accentBright),
-  accentDim: hex(LOBSTER_PALETTE.accentDim),
-  info: hex(LOBSTER_PALETTE.info),
-  success: hex(LOBSTER_PALETTE.success),
-  warn: hex(LOBSTER_PALETTE.warn),
-  error: hex(LOBSTER_PALETTE.error),
-  muted: hex(LOBSTER_PALETTE.muted),
-  heading: baseChalk.bold.hex(LOBSTER_PALETTE.accent),
-  command: hex(LOBSTER_PALETTE.accentBright),
-  option: hex(LOBSTER_PALETTE.warn),
+  accent: hex(ARGENT_PALETTE.accent),
+  accentBright: hex(ARGENT_PALETTE.accentBright),
+  accentDim: hex(ARGENT_PALETTE.accentDim),
+  info: hex(ARGENT_PALETTE.info),
+  success: hex(ARGENT_PALETTE.success),
+  warn: hex(ARGENT_PALETTE.warn),
+  error: hex(ARGENT_PALETTE.error),
+  muted: hex(ARGENT_PALETTE.muted),
+  heading: baseChalk.bold.hex(ARGENT_PALETTE.accentBright),
+  command: hex(ARGENT_PALETTE.accentBright),
+  option: hex(ARGENT_PALETTE.info),
 } as const;
 
 export const isRich = () => Boolean(baseChalk.level > 0);

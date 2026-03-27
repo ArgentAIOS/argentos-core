@@ -143,7 +143,7 @@ function noteOpencodeProviderOverrides(cfg: ArgentConfig) {
     "- Remove these entries to restore per-model API routing + costs (then re-run onboarding if needed).",
   );
 
-  note(lines.join("\n"), "OpenCode Zen");
+  note(lines.join("\n"), "Argent OpenCode Zen");
 }
 
 async function maybeMigrateLegacyConfig(): Promise<string[]> {
@@ -200,15 +200,15 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
   const shouldRepair = params.options.repair === true || params.options.yes === true;
   const stateDirResult = await autoMigrateLegacyStateDir({ env: process.env });
   if (stateDirResult.changes.length > 0) {
-    note(stateDirResult.changes.map((entry) => `- ${entry}`).join("\n"), "Doctor changes");
+    note(stateDirResult.changes.map((entry) => `- ${entry}`).join("\n"), "Argent repairs");
   }
   if (stateDirResult.warnings.length > 0) {
-    note(stateDirResult.warnings.map((entry) => `- ${entry}`).join("\n"), "Doctor warnings");
+    note(stateDirResult.warnings.map((entry) => `- ${entry}`).join("\n"), "Argent warnings");
   }
 
   const legacyConfigChanges = await maybeMigrateLegacyConfig();
   if (legacyConfigChanges.length > 0) {
-    note(legacyConfigChanges.map((entry) => `- ${entry}`).join("\n"), "Doctor changes");
+    note(legacyConfigChanges.map((entry) => `- ${entry}`).join("\n"), "Argent repairs");
   }
 
   let snapshot = await readConfigFileSnapshot();
@@ -219,12 +219,15 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
   let shouldWriteConfig = false;
   const fixHints: string[] = [];
   if (snapshot.exists && !snapshot.valid && snapshot.legacyIssues.length === 0) {
-    note("Config invalid; doctor will run with best-effort config.", "Config");
+    note(
+      "Config is invalid; Argent will continue with a best-effort config snapshot.",
+      "Argent config",
+    );
   }
   const warnings = snapshot.warnings ?? [];
   if (warnings.length > 0) {
     const lines = warnings.map((issue) => `- ${issue.path}: ${issue.message}`).join("\n");
-    note(lines, "Config warnings");
+    note(lines, "Argent config warnings");
   }
 
   if (snapshot.legacyIssues.length > 0) {
@@ -234,7 +237,7 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
     );
     const { config: migrated, changes } = migrateLegacyConfig(snapshot.parsed);
     if (changes.length > 0) {
-      note(changes.join("\n"), "Doctor changes");
+      note(changes.join("\n"), "Argent repairs");
     }
     if (migrated) {
       candidate = migrated;
@@ -252,7 +255,7 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
 
   const normalized = normalizeLegacyConfigValues(candidate);
   if (normalized.changes.length > 0) {
-    note(normalized.changes.join("\n"), "Doctor changes");
+    note(normalized.changes.join("\n"), "Argent repairs");
     candidate = normalized.config;
     pendingChanges = true;
     if (shouldRepair) {
@@ -264,7 +267,7 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
 
   const autoEnable = applyPluginAutoEnable({ config: candidate, env: process.env });
   if (autoEnable.changes.length > 0) {
-    note(autoEnable.changes.join("\n"), "Doctor changes");
+    note(autoEnable.changes.join("\n"), "Argent repairs");
     candidate = autoEnable.config;
     pendingChanges = true;
     if (shouldRepair) {
@@ -281,9 +284,9 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
     pendingChanges = true;
     if (shouldRepair) {
       cfg = unknown.config;
-      note(lines, "Doctor changes");
+      note(lines, "Argent repairs");
     } else {
-      note(lines, "Unknown config keys");
+      note(lines, "Unknown Argent config keys");
       fixHints.push('Run "argent doctor --fix" to remove these keys.');
     }
   }
@@ -297,7 +300,7 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
       cfg = candidate;
       shouldWriteConfig = true;
     } else if (fixHints.length > 0) {
-      note(fixHints.join("\n"), "Doctor");
+      note(fixHints.join("\n"), "Argent doctor");
     }
   }
 

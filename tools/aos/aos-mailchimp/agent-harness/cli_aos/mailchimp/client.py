@@ -1,146 +1,128 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
-import urllib.error
-import urllib.parse
-import urllib.request
 from dataclasses import dataclass
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urljoin
+from urllib.request import Request, urlopen
 
-from .config import runtime_config
-from .constants import DEFAULT_TIMEOUT_SECONDS
-from .errors import CliError
+from .constants import BACKEND_NAME
 
 
 @dataclass(slots=True)
-class MailchimpClient:
-    base_url: str
-    api_key: str
-    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
+class MailchimpApiError(Exception):
+    status_code: int | None
+    code: str
+    message: str
+    details: dict[str, Any] | None = None
 
-    @classmethod
-    def from_context(cls, ctx_obj: dict[str, Any] | None = None) -> "MailchimpClient":
-        config = runtime_config(ctx_obj)
-        if not config["api_key_present"]:
-            raise CliError(
-                code="SETUP_REQUIRED",
-                message="MAILCHIMP_API_KEY is required",
-                exit_code=4,
-                details={"missing": ["MAILCHIMP_API_KEY"]},
-            )
-        if not config["base_url_present"]:
-            raise CliError(
-                code="SETUP_REQUIRED",
-                message="Unable to resolve a Mailchimp server prefix",
-                exit_code=4,
-                details={"missing": ["MAILCHIMP_SERVER_PREFIX"], "api_key_has_datacenter": bool(config["inferred_server_prefix"])},
-            )
-        return cls(
-            base_url=config["base_url"],
-            api_key=config["api_key"],
-            timeout_seconds=float(config["request_timeout_s"]),
-        )
-
-    def _headers(self) -> dict[str, str]:
-        token = base64.b64encode(f"anystring:{self.api_key}".encode("utf-8")).decode("ascii")
+    def as_dict(self) -> dict[str, Any]:
         return {
-            "Authorization": f"Basic {token}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "User-Agent": "aos-mailchimp/0.1.0",
+            "status_code": self.status_code,
+            "code": self.code,
+            "message": self.message,
+            "details": self.details or {},
         }
 
-    def request_json(
+
+def subscriber_hash(email: str) -> str:
+    return hashlib.md5(email.strip().lower().encode("utf-8")).hexdigest()
+
+
+def _load_json(payload: bytes) -> dict[str, Any]:
+    if not payload:
+        return {}
+    text = payload.decode("utf-8")
+    if not text.strip():
+        return {}
+    value = json.loads(text)
+    return value if isinstance(value, dict) else {"value": value}
+
+
+class MailchimpClient:
+    def __init__(self, *, api_key: str, server_prefix: str) -> None:
+        self._api_key = api_key.strip()
+        self._server_prefix = server_prefix.strip()
+        self._base_url = f"https://{self._server_prefix}.api.mailchimp.com/3.0"
+        token = base64.b64encode(f"anystring:{self._api_key}".encode("utf-8")).decode("utf-8")
+        self._auth_header = f"Basic {token}"
+
+    def _request(
         self,
         method: str,
         path: str,
         *,
-        query: dict[str, Any] | None = None,
-        payload: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+        body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        url = f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
-        if query:
-            url = f"{url}?{urllib.parse.urlencode(query, doseq=True)}"
-
-        data = None
+        url = urljoin(self._base_url + "/", path.lstrip("/"))
+        if params:
+            query = urlencode([(key, str(value)) for key, value in params.items() if value is not None])
+            if query:
+                url = f"{url}?{query}"
+        payload = json.dumps(body).encode("utf-8") if body is not None else None
+        headers = {
+            "Authorization": self._auth_header,
+            "Accept": "application/json",
+        }
         if payload is not None:
-            data = json.dumps(payload).encode("utf-8")
-
-        request = urllib.request.Request(url, data=data, headers=self._headers(), method=method.upper())
-
+            headers["Content-Type"] = "application/json"
+        request = Request(url, data=payload, method=method.upper(), headers=headers)
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
-                body = response.read().decode(response.headers.get_content_charset("utf-8"))
-                return json.loads(body) if body else {}
-        except urllib.error.HTTPError as exc:
-            body = exc.read().decode(exc.headers.get_content_charset("utf-8") if exc.headers else "utf-8", errors="replace")
-            response_payload: dict[str, Any] = {}
-            if body:
-                try:
-                    parsed = json.loads(body)
-                    if isinstance(parsed, dict):
-                        response_payload = parsed
-                except json.JSONDecodeError:
-                    response_payload = {}
-
-            code = "MAILCHIMP_API_ERROR"
-            exit_code = 5
-            if exc.code in (401, 403):
-                code = "AUTH_ERROR"
-                exit_code = 4
-            elif exc.code == 404:
-                code = "NOT_FOUND"
-                exit_code = 6
-            elif exc.code == 429:
-                code = "RATE_LIMITED"
-                exit_code = 5
-            elif exc.code >= 500:
-                code = "BACKEND_UNAVAILABLE"
-                exit_code = 5
-
-            message = body or str(exc)
-            if response_payload:
-                message = str(response_payload.get("detail") or response_payload.get("title") or response_payload.get("error") or message)
-
-            raise CliError(
-                code=code,
-                message=message,
-                exit_code=exit_code,
-                details={"status": exc.code, "url": url, "response": response_payload or None},
-            ) from exc
-        except urllib.error.URLError as exc:
-            raise CliError(
-                code="NETWORK_ERROR",
-                message="Failed to reach Mailchimp API",
-                exit_code=5,
-                details={"reason": str(exc.reason), "url": url},
-            ) from exc
+            with urlopen(request, timeout=30) as response:
+                return _load_json(response.read())
+        except HTTPError as err:
+            details = {}
+            try:
+                details = _load_json(err.read())
+            except Exception:
+                details = {}
+            raise MailchimpApiError(
+                status_code=err.code,
+                code=str(details.get("type") or details.get("title") or "MAILCHIMP_API_ERROR"),
+                message=str(details.get("detail") or details.get("title") or err.reason or "Mailchimp API request failed"),
+                details=details,
+            ) from err
+        except URLError as err:
+            raise MailchimpApiError(
+                status_code=None,
+                code="MAILCHIMP_NETWORK_ERROR",
+                message=str(getattr(err, "reason", err)),
+                details={"backend": BACKEND_NAME, "url": url},
+            ) from err
 
     def ping(self) -> dict[str, Any]:
-        return self.request_json("GET", "/ping")
+        return self._request("GET", "/ping")
 
-    def root(self) -> dict[str, Any]:
-        return self.request_json("GET", "/")
+    def read_account(self) -> dict[str, Any]:
+        return self._request("GET", "/account")
 
-    def list_audiences(self, *, count: int = 10, offset: int = 0) -> dict[str, Any]:
-        return self.request_json("GET", "/lists", query={"count": count, "offset": offset})
+    def list_audiences(self, *, limit: int = 10) -> dict[str, Any]:
+        return self._request("GET", "/lists", params={"count": max(1, min(limit, 100))})
 
     def read_audience(self, audience_id: str) -> dict[str, Any]:
-        return self.request_json("GET", f"/lists/{urllib.parse.quote(audience_id, safe='')}")
+        return self._request("GET", f"/lists/{audience_id}")
 
-    def list_campaigns(self, *, count: int = 10, offset: int = 0) -> dict[str, Any]:
-        return self.request_json("GET", "/campaigns", query={"count": count, "offset": offset})
+    def list_members(self, audience_id: str, *, limit: int = 10) -> dict[str, Any]:
+        return self._request("GET", f"/lists/{audience_id}/members", params={"count": max(1, min(limit, 100))})
+
+    def read_member(self, audience_id: str, email: str) -> dict[str, Any]:
+        return self._request("GET", f"/lists/{audience_id}/members/{subscriber_hash(email)}")
+
+    def list_campaigns(self, *, limit: int = 10, status: str | None = None) -> dict[str, Any]:
+        params = {"count": max(1, min(limit, 100))}
+        if status:
+            params["status"] = status
+        return self._request("GET", "/campaigns", params=params)
 
     def read_campaign(self, campaign_id: str) -> dict[str, Any]:
-        return self.request_json("GET", f"/campaigns/{urllib.parse.quote(campaign_id, safe='')}")
+        return self._request("GET", f"/campaigns/{campaign_id}")
 
-    def list_members(self, audience_id: str, *, count: int = 10, offset: int = 0) -> dict[str, Any]:
-        return self.request_json("GET", f"/lists/{urllib.parse.quote(audience_id, safe='')}/members", query={"count": count, "offset": offset})
+    def list_reports(self, *, limit: int = 10) -> dict[str, Any]:
+        return self._request("GET", "/reports", params={"count": max(1, min(limit, 100))})
 
-    def read_member(self, audience_id: str, subscriber_hash: str) -> dict[str, Any]:
-        return self.request_json(
-            "GET",
-            f"/lists/{urllib.parse.quote(audience_id, safe='')}/members/{urllib.parse.quote(subscriber_hash, safe='')}",
-        )
-
+    def read_report(self, campaign_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/reports/{campaign_id}")

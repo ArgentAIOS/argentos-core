@@ -12,12 +12,12 @@ export async function setupInternalHooks(
 ): Promise<ArgentConfig> {
   await prompter.note(
     [
-      "Hooks let you automate actions when agent commands are issued.",
-      "Example: Save session context to memory when you issue /new.",
+      "Hooks let Argent react automatically when important events happen.",
+      "Example: save session context to memory when you issue /new.",
       "",
       "Learn more: https://docs.argent.ai/hooks",
     ].join("\n"),
-    "Hooks",
+    "Argent hooks",
   );
 
   // Discover available hooks using the hook discovery system
@@ -29,14 +29,14 @@ export async function setupInternalHooks(
 
   if (eligibleHooks.length === 0) {
     await prompter.note(
-      "No eligible hooks found. You can configure hooks later in your config.",
-      "No Hooks Available",
+      "No ready-to-enable hooks were found. You can wire them in later from the hooks menu.",
+      "Argent hooks",
     );
     return cfg;
   }
 
   const toEnable = await prompter.multiselect({
-    message: "Enable hooks?",
+    message: "Which hooks should Argent bring online?",
     options: [
       { value: "__skip__", label: "Skip for now" },
       ...eligibleHooks.map((hook) => ({
@@ -71,14 +71,14 @@ export async function setupInternalHooks(
 
   await prompter.note(
     [
-      `Enabled ${selected.length} hook${selected.length > 1 ? "s" : ""}: ${selected.join(", ")}`,
+      `Argent enabled ${selected.length} hook${selected.length > 1 ? "s" : ""}: ${selected.join(", ")}`,
       "",
       "You can manage hooks later with:",
       `  ${formatCliCommand("argent hooks list")}`,
       `  ${formatCliCommand("argent hooks enable <name>")}`,
       `  ${formatCliCommand("argent hooks disable <name>")}`,
     ].join("\n"),
-    "Hooks Configured",
+    "Argent hooks",
   );
 
   return next;

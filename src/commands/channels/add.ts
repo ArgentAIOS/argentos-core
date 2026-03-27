@@ -92,7 +92,7 @@ export async function channelsAddCommand(
     const prompter = createClackPrompter();
     let selection: ChannelChoice[] = [];
     const accountIds: Partial<Record<ChannelChoice, string>> = {};
-    await prompter.intro("Channel setup");
+    await prompter.intro("Bring a channel online");
     let nextConfig = await setupChannels(cfg, runtime, prompter, {
       allowDisable: false,
       allowSignalInstall: true,
@@ -110,7 +110,7 @@ export async function channelsAddCommand(
     }
 
     const wantsNames = await prompter.confirm({
-      message: "Add display names for these accounts? (optional)",
+      message: "Add display names so Argent can label these accounts clearly?",
       initialValue: false,
     });
     if (wantsNames) {
@@ -123,7 +123,7 @@ export async function channelsAddCommand(
         const snapshot = plugin?.config.describeAccount?.(account, nextConfig);
         const existingName = snapshot?.name ?? account?.name;
         const name = await prompter.text({
-          message: `${channel} account name (${accountId})`,
+          message: `Display name for ${channel} (${accountId})`,
           initialValue: existingName,
         });
         if (name?.trim()) {
@@ -138,7 +138,7 @@ export async function channelsAddCommand(
     }
 
     await writeConfigFile(nextConfig);
-    await prompter.outro("Channels updated.");
+    await prompter.outro("Argent channel routing updated.");
     return;
   }
 

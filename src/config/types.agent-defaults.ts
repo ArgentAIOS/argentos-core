@@ -45,6 +45,29 @@ export type AgentExecutionWorkerConfig = {
   maxNoProgressAttempts?: number;
 };
 
+export type AgentConsciousnessKernelMode = "off" | "shadow" | "soft" | "full";
+
+export type AgentConsciousnessKernelConfig = {
+  /** Enable the consciousness kernel for the default main agent only. */
+  enabled?: boolean;
+  /** Desired rollout mode. Slice 1 only activates shadow mode. */
+  mode?: AgentConsciousnessKernelMode;
+  /** Optional local model override for low-cost shadow ticks. */
+  localModel?: string;
+  /** Shadow-kernel tick cadence in milliseconds. */
+  tickMs?: number;
+  /** Soft guardrail for escalations allowed per hour. */
+  maxEscalationsPerHour?: number;
+  /** Soft daily budget for kernel-triggered work. */
+  dailyBudget?: number;
+  /** Require an attached hardware host before future embodied modes can activate. */
+  hardwareHostRequired?: boolean;
+  /** Allow future listening-capable modes to use microphone context. */
+  allowListening?: boolean;
+  /** Allow future vision-capable modes to use camera context. */
+  allowVision?: boolean;
+};
+
 export type RuntimeLoadProfileId = "desktop" | "balanced-laptop" | "cool-laptop";
 
 export type AgentRuntimeLoadProfileConfig = {
@@ -377,6 +400,8 @@ export type AgentDefaultsConfig = {
     /** Minimum confidence to inject a lesson (default: 0.4). */
     lessonMinConfidence?: number;
   };
+  /** Main-agent-only consciousness kernel configuration. */
+  kernel?: AgentConsciousnessKernelConfig;
   /** Extra directories the agent's file-edit tools may write to (absolute paths). */
   extraAllowedPaths?: string[];
   /** Optional sandbox settings for non-main sessions. */

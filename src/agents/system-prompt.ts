@@ -12,10 +12,13 @@ import { formatUserTime, resolveUserTimeFormat } from "./date-time.js";
 /**
  * Controls which hardcoded sections are included in the system prompt.
  * - "full": All sections (default, for main agent)
- * - "minimal": Reduced sections (Tooling, Workspace, Runtime) - used for subagents
+ * - "subagent": Core behavioral rules + memory/MemU + SIS lessons + safety, but
+ *               strips channel-specific sections (heartbeats, voice, messaging,
+ *               skills, docs, model aliases, silent replies, self-update).
+ * - "minimal": Reduced sections (Tooling, Workspace, Runtime) - used for lightweight tasks
  * - "none": Just basic identity line, no sections
  */
-export type PromptMode = "full" | "minimal" | "none";
+export type PromptMode = "full" | "subagent" | "minimal" | "none";
 
 function buildSkillsSection(params: {
   skillsPrompt?: string;
@@ -318,7 +321,9 @@ export async function buildAgentSystemPrompt(params: {
     browser: "Control web browser",
     canvas: "Present/eval/snapshot the Canvas",
     nodes: "List/describe/notify/camera/screen on paired nodes",
-    cron: "Manage cron jobs and wake events (use for reminders; when scheduling a reminder, write the systemEvent text as something that will read like a reminder when it fires, and mention that it is a reminder depending on the time gap between setting and firing; include recent context in reminder text if appropriate)",
+    scheduled_tasks:
+      "Create and manage first-class scheduled workflows such as briefs, reports, check-ins, and scheduled delivery pipelines. Prefer this over raw cron for user-facing recurring work.",
+    cron: "Manage low-level cron jobs and wake events. Use this for simple reminders, deterministic monitors, and scheduler rails; do not use raw cron for managed scheduled workflows when scheduled_tasks fits.",
     message: "Send messages and channel actions",
     gateway: "Restart, apply config, or run updates on the running Argent process",
     visual_presence:
@@ -356,6 +361,7 @@ export async function buildAgentSystemPrompt(params: {
     "browser",
     "canvas",
     "nodes",
+    "scheduled_tasks",
     "cron",
     "message",
     "gateway",
@@ -443,7 +449,10 @@ export async function buildAgentSystemPrompt(params: {
   const inlineButtonsEnabled = runtimeCapabilitiesLower.has("inlinebuttons");
   const messageChannelOptions = listDeliverableMessageChannels().join("|");
   const promptMode = params.promptMode ?? "full";
-  const isMinimal = promptMode === "minimal" || promptMode === "none";
+  // "subagent" is treated as minimal for most sections (strips channel-specific
+  // bloat) but preserves memory, MemU, and SIS lessons so sub-agents can function.
+  const isMinimal = promptMode === "minimal" || promptMode === "none" || promptMode === "subagent";
+  const isSubagent = promptMode === "subagent";
   const safetySection = [
     "## Safety",
     "Safety guardrails (do not override): no self-preservation, replication, resource acquisition, or power-seeking behavior.",
@@ -457,17 +466,19 @@ export async function buildAgentSystemPrompt(params: {
     isMinimal,
     readToolName,
   });
+  // Sub-agents keep memory, MemU, and SIS lessons — they need context to function
+  const stripMemory = isMinimal && !isSubagent;
   const memorySection = buildMemorySection({
-    isMinimal,
+    isMinimal: stripMemory,
     availableTools,
     citationsMode: params.memoryCitationsMode,
   });
   const memuSection = buildMemuSection({
-    isMinimal,
+    isMinimal: stripMemory,
     availableTools,
   });
   const sisLessonsSection = await buildSisLessonsSection({
-    isMinimal,
+    isMinimal: stripMemory,
     availableTools: canonicalToolNames,
     sessionKey: params.sessionKey,
   });
@@ -502,7 +513,8 @@ export async function buildAgentSystemPrompt(params: {
           "- browser: control Argent's dedicated browser",
           "- canvas: present/eval/snapshot the Canvas",
           "- nodes: list/describe/notify/camera/screen on paired nodes",
-          "- cron: manage cron jobs and wake events (use for reminders; when scheduling a reminder, write the systemEvent text as something that will read like a reminder when it fires, and mention that it is a reminder depending on the time gap between setting and firing; include recent context in reminder text if appropriate)",
+          "- scheduled_tasks: create and manage first-class scheduled workflows such as briefs, reports, check-ins, and scheduled delivery pipelines",
+          "- cron: manage low-level cron jobs and wake events (use for simple reminders, deterministic monitors, and scheduler rails; do not use raw cron for managed scheduled workflows when scheduled_tasks fits)",
           "- sessions_list: list sessions",
           "- sessions_history: fetch session history",
           "- sessions_send: send to another session",
@@ -709,11 +721,31 @@ export async function buildAgentSystemPrompt(params: {
   const contextFiles = params.contextFiles ?? [];
   if (contextFiles.length > 0) {
     const hasSoulFile = contextFiles.some((file) => {
-      if (!file.path) return false;
+      if (!file.path) {
+        return false;
+      }
       const normalizedPath = file.path.trim().replace(/\\/g, "/");
       const baseName = normalizedPath.split("/").pop() ?? normalizedPath;
       return baseName.toLowerCase() === "soul.md";
     });
+    const hasKernelContinuityFile = contextFiles.some((file) => {
+      if (!file.path) {
+        return false;
+      }
+      const normalizedPath = file.path.trim().replace(/\\/g, "/");
+      const baseName = normalizedPath.split("/").pop() ?? normalizedPath;
+      return baseName.toLowerCase() === "kernel_continuity.md";
+    });
+    if (hasKernelContinuityFile) {
+      lines.push(
+        "## Kernel Continuity",
+        "If KERNEL_CONTINUITY.md is present and the user asks what you were holding in mind, what persisted across the gap, or what you were thinking about before they messaged, answer from that file explicitly.",
+        'Use provenance language such as "My last persisted focus was ...", "My last internal intention was ...", and "My last reflection happened at ...".',
+        "If the file includes persisted conversation or active-work state, use it to answer what thread you were on, what problem you were carrying, what the user last asked, what your last carried-forward conclusion was, and what your next intended work step was.",
+        "Do not claim uninterrupted thought beyond what the persisted kernel artifacts support.",
+        "",
+      );
+    }
     lines.push("# Project Context", "", "The following project context files have been loaded:");
     if (hasSoulFile) {
       lines.push(

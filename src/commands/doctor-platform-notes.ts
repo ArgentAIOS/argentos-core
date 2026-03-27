@@ -30,7 +30,7 @@ export async function noteMacLaunchAgentOverrides() {
     "- To restore default behavior:",
     `  rm ${displayMarkerPath}`,
   ].filter((line): line is string => Boolean(line));
-  note(lines.join("\n"), "Gateway (macOS)");
+  note(lines.join("\n"), "Argent gateway (macOS)");
 }
 
 async function launchctlGetenv(name: string): Promise<string | undefined> {
@@ -86,7 +86,7 @@ export async function noteMacLaunchctlGatewayEnvOverrides(
           `- \`${key}\` is set; use \`ARGENT_${key.slice(key.indexOf("_") + 1)}\` instead.`,
       ),
     ];
-    (deps?.noteFn ?? note)(lines.join("\n"), "Gateway (macOS)");
+    (deps?.noteFn ?? note)(lines.join("\n"), "Argent gateway (macOS)");
   }
 
   const tokenEntries = [["ARGENT_GATEWAY_TOKEN", await getenv("ARGENT_GATEWAY_TOKEN")]] as const;
@@ -116,7 +116,7 @@ export async function noteMacLaunchctlGatewayEnvOverrides(
     envPasswordKey ? `  launchctl unsetenv ${envPasswordKey}` : undefined,
   ].filter((line): line is string => Boolean(line));
 
-  (deps?.noteFn ?? note)(lines.join("\n"), "Gateway (macOS)");
+  (deps?.noteFn ?? note)(lines.join("\n"), "Argent gateway (macOS)");
 }
 
 export function noteDeprecatedLegacyEnvVars(
@@ -141,5 +141,5 @@ export function noteDeprecatedLegacyEnvVars(
       return `  ${key} -> ARGENT_${suffix}`;
     }),
   ];
-  (deps?.noteFn ?? note)(lines.join("\n"), "Environment");
+  (deps?.noteFn ?? note)(lines.join("\n"), "Argent environment");
 }

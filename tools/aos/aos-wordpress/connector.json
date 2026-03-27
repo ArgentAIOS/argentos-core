@@ -1,39 +1,50 @@
 {
-  "tool": "aos-wordpress",
-  "backend": "wordpress-rest",
-  "manifest_schema_version": "1.0.0",
+  "backend": "wordpress-rest-api",
   "connector": {
     "label": "WordPress",
     "category": "marketing-publishing",
-    "categories": ["marketing-publishing", "knowledge-docs"],
-    "primary_bucket": "marketing-publishing",
-    "secondary_buckets": ["knowledge-docs"],
-    "vertical_overlays": [
-      "seo-agency",
-      "writing-content",
-      "marketing-agency",
-      "creative-media",
-      "web-dev-agency"
-    ],
-    "resources": ["site", "post", "page", "media", "comment"]
+    "categories": ["marketing-publishing", "knowledge-docs", "web-content"],
+    "resources": ["site", "post", "page", "media", "taxonomy"]
   },
-  "delivery_model": "poll",
-  "scope_model": ["site", "content-type", "status-filter", "author"],
-  "risk_tier": "bounded-write",
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": ["AOS_WORDPRESS_USERNAME", "AOS_WORDPRESS_APP_PASSWORD"],
+    "service_keys": ["WORDPRESS_BASE_URL", "WORDPRESS_USERNAME", "WORDPRESS_APPLICATION_PASSWORD"],
     "interactive_setup": [
-      "Set the WordPress site URL with --site-url or AOS_WORDPRESS_SITE_URL.",
-      "Create an application password for the WordPress user that ArgentOS should use.",
-      "Set AOS_WORDPRESS_USERNAME and AOS_WORDPRESS_APP_PASSWORD, or provide AOS_WORDPRESS_BEARER_TOKEN for plugin-backed auth."
+      "Create a dedicated WordPress service user on the target site.",
+      "Generate an Application Password for that user.",
+      "Add WORDPRESS_BASE_URL, WORDPRESS_USERNAME, and WORDPRESS_APPLICATION_PASSWORD in API Keys.",
+      "Restrict post types, status transitions, taxonomy scope, and media usage before going live."
     ]
   },
   "commands": [
     {
-      "id": "site.info",
-      "summary": "Read site identity and available API namespaces",
+      "id": "health",
+      "summary": "Check WordPress connectivity and auth readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "site",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run a detailed WordPress runtime diagnosis",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "site",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted WordPress connector config",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "site",
+      "action_class": "read"
+    },
+    {
+      "id": "site.read",
+      "summary": "Read WordPress site info",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "site",
@@ -41,7 +52,15 @@
     },
     {
       "id": "post.list",
-      "summary": "List WordPress posts in scope",
+      "summary": "List posts",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "post",
+      "action_class": "read"
+    },
+    {
+      "id": "post.search",
+      "summary": "Search posts",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "post",
@@ -49,23 +68,31 @@
     },
     {
       "id": "post.read",
-      "summary": "Read a WordPress post",
+      "summary": "Read a post",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "post",
       "action_class": "read"
     },
     {
-      "id": "post.create",
-      "summary": "Create a draft WordPress post",
+      "id": "post.create_draft",
+      "summary": "Create a draft post",
       "required_mode": "write",
       "supports_json": true,
       "resource": "post",
       "action_class": "write"
     },
     {
-      "id": "post.update",
-      "summary": "Update a WordPress post draft or scheduled entry",
+      "id": "post.update_draft",
+      "summary": "Update a draft post",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "post",
+      "action_class": "write"
+    },
+    {
+      "id": "post.schedule",
+      "summary": "Schedule a post",
       "required_mode": "write",
       "supports_json": true,
       "resource": "post",
@@ -73,15 +100,23 @@
     },
     {
       "id": "post.publish",
-      "summary": "Publish a WordPress post",
-      "required_mode": "full",
+      "summary": "Publish an approved post",
+      "required_mode": "write",
       "supports_json": true,
       "resource": "post",
       "action_class": "write"
     },
     {
       "id": "page.list",
-      "summary": "List WordPress pages in scope",
+      "summary": "List pages",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "page",
+      "action_class": "read"
+    },
+    {
+      "id": "page.search",
+      "summary": "Search pages",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "page",
@@ -89,23 +124,23 @@
     },
     {
       "id": "page.read",
-      "summary": "Read a WordPress page",
+      "summary": "Read a page",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "page",
       "action_class": "read"
     },
     {
-      "id": "page.create",
-      "summary": "Create a draft WordPress page",
+      "id": "page.create_draft",
+      "summary": "Create a draft page",
       "required_mode": "write",
       "supports_json": true,
       "resource": "page",
       "action_class": "write"
     },
     {
-      "id": "page.update",
-      "summary": "Update a WordPress page draft",
+      "id": "page.update_draft",
+      "summary": "Update a draft page",
       "required_mode": "write",
       "supports_json": true,
       "resource": "page",
@@ -113,23 +148,15 @@
     },
     {
       "id": "page.publish",
-      "summary": "Publish a WordPress page",
-      "required_mode": "full",
+      "summary": "Publish an approved page",
+      "required_mode": "write",
       "supports_json": true,
       "resource": "page",
       "action_class": "write"
     },
     {
       "id": "media.list",
-      "summary": "List WordPress media items",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "media",
-      "action_class": "read"
-    },
-    {
-      "id": "media.read",
-      "summary": "Read WordPress media metadata",
+      "summary": "List media items",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "media",
@@ -137,42 +164,26 @@
     },
     {
       "id": "media.upload",
-      "summary": "Upload a media item to WordPress",
+      "summary": "Upload a media item",
       "required_mode": "write",
       "supports_json": true,
       "resource": "media",
       "action_class": "write"
     },
     {
-      "id": "comment.list",
-      "summary": "List WordPress comments in scope",
+      "id": "taxonomy.list",
+      "summary": "List categories and tags",
       "required_mode": "readonly",
       "supports_json": true,
-      "resource": "comment",
+      "resource": "taxonomy",
       "action_class": "read"
     },
     {
-      "id": "comment.read",
-      "summary": "Read a WordPress comment",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "comment",
-      "action_class": "read"
-    },
-    {
-      "id": "comment.reply",
-      "summary": "Reply to a WordPress comment",
+      "id": "taxonomy.assign_terms",
+      "summary": "Assign categories or tags",
       "required_mode": "write",
       "supports_json": true,
-      "resource": "comment",
-      "action_class": "write"
-    },
-    {
-      "id": "comment.moderate",
-      "summary": "Approve, hold, spam, or trash a WordPress comment",
-      "required_mode": "full",
-      "supports_json": true,
-      "resource": "comment",
+      "resource": "taxonomy",
       "action_class": "write"
     }
   ]

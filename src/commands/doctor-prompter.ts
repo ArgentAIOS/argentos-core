@@ -1,6 +1,10 @@
 import { confirm, select } from "@clack/prompts";
 import type { RuntimeEnv } from "../runtime.js";
-import { stylePromptHint, stylePromptMessage } from "../terminal/prompt-style.js";
+import {
+  stylePromptHint,
+  stylePromptMessage,
+  stylePromptOption,
+} from "../terminal/prompt-style.js";
 import { guardCancel } from "./onboard-helpers.js";
 
 export type DoctorOptions = {
@@ -100,9 +104,11 @@ export function createDoctorPrompter(params: {
         await select({
           ...p,
           message: stylePromptMessage(p.message),
-          options: p.options.map((opt) =>
-            opt.hint === undefined ? opt : { ...opt, hint: stylePromptHint(opt.hint) },
-          ),
+          options: p.options.map((opt) => ({
+            ...opt,
+            label: stylePromptOption(String(opt.label)),
+            ...(opt.hint === undefined ? {} : { hint: stylePromptHint(opt.hint) }),
+          })),
         }),
         params.runtime,
       ) as T;

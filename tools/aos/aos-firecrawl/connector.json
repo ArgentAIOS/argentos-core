@@ -1,0 +1,65 @@
+{
+  "tool": "aos-firecrawl",
+  "backend": "firecrawl",
+  "manifest_schema_version": "1.0.0",
+  "connector": {
+    "label": "Firecrawl",
+    "category": "knowledge-docs",
+    "categories": ["knowledge-docs", "web-content", "research"],
+    "resources": ["page", "scrape"]
+  },
+  "delivery_model": "poll",
+  "risk_tier": "readonly-external",
+  "auth": {
+    "kind": "service-key",
+    "required": false,
+    "service_keys": ["FIRECRAWL_API_KEY"],
+    "interactive_setup": [
+      "Preferred: add FIRECRAWL_API_KEY in ArgentOS API Keys so the local dashboard proxy can resolve it.",
+      "Optional: export FIRECRAWL_API_KEY directly in the gateway environment for direct API fallback.",
+      "Keep this connector in readonly mode; it is intended for research and extraction, not mutation."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "List connector capabilities",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "page",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Check Firecrawl runtime readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "page",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run Firecrawl runtime diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "page",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted Firecrawl connector config",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "page",
+      "action_class": "read"
+    },
+    {
+      "id": "scrape",
+      "summary": "Scrape readable content from a public URL",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "scrape",
+      "action_class": "read"
+    }
+  ]
+}

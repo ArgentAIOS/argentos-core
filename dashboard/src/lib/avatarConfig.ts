@@ -1,3 +1,5 @@
+import { getLive2dAssetPath, normalizeLive2dModelPath } from "./live2dAssets";
+
 /**
  * Avatar Configuration — Parameter registry, types, and persistence
  * for the Yiota Customizable VTuber v1.4 Live2D model.
@@ -36,9 +38,9 @@ export const RESOLUTION_OPTIONS: { value: AvatarResolution; label: string; size:
 ];
 
 const RESOLUTION_MODEL_PATHS: Record<AvatarResolution, string> = {
-  2048: "/live2d/yiota/yiota-2k.model3.json",
-  4096: "/live2d/yiota/yiota.model3.json",
-  8192: "/live2d/yiota/yiota-8k.model3.json",
+  2048: getLive2dAssetPath("yiota/yiota-2k.model3.json"),
+  4096: getLive2dAssetPath("yiota/yiota.model3.json"),
+  8192: getLive2dAssetPath("yiota/yiota-8k.model3.json"),
 };
 
 export function getModelPathForResolution(resolution: AvatarResolution): string {
@@ -67,6 +69,8 @@ export function loadConfig(): AvatarConfig | null {
       if (!config.resolution) {
         config.resolution = 4096;
         config.modelPath = getModelPathForResolution(4096);
+      } else {
+        config.modelPath = normalizeLive2dModelPath(config.modelPath);
       }
       return config;
     }
@@ -640,7 +644,7 @@ export const DEFAULT_PARAMETERS = buildDefaults();
 
 export function getDefaultConfig(): AvatarConfig {
   return {
-    modelPath: "/live2d/yiota/yiota.model3.json",
+    modelPath: getLive2dAssetPath("yiota/yiota.model3.json"),
     resolution: 4096,
     presetId: "professional",
     parameters: { ...DEFAULT_PARAMETERS },

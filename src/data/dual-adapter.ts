@@ -16,12 +16,17 @@
 import type {
   CreateCategoryInput,
   CreateEntityInput,
+  CreateKnowledgeObservationInput,
   CreateLessonInput,
   CreateLiveCandidateInput,
   CreateMemoryItemInput,
   CreateReflectionInput,
   CreateResourceInput,
   Entity,
+  KnowledgeObservation,
+  KnowledgeObservationEvidence,
+  KnowledgeObservationSearchOptions,
+  KnowledgeObservationSearchResult,
   Lesson,
   LiveCandidate,
   MemoryCategory,
@@ -274,6 +279,33 @@ class DualMemoryAdapter implements MemoryAdapter {
     return this.reader().getStats();
   }
 
+  async getKnowledgeObservation(id: string): Promise<KnowledgeObservation | null> {
+    return this.reader().getKnowledgeObservation(id);
+  }
+
+  async listKnowledgeObservations(filter?: {
+    kinds?: KnowledgeObservation["kind"][];
+    subjectType?: KnowledgeObservation["subjectType"];
+    subjectId?: string;
+    status?: KnowledgeObservation["status"];
+    limit?: number;
+  }): Promise<KnowledgeObservation[]> {
+    return this.reader().listKnowledgeObservations(filter);
+  }
+
+  async searchKnowledgeObservations(
+    query: string,
+    options?: KnowledgeObservationSearchOptions,
+  ): Promise<KnowledgeObservationSearchResult[]> {
+    return this.reader().searchKnowledgeObservations(query, options);
+  }
+
+  async getKnowledgeObservationEvidence(
+    observationId: string,
+  ): Promise<KnowledgeObservationEvidence[]> {
+    return this.reader().getKnowledgeObservationEvidence(observationId);
+  }
+
   // --- Writes (to all backends in writeTo[]) ---
 
   async createResource(input: CreateResourceInput): Promise<Resource> {
@@ -470,6 +502,41 @@ class DualMemoryAdapter implements MemoryAdapter {
     if (shouldWriteTo(this.config, "postgres")) {
       await secondaryWrite("deleteLesson", () => this.pg.deleteLesson(id));
     }
+  }
+
+  async upsertKnowledgeObservation(
+    input: CreateKnowledgeObservationInput,
+  ): Promise<KnowledgeObservation> {
+    if (shouldWriteTo(this.config, "postgres")) {
+      return this.pg.upsertKnowledgeObservation(input);
+    }
+    return this.sqlite.upsertKnowledgeObservation(input);
+  }
+
+  async supersedeKnowledgeObservation(params: {
+    id: string;
+    successor: CreateKnowledgeObservationInput;
+  }): Promise<KnowledgeObservation> {
+    if (shouldWriteTo(this.config, "postgres")) {
+      return this.pg.supersedeKnowledgeObservation(params);
+    }
+    return this.sqlite.supersedeKnowledgeObservation(params);
+  }
+
+  async markKnowledgeObservationStale(id: string): Promise<void> {
+    if (shouldWriteTo(this.config, "postgres")) {
+      await this.pg.markKnowledgeObservationStale(id);
+      return;
+    }
+    await this.sqlite.markKnowledgeObservationStale(id);
+  }
+
+  async invalidateKnowledgeObservation(id: string, reason?: string): Promise<void> {
+    if (shouldWriteTo(this.config, "postgres")) {
+      await this.pg.invalidateKnowledgeObservation(id, reason);
+      return;
+    }
+    await this.sqlite.invalidateKnowledgeObservation(id, reason);
   }
 
   async recordModelFeedback(input: RecordModelFeedbackInput): Promise<void> {

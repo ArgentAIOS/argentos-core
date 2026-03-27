@@ -24,6 +24,7 @@ import { knowledgeHandlers } from "./server-methods/knowledge.js";
 import { logsHandlers } from "./server-methods/logs.js";
 import { modelsHandlers } from "./server-methods/models.js";
 import { nodeHandlers } from "./server-methods/nodes.js";
+import { providersHandlers } from "./server-methods/providers.js";
 import { sendHandlers } from "./server-methods/send.js";
 import { sessionsHandlers } from "./server-methods/sessions.js";
 import { skillsHandlers } from "./server-methods/skills.js";
@@ -106,6 +107,8 @@ const READ_METHODS = new Set([
   "copilot.workforce.overview",
   "copilot.observability.overview",
   "copilot.run.story",
+  "providers.status",
+  "providers.registry",
 ]);
 const WRITE_METHODS = new Set([
   "send",
@@ -250,6 +253,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...systemHandlers,
   ...updateHandlers,
   ...nodeHandlers,
+  ...providersHandlers,
   ...sendHandlers,
   ...usageHandlers,
   ...commandsHandlers,

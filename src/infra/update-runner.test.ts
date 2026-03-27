@@ -45,7 +45,7 @@ describe("runGatewayUpdate", () => {
     await fs.mkdir(path.join(tempDir, ".git"));
     await fs.writeFile(
       path.join(tempDir, "package.json"),
-      JSON.stringify({ name: "argent", version: "1.0.0" }),
+      JSON.stringify({ name: "argentos", version: "1.0.0" }),
       "utf-8",
     );
     const { runner, calls } = createRunner({
@@ -70,7 +70,7 @@ describe("runGatewayUpdate", () => {
     await fs.mkdir(path.join(tempDir, ".git"));
     await fs.writeFile(
       path.join(tempDir, "package.json"),
-      JSON.stringify({ name: "argent", version: "1.0.0" }),
+      JSON.stringify({ name: "argentos", version: "1.0.0" }),
       "utf-8",
     );
     const { runner, calls } = createRunner({
@@ -103,7 +103,7 @@ describe("runGatewayUpdate", () => {
     await fs.mkdir(path.join(tempDir, ".git"));
     await fs.writeFile(
       path.join(tempDir, "package.json"),
-      JSON.stringify({ name: "argent", version: "1.0.0" }),
+      JSON.stringify({ name: "argentos", version: "1.0.0" }),
       "utf-8",
     );
     const { runner, calls } = createRunner({
@@ -133,7 +133,7 @@ describe("runGatewayUpdate", () => {
     await fs.mkdir(path.join(tempDir, ".git"));
     await fs.writeFile(
       path.join(tempDir, "package.json"),
-      JSON.stringify({ name: "argent", version: "1.0.0", packageManager: "pnpm@8.0.0" }),
+      JSON.stringify({ name: "argentos", version: "1.0.0", packageManager: "pnpm@8.0.0" }),
       "utf-8",
     );
     const stableTag = "v1.0.1-1";
@@ -169,7 +169,7 @@ describe("runGatewayUpdate", () => {
   it("skips update when no git root", async () => {
     await fs.writeFile(
       path.join(tempDir, "package.json"),
-      JSON.stringify({ name: "argent", packageManager: "pnpm@8.0.0" }),
+      JSON.stringify({ name: "argentos", packageManager: "pnpm@8.0.0" }),
       "utf-8",
     );
     await fs.writeFile(path.join(tempDir, "pnpm-lock.yaml"), "", "utf-8");
@@ -193,11 +193,11 @@ describe("runGatewayUpdate", () => {
 
   it("updates global npm installs when detected", async () => {
     const nodeModules = path.join(tempDir, "node_modules");
-    const pkgRoot = path.join(nodeModules, "argent");
+    const pkgRoot = path.join(nodeModules, "argentos");
     await fs.mkdir(pkgRoot, { recursive: true });
     await fs.writeFile(
       path.join(pkgRoot, "package.json"),
-      JSON.stringify({ name: "argent", version: "1.0.0" }),
+      JSON.stringify({ name: "argentos", version: "1.0.0" }),
       "utf-8",
     );
 
@@ -211,10 +211,10 @@ describe("runGatewayUpdate", () => {
       if (key === "npm root -g") {
         return { stdout: nodeModules, stderr: "", code: 0 };
       }
-      if (key === "npm i -g argent@latest") {
+      if (key === "npm i -g argentos@latest") {
         await fs.writeFile(
           path.join(pkgRoot, "package.json"),
-          JSON.stringify({ name: "argent", version: "2.0.0" }),
+          JSON.stringify({ name: "argentos", version: "2.0.0" }),
           "utf-8",
         );
         return { stdout: "ok", stderr: "", code: 0 };
@@ -235,16 +235,16 @@ describe("runGatewayUpdate", () => {
     expect(result.mode).toBe("npm");
     expect(result.before?.version).toBe("1.0.0");
     expect(result.after?.version).toBe("2.0.0");
-    expect(calls.some((call) => call === "npm i -g argent@latest")).toBe(true);
+    expect(calls.some((call) => call === "npm i -g argentos@latest")).toBe(true);
   });
 
   it("uses update channel for global npm installs when tag is omitted", async () => {
     const nodeModules = path.join(tempDir, "node_modules");
-    const pkgRoot = path.join(nodeModules, "argent");
+    const pkgRoot = path.join(nodeModules, "argentos");
     await fs.mkdir(pkgRoot, { recursive: true });
     await fs.writeFile(
       path.join(pkgRoot, "package.json"),
-      JSON.stringify({ name: "argent", version: "1.0.0" }),
+      JSON.stringify({ name: "argentos", version: "1.0.0" }),
       "utf-8",
     );
 
@@ -258,10 +258,10 @@ describe("runGatewayUpdate", () => {
       if (key === "npm root -g") {
         return { stdout: nodeModules, stderr: "", code: 0 };
       }
-      if (key === "npm i -g argent@beta") {
+      if (key === "npm i -g argentos@beta") {
         await fs.writeFile(
           path.join(pkgRoot, "package.json"),
-          JSON.stringify({ name: "argent", version: "2.0.0" }),
+          JSON.stringify({ name: "argentos", version: "2.0.0" }),
           "utf-8",
         );
         return { stdout: "ok", stderr: "", code: 0 };
@@ -283,18 +283,18 @@ describe("runGatewayUpdate", () => {
     expect(result.mode).toBe("npm");
     expect(result.before?.version).toBe("1.0.0");
     expect(result.after?.version).toBe("2.0.0");
-    expect(calls.some((call) => call === "npm i -g argent@beta")).toBe(true);
+    expect(calls.some((call) => call === "npm i -g argentos@beta")).toBe(true);
   });
 
   it("cleans stale npm rename dirs before global update", async () => {
     const nodeModules = path.join(tempDir, "node_modules");
-    const pkgRoot = path.join(nodeModules, "argent");
-    const staleDir = path.join(nodeModules, ".argent-stale");
+    const pkgRoot = path.join(nodeModules, "argentos");
+    const staleDir = path.join(nodeModules, ".argentos-stale");
     await fs.mkdir(staleDir, { recursive: true });
     await fs.mkdir(pkgRoot, { recursive: true });
     await fs.writeFile(
       path.join(pkgRoot, "package.json"),
-      JSON.stringify({ name: "argent", version: "1.0.0" }),
+      JSON.stringify({ name: "argentos", version: "1.0.0" }),
       "utf-8",
     );
 
@@ -310,7 +310,7 @@ describe("runGatewayUpdate", () => {
       if (key === "pnpm root -g") {
         return { stdout: "", stderr: "", code: 1 };
       }
-      if (key === "npm i -g argent@latest") {
+      if (key === "npm i -g argentos@latest") {
         stalePresentAtInstall = await pathExists(staleDir);
         return { stdout: "ok", stderr: "", code: 0 };
       }
@@ -330,11 +330,11 @@ describe("runGatewayUpdate", () => {
 
   it("updates global npm installs with tag override", async () => {
     const nodeModules = path.join(tempDir, "node_modules");
-    const pkgRoot = path.join(nodeModules, "argent");
+    const pkgRoot = path.join(nodeModules, "argentos");
     await fs.mkdir(pkgRoot, { recursive: true });
     await fs.writeFile(
       path.join(pkgRoot, "package.json"),
-      JSON.stringify({ name: "argent", version: "1.0.0" }),
+      JSON.stringify({ name: "argentos", version: "1.0.0" }),
       "utf-8",
     );
 
@@ -348,10 +348,10 @@ describe("runGatewayUpdate", () => {
       if (key === "npm root -g") {
         return { stdout: nodeModules, stderr: "", code: 0 };
       }
-      if (key === "npm i -g argent@beta") {
+      if (key === "npm i -g argentos@beta") {
         await fs.writeFile(
           path.join(pkgRoot, "package.json"),
-          JSON.stringify({ name: "argent", version: "2.0.0" }),
+          JSON.stringify({ name: "argentos", version: "2.0.0" }),
           "utf-8",
         );
         return { stdout: "ok", stderr: "", code: 0 };
@@ -373,7 +373,7 @@ describe("runGatewayUpdate", () => {
     expect(result.mode).toBe("npm");
     expect(result.before?.version).toBe("1.0.0");
     expect(result.after?.version).toBe("2.0.0");
-    expect(calls.some((call) => call === "npm i -g argent@beta")).toBe(true);
+    expect(calls.some((call) => call === "npm i -g argentos@beta")).toBe(true);
   });
 
   it("updates global bun installs when detected", async () => {
@@ -383,11 +383,11 @@ describe("runGatewayUpdate", () => {
 
     try {
       const bunGlobalRoot = path.join(bunInstall, "install", "global", "node_modules");
-      const pkgRoot = path.join(bunGlobalRoot, "argent");
+      const pkgRoot = path.join(bunGlobalRoot, "argentos");
       await fs.mkdir(pkgRoot, { recursive: true });
       await fs.writeFile(
         path.join(pkgRoot, "package.json"),
-        JSON.stringify({ name: "argent", version: "1.0.0" }),
+        JSON.stringify({ name: "argentos", version: "1.0.0" }),
         "utf-8",
       );
 
@@ -404,10 +404,10 @@ describe("runGatewayUpdate", () => {
         if (key === "pnpm root -g") {
           return { stdout: "", stderr: "", code: 1 };
         }
-        if (key === "bun add -g argent@latest") {
+        if (key === "bun add -g argentos@latest") {
           await fs.writeFile(
             path.join(pkgRoot, "package.json"),
-            JSON.stringify({ name: "argent", version: "2.0.0" }),
+            JSON.stringify({ name: "argentos", version: "2.0.0" }),
             "utf-8",
           );
           return { stdout: "ok", stderr: "", code: 0 };
@@ -425,7 +425,7 @@ describe("runGatewayUpdate", () => {
       expect(result.mode).toBe("bun");
       expect(result.before?.version).toBe("1.0.0");
       expect(result.after?.version).toBe("2.0.0");
-      expect(calls.some((call) => call === "bun add -g argent@latest")).toBe(true);
+      expect(calls.some((call) => call === "bun add -g argentos@latest")).toBe(true);
     } finally {
       if (oldBunInstall === undefined) {
         delete process.env.BUN_INSTALL;

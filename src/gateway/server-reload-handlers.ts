@@ -1,5 +1,6 @@
 import type { CliDeps } from "../cli/deps.js";
 import type { loadConfig } from "../config/config.js";
+import type { ConsciousnessKernelRunner } from "../infra/consciousness-kernel.js";
 import type { ContemplationRunner } from "../infra/contemplation-runner.js";
 import type { ExecutionWorkerRunner } from "../infra/execution-worker-runner.js";
 import type { HeartbeatRunner } from "../infra/heartbeat-runner.js";
@@ -33,6 +34,7 @@ type GatewayHotReloadState = {
   executionWorkerRunner: ExecutionWorkerRunner;
   jobOrchestratorRunner: JobOrchestratorRunner;
   sisRunner: SisRunner;
+  consciousnessKernelRunner: ConsciousnessKernelRunner;
   cronState: GatewayCronState;
   browserControl: Awaited<ReturnType<typeof startBrowserControlServerIfEnabled>> | null;
 };
@@ -40,6 +42,7 @@ type GatewayHotReloadState = {
 export function createGatewayReloadHandlers(params: {
   deps: CliDeps;
   broadcast: (event: string, payload: unknown, opts?: { dropIfSlow?: boolean }) => void;
+  nodeSendToSession: (sessionKey: string, event: string, payload: unknown) => void;
   getState: () => GatewayHotReloadState;
   setState: (state: GatewayHotReloadState) => void;
   startChannel: (name: ChannelKind) => Promise<void>;
@@ -86,6 +89,10 @@ export function createGatewayReloadHandlers(params: {
 
     if (plan.restartSis) {
       nextState.sisRunner.updateConfig(nextConfig);
+    }
+
+    if (plan.restartKernel) {
+      nextState.consciousnessKernelRunner.updateConfig(nextConfig);
     }
 
     resetDirectoryCache();
