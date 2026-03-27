@@ -240,65 +240,6 @@ struct SessionStoreSnapshot {
     let rows: [SessionRow]
 }
 
-private func normalizedSessionKey(_ raw: String?) -> String {
-    raw?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
-}
-
-private func sessionAgentId(from sessionKey: String) -> String? {
-    let key = normalizedSessionKey(sessionKey)
-    guard key.hasPrefix("agent:") else { return nil }
-    let parts = key.split(separator: ":", omittingEmptySubsequences: false)
-    guard parts.count >= 3 else { return nil }
-    let agentId = String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
-    return agentId.isEmpty ? nil : agentId
-}
-
-private func sessionRestKey(_ sessionKey: String) -> String {
-    let key = normalizedSessionKey(sessionKey)
-    guard key.hasPrefix("agent:") else { return key }
-    let parts = key.split(separator: ":", omittingEmptySubsequences: false)
-    guard parts.count >= 3 else { return key }
-    return parts.dropFirst(2).joined(separator: ":")
-}
-
-private func isBackgroundSession(_ sessionKey: String) -> Bool {
-    let raw = sessionRestKey(sessionKey)
-    guard !raw.isEmpty else { return false }
-    return raw.hasPrefix("temp:")
-        || raw.hasPrefix("temp-")
-        || raw == "worker-execution"
-        || raw.contains(":worker-execution")
-        || raw.hasSuffix(":contemplation")
-        || raw.contains(":contemplation:")
-        || raw.hasSuffix(":sis-consolidation")
-        || raw.contains(":sis-consolidation:")
-        || raw.hasSuffix(":heartbeat")
-        || raw.contains(":heartbeat:")
-        || raw.hasSuffix(":cron")
-        || raw.contains(":cron:")
-}
-
-func isVisibleOperatorSession(_ row: SessionRow, mainSessionKey: String) -> Bool {
-    let key = normalizedSessionKey(row.key)
-    guard !key.isEmpty else { return false }
-    if isBackgroundSession(key) {
-        return false
-    }
-
-    let activeAgentId = sessionAgentId(from: mainSessionKey) ?? "main"
-    let rowAgentId = sessionAgentId(from: key) ?? activeAgentId
-    guard rowAgentId == activeAgentId else {
-        return false
-    }
-
-    if key == normalizedSessionKey(mainSessionKey) {
-        return true
-    }
-
-    let raw = sessionRestKey(key)
-    return raw == "main" || raw == "webchat" || raw.hasPrefix("webchat-") || raw.hasPrefix("webchat:")
-}
-
 @MainActor
 enum SessionLoader {
     static let fallbackModel = "claude-opus-4-5"
@@ -344,7 +285,6 @@ enum SessionLoader {
             model: decoded.defaults?.model ?? self.fallbackModel,
             contextTokens: decoded.defaults?.contextTokens ?? self.fallbackContextTokens)
 
-        let mainSessionKey = WorkActivityStore.shared.mainSessionKey
         let rows = decoded.sessions.map { entry -> SessionRow in
             let updated = entry.updatedAt.map { Date(timeIntervalSince1970: $0 / 1000) }
             let input = entry.inputTokens ?? 0
@@ -374,11 +314,7 @@ enum SessionLoader {
                     total: total,
                     contextTokens: context),
                 model: model)
-        }
-        .filter { row in
-            isVisibleOperatorSession(row, mainSessionKey: mainSessionKey)
-        }
-        .sorted { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
+        }.sorted { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
 
         return SessionStoreSnapshot(storePath: decoded.path, defaults: defaults, rows: rows)
     }

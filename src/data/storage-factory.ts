@@ -1,14 +1,8 @@
 /**
- * Storage Factory — Creates the correct StorageAdapter based on config.
+ * Public Core override for storage-factory.ts.
  *
- * Reads the storage config from argent.json and returns:
- *   - SQLiteAdapter when backend is "sqlite" (default)
- *   - DualAdapter when backend is "dual"
- *   - PgAdapter when backend is "postgres"
- *
- * Usage:
- *   const adapter = await getStorageAdapter();
- *   await adapter.memory.createItem({ ... });
+ * Keeps SQLite and dual-read behavior intact while avoiding a static bundle
+ * dependency on pg-adapter, which is intentionally denied from public core.
  */
 
 import type { MemoryAdapter, StorageAdapter } from "./adapter.js";
@@ -31,14 +25,23 @@ function shouldFailClosedStorage(config: StorageConfig): boolean {
   return config.backend === "dual" && config.readFrom === "postgres";
 }
 
-/**
- * Get or create the global StorageAdapter singleton.
- *
- * On first call, reads config and creates the appropriate adapter.
- * Subsequent calls return the same instance.
- *
- * @param overrideConfig - Override config for testing. Normally reads from argent.json.
- */
+type PgAdapterModule = {
+  PgAdapter: new (config: NonNullable<StorageConfig["postgres"]>) => StorageAdapter;
+};
+
+async function loadPgAdapterModule(): Promise<PgAdapterModule> {
+  const importer = new Function("specifier", "return import(specifier);") as (
+    specifier: string,
+  ) => Promise<unknown>;
+
+  try {
+    return (await importer("./pg-adapter.js")) as PgAdapterModule;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Postgres adapter is unavailable in this ArgentOS Core build: ${reason}`);
+  }
+}
+
 export async function getStorageAdapter(
   overrideConfig?: Partial<StorageConfig>,
 ): Promise<StorageAdapter> {
@@ -78,9 +81,8 @@ export async function getStorageAdapter(
           });
           throw new Error(`Storage initialization failed in dual mode: ${errorText}`);
         }
-        // Availability-first fallback: keep the system communicative if PG is down.
         log.error("dual mode pg init failed, falling back to sqlite (fail-open)", {
-          error: err instanceof Error ? err.message : String(err),
+          error: errorText,
         });
         _adapter = await createSQLiteAdapter();
         _pgMemory = null;
@@ -105,9 +107,8 @@ export async function getStorageAdapter(
           });
           throw new Error(`Storage initialization failed in postgres mode: ${errorText}`);
         }
-        // Cold-backup failover path when explicitly fail-open.
         log.error("postgres mode init failed, falling back to sqlite (fail-open)", {
-          error: err instanceof Error ? err.message : String(err),
+          error: errorText,
         });
         _adapter = await createSQLiteAdapter();
         _pgMemory = null;
@@ -123,10 +124,6 @@ export async function getStorageAdapter(
   return _adapter;
 }
 
-/**
- * Close and destroy the global adapter.
- * Call during graceful shutdown.
- */
 export async function closeStorageAdapter(): Promise<void> {
   if (_adapter) {
     await _adapter.close();
@@ -135,58 +132,33 @@ export async function closeStorageAdapter(): Promise<void> {
   }
 }
 
-/**
- * Check if the storage adapter is currently initialized.
- */
 export function isStorageAdapterReady(): boolean {
   return _adapter?.isReady() ?? false;
 }
 
-/**
- * Get the raw PG MemoryAdapter (not wrapped by DualAdapter).
- * Used by the PG write mirror to avoid double-writing to SQLite.
- * Returns null if PG is not configured or not initialized.
- */
 export function getPgMemoryAdapter(): MemoryAdapter | null {
   return _pgMemory;
 }
 
-/**
- * Get the in-memory initialized StorageAdapter without creating a new one.
- * Useful in synchronous paths that cannot await initialization.
- */
 export function getInitializedStorageAdapter(): StorageAdapter | null {
   return _adapter;
 }
 
-/**
- * Get the in-memory initialized MemoryAdapter without creating a new one.
- * Useful in synchronous paths that should honor current storage mode once initialized.
- */
 export function getInitializedMemoryAdapter(): MemoryAdapter | null {
   return _adapter?.memory ?? null;
 }
 
-/**
- * Convenience: resolve the MemoryAdapter from the storage factory.
- * Use this instead of getMemuStore() for all memory operations.
- */
 export async function getMemoryAdapter(): Promise<MemoryAdapter> {
   const storage = await getStorageAdapter();
   return storage.memory;
 }
 
-// ── Internal Helpers ─────────────────────────────────────────────────────
-
 async function createSQLiteAdapter(): Promise<StorageAdapter> {
-  // Lazy import to avoid pulling in MemU/DataAPI unless needed
   const { getMemuStore } = await import("../memory/memu-store.js");
   const { getDataAPI } = await import("./index.js");
 
   const store = getMemuStore();
   const dataApi = await getDataAPI();
-
-  // Access internal modules from DataAPI
   const tasksModule = dataApi.tasks;
   const teamsModule = dataApi.teams;
 
@@ -196,35 +168,17 @@ async function createSQLiteAdapter(): Promise<StorageAdapter> {
 }
 
 async function createPgAdapter(config: StorageConfig): Promise<StorageAdapter> {
+  const { PgAdapter } = await loadPgAdapterModule();
+
   if (!config.postgres) {
     throw new Error("StorageConfig: postgres config is required for PG adapter");
   }
-  let PgAdapter: new (postgres: NonNullable<StorageConfig["postgres"]>) => StorageAdapter;
-  try {
-    const dynamicImport = new Function("specifier", "return import(specifier)") as (
-      specifier: string,
-    ) => Promise<{
-      PgAdapter: new (postgres: NonNullable<StorageConfig["postgres"]>) => StorageAdapter;
-    }>;
-    ({ PgAdapter } = await dynamicImport("./pg-adapter.js"));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`PostgreSQL adapter unavailable: ${message}`);
-  }
-  try {
-    const adapter = new PgAdapter(config.postgres);
-    await adapter.init();
-    return adapter;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`PostgreSQL adapter unavailable: ${message}`);
-  }
+
+  const adapter = new PgAdapter(config.postgres);
+  await adapter.init();
+  return adapter;
 }
 
-/**
- * Load storage config from ~/.argentos/argent.json.
- * Returns undefined if file doesn't exist or has no storage key.
- */
 function loadStorageConfigFromFile(): Partial<StorageConfig> | undefined {
   try {
     return readStorageConfigFromDisk(process.env);

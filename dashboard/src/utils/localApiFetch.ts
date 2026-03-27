@@ -1,32 +1,5 @@
 const DEFAULT_TIMEOUT_MS = 10_000;
 
-function isNativeShell(): boolean {
-  if (typeof window === "undefined") return false;
-  return Boolean(window.webkit?.messageHandlers);
-}
-
-function dashboardApiTokenFromUrl(): string | null {
-  if (typeof window === "undefined") return null;
-  const token = new URLSearchParams(window.location.search).get("api_token")?.trim();
-  return token ? token : null;
-}
-
-function directDashboardApiUrl(path: string): string | null {
-  if (typeof window === "undefined") return null;
-  if (!path.startsWith("/")) return null;
-  return `http://${window.location.hostname}:9242${path}`;
-}
-
-function withDashboardApiAuth(init: RequestInit = {}): RequestInit {
-  const token = dashboardApiTokenFromUrl();
-  if (!token) return init;
-  const headers = new Headers(init.headers ?? undefined);
-  if (!headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-  return { ...init, headers };
-}
-
 function alternateLoopbackUrl(path: string): string | null {
   if (typeof window === "undefined") return null;
   if (!path.startsWith("/")) return null;
@@ -70,36 +43,10 @@ export async function fetchLocalApi(
   init: RequestInit = {},
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<Response> {
-  const direct = directDashboardApiUrl(path);
   const alt = alternateLoopbackUrl(path);
-  const directInit = withDashboardApiAuth(init);
-  const preferDirect = isNativeShell() && direct;
-  if (preferDirect) {
-    try {
-      return await fetchWithTimeout(direct, directInit, timeoutMs);
-    } catch (directErr) {
-      try {
-        return await fetchWithTimeout(path, init, timeoutMs);
-      } catch {
-        if (!alt) throw directErr;
-        try {
-          return await fetchWithTimeout(alt, init, timeoutMs);
-        } catch {
-          throw directErr;
-        }
-      }
-    }
-  }
   try {
     return await fetchWithTimeout(path, init, timeoutMs);
   } catch (primaryErr) {
-    if (direct) {
-      try {
-        return await fetchWithTimeout(direct, directInit, timeoutMs);
-      } catch {
-        // fall through to alternate loopback handling below
-      }
-    }
     if (!alt) throw primaryErr;
     try {
       return await fetchWithTimeout(alt, init, timeoutMs);

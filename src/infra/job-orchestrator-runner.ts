@@ -1,5 +1,6 @@
 import type { ArgentConfig } from "../config/types.js";
 import type { InternalHookEvent } from "../hooks/internal-hooks.js";
+import type { ExecutionWorkerRunner } from "./execution-worker-runner.js";
 import { loadConfig } from "../config/config.js";
 import { getStorageAdapter } from "../data/storage-factory.js";
 import { registerInternalHook, unregisterInternalHook } from "../hooks/internal-hooks.js";
@@ -41,13 +42,9 @@ export type JobOrchestratorRunner = {
   }) => Promise<{ accepted: boolean; eventId?: string }>;
 };
 
-type ExecutionWorkerRunnerLike = {
-  dispatchNow?: (opts?: { reason?: string; agentId?: string }) => unknown;
-};
-
 export function startJobOrchestratorRunner(opts: {
   cfg?: ArgentConfig;
-  executionWorkerRunner?: ExecutionWorkerRunnerLike;
+  executionWorkerRunner?: ExecutionWorkerRunner;
 }): JobOrchestratorRunner {
   let cfg = opts.cfg ?? loadConfig();
   let stopped = false;

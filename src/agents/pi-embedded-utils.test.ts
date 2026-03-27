@@ -331,6 +331,27 @@ Arguments: { "command": "ls -la" }`,
     expect(result).toBe("");
   });
 
+  it("preserves standalone json answers that are not leaked tool payloads", () => {
+    const jsonSnippet = `{
+  "command": "backup-database",
+  "path": "/tmp/backup.sql",
+  "url": "https://example.com/restore-guide"
+}`;
+    const msg: AssistantMessage = {
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: jsonSnippet,
+        },
+      ],
+      timestamp: Date.now(),
+    };
+
+    const result = extractAssistantText(msg);
+    expect(result).toBe(jsonSnippet);
+  });
+
   it("preserves text around downgraded tool calls", () => {
     const msg: AssistantMessage = {
       role: "assistant",
