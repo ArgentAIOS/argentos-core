@@ -182,13 +182,13 @@ export function deriveSessionTitle(
 
 export function loadSessionEntry(sessionKey: string) {
   const cfg = loadConfig();
-  const sessionCfg = cfg.session;
-  const canonicalKey = resolveSessionStoreKey({ cfg, sessionKey });
-  const agentId = resolveSessionStoreAgentId(cfg, canonicalKey);
-  const storePath = resolveStorePath(sessionCfg?.store, { agentId });
+  const target = resolveGatewaySessionStoreTarget({ cfg, key: sessionKey });
+  const storePath = target.storePath;
   const store = loadSessionStore(storePath);
-  const entry = store[canonicalKey];
-  return { cfg, storePath, store, entry, canonicalKey };
+  const entry =
+    target.storeKeys.map((candidate) => store[candidate]).find(Boolean) ??
+    store[target.canonicalKey];
+  return { cfg, storePath, store, entry, canonicalKey: target.canonicalKey };
 }
 
 export function classifySessionKey(key: string, entry?: SessionEntry): GatewaySessionRow["kind"] {
@@ -237,6 +237,14 @@ export function resolveSessionSurface(key: string): string | undefined {
   }
   const match = /^([a-z0-9_]+)(?:[:\-]|$)/i.exec(raw);
   return match?.[1]?.toLowerCase();
+}
+
+function isWebchatSessionAlias(value: string): boolean {
+  const key = value.trim().toLowerCase();
+  if (!key) {
+    return false;
+  }
+  return key === "webchat" || key.startsWith("webchat-") || key.startsWith("webchat:");
 }
 
 function isStorePathTemplate(store?: string): boolean {
@@ -351,10 +359,24 @@ function canonicalizeSessionKeyForAgent(agentId: string, key: string): string {
   if (key === "global" || key === "unknown") {
     return key;
   }
+  const normalizedAgentId = normalizeAgentId(agentId);
+  const parsed = parseAgentSessionKey(key);
+  if (parsed) {
+    const parsedAgentId = normalizeAgentId(parsed.agentId);
+    const rest = parsed.rest.trim();
+    const loweredRest = rest.toLowerCase();
+    if (
+      normalizedAgentId !== "main" &&
+      parsedAgentId === "main" &&
+      (loweredRest === "main" || isWebchatSessionAlias(loweredRest))
+    ) {
+      return `agent:${normalizedAgentId}:${rest}`;
+    }
+  }
   if (key.startsWith("agent:")) {
     return key;
   }
-  return `agent:${normalizeAgentId(agentId)}:${key}`;
+  return `agent:${normalizedAgentId}:${key}`;
 }
 
 function resolveDefaultStoreAgentId(cfg: ArgentConfig): string {
@@ -439,6 +461,17 @@ export function resolveGatewaySessionStoreTarget(params: { cfg: ArgentConfig; ke
 
   const storeKeys = new Set<string>();
   storeKeys.add(canonicalKey);
+  const parsedCanonical = parseAgentSessionKey(canonicalKey);
+  const canonicalRest = parsedCanonical?.rest?.trim() ?? "";
+  const canonicalRestLower = canonicalRest.toLowerCase();
+  if (
+    agentId !== "main" &&
+    parsedCanonical &&
+    normalizeAgentId(parsedCanonical.agentId) === agentId &&
+    (canonicalRestLower === "main" || isWebchatSessionAlias(canonicalRestLower))
+  ) {
+    storeKeys.add(`agent:main:${canonicalRest}`);
+  }
   if (key && key !== canonicalKey) {
     storeKeys.add(key);
   }

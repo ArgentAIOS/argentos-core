@@ -1,0 +1,14 @@
+{
+  "tool": "aos-perplexity",
+  "backend": "perplexity-api",
+  "permissions": {
+    "search.query": "readonly",
+    "search.chat": "readonly",
+    "chat.complete": "readonly",
+    "chat.stream": "readonly",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

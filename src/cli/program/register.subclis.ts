@@ -1,8 +1,11 @@
 import type { Command } from "commander";
+import { createRequire } from "node:module";
 import type { ArgentConfig } from "../../config/config.js";
 import { isTruthyEnvValue } from "../../infra/env.js";
 import { buildParseArgv, getPrimaryCommand, hasHelpOrVersion } from "../argv.js";
 import { resolveActionArgs } from "./helpers.js";
+
+const requireModule = createRequire(import.meta.url);
 
 type SubCliRegistrar = (program: Command) => Promise<void> | void;
 
@@ -30,6 +33,16 @@ const loadConfig = async (): Promise<ArgentConfig> => {
   const mod = await import("../../config/config.js");
   return mod.loadConfig();
 };
+
+function loadOptionalSubCli(specifier: string, exportName: string): SubCliRegistrar | null {
+  try {
+    const mod = requireModule(specifier) as Record<string, unknown>;
+    const candidate = mod[exportName];
+    return typeof candidate === "function" ? (candidate as SubCliRegistrar) : null;
+  } catch {
+    return null;
+  }
+}
 
 const entries: SubCliEntry[] = [
   {
@@ -92,8 +105,7 @@ const entries: SubCliEntry[] = [
     name: "approvals",
     description: "Exec approvals",
     register: async (program) => {
-      const mod = await import("../exec-approvals-cli.js");
-      mod.registerExecApprovalsCli(program);
+      loadOptionalSubCli("../exec-approvals-cli.js", "registerExecApprovalsCli")?.(program);
     },
   },
   {
@@ -180,8 +192,7 @@ const entries: SubCliEntry[] = [
     name: "intent",
     description: "Intent system tools",
     register: async (program) => {
-      const mod = await import("../intent-cli.js");
-      mod.registerIntentCli(program);
+      loadOptionalSubCli("../intent-cli.js", "registerIntentCli")?.(program);
     },
   },
   {

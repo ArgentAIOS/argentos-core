@@ -1,0 +1,647 @@
+{
+  "tool": "aos-github",
+  "backend": "github-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "developer-tools",
+    "surface": "repo-issue-pr-action",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["owner", "repo", "issue_number", "pr_number", "branch"],
+    "worker_visible_actions": [
+      "repo.list",
+      "repo.get",
+      "issue.list",
+      "issue.get",
+      "issue.create",
+      "issue.update",
+      "issue.comment",
+      "pr.list",
+      "pr.get",
+      "pr.create",
+      "pr.merge",
+      "pr.review",
+      "branch.list",
+      "branch.create",
+      "actions.list_runs",
+      "actions.trigger",
+      "release.list",
+      "release.create"
+    ],
+    "fields": [
+      {
+        "id": "owner",
+        "label": "Owner/Org",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "placeholder": "my-org"
+      },
+      {
+        "id": "repo",
+        "label": "Repository",
+        "type": "string",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "pickerHint": "repo",
+        "placeholder": "my-repo"
+      },
+      {
+        "id": "issue_number",
+        "label": "Issue #",
+        "type": "number",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "issue",
+        "applies_to": ["issue.get", "issue.update", "issue.comment"]
+      },
+      {
+        "id": "pr_number",
+        "label": "PR #",
+        "type": "number",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "pr",
+        "applies_to": ["pr.get", "pr.merge", "pr.review"]
+      },
+      {
+        "id": "branch",
+        "label": "Branch Name",
+        "type": "string",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "branch",
+        "applies_to": ["branch.create", "pr.create"],
+        "placeholder": "feature/my-branch"
+      },
+      {
+        "id": "title",
+        "label": "Title",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["issue.create", "pr.create", "release.create"],
+        "placeholder": "Descriptive title"
+      },
+      {
+        "id": "body",
+        "label": "Body/Description",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "rows": 6,
+        "applies_to": ["issue.create", "issue.comment", "pr.create"],
+        "placeholder": "Markdown supported"
+      },
+      {
+        "id": "state",
+        "label": "State Filter",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "applies_to": ["issue.list", "pr.list"],
+        "options": [
+          { "value": "open", "label": "Open" },
+          { "value": "closed", "label": "Closed" },
+          { "value": "all", "label": "All" }
+        ],
+        "default": "open"
+      },
+      {
+        "id": "labels",
+        "label": "Labels",
+        "type": "string",
+        "renderAs": "multiselect",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["issue.create", "issue.update", "issue.list"],
+        "placeholder": "bug, enhancement, urgent"
+      },
+      {
+        "id": "assignees",
+        "label": "Assignees",
+        "type": "string",
+        "renderAs": "multiselect",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["issue.create", "issue.update"],
+        "placeholder": "octocat"
+      },
+      {
+        "id": "base_branch",
+        "label": "Base Branch",
+        "type": "string",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "pickerHint": "branch",
+        "applies_to": ["pr.create"],
+        "default": "main"
+      },
+      {
+        "id": "merge_method",
+        "label": "Merge Method",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "applies_to": ["pr.merge"],
+        "options": [
+          { "value": "merge", "label": "Merge Commit" },
+          { "value": "squash", "label": "Squash and Merge" },
+          { "value": "rebase", "label": "Rebase and Merge" }
+        ],
+        "default": "merge"
+      },
+      {
+        "id": "review_event",
+        "label": "Review Action",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "applies_to": ["pr.review"],
+        "options": [
+          { "value": "APPROVE", "label": "Approve" },
+          { "value": "REQUEST_CHANGES", "label": "Request Changes" },
+          { "value": "COMMENT", "label": "Comment" }
+        ]
+      },
+      {
+        "id": "review_body",
+        "label": "Review Comment",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "rows": 4,
+        "applies_to": ["pr.review"],
+        "showWhen": { "field": "review_event", "equals": "REQUEST_CHANGES" }
+      },
+      {
+        "id": "workflow_id",
+        "label": "Workflow ID",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["actions.trigger"],
+        "placeholder": "deploy.yml"
+      },
+      {
+        "id": "ref",
+        "label": "Git Ref",
+        "type": "string",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "pickerHint": "branch",
+        "applies_to": ["actions.trigger"],
+        "default": "main"
+      },
+      {
+        "id": "tag_name",
+        "label": "Tag Name",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["release.create"],
+        "placeholder": "v1.0.0"
+      },
+      {
+        "id": "draft",
+        "label": "Create as Draft",
+        "type": "boolean",
+        "renderAs": "boolean",
+        "required": false,
+        "applies_to": ["release.create", "pr.create"],
+        "default": false
+      },
+      {
+        "id": "prerelease",
+        "label": "Pre-release",
+        "type": "boolean",
+        "renderAs": "boolean",
+        "required": false,
+        "applies_to": ["release.create"],
+        "default": false
+      }
+    ],
+    "commandDefaults": {
+      "repo.list": {
+        "selection_surface": "repo",
+        "limit": 30
+      },
+      "repo.get": {
+        "selection_surface": "repo",
+        "args": ["GITHUB_OWNER", "GITHUB_REPO"]
+      },
+      "issue.list": {
+        "selection_surface": "issue",
+        "args": ["GITHUB_OWNER", "GITHUB_REPO"],
+        "limit": 30,
+        "state": "open"
+      },
+      "issue.get": {
+        "selection_surface": "issue",
+        "args": ["GITHUB_OWNER", "GITHUB_REPO", "GITHUB_ISSUE_NUMBER"]
+      },
+      "pr.list": {
+        "selection_surface": "pr",
+        "args": ["GITHUB_OWNER", "GITHUB_REPO"],
+        "limit": 30,
+        "state": "open"
+      },
+      "pr.get": {
+        "selection_surface": "pr",
+        "args": ["GITHUB_OWNER", "GITHUB_REPO", "GITHUB_PR_NUMBER"]
+      },
+      "branch.list": {
+        "selection_surface": "branch",
+        "args": ["GITHUB_OWNER", "GITHUB_REPO"],
+        "limit": 30
+      },
+      "actions.list_runs": {
+        "selection_surface": "actions",
+        "args": ["GITHUB_OWNER", "GITHUB_REPO"],
+        "limit": 10
+      },
+      "release.list": {
+        "selection_surface": "release",
+        "args": ["GITHUB_OWNER", "GITHUB_REPO"],
+        "limit": 10
+      }
+    },
+    "pickerHints": {
+      "repo": {
+        "kind": "repo",
+        "selection_surface": "repo",
+        "resource": "github.repo",
+        "source_command": "repo.list",
+        "source_fields": [
+          "id",
+          "full_name",
+          "description",
+          "private",
+          "default_branch",
+          "updated_at"
+        ]
+      },
+      "issue": {
+        "kind": "issue",
+        "selection_surface": "issue",
+        "resource": "github.issue",
+        "source_command": "issue.list",
+        "source_fields": ["number", "title", "state", "assignee", "labels", "created_at"]
+      },
+      "pr": {
+        "kind": "pr",
+        "selection_surface": "pr",
+        "resource": "github.pull_request",
+        "source_command": "pr.list",
+        "source_fields": [
+          "number",
+          "title",
+          "state",
+          "head_branch",
+          "base_branch",
+          "author",
+          "created_at"
+        ]
+      },
+      "branch": {
+        "kind": "branch",
+        "selection_surface": "branch",
+        "resource": "github.branch",
+        "source_command": "branch.list",
+        "source_fields": ["name", "commit_sha", "protected"]
+      },
+      "actions": {
+        "kind": "workflow_run",
+        "selection_surface": "actions",
+        "resource": "github.workflow_run",
+        "source_command": "actions.list_runs",
+        "source_fields": ["id", "name", "status", "conclusion", "head_branch", "created_at"]
+      },
+      "release": {
+        "kind": "release",
+        "selection_surface": "release",
+        "resource": "github.release",
+        "source_command": "release.list",
+        "source_fields": ["id", "tag_name", "name", "draft", "prerelease", "published_at"]
+      }
+    }
+  },
+  "connector": {
+    "label": "GitHub",
+    "category": "developer-tools",
+    "categories": ["developer-tools", "source-control", "ci-cd", "project-management"],
+    "resources": ["repo", "issue", "pr", "branch", "actions", "release"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["GITHUB_TOKEN"],
+    "interactive_setup": [
+      "Create a GitHub personal access token (classic or fine-grained) with repo, issues, and actions scopes.",
+      "Add GITHUB_TOKEN in API Keys before enabling live reads.",
+      "Set GITHUB_OWNER and GITHUB_REPO to pin the default repository scope.",
+      "Optionally set GITHUB_ISSUE_NUMBER and GITHUB_PR_NUMBER for issue/PR-scoped flows.",
+      "Write commands (issue.create, pr.create, release.create) require write scope on the token.",
+      "The connector reports API failures transparently instead of masking them."
+    ]
+  },
+  "events": [
+    {
+      "id": "push",
+      "label": "Push",
+      "description": "Triggered when commits are pushed to a branch",
+      "resource": "branch",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "branches",
+          "label": "Branch Filter",
+          "type": "string",
+          "renderAs": "multiselect",
+          "required": false,
+          "expressionEnabled": true,
+          "placeholder": "main, develop",
+          "description": "Filter to specific branches (empty = all branches)"
+        }
+      ]
+    },
+    {
+      "id": "pull_request.opened",
+      "label": "Pull Request Opened",
+      "description": "Triggered when a new pull request is opened",
+      "resource": "pr",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "base_branch_filter",
+          "label": "Base Branch Filter",
+          "type": "string",
+          "renderAs": "select",
+          "required": false,
+          "expressionEnabled": true,
+          "pickerHint": "branch",
+          "description": "Only trigger for PRs targeting this branch"
+        }
+      ]
+    },
+    {
+      "id": "pull_request.merged",
+      "label": "Pull Request Merged",
+      "description": "Triggered when a pull request is merged",
+      "resource": "pr",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "base_branch_filter",
+          "label": "Base Branch Filter",
+          "type": "string",
+          "renderAs": "select",
+          "required": false,
+          "expressionEnabled": true,
+          "pickerHint": "branch",
+          "description": "Only trigger for PRs merged into this branch"
+        }
+      ]
+    },
+    {
+      "id": "issues.opened",
+      "label": "Issue Opened",
+      "description": "Triggered when a new issue is opened",
+      "resource": "issue",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "repo_filter",
+          "label": "Repository Filter",
+          "type": "string",
+          "renderAs": "select",
+          "required": false,
+          "expressionEnabled": true,
+          "pickerHint": "repo",
+          "description": "Only trigger for issues in this repository"
+        },
+        {
+          "id": "label_filter",
+          "label": "Label Filter",
+          "type": "string",
+          "renderAs": "multiselect",
+          "required": false,
+          "expressionEnabled": true,
+          "placeholder": "bug, urgent",
+          "description": "Only trigger for issues with these labels"
+        }
+      ]
+    },
+    {
+      "id": "release.published",
+      "label": "Release Published",
+      "description": "Triggered when a new release is published",
+      "resource": "release",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "repo_filter",
+          "label": "Repository Filter",
+          "type": "string",
+          "renderAs": "select",
+          "required": false,
+          "expressionEnabled": true,
+          "pickerHint": "repo",
+          "description": "Only trigger for releases in this repository"
+        }
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "id": "repo.list",
+      "summary": "List repositories for the authenticated user or org",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "repo",
+      "action_class": "read"
+    },
+    {
+      "id": "repo.get",
+      "summary": "Get repository details",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "repo",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "issue.list",
+      "summary": "List issues in a repository",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "issue",
+      "action_class": "read"
+    },
+    {
+      "id": "issue.get",
+      "summary": "Get a single issue by number",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "issue",
+      "action_class": "read"
+    },
+    {
+      "id": "issue.create",
+      "summary": "Create a new issue",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "issue",
+      "action_class": "write"
+    },
+    {
+      "id": "issue.update",
+      "summary": "Update an existing issue",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "issue",
+      "action_class": "write"
+    },
+    {
+      "id": "issue.comment",
+      "summary": "Add a comment to an issue",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "issue",
+      "action_class": "write"
+    },
+    {
+      "id": "pr.list",
+      "summary": "List pull requests in a repository",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "pr",
+      "action_class": "read"
+    },
+    {
+      "id": "pr.get",
+      "summary": "Get a single pull request by number",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "pr",
+      "action_class": "read"
+    },
+    {
+      "id": "pr.create",
+      "summary": "Create a new pull request",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "pr",
+      "action_class": "write"
+    },
+    {
+      "id": "pr.merge",
+      "summary": "Merge a pull request",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "pr",
+      "action_class": "write"
+    },
+    {
+      "id": "pr.review",
+      "summary": "Submit a review on a pull request",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "pr",
+      "action_class": "write"
+    },
+    {
+      "id": "branch.list",
+      "summary": "List branches in a repository",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "branch",
+      "action_class": "read"
+    },
+    {
+      "id": "branch.create",
+      "summary": "Create a new branch",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "branch",
+      "action_class": "write"
+    },
+    {
+      "id": "actions.list_runs",
+      "summary": "List recent workflow runs",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "actions",
+      "action_class": "read"
+    },
+    {
+      "id": "actions.trigger",
+      "summary": "Trigger a workflow dispatch event",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "actions",
+      "action_class": "write"
+    },
+    {
+      "id": "release.list",
+      "summary": "List releases in a repository",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "release",
+      "action_class": "read"
+    },
+    {
+      "id": "release.create",
+      "summary": "Create a new release",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "release",
+      "action_class": "write"
+    }
+  ]
+}

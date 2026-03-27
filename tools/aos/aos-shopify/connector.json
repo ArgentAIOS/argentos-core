@@ -15,7 +15,11 @@
       {
         "id": "shop_domain",
         "label": "Shop domain",
+        "type": "text",
+        "renderAs": "text",
         "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
         "applies_to": [
           "shop.read",
           "product.list",
@@ -25,42 +29,86 @@
           "customer.list",
           "customer.read"
         ],
-        "example": "example.myshopify.com"
+        "example": "example.myshopify.com",
+        "placeholder": "mystore.myshopify.com",
+        "description": "Your Shopify store domain."
       },
       {
         "id": "product_status",
         "label": "Product status",
+        "type": "select",
+        "renderAs": "select",
         "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
         "applies_to": ["product.list"],
-        "example": "active, draft, archived, any"
+        "example": "active, draft, archived, any",
+        "options": [
+          { "value": "active", "label": "Active" },
+          { "value": "draft", "label": "Draft" },
+          { "value": "archived", "label": "Archived" },
+          { "value": "any", "label": "Any" }
+        ],
+        "placeholder": "Select status...",
+        "description": "Filter products by status."
       },
       {
         "id": "order_status",
         "label": "Order status",
+        "type": "select",
+        "renderAs": "select",
         "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
         "applies_to": ["order.list"],
-        "example": "open, closed, cancelled, any"
+        "example": "open, closed, cancelled, any",
+        "options": [
+          { "value": "open", "label": "Open" },
+          { "value": "closed", "label": "Closed" },
+          { "value": "cancelled", "label": "Cancelled" },
+          { "value": "any", "label": "Any" }
+        ],
+        "placeholder": "Select status...",
+        "description": "Filter orders by status."
       },
       {
         "id": "customer_email",
         "label": "Customer email",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
         "applies_to": ["customer.list"],
-        "example": "vip@example.com"
+        "example": "vip@example.com",
+        "placeholder": "customer@example.com",
+        "description": "Filter customers by email address."
       },
       {
         "id": "created_after",
         "label": "Created after",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "datetime",
         "applies_to": ["order.list", "customer.list"],
-        "example": "2026-01-01 or 1704067200"
+        "example": "2026-01-01 or 1704067200",
+        "placeholder": "2026-01-01",
+        "description": "Filter records created after this date (ISO 8601 or Unix timestamp)."
       },
       {
         "id": "created_before",
         "label": "Created before",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "datetime",
         "applies_to": ["order.list", "customer.list"],
-        "example": "2026-01-31 or 1706745600"
+        "example": "2026-01-31 or 1706745600",
+        "placeholder": "2026-01-31",
+        "description": "Filter records created before this date (ISO 8601 or Unix timestamp)."
       }
     ],
     "command_defaults": {
@@ -202,6 +250,65 @@
       "supports_json": true,
       "resource": "fulfillment",
       "action_class": "write"
+    }
+  ],
+  "events": [
+    {
+      "id": "order.created",
+      "resource": "order",
+      "summary": "New order placed in the store",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_min_amount",
+          "label": "Minimum Order Amount",
+          "type": "number",
+          "renderAs": "number",
+          "required": false,
+          "placeholder": "5000",
+          "description": "Only trigger for orders above this amount (in store currency, cents). Leave empty for all orders."
+        }
+      ]
+    },
+    {
+      "id": "product.updated",
+      "resource": "product",
+      "summary": "Product details or variants updated",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_collection_filter",
+          "label": "Collection Filter",
+          "type": "text",
+          "renderAs": "text",
+          "required": false,
+          "placeholder": "Summer Sale",
+          "description": "Only trigger for products in this collection. Leave empty for all products."
+        }
+      ]
+    },
+    {
+      "id": "checkout.completed",
+      "resource": "order",
+      "summary": "Checkout completed by a customer",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_source_filter",
+          "label": "Source Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "options": [
+            { "value": "web", "label": "Online Store" },
+            { "value": "pos", "label": "Point of Sale" },
+            { "value": "shopify_draft_order", "label": "Draft Order" },
+            { "value": "iphone", "label": "iPhone App" },
+            { "value": "android", "label": "Android App" }
+          ],
+          "description": "Only trigger for checkouts from this source. Leave empty for all sources."
+        }
+      ]
     }
   ]
 }

@@ -41,10 +41,13 @@ function resolveProvider(
   cfg?: Record<string, unknown>,
   sessionKey?: string,
 ): { provider: Provider; apiKey: string; source: string } | null {
-  const order: { provider: Provider; envKey: string }[] = [
-    { provider: "gemini", envKey: "GOOGLE_GEMINI_API_KEY" },
-    { provider: "openai", envKey: "OPENAI_API_KEY" },
-    { provider: "fal", envKey: "FAL_API_KEY" },
+  const order: { provider: Provider; envKeys: string[] }[] = [
+    {
+      provider: "gemini",
+      envKeys: ["GOOGLE_GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"],
+    },
+    { provider: "openai", envKeys: ["OPENAI_API_KEY"] },
+    { provider: "fal", envKeys: ["FAL_API_KEY"] },
   ];
 
   const resolveKey = (envKey: string): { apiKey: string; source: string } | null => {
@@ -66,13 +69,18 @@ function resolveProvider(
   if (requested) {
     const match = order.find((o) => o.provider === requested);
     if (!match) return null;
-    const key = resolveKey(match.envKey);
-    return key ? { provider: match.provider, ...key } : null;
+    for (const envKey of match.envKeys) {
+      const key = resolveKey(envKey);
+      if (key) return { provider: match.provider, ...key };
+    }
+    return null;
   }
 
   for (const entry of order) {
-    const key = resolveKey(entry.envKey);
-    if (key) return { provider: entry.provider, ...key };
+    for (const envKey of entry.envKeys) {
+      const key = resolveKey(envKey);
+      if (key) return { provider: entry.provider, ...key };
+    }
   }
   return null;
 }
@@ -241,7 +249,7 @@ Returns a MEDIA: path. Copy the MEDIA line exactly into your response.`,
               type: "text",
               text: provider
                 ? `No API key found for provider "${provider}". Set the appropriate env var.`
-                : "No image generation API keys available. Set GOOGLE_GEMINI_API_KEY, OPENAI_API_KEY, or FAL_API_KEY.",
+                : "No image generation API keys available. Set GOOGLE_GEMINI_API_KEY, GOOGLE_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, or FAL_API_KEY.",
             },
           ],
         };

@@ -272,6 +272,27 @@ export const AgentDefaultsSchema = z
                   )
                   .optional(),
                 fallbackProfile: z.string().optional(),
+                routingPolicy: z
+                  .object({
+                    likelyToolUseMinTier: z
+                      .union([
+                        z.literal("local"),
+                        z.literal("fast"),
+                        z.literal("balanced"),
+                        z.literal("powerful"),
+                      ])
+                      .optional(),
+                    likelyMemoryUseMinTier: z
+                      .union([
+                        z.literal("local"),
+                        z.literal("fast"),
+                        z.literal("balanced"),
+                        z.literal("powerful"),
+                      ])
+                      .optional(),
+                  })
+                  .strict()
+                  .optional(),
                 sessionOverrides: z
                   .object({
                     contemplation: z

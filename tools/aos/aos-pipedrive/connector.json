@@ -1,0 +1,445 @@
+{
+  "tool": "aos-pipedrive",
+  "backend": "pipedrive-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "crm",
+    "surface": "deal-person-organization-activity",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": [
+      "deal_id",
+      "person_id",
+      "org_id",
+      "pipeline_id",
+      "stage_id",
+      "title",
+      "value",
+      "currency"
+    ],
+    "worker_visible_actions": [
+      "deal.list",
+      "deal.get",
+      "deal.create",
+      "deal.update",
+      "person.list",
+      "person.get",
+      "person.create",
+      "organization.list",
+      "organization.get",
+      "organization.create",
+      "activity.list",
+      "activity.create",
+      "pipeline.list",
+      "stage.list",
+      "note.create"
+    ],
+    "fields": [
+      {
+        "id": "deal_id",
+        "label": "Deal ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["deal.get", "deal.update"],
+        "example": "123",
+        "placeholder": "e.g., 123",
+        "description": "The Pipedrive deal ID to retrieve or update."
+      },
+      {
+        "id": "person_id",
+        "label": "Person ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["person.get", "deal.create", "activity.create"],
+        "example": "456",
+        "placeholder": "e.g., 456",
+        "description": "The Pipedrive person (contact) ID."
+      },
+      {
+        "id": "org_id",
+        "label": "Organization ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["organization.get", "deal.create"],
+        "example": "789",
+        "placeholder": "e.g., 789",
+        "description": "The Pipedrive organization ID."
+      },
+      {
+        "id": "pipeline_id",
+        "label": "Pipeline ID",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["deal.list", "deal.create", "stage.list"],
+        "example": "1",
+        "placeholder": "Select a pipeline...",
+        "description": "The pipeline to scope deal and stage operations."
+      },
+      {
+        "id": "stage_id",
+        "label": "Stage ID",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["deal.create", "deal.update"],
+        "example": "1",
+        "placeholder": "Select a stage...",
+        "description": "The pipeline stage for the deal."
+      },
+      {
+        "id": "title",
+        "label": "Title",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["deal.create", "activity.create", "note.create"],
+        "example": "New Enterprise Deal",
+        "placeholder": "e.g., Q1 Contract Renewal",
+        "description": "Title for the deal, activity, or note."
+      },
+      {
+        "id": "value",
+        "label": "Value",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "applies_to": ["deal.create", "deal.update"],
+        "example": "50000",
+        "placeholder": "e.g., 50000",
+        "description": "Deal value in the default currency."
+      },
+      {
+        "id": "currency",
+        "label": "Currency",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "applies_to": ["deal.create", "deal.update"],
+        "example": "USD",
+        "placeholder": "USD",
+        "options": [
+          { "value": "USD", "label": "USD" },
+          { "value": "EUR", "label": "EUR" },
+          { "value": "GBP", "label": "GBP" },
+          { "value": "AUD", "label": "AUD" },
+          { "value": "CAD", "label": "CAD" },
+          { "value": "JPY", "label": "JPY" }
+        ],
+        "description": "Currency for deal value."
+      }
+    ],
+    "commandDefaults": {
+      "deal.list": {
+        "selection_surface": "deal",
+        "limit": 10
+      },
+      "deal.get": {
+        "selection_surface": "deal",
+        "args": ["PIPEDRIVE_DEAL_ID"]
+      },
+      "deal.create": {
+        "selection_surface": "deal"
+      },
+      "deal.update": {
+        "selection_surface": "deal",
+        "args": ["PIPEDRIVE_DEAL_ID"]
+      },
+      "person.list": {
+        "selection_surface": "person",
+        "limit": 10
+      },
+      "person.get": {
+        "selection_surface": "person",
+        "args": ["PIPEDRIVE_PERSON_ID"]
+      },
+      "person.create": {
+        "selection_surface": "person"
+      },
+      "organization.list": {
+        "selection_surface": "organization",
+        "limit": 10
+      },
+      "organization.get": {
+        "selection_surface": "organization",
+        "args": ["PIPEDRIVE_ORG_ID"]
+      },
+      "organization.create": {
+        "selection_surface": "organization"
+      },
+      "activity.list": {
+        "selection_surface": "activity",
+        "limit": 10
+      },
+      "activity.create": {
+        "selection_surface": "activity"
+      },
+      "pipeline.list": {
+        "selection_surface": "pipeline"
+      },
+      "stage.list": {
+        "selection_surface": "stage",
+        "args": ["PIPEDRIVE_PIPELINE_ID"]
+      },
+      "note.create": {
+        "selection_surface": "note"
+      }
+    },
+    "pickerHints": {
+      "deal": {
+        "kind": "deal",
+        "selection_surface": "deal",
+        "resource": "pipedrive.deal",
+        "source_command": "deal.list",
+        "source_fields": [
+          "id",
+          "title",
+          "value",
+          "currency",
+          "stage_id",
+          "person_id",
+          "org_id",
+          "status"
+        ]
+      },
+      "person": {
+        "kind": "person",
+        "selection_surface": "person",
+        "resource": "pipedrive.person",
+        "source_command": "person.list",
+        "source_fields": ["id", "name", "email", "phone", "org_id", "open_deals_count"]
+      },
+      "organization": {
+        "kind": "organization",
+        "selection_surface": "organization",
+        "resource": "pipedrive.organization",
+        "source_command": "organization.list",
+        "source_fields": ["id", "name", "address", "open_deals_count", "people_count"]
+      },
+      "activity": {
+        "kind": "activity",
+        "selection_surface": "activity",
+        "resource": "pipedrive.activity",
+        "source_command": "activity.list",
+        "source_fields": [
+          "id",
+          "subject",
+          "type",
+          "due_date",
+          "due_time",
+          "done",
+          "person_id",
+          "deal_id"
+        ]
+      },
+      "pipeline": {
+        "kind": "pipeline",
+        "selection_surface": "pipeline",
+        "resource": "pipedrive.pipeline",
+        "source_command": "pipeline.list",
+        "source_fields": ["id", "name", "active", "deal_probability", "order_nr"]
+      },
+      "stage": {
+        "kind": "stage",
+        "selection_surface": "stage",
+        "resource": "pipedrive.stage",
+        "source_command": "stage.list",
+        "source_fields": ["id", "name", "pipeline_id", "deal_probability", "order_nr"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Pipedrive",
+    "category": "crm-revenue",
+    "categories": ["crm-revenue", "sales", "pipeline-management"],
+    "resources": ["deal", "person", "organization", "activity", "pipeline", "stage", "note"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["PIPEDRIVE_API_TOKEN"],
+    "interactive_setup": [
+      "Navigate to Pipedrive Settings > Personal Preferences > API to find your API token.",
+      "Add PIPEDRIVE_API_TOKEN in API Keys before enabling live access.",
+      "Optionally set PIPEDRIVE_COMPANY_DOMAIN to override the default API domain.",
+      "Optionally set PIPEDRIVE_DEAL_ID, PIPEDRIVE_PERSON_ID, PIPEDRIVE_ORG_ID, and PIPEDRIVE_PIPELINE_ID for default scopes.",
+      "Write commands execute live mutations against the Pipedrive API.",
+      "The connector uses the live Pipedrive API and reports API failures instead of masking them."
+    ]
+  },
+  "commands": [
+    {
+      "id": "deal.list",
+      "summary": "List Pipedrive deals",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "deal",
+      "action_class": "read"
+    },
+    {
+      "id": "deal.get",
+      "summary": "Get a Pipedrive deal by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "deal",
+      "action_class": "read"
+    },
+    {
+      "id": "deal.create",
+      "summary": "Create a Pipedrive deal",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "deal",
+      "action_class": "write"
+    },
+    {
+      "id": "deal.update",
+      "summary": "Update a Pipedrive deal",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "deal",
+      "action_class": "write"
+    },
+    {
+      "id": "person.list",
+      "summary": "List Pipedrive persons",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "person",
+      "action_class": "read"
+    },
+    {
+      "id": "person.get",
+      "summary": "Get a Pipedrive person by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "person",
+      "action_class": "read"
+    },
+    {
+      "id": "person.create",
+      "summary": "Create a Pipedrive person",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "person",
+      "action_class": "write"
+    },
+    {
+      "id": "organization.list",
+      "summary": "List Pipedrive organizations",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "organization",
+      "action_class": "read"
+    },
+    {
+      "id": "organization.get",
+      "summary": "Get a Pipedrive organization by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "organization",
+      "action_class": "read"
+    },
+    {
+      "id": "organization.create",
+      "summary": "Create a Pipedrive organization",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "organization",
+      "action_class": "write"
+    },
+    {
+      "id": "activity.list",
+      "summary": "List Pipedrive activities",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "activity",
+      "action_class": "read"
+    },
+    {
+      "id": "activity.create",
+      "summary": "Create a Pipedrive activity",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "activity",
+      "action_class": "write"
+    },
+    {
+      "id": "pipeline.list",
+      "summary": "List Pipedrive pipelines",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "pipeline",
+      "action_class": "read"
+    },
+    {
+      "id": "stage.list",
+      "summary": "List Pipedrive stages",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "stage",
+      "action_class": "read"
+    },
+    {
+      "id": "note.create",
+      "summary": "Create a Pipedrive note",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "note",
+      "action_class": "write"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

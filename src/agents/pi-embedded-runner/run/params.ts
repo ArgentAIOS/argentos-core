@@ -68,6 +68,8 @@ export type RunEmbeddedPiAgentParams = {
   model?: string;
   /** Treat provider/model as explicit user choice (skip model router rerouting). */
   respectProvidedModel?: boolean;
+  /** Provider/model were selected by an upstream router/fallback stage, not by the user. */
+  preselectedModel?: boolean;
   authProfileId?: string;
   authProfileIdSource?: "auto" | "user";
   thinkLevel?: ThinkLevel;

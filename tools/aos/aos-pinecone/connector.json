@@ -1,0 +1,329 @@
+{
+  "tool": "aos-pinecone",
+  "backend": "pinecone-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "vector-database",
+    "surface": "index-vector-namespace",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": [
+      "index_name",
+      "namespace",
+      "vector_id",
+      "values_json",
+      "query_vector_json",
+      "top_k",
+      "filter_json",
+      "metadata_json"
+    ],
+    "worker_visible_actions": [
+      "index.list",
+      "index.create",
+      "index.describe",
+      "index.delete",
+      "vector.upsert",
+      "vector.query",
+      "vector.fetch",
+      "vector.delete",
+      "namespace.list"
+    ],
+    "fields": [
+      {
+        "id": "index_name",
+        "label": "Index Name",
+        "type": "text",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": [
+          "index.create",
+          "index.describe",
+          "index.delete",
+          "vector.upsert",
+          "vector.query",
+          "vector.fetch",
+          "vector.delete",
+          "namespace.list"
+        ],
+        "placeholder": "my-index",
+        "description": "Name of the Pinecone index to use.",
+        "example": "my-index"
+      },
+      {
+        "id": "namespace",
+        "label": "Namespace",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["vector.upsert", "vector.query", "vector.fetch", "vector.delete"],
+        "placeholder": "production",
+        "description": "Namespace within the index (used for logical partitioning).",
+        "example": "production"
+      },
+      {
+        "id": "vector_id",
+        "label": "Vector ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["vector.fetch", "vector.delete"],
+        "placeholder": "vec-001",
+        "description": "Unique identifier for a vector in the index.",
+        "example": "vec-001"
+      },
+      {
+        "id": "values_json",
+        "label": "Vector Values (JSON Array of Floats)",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "json",
+        "applies_to": ["vector.upsert"],
+        "placeholder": "[0.1, 0.2, 0.3, 0.4]",
+        "description": "Float array representing the vector embedding to store.",
+        "example": "[0.1, 0.2, 0.3, ...]"
+      },
+      {
+        "id": "query_vector_json",
+        "label": "Query Vector (JSON Array of Floats)",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "json",
+        "applies_to": ["vector.query"],
+        "placeholder": "[0.1, 0.2, 0.3, 0.4]",
+        "description": "Float array to use for similarity search.",
+        "example": "[0.1, 0.2, 0.3, ...]"
+      },
+      {
+        "id": "top_k",
+        "label": "Top K Results",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "applies_to": ["vector.query"],
+        "placeholder": "10",
+        "description": "Number of most similar vectors to return.",
+        "example": "10"
+      },
+      {
+        "id": "filter_json",
+        "label": "Metadata Filter (JSON Object)",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "json",
+        "applies_to": ["vector.query", "vector.delete"],
+        "placeholder": "{\"genre\":\"comedy\"}",
+        "description": "Metadata filter for narrowing search or deletion scope.",
+        "example": "{\"genre\":\"comedy\"}"
+      },
+      {
+        "id": "metadata_json",
+        "label": "Vector Metadata (JSON Object)",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "json",
+        "applies_to": ["vector.upsert"],
+        "placeholder": "{\"source\":\"doc-1\",\"page\":5}",
+        "description": "JSON object with metadata to attach to the vector.",
+        "example": "{\"source\":\"doc-1\",\"page\":5}"
+      }
+    ],
+    "commandDefaults": {
+      "index.list": {
+        "selection_surface": "index",
+        "limit": 50
+      },
+      "index.create": {
+        "selection_surface": "index",
+        "args": ["PINECONE_INDEX_NAME"]
+      },
+      "index.describe": {
+        "selection_surface": "index",
+        "args": ["PINECONE_INDEX_NAME"]
+      },
+      "index.delete": {
+        "selection_surface": "index",
+        "args": ["PINECONE_INDEX_NAME"]
+      },
+      "vector.upsert": {
+        "selection_surface": "vector",
+        "args": ["PINECONE_INDEX_NAME"]
+      },
+      "vector.query": {
+        "selection_surface": "vector",
+        "args": ["PINECONE_INDEX_NAME"],
+        "top_k": 10
+      },
+      "vector.fetch": {
+        "selection_surface": "vector",
+        "args": ["PINECONE_INDEX_NAME", "PINECONE_VECTOR_ID"]
+      },
+      "vector.delete": {
+        "selection_surface": "vector",
+        "args": ["PINECONE_INDEX_NAME"]
+      },
+      "namespace.list": {
+        "selection_surface": "namespace",
+        "args": ["PINECONE_INDEX_NAME"]
+      }
+    },
+    "pickerHints": {
+      "index": {
+        "kind": "index",
+        "selection_surface": "index",
+        "resource": "pinecone.index",
+        "source_command": "index.list",
+        "source_fields": ["name", "dimension", "metric", "status", "host"]
+      },
+      "namespace": {
+        "kind": "namespace",
+        "selection_surface": "namespace",
+        "resource": "pinecone.namespace",
+        "source_command": "namespace.list",
+        "source_fields": ["name", "vector_count"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Pinecone",
+    "category": "ai-ml",
+    "categories": ["ai-ml", "vector-database", "search"],
+    "resources": ["index", "vector", "namespace"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["PINECONE_API_KEY"],
+    "interactive_setup": [
+      "Create or choose a Pinecone API key from https://app.pinecone.io.",
+      "Add PINECONE_API_KEY in API Keys before enabling live calls.",
+      "Optionally set PINECONE_ENVIRONMENT if using a non-serverless (pod-based) deployment.",
+      "Set PINECONE_INDEX_NAME and PINECONE_VECTOR_ID to give worker flows stable defaults.",
+      "All actions call the Pinecone REST API directly for index and vector operations.",
+      "Vector dimensions must match the index configuration — mismatches will error."
+    ]
+  },
+  "commands": [
+    {
+      "id": "index.list",
+      "summary": "List all Pinecone indexes",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "index",
+      "action_class": "read"
+    },
+    {
+      "id": "index.create",
+      "summary": "Create a new Pinecone index",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "index",
+      "action_class": "write"
+    },
+    {
+      "id": "index.describe",
+      "summary": "Describe a Pinecone index",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "index",
+      "action_class": "read"
+    },
+    {
+      "id": "index.delete",
+      "summary": "Delete a Pinecone index",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "index",
+      "action_class": "write"
+    },
+    {
+      "id": "vector.upsert",
+      "summary": "Upsert vectors into an index",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "vector",
+      "action_class": "write"
+    },
+    {
+      "id": "vector.query",
+      "summary": "Query vectors by similarity",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "vector",
+      "action_class": "read"
+    },
+    {
+      "id": "vector.fetch",
+      "summary": "Fetch vectors by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "vector",
+      "action_class": "read"
+    },
+    {
+      "id": "vector.delete",
+      "summary": "Delete vectors from an index",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "vector",
+      "action_class": "write"
+    },
+    {
+      "id": "namespace.list",
+      "summary": "List namespaces in an index",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "namespace",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

@@ -63,7 +63,7 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "summary": "ElevenLabs connector configuration snapshot.",
         "backend": BACKEND_NAME,
         "runtime": {
-            "implementation_mode": "live_read_with_live_synthesis",
+            "implementation_mode": "live_read_with_live_write",
             "live_read_available": runtime["api_key_present"],
             "live_write_available": runtime["api_key_present"],
             "write_bridge_available": runtime["api_key_present"],
@@ -82,9 +82,15 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "model_id": runtime["model_id"] or None,
             "history_item_id": runtime["history_item_id"] or None,
             "commandDefaults": {
-                "voice.read": {"args": [runtime["voice_id"] or runtime["voice_id_env"]]},
-                "history.read": {"args": [runtime["history_item_id"] or runtime["history_item_id_env"]]},
-                "synthesize": {
+                "voices.get": {"args": [runtime["voice_id"] or runtime["voice_id_env"]]},
+                "history.download": {"args": [runtime["history_item_id"] or runtime["history_item_id_env"]]},
+                "tts.generate": {
+                    "args": [
+                        runtime["voice_id"] or runtime["voice_id_env"],
+                        runtime["model_id"] or runtime["model_id_env"],
+                    ]
+                },
+                "tts.stream": {
                     "args": [
                         runtime["voice_id"] or runtime["voice_id_env"],
                         runtime["model_id"] or runtime["model_id_env"],
@@ -93,15 +99,19 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             },
         },
         "read_support": {
-            "voice.list": True,
-            "voice.read": True,
+            "voices.list": True,
+            "voices.get": True,
             "model.list": True,
             "history.list": True,
-            "history.read": True,
+            "history.download": True,
             "user.read": True,
         },
         "write_support": {
-            "synthesize": "live",
+            "tts.generate": "live",
+            "tts.stream": "live",
+            "voices.clone": "live",
+            "sfx.generate": "live",
+            "audio.isolate": "live",
             "live_writes_enabled": runtime["api_key_present"],
             "scaffold_only": False,
         },

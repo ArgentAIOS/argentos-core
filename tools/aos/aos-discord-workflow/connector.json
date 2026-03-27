@@ -1,0 +1,306 @@
+{
+  "tool": "aos-discord-workflow",
+  "backend": "discord-bot-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "communication",
+    "surface": "guild-channel-message",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["guild_id", "channel_id", "message_id", "content", "embed_json"],
+    "worker_visible_actions": [
+      "message.send",
+      "message.edit",
+      "message.delete",
+      "reaction.add",
+      "channel.list",
+      "channel.create",
+      "thread.create",
+      "embed.send",
+      "role.list",
+      "role.assign",
+      "member.list",
+      "webhook.send"
+    ],
+    "fields": [
+      {
+        "id": "guild_id",
+        "label": "Guild (server) ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["channel.list", "channel.create", "role.list", "role.assign", "member.list"],
+        "placeholder": "123456789012345678",
+        "description": "The Discord Guild/Server ID to scope operations to.",
+        "example": "123456789012345678"
+      },
+      {
+        "id": "channel_id",
+        "label": "Channel ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": [
+          "message.send",
+          "message.edit",
+          "message.delete",
+          "reaction.add",
+          "thread.create",
+          "embed.send"
+        ],
+        "placeholder": "123456789012345678",
+        "description": "The Discord Channel ID where the message will be sent or edited.",
+        "example": "123456789012345678"
+      },
+      {
+        "id": "message_id",
+        "label": "Message ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["message.edit", "message.delete", "reaction.add", "thread.create"],
+        "placeholder": "123456789012345678",
+        "description": "The ID of the Discord message to edit, delete, or react to.",
+        "example": "123456789012345678"
+      },
+      {
+        "id": "content",
+        "label": "Message content",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "rows": 4,
+        "applies_to": ["message.send", "message.edit", "thread.create", "webhook.send"],
+        "placeholder": "Hello from ArgentOS",
+        "description": "The text content of the message. Supports Discord markdown (bold, italics, code blocks).",
+        "example": "Hello from ArgentOS"
+      },
+      {
+        "id": "embed_json",
+        "label": "Embed JSON payload",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "json",
+        "rows": 5,
+        "applies_to": ["embed.send", "webhook.send"],
+        "placeholder": "{\"title\":\"Status\",\"description\":\"All systems operational\",\"color\":5814783}",
+        "description": "Rich embed object in JSON format for styled messages with title, description, fields, and color.",
+        "example": "{\"title\":\"Status\",\"description\":\"All systems operational\",\"color\":5814783}"
+      }
+    ],
+    "commandDefaults": {
+      "channel.list": {
+        "selection_surface": "channel",
+        "args": ["DISCORD_GUILD_ID"],
+        "limit": 20
+      },
+      "member.list": {
+        "selection_surface": "member",
+        "args": ["DISCORD_GUILD_ID"],
+        "limit": 20
+      },
+      "role.list": {
+        "selection_surface": "role",
+        "args": ["DISCORD_GUILD_ID"],
+        "limit": 20
+      },
+      "message.send": {
+        "selection_surface": "channel",
+        "args": ["DISCORD_CHANNEL_ID"]
+      },
+      "embed.send": {
+        "selection_surface": "channel",
+        "args": ["DISCORD_CHANNEL_ID"]
+      },
+      "reaction.add": {
+        "selection_surface": "message",
+        "args": ["DISCORD_CHANNEL_ID", "DISCORD_MESSAGE_ID"]
+      }
+    },
+    "pickerHints": {
+      "channel": {
+        "kind": "channel",
+        "selection_surface": "channel",
+        "resource": "discord.channel",
+        "source_command": "channel.list",
+        "source_fields": ["id", "name", "type", "position", "topic"]
+      },
+      "member": {
+        "kind": "member",
+        "selection_surface": "member",
+        "resource": "discord.member",
+        "source_command": "member.list",
+        "source_fields": ["id", "username", "display_name", "joined_at", "roles"]
+      },
+      "role": {
+        "kind": "role",
+        "selection_surface": "role",
+        "resource": "discord.role",
+        "source_command": "role.list",
+        "source_fields": ["id", "name", "color", "position", "permissions"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Discord Workflow",
+    "category": "communication",
+    "categories": ["communication", "messaging", "community", "workflow-automation"],
+    "resources": ["message", "reaction", "channel", "thread", "embed", "role", "member", "webhook"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["DISCORD_BOT_TOKEN"],
+    "interactive_setup": [
+      "Create a Discord application and bot at https://discord.com/developers/applications.",
+      "Add DISCORD_BOT_TOKEN in API Keys.",
+      "Enable the SERVER MEMBERS and MESSAGE CONTENT privileged gateway intents.",
+      "Invite the bot with permissions: Send Messages, Manage Messages, Add Reactions, Manage Channels, Manage Roles, Attach Files, Create Public Threads, Send Messages in Threads, Use External Emojis.",
+      "Set DISCORD_GUILD_ID to scope the connector to a specific server.",
+      "Set DISCORD_CHANNEL_ID and DISCORD_MESSAGE_ID for stable channel and message scope defaults.",
+      "For webhook.send, configure DISCORD_WEBHOOK_URL for the target channel webhook."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and backend readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "message.send",
+      "summary": "Send a message to a Discord channel",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "message",
+      "action_class": "write"
+    },
+    {
+      "id": "message.edit",
+      "summary": "Edit an existing Discord message",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "message",
+      "action_class": "write"
+    },
+    {
+      "id": "message.delete",
+      "summary": "Delete a Discord message",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "message",
+      "action_class": "write"
+    },
+    {
+      "id": "reaction.add",
+      "summary": "Add a reaction to a Discord message",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "reaction",
+      "action_class": "write"
+    },
+    {
+      "id": "channel.list",
+      "summary": "List channels in a Discord guild",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "channel",
+      "action_class": "read"
+    },
+    {
+      "id": "channel.create",
+      "summary": "Create a new Discord channel",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "channel",
+      "action_class": "write"
+    },
+    {
+      "id": "thread.create",
+      "summary": "Create a thread on a Discord message",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "thread",
+      "action_class": "write"
+    },
+    {
+      "id": "embed.send",
+      "summary": "Send a rich embed to a Discord channel",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "embed",
+      "action_class": "write"
+    },
+    {
+      "id": "role.list",
+      "summary": "List roles in a Discord guild",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "role",
+      "action_class": "read"
+    },
+    {
+      "id": "role.assign",
+      "summary": "Assign a role to a Discord guild member",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "role",
+      "action_class": "write"
+    },
+    {
+      "id": "member.list",
+      "summary": "List members in a Discord guild",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "member",
+      "action_class": "read"
+    },
+    {
+      "id": "webhook.send",
+      "summary": "Send a message via a Discord webhook",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "webhook",
+      "action_class": "write"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "tool": "aos-blacksmith",
+  "backend": "blacksmith-api",
+  "permissions": {
+    "runner.list": "readonly",
+    "runner.status": "readonly",
+    "build.list": "readonly",
+    "build.get": "readonly",
+    "build.logs": "readonly",
+    "cache.list": "readonly",
+    "cache.stats": "readonly",
+    "usage.summary": "readonly",
+    "usage.billing": "readonly",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

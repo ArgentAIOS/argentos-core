@@ -10,7 +10,72 @@
   },
   "scope": {
     "kind": "google-workspace",
-    "workerFields": ["account"],
+    "workerFields": ["account", "query", "num_results", "language", "safe_search"],
+    "fields": [
+      {
+        "id": "query",
+        "label": "Search Query",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Search query for Google Search",
+        "placeholder": "machine learning articles",
+        "applies_to": ["gmail.search", "drive.list"]
+      },
+      {
+        "id": "num_results",
+        "label": "Number of Results",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "description": "Maximum number of results to return",
+        "placeholder": "10",
+        "default": 10,
+        "applies_to": ["gmail.search", "drive.list", "calendar.list"]
+      },
+      {
+        "id": "language",
+        "label": "Language",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "description": "Language code for search results filtering",
+        "options": [
+          { "value": "en", "label": "English" },
+          { "value": "es", "label": "Spanish" },
+          { "value": "fr", "label": "French" },
+          { "value": "de", "label": "German" },
+          { "value": "it", "label": "Italian" },
+          { "value": "ja", "label": "Japanese" },
+          { "value": "zh", "label": "Chinese" }
+        ],
+        "default": "en",
+        "applies_to": ["gmail.search"]
+      },
+      {
+        "id": "safe_search",
+        "label": "Safe Search",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "description": "Content filtering level for search results",
+        "options": [
+          { "value": "off", "label": "Off" },
+          { "value": "moderate", "label": "Moderate" },
+          { "value": "strict", "label": "Strict" }
+        ],
+        "default": "moderate",
+        "applies_to": ["gmail.search"]
+      }
+    ],
     "commandDefaults": {
       "config.show": {
         "selection_surface": "account"

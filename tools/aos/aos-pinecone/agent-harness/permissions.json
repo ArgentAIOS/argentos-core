@@ -1,0 +1,19 @@
+{
+  "tool": "aos-pinecone",
+  "backend": "pinecone-api",
+  "permissions": {
+    "index.list": "readonly",
+    "index.create": "write",
+    "index.describe": "readonly",
+    "index.delete": "write",
+    "vector.upsert": "write",
+    "vector.query": "readonly",
+    "vector.fetch": "readonly",
+    "vector.delete": "write",
+    "namespace.list": "readonly",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

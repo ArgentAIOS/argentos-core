@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { resolvePrimaryChatAgentId } from "../lib/sessionVisibility";
 
 /**
  * Format a provider error string into a human-readable chat message.
@@ -52,11 +53,11 @@ function remapLegacyDefaultAgentSession(params: {
   defaultAgentId: string;
 }): string | null {
   const { rawSessionKey, mainSessionKey, defaultAgentId } = params;
-  const normalizedDefaultAgentId = defaultAgentId.trim().toLowerCase();
+  const normalizedPrimaryAgentId = resolvePrimaryChatAgentId(mainSessionKey, defaultAgentId);
   if (
     !rawSessionKey.startsWith("agent:") ||
-    !normalizedDefaultAgentId ||
-    normalizedDefaultAgentId === "main"
+    !normalizedPrimaryAgentId ||
+    normalizedPrimaryAgentId === "main"
   ) {
     return null;
   }
@@ -74,9 +75,9 @@ function remapLegacyDefaultAgentSession(params: {
   const mainParts = mainSessionKey.split(":");
   const mainAgentId =
     mainParts.length >= 2
-      ? (mainParts[1] ?? normalizedDefaultAgentId).trim().toLowerCase()
-      : normalizedDefaultAgentId;
-  if (mainAgentId !== normalizedDefaultAgentId) {
+      ? (mainParts[1] ?? normalizedPrimaryAgentId).trim().toLowerCase()
+      : normalizedPrimaryAgentId;
+  if (mainAgentId !== normalizedPrimaryAgentId) {
     return null;
   }
 
@@ -86,7 +87,7 @@ function remapLegacyDefaultAgentSession(params: {
     return mainSessionKey;
   }
   if (isWebchatSessionAlias(rawRestLower)) {
-    return `agent:${defaultAgentId}:${rawRest}`;
+    return `agent:${normalizedPrimaryAgentId}:${rawRest}`;
   }
   return null;
 }
@@ -125,7 +126,10 @@ type GatewayRequestOptions = {
 
 function toCanonicalSessionKey(sessionKey: string | undefined): string {
   const mainSessionKey = globalMainSessionKey || DEFAULT_MAIN_SESSION_KEY;
-  const defaultAgentId = globalDefaultAgentId || DEFAULT_AGENT_ID;
+  const defaultAgentId = resolvePrimaryChatAgentId(
+    mainSessionKey,
+    globalDefaultAgentId || DEFAULT_AGENT_ID,
+  );
   const raw = (sessionKey ?? "").trim();
   if (!raw) return mainSessionKey;
   const lowered = raw.toLowerCase();
@@ -169,7 +173,10 @@ function toCanonicalSessionKey(sessionKey: string | undefined): string {
 function resolveSessionAgentIdFromKey(sessionKey: string | undefined): string {
   const canonicalSessionKey = toCanonicalSessionKey(sessionKey);
   const match = /^agent:([^:]+):/i.exec(canonicalSessionKey);
-  return normalizeAgentId(match?.[1], globalDefaultAgentId || DEFAULT_AGENT_ID);
+  return normalizeAgentId(
+    match?.[1],
+    resolvePrimaryChatAgentId(globalMainSessionKey, globalDefaultAgentId || DEFAULT_AGENT_ID),
+  );
 }
 
 // Singleton WebSocket connection to survive React StrictMode and HMR
@@ -264,6 +271,10 @@ function parseFilesystemPathDenial(rawError: string): {
     .map((entry) => entry.trim())
     .filter(Boolean);
   return { attemptedPath, allowedDirectories };
+}
+
+function firstDefinedString(...values: unknown[]): string | undefined {
+  return values.find((value): value is string => typeof value === "string");
 }
 
 export function useGateway(config: GatewayConfig = {}) {
@@ -533,8 +544,13 @@ export function useGateway(config: GatewayConfig = {}) {
 
           // Handle assistant stream - check multiple possible formats
           if (event.stream === "assistant") {
-            const text = event.data?.text || event.data?.content || event.text || event.content;
-            if (text) {
+            const text = firstDefinedString(
+              event.data?.text,
+              event.data?.content,
+              event.text,
+              event.content,
+            );
+            if (typeof text === "string") {
               accumulatedContent = text;
               // Keep abort ref content in sync
               if (currentRunAbortRef.current) {
@@ -804,10 +820,12 @@ export function useGateway(config: GatewayConfig = {}) {
                   typeof defaults?.mainSessionKey === "string" && defaults.mainSessionKey.trim()
                     ? defaults.mainSessionKey.trim()
                     : DEFAULT_MAIN_SESSION_KEY;
-                const resolvedAgent =
+                const resolvedAgent = resolvePrimaryChatAgentId(
+                  resolvedMain,
                   typeof defaults?.defaultAgentId === "string" && defaults.defaultAgentId.trim()
                     ? defaults.defaultAgentId.trim().toLowerCase()
-                    : DEFAULT_AGENT_ID;
+                    : DEFAULT_AGENT_ID,
+                );
                 globalMainSessionKey = resolvedMain;
                 globalDefaultAgentId = resolvedAgent;
                 globalGatewayUrl = url;
@@ -1188,7 +1206,11 @@ export function useGateway(config: GatewayConfig = {}) {
         keyVariants.add(globalMainSessionKey);
       }
       if (!sessionKey.startsWith("agent:") && sessionKey !== "global") {
-        keyVariants.add(`agent:${globalDefaultAgentId}:${sessionKey}`);
+        const primaryAgentId = resolvePrimaryChatAgentId(
+          globalMainSessionKey,
+          globalDefaultAgentId || DEFAULT_AGENT_ID,
+        );
+        keyVariants.add(`agent:${primaryAgentId}:${sessionKey}`);
       }
       const lookup = async (search: string) =>
         await request<{

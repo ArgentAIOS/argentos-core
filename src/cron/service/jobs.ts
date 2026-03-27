@@ -34,10 +34,11 @@ export function assertSupportedJobSpec(job: Pick<CronJob, "sessionTarget" | "pay
     job.payload.kind !== "agentTurn" &&
     job.payload.kind !== "nudge" &&
     job.payload.kind !== "vipEmailScan" &&
-    job.payload.kind !== "slackSignalScan"
+    job.payload.kind !== "slackSignalScan" &&
+    job.payload.kind !== "workflowRun"
   ) {
     throw new Error(
-      'isolated cron jobs require payload.kind="agentTurn", "nudge", "vipEmailScan", or "slackSignalScan"',
+      'isolated cron jobs require payload.kind="agentTurn", "nudge", "vipEmailScan", "slackSignalScan", or "workflowRun"',
     );
   }
 }
@@ -278,6 +279,17 @@ function mergeCronPayload(existing: CronPayload, patch: CronPayloadPatch): CronP
     };
   }
 
+  if (patch.kind === "workflowRun") {
+    if (existing.kind !== "workflowRun") {
+      return buildPayloadFromPatch(patch);
+    }
+    return {
+      kind: "workflowRun",
+      workflowId: typeof patch.workflowId === "string" ? patch.workflowId : existing.workflowId,
+      triggerPayload: patch.triggerPayload ?? existing.triggerPayload,
+    };
+  }
+
   if (existing.kind !== "agentTurn") {
     return buildPayloadFromPatch(patch);
   }
@@ -402,6 +414,17 @@ function buildPayloadFromPatch(patch: CronPayloadPatch): CronPayload {
       emitAlerts: patch.emitAlerts,
       createTasks: patch.createTasks,
       accountId: patch.accountId,
+    };
+  }
+
+  if (patch.kind === "workflowRun") {
+    if (typeof patch.workflowId !== "string" || patch.workflowId.length === 0) {
+      throw new Error('cron.update payload.kind="workflowRun" requires workflowId');
+    }
+    return {
+      kind: "workflowRun",
+      workflowId: patch.workflowId,
+      triggerPayload: patch.triggerPayload,
     };
   }
 

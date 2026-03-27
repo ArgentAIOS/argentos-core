@@ -1,0 +1,192 @@
+{
+  "tool": "aos-neon",
+  "backend": "neon-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "database",
+    "surface": "sql-branch",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["connection_string", "query", "branch"],
+    "worker_visible_actions": [
+      "sql.query",
+      "sql.execute",
+      "branch.list",
+      "branch.create",
+      "branch.delete",
+      "project.info"
+    ],
+    "fields": [
+      {
+        "id": "connection_string",
+        "label": "Connection String",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "description": "PostgreSQL connection string for Neon database",
+        "placeholder": "postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/dbname",
+        "example": "postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/dbname"
+      },
+      {
+        "id": "query",
+        "label": "SQL Query",
+        "type": "string",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "SQL query or statement to execute",
+        "placeholder": "SELECT * FROM users WHERE id = $1",
+        "applies_to": ["sql.query", "sql.execute"]
+      },
+      {
+        "id": "branch",
+        "label": "Branch Name",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Neon branch name for operations (main branch is default)",
+        "placeholder": "dev",
+        "applies_to": ["branch.create", "branch.delete"]
+      }
+    ],
+    "commandDefaults": {
+      "sql.query": {
+        "selection_surface": "sql",
+        "limit": 100
+      },
+      "sql.execute": {
+        "selection_surface": "sql"
+      },
+      "branch.list": {
+        "selection_surface": "branch"
+      },
+      "branch.create": {
+        "selection_surface": "branch"
+      },
+      "branch.delete": {
+        "selection_surface": "branch"
+      },
+      "project.info": {
+        "selection_surface": "project"
+      }
+    },
+    "pickerHints": {
+      "branch": {
+        "kind": "branch",
+        "selection_surface": "branch",
+        "resource": "neon.branch",
+        "source_command": "branch.list",
+        "source_fields": ["id", "name", "current_state", "created_at"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Neon",
+    "category": "database",
+    "categories": ["database", "serverless-postgres"],
+    "resources": ["sql", "branch", "project"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["NEON_API_KEY", "NEON_CONNECTION_STRING"],
+    "interactive_setup": [
+      "Create a Neon API key at https://console.neon.tech/app/settings/api-keys.",
+      "Set NEON_API_KEY to the API key for branch management operations.",
+      "Copy the connection string from your Neon project dashboard.",
+      "Set NEON_CONNECTION_STRING to the full postgres:// connection string.",
+      "Set NEON_PROJECT_ID to the Neon project ID for branch management.",
+      "Optionally set NEON_BRANCH to scope SQL operations to a specific branch.",
+      "The connector uses the Neon API for branch management and the connection string for SQL queries."
+    ]
+  },
+  "commands": [
+    {
+      "id": "project.info",
+      "summary": "Read Neon project metadata",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "project",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "sql.query",
+      "summary": "Run a read-only SQL query",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "sql",
+      "action_class": "read"
+    },
+    {
+      "id": "sql.execute",
+      "summary": "Execute a SQL statement (DDL/DML)",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "sql",
+      "action_class": "write"
+    },
+    {
+      "id": "branch.list",
+      "summary": "List Neon branches",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "branch",
+      "action_class": "read"
+    },
+    {
+      "id": "branch.create",
+      "summary": "Create a Neon branch",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "branch",
+      "action_class": "write"
+    },
+    {
+      "id": "branch.delete",
+      "summary": "Delete a Neon branch",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "branch",
+      "action_class": "write"
+    }
+  ]
+}

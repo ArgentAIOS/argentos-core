@@ -1,0 +1,551 @@
+{
+  "tool": "aos-slack-workflow",
+  "backend": "slack-web-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "communication",
+    "surface": "channel-thread-message",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["channel_id", "thread_ts", "text", "emoji", "user_id"],
+    "worker_visible_actions": [
+      "message.post",
+      "message.update",
+      "message.delete",
+      "reaction.add",
+      "channel.list",
+      "channel.create",
+      "channel.archive",
+      "thread.reply",
+      "canvas.create",
+      "canvas.update",
+      "user.list",
+      "reminder.create",
+      "file.upload"
+    ],
+    "fields": [
+      {
+        "id": "channel_id",
+        "label": "Channel",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "pickerHint": "channel",
+        "applies_to": [
+          "message.post",
+          "message.update",
+          "message.delete",
+          "reaction.add",
+          "thread.reply",
+          "channel.archive",
+          "file.upload"
+        ],
+        "placeholder": "Select a channel..."
+      },
+      {
+        "id": "thread_ts",
+        "label": "Thread Timestamp",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["thread.reply", "message.update", "message.delete", "reaction.add"],
+        "placeholder": "1234567890.123456",
+        "description": "The ts value of the parent message. Required for thread replies and message updates."
+      },
+      {
+        "id": "message_type",
+        "label": "Message Type",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": false,
+        "applies_to": ["message.post", "thread.reply"],
+        "options": [
+          {
+            "value": "text",
+            "label": "Simple Text Message",
+            "description": "Supports basic Markdown (mrkdwn)"
+          },
+          {
+            "value": "blocks",
+            "label": "Block Kit",
+            "description": "Rich layout: text, buttons, form elements, dividers"
+          },
+          {
+            "value": "attachments",
+            "label": "Attachments",
+            "description": "Legacy rich message format with color sidebar"
+          }
+        ],
+        "default": "text"
+      },
+      {
+        "id": "text",
+        "label": "Message Text",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": true,
+        "expressionEnabled": true,
+        "rows": 6,
+        "applies_to": ["message.post", "message.update", "thread.reply"],
+        "placeholder": "Hello from ArgentOS",
+        "description": "The message body. Supports Slack mrkdwn formatting."
+      },
+      {
+        "id": "blocks_json",
+        "label": "Block Kit JSON",
+        "type": "json",
+        "renderAs": "json",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["message.post", "thread.reply"],
+        "showWhen": { "field": "message_type", "equals": "blocks" },
+        "placeholder": "[{\"type\": \"section\", \"text\": {\"type\": \"mrkdwn\", \"text\": \"Hello\"}}]",
+        "description": "Block Kit layout array. Use Slack Block Kit Builder to design."
+      },
+      {
+        "id": "attachments_json",
+        "label": "Attachments JSON",
+        "type": "json",
+        "renderAs": "json",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["message.post", "thread.reply"],
+        "showWhen": { "field": "message_type", "equals": "attachments" },
+        "placeholder": "[{\"color\": \"#36a64f\", \"text\": \"Attachment text\"}]",
+        "description": "Legacy attachments array. Prefer Block Kit for new messages."
+      },
+      {
+        "id": "emoji",
+        "label": "Reaction Emoji",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["reaction.add"],
+        "placeholder": "thumbsup",
+        "description": "Emoji name without colons (e.g. thumbsup, heart, rocket)."
+      },
+      {
+        "id": "user_id",
+        "label": "User",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "user",
+        "applies_to": ["reminder.create"],
+        "placeholder": "Select a user..."
+      },
+      {
+        "id": "channel_name",
+        "label": "Channel Name",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["channel.create"],
+        "placeholder": "new-channel-name",
+        "description": "Name for the new channel. Lowercase, no spaces, max 80 chars."
+      },
+      {
+        "id": "channel_private",
+        "label": "Private Channel",
+        "type": "boolean",
+        "renderAs": "boolean",
+        "required": false,
+        "expressionEnabled": false,
+        "applies_to": ["channel.create"],
+        "default": false,
+        "description": "Create as a private channel instead of public."
+      },
+      {
+        "id": "reminder_text",
+        "label": "Reminder Text",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["reminder.create"],
+        "placeholder": "Review the weekly report"
+      },
+      {
+        "id": "reminder_time",
+        "label": "Remind At",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["reminder.create"],
+        "placeholder": "in 30 minutes",
+        "description": "Natural language time (e.g. 'in 30 minutes', 'tomorrow at 9am') or Unix timestamp."
+      },
+      {
+        "id": "canvas_title",
+        "label": "Canvas Title",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["canvas.create", "canvas.update"],
+        "placeholder": "Meeting Notes — Q2 Planning"
+      },
+      {
+        "id": "canvas_content",
+        "label": "Canvas Content",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": true,
+        "expressionEnabled": true,
+        "rows": 10,
+        "applies_to": ["canvas.create", "canvas.update"],
+        "placeholder": "# Section heading\n\nContent goes here...",
+        "description": "Markdown content for the canvas document."
+      },
+      {
+        "id": "file_path",
+        "label": "File Path",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["file.upload"],
+        "placeholder": "/path/to/file.pdf",
+        "description": "Local path or URL of the file to upload."
+      },
+      {
+        "id": "file_title",
+        "label": "File Title",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["file.upload"],
+        "placeholder": "Quarterly Report"
+      },
+      {
+        "id": "options",
+        "label": "Options",
+        "type": "options_group",
+        "applies_to": ["message.post", "thread.reply"],
+        "children": [
+          {
+            "id": "unfurl_links",
+            "label": "Unfurl Links",
+            "type": "boolean",
+            "renderAs": "boolean",
+            "default": true,
+            "description": "Automatically expand URLs into rich previews."
+          },
+          {
+            "id": "unfurl_media",
+            "label": "Unfurl Media",
+            "type": "boolean",
+            "renderAs": "boolean",
+            "default": true,
+            "description": "Automatically expand media URLs (images, video)."
+          },
+          {
+            "id": "include_workflow_link",
+            "label": "Include Link to Workflow",
+            "type": "boolean",
+            "renderAs": "boolean",
+            "default": false,
+            "description": "Append a small footer link back to the originating workflow run."
+          },
+          {
+            "id": "reply_broadcast",
+            "label": "Also Send to Channel",
+            "type": "boolean",
+            "renderAs": "boolean",
+            "default": false,
+            "description": "When replying to a thread, also post the reply to the main channel."
+          }
+        ]
+      }
+    ],
+    "commandDefaults": {
+      "channel.list": {
+        "selection_surface": "channel",
+        "limit": 20
+      },
+      "user.list": {
+        "selection_surface": "user",
+        "limit": 20
+      },
+      "message.post": {
+        "selection_surface": "channel",
+        "args": ["SLACK_CHANNEL_ID"]
+      },
+      "thread.reply": {
+        "selection_surface": "thread",
+        "args": ["SLACK_CHANNEL_ID", "SLACK_THREAD_TS"]
+      },
+      "reaction.add": {
+        "selection_surface": "message",
+        "args": ["SLACK_CHANNEL_ID", "SLACK_THREAD_TS"]
+      }
+    },
+    "pickerHints": {
+      "channel": {
+        "kind": "channel",
+        "selection_surface": "channel",
+        "resource": "slack.channel",
+        "source_command": "channel.list",
+        "source_fields": ["id", "name", "is_private", "num_members", "topic"]
+      },
+      "user": {
+        "kind": "user",
+        "selection_surface": "user",
+        "resource": "slack.user",
+        "source_command": "user.list",
+        "source_fields": ["id", "name", "real_name", "email", "is_bot"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Slack Workflow",
+    "category": "communication",
+    "categories": ["communication", "messaging", "workflow-automation"],
+    "resources": ["message", "reaction", "channel", "thread", "canvas", "user", "reminder", "file"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["SLACK_BOT_TOKEN"],
+    "interactive_setup": [
+      "Create or install a Slack app for the target workspace.",
+      "Add SLACK_BOT_TOKEN in API Keys.",
+      "Grant bot scopes: channels:read, channels:manage, chat:write, reactions:write, users:read, files:write, reminders:write.",
+      "For canvas actions add canvases:write scope.",
+      "Set SLACK_CHANNEL_ID and SLACK_THREAD_TS to give worker flows stable channel and thread scope defaults.",
+      "Optional: add SLACK_APP_TOKEN for Socket Mode event ingestion."
+    ]
+  },
+  "events": [
+    {
+      "id": "message.received",
+      "resource": "message",
+      "summary": "Message posted in channel",
+      "delivery": "stream",
+      "configFields": [
+        {
+          "id": "event_channel_id",
+          "label": "Channel Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "pickerHint": "channel",
+          "description": "Only trigger for messages in this channel. Leave empty for all channels."
+        },
+        {
+          "id": "event_ignore_bots",
+          "label": "Ignore Bot Messages",
+          "type": "boolean",
+          "renderAs": "boolean",
+          "default": true,
+          "description": "Skip messages from bots and integrations."
+        }
+      ]
+    },
+    {
+      "id": "reaction.added",
+      "resource": "reaction",
+      "summary": "Reaction added to message",
+      "delivery": "stream",
+      "configFields": [
+        {
+          "id": "event_emoji_filter",
+          "label": "Emoji Filter",
+          "type": "text",
+          "renderAs": "text",
+          "required": false,
+          "placeholder": "white_check_mark",
+          "description": "Only trigger for this emoji. Leave empty for any reaction."
+        }
+      ]
+    },
+    {
+      "id": "channel.created",
+      "resource": "channel",
+      "summary": "New channel created",
+      "delivery": "webhook"
+    },
+    {
+      "id": "member.joined",
+      "resource": "channel",
+      "summary": "Member joined a channel",
+      "delivery": "stream",
+      "configFields": [
+        {
+          "id": "event_channel_id",
+          "label": "Channel Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "pickerHint": "channel",
+          "description": "Only trigger for joins in this channel."
+        }
+      ]
+    },
+    {
+      "id": "file.shared",
+      "resource": "file",
+      "summary": "File shared in channel",
+      "delivery": "stream",
+      "configFields": [
+        {
+          "id": "event_channel_id",
+          "label": "Channel Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "pickerHint": "channel",
+          "description": "Only trigger for files shared in this channel."
+        }
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and backend readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "message.post",
+      "summary": "Post a message to a Slack channel",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "message",
+      "action_class": "write"
+    },
+    {
+      "id": "message.update",
+      "summary": "Update an existing Slack message",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "message",
+      "action_class": "write"
+    },
+    {
+      "id": "message.delete",
+      "summary": "Delete a Slack message",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "message",
+      "action_class": "write"
+    },
+    {
+      "id": "reaction.add",
+      "summary": "Add a reaction emoji to a Slack message",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "reaction",
+      "action_class": "write"
+    },
+    {
+      "id": "channel.list",
+      "summary": "List Slack channels visible to the bot",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "channel",
+      "action_class": "read"
+    },
+    {
+      "id": "channel.create",
+      "summary": "Create a new Slack channel",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "channel",
+      "action_class": "write"
+    },
+    {
+      "id": "channel.archive",
+      "summary": "Archive a Slack channel",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "channel",
+      "action_class": "write"
+    },
+    {
+      "id": "thread.reply",
+      "summary": "Reply to a Slack thread",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "thread",
+      "action_class": "write"
+    },
+    {
+      "id": "canvas.create",
+      "summary": "Create a Slack canvas document",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "canvas",
+      "action_class": "write"
+    },
+    {
+      "id": "canvas.update",
+      "summary": "Update a Slack canvas document",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "canvas",
+      "action_class": "write"
+    },
+    {
+      "id": "user.list",
+      "summary": "List Slack workspace users",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "user",
+      "action_class": "read"
+    },
+    {
+      "id": "reminder.create",
+      "summary": "Create a Slack reminder for a user",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "reminder",
+      "action_class": "write"
+    },
+    {
+      "id": "file.upload",
+      "summary": "Upload a file to a Slack channel",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "file",
+      "action_class": "write"
+    }
+  ]
+}

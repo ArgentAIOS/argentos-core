@@ -14,6 +14,7 @@ import type { MemoryAdapter } from "../data/adapter.js";
 import type { Lesson } from "../memory/memu-types.js";
 import { getMemoryAdapter } from "../data/storage-factory.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { encodeForPrompt } from "../utils/toon-encoding.js";
 
 const log = createSubsystemLogger("gateway/sis-active-lessons");
 
@@ -293,24 +294,15 @@ export async function retrieveActiveLessons(params: {
  */
 export function formatLessonsForPrompt(lessons: ActiveLesson[]): string {
   if (lessons.length === 0) return "";
-
-  const lines: string[] = [
-    "[LESSONS_FROM_EXPERIENCE]",
-    "Based on past experience, remember these lessons:",
-    "",
-  ];
-
-  for (const lesson of lessons) {
-    let line = `- ${lesson.lesson}`;
-    if (lesson.context) {
-      line += ` (Context: ${lesson.context})`;
-    }
-    lines.push(line);
-  }
-
-  lines.push("");
-  lines.push("Apply these lessons where relevant. Do not repeat past mistakes.");
-  lines.push("[/LESSONS_FROM_EXPERIENCE]");
-
-  return lines.join("\n");
+  return encodeForPrompt(
+    {
+      lessons: lessons.map((l) => ({
+        lesson: l.lesson,
+        context: l.context,
+        confidence: l.confidence,
+        source: l.source,
+      })),
+    },
+    "LESSONS_FROM_EXPERIENCE",
+  );
 }

@@ -1,0 +1,2 @@
+"""ArgentOS CLI package namespace."""
+

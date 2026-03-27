@@ -1,0 +1,531 @@
+{
+  "tool": "aos-sendgrid",
+  "backend": "sendgrid-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "email-delivery",
+    "surface": "send-template-contact",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["to", "from", "subject", "body", "template_id"],
+    "worker_visible_actions": [
+      "email.send",
+      "email.send_template",
+      "contacts.list",
+      "contacts.add",
+      "contacts.search",
+      "lists.list",
+      "lists.create",
+      "lists.add_contacts",
+      "templates.list",
+      "templates.get",
+      "stats.global",
+      "stats.category"
+    ],
+    "fields": [
+      {
+        "id": "to",
+        "label": "To Email",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["email.send", "email.send_template"],
+        "placeholder": "recipient@example.com"
+      },
+      {
+        "id": "from",
+        "label": "From Email",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "placeholder": "noreply@yourdomain.com",
+        "description": "Must be a verified sender in SendGrid"
+      },
+      {
+        "id": "subject",
+        "label": "Subject",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["email.send"],
+        "placeholder": "Your order confirmation"
+      },
+      {
+        "id": "content_type",
+        "label": "Content Type",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "applies_to": ["email.send"],
+        "options": [
+          { "value": "text/html", "label": "HTML", "description": "Rich HTML email body" },
+          { "value": "text/plain", "label": "Plain Text", "description": "Plain text email body" }
+        ],
+        "default": "text/html"
+      },
+      {
+        "id": "body",
+        "label": "Email Body",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": true,
+        "expressionEnabled": true,
+        "rows": 8,
+        "applies_to": ["email.send"],
+        "placeholder": "<h1>Hello {{ $json.name }}</h1>"
+      },
+      {
+        "id": "template_id",
+        "label": "Template",
+        "type": "string",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "pickerHint": "template",
+        "applies_to": ["email.send_template"]
+      },
+      {
+        "id": "dynamic_template_data",
+        "label": "Template Variables",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["email.send_template"],
+        "placeholder": "{ \"name\": \"John\", \"order_id\": \"12345\" }",
+        "description": "JSON object of dynamic template variables"
+      },
+      {
+        "id": "list_id",
+        "label": "Contact List",
+        "type": "string",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "list",
+        "applies_to": ["lists.add_contacts", "contacts.list"]
+      },
+      {
+        "id": "contact_email",
+        "label": "Contact Email",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["contacts.add"],
+        "placeholder": "contact@example.com"
+      },
+      {
+        "id": "first_name",
+        "label": "First Name",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["contacts.add"]
+      },
+      {
+        "id": "last_name",
+        "label": "Last Name",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["contacts.add"]
+      },
+      {
+        "id": "search_query",
+        "label": "Search Query",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["contacts.search"],
+        "placeholder": "email LIKE '%example.com'",
+        "description": "SendGrid SGQL query syntax"
+      },
+      {
+        "id": "list_name",
+        "label": "List Name",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["lists.create"],
+        "placeholder": "Newsletter Subscribers"
+      },
+      {
+        "id": "contact_ids",
+        "label": "Contact IDs",
+        "type": "string",
+        "renderAs": "multiselect",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["lists.add_contacts"],
+        "description": "Contact IDs to add to the list"
+      },
+      {
+        "id": "category",
+        "label": "Stats Category",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["stats.category"],
+        "placeholder": "marketing"
+      },
+      {
+        "id": "reply_to",
+        "label": "Reply-To Email",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["email.send", "email.send_template"],
+        "placeholder": "support@yourdomain.com"
+      },
+      {
+        "id": "cc",
+        "label": "CC Recipients",
+        "type": "string",
+        "renderAs": "multiselect",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["email.send", "email.send_template"],
+        "placeholder": "cc@example.com"
+      },
+      {
+        "id": "bcc",
+        "label": "BCC Recipients",
+        "type": "string",
+        "renderAs": "multiselect",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["email.send", "email.send_template"],
+        "placeholder": "bcc@example.com"
+      },
+      {
+        "id": "send_at",
+        "label": "Schedule Send",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["email.send", "email.send_template"],
+        "description": "Unix timestamp for scheduled delivery (up to 72h in future)"
+      }
+    ],
+    "commandDefaults": {
+      "email.send": {
+        "selection_surface": "email",
+        "args": ["SENDGRID_FROM_EMAIL"]
+      },
+      "email.send_template": {
+        "selection_surface": "email",
+        "args": ["SENDGRID_TEMPLATE_ID"]
+      },
+      "contacts.list": {
+        "selection_surface": "contact",
+        "limit": 50
+      },
+      "contacts.add": {
+        "selection_surface": "contact"
+      },
+      "contacts.search": {
+        "selection_surface": "contact",
+        "limit": 50
+      },
+      "lists.list": {
+        "selection_surface": "list",
+        "limit": 50
+      },
+      "lists.create": {
+        "selection_surface": "list"
+      },
+      "lists.add_contacts": {
+        "selection_surface": "list",
+        "args": ["SENDGRID_LIST_ID"]
+      },
+      "templates.list": {
+        "selection_surface": "template",
+        "limit": 50
+      },
+      "templates.get": {
+        "selection_surface": "template",
+        "args": ["SENDGRID_TEMPLATE_ID"]
+      },
+      "stats.global": {
+        "selection_surface": "stats"
+      },
+      "stats.category": {
+        "selection_surface": "stats"
+      }
+    },
+    "pickerHints": {
+      "contact": {
+        "kind": "contact",
+        "selection_surface": "contact",
+        "resource": "sendgrid.contact",
+        "source_command": "contacts.list",
+        "source_fields": ["id", "email", "first_name", "last_name", "created_at", "updated_at"]
+      },
+      "list": {
+        "kind": "list",
+        "selection_surface": "list",
+        "resource": "sendgrid.list",
+        "source_command": "lists.list",
+        "source_fields": ["id", "name", "contact_count"]
+      },
+      "template": {
+        "kind": "template",
+        "selection_surface": "template",
+        "resource": "sendgrid.template",
+        "source_command": "templates.list",
+        "source_fields": ["id", "name", "generation", "updated_at"]
+      }
+    }
+  },
+  "connector": {
+    "label": "SendGrid",
+    "category": "email-delivery",
+    "categories": ["email-delivery", "marketing-publishing", "transactional-email"],
+    "resources": ["email", "contact", "list", "template", "stats"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["SENDGRID_API_KEY"],
+    "interactive_setup": [
+      "Create a SendGrid API key with Mail Send, Marketing, and Stats scopes.",
+      "Add SENDGRID_API_KEY in API Keys before enabling live reads and writes.",
+      "Optionally set SENDGRID_FROM_EMAIL to pin the default sender address.",
+      "Set SENDGRID_TEMPLATE_ID and SENDGRID_LIST_ID to give worker flows stable scope defaults.",
+      "The connector supports both transactional (email.send) and template (email.send_template) sends.",
+      "Stats commands are read-only and report delivery/open/click metrics."
+    ]
+  },
+  "events": [
+    {
+      "id": "email.delivered",
+      "label": "Email Delivered",
+      "description": "Triggered when an email is successfully delivered to the recipient's mail server",
+      "resource": "email",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "category_filter",
+          "label": "Category Filter",
+          "type": "string",
+          "renderAs": "multiselect",
+          "required": false,
+          "expressionEnabled": true,
+          "placeholder": "marketing, transactional",
+          "description": "Only trigger for emails in these categories"
+        }
+      ]
+    },
+    {
+      "id": "email.opened",
+      "label": "Email Opened",
+      "description": "Triggered when a recipient opens an email (requires open tracking enabled)",
+      "resource": "email",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "category_filter",
+          "label": "Category Filter",
+          "type": "string",
+          "renderAs": "multiselect",
+          "required": false,
+          "expressionEnabled": true,
+          "placeholder": "marketing",
+          "description": "Only trigger for emails in these categories"
+        }
+      ]
+    },
+    {
+      "id": "email.clicked",
+      "label": "Link Clicked",
+      "description": "Triggered when a recipient clicks a link in an email (requires click tracking enabled)",
+      "resource": "email",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "url_filter",
+          "label": "URL Filter",
+          "type": "string",
+          "renderAs": "text",
+          "required": false,
+          "expressionEnabled": true,
+          "placeholder": "https://example.com/*",
+          "description": "Only trigger for clicks on URLs matching this pattern"
+        }
+      ]
+    },
+    {
+      "id": "email.bounced",
+      "label": "Email Bounced",
+      "description": "Triggered when an email bounces (hard or soft bounce)",
+      "resource": "email",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "bounce_type",
+          "label": "Bounce Type",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "options": [
+            { "value": "all", "label": "All Bounces" },
+            {
+              "value": "hard",
+              "label": "Hard Bounce Only",
+              "description": "Permanent delivery failure"
+            },
+            {
+              "value": "soft",
+              "label": "Soft Bounce Only",
+              "description": "Temporary delivery failure"
+            }
+          ],
+          "default": "all"
+        }
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "id": "email.send",
+      "summary": "Send a transactional email via SendGrid",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "email",
+      "action_class": "write"
+    },
+    {
+      "id": "email.send_template",
+      "summary": "Send a dynamic template email via SendGrid",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "email",
+      "action_class": "write"
+    },
+    {
+      "id": "contacts.list",
+      "summary": "List SendGrid marketing contacts",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "contact",
+      "action_class": "read"
+    },
+    {
+      "id": "contacts.add",
+      "summary": "Add or update a marketing contact",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "contact",
+      "action_class": "write"
+    },
+    {
+      "id": "contacts.search",
+      "summary": "Search marketing contacts by query",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "contact",
+      "action_class": "read"
+    },
+    {
+      "id": "lists.list",
+      "summary": "List SendGrid contact lists",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "list",
+      "action_class": "read"
+    },
+    {
+      "id": "lists.create",
+      "summary": "Create a new contact list",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "list",
+      "action_class": "write"
+    },
+    {
+      "id": "lists.add_contacts",
+      "summary": "Add contacts to an existing list",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "list",
+      "action_class": "write"
+    },
+    {
+      "id": "templates.list",
+      "summary": "List SendGrid dynamic templates",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "template",
+      "action_class": "read"
+    },
+    {
+      "id": "templates.get",
+      "summary": "Get a SendGrid dynamic template by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "template",
+      "action_class": "read"
+    },
+    {
+      "id": "stats.global",
+      "summary": "Retrieve global email statistics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "stats",
+      "action_class": "read"
+    },
+    {
+      "id": "stats.category",
+      "summary": "Retrieve category-level email statistics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "stats",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

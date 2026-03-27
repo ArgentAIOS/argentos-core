@@ -1,0 +1,494 @@
+{
+  "tool": "aos-connectwise",
+  "backend": "connectwise-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "msp-platform",
+    "surface": "ticket-company-contact-project",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": false,
+    "workerFields": [
+      "board_id",
+      "ticket_id",
+      "company_id",
+      "contact_id",
+      "status",
+      "priority",
+      "summary",
+      "assignee"
+    ],
+    "worker_visible_actions": [
+      "ticket.list",
+      "ticket.get",
+      "company.list",
+      "company.get",
+      "contact.list",
+      "contact.get",
+      "project.list",
+      "project.get",
+      "board.list",
+      "status.list",
+      "member.list",
+      "configuration.list",
+      "configuration.get"
+    ],
+    "fields": [
+      {
+        "id": "board_id",
+        "label": "Board ID",
+        "required": false,
+        "applies_to": ["ticket.list", "ticket.create", "ticket.update", "status.list"],
+        "example": "1",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "ticket_id",
+        "label": "Ticket ID",
+        "required": false,
+        "applies_to": ["ticket.get", "ticket.update", "time_entry.create"],
+        "example": "12345",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "company_id",
+        "label": "Company ID",
+        "required": false,
+        "applies_to": [
+          "company.get",
+          "contact.list",
+          "ticket.list",
+          "ticket.create",
+          "configuration.list"
+        ],
+        "example": "250",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "contact_id",
+        "label": "Contact ID",
+        "required": false,
+        "applies_to": ["contact.get", "ticket.create"],
+        "example": "1001",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "status",
+        "label": "Status",
+        "required": false,
+        "applies_to": ["ticket.create", "ticket.update", "ticket.list"],
+        "example": "New",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "priority",
+        "label": "Priority",
+        "required": false,
+        "applies_to": ["ticket.create", "ticket.update", "ticket.list"],
+        "example": "Priority 1 - Critical",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "summary",
+        "label": "Summary",
+        "required": false,
+        "applies_to": ["ticket.create", "ticket.update"],
+        "example": "Server offline \u2014 client unable to access email",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "assignee",
+        "label": "Assignee",
+        "required": false,
+        "applies_to": ["ticket.create", "ticket.update"],
+        "example": "jbrashear",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      }
+    ],
+    "commandDefaults": {
+      "ticket.list": {
+        "selection_surface": "ticket",
+        "limit": 25,
+        "args": ["CW_BOARD_ID"]
+      },
+      "ticket.get": {
+        "selection_surface": "ticket",
+        "args": ["CW_TICKET_ID"]
+      },
+      "ticket.create": {
+        "selection_surface": "ticket",
+        "args": ["CW_BOARD_ID"],
+        "company_id": "CW_COMPANY_ID"
+      },
+      "ticket.update": {
+        "selection_surface": "ticket",
+        "args": ["CW_TICKET_ID"]
+      },
+      "company.list": {
+        "selection_surface": "company",
+        "limit": 25
+      },
+      "company.get": {
+        "selection_surface": "company",
+        "args": ["CW_COMPANY_ID"]
+      },
+      "company.create": {
+        "selection_surface": "company"
+      },
+      "contact.list": {
+        "selection_surface": "contact",
+        "limit": 25,
+        "args": ["CW_COMPANY_ID"]
+      },
+      "contact.get": {
+        "selection_surface": "contact",
+        "args": ["CW_CONTACT_ID"]
+      },
+      "contact.create": {
+        "selection_surface": "contact",
+        "args": ["CW_COMPANY_ID"]
+      },
+      "project.list": {
+        "selection_surface": "project",
+        "limit": 25
+      },
+      "project.get": {
+        "selection_surface": "project",
+        "args": ["CW_PROJECT_ID"]
+      },
+      "board.list": {
+        "selection_surface": "board",
+        "limit": 25
+      },
+      "status.list": {
+        "selection_surface": "status",
+        "args": ["CW_BOARD_ID"]
+      },
+      "member.list": {
+        "selection_surface": "member",
+        "limit": 25
+      },
+      "time_entry.create": {
+        "selection_surface": "time_entry",
+        "args": ["CW_TICKET_ID"]
+      },
+      "configuration.list": {
+        "selection_surface": "configuration",
+        "limit": 25
+      },
+      "configuration.get": {
+        "selection_surface": "configuration",
+        "args": ["CW_CONFIGURATION_ID"]
+      }
+    },
+    "pickerHints": {
+      "ticket": {
+        "kind": "ticket",
+        "selection_surface": "ticket",
+        "resource": "connectwise.ticket",
+        "source_command": "ticket.list",
+        "source_fields": [
+          "id",
+          "summary",
+          "status",
+          "priority",
+          "company",
+          "board",
+          "assignee",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "company": {
+        "kind": "company",
+        "selection_surface": "company",
+        "resource": "connectwise.company",
+        "source_command": "company.list",
+        "source_fields": ["id", "name", "identifier", "status", "type", "phone", "website"]
+      },
+      "contact": {
+        "kind": "contact",
+        "selection_surface": "contact",
+        "resource": "connectwise.contact",
+        "source_command": "contact.list",
+        "source_fields": ["id", "first_name", "last_name", "email", "phone", "company", "type"]
+      },
+      "project": {
+        "kind": "project",
+        "selection_surface": "project",
+        "resource": "connectwise.project",
+        "source_command": "project.list",
+        "source_fields": [
+          "id",
+          "name",
+          "status",
+          "company",
+          "manager",
+          "estimated_hours",
+          "actual_hours"
+        ]
+      },
+      "board": {
+        "kind": "board",
+        "selection_surface": "board",
+        "resource": "connectwise.board",
+        "source_command": "board.list",
+        "source_fields": ["id", "name", "location", "department", "project_flag"]
+      },
+      "member": {
+        "kind": "member",
+        "selection_surface": "member",
+        "resource": "connectwise.member",
+        "source_command": "member.list",
+        "source_fields": [
+          "id",
+          "identifier",
+          "first_name",
+          "last_name",
+          "email",
+          "title",
+          "office_email"
+        ]
+      },
+      "configuration": {
+        "kind": "configuration",
+        "selection_surface": "configuration",
+        "resource": "connectwise.configuration",
+        "source_command": "configuration.list",
+        "source_fields": ["id", "name", "type", "status", "company", "serial_number", "model"]
+      }
+    }
+  },
+  "connector": {
+    "label": "ConnectWise",
+    "category": "it-operations",
+    "categories": ["it-operations", "msp-platform", "ticketing-helpdesk", "crm-revenue"],
+    "resources": [
+      "ticket",
+      "company",
+      "contact",
+      "project",
+      "board",
+      "status",
+      "member",
+      "time_entry",
+      "configuration"
+    ]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["CW_COMPANY_ID_AUTH", "CW_PUBLIC_KEY", "CW_PRIVATE_KEY"],
+    "interactive_setup": [
+      "Create a ConnectWise Manage API member and generate public/private key pair under System > Members > API Members.",
+      "Add CW_COMPANY_ID_AUTH (your ConnectWise company identifier, e.g. 'mycompany'), CW_PUBLIC_KEY, and CW_PRIVATE_KEY in API Keys.",
+      "Set CW_SITE_URL to your ConnectWise instance base URL (e.g. 'na.myconnectwise.net').",
+      "Optionally set CW_BOARD_ID, CW_COMPANY_ID, CW_TICKET_ID for stable scope defaults.",
+      "ticket.create, ticket.update, company.create, contact.create, and time_entry.create are write actions \u2014 keep scaffolded until write workflows are approved.",
+      "The connector is live-read-first and will report API failures instead of masking them."
+    ]
+  },
+  "commands": [
+    {
+      "id": "ticket.list",
+      "summary": "List ConnectWise service tickets",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "ticket",
+      "action_class": "read"
+    },
+    {
+      "id": "ticket.get",
+      "summary": "Get a ConnectWise ticket by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "ticket",
+      "action_class": "read"
+    },
+    {
+      "id": "ticket.create",
+      "summary": "Create a ConnectWise service ticket",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "ticket",
+      "action_class": "write"
+    },
+    {
+      "id": "ticket.update",
+      "summary": "Update a ConnectWise service ticket",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "ticket",
+      "action_class": "write"
+    },
+    {
+      "id": "company.list",
+      "summary": "List ConnectWise companies",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "company",
+      "action_class": "read"
+    },
+    {
+      "id": "company.get",
+      "summary": "Get a ConnectWise company by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "company",
+      "action_class": "read"
+    },
+    {
+      "id": "company.create",
+      "summary": "Create a ConnectWise company",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "company",
+      "action_class": "write"
+    },
+    {
+      "id": "contact.list",
+      "summary": "List ConnectWise contacts",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "contact",
+      "action_class": "read"
+    },
+    {
+      "id": "contact.get",
+      "summary": "Get a ConnectWise contact by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "contact",
+      "action_class": "read"
+    },
+    {
+      "id": "contact.create",
+      "summary": "Create a ConnectWise contact",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "contact",
+      "action_class": "write"
+    },
+    {
+      "id": "project.list",
+      "summary": "List ConnectWise projects",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "project",
+      "action_class": "read"
+    },
+    {
+      "id": "project.get",
+      "summary": "Get a ConnectWise project by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "project",
+      "action_class": "read"
+    },
+    {
+      "id": "board.list",
+      "summary": "List ConnectWise service boards",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "board",
+      "action_class": "read"
+    },
+    {
+      "id": "status.list",
+      "summary": "List statuses for a ConnectWise board",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "status",
+      "action_class": "read"
+    },
+    {
+      "id": "member.list",
+      "summary": "List ConnectWise members",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "member",
+      "action_class": "read"
+    },
+    {
+      "id": "time_entry.create",
+      "summary": "Create a time entry on a ConnectWise ticket",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "time_entry",
+      "action_class": "write"
+    },
+    {
+      "id": "configuration.list",
+      "summary": "List ConnectWise configurations (managed devices/assets)",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "configuration",
+      "action_class": "read"
+    },
+    {
+      "id": "configuration.get",
+      "summary": "Get a ConnectWise configuration by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "configuration",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

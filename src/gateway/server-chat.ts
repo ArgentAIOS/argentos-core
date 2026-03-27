@@ -1,6 +1,10 @@
 import { normalizeVerboseLevel } from "../auto-reply/thinking.js";
 import { loadConfig } from "../config/config.js";
-import { type AgentEventPayload, getAgentRunContext } from "../infra/agent-events.js";
+import {
+  type AgentEventPayload,
+  getAgentRunContext,
+  recordAgentRunTiming,
+} from "../infra/agent-events.js";
 import { resolveHeartbeatVisibility } from "../infra/heartbeat-visibility.js";
 import { classifyToolActivity } from "./aevp-tool-classify.js";
 import { sanitizeAssistantDisplayText } from "./chat-sanitize.js";
@@ -229,12 +233,22 @@ export function createAgentEventHandler({
   clearAgentRunContext,
   toolEventRecipients,
 }: AgentEventHandlerOptions) {
-  const emitChatDelta = (sessionKey: string, clientRunId: string, seq: number, text: string) => {
+  const emitChatDelta = (
+    sessionKey: string,
+    clientRunId: string,
+    runId: string,
+    seq: number,
+    text: string,
+  ) => {
     chatRunState.buffers.set(clientRunId, text);
     const now = Date.now();
+    const hasSentDelta = chatRunState.deltaSentAt.has(clientRunId);
     const last = chatRunState.deltaSentAt.get(clientRunId) ?? 0;
-    if (now - last < 150) {
+    if (hasSentDelta && now - last < 150) {
       return;
+    }
+    if (!hasSentDelta) {
+      recordAgentRunTiming(runId, "firstVisibleDeltaAt", now);
     }
     chatRunState.deltaSentAt.set(clientRunId, now);
     const payload = {
@@ -430,7 +444,7 @@ export function createAgentEventHandler({
         typeof sanitizedData?.text === "string" &&
         sanitizedData.text.trim()
       ) {
-        emitChatDelta(sessionKey, clientRunId, evt.seq, sanitizedData.text);
+        emitChatDelta(sessionKey, clientRunId, evt.runId, evt.seq, sanitizedData.text);
       } else if (!isAborted && (lifecyclePhase === "end" || lifecyclePhase === "error")) {
         if (chatLink) {
           const finished = chatRunState.registry.shift(evt.runId);

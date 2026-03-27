@@ -1,0 +1,4731 @@
+/**
+ * WorkflowsWidget — Visual Multi-Agent Pipeline Builder (Sprint 2)
+ *
+ * React Flow canvas for building multi-agent workflows with
+ * five primitives: Trigger, Agent, Action, Gate, Output. Drag from the
+ * sidebar palette onto the canvas, connect nodes, and configure
+ * properties in the right dock panel.
+ *
+ * Sprint 2: Live canvas highlighting during runs, run history panel,
+ * PG persistence via gateway CRUD (localStorage fallback).
+ * Sprint 3: Error handling — retry badge on nodes, error display in
+ * run history, retry-from-step support.
+ */
+
+import {
+  ReactFlow,
+  Background,
+  MiniMap,
+  Controls,
+  addEdge,
+  useNodesState,
+  useEdgesState,
+  Handle,
+  Position,
+  type Node,
+  type Edge,
+  type Connection,
+  type NodeTypes,
+  type OnConnect,
+  type NodeProps,
+  BackgroundVariant,
+  ReactFlowProvider,
+  useReactFlow,
+} from "@xyflow/react";
+import { useState, useEffect, useCallback, useRef, useMemo, type DragEvent } from "react";
+import "@xyflow/react/dist/style.css";
+import { useGateway } from "../../hooks/useGateway";
+import { ConnectorNodePanel } from "../workflows/ConnectorNodePanel";
+import { CredentialSelector } from "../workflows/CredentialSelector";
+
+// ── Types ───────────────────────────────────────────────────────────
+
+interface FamilyMember {
+  id: string;
+  name: string;
+  role?: string;
+  team?: string;
+  status?: string;
+  alive?: boolean;
+  color?: string;
+}
+
+type TriggerTypeValue =
+  | "manual"
+  | "schedule"
+  | "webhook"
+  | "form_submitted"
+  | "record_created"
+  | "record_updated"
+  | "email_engaged"
+  | "payment_received"
+  | "appointment_booked"
+  | "ticket_created"
+  | "channel_message"
+  | "email_received"
+  | "task_completed"
+  | "workflow_done"
+  | "agent_event"
+  | "timer_elapsed";
+
+interface TriggerNodeData {
+  label: string;
+  triggerType: TriggerTypeValue;
+  cronExpression: string;
+  execState?: NodeExecState;
+  retryCount?: number;
+  /** Connector ID for service-connected triggers */
+  connectorId?: string;
+  /** Credential for authenticating with the trigger service */
+  credentialId?: string;
+  [key: string]: unknown;
+}
+
+interface AgentStepNodeData {
+  label: string;
+  agentId: string;
+  agentName: string;
+  agentColor: string;
+  rolePrompt: string;
+  timeout: number;
+  evidenceRequired: boolean;
+  execState?: NodeExecState;
+  retryCount?: number;
+  [key: string]: unknown;
+}
+
+interface OutputNodeData {
+  label: string;
+  target: "doc_panel" | "discord" | "email" | "webhook" | "variable";
+  format: string;
+  execState?: NodeExecState;
+  retryCount?: number;
+  [key: string]: unknown;
+}
+
+type ActionTypeValue =
+  | "send_message"
+  | "send_email"
+  | "save_to_docpanel"
+  | "webhook_call"
+  | "api_call"
+  | "run_script"
+  | "create_task"
+  | "store_memory"
+  | "store_knowledge"
+  | "generate_image"
+  | "generate_audio";
+
+interface ActionNodeData {
+  label: string;
+  actionType: ActionTypeValue;
+  config: Record<string, unknown>;
+  timeoutMs: number;
+  execState?: NodeExecState;
+  retryCount?: number;
+  [key: string]: unknown;
+}
+
+type GateTypeValue =
+  | "condition"
+  | "switch"
+  | "parallel"
+  | "join"
+  | "wait_duration"
+  | "wait_event"
+  | "loop"
+  | "error_handler"
+  | "sub_workflow"
+  | "approval";
+
+interface GateNodeData {
+  label: string;
+  gateType: GateTypeValue;
+  /** For condition gates: simple field/operator/value */
+  conditionField: string;
+  conditionOperator: string;
+  conditionValue: string;
+  /** For parallel/switch: number of output branches */
+  branchCount: number;
+  /** For loop: max iterations */
+  maxIterations: number;
+  /** For wait_duration: ms */
+  durationMs: number;
+  /** For approval gate */
+  approvalMessage: string;
+  showPreviousOutput: boolean;
+  timeoutMinutes: number;
+  timeoutAction: "deny" | "approve";
+  execState?: NodeExecState;
+  retryCount?: number;
+  [key: string]: unknown;
+}
+
+interface WorkflowDefinition {
+  id: string;
+  name: string;
+  nodes: Node[];
+  edges: Edge[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Run History Types ────────────────────────────────────────────────
+
+type RunStatus = "running" | "completed" | "failed" | "cancelled" | "waiting_approval";
+type StepStatus = "pending" | "running" | "completed" | "failed" | "skipped";
+
+interface RunStepRecord {
+  nodeId: string;
+  nodeName: string;
+  status: StepStatus;
+  durationMs: number;
+  error?: string;
+}
+
+interface RunRecord {
+  runId: string;
+  workflowId: string;
+  status: RunStatus;
+  startedAt: string;
+  finishedAt?: string;
+  durationMs: number;
+  steps: RunStepRecord[];
+}
+
+// ── Node Execution State (for highlighting) ─────────────────────────
+
+type NodeExecState = "active" | "completed" | "failed" | "pending" | "waiting";
+
+// ── Agent Filtering ─────────────────────────────────────────────────
+
+const EXCLUDED_IDS = new Set(["main", "dumbo", "argent"]);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+
+function isOperational(a: { id: string; role?: string }): boolean {
+  if (EXCLUDED_IDS.has(a.id.toLowerCase())) return false;
+  if (a.id.startsWith("test-") || a.id.startsWith("test_")) return false;
+  if (UUID_RE.test(a.id)) return false;
+  if (a.role === "think_tank_panelist") return false;
+  if (!a.role) return false;
+  return true;
+}
+
+// ── Storage (localStorage fallback) ─────────────────────────────────
+
+const STORAGE_KEY = "argent-workflows";
+
+function loadWorkflowsLocal(): WorkflowDefinition[] {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveWorkflowsLocal(workflows: WorkflowDefinition[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(workflows));
+  } catch {
+    // QuotaExceededError — localStorage is full. Clear stale data and retry once.
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(workflows));
+    } catch {
+      // Still full — silently fail. PG is the primary store anyway.
+      console.warn("[Workflows] localStorage quota exceeded, using PG only");
+    }
+  }
+}
+
+// ── CSS Keyframes (injected once) ───────────────────────────────────
+
+let stylesInjected = false;
+function injectWorkflowStyles(): void {
+  if (stylesInjected) return;
+  stylesInjected = true;
+  const style = document.createElement("style");
+  style.textContent = `
+    @keyframes wf-pulse-active {
+      0%   { box-shadow: 0 0 4px #00aaff; }
+      50%  { box-shadow: 0 0 14px #00aaff; }
+      100% { box-shadow: 0 0 4px #00aaff; }
+    }
+    @keyframes wf-pulse-waiting {
+      0%   { box-shadow: 0 0 4px #f59e0b; }
+      50%  { box-shadow: 0 0 14px #f59e0b; }
+      100% { box-shadow: 0 0 4px #f59e0b; }
+    }
+    .wf-node-active  { animation: wf-pulse-active 1.2s ease-in-out infinite; border-color: #00aaff !important; }
+    .wf-node-waiting { animation: wf-pulse-waiting 1.5s ease-in-out infinite; border-color: #f59e0b !important; }
+    .wf-node-completed { border-color: #00ffcc !important; }
+    .wf-node-failed    { border-color: #ff3d57 !important; }
+    /* Dark theme overrides for React Flow controls */
+    .react-flow__controls button { background: hsl(var(--card)); color: hsl(var(--foreground)); border-color: hsl(var(--border)); fill: hsl(var(--foreground)); }
+    .react-flow__controls button:hover { background: hsl(var(--muted)); }
+    .react-flow__controls button svg { fill: hsl(var(--foreground)); }
+  `;
+  document.head.appendChild(style);
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return rem > 0 ? `${m}m ${rem}s` : `${m}m`;
+}
+
+// ── Exec State Helpers ──────────────────────────────────────────────
+
+function execStateClass(state?: NodeExecState): string {
+  if (state === "active") return "wf-node-active";
+  if (state === "waiting") return "wf-node-waiting";
+  if (state === "completed") return "wf-node-completed";
+  if (state === "failed") return "wf-node-failed";
+  return "";
+}
+
+function ExecOverlay({ state }: { state?: NodeExecState }) {
+  if (state === "completed") {
+    return (
+      <div className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-[#00ffcc] flex items-center justify-center text-[8px] text-black font-bold z-20">
+        &#10003;
+      </div>
+    );
+  }
+  if (state === "failed") {
+    return (
+      <div className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-[#ff3d57] flex items-center justify-center text-[8px] text-white font-bold z-20">
+        &#10005;
+      </div>
+    );
+  }
+  if (state === "waiting") {
+    return (
+      <div className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center text-[8px] text-black font-bold z-20 animate-pulse">
+        &#9208;
+      </div>
+    );
+  }
+  return null;
+}
+
+function RetryBadge({ retryCount }: { retryCount?: number }) {
+  if (!retryCount || retryCount <= 0) return null;
+  return (
+    <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 rounded-full text-[8px] text-black font-bold flex items-center justify-center z-20">
+      {retryCount}
+    </div>
+  );
+}
+
+// ── HelpTip Component ───────────────────────────────────────────────
+
+function HelpTip({ text }: { text: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="relative inline-flex">
+      <button
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onClick={() => setShow(!show)}
+        className="w-4 h-4 rounded-full bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] text-[10px] flex items-center justify-center hover:bg-[hsl(var(--primary))]/20 hover:text-[hsl(var(--primary))] transition-colors cursor-help"
+      >
+        ?
+      </button>
+      {show && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 w-56 p-2.5 rounded-lg bg-[hsl(var(--card))] border border-[hsl(var(--border))] shadow-lg text-[11px] text-[hsl(var(--foreground))] leading-relaxed">
+          {text}
+        </div>
+      )}
+    </span>
+  );
+}
+
+// ── Tool Picker Component ───────────────────────────────────────────
+
+const AVAILABLE_TOOLS = [
+  { id: "web_search", name: "Web Search", desc: "Search the internet", category: "Research" },
+  {
+    id: "web_fetch",
+    name: "Read Web Pages",
+    desc: "Read and extract content from URLs",
+    category: "Research",
+  },
+  {
+    id: "memory_store",
+    name: "Save to Memory",
+    desc: "Remember facts for later",
+    category: "Memory",
+  },
+  {
+    id: "memory_recall",
+    name: "Recall Memory",
+    desc: "Look up saved information",
+    category: "Memory",
+  },
+  {
+    id: "doc_panel",
+    name: "Create Document",
+    desc: "Write to the document panel",
+    category: "Documents",
+  },
+  {
+    id: "tasks",
+    name: "Manage Tasks",
+    desc: "Create, update, or complete tasks",
+    category: "Tasks",
+  },
+  {
+    id: "message",
+    name: "Send Message",
+    desc: "Post to Discord, Slack, etc.",
+    category: "Communication",
+  },
+  {
+    id: "image_generation",
+    name: "Generate Images",
+    desc: "Create images with AI",
+    category: "Media",
+  },
+  { id: "tts", name: "Text to Speech", desc: "Generate audio from text", category: "Media" },
+  {
+    id: "family",
+    name: "Family Agents",
+    desc: "Communicate with other agents",
+    category: "Agents",
+  },
+  {
+    id: "sessions_spawn",
+    name: "Spawn Sub-agent",
+    desc: "Create a new agent session",
+    category: "Agents",
+  },
+  {
+    id: "knowledge_search",
+    name: "Search Knowledge",
+    desc: "Query the knowledge library",
+    category: "Knowledge",
+  },
+  { id: "exec", name: "Run Commands", desc: "Execute terminal commands", category: "System" },
+  { id: "read", name: "Read Files", desc: "Read files from disk", category: "System" },
+  { id: "write", name: "Write Files", desc: "Write files to disk", category: "System" },
+  { id: "browser", name: "Browse Web", desc: "Control a web browser", category: "System" },
+] as const;
+
+function ToolPicker({
+  selected,
+  onChange,
+  mode,
+}: {
+  selected: string[];
+  onChange: (tools: string[]) => void;
+  mode: "allow" | "deny";
+}) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const filtered = AVAILABLE_TOOLS.filter(
+    (t) =>
+      !selected.includes(t.id) &&
+      (t.name.toLowerCase().includes(search.toLowerCase()) || t.id.includes(search.toLowerCase())),
+  );
+
+  return (
+    <div className="space-y-2">
+      <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wider flex items-center gap-1">
+        {mode === "allow" ? "What can this agent use?" : "What should this agent NOT use?"}
+        <HelpTip
+          text={
+            mode === "allow"
+              ? "Pick the tools this agent is allowed to use. If none are selected, the agent can use all its default tools."
+              : "Pick tools to block. The agent can use everything except these."
+          }
+        />
+      </label>
+
+      {/* Selected tags */}
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {selected.map((id) => {
+            const tool = AVAILABLE_TOOLS.find((t) => t.id === id);
+            return (
+              <span
+                key={id}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))] border border-[hsl(var(--primary))]/30"
+              >
+                {tool?.name ?? id}
+                <button
+                  onClick={() => onChange(selected.filter((s) => s !== id))}
+                  className="hover:text-red-400"
+                >
+                  &#215;
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Search + dropdown */}
+      <input
+        type="text"
+        value={search}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Search tools..."
+        className="w-full px-3 py-2 rounded-lg bg-[hsl(var(--background))] border border-[hsl(var(--border))] text-xs text-[hsl(var(--foreground))] focus:outline-none focus:border-[hsl(var(--primary))] transition-colors"
+      />
+      {open && filtered.length > 0 && (
+        <div className="max-h-40 overflow-y-auto rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))]">
+          {filtered.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => {
+                onChange([...selected, t.id]);
+                setSearch("");
+                setOpen(false);
+              }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-[hsl(var(--muted))] transition-colors"
+            >
+              <span className="font-medium text-[hsl(var(--foreground))]">{t.name}</span>
+              <span className="text-[hsl(var(--muted-foreground))] ml-2">{t.desc}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Trigger Type Definitions ────────────────────────────────────────
+
+const TRIGGER_TYPES: Array<{ value: TriggerTypeValue; label: string; icon: string }> = [
+  { value: "manual", label: "Manual (click Run)", icon: "\uD83D\uDD18" },
+  { value: "schedule", label: "Schedule (runs on a timer)", icon: "\u23F0" },
+  { value: "webhook", label: "Webhook (another app triggers it)", icon: "\uD83D\uDD17" },
+  { value: "form_submitted", label: "Form Submitted", icon: "\uD83D\uDCDD" },
+  { value: "record_created", label: "New Database Record", icon: "\uD83D\uDDC4\uFE0F" },
+  { value: "record_updated", label: "Database Record Changed", icon: "\uD83D\uDD04" },
+  { value: "email_engaged", label: "Email Opened or Clicked", icon: "\uD83D\uDCEC" },
+  { value: "payment_received", label: "Payment Received", icon: "\uD83D\uDCB0" },
+  { value: "appointment_booked", label: "Appointment Booked", icon: "\uD83D\uDCC5" },
+  { value: "ticket_created", label: "New Support Ticket", icon: "\uD83C\uDFAB" },
+  { value: "channel_message", label: "Chat Message Received", icon: "\uD83D\uDCAC" },
+  { value: "email_received", label: "Email Received", icon: "\uD83D\uDCE7" },
+  { value: "task_completed", label: "Task Completed", icon: "\u2705" },
+  { value: "workflow_done", label: "Another Workflow Finished", icon: "\uD83D\uDD17" },
+  { value: "agent_event", label: "Agent Had an Insight", icon: "\uD83D\uDCA1" },
+  { value: "timer_elapsed", label: "Time Since Last Event", icon: "\u23F3" },
+];
+
+// ── Workflow Templates ──────────────────────────────────────────────
+
+interface WorkflowTemplate {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+}
+
+const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
+  {
+    id: "article-pipeline",
+    name: "Weekly Article Pipeline",
+    icon: "\uD83D\uDCDD",
+    description: "AI writes, reviews, and publishes a blog post weekly",
+  },
+  {
+    id: "daily-brief",
+    name: "Daily Intel Brief",
+    icon: "\uD83D\uDCF0",
+    description: "Morning research summary delivered to your inbox",
+  },
+  {
+    id: "email-drip",
+    name: "Email Drip Funnel",
+    icon: "\uD83D\uDCE7",
+    description: "Personalized email sequence for new signups",
+  },
+  {
+    id: "competitor-watch",
+    name: "Competitor Watch",
+    icon: "\uD83D\uDD0D",
+    description: "Weekly competitor analysis report",
+  },
+  {
+    id: "social-listening",
+    name: "Social Listening",
+    icon: "\uD83C\uDFA7",
+    description: "Monitor mentions and auto-draft responses",
+  },
+  {
+    id: "client-onboarding",
+    name: "Client Onboarding",
+    icon: "\uD83C\uDFE2",
+    description: "Automate new client setup",
+  },
+  {
+    id: "incident-response",
+    name: "Incident Response",
+    icon: "\uD83D\uDEA8",
+    description: "Triage, investigate, and report incidents",
+  },
+];
+
+// ── New Workflow Modal ──────────────────────────────────────────────
+
+function NewWorkflowModal({
+  open,
+  onClose,
+  onCreateBlank,
+  onSelectTemplate,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreateBlank: () => void;
+  onSelectTemplate: (template: WorkflowTemplate) => void;
+}) {
+  const [showTemplates, setShowTemplates] = useState(false);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-[500px] bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl p-6 shadow-2xl">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-semibold text-[hsl(var(--foreground))]">
+            Create New Workflow
+          </h2>
+          <button
+            onClick={() => {
+              onClose();
+              setShowTemplates(false);
+            }}
+            className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
+          >
+            &#10005;
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <button
+            onClick={() => {
+              onCreateBlank();
+              setShowTemplates(false);
+            }}
+            className="p-6 rounded-xl border border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/50 transition-colors text-left"
+          >
+            <div className="text-2xl mb-2">&#10024;</div>
+            <div className="text-sm font-semibold text-[hsl(var(--foreground))]">
+              Start from scratch
+            </div>
+            <div className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
+              Build your own workflow with drag and drop
+            </div>
+          </button>
+
+          <button
+            onClick={() => setShowTemplates(!showTemplates)}
+            className="p-6 rounded-xl border border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/50 transition-colors text-left"
+          >
+            <div className="text-2xl mb-2">&#128203;</div>
+            <div className="text-sm font-semibold text-[hsl(var(--foreground))]">
+              Use a template
+            </div>
+            <div className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
+              Start with a pre-built workflow and customize it
+            </div>
+          </button>
+        </div>
+
+        {showTemplates && (
+          <div className="mt-4 space-y-2 max-h-60 overflow-y-auto">
+            {WORKFLOW_TEMPLATES.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => {
+                  onSelectTemplate(t);
+                  setShowTemplates(false);
+                }}
+                className="w-full text-left p-3 rounded-lg border border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/30 transition-colors"
+              >
+                <div className="text-xs font-semibold text-[hsl(var(--foreground))]">
+                  {t.icon} {t.name}
+                </div>
+                <div className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                  {t.description}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Custom Nodes ────────────────────────────────────────────────────
+
+function TriggerNode({ data, selected }: NodeProps<Node<TriggerNodeData>>) {
+  return (
+    <div
+      className={`relative px-4 py-3 rounded-lg border min-w-[160px] transition-shadow ${execStateClass(data.execState)} ${
+        selected
+          ? "border-[hsl(var(--primary))] shadow-[0_0_12px_hsl(var(--primary)/0.4)]"
+          : data.execState
+            ? ""
+            : "border-[hsl(var(--border))]"
+      }`}
+      style={{ background: "hsl(var(--card))" }}
+    >
+      <ExecOverlay state={data.execState} />
+      <RetryBadge retryCount={data.retryCount} />
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-base">&#9889;</span>
+        <span className="text-xs font-semibold text-[hsl(var(--foreground))]">Trigger</span>
+      </div>
+      <div className="text-[10px] text-[hsl(var(--muted-foreground))]">
+        {data.triggerType === "schedule"
+          ? (() => {
+              const parsed = parseCronToSchedule(data.cronExpression);
+              if (parsed) {
+                return generateScheduleSummary(
+                  parsed.type,
+                  parsed.hour,
+                  parsed.minute,
+                  parsed.ampm,
+                  parsed.days,
+                  parsed.dayOfMonth,
+                  ((data as Record<string, unknown>).timezone as string) ?? "America/Chicago",
+                );
+              }
+              return data.cronExpression || "No schedule";
+            })()
+          : (TRIGGER_TYPES.find((t) => t.value === data.triggerType)?.label ?? data.triggerType)}
+      </div>
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!w-3 !h-3 !bg-[hsl(var(--primary))] !border-2 !border-[hsl(var(--card))]"
+      />
+    </div>
+  );
+}
+
+function AgentStepNode({ data, selected }: NodeProps<Node<AgentStepNodeData>>) {
+  const color = data.agentColor || "hsl(var(--primary))";
+  return (
+    <div
+      className={`relative px-4 py-3 rounded-lg border min-w-[180px] transition-shadow ${execStateClass(data.execState)} ${
+        selected ? "shadow-[0_0_12px_hsl(var(--primary)/0.4)]" : ""
+      }`}
+      style={{
+        background: "hsl(var(--card))",
+        borderColor: data.execState ? undefined : selected ? color : "hsl(var(--border))",
+        borderWidth: 1,
+      }}
+    >
+      <ExecOverlay state={data.execState} />
+      <RetryBadge retryCount={data.retryCount} />
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!w-3 !h-3 !bg-[hsl(var(--primary))] !border-2 !border-[hsl(var(--card))]"
+      />
+      <div className="flex items-center gap-2 mb-1">
+        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
+        <span className="text-xs font-semibold text-[hsl(var(--foreground))] truncate">
+          {data.agentName || "Select Agent"}
+        </span>
+      </div>
+      {data.rolePrompt && (
+        <div className="text-[10px] text-[hsl(var(--muted-foreground))] line-clamp-2">
+          {data.rolePrompt}
+        </div>
+      )}
+      {data.evidenceRequired && (
+        <div className="text-[10px] text-amber-400 mt-1">Evidence required</div>
+      )}
+      {/* Main output handle */}
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="output"
+        className="!w-3 !h-3 !bg-[hsl(var(--primary))] !border-2 !border-[hsl(var(--card))]"
+      />
+      {/* Sub-port handles — Model / Memory / Tools */}
+      <Handle
+        type="target"
+        position={Position.Bottom}
+        id="model"
+        className="!w-2.5 !h-2.5 !bg-violet-400 !border-2 !border-[hsl(var(--card))] !-bottom-1"
+        style={{ left: "25%" }}
+        title="Model"
+      />
+      <Handle
+        type="target"
+        position={Position.Bottom}
+        id="memory"
+        className="!w-2.5 !h-2.5 !bg-cyan-400 !border-2 !border-[hsl(var(--card))] !-bottom-1"
+        style={{ left: "50%" }}
+        title="Memory"
+      />
+      <Handle
+        type="target"
+        position={Position.Bottom}
+        id="tools"
+        className="!w-2.5 !h-2.5 !bg-amber-400 !border-2 !border-[hsl(var(--card))] !-bottom-1"
+        style={{ left: "75%" }}
+        title="Tools"
+      />
+      {/* Sub-port labels */}
+      <div className="absolute -bottom-4 left-0 right-0 flex justify-between px-4 pointer-events-none">
+        <span className="text-[7px] text-violet-400 font-medium" style={{ marginLeft: "18%" }}>
+          M
+        </span>
+        <span className="text-[7px] text-cyan-400 font-medium">K</span>
+        <span className="text-[7px] text-amber-400 font-medium" style={{ marginRight: "18%" }}>
+          T
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Sub-Port Node Types (Model / Memory / Tool) ──────────────────
+
+interface SubPortNodeData {
+  subPortType: "model_provider" | "memory_source" | "tool_grant";
+  label: string;
+  config: Record<string, unknown>;
+  execState?: string;
+}
+
+function ModelProviderNode({ data, selected }: NodeProps<Node<SubPortNodeData>>) {
+  const model = (data.config?.model as string) || "Select model...";
+  const provider = (data.config?.provider as string) || "";
+  return (
+    <div
+      className={`relative px-3 py-2 rounded-lg border min-w-[140px] transition-shadow ${
+        selected ? "shadow-[0_0_10px_rgba(139,92,246,0.4)]" : ""
+      }`}
+      style={{
+        background: "hsl(var(--card))",
+        borderColor: selected ? "#8b5cf6" : "hsl(var(--border))",
+        borderWidth: 1,
+        borderStyle: "dashed",
+      }}
+    >
+      <Handle
+        type="source"
+        position={Position.Top}
+        className="!w-2.5 !h-2.5 !bg-violet-400 !border-2 !border-[hsl(var(--card))]"
+      />
+      <div className="flex items-center gap-1.5 mb-0.5">
+        <span className="text-xs">🧠</span>
+        <span className="text-[10px] font-semibold text-violet-400 uppercase tracking-wider">
+          Model
+        </span>
+      </div>
+      <div className="text-[11px] text-[hsl(var(--foreground))] font-medium truncate">{model}</div>
+      {provider && <div className="text-[9px] text-[hsl(var(--muted-foreground))]">{provider}</div>}
+    </div>
+  );
+}
+
+function MemorySourceNode({ data, selected }: NodeProps<Node<SubPortNodeData>>) {
+  const sourceType = (data.config?.sourceType as string) || "knowledge_collection";
+  const label = data.label || sourceType.replace(/_/g, " ");
+  return (
+    <div
+      className={`relative px-3 py-2 rounded-lg border min-w-[140px] transition-shadow ${
+        selected ? "shadow-[0_0_10px_rgba(34,211,238,0.4)]" : ""
+      }`}
+      style={{
+        background: "hsl(var(--card))",
+        borderColor: selected ? "#22d3ee" : "hsl(var(--border))",
+        borderWidth: 1,
+        borderStyle: "dashed",
+      }}
+    >
+      <Handle
+        type="source"
+        position={Position.Top}
+        className="!w-2.5 !h-2.5 !bg-cyan-400 !border-2 !border-[hsl(var(--card))]"
+      />
+      <div className="flex items-center gap-1.5 mb-0.5">
+        <span className="text-xs">📚</span>
+        <span className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider">
+          Memory
+        </span>
+      </div>
+      <div className="text-[11px] text-[hsl(var(--foreground))] font-medium truncate">{label}</div>
+      <div className="text-[9px] text-[hsl(var(--muted-foreground))]">
+        {sourceType.replace(/_/g, " ")}
+      </div>
+    </div>
+  );
+}
+
+function ToolGrantNode({ data, selected }: NodeProps<Node<SubPortNodeData>>) {
+  const toolName =
+    (data.config?.connectorId as string) || (data.config?.toolName as string) || "Select tool...";
+  const grantType = (data.config?.grantType as string) || "connector";
+  return (
+    <div
+      className={`relative px-3 py-2 rounded-lg border min-w-[140px] transition-shadow ${
+        selected ? "shadow-[0_0_10px_rgba(251,191,36,0.4)]" : ""
+      }`}
+      style={{
+        background: "hsl(var(--card))",
+        borderColor: selected ? "#fbbf24" : "hsl(var(--border))",
+        borderWidth: 1,
+        borderStyle: "dashed",
+      }}
+    >
+      <Handle
+        type="source"
+        position={Position.Top}
+        className="!w-2.5 !h-2.5 !bg-amber-400 !border-2 !border-[hsl(var(--card))]"
+      />
+      <div className="flex items-center gap-1.5 mb-0.5">
+        <span className="text-xs">🔧</span>
+        <span className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider">
+          Tool
+        </span>
+      </div>
+      <div className="text-[11px] text-[hsl(var(--foreground))] font-medium truncate">
+        {toolName}
+      </div>
+      <div className="text-[9px] text-[hsl(var(--muted-foreground))]">{grantType}</div>
+    </div>
+  );
+}
+
+function OutputNode({ data, selected }: NodeProps<Node<OutputNodeData>>) {
+  const targetLabels: Record<string, string> = {
+    doc_panel: "DocPanel",
+    discord: "Discord",
+    email: "Email",
+    webhook: "Webhook",
+    variable: "Variable",
+  };
+  return (
+    <div
+      className={`relative px-4 py-3 rounded-lg border min-w-[160px] transition-shadow ${execStateClass(data.execState)} ${
+        selected
+          ? "border-[hsl(var(--primary))] shadow-[0_0_12px_hsl(var(--primary)/0.4)]"
+          : data.execState
+            ? ""
+            : "border-[hsl(var(--border))]"
+      }`}
+      style={{ background: "hsl(var(--card))" }}
+    >
+      <ExecOverlay state={data.execState} />
+      <RetryBadge retryCount={data.retryCount} />
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!w-3 !h-3 !bg-[hsl(var(--primary))] !border-2 !border-[hsl(var(--card))]"
+      />
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-base">&#128228;</span>
+        <span className="text-xs font-semibold text-[hsl(var(--foreground))]">Output</span>
+      </div>
+      <div className="text-[10px] text-[hsl(var(--muted-foreground))]">
+        {targetLabels[data.target] || data.target}
+      </div>
+    </div>
+  );
+}
+
+const ACTION_ICONS: Record<ActionTypeValue, string> = {
+  send_message: "\uD83D\uDCAC",
+  send_email: "\u2709\uFE0F",
+  save_to_docpanel: "\uD83D\uDCC4",
+  webhook_call: "\uD83C\uDF10",
+  api_call: "\uD83D\uDD17",
+  run_script: "\u25B6\uFE0F",
+  create_task: "\u2705",
+  store_memory: "\uD83E\uDDE0",
+  store_knowledge: "\uD83D\uDCDA",
+  generate_image: "\uD83D\uDDBC\uFE0F",
+  generate_audio: "\uD83C\uDFA7",
+};
+
+const ACTION_LABELS: Record<ActionTypeValue, string> = {
+  send_message: "Send Message",
+  send_email: "Send Email",
+  save_to_docpanel: "Save to DocPanel",
+  webhook_call: "Webhook Call",
+  api_call: "API Call",
+  run_script: "Run Script",
+  create_task: "Create Task",
+  store_memory: "Store Memory",
+  store_knowledge: "Store Knowledge",
+  generate_image: "Generate Image",
+  generate_audio: "Generate Audio",
+};
+
+function ActionNode({ data, selected }: NodeProps<Node<ActionNodeData>>) {
+  const icon = ACTION_ICONS[data.actionType] || "\u2699\uFE0F";
+  const label = ACTION_LABELS[data.actionType] || data.actionType;
+  return (
+    <div
+      className={`relative px-4 py-3 rounded-lg border min-w-[170px] transition-shadow ${execStateClass(data.execState)} ${
+        selected ? "shadow-[0_0_12px_rgba(255,171,0,0.4)]" : ""
+      }`}
+      style={{
+        background: "hsl(var(--card))",
+        borderColor: data.execState ? undefined : selected ? "#ffab00" : "hsl(var(--border))",
+        borderWidth: 1,
+      }}
+    >
+      <ExecOverlay state={data.execState} />
+      <RetryBadge retryCount={data.retryCount} />
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!w-3 !h-3 !bg-[#ffab00] !border-2 !border-[hsl(var(--card))]"
+      />
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-sm">{icon}</span>
+        <span className="text-xs font-semibold text-[hsl(var(--foreground))]">Action</span>
+      </div>
+      <div className="text-[10px] text-[#ffab00] font-medium">{label}</div>
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!w-3 !h-3 !bg-[#ffab00] !border-2 !border-[hsl(var(--card))]"
+      />
+    </div>
+  );
+}
+
+const GATE_LABELS: Record<GateTypeValue, string> = {
+  condition: "Condition",
+  switch: "Switch",
+  parallel: "Parallel",
+  join: "Join",
+  wait_duration: "Wait",
+  wait_event: "Wait Event",
+  loop: "Loop",
+  error_handler: "Error Handler",
+  sub_workflow: "Sub-Workflow",
+  approval: "Approval",
+};
+
+const GATE_ICONS: Record<GateTypeValue, string> = {
+  condition: "\u2753",
+  switch: "\uD83D\uDD00",
+  parallel: "\u2194\uFE0F",
+  join: "\u2935\uFE0F",
+  wait_duration: "\u23F3",
+  wait_event: "\uD83D\uDD14",
+  loop: "\uD83D\uDD01",
+  error_handler: "\uD83D\uDEE1\uFE0F",
+  sub_workflow: "\uD83D\uDCC2",
+  approval: "\u23F8\uFE0F",
+};
+
+/** Number of output handles for each gate type */
+function gateOutputCount(gateType: GateTypeValue, branchCount: number): number {
+  switch (gateType) {
+    case "condition":
+      return 2;
+    case "switch":
+    case "parallel":
+      return Math.max(2, branchCount);
+    default:
+      return 1;
+  }
+}
+
+/** Whether this gate type accepts multiple inputs (join) */
+function gateMultiInput(gateType: GateTypeValue): boolean {
+  return gateType === "join";
+}
+
+function GateNode({ data, selected }: NodeProps<Node<GateNodeData>>) {
+  const label = GATE_LABELS[data.gateType] || data.gateType;
+  const icon = GATE_ICONS[data.gateType] || "\u25C6";
+  const outputs = gateOutputCount(data.gateType, data.branchCount ?? 2);
+  const multiIn = gateMultiInput(data.gateType);
+
+  const outputLabels: string[] = [];
+  if (data.gateType === "condition") {
+    outputLabels.push("true", "false");
+  } else if (data.gateType === "loop") {
+    outputLabels.push("exit");
+  }
+
+  const execBorder =
+    data.execState === "waiting"
+      ? "#f59e0b"
+      : data.execState === "active"
+        ? "#00aaff"
+        : data.execState === "completed"
+          ? "#00ffcc"
+          : data.execState === "failed"
+            ? "#ff3d57"
+            : undefined;
+
+  return (
+    <div
+      className={`relative transition-shadow ${execStateClass(data.execState)} ${
+        selected ? "drop-shadow-[0_0_12px_rgba(0,204,204,0.5)]" : ""
+      }`}
+      style={{ width: 140, height: 90 }}
+    >
+      <ExecOverlay state={data.execState} />
+      <RetryBadge retryCount={data.retryCount} />
+      {/* Diamond shape */}
+      <div
+        className="absolute inset-0 border-2"
+        style={{
+          background: "hsl(var(--card))",
+          borderColor: execBorder ?? (selected ? "#00cccc" : "hsl(var(--border))"),
+          clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
+        }}
+      />
+      {/* Content centered inside diamond */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+        <span className="text-sm leading-none">
+          {data.execState === "waiting" ? "\u23F8\uFE0F" : icon}
+        </span>
+        <span
+          className={`text-[10px] font-semibold mt-0.5 ${
+            data.execState === "waiting" ? "text-amber-400" : "text-[#00cccc]"
+          }`}
+        >
+          {data.execState === "waiting" ? "Waiting..." : label}
+        </span>
+      </div>
+
+      {/* Input handle(s) */}
+      {multiIn ? (
+        <>
+          <Handle
+            type="target"
+            position={Position.Top}
+            id="in-0"
+            className="!w-3 !h-3 !bg-[#00cccc] !border-2 !border-[hsl(var(--card))]"
+            style={{ left: "35%" }}
+          />
+          <Handle
+            type="target"
+            position={Position.Top}
+            id="in-1"
+            className="!w-3 !h-3 !bg-[#00cccc] !border-2 !border-[hsl(var(--card))]"
+            style={{ left: "65%" }}
+          />
+        </>
+      ) : (
+        <Handle
+          type="target"
+          position={Position.Top}
+          className="!w-3 !h-3 !bg-[#00cccc] !border-2 !border-[hsl(var(--card))]"
+        />
+      )}
+
+      {/* Output handles - spread across bottom */}
+      {Array.from({ length: outputs }, (_, i) => {
+        const pct = outputs === 1 ? 50 : 20 + (60 * i) / (outputs - 1);
+        return (
+          <Handle
+            key={`out-${i}`}
+            type="source"
+            position={Position.Bottom}
+            id={`out-${i}`}
+            className="!w-3 !h-3 !bg-[#00cccc] !border-2 !border-[hsl(var(--card))]"
+            style={{ left: `${pct}%` }}
+          />
+        );
+      })}
+      {/* Output labels for condition branches */}
+      {outputLabels.length > 0 && (
+        <div className="absolute -bottom-3.5 left-0 right-0 flex justify-between px-2 pointer-events-none z-10">
+          {outputLabels.map((lbl) => (
+            <span key={lbl} className="text-[8px] text-[#00cccc]/70 font-medium">
+              {lbl}
+            </span>
+          ))}
+        </div>
+      )}
+      {/* Loop body handle on the right side */}
+      {data.gateType === "loop" && (
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="loop-body"
+          className="!w-3 !h-3 !bg-[#00cccc] !border-2 !border-[hsl(var(--card))]"
+        />
+      )}
+    </div>
+  );
+}
+
+const nodeTypes: NodeTypes = {
+  trigger: TriggerNode,
+  agentStep: AgentStepNode,
+  output: OutputNode,
+  action: ActionNode,
+  gate: GateNode,
+  // Sub-port nodes (connect to Agent node's M/K/T handles)
+  modelProvider: ModelProviderNode,
+  memorySource: MemorySourceNode,
+  toolGrant: ToolGrantNode,
+};
+
+// ── Node Kind Label ──────────────────────────────────────────────────
+
+function nodeKindLabel(node: Node): string {
+  switch (node.type) {
+    case "trigger":
+      return "Trigger Node";
+    case "agentStep":
+      return "Agent Step";
+    case "action":
+      return "Action Node";
+    case "gate":
+      return "Gate / Control Flow";
+    case "output":
+      return "Output Node";
+    default:
+      return node.type || "Node";
+  }
+}
+
+// ── Right Dock Property Forms ────────────────────────────────────────
+
+const DOCK_INPUT =
+  "w-full px-2.5 py-2 rounded-lg text-xs bg-[hsl(var(--background))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] focus:outline-none focus:border-[hsl(var(--primary))] transition-colors";
+const DOCK_LABEL =
+  "text-xs font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wider";
+
+type ScheduleType = "daily" | "weekly" | "monthly" | "custom";
+
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const DOW_CRON = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
+const MINUTE_OPTIONS = ["00", "15", "30", "45"] as const;
+const TIMEZONE_OPTIONS = [
+  { value: "America/Chicago", label: "Central (CST/CDT)" },
+  { value: "America/New_York", label: "Eastern (EST/EDT)" },
+  { value: "America/Los_Angeles", label: "Pacific (PST/PDT)" },
+  { value: "America/Denver", label: "Mountain (MST/MDT)" },
+  { value: "UTC", label: "UTC" },
+] as const;
+
+/**
+ * Parse an existing cron expression into schedule builder state.
+ * Returns null if the expression can't be parsed into a visual mode.
+ */
+function parseCronToSchedule(cron: string): {
+  type: ScheduleType;
+  hour: number;
+  minute: string;
+  ampm: "AM" | "PM";
+  days: number[];
+  dayOfMonth: number;
+} | null {
+  if (!cron || !cron.trim()) return null;
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return null;
+
+  const [minStr, hourStr, dom, , dow] = parts;
+  const minute = minStr.padStart(2, "0");
+  const hour24 = parseInt(hourStr, 10);
+  if (isNaN(hour24)) return null;
+
+  const ampm: "AM" | "PM" = hour24 >= 12 ? "PM" : "AM";
+  const hour = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
+
+  // Weekly: dom=* dow!=*
+  if (dom === "*" && dow !== "*") {
+    const dayNames = dow.split(",");
+    const days = dayNames
+      .map((d) => DOW_CRON.indexOf(d.toUpperCase() as (typeof DOW_CRON)[number]))
+      .filter((i) => i >= 0);
+    if (days.length > 0) {
+      return { type: "weekly", hour, minute, ampm, days, dayOfMonth: 1 };
+    }
+  }
+
+  // Monthly: dom!=* dow=*
+  if (dom !== "*" && dow === "*") {
+    const dayOfMonth = parseInt(dom, 10);
+    if (!isNaN(dayOfMonth) && dayOfMonth >= 1 && dayOfMonth <= 31) {
+      return { type: "monthly", hour, minute, ampm, days: [], dayOfMonth };
+    }
+  }
+
+  // Daily: dom=* dow=*
+  if (dom === "*" && dow === "*") {
+    return { type: "daily", hour, minute, ampm, days: [], dayOfMonth: 1 };
+  }
+
+  return null;
+}
+
+function generateCronFromSchedule(
+  scheduleType: ScheduleType,
+  hour: number,
+  minute: string,
+  ampm: "AM" | "PM",
+  selectedDays: number[],
+  dayOfMonth: number,
+  rawCron: string,
+): string {
+  if (scheduleType === "custom") return rawCron;
+
+  let hour24 = hour % 12;
+  if (ampm === "PM") hour24 += 12;
+
+  switch (scheduleType) {
+    case "daily":
+      return `${parseInt(minute, 10)} ${hour24} * * *`;
+    case "weekly": {
+      if (selectedDays.length === 0) return "";
+      const days = selectedDays.map((d) => DOW_CRON[d]).join(",");
+      return `${parseInt(minute, 10)} ${hour24} * * ${days}`;
+    }
+    case "monthly":
+      return `${parseInt(minute, 10)} ${hour24} ${dayOfMonth} * *`;
+    default:
+      return rawCron;
+  }
+}
+
+function generateScheduleSummary(
+  scheduleType: ScheduleType,
+  hour: number,
+  minute: string,
+  ampm: "AM" | "PM",
+  selectedDays: number[],
+  dayOfMonth: number,
+  timezone: string,
+): string {
+  const timeStr = `${hour}:${minute} ${ampm}`;
+  const tz = TIMEZONE_OPTIONS.find((t) => t.value === timezone)?.label.split(" ")[0] ?? timezone;
+
+  switch (scheduleType) {
+    case "daily":
+      return `Every day at ${timeStr} ${tz}`;
+    case "weekly": {
+      if (selectedDays.length === 0) return "Select days";
+      if (selectedDays.length === 7) return `Every day at ${timeStr} ${tz}`;
+      const dayStr = selectedDays.map((d) => DAY_LABELS[d]).join(", ");
+      return `Every ${dayStr} at ${timeStr} ${tz}`;
+    }
+    case "monthly":
+      return `Monthly on the ${dayOfMonth}${ordinalSuffix(dayOfMonth)} at ${timeStr} ${tz}`;
+    case "custom":
+      return "Custom schedule expression";
+  }
+}
+
+function ordinalSuffix(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return s[(v - 20) % 10] || s[v] || s[0];
+}
+
+/** Map trigger provider selections to AOS connector IDs for credential binding */
+const TRIGGER_PROVIDER_CONNECTOR_MAP: Record<string, string> = {
+  stripe: "aos-stripe",
+  square: "aos-square",
+  paypal: "aos-paypal",
+  zendesk: "aos-zendesk",
+  freshdesk: "aos-freshdesk",
+  linear: "aos-linear",
+  jira: "aos-jira",
+  intercom: "aos-intercom",
+  calendly: "aos-calendly",
+  google_calendar: "aos-google",
+  outlook: "aos-m365",
+  cal_com: "aos-cal",
+  sendgrid: "aos-sendgrid",
+  mailgun: "aos-mailgun",
+  postmark: "aos-postmark",
+  airtable: "aos-airtable",
+  notion: "aos-notion",
+  supabase: "aos-supabase",
+  google_sheets: "aos-google",
+  typeform: "aos-typeform",
+  discord: "aos-discord-workflow",
+  slack: "aos-slack",
+  telegram: "aos-telegram",
+};
+
+function TriggerForm({
+  data,
+  onUpdate,
+  nodeId,
+  gateway,
+}: {
+  data: TriggerNodeData;
+  onUpdate: (id: string, data: Record<string, unknown>) => void;
+  nodeId: string;
+  gateway: ReturnType<typeof useGateway>;
+}) {
+  const update = (field: string, value: unknown) => {
+    onUpdate(nodeId, { ...data, [field]: value });
+  };
+
+  // Resolve connector ID from provider selection for credential binding
+  const resolvedConnectorId = useMemo(() => {
+    const providerFields = [
+      data.paymentProvider,
+      data.ticketProvider,
+      data.calendarProvider,
+      data.emailProvider,
+      data.formProvider,
+      data.dbConnector,
+      data.channelType,
+    ] as (string | undefined)[];
+    for (const p of providerFields) {
+      if (p && TRIGGER_PROVIDER_CONNECTOR_MAP[p]) return TRIGGER_PROVIDER_CONNECTOR_MAP[p];
+    }
+    return data.connectorId;
+  }, [data]);
+
+  // Parse existing cron into visual schedule state
+  const parsed = useMemo(() => parseCronToSchedule(data.cronExpression), [data.cronExpression]);
+
+  const [scheduleType, setScheduleType] = useState<ScheduleType>(parsed?.type ?? "weekly");
+  const [selectedDays, setSelectedDays] = useState<number[]>(parsed?.days ?? [1, 3, 5]);
+  const [hour, setHour] = useState(parsed?.hour ?? 9);
+  const [minute, setMinute] = useState(parsed?.minute ?? "00");
+  const [ampm, setAmpm] = useState<"AM" | "PM">(parsed?.ampm ?? "AM");
+  const [dayOfMonth, setDayOfMonth] = useState(parsed?.dayOfMonth ?? 1);
+  const [timezone, setTimezone] = useState(
+    ((data as Record<string, unknown>).timezone as string) ?? "America/Chicago",
+  );
+  const [rawCron, setRawCron] = useState(data.cronExpression || "");
+
+  // Sync visual state -> cron expression
+  const syncCron = useCallback(() => {
+    const cron = generateCronFromSchedule(
+      scheduleType,
+      hour,
+      minute,
+      ampm,
+      selectedDays,
+      dayOfMonth,
+      rawCron,
+    );
+    if (cron !== data.cronExpression) {
+      onUpdate(nodeId, { ...data, cronExpression: cron, timezone });
+    }
+  }, [
+    scheduleType,
+    hour,
+    minute,
+    ampm,
+    selectedDays,
+    dayOfMonth,
+    rawCron,
+    timezone,
+    data,
+    nodeId,
+    onUpdate,
+  ]);
+
+  useEffect(() => {
+    if (data.triggerType === "schedule") {
+      syncCron();
+    }
+  }, [
+    scheduleType,
+    hour,
+    minute,
+    ampm,
+    selectedDays,
+    dayOfMonth,
+    rawCron,
+    timezone,
+    data.triggerType,
+    syncCron,
+  ]);
+
+  const toggleDay = (dayIdx: number) => {
+    setSelectedDays((prev) =>
+      prev.includes(dayIdx) ? prev.filter((d) => d !== dayIdx) : [...prev, dayIdx].sort(),
+    );
+  };
+
+  return (
+    <>
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL + " flex items-center gap-1"}>
+          What starts this workflow?
+          <HelpTip text="What starts this workflow? A schedule runs it automatically. Manual means you click Run." />
+        </label>
+        <select
+          className={DOCK_INPUT}
+          value={data.triggerType}
+          onChange={(e) => update("triggerType", e.target.value)}
+        >
+          {TRIGGER_TYPES.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.icon} {t.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Event-based trigger config fields */}
+      {data.triggerType === "webhook" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL + " flex items-center gap-1"}>
+            Webhook URL
+            <HelpTip text="A unique URL that other apps can call to start this workflow." />
+          </label>
+          <input
+            className={DOCK_INPUT}
+            value={((data as Record<string, unknown>).webhookUrl as string) || ""}
+            onChange={(e) => update("webhookUrl", e.target.value)}
+            placeholder="Auto-generated on save"
+            readOnly
+          />
+          <p className="text-[10px] text-[hsl(var(--muted-foreground))]">
+            This URL will be generated when the workflow is saved
+          </p>
+        </div>
+      )}
+
+      {data.triggerType === "form_submitted" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Form Provider</label>
+            <select
+              className={DOCK_INPUT}
+              value={((data as Record<string, unknown>).formProvider as string) || ""}
+              onChange={(e) => update("formProvider", e.target.value)}
+            >
+              <option value="">Select provider...</option>
+              <option value="typeform">Typeform</option>
+              <option value="google_forms">Google Forms</option>
+              <option value="jotform">JotForm</option>
+              <option value="custom">Custom / Webhook</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Form ID</label>
+            <input
+              className={DOCK_INPUT}
+              value={((data as Record<string, unknown>).formId as string) || ""}
+              onChange={(e) => update("formId", e.target.value)}
+              placeholder="form-123"
+            />
+          </div>
+        </>
+      )}
+
+      {(data.triggerType === "record_created" || data.triggerType === "record_updated") && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Connector</label>
+            <select
+              className={DOCK_INPUT}
+              value={((data as Record<string, unknown>).dbConnector as string) || ""}
+              onChange={(e) => update("dbConnector", e.target.value)}
+            >
+              <option value="">Select connector...</option>
+              <option value="airtable">Airtable</option>
+              <option value="notion">Notion</option>
+              <option value="postgres">PostgreSQL</option>
+              <option value="supabase">Supabase</option>
+              <option value="google_sheets">Google Sheets</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Table / Database Name</label>
+            <input
+              className={DOCK_INPUT}
+              value={((data as Record<string, unknown>).tableName as string) || ""}
+              onChange={(e) => update("tableName", e.target.value)}
+              placeholder="customers"
+            />
+          </div>
+        </>
+      )}
+
+      {data.triggerType === "email_engaged" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Email Provider</label>
+            <select
+              className={DOCK_INPUT}
+              value={((data as Record<string, unknown>).emailProvider as string) || ""}
+              onChange={(e) => update("emailProvider", e.target.value)}
+            >
+              <option value="">Select provider...</option>
+              <option value="sendgrid">SendGrid</option>
+              <option value="mailgun">Mailgun</option>
+              <option value="postmark">Postmark</option>
+              <option value="ses">Amazon SES</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Engagement Type</label>
+            <select
+              className={DOCK_INPUT}
+              value={((data as Record<string, unknown>).engagementType as string) || "opened"}
+              onChange={(e) => update("engagementType", e.target.value)}
+            >
+              <option value="opened">Opened</option>
+              <option value="clicked">Clicked</option>
+              <option value="replied">Replied</option>
+              <option value="bounced">Bounced</option>
+            </select>
+          </div>
+        </>
+      )}
+
+      {data.triggerType === "payment_received" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Payment Provider</label>
+            <select
+              className={DOCK_INPUT}
+              value={((data as Record<string, unknown>).paymentProvider as string) || ""}
+              onChange={(e) => update("paymentProvider", e.target.value)}
+            >
+              <option value="">Select provider...</option>
+              <option value="stripe">Stripe</option>
+              <option value="square">Square</option>
+              <option value="paypal">PayPal</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Event</label>
+            <select
+              className={DOCK_INPUT}
+              value={
+                ((data as Record<string, unknown>).paymentEvent as string) || "payment_succeeded"
+              }
+              onChange={(e) => update("paymentEvent", e.target.value)}
+            >
+              <option value="payment_succeeded">Payment Succeeded</option>
+              <option value="subscription_created">Subscription Created</option>
+              <option value="invoice_paid">Invoice Paid</option>
+              <option value="refund_issued">Refund Issued</option>
+            </select>
+          </div>
+        </>
+      )}
+
+      {data.triggerType === "appointment_booked" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Calendar Provider</label>
+          <select
+            className={DOCK_INPUT}
+            value={((data as Record<string, unknown>).calendarProvider as string) || ""}
+            onChange={(e) => update("calendarProvider", e.target.value)}
+          >
+            <option value="">Select provider...</option>
+            <option value="calendly">Calendly</option>
+            <option value="google_calendar">Google Calendar</option>
+            <option value="outlook">Outlook</option>
+            <option value="cal_com">Cal.com</option>
+          </select>
+        </div>
+      )}
+
+      {data.triggerType === "ticket_created" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Ticketing System</label>
+          <select
+            className={DOCK_INPUT}
+            value={((data as Record<string, unknown>).ticketProvider as string) || ""}
+            onChange={(e) => update("ticketProvider", e.target.value)}
+          >
+            <option value="">Select provider...</option>
+            <option value="zendesk">Zendesk</option>
+            <option value="freshdesk">Freshdesk</option>
+            <option value="intercom">Intercom</option>
+            <option value="linear">Linear</option>
+            <option value="jira">Jira</option>
+          </select>
+        </div>
+      )}
+
+      {data.triggerType === "channel_message" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Channel</label>
+          <select
+            className={DOCK_INPUT}
+            value={((data as Record<string, unknown>).channelType as string) || ""}
+            onChange={(e) => update("channelType", e.target.value)}
+          >
+            <option value="">Select channel...</option>
+            <option value="discord">Discord</option>
+            <option value="slack">Slack</option>
+            <option value="telegram">Telegram</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="webchat">Web Chat</option>
+          </select>
+        </div>
+      )}
+
+      {data.triggerType === "email_received" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Filter (from address or subject)</label>
+          <input
+            className={DOCK_INPUT}
+            value={((data as Record<string, unknown>).emailFilter as string) || ""}
+            onChange={(e) => update("emailFilter", e.target.value)}
+            placeholder="*@example.com or subject:invoice"
+          />
+        </div>
+      )}
+
+      {data.triggerType === "workflow_done" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Upstream Workflow ID</label>
+          <input
+            className={DOCK_INPUT}
+            value={((data as Record<string, unknown>).upstreamWorkflowId as string) || ""}
+            onChange={(e) => update("upstreamWorkflowId", e.target.value)}
+            placeholder="wf-1234567890"
+          />
+        </div>
+      )}
+
+      {data.triggerType === "timer_elapsed" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Time Since Last Event (minutes)</label>
+          <input
+            type="number"
+            className={DOCK_INPUT}
+            value={((data as Record<string, unknown>).timerMinutes as number) || 60}
+            onChange={(e) => update("timerMinutes", parseInt(e.target.value) || 60)}
+            min={1}
+            max={43200}
+          />
+        </div>
+      )}
+
+      {/* Credential binding for service-connected triggers */}
+      {resolvedConnectorId &&
+        data.triggerType !== "schedule" &&
+        data.triggerType !== "manual" &&
+        data.triggerType !== "webhook" && (
+          <div className="space-y-1.5">
+            <CredentialSelector
+              connectorId={resolvedConnectorId}
+              authKind="service-key"
+              requiredSecrets={[]}
+              selectedCredentialId={data.credentialId || undefined}
+              onChange={(id) => update("credentialId", id ?? "")}
+              gatewayRequest={gateway.request}
+              gatewayConnected={gateway.connected}
+            />
+            {!data.credentialId && (
+              <p className="text-[10px] text-amber-400">
+                Connect your account to enable this trigger
+              </p>
+            )}
+          </div>
+        )}
+
+      {data.triggerType === "schedule" && (
+        <div className="space-y-3">
+          {/* Schedule Type */}
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL + " flex items-center gap-1"}>
+              Schedule
+              <HelpTip text="Pick which days and what time this should run." />
+            </label>
+            <select
+              className={DOCK_INPUT}
+              value={scheduleType}
+              onChange={(e) => setScheduleType(e.target.value as ScheduleType)}
+            >
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+
+          {/* Weekly: Day Picker */}
+          {scheduleType === "weekly" && (
+            <div className="space-y-1.5">
+              <label className={DOCK_LABEL}>Days</label>
+              <div className="flex gap-1">
+                {DAY_LABELS.map((day, i) => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => toggleDay(i)}
+                    className={`w-10 h-10 rounded-lg text-xs font-medium transition-colors ${
+                      selectedDays.includes(i)
+                        ? "bg-[hsl(var(--primary))] text-white"
+                        : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/80"
+                    }`}
+                  >
+                    {day}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Monthly: Day of Month */}
+          {scheduleType === "monthly" && (
+            <div className="space-y-1.5">
+              <label className={DOCK_LABEL}>Day of Month</label>
+              <select
+                className={DOCK_INPUT}
+                value={dayOfMonth}
+                onChange={(e) => setDayOfMonth(parseInt(e.target.value, 10))}
+              >
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Time Picker (for all visual modes) */}
+          {scheduleType !== "custom" && (
+            <div className="space-y-1.5">
+              <label className={DOCK_LABEL}>Time</label>
+              <div className="flex gap-2">
+                <select
+                  className={DOCK_INPUT + " flex-1"}
+                  value={hour}
+                  onChange={(e) => setHour(parseInt(e.target.value, 10))}
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className={DOCK_INPUT + " flex-1"}
+                  value={minute}
+                  onChange={(e) => setMinute(e.target.value)}
+                >
+                  {MINUTE_OPTIONS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className={DOCK_INPUT + " flex-1"}
+                  value={ampm}
+                  onChange={(e) => setAmpm(e.target.value as "AM" | "PM")}
+                >
+                  <option value="AM">AM</option>
+                  <option value="PM">PM</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Timezone (for all visual modes) */}
+          {scheduleType !== "custom" && (
+            <div className="space-y-1.5">
+              <label className={DOCK_LABEL}>Timezone</label>
+              <select
+                className={DOCK_INPUT}
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+              >
+                {TIMEZONE_OPTIONS.map((tz) => (
+                  <option key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Custom: Raw cron input */}
+          {scheduleType === "custom" && (
+            <div className="space-y-1.5">
+              <label className={DOCK_LABEL}>Schedule Expression</label>
+              <input
+                className={DOCK_INPUT}
+                value={rawCron}
+                onChange={(e) => setRawCron(e.target.value)}
+                placeholder="0 9 * * MON"
+              />
+              <p className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                min hour dom month dow
+              </p>
+            </div>
+          )}
+
+          {/* Human-readable summary */}
+          {scheduleType !== "custom" && (
+            <div className="text-sm text-[hsl(var(--primary))] font-medium">
+              {generateScheduleSummary(
+                scheduleType,
+                hour,
+                minute,
+                ampm,
+                selectedDays,
+                dayOfMonth,
+                timezone,
+              )}
+            </div>
+          )}
+
+          {/* Schedule expression preview */}
+          <div className="text-[10px] text-[hsl(var(--muted-foreground))]">
+            schedule: {data.cronExpression || "(none)"}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function AgentForm({
+  data,
+  agents,
+  onUpdate,
+  nodeId,
+  gateway,
+}: {
+  data: AgentStepNodeData;
+  agents: FamilyMember[];
+  onUpdate: (id: string, data: Record<string, unknown>) => void;
+  nodeId: string;
+  gateway: ReturnType<typeof useGateway>;
+}) {
+  const [enhancing, setEnhancing] = useState(false);
+  const update = (field: string, value: unknown) => {
+    onUpdate(nodeId, { ...data, [field]: value });
+  };
+
+  const handleAIEnhance = async () => {
+    if (!data.rolePrompt.trim()) return;
+    setEnhancing(true);
+    try {
+      const result = await gateway.request<{ text?: string }>("agent", {
+        message: `You are a workflow prompt engineer. Improve this agent role prompt to be more specific, actionable, and results-oriented. Keep it concise but clear. Include what evidence/artifacts the agent should produce.\n\nOriginal prompt: "${data.rolePrompt}"\n\nReturn ONLY the improved prompt, nothing else.`,
+        model: "claude-haiku-4-5",
+        sessionKey: "workflow-copilot",
+      });
+      if (result?.text) {
+        onUpdate(nodeId, { ...data, rolePrompt: result.text });
+      }
+    } catch (err) {
+      console.error("[Workflows] AI enhance failed:", err);
+    } finally {
+      setEnhancing(false);
+    }
+  };
+
+  // Parse existing comma-separated tools into arrays
+  const toolsAllow: string[] = useMemo(() => {
+    const raw = (data as Record<string, unknown>).toolsAllow;
+    if (Array.isArray(raw)) return raw as string[];
+    if (typeof raw === "string" && raw.trim())
+      return raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    return [];
+  }, [(data as Record<string, unknown>).toolsAllow]);
+
+  const toolsDeny: string[] = useMemo(() => {
+    const raw = (data as Record<string, unknown>).toolsDeny;
+    if (Array.isArray(raw)) return raw as string[];
+    if (typeof raw === "string" && raw.trim())
+      return raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    return [];
+  }, [(data as Record<string, unknown>).toolsDeny]);
+
+  return (
+    <>
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL + " flex items-center gap-1"}>
+          Agent
+          <HelpTip text="Which team member does this work?" />
+        </label>
+        <select
+          className={DOCK_INPUT}
+          value={data.agentId}
+          onChange={(e) => {
+            const agent = agents.find((a) => a.id === e.target.value);
+            onUpdate(nodeId, {
+              ...data,
+              agentId: e.target.value,
+              agentName: agent?.name || e.target.value,
+              agentColor: agent?.color || "#64748b",
+            });
+          }}
+        >
+          <option value="">Select agent...</option>
+          {agents.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name} {a.role ? `(${a.role})` : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Role Prompt — chat-style editor */}
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL + " flex items-center gap-1"}>
+          Instructions for the agent
+          <HelpTip text="Tell the agent what to do in plain English. Be specific about what result you want." />
+        </label>
+        <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))]">
+          <textarea
+            value={data.rolePrompt}
+            onChange={(e) => update("rolePrompt", e.target.value)}
+            placeholder="Describe what this agent should do..."
+            className="w-full min-h-[120px] p-3 bg-transparent text-sm text-[hsl(var(--foreground))] resize-y outline-none"
+          />
+          <div className="flex items-center justify-between px-3 py-2 border-t border-[hsl(var(--border))]">
+            <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+              {data.rolePrompt.length} chars
+            </span>
+            <button
+              onClick={handleAIEnhance}
+              disabled={enhancing || !data.rolePrompt.trim()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/25 disabled:opacity-40 transition-colors"
+              title="Argent will rewrite your prompt to be clearer and more actionable."
+            >
+              {enhancing ? (
+                <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span>&#10024;</span>
+              )}
+              {enhancing ? "Enhancing..." : "AI Enhance"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL + " flex items-center gap-1"}>
+          Maximum time for this step
+          <HelpTip text="Maximum time this step can take. If it takes longer, it stops and moves on." />
+        </label>
+        <input
+          type="number"
+          className={DOCK_INPUT}
+          value={data.timeout}
+          onChange={(e) => update("timeout", parseInt(e.target.value) || 5)}
+          min={1}
+          max={120}
+        />
+        <p className="text-[10px] text-[hsl(var(--muted-foreground))]">minutes</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL + " flex items-center gap-1"}>
+          AI Speed vs Quality
+          <HelpTip text="Balance speed vs quality. 'Fast' is quick but simpler. 'Powerful' is thorough but slower and costs more." />
+        </label>
+        <select
+          className={DOCK_INPUT}
+          value={((data as Record<string, unknown>).modelTier as string) || ""}
+          onChange={(e) => update("modelTier", e.target.value || undefined)}
+        >
+          <option value="">Auto (router decides)</option>
+          <option value="local">Local (Ollama)</option>
+          <option value="fast">Fast (Haiku)</option>
+          <option value="balanced">Balanced (Sonnet)</option>
+          <option value="powerful">Powerful (Opus)</option>
+        </select>
+      </div>
+
+      <ToolPicker
+        selected={toolsAllow}
+        onChange={(tools) => update("toolsAllow", tools)}
+        mode="allow"
+      />
+
+      <ToolPicker
+        selected={toolsDeny}
+        onChange={(tools) => update("toolsDeny", tools)}
+        mode="deny"
+      />
+
+      <div className="flex items-center gap-2.5">
+        <input
+          type="checkbox"
+          id="evidence-check"
+          checked={data.evidenceRequired}
+          onChange={(e) => update("evidenceRequired", e.target.checked)}
+          className="accent-[hsl(var(--primary))] w-4 h-4"
+        />
+        <label
+          htmlFor="evidence-check"
+          className="text-xs text-[hsl(var(--muted-foreground))] flex items-center gap-1"
+        >
+          Must produce a document or file
+          <HelpTip text="When turned on, the agent MUST create a document, image, or file to prove it did the work. The evidence appears in your run history and can be reviewed." />
+        </label>
+      </div>
+    </>
+  );
+}
+
+function ActionForm({
+  data,
+  onUpdate,
+  nodeId,
+  gateway,
+}: {
+  data: ActionNodeData;
+  onUpdate: (id: string, data: Record<string, unknown>) => void;
+  nodeId: string;
+  gateway: ReturnType<typeof useGateway>;
+}) {
+  const update = (field: string, value: unknown) => {
+    onUpdate(nodeId, { ...data, [field]: value });
+  };
+  const cfg = (data.config ?? {}) as Record<string, unknown>;
+  const cfgUpdate = (field: string, value: unknown) => {
+    update("config", { ...cfg, [field]: value });
+  };
+  const actionTypes: ActionTypeValue[] = [
+    "send_message",
+    "send_email",
+    "save_to_docpanel",
+    "webhook_call",
+    "api_call",
+    "run_script",
+    "create_task",
+    "store_memory",
+    "store_knowledge",
+    "generate_image",
+    "generate_audio",
+  ];
+  return (
+    <>
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL + " flex items-center gap-1"}>
+          What should happen?
+          <HelpTip text="What should happen? Send an email, post a message, call an API, etc." />
+        </label>
+        <select
+          className={DOCK_INPUT}
+          value={data.actionType}
+          onChange={(e) => update("actionType", e.target.value)}
+        >
+          {actionTypes.map((t) => (
+            <option key={t} value={t}>
+              {ACTION_LABELS[t]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Type-specific config fields — matches what workflow-runner.ts reads from node.config */}
+      {data.actionType === "send_message" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Channel Type</label>
+            <select
+              className={DOCK_INPUT}
+              value={cfg.channelType || "internal_chat"}
+              onChange={(e) => cfgUpdate("channelType", e.target.value)}
+            >
+              <option value="internal_chat">Internal Chat</option>
+              <option value="slack">Slack</option>
+              <option value="discord">Discord</option>
+              <option value="telegram">Telegram</option>
+            </select>
+          </div>
+          {/* Credential for external channels */}
+          {cfg.channelType && cfg.channelType !== "internal_chat" && (
+            <CredentialSelector
+              connectorId={
+                TRIGGER_PROVIDER_CONNECTOR_MAP[cfg.channelType as string] ||
+                `aos-${cfg.channelType}`
+              }
+              authKind="service-key"
+              requiredSecrets={[]}
+              selectedCredentialId={(cfg.credentialId as string) || undefined}
+              onChange={(id) => cfgUpdate("credentialId", id ?? "")}
+              gatewayRequest={gateway.request}
+              gatewayConnected={gateway.connected}
+            />
+          )}
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Channel ID</label>
+            <input
+              className={DOCK_INPUT}
+              value={cfg.channelId || ""}
+              onChange={(e) => cfgUpdate("channelId", e.target.value)}
+              placeholder="#channel-name or ID"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Message Template</label>
+            <textarea
+              className={DOCK_INPUT + " resize-y"}
+              rows={3}
+              value={cfg.template || ""}
+              onChange={(e) => cfgUpdate("template", e.target.value)}
+              placeholder="Hello {{ $json.name }}!"
+            />
+          </div>
+        </>
+      )}
+
+      {data.actionType === "send_email" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Provider</label>
+            <select
+              className={DOCK_INPUT}
+              value={cfg.provider || "resend"}
+              onChange={(e) => cfgUpdate("provider", e.target.value)}
+            >
+              <option value="resend">Resend</option>
+              <option value="mailgun">Mailgun</option>
+              <option value="sendgrid">SendGrid</option>
+              <option value="smtp">SMTP</option>
+            </select>
+          </div>
+          {/* Credential for email provider */}
+          {cfg.provider && (
+            <CredentialSelector
+              connectorId={
+                TRIGGER_PROVIDER_CONNECTOR_MAP[cfg.provider as string] || `aos-${cfg.provider}`
+              }
+              authKind="service-key"
+              requiredSecrets={[]}
+              selectedCredentialId={(cfg.credentialId as string) || undefined}
+              onChange={(id) => cfgUpdate("credentialId", id ?? "")}
+              gatewayRequest={gateway.request}
+              gatewayConnected={gateway.connected}
+            />
+          )}
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>To</label>
+            <input
+              className={DOCK_INPUT}
+              value={cfg.to || ""}
+              onChange={(e) => cfgUpdate("to", e.target.value)}
+              placeholder="user@example.com"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Subject</label>
+            <input
+              className={DOCK_INPUT}
+              value={cfg.subject || ""}
+              onChange={(e) => cfgUpdate("subject", e.target.value)}
+              placeholder="Re: {{ $json.topic }}"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Body</label>
+            <textarea
+              className={DOCK_INPUT + " resize-y"}
+              rows={4}
+              value={cfg.bodyTemplate || ""}
+              onChange={(e) => cfgUpdate("bodyTemplate", e.target.value)}
+              placeholder="Email body (supports {{ expressions }})"
+            />
+          </div>
+        </>
+      )}
+
+      {data.actionType === "create_task" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Title</label>
+            <input
+              className={DOCK_INPUT}
+              value={cfg.title || ""}
+              onChange={(e) => cfgUpdate("title", e.target.value)}
+              placeholder="Follow up with {{ $json.name }}"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Description</label>
+            <textarea
+              className={DOCK_INPUT + " resize-y"}
+              rows={3}
+              value={cfg.description || ""}
+              onChange={(e) => cfgUpdate("description", e.target.value)}
+              placeholder="Task details..."
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Assignee</label>
+            <input
+              className={DOCK_INPUT}
+              value={cfg.assignee || ""}
+              onChange={(e) => cfgUpdate("assignee", e.target.value)}
+              placeholder="Agent ID or name"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Priority</label>
+            <select
+              className={DOCK_INPUT}
+              value={cfg.priority || "normal"}
+              onChange={(e) => cfgUpdate("priority", e.target.value)}
+            >
+              <option value="urgent">Urgent</option>
+              <option value="high">High</option>
+              <option value="normal">Normal</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Project</label>
+            <input
+              className={DOCK_INPUT}
+              value={cfg.project || ""}
+              onChange={(e) => cfgUpdate("project", e.target.value)}
+              placeholder="Project name"
+            />
+          </div>
+        </>
+      )}
+
+      {data.actionType === "store_memory" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Content</label>
+            <textarea
+              className={DOCK_INPUT + " resize-y"}
+              rows={4}
+              value={cfg.content || ""}
+              onChange={(e) => cfgUpdate("content", e.target.value)}
+              placeholder="Memory content or {{ $json.summary }}"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Memory Type</label>
+            <select
+              className={DOCK_INPUT}
+              value={cfg.memoryType || "observation"}
+              onChange={(e) => cfgUpdate("memoryType", e.target.value)}
+            >
+              <option value="observation">Observation</option>
+              <option value="knowledge">Knowledge</option>
+              <option value="interaction">Interaction</option>
+              <option value="episode">Episode</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Significance (1-10)</label>
+            <input
+              type="number"
+              className={DOCK_INPUT}
+              value={cfg.significance ?? 5}
+              onChange={(e) => cfgUpdate("significance", Number(e.target.value))}
+              min={1}
+              max={10}
+            />
+          </div>
+        </>
+      )}
+
+      {data.actionType === "store_knowledge" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Collection ID</label>
+            <input
+              className={DOCK_INPUT}
+              value={cfg.collectionId || ""}
+              onChange={(e) => cfgUpdate("collectionId", e.target.value)}
+              placeholder="collection-name"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Content</label>
+            <textarea
+              className={DOCK_INPUT + " resize-y"}
+              rows={4}
+              value={cfg.content || ""}
+              onChange={(e) => cfgUpdate("content", e.target.value)}
+              placeholder="Knowledge to store..."
+            />
+          </div>
+        </>
+      )}
+
+      {data.actionType === "generate_image" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Prompt</label>
+            <textarea
+              className={DOCK_INPUT + " resize-y"}
+              rows={3}
+              value={cfg.prompt || ""}
+              onChange={(e) => cfgUpdate("prompt", e.target.value)}
+              placeholder="A futuristic city skyline at sunset"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Model</label>
+            <select
+              className={DOCK_INPUT}
+              value={cfg.model || "dall-e-3"}
+              onChange={(e) => cfgUpdate("model", e.target.value)}
+            >
+              <option value="dall-e-3">DALL-E 3</option>
+              <option value="dall-e-2">DALL-E 2</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Size</label>
+            <select
+              className={DOCK_INPUT}
+              value={cfg.size || "1024x1024"}
+              onChange={(e) => cfgUpdate("size", e.target.value)}
+            >
+              <option value="1024x1024">1024 x 1024</option>
+              <option value="1792x1024">1792 x 1024 (wide)</option>
+              <option value="1024x1792">1024 x 1792 (tall)</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Style</label>
+            <select
+              className={DOCK_INPUT}
+              value={cfg.style || "vivid"}
+              onChange={(e) => cfgUpdate("style", e.target.value)}
+            >
+              <option value="vivid">Vivid</option>
+              <option value="natural">Natural</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Quality</label>
+            <select
+              className={DOCK_INPUT}
+              value={cfg.quality || "standard"}
+              onChange={(e) => cfgUpdate("quality", e.target.value)}
+            >
+              <option value="standard">Standard</option>
+              <option value="hd">HD</option>
+            </select>
+          </div>
+        </>
+      )}
+
+      {data.actionType === "generate_audio" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Text</label>
+            <textarea
+              className={DOCK_INPUT + " resize-y"}
+              rows={3}
+              value={cfg.text || ""}
+              onChange={(e) => cfgUpdate("text", e.target.value)}
+              placeholder="Text to speak..."
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Voice</label>
+            <input
+              className={DOCK_INPUT}
+              value={cfg.voice || ""}
+              onChange={(e) => cfgUpdate("voice", e.target.value)}
+              placeholder="Jessica, Lily, alloy..."
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Output Format</label>
+            <select
+              className={DOCK_INPUT}
+              value={cfg.format || "mp3"}
+              onChange={(e) => cfgUpdate("format", e.target.value)}
+            >
+              <option value="mp3">MP3</option>
+              <option value="wav">WAV</option>
+              <option value="ogg">OGG</option>
+            </select>
+          </div>
+        </>
+      )}
+
+      {data.actionType === "save_to_docpanel" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Title</label>
+            <input
+              className={DOCK_INPUT}
+              value={cfg.title || ""}
+              onChange={(e) => cfgUpdate("title", e.target.value)}
+              placeholder="Document title"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Content</label>
+            <textarea
+              className={DOCK_INPUT + " resize-y"}
+              rows={4}
+              value={cfg.content || ""}
+              onChange={(e) => cfgUpdate("content", e.target.value)}
+              placeholder="Document content or {{ $json.report }}"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Format</label>
+            <select
+              className={DOCK_INPUT}
+              value={cfg.format || "markdown"}
+              onChange={(e) => cfgUpdate("format", e.target.value)}
+            >
+              <option value="markdown">Markdown</option>
+              <option value="html">HTML</option>
+              <option value="text">Plain Text</option>
+            </select>
+          </div>
+        </>
+      )}
+
+      {(data.actionType === "webhook_call" || data.actionType === "api_call") && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Method</label>
+            <select
+              className={DOCK_INPUT}
+              value={cfg.method || "POST"}
+              onChange={(e) => cfgUpdate("method", e.target.value)}
+            >
+              <option value="GET">GET</option>
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+              <option value="PATCH">PATCH</option>
+              <option value="DELETE">DELETE</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>URL</label>
+            <input
+              className={DOCK_INPUT}
+              value={cfg.url || cfg.endpoint || ""}
+              onChange={(e) =>
+                cfgUpdate(data.actionType === "webhook_call" ? "url" : "endpoint", e.target.value)
+              }
+              placeholder="https://api.example.com/endpoint"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Headers (JSON)</label>
+            <textarea
+              className={DOCK_INPUT + " font-mono text-[11px] resize-y"}
+              rows={3}
+              value={cfg.headers || ""}
+              onChange={(e) => cfgUpdate("headers", e.target.value)}
+              placeholder='{"Content-Type": "application/json"}'
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Body</label>
+            <textarea
+              className={DOCK_INPUT + " font-mono text-[11px] resize-y"}
+              rows={4}
+              value={cfg.body || ""}
+              onChange={(e) => cfgUpdate("body", e.target.value)}
+              placeholder='{"key": "{{ $json.value }}"}'
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Auth Type</label>
+            <select
+              className={DOCK_INPUT}
+              value={cfg.authType || "none"}
+              onChange={(e) => cfgUpdate("authType", e.target.value)}
+            >
+              <option value="none">None</option>
+              <option value="bearer">Bearer Token</option>
+              <option value="basic">Basic Auth</option>
+              <option value="api_key">API Key Header</option>
+            </select>
+          </div>
+          {cfg.authType && cfg.authType !== "none" && (
+            <div className="space-y-1.5">
+              <label className={DOCK_LABEL}>
+                {cfg.authType === "basic" ? "Credentials (user:pass)" : "Token / Key"}
+              </label>
+              <input
+                className={DOCK_INPUT}
+                value={cfg.authValue || ""}
+                onChange={(e) => cfgUpdate("authValue", e.target.value)}
+                placeholder={cfg.authType === "basic" ? "user:password" : "sk-..."}
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      {data.actionType === "run_script" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Command</label>
+            <textarea
+              className={DOCK_INPUT + " font-mono text-[11px] resize-y"}
+              rows={3}
+              value={cfg.command || ""}
+              onChange={(e) => cfgUpdate("command", e.target.value)}
+              placeholder="node script.js"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Sandboxed</label>
+            <select
+              className={DOCK_INPUT}
+              value={cfg.sandboxed === false ? "false" : "true"}
+              onChange={(e) => cfgUpdate("sandboxed", e.target.value === "true")}
+            >
+              <option value="true">Yes (required)</option>
+              <option value="false" disabled>
+                No (blocked)
+              </option>
+            </select>
+          </div>
+        </>
+      )}
+
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL + " flex items-center gap-1"}>
+          Maximum time for this step
+          <HelpTip text="How long to wait for a response before giving up." />
+        </label>
+        <input
+          type="number"
+          className={DOCK_INPUT}
+          value={Math.round((data.timeoutMs || 30000) / 1000)}
+          onChange={(e) => update("timeoutMs", (parseInt(e.target.value) || 30) * 1000)}
+          min={1}
+          max={300}
+        />
+        <p className="text-[10px] text-[hsl(var(--muted-foreground))]">seconds</p>
+      </div>
+    </>
+  );
+}
+
+function GateForm({
+  data,
+  onUpdate,
+  nodeId,
+}: {
+  data: GateNodeData;
+  onUpdate: (id: string, data: Record<string, unknown>) => void;
+  nodeId: string;
+}) {
+  const update = (field: string, value: unknown) => {
+    onUpdate(nodeId, { ...data, [field]: value });
+  };
+  const gateTypes: GateTypeValue[] = [
+    "condition",
+    "switch",
+    "parallel",
+    "join",
+    "wait_duration",
+    "wait_event",
+    "loop",
+    "error_handler",
+    "sub_workflow",
+    "approval",
+  ];
+  return (
+    <>
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL + " flex items-center gap-1"}>
+          Flow control
+          <HelpTip text="Control the flow. 'If/Then' makes a decision. 'Wait' pauses. 'Approval' asks you to review." />
+        </label>
+        <select
+          className={DOCK_INPUT}
+          value={data.gateType}
+          onChange={(e) => update("gateType", e.target.value)}
+        >
+          {gateTypes.map((t) => (
+            <option key={t} value={t}>
+              {GATE_LABELS[t]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Condition expression editor */}
+      {data.gateType === "condition" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL + " flex items-center gap-1"}>
+              Condition Field
+              <HelpTip text="What data should we check? Use the name of a field from the previous step." />
+            </label>
+            <input
+              className={DOCK_INPUT}
+              value={data.conditionField || ""}
+              onChange={(e) => update("conditionField", e.target.value)}
+              placeholder="steps.agent1.output.score"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Operator</label>
+            <select
+              className={DOCK_INPUT}
+              value={data.conditionOperator || "=="}
+              onChange={(e) => update("conditionOperator", e.target.value)}
+            >
+              <option value="==">==</option>
+              <option value="!=">!=</option>
+              <option value=">">&gt;</option>
+              <option value="<">&lt;</option>
+              <option value=">=">&gt;=</option>
+              <option value="<=">&lt;=</option>
+              <option value="contains">contains</option>
+              <option value="matches">matches</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL + " flex items-center gap-1"}>
+              Value
+              <HelpTip text="What are we comparing against?" />
+            </label>
+            <input
+              className={DOCK_INPUT}
+              value={data.conditionValue || ""}
+              onChange={(e) => update("conditionValue", e.target.value)}
+              placeholder="true"
+            />
+          </div>
+        </>
+      )}
+
+      {/* Branch count for parallel/switch */}
+      {(data.gateType === "parallel" || data.gateType === "switch") && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Branches</label>
+          <input
+            type="number"
+            className={DOCK_INPUT}
+            value={data.branchCount || 2}
+            onChange={(e) => update("branchCount", Math.max(2, parseInt(e.target.value) || 2))}
+            min={2}
+            max={10}
+          />
+        </div>
+      )}
+
+      {/* Loop config */}
+      {data.gateType === "loop" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Max Iterations</label>
+          <input
+            type="number"
+            className={DOCK_INPUT}
+            value={data.maxIterations || 10}
+            onChange={(e) => update("maxIterations", Math.max(1, parseInt(e.target.value) || 10))}
+            min={1}
+            max={100}
+          />
+        </div>
+      )}
+
+      {/* Wait duration config */}
+      {data.gateType === "wait_duration" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Duration (seconds)</label>
+          <input
+            type="number"
+            className={DOCK_INPUT}
+            value={Math.round((data.durationMs || 60000) / 1000)}
+            onChange={(e) => update("durationMs", (parseInt(e.target.value) || 60) * 1000)}
+            min={1}
+            max={86400}
+          />
+        </div>
+      )}
+
+      {/* Approval gate config */}
+      {data.gateType === "approval" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Review Message</label>
+            <textarea
+              className={DOCK_INPUT}
+              rows={3}
+              value={data.approvalMessage || ""}
+              onChange={(e) => update("approvalMessage", e.target.value)}
+              placeholder="What should the operator review?"
+            />
+          </div>
+          <div className="space-y-1.5 flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={data.showPreviousOutput ?? true}
+              onChange={(e) => update("showPreviousOutput", e.target.checked)}
+              className="accent-[#00cccc]"
+            />
+            <label className={DOCK_LABEL}>Show Previous Output</label>
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Timeout (minutes, 0 = no timeout)</label>
+            <input
+              type="number"
+              className={DOCK_INPUT}
+              value={data.timeoutMinutes || 0}
+              onChange={(e) => update("timeoutMinutes", Math.max(0, parseInt(e.target.value) || 0))}
+              min={0}
+              max={1440}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>On Timeout</label>
+            <select
+              className={DOCK_INPUT}
+              value={data.timeoutAction || "deny"}
+              onChange={(e) => update("timeoutAction", e.target.value)}
+            >
+              <option value="deny">Deny &amp; stop pipeline</option>
+              <option value="approve">Auto-approve &amp; continue</option>
+            </select>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+function OutputForm({
+  data,
+  onUpdate,
+  nodeId,
+}: {
+  data: OutputNodeData;
+  onUpdate: (id: string, data: Record<string, unknown>) => void;
+  nodeId: string;
+}) {
+  const update = (field: string, value: unknown) => {
+    onUpdate(nodeId, { ...data, [field]: value });
+  };
+  return (
+    <>
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL + " flex items-center gap-1"}>
+          Where does the result go?
+          <HelpTip text="Where does the final result go?" />
+        </label>
+        <select
+          className={DOCK_INPUT}
+          value={data.target}
+          onChange={(e) => update("target", e.target.value)}
+        >
+          <option value="doc_panel">DocPanel</option>
+          <option value="discord">Discord</option>
+          <option value="email">Email</option>
+          <option value="webhook">Webhook</option>
+          <option value="variable">Variable</option>
+        </select>
+      </div>
+
+      {data.target === "email" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Recipient</label>
+          <input
+            className={DOCK_INPUT}
+            value={((data as Record<string, unknown>).recipient as string) || ""}
+            onChange={(e) => update("recipient", e.target.value)}
+            placeholder="user@example.com"
+          />
+        </div>
+      )}
+      {data.target === "webhook" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Webhook URL</label>
+          <input
+            className={DOCK_INPUT}
+            value={((data as Record<string, unknown>).webhookUrl as string) || ""}
+            onChange={(e) => update("webhookUrl", e.target.value)}
+            placeholder="https://..."
+          />
+        </div>
+      )}
+      {data.target === "discord" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Channel</label>
+          <input
+            className={DOCK_INPUT}
+            value={((data as Record<string, unknown>).channelId as string) || ""}
+            onChange={(e) => update("channelId", e.target.value)}
+            placeholder="#channel-name"
+          />
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL}>Format</label>
+        <input
+          className={DOCK_INPUT}
+          value={data.format}
+          onChange={(e) => update("format", e.target.value)}
+          placeholder="markdown"
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL}>Title / Label</label>
+        <input
+          className={DOCK_INPUT}
+          value={((data as Record<string, unknown>).title as string) || ""}
+          onChange={(e) => update("title", e.target.value)}
+          placeholder="Output title"
+        />
+      </div>
+    </>
+  );
+}
+
+// ── Sub-Port Forms ──────────────────────────────────────────────────
+
+function ModelProviderForm({
+  data,
+  onUpdate,
+  nodeId,
+}: {
+  data: SubPortNodeData;
+  onUpdate: (id: string, data: Record<string, unknown>) => void;
+  nodeId: string;
+}) {
+  const cfg = data.config ?? {};
+  const update = (field: string, value: unknown) => {
+    onUpdate(nodeId, { ...data, config: { ...cfg, [field]: value } });
+  };
+  return (
+    <>
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL}>Provider</label>
+        <select
+          className={DOCK_INPUT}
+          value={(cfg.provider as string) || "anthropic"}
+          onChange={(e) => update("provider", e.target.value)}
+        >
+          <option value="anthropic">Anthropic</option>
+          <option value="openai">OpenAI</option>
+          <option value="ollama">Ollama (Local)</option>
+          <option value="google">Google</option>
+          <option value="minimax">MiniMax</option>
+          <option value="zai">Z.AI</option>
+        </select>
+      </div>
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL}>Model</label>
+        <input
+          className={DOCK_INPUT}
+          value={(cfg.model as string) || ""}
+          onChange={(e) => update("model", e.target.value)}
+          placeholder="claude-sonnet-4-6"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL}>Temperature</label>
+        <input
+          type="number"
+          className={DOCK_INPUT}
+          value={cfg.temperature != null ? Number(cfg.temperature) : ""}
+          onChange={(e) =>
+            update("temperature", e.target.value === "" ? undefined : Number(e.target.value))
+          }
+          placeholder="0.7"
+          min={0}
+          max={2}
+          step={0.1}
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL}>Max Tokens</label>
+        <input
+          type="number"
+          className={DOCK_INPUT}
+          value={cfg.maxTokens != null ? Number(cfg.maxTokens) : ""}
+          onChange={(e) =>
+            update("maxTokens", e.target.value === "" ? undefined : Number(e.target.value))
+          }
+          placeholder="4096"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL}>Thinking Level</label>
+        <select
+          className={DOCK_INPUT}
+          value={(cfg.thinkingLevel as string) || "none"}
+          onChange={(e) => update("thinkingLevel", e.target.value)}
+        >
+          <option value="none">None</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+        </select>
+      </div>
+    </>
+  );
+}
+
+function MemorySourceForm({
+  data,
+  onUpdate,
+  nodeId,
+}: {
+  data: SubPortNodeData;
+  onUpdate: (id: string, data: Record<string, unknown>) => void;
+  nodeId: string;
+}) {
+  const cfg = data.config ?? {};
+  const update = (field: string, value: unknown) => {
+    onUpdate(nodeId, { ...data, config: { ...cfg, [field]: value } });
+  };
+  return (
+    <>
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL}>Source Type</label>
+        <select
+          className={DOCK_INPUT}
+          value={(cfg.sourceType as string) || "knowledge_collection"}
+          onChange={(e) => update("sourceType", e.target.value)}
+        >
+          <option value="knowledge_collection">Knowledge Collection</option>
+          <option value="conversation_history">Conversation History</option>
+          <option value="agent_memory">Agent Memory</option>
+          <option value="custom_context">Custom Context</option>
+        </select>
+      </div>
+      {cfg.sourceType === "knowledge_collection" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Collection ID</label>
+          <input
+            className={DOCK_INPUT}
+            value={(cfg.collectionId as string) || ""}
+            onChange={(e) => update("collectionId", e.target.value)}
+            placeholder="collection-name"
+          />
+        </div>
+      )}
+      {cfg.sourceType === "agent_memory" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Agent ID</label>
+          <input
+            className={DOCK_INPUT}
+            value={(cfg.agentId as string) || ""}
+            onChange={(e) => update("agentId", e.target.value)}
+            placeholder="main"
+          />
+        </div>
+      )}
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL}>Search Query</label>
+        <input
+          className={DOCK_INPUT}
+          value={(cfg.searchQuery as string) || ""}
+          onChange={(e) => update("searchQuery", e.target.value)}
+          placeholder="Optional filter query..."
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL}>Max Items</label>
+        <input
+          type="number"
+          className={DOCK_INPUT}
+          value={cfg.maxItems != null ? Number(cfg.maxItems) : ""}
+          onChange={(e) =>
+            update("maxItems", e.target.value === "" ? undefined : Number(e.target.value))
+          }
+          placeholder="10"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL}>Time Range</label>
+        <select
+          className={DOCK_INPUT}
+          value={(cfg.timeRange as string) || "all"}
+          onChange={(e) => update("timeRange", e.target.value)}
+        >
+          <option value="last_24h">Last 24 hours</option>
+          <option value="last_7d">Last 7 days</option>
+          <option value="last_30d">Last 30 days</option>
+          <option value="all">All time</option>
+        </select>
+      </div>
+    </>
+  );
+}
+
+function ToolGrantForm({
+  data,
+  onUpdate,
+  nodeId,
+  connectors,
+}: {
+  data: SubPortNodeData;
+  onUpdate: (id: string, data: Record<string, unknown>) => void;
+  nodeId: string;
+  connectors: ConnectorEntry[];
+}) {
+  const cfg = data.config ?? {};
+  const update = (field: string, value: unknown) => {
+    onUpdate(nodeId, { ...data, config: { ...cfg, [field]: value } });
+  };
+  return (
+    <>
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL}>Grant Type</label>
+        <select
+          className={DOCK_INPUT}
+          value={(cfg.grantType as string) || "connector"}
+          onChange={(e) => update("grantType", e.target.value)}
+        >
+          <option value="connector">Connector</option>
+          <option value="builtin_tool">Built-in Tool</option>
+          <option value="tool_set">Tool Set Preset</option>
+        </select>
+      </div>
+      {cfg.grantType === "connector" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Connector</label>
+          <select
+            className={DOCK_INPUT}
+            value={(cfg.connectorId as string) || ""}
+            onChange={(e) => update("connectorId", e.target.value)}
+          >
+            <option value="">Select connector...</option>
+            {connectors
+              .filter((c) => !c.scaffoldOnly)
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+          </select>
+        </div>
+      )}
+      {cfg.grantType === "builtin_tool" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Tool Name</label>
+          <input
+            className={DOCK_INPUT}
+            value={(cfg.toolName as string) || ""}
+            onChange={(e) => update("toolName", e.target.value)}
+            placeholder="web_search"
+          />
+        </div>
+      )}
+      {cfg.grantType === "tool_set" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Preset</label>
+          <select
+            className={DOCK_INPUT}
+            value={(cfg.toolSetPreset as string) || ""}
+            onChange={(e) => update("toolSetPreset", e.target.value)}
+          >
+            <option value="">Select preset...</option>
+            <option value="web_search">Web Search</option>
+            <option value="code_execution">Code Execution</option>
+            <option value="file_management">File Management</option>
+          </select>
+        </div>
+      )}
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL}>Permissions</label>
+        <select
+          className={DOCK_INPUT}
+          value={(cfg.permissions as string) || "readonly"}
+          onChange={(e) => update("permissions", e.target.value)}
+        >
+          <option value="readonly">Read Only</option>
+          <option value="readwrite">Read + Write</option>
+        </select>
+      </div>
+    </>
+  );
+}
+
+// ── Sidebar ─────────────────────────────────────────────────────────
+
+interface ConnectorEntry {
+  id: string;
+  name: string;
+  category: string;
+  categories: string[];
+  commands: Array<{ id: string; summary?: string; actionClass?: string }>;
+  installState: string;
+  statusOk: boolean;
+  scaffoldOnly?: boolean;
+  readinessState?: "blocked" | "setup_required" | "read_ready" | "write_ready";
+}
+
+function connectorIcon(category: string): string {
+  const icons: Record<string, string> = {
+    inbox: "\uD83D\uDCE7",
+    "ticket-queue": "\uD83D\uDCCB",
+    "alert-stream": "\uD83D\uDD14",
+    "files-docs": "\uD83D\uDCC4",
+    calendar: "\uD83D\uDCC5",
+    crm: "\uD83D\uDC65",
+    "social-publishing": "\uD83D\uDCF1",
+    accounting: "\uD83D\uDCB0",
+    table: "\uD83D\uDCCA",
+    general: "\uD83D\uDD0C",
+  };
+  return icons[category] ?? "\uD83D\uDD0C";
+}
+
+interface SidebarProps {
+  workflows: WorkflowDefinition[];
+  activeWorkflowId: string | null;
+  onSelectWorkflow: (id: string) => void;
+  onNewWorkflow: () => void;
+  onDeleteWorkflow: (id: string) => void;
+  onImportWorkflow: (wf: WorkflowDefinition) => void;
+  runs: RunRecord[];
+  onSelectRun: (run: RunRecord) => void;
+  onRetryFromStep?: (workflowId: string, runId: string, fromStepNodeId: string) => void;
+  connectors: ConnectorEntry[];
+}
+
+function Sidebar({
+  workflows,
+  activeWorkflowId,
+  onSelectWorkflow,
+  onNewWorkflow,
+  onDeleteWorkflow,
+  onImportWorkflow,
+  runs,
+  onSelectRun,
+  onRetryFromStep,
+  connectors,
+}: SidebarProps) {
+  const [runHistoryOpen, setRunHistoryOpen] = useState(true);
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const onDragStart = (event: DragEvent, nodeType: string) => {
+    event.dataTransfer.setData("application/reactflow", nodeType);
+    event.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleImport = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,.argent-workflow.json";
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = JSON.parse(ev.target?.result as string);
+          if (data.format !== "argent-workflow") {
+            alert("Invalid workflow file format");
+            return;
+          }
+          const imported: WorkflowDefinition = {
+            id: `wf-${Date.now()}`,
+            name: `${data.workflow.name} (imported)`,
+            nodes: data.workflow.nodes ?? [],
+            edges: data.workflow.edges ?? [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          onImportWorkflow(imported);
+        } catch {
+          alert("Failed to parse workflow file");
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
+
+  const paletteItems = [
+    { type: "trigger", icon: "\u26A1", label: "Trigger", desc: "Start condition" },
+    { type: "agentStep", icon: "\uD83E\uDD16", label: "Agent Step", desc: "Agent does work" },
+    { type: "action", icon: "\u2699\uFE0F", label: "Action", desc: "Deterministic op" },
+    { type: "gate", icon: "\u25C6", label: "Gate", desc: "Control flow" },
+    { type: "output", icon: "\uD83D\uDCE4", label: "Output", desc: "Deliver results" },
+  ];
+
+  const subPortPaletteItems = [
+    { type: "modelProvider", icon: "\uD83E\uDDE0", label: "Model", desc: "Override LLM model" },
+    { type: "memorySource", icon: "\uD83D\uDCDA", label: "Memory", desc: "Knowledge context" },
+    { type: "toolGrant", icon: "\uD83D\uDD27", label: "Tool", desc: "Grant tool/connector" },
+  ];
+
+  return (
+    <div
+      className="w-[200px] flex-shrink-0 border-r border-[hsl(var(--border))] flex flex-col overflow-hidden"
+      style={{ background: "hsl(var(--card))" }}
+    >
+      {/* Node palette */}
+      <div className="p-3 border-b border-[hsl(var(--border))]">
+        <div className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider mb-2">
+          Nodes
+        </div>
+        <div className="flex flex-col gap-1.5">
+          {paletteItems.map((item) => (
+            <div
+              key={item.type}
+              draggable
+              onDragStart={(e) => onDragStart(e, item.type)}
+              className="flex items-center gap-2 px-2.5 py-2 rounded-md border border-[hsl(var(--border))] cursor-grab active:cursor-grabbing hover:border-[hsl(var(--primary))]/50 transition-colors"
+              style={{ background: "hsl(var(--background))" }}
+            >
+              <span className="text-sm">{item.icon}</span>
+              <div>
+                <div className="text-[11px] font-medium text-[hsl(var(--foreground))]">
+                  {item.label}
+                </div>
+                <div className="text-[9px] text-[hsl(var(--muted-foreground))]">{item.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Configuration — sub-port nodes for Agent */}
+      <div className="p-3 border-b border-[hsl(var(--border))]">
+        <div className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider mb-2">
+          Configuration
+        </div>
+        <div className="flex flex-col gap-1.5">
+          {subPortPaletteItems.map((item) => (
+            <div
+              key={item.type}
+              draggable
+              onDragStart={(e) => onDragStart(e, item.type)}
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-dashed border-[hsl(var(--border))] cursor-grab active:cursor-grabbing hover:border-[hsl(var(--primary))]/50 transition-colors"
+              style={{ background: "hsl(var(--background))" }}
+            >
+              <span className="text-sm">{item.icon}</span>
+              <div>
+                <div className="text-[11px] font-medium text-[hsl(var(--foreground))]">
+                  {item.label}
+                </div>
+                <div className="text-[9px] text-[hsl(var(--muted-foreground))]">{item.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Connectors — auto-populated from catalog */}
+      {connectors.length > 0 && (
+        <div className="p-3 border-b border-[hsl(var(--border))]">
+          <div className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider mb-2">
+            Connectors
+          </div>
+          <div className="flex flex-col gap-1">
+            {connectors.map((c) => {
+              const isBlocked = c.readinessState === "blocked" || c.scaffoldOnly;
+              return (
+                <div
+                  key={c.id}
+                  draggable={!isBlocked}
+                  onDragStart={(e) => {
+                    if (isBlocked) {
+                      e.preventDefault();
+                      return;
+                    }
+                    e.dataTransfer.setData("application/reactflow", "action");
+                    e.dataTransfer.setData(
+                      "application/reactflow-connector",
+                      JSON.stringify({
+                        id: c.id,
+                        name: c.name,
+                        category: c.category,
+                      }),
+                    );
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md transition-colors ${
+                    isBlocked
+                      ? "opacity-40 cursor-not-allowed"
+                      : "cursor-grab active:cursor-grabbing hover:bg-[hsl(var(--muted))]/30"
+                  }`}
+                  title={
+                    isBlocked
+                      ? `${c.name} — contract only (no runtime)`
+                      : `${c.name} (${c.installState})`
+                  }
+                >
+                  <span className="text-sm">{connectorIcon(c.category)}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] font-medium text-[hsl(var(--foreground))] capitalize truncate flex items-center gap-1">
+                      {c.name}
+                      {isBlocked && (
+                        <span className="text-[8px] font-semibold text-red-400 bg-red-500/10 px-1 py-0.5 rounded uppercase leading-none">
+                          No Runtime
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[9px] text-[hsl(var(--muted-foreground))]">
+                      {c.category}
+                      {!isBlocked && c.readinessState === "setup_required" && " \u2022 needs setup"}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Saved workflows */}
+      <div className="flex-1 overflow-auto p-3">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">
+            Workflows
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleImport}
+              className="text-[10px] px-1.5 py-0.5 rounded text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/50 transition-colors"
+              title="Import workflow"
+            >
+              Import
+            </button>
+            <button
+              onClick={onNewWorkflow}
+              className="text-[10px] px-1.5 py-0.5 rounded text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/10 transition-colors"
+            >
+              + New
+            </button>
+          </div>
+        </div>
+        {workflows.length === 0 ? (
+          <div className="text-[10px] text-[hsl(var(--muted-foreground))] italic">
+            No workflows yet
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {workflows.map((wf) => (
+              <div
+                key={wf.id}
+                className={`group flex items-center justify-between px-2 py-1.5 rounded-md text-[11px] cursor-pointer transition-colors ${
+                  activeWorkflowId === wf.id
+                    ? "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]"
+                    : "text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/30"
+                }`}
+                onClick={() => onSelectWorkflow(wf.id)}
+              >
+                <span className="truncate">{wf.name}</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteWorkflow(wf.id);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 text-[hsl(var(--muted-foreground))] hover:text-red-400 transition-opacity text-[10px]"
+                >
+                  &#x2715;
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Run History */}
+        {activeWorkflowId && (
+          <div className="mt-3 pt-3 border-t border-[hsl(var(--border))]">
+            <button
+              onClick={() => setRunHistoryOpen(!runHistoryOpen)}
+              className="flex items-center justify-between w-full text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider mb-2"
+            >
+              <span>Run History</span>
+              <span className="text-[9px]">{runHistoryOpen ? "\u25BC" : "\u25B6"}</span>
+            </button>
+            {runHistoryOpen && (
+              <div className="flex flex-col gap-1">
+                {runs.length === 0 ? (
+                  <div className="text-[10px] text-[hsl(var(--muted-foreground))] italic">
+                    No runs yet
+                  </div>
+                ) : (
+                  runs.map((run) => {
+                    const statusIcon =
+                      run.status === "completed"
+                        ? "\u2705"
+                        : run.status === "failed"
+                          ? "\u274C"
+                          : run.status === "running"
+                            ? "\u23F3"
+                            : "\u23F8\uFE0F";
+                    const isExpanded = expandedRunId === run.runId;
+                    return (
+                      <div key={run.runId}>
+                        <div
+                          className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[10px] cursor-pointer hover:bg-[hsl(var(--muted))]/30 transition-colors"
+                          onClick={() => {
+                            setExpandedRunId(isExpanded ? null : run.runId);
+                            onSelectRun(run);
+                          }}
+                        >
+                          <span>{statusIcon}</span>
+                          <span className="flex-1 truncate text-[hsl(var(--foreground))]">
+                            Run #{run.runId.slice(-4)} — {run.status}
+                          </span>
+                          <span className="text-[hsl(var(--muted-foreground))]">
+                            {formatDuration(run.durationMs)}
+                          </span>
+                        </div>
+                        {isExpanded && run.steps.length > 0 && (
+                          <div className="ml-4 pl-2 border-l border-[hsl(var(--border))] flex flex-col gap-0.5 mb-1">
+                            {run.steps.map((step, i) => {
+                              const stepIcon =
+                                step.status === "completed"
+                                  ? "\u2705"
+                                  : step.status === "failed"
+                                    ? "\u274C"
+                                    : step.status === "running"
+                                      ? "\u23F3"
+                                      : step.status === "skipped"
+                                        ? "\u23ED\uFE0F"
+                                        : "\u2B1C";
+                              return (
+                                <div key={`${run.runId}-step-${i}`} className="flex flex-col">
+                                  <div className="flex items-center gap-1 text-[9px] text-[hsl(var(--muted-foreground))]">
+                                    <span>{stepIcon}</span>
+                                    <span className="flex-1 truncate">{step.nodeName}</span>
+                                    <span>{formatDuration(step.durationMs)}</span>
+                                  </div>
+                                  {step.error && (
+                                    <div
+                                      className="text-[9px] text-red-400 truncate mt-0.5 ml-4"
+                                      title={step.error}
+                                    >
+                                      {step.error}
+                                    </div>
+                                  )}
+                                  {step.status === "failed" &&
+                                    onRetryFromStep &&
+                                    activeWorkflowId && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          onRetryFromStep(activeWorkflowId, run.runId, step.nodeId);
+                                        }}
+                                        className="ml-4 mt-0.5 self-start text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition-colors"
+                                      >
+                                        Retry from here
+                                      </button>
+                                    )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Default Node Data Factories ─────────────────────────────────────
+
+function createDefaultTriggerData(): TriggerNodeData {
+  return { label: "Trigger", triggerType: "manual", cronExpression: "" };
+}
+
+function createDefaultAgentStepData(): AgentStepNodeData {
+  return {
+    label: "Agent Step",
+    agentId: "",
+    agentName: "",
+    agentColor: "#64748b",
+    rolePrompt: "",
+    timeout: 5,
+    evidenceRequired: false,
+  };
+}
+
+function createDefaultOutputData(): OutputNodeData {
+  return { label: "Output", target: "doc_panel", format: "markdown" };
+}
+
+function createDefaultActionData(): ActionNodeData {
+  return {
+    label: "Action",
+    actionType: "send_message",
+    config: {},
+    timeoutMs: 30000,
+  };
+}
+
+function createDefaultGateData(): GateNodeData {
+  return {
+    label: "Gate",
+    gateType: "condition",
+    conditionField: "",
+    conditionOperator: "==",
+    conditionValue: "",
+    branchCount: 2,
+    maxIterations: 10,
+    durationMs: 60000,
+    approvalMessage: "",
+    showPreviousOutput: true,
+    timeoutMinutes: 0,
+    timeoutAction: "deny",
+  };
+}
+
+// ── Exported Widget ─────────────────────────────────────────────────
+
+export function WorkflowsWidget() {
+  const gateway = useGateway();
+  const [workflows, setWorkflows] = useState<WorkflowDefinition[]>(loadWorkflowsLocal);
+  const [activeWorkflowId, setActiveWorkflowId] = useState<string | null>(() => {
+    const wfs = loadWorkflowsLocal();
+    return wfs.length > 0 ? wfs[0].id : null;
+  });
+  const [runs, setRuns] = useState<RunRecord[]>([]);
+  const [connectors, setConnectors] = useState<ConnectorEntry[]>([]);
+
+  // Inject CSS keyframes once
+  useEffect(() => {
+    injectWorkflowStyles();
+  }, []);
+
+  // ── Gateway CRUD with localStorage fallback ───────────────────────
+
+  // Load workflows from gateway on connect
+  useEffect(() => {
+    if (!gateway.connected) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await gateway.request<{ workflows?: WorkflowDefinition[] }>(
+          "workflows.list",
+          {},
+        );
+        if (!cancelled && res?.workflows && res.workflows.length > 0) {
+          setWorkflows(res.workflows);
+          saveWorkflowsLocal(res.workflows);
+          if (!activeWorkflowId || !res.workflows.find((w) => w.id === activeWorkflowId)) {
+            setActiveWorkflowId(res.workflows[0].id);
+          }
+        }
+      } catch {
+        // Gateway unavailable — use localStorage data (already loaded)
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gateway.connected]);
+
+  // Load connector catalog
+  useEffect(() => {
+    if (!gateway.connected) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await gateway.request<{ connectors?: ConnectorEntry[] }>(
+          "workflows.connectors",
+          {},
+        );
+        if (!cancelled && res?.connectors) {
+          setConnectors(res.connectors);
+        }
+      } catch {
+        /* connector catalog unavailable — sidebar just stays empty */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gateway.connected, gateway.request]);
+
+  // Load run history when active workflow changes
+  useEffect(() => {
+    if (!gateway.connected || !activeWorkflowId) {
+      setRuns([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await gateway.request<{ runs?: RunRecord[] }>("workflows.runs.list", {
+          workflowId: activeWorkflowId,
+        });
+        if (!cancelled && res?.runs) setRuns(res.runs);
+      } catch {
+        if (!cancelled) setRuns([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gateway.connected, gateway.request, activeWorkflowId]);
+
+  const persistWorkflows = useCallback((next: WorkflowDefinition[]) => {
+    saveWorkflowsLocal(next);
+    // Fire-and-forget PG sync (individual workflow updates happen in canvas inner)
+  }, []);
+
+  const [newWorkflowModalOpen, setNewWorkflowModalOpen] = useState(false);
+
+  const createWorkflow = useCallback(
+    async (name: string, templateNodes: Node[] = [], templateEdges: Edge[] = []) => {
+      const id = `wf-${Date.now()}`;
+      const newWf: WorkflowDefinition = {
+        id,
+        name,
+        nodes: templateNodes,
+        edges: templateEdges,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const next = [...workflows, newWf];
+      setWorkflows(next);
+      persistWorkflows(next);
+      setActiveWorkflowId(id);
+      setNewWorkflowModalOpen(false);
+      // Persist to PG
+      if (gateway.connected) {
+        try {
+          await gateway.request("workflows.create", {
+            name: newWf.name,
+            workflowId: newWf.id,
+            canvasData: { nodes: newWf.nodes, edges: newWf.edges },
+          });
+        } catch {
+          /* localStorage fallback already saved */
+        }
+      }
+    },
+    [workflows, persistWorkflows, gateway],
+  );
+
+  const handleNew = useCallback(() => {
+    setNewWorkflowModalOpen(true);
+  }, []);
+
+  const handleCreateBlank = useCallback(() => {
+    createWorkflow(`Workflow ${workflows.length + 1}`);
+  }, [createWorkflow, workflows.length]);
+
+  const handleSelectTemplate = useCallback(
+    (template: WorkflowTemplate) => {
+      // Create a workflow with the template name; nodes are empty since templates
+      // are structural starting points that users customize via drag-and-drop
+      createWorkflow(template.name);
+    },
+    [createWorkflow],
+  );
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      const next = workflows.filter((w) => w.id !== id);
+      setWorkflows(next);
+      persistWorkflows(next);
+      if (activeWorkflowId === id) {
+        setActiveWorkflowId(next.length > 0 ? next[0].id : null);
+      }
+      if (gateway.connected) {
+        try {
+          await gateway.request("workflows.delete", { workflowId: id });
+        } catch {
+          /* localStorage already updated */
+        }
+      }
+    },
+    [workflows, activeWorkflowId, persistWorkflows, gateway],
+  );
+
+  // Replay run highlighting on canvas when a historical run is clicked
+  const [replayRun, setReplayRun] = useState<RunRecord | null>(null);
+
+  // Retry a workflow from a specific failed step
+  const handleRetryFromStep = useCallback(
+    async (workflowId: string, _runId: string, fromStepNodeId: string) => {
+      if (!gateway.connected) return;
+      try {
+        await gateway.request("workflows.run", { workflowId, fromStepId: fromStepNodeId });
+        // Refresh run history after retry
+        const res = await gateway.request<{ runs?: RunRecord[] }>("workflows.runs.list", {
+          workflowId,
+        });
+        if (res?.runs) setRuns(res.runs);
+      } catch (err) {
+        console.error("[Workflows] Retry from step failed:", err);
+      }
+    },
+    [gateway],
+  );
+
+  const handleImportWorkflow = useCallback(
+    async (imported: WorkflowDefinition) => {
+      const next = [...workflows, imported];
+      setWorkflows(next);
+      persistWorkflows(next);
+      setActiveWorkflowId(imported.id);
+      if (gateway.connected) {
+        try {
+          await gateway.request("workflows.create", {
+            name: imported.name,
+            workflowId: imported.id,
+            canvasData: { nodes: imported.nodes, edges: imported.edges },
+          });
+        } catch {
+          /* localStorage fallback already saved */
+        }
+      }
+    },
+    [workflows, persistWorkflows, gateway, setWorkflows],
+  );
+
+  return (
+    <div className="flex-1 min-h-0 flex overflow-hidden">
+      <NewWorkflowModal
+        open={newWorkflowModalOpen}
+        onClose={() => setNewWorkflowModalOpen(false)}
+        onCreateBlank={handleCreateBlank}
+        onSelectTemplate={handleSelectTemplate}
+      />
+      <ReactFlowProvider>
+        <Sidebar
+          workflows={workflows}
+          activeWorkflowId={activeWorkflowId}
+          onSelectWorkflow={setActiveWorkflowId}
+          onNewWorkflow={handleNew}
+          onDeleteWorkflow={handleDelete}
+          onImportWorkflow={handleImportWorkflow}
+          runs={runs}
+          onSelectRun={setReplayRun}
+          onRetryFromStep={handleRetryFromStep}
+          connectors={connectors}
+        />
+        <WorkflowCanvasInner
+          activeWorkflowId={activeWorkflowId}
+          workflows={workflows}
+          setWorkflows={setWorkflows}
+          replayRun={replayRun}
+          onRunsChanged={setRuns}
+        />
+      </ReactFlowProvider>
+    </div>
+  );
+}
+
+// ── Inner Canvas (must be inside ReactFlowProvider) ─────────────────
+
+function WorkflowCanvasInner({
+  activeWorkflowId,
+  workflows,
+  setWorkflows,
+  replayRun,
+  onRunsChanged,
+}: {
+  activeWorkflowId: string | null;
+  workflows: WorkflowDefinition[];
+  setWorkflows: React.Dispatch<React.SetStateAction<WorkflowDefinition[]>>;
+  replayRun: RunRecord | null;
+  onRunsChanged: (runs: RunRecord[]) => void;
+}) {
+  const gateway = useGateway();
+  const { screenToFlowPosition } = useReactFlow();
+
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [agents, setAgents] = useState<FamilyMember[]>([]);
+
+  // ── Run State ─────────────────────────────────────────────────────
+  const [running, setRunning] = useState(false);
+  const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
+  const [completedNodeIds, setCompletedNodeIds] = useState<Set<string>>(new Set());
+  const [failedNodeIds, setFailedNodeIds] = useState<Set<string>>(new Set());
+
+  // ── Approval State ─────────────────────────────────────────────────
+  interface PendingApproval {
+    runId: string;
+    nodeId: string;
+    message: string;
+    previousOutput?: { text?: string; json?: Record<string, unknown>; nodeLabel?: string };
+    timeoutMs?: number;
+    timeoutAction?: string;
+    requestedAt: number;
+  }
+  const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
+
+  const handleApprove = useCallback(
+    async (runId: string, nodeId: string) => {
+      if (!gateway.connected) return;
+      try {
+        await gateway.request("workflows.approve", { runId, nodeId });
+        setPendingApprovals((prev) =>
+          prev.filter((a) => !(a.runId === runId && a.nodeId === nodeId)),
+        );
+      } catch (err) {
+        console.error("[Workflows] Approve failed:", err);
+      }
+    },
+    [gateway],
+  );
+
+  const handleDeny = useCallback(
+    async (runId: string, nodeId: string) => {
+      if (!gateway.connected) return;
+      try {
+        await gateway.request("workflows.deny", { runId, nodeId, reason: "Denied by operator" });
+        setPendingApprovals((prev) =>
+          prev.filter((a) => !(a.runId === runId && a.nodeId === nodeId)),
+        );
+      } catch (err) {
+        console.error("[Workflows] Deny failed:", err);
+      }
+    },
+    [gateway],
+  );
+
+  // Fetch family members for agent dropdown
+  useEffect(() => {
+    if (!gateway.connected) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await gateway.request<{ members?: FamilyMember[] }>("family.members");
+        if (!cancelled && res?.members) {
+          setAgents(res.members.filter(isOperational));
+        }
+      } catch {
+        /* silent — agents just won't populate the dropdown */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gateway.connected, gateway.request]);
+
+  // ── Apply exec state to nodes ──────────────────────────────────────
+
+  const applyExecState = useCallback(
+    (active: string | null, completed: Set<string>, failed: Set<string>) => {
+      setNodes((nds) =>
+        nds.map((n) => {
+          let execState: NodeExecState = "pending";
+          if (n.id === active) execState = "active";
+          else if (completed.has(n.id)) execState = "completed";
+          else if (failed.has(n.id)) execState = "failed";
+          if (n.data.execState === execState) return n;
+          return { ...n, data: { ...n.data, execState } };
+        }),
+      );
+    },
+    [setNodes],
+  );
+
+  // Clear exec state when not running and no replay
+  const clearExecState = useCallback(() => {
+    setActiveNodeId(null);
+    setCompletedNodeIds(new Set());
+    setFailedNodeIds(new Set());
+    setNodes((nds) =>
+      nds.map((n) => (n.data.execState ? { ...n, data: { ...n.data, execState: undefined } } : n)),
+    );
+  }, [setNodes]);
+
+  // ── Gateway live step events ──────────────────────────────────────
+
+  useEffect(() => {
+    if (!gateway.connected) return;
+
+    const unsubStepStarted = gateway.on("workflow.step.started", (payload: unknown) => {
+      const p = payload as { nodeId?: string };
+      if (p.nodeId) {
+        setActiveNodeId(p.nodeId);
+        // Apply immediately
+        setNodes((nds) =>
+          nds.map((n) => {
+            if (n.id === p.nodeId)
+              return { ...n, data: { ...n.data, execState: "active" as NodeExecState } };
+            if (n.data.execState === "active")
+              return { ...n, data: { ...n.data, execState: "pending" as NodeExecState } };
+            return n;
+          }),
+        );
+      }
+    });
+
+    const unsubStepCompleted = gateway.on("workflow.step.completed", (payload: unknown) => {
+      const p = payload as { nodeId?: string; status?: string; error?: string };
+      if (!p.nodeId) return;
+      const isFailed = p.status === "failed" || !!p.error;
+      if (isFailed) {
+        setFailedNodeIds((prev) => new Set([...prev, p.nodeId!]));
+      } else {
+        setCompletedNodeIds((prev) => new Set([...prev, p.nodeId!]));
+      }
+      if (activeNodeId === p.nodeId) setActiveNodeId(null);
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === p.nodeId) {
+            return {
+              ...n,
+              data: { ...n.data, execState: (isFailed ? "failed" : "completed") as NodeExecState },
+            };
+          }
+          return n;
+        }),
+      );
+    });
+
+    const unsubRunCompleted = gateway.on("workflow.run.completed", (payload: unknown) => {
+      const p = payload as { workflowId?: string; runId?: string };
+      setRunning(false);
+      setActiveNodeId(null);
+      setPendingApprovals([]);
+      console.log("[Workflows] Run completed:", p);
+      // Refresh run history
+      if (activeWorkflowId) {
+        gateway
+          .request<{ runs?: RunRecord[] }>("workflows.runs.list", { workflowId: activeWorkflowId })
+          .then((res) => {
+            if (res?.runs) onRunsChanged(res.runs);
+          })
+          .catch(() => {});
+      }
+    });
+
+    const unsubApprovalRequested = gateway.on("workflow.approval.requested", (payload: unknown) => {
+      const p = payload as {
+        runId?: string;
+        nodeId?: string;
+        message?: string;
+        previousOutput?: {
+          output?: { items?: Array<{ text?: string; json?: Record<string, unknown> }> };
+          nodeLabel?: string;
+        };
+        timeoutMs?: number;
+        timeoutAction?: string;
+        requestedAt?: number;
+      };
+      if (!p.runId || !p.nodeId) return;
+      // Set the gate node to "waiting" state
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === p.nodeId
+            ? { ...n, data: { ...n.data, execState: "waiting" as NodeExecState } }
+            : n,
+        ),
+      );
+      setPendingApprovals((prev) => [
+        ...prev.filter((a) => !(a.runId === p.runId && a.nodeId === p.nodeId)),
+        {
+          runId: p.runId!,
+          nodeId: p.nodeId!,
+          message: p.message || "Review required before continuing",
+          previousOutput: p.previousOutput
+            ? {
+                text: p.previousOutput.output?.items?.[0]?.text,
+                json: p.previousOutput.output?.items?.[0]?.json,
+                nodeLabel: p.previousOutput.nodeLabel,
+              }
+            : undefined,
+          timeoutMs: p.timeoutMs,
+          timeoutAction: p.timeoutAction,
+          requestedAt: p.requestedAt || Date.now(),
+        },
+      ]);
+    });
+
+    const unsubApprovalResolved = gateway.on("workflow.approval.resolved", (payload: unknown) => {
+      const p = payload as { runId?: string; nodeId?: string; approved?: boolean };
+      if (!p.runId || !p.nodeId) return;
+      setPendingApprovals((prev) =>
+        prev.filter((a) => !(a.runId === p.runId && a.nodeId === p.nodeId)),
+      );
+      // Update node state based on resolution
+      const nextState = p.approved ? "completed" : "failed";
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === p.nodeId
+            ? { ...n, data: { ...n.data, execState: nextState as NodeExecState } }
+            : n,
+        ),
+      );
+    });
+
+    return () => {
+      unsubStepStarted();
+      unsubStepCompleted();
+      unsubRunCompleted();
+      unsubApprovalRequested();
+      unsubApprovalResolved();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gateway.connected, gateway.on, activeWorkflowId, setNodes]);
+
+  // ── Replay historical run on canvas ───────────────────────────────
+
+  useEffect(() => {
+    if (!replayRun) {
+      if (!running) clearExecState();
+      return;
+    }
+    const newCompleted = new Set<string>();
+    const newFailed = new Set<string>();
+    for (const step of replayRun.steps) {
+      if (step.status === "completed") newCompleted.add(step.nodeId);
+      else if (step.status === "failed") newFailed.add(step.nodeId);
+    }
+    setActiveNodeId(null);
+    setCompletedNodeIds(newCompleted);
+    setFailedNodeIds(newFailed);
+    applyExecState(null, newCompleted, newFailed);
+  }, [replayRun, running, clearExecState, applyExecState]);
+
+  // ── Run Handler ───────────────────────────────────────────────────
+
+  const handleRun = useCallback(async () => {
+    if (!activeWorkflowId || running) return;
+    try {
+      setRunning(true);
+      clearExecState();
+      const result = await gateway.request("workflows.run", { workflowId: activeWorkflowId });
+      console.log("[Workflows] Run started:", result);
+      // Subscribe to live updates
+      await gateway.request("workflows.subscribe", { workflowId: activeWorkflowId });
+    } catch (err) {
+      console.error("[Workflows] Run failed:", err);
+      setRunning(false);
+    }
+  }, [activeWorkflowId, running, gateway, clearExecState]);
+
+  // Load active workflow into canvas
+  const activeWorkflow = useMemo(
+    () => workflows.find((w) => w.id === activeWorkflowId) ?? null,
+    [workflows, activeWorkflowId],
+  );
+
+  useEffect(() => {
+    if (activeWorkflow) {
+      setNodes(activeWorkflow.nodes);
+      setEdges(activeWorkflow.edges);
+    } else {
+      setNodes([]);
+      setEdges([]);
+    }
+    setSelectedNode(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkflowId]);
+
+  // Auto-save: localStorage immediately + PG debounced
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!activeWorkflowId) return;
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      setWorkflows((prev) => {
+        const next = prev.map((w) =>
+          w.id === activeWorkflowId
+            ? { ...w, nodes, edges, updatedAt: new Date().toISOString() }
+            : w,
+        );
+        saveWorkflowsLocal(next);
+        return next;
+      });
+      // PG sync (fire and forget)
+      if (gateway.connected) {
+        // Strip execState from nodes before persisting
+        const cleanNodes = nodes.map((n) => {
+          if (n.data?.execState) {
+            const { execState: _, ...rest } = n.data as Record<string, unknown>;
+            return { ...n, data: rest };
+          }
+          return n;
+        });
+        gateway
+          .request("workflows.update", {
+            workflowId: activeWorkflowId,
+            canvasData: { nodes: cleanNodes, edges },
+          })
+          .catch(() => {
+            /* localStorage is already saved */
+          });
+      }
+    }, 500);
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [nodes, edges, activeWorkflowId, setWorkflows, gateway]);
+
+  // Connect edges
+  const onConnect: OnConnect = useCallback(
+    (connection: Connection) => {
+      // Sub-port connections get dashed style
+      const isSubPort =
+        connection.targetHandle === "model" ||
+        connection.targetHandle === "memory" ||
+        connection.targetHandle === "tools";
+      const edgeStyle = isSubPort
+        ? {
+            stroke:
+              connection.targetHandle === "model"
+                ? "#8b5cf6"
+                : connection.targetHandle === "memory"
+                  ? "#22d3ee"
+                  : "#fbbf24",
+            strokeWidth: 1.5,
+            strokeDasharray: "5 3",
+          }
+        : { stroke: "hsl(var(--primary))", strokeWidth: 2 };
+
+      setEdges((eds) =>
+        addEdge(
+          {
+            ...connection,
+            style: edgeStyle,
+            animated: !isSubPort,
+          },
+          eds,
+        ),
+      );
+    },
+    [setEdges],
+  );
+
+  // Drop from palette
+  const onDragOver = useCallback((event: DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const onDrop = useCallback(
+    (event: DragEvent) => {
+      event.preventDefault();
+      const type = event.dataTransfer.getData("application/reactflow");
+      if (!type) return;
+
+      let position: { x: number; y: number };
+      try {
+        position = screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        });
+      } catch {
+        // Fallback: use raw client coordinates offset by canvas bounds
+        const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        position = {
+          x: event.clientX - bounds.left,
+          y: event.clientY - bounds.top,
+        };
+      }
+
+      // Check if this is a connector drop
+      const connectorRaw = event.dataTransfer.getData("application/reactflow-connector");
+      if (connectorRaw && type === "action") {
+        try {
+          const connector = JSON.parse(connectorRaw) as {
+            id: string;
+            name: string;
+            category: string;
+          };
+          const data: ActionNodeData = {
+            label: connector.name,
+            actionType: "api_call",
+            config: {
+              connectorId: connector.id,
+              connectorName: connector.name,
+              connectorCategory: connector.category,
+            },
+            timeoutMs: 30000,
+          };
+          setNodes((nds) => [
+            ...nds,
+            { id: `action-${Date.now()}`, type: "action", position, data },
+          ]);
+          return;
+        } catch {
+          /* fall through to normal action */
+        }
+      }
+
+      let data: Record<string, unknown>;
+      switch (type) {
+        case "trigger":
+          data = createDefaultTriggerData();
+          break;
+        case "agentStep":
+          data = createDefaultAgentStepData();
+          break;
+        case "output":
+          data = createDefaultOutputData();
+          break;
+        case "action":
+          data = createDefaultActionData();
+          break;
+        case "gate":
+          data = createDefaultGateData();
+          break;
+        case "modelProvider":
+          data = {
+            subPortType: "model_provider",
+            label: "Model",
+            config: { provider: "anthropic", model: "claude-sonnet-4-6" },
+          };
+          break;
+        case "memorySource":
+          data = {
+            subPortType: "memory_source",
+            label: "Knowledge",
+            config: { sourceType: "knowledge_collection" },
+          };
+          break;
+        case "toolGrant":
+          data = { subPortType: "tool_grant", label: "Tool", config: { grantType: "connector" } };
+          break;
+        default:
+          return;
+      }
+
+      setNodes((nds) => [...nds, { id: `${type}-${Date.now()}`, type, position, data }]);
+    },
+    [screenToFlowPosition, setNodes],
+  );
+
+  // Selection
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    setSelectedNode(node);
+  }, []);
+  const onPaneClick = useCallback(() => setSelectedNode(null), []);
+
+  // Delete via keyboard
+  const onKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if ((event.key === "Delete" || event.key === "Backspace") && selectedNode) {
+        const tag = (event.target as HTMLElement).tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+        setNodes((nds) => nds.filter((n) => n.id !== selectedNode.id));
+        setEdges((eds) =>
+          eds.filter((e) => e.source !== selectedNode.id && e.target !== selectedNode.id),
+        );
+        setSelectedNode(null);
+      }
+    },
+    [selectedNode, setNodes, setEdges],
+  );
+
+  // Update node data from properties panel
+  const onUpdateNodeData = useCallback(
+    (id: string, data: Record<string, unknown>) => {
+      setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...data } } : n)));
+      setSelectedNode((prev) => (prev && prev.id === id ? { ...prev, data: { ...data } } : prev));
+    },
+    [setNodes],
+  );
+
+  // Rename workflow
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState("");
+
+  const startRename = () => {
+    if (activeWorkflow) {
+      setDraftName(activeWorkflow.name);
+      setEditingName(true);
+    }
+  };
+
+  const commitRename = () => {
+    if (activeWorkflowId && draftName.trim()) {
+      setWorkflows((prev) => {
+        const next = prev.map((w) =>
+          w.id === activeWorkflowId ? { ...w, name: draftName.trim() } : w,
+        );
+        saveWorkflowsLocal(next);
+        return next;
+      });
+    }
+    setEditingName(false);
+  };
+
+  return (
+    <div className="flex-1 min-h-0 flex flex-col">
+      {/* Toolbar */}
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b border-[hsl(var(--border))]">
+        <div className="flex items-center gap-3">
+          {activeWorkflow ? (
+            editingName ? (
+              <input
+                autoFocus
+                className="px-2 py-0.5 text-sm font-semibold rounded bg-[hsl(var(--background))] border border-[hsl(var(--primary))] text-[hsl(var(--foreground))] focus:outline-none"
+                value={draftName}
+                onChange={(e) => setDraftName(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitRename();
+                  if (e.key === "Escape") setEditingName(false);
+                }}
+              />
+            ) : (
+              <span
+                className="text-sm font-semibold text-[hsl(var(--foreground))] cursor-pointer hover:text-[hsl(var(--primary))]"
+                onDoubleClick={startRename}
+                title="Double-click to rename"
+              >
+                {activeWorkflow.name}
+              </span>
+            )
+          ) : (
+            <span className="text-sm text-[hsl(var(--muted-foreground))]">
+              Select or create a workflow
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            disabled={!activeWorkflowId}
+            onClick={() => {
+              if (!activeWorkflowId) return;
+              // Immediate save to PG + localStorage
+              const cleanNodes = nodes.map((n) => {
+                if (n.data?.execState) {
+                  const { execState: _, ...rest } = n.data as Record<string, unknown>;
+                  return { ...n, data: rest };
+                }
+                return n;
+              });
+              if (gateway.connected) {
+                gateway
+                  .request("workflows.update", {
+                    workflowId: activeWorkflowId,
+                    canvasData: { nodes: cleanNodes, edges },
+                  })
+                  .catch(() => {});
+              }
+              setWorkflows((prev) => {
+                const next = prev.map((w) =>
+                  w.id === activeWorkflowId
+                    ? { ...w, nodes: cleanNodes, edges, updatedAt: new Date().toISOString() }
+                    : w,
+                );
+                saveWorkflowsLocal(next);
+                return next;
+              });
+            }}
+            className="px-3 py-1 rounded text-[11px] font-medium bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/25 disabled:opacity-40 transition-colors"
+            title="Save workflow"
+          >
+            Save
+          </button>
+          <button
+            disabled={!activeWorkflowId}
+            onClick={() => {
+              if (!activeWorkflow) return;
+              const exportData = {
+                format: "argent-workflow" as const,
+                version: 1,
+                exportedAt: new Date().toISOString(),
+                workflow: {
+                  name: activeWorkflow.name,
+                  description: "",
+                  nodes: nodes.map((n) => {
+                    const { execState: _, ...rest } = (n.data ?? {}) as Record<string, unknown>;
+                    return { ...n, position: n.position, data: rest };
+                  }),
+                  edges: edges.map((e) => ({
+                    id: e.id,
+                    source: e.source,
+                    target: e.target,
+                    sourceHandle: e.sourceHandle,
+                    targetHandle: e.targetHandle,
+                  })),
+                },
+              };
+              const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+                type: "application/json",
+              });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `${activeWorkflow.name.replace(/[^a-zA-Z0-9-_]/g, "-")}.argent-workflow.json`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+            className="px-3 py-1 rounded text-[11px] font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] disabled:opacity-40 transition-colors"
+            title="Export workflow"
+          >
+            Export
+          </button>
+          <button
+            disabled={!activeWorkflowId || running || !gateway.connected}
+            onClick={handleRun}
+            className={`px-3 py-1 rounded text-[11px] font-medium transition-colors disabled:opacity-40 ${
+              running
+                ? "bg-yellow-500/15 text-yellow-400"
+                : "bg-green-500/15 text-green-400 hover:bg-green-500/25"
+            }`}
+            title={running ? "Workflow running..." : "Run workflow"}
+          >
+            {running ? "Running..." : "Run"}
+          </button>
+          <button
+            disabled={!activeWorkflowId}
+            className="px-3 py-1 rounded text-[11px] font-medium bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 disabled:opacity-40 transition-colors"
+            title="Schedule workflow"
+          >
+            Schedule
+          </button>
+        </div>
+      </div>
+
+      {/* Canvas + Right Dock */}
+      <div className="flex-1 min-h-0 relative">
+        {/* Approval Request Banner */}
+        {pendingApprovals.length > 0 && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[60] flex flex-col gap-2">
+            {pendingApprovals.map((approval) => (
+              <div
+                key={`${approval.runId}-${approval.nodeId}`}
+                className="bg-amber-500/15 border border-amber-500/30 rounded-xl px-6 py-4 shadow-lg max-w-md backdrop-blur-sm"
+              >
+                <div className="text-sm font-semibold text-amber-400 mb-2">
+                  Pipeline Paused -- Review Required
+                </div>
+                <div className="text-xs text-[hsl(var(--foreground))] mb-3">{approval.message}</div>
+                {approval.previousOutput &&
+                  (approval.previousOutput.text || approval.previousOutput.json) && (
+                    <div className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--background))] rounded-lg p-3 mb-3 max-h-32 overflow-y-auto">
+                      {approval.previousOutput.nodeLabel && (
+                        <div className="font-medium text-[hsl(var(--foreground))] mb-1">
+                          From: {approval.previousOutput.nodeLabel}
+                        </div>
+                      )}
+                      {approval.previousOutput.text ||
+                        JSON.stringify(approval.previousOutput.json, null, 2)}
+                    </div>
+                  )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleApprove(approval.runId, approval.nodeId)}
+                    className="px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs font-medium hover:bg-emerald-500/30 transition-colors"
+                  >
+                    Approve &amp; Continue
+                  </button>
+                  <button
+                    onClick={() => handleDeny(approval.runId, approval.nodeId)}
+                    className="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 text-xs font-medium hover:bg-red-500/30 transition-colors"
+                  >
+                    Deny &amp; Stop
+                  </button>
+                </div>
+                {approval.timeoutMs && approval.timeoutMs > 0 && (
+                  <div className="text-[10px] text-[hsl(var(--muted-foreground))] mt-2">
+                    Auto-{approval.timeoutAction || "deny"} in{" "}
+                    {Math.round(approval.timeoutMs / 60000)}m
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="absolute inset-0 dark" onKeyDown={onKeyDown} tabIndex={0}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+            onNodeClick={onNodeClick}
+            onPaneClick={onPaneClick}
+            nodeTypes={nodeTypes}
+            fitView
+            defaultEdgeOptions={{
+              style: { stroke: "hsl(var(--primary))", strokeWidth: 2 },
+              animated: true,
+            }}
+            proOptions={{ hideAttribution: true }}
+            style={{ background: "hsl(var(--background))" }}
+          >
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={20}
+              size={1}
+              color="hsl(var(--muted-foreground) / 0.15)"
+            />
+            <MiniMap
+              nodeStrokeColor="hsl(var(--border))"
+              nodeColor={() => "hsl(var(--primary))"}
+              maskColor="rgba(0, 0, 0, 0.5)"
+              style={{
+                backgroundColor: "hsl(var(--background))",
+                border: "1px solid hsl(var(--border))",
+                borderRadius: 8,
+              }}
+            />
+            <Controls
+              showInteractive={false}
+              style={{
+                background: "hsl(var(--card))",
+                border: "1px solid hsl(var(--border))",
+                borderRadius: 8,
+              }}
+            />
+          </ReactFlow>
+        </div>
+
+        {/* Right dock — slides out when a node is selected */}
+        <div
+          className="absolute top-0 right-0 h-full w-[380px] bg-[hsl(var(--card))] border-l border-[hsl(var(--border))] shadow-2xl z-50 flex flex-col"
+          style={{
+            transform: selectedNode ? "translateX(0)" : "translateX(100%)",
+            transition: "transform 200ms ease-out",
+          }}
+        >
+          {selectedNode &&
+            (() => {
+              // Connector action nodes render ConnectorNodePanel (owns its own header)
+              if (selectedNode.type === "action") {
+                const actionData = selectedNode.data as unknown as ActionNodeData;
+                const connId = actionData.config?.connectorId as string | undefined;
+                if (connId) {
+                  return (
+                    <ConnectorNodePanel
+                      connectorId={connId}
+                      nodeConfig={actionData.config ?? {}}
+                      onConfigChange={(config) =>
+                        onUpdateNodeData(selectedNode.id, {
+                          ...actionData,
+                          config,
+                        })
+                      }
+                      onClose={() => setSelectedNode(null)}
+                    />
+                  );
+                }
+              }
+
+              // Primitive nodes: shared header + per-type form
+              return (
+                <>
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-[hsl(var(--border))] flex-shrink-0">
+                    <div>
+                      <div className="text-sm font-semibold text-[hsl(var(--foreground))]">
+                        {((selectedNode.data as Record<string, unknown>).label as string) ||
+                          selectedNode.type}
+                      </div>
+                      <div className="text-xs text-[hsl(var(--muted-foreground))]">
+                        {nodeKindLabel(selectedNode)}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setSelectedNode(null)}
+                      className="p-1.5 hover:bg-[hsl(var(--muted))] rounded-md transition-colors"
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 14 14"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      >
+                        <path d="M1 1l12 12M13 1L1 13" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Properties form — scrollable */}
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {selectedNode.type === "trigger" && (
+                      <TriggerForm
+                        data={selectedNode.data as unknown as TriggerNodeData}
+                        onUpdate={onUpdateNodeData}
+                        nodeId={selectedNode.id}
+                        gateway={gateway}
+                      />
+                    )}
+                    {selectedNode.type === "agentStep" && (
+                      <AgentForm
+                        data={selectedNode.data as unknown as AgentStepNodeData}
+                        agents={agents}
+                        onUpdate={onUpdateNodeData}
+                        nodeId={selectedNode.id}
+                        gateway={gateway}
+                      />
+                    )}
+                    {selectedNode.type === "action" && (
+                      <ActionForm
+                        data={selectedNode.data as unknown as ActionNodeData}
+                        onUpdate={onUpdateNodeData}
+                        nodeId={selectedNode.id}
+                        gateway={gateway}
+                      />
+                    )}
+                    {selectedNode.type === "gate" && (
+                      <GateForm
+                        data={selectedNode.data as unknown as GateNodeData}
+                        onUpdate={onUpdateNodeData}
+                        nodeId={selectedNode.id}
+                      />
+                    )}
+                    {selectedNode.type === "output" && (
+                      <OutputForm
+                        data={selectedNode.data as unknown as OutputNodeData}
+                        onUpdate={onUpdateNodeData}
+                        nodeId={selectedNode.id}
+                      />
+                    )}
+                    {selectedNode.type === "modelProvider" && (
+                      <ModelProviderForm
+                        data={selectedNode.data as unknown as SubPortNodeData}
+                        onUpdate={onUpdateNodeData}
+                        nodeId={selectedNode.id}
+                      />
+                    )}
+                    {selectedNode.type === "memorySource" && (
+                      <MemorySourceForm
+                        data={selectedNode.data as unknown as SubPortNodeData}
+                        onUpdate={onUpdateNodeData}
+                        nodeId={selectedNode.id}
+                      />
+                    )}
+                    {selectedNode.type === "toolGrant" && (
+                      <ToolGrantForm
+                        data={selectedNode.data as unknown as SubPortNodeData}
+                        onUpdate={onUpdateNodeData}
+                        nodeId={selectedNode.id}
+                        connectors={connectors}
+                      />
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,103 +1,187 @@
 {
   "tool": "aos-clickup",
-  "backend": "clickup-rest-api",
+  "backend": "clickup-api",
   "manifest_schema_version": "1.0.0",
   "scope": {
-    "kind": "work-management",
-    "surface": "workspace-space-folder-list-task",
+    "kind": "project-management",
+    "surface": "task-list-space-doc",
     "scaffold_only": false,
     "live_backend_available": true,
     "live_read_available": true,
-    "write_bridge_available": false,
-    "workerFields": ["workspace_id", "space_id", "folder_id", "list_id", "task_id"],
+    "write_bridge_available": true,
+    "workerFields": ["workspace_id", "space_id", "list_id", "task_id", "assignee"],
+    "worker_visible_actions": [
+      "task.list",
+      "task.get",
+      "task.create",
+      "task.update",
+      "task.delete",
+      "list.list",
+      "list.get",
+      "list.create",
+      "space.list",
+      "space.get",
+      "comment.list",
+      "comment.create",
+      "doc.list",
+      "doc.get",
+      "doc.create",
+      "time_tracking.list",
+      "time_tracking.create",
+      "goal.list",
+      "goal.get"
+    ],
     "fields": [
       {
         "id": "workspace_id",
         "label": "Workspace ID",
-        "required": false,
-        "applies_to": ["workspace.read", "space.list", "space.read"],
-        "example": "12345678"
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "Select a workspace...",
+        "description": "The ClickUp workspace to scope all operations."
       },
       {
         "id": "space_id",
         "label": "Space ID",
+        "type": "select",
+        "renderAs": "select",
         "required": false,
-        "applies_to": ["space.read", "folder.list", "folder.read"],
-        "example": "space_abc123"
-      },
-      {
-        "id": "folder_id",
-        "label": "Folder ID",
-        "required": false,
-        "applies_to": ["folder.read", "list.list"],
-        "example": "folder_abc123"
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "Select a space...",
+        "description": "The space within the workspace for organizing lists."
       },
       {
         "id": "list_id",
         "label": "List ID",
+        "type": "select",
+        "renderAs": "select",
         "required": false,
-        "applies_to": ["list.read", "task.list", "task.create_draft", "task.update_draft"],
-        "example": "list_abc123"
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["task.list", "task.create"],
+        "placeholder": "Select a list...",
+        "description": "The list to retrieve or create tasks in."
       },
       {
         "id": "task_id",
         "label": "Task ID",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
-        "applies_to": ["task.read", "task.update_draft"],
-        "example": "task_abc123"
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["task.get", "task.update", "task.delete", "comment.list", "comment.create"],
+        "placeholder": "e.g., abc123def456",
+        "description": "The ClickUp task ID to operate on."
+      },
+      {
+        "id": "title",
+        "label": "Title",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["task.create", "list.create", "doc.create"],
+        "placeholder": "e.g., Implement authentication",
+        "description": "Title for the task, list, or document."
+      },
+      {
+        "id": "description",
+        "label": "Description",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["task.create", "task.update"],
+        "placeholder": "Describe the task details...",
+        "description": "Rich text description for the task."
+      },
+      {
+        "id": "assignee",
+        "label": "Assignee",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "Select team member...",
+        "description": "The team member to assign the task to."
+      },
+      {
+        "id": "status",
+        "label": "Status",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "options": [
+          { "value": "open", "label": "Open" },
+          { "value": "in_progress", "label": "In Progress" },
+          { "value": "in_review", "label": "In Review" },
+          { "value": "done", "label": "Done" }
+        ],
+        "placeholder": "Select status...",
+        "description": "Task status in the ClickUp workflow."
+      },
+      {
+        "id": "priority",
+        "label": "Priority (1-4)",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "number",
+        "options": [
+          { "value": "1", "label": "Urgent" },
+          { "value": "2", "label": "High" },
+          { "value": "3", "label": "Normal" },
+          { "value": "4", "label": "Low" }
+        ],
+        "placeholder": "Select priority...",
+        "description": "Task priority from 1 (Urgent) to 4 (Low)."
       }
-    ],
-    "worker_visible_actions": [
-      "workspace.list",
-      "workspace.read",
-      "space.list",
-      "space.read",
-      "folder.list",
-      "folder.read",
-      "list.list",
-      "list.read",
-      "task.list",
-      "task.read",
-      "task.create_draft",
-      "task.update_draft"
     ],
     "commandDefaults": {
       "workspace.read": {
-        "args": ["CLICKUP_WORKSPACE_ID", "CLICKUP_TEAM_ID"]
+        "args": ["CLICKUP_WORKSPACE_ID"]
       },
       "space.list": {
-        "args": ["CLICKUP_WORKSPACE_ID", "CLICKUP_TEAM_ID"]
+        "args": ["CLICKUP_WORKSPACE_ID"]
       },
-      "space.read": {
+      "space.get": {
         "args": ["CLICKUP_SPACE_ID"]
-      },
-      "folder.list": {
-        "args": ["CLICKUP_SPACE_ID"]
-      },
-      "folder.read": {
-        "args": ["CLICKUP_FOLDER_ID"]
       },
       "list.list": {
-        "args": ["CLICKUP_FOLDER_ID", "CLICKUP_SPACE_ID"]
+        "args": ["CLICKUP_SPACE_ID"]
       },
-      "list.read": {
+      "list.get": {
         "args": ["CLICKUP_LIST_ID"]
       },
       "task.list": {
         "args": ["CLICKUP_LIST_ID"]
       },
-      "task.read": {
+      "task.get": {
         "args": ["CLICKUP_TASK_ID"]
       },
-      "task.create_draft": {
+      "task.create": {
         "options": {
           "list_id": "CLICKUP_LIST_ID"
         }
       },
-      "task.update_draft": {
+      "task.update": {
         "options": {
           "task_id": "CLICKUP_TASK_ID"
         }
+      },
+      "goal.list": {
+        "args": ["CLICKUP_WORKSPACE_ID"]
       }
     },
     "pickerHints": {
@@ -115,13 +199,6 @@
         "source_command": "space.list",
         "source_fields": ["id", "name", "private", "statuses"]
       },
-      "folder": {
-        "kind": "folder",
-        "selection_surface": "folder",
-        "resource": "clickup.folder",
-        "source_command": "folder.list",
-        "source_fields": ["id", "name"]
-      },
       "list": {
         "kind": "list",
         "selection_surface": "list",
@@ -134,26 +211,40 @@
         "selection_surface": "task",
         "resource": "clickup.task",
         "source_command": "task.list",
-        "source_fields": ["id", "name", "status", "url"]
+        "source_fields": ["id", "name", "status", "assignees", "priority", "url"]
+      },
+      "doc": {
+        "kind": "doc",
+        "selection_surface": "doc",
+        "resource": "clickup.doc",
+        "source_command": "doc.list",
+        "source_fields": ["id", "name", "date_created"]
+      },
+      "goal": {
+        "kind": "goal",
+        "selection_surface": "goal",
+        "resource": "clickup.goal",
+        "source_command": "goal.list",
+        "source_fields": ["id", "name", "percent_completed"]
       }
     }
   },
   "connector": {
     "label": "ClickUp",
-    "category": "work-management",
-    "categories": ["work-management", "project-tracking", "task-management"],
-    "resources": ["workspace", "space", "folder", "list", "task"]
+    "category": "project-management",
+    "categories": ["project-management", "work-management", "task-management"],
+    "resources": ["workspace", "space", "list", "task", "doc", "comment", "goal", "time_tracking"]
   },
   "auth": {
     "kind": "service-key",
     "required": true,
     "service_keys": ["CLICKUP_API_TOKEN", "CLICKUP_ACCESS_TOKEN"],
     "interactive_setup": [
-      "Create a ClickUp personal API token or OAuth access token for the workspace this worker should use.",
+      "Create a ClickUp personal API token or OAuth access token for the target workspace.",
       "Add CLICKUP_API_TOKEN or CLICKUP_ACCESS_TOKEN in API Keys before enabling live reads.",
-      "Pin CLICKUP_WORKSPACE_ID or CLICKUP_TEAM_ID so workspace, space, folder, list, and task reads have a stable scope.",
-      "Optionally set CLICKUP_SPACE_ID, CLICKUP_FOLDER_ID, CLICKUP_LIST_ID, and CLICKUP_TASK_ID for deeper worker defaults.",
-      "Live reads are enabled for workspace, space, folder, list, and task discovery; task.create_draft and task.update_draft remain scaffolded until a live write bridge is approved."
+      "Pin CLICKUP_WORKSPACE_ID so workspace, space, list, and task reads have a stable scope.",
+      "Optionally set CLICKUP_SPACE_ID and CLICKUP_LIST_ID for deeper worker defaults.",
+      "The connector supports live reads and writes for tasks, comments, docs, and time tracking."
     ]
   },
   "commands": [
@@ -198,14 +289,6 @@
       "action_class": "read"
     },
     {
-      "id": "workspace.read",
-      "summary": "Read a ClickUp workspace summary",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "workspace",
-      "action_class": "read"
-    },
-    {
       "id": "space.list",
       "summary": "List spaces in a ClickUp workspace",
       "required_mode": "readonly",
@@ -214,7 +297,7 @@
       "action_class": "read"
     },
     {
-      "id": "space.read",
+      "id": "space.get",
       "summary": "Read a ClickUp space",
       "required_mode": "readonly",
       "supports_json": true,
@@ -222,36 +305,28 @@
       "action_class": "read"
     },
     {
-      "id": "folder.list",
-      "summary": "List folders in a ClickUp space",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "folder",
-      "action_class": "read"
-    },
-    {
-      "id": "folder.read",
-      "summary": "Read a ClickUp folder",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "folder",
-      "action_class": "read"
-    },
-    {
       "id": "list.list",
-      "summary": "List lists in a ClickUp folder or space",
+      "summary": "List lists in a ClickUp space",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "list",
       "action_class": "read"
     },
     {
-      "id": "list.read",
+      "id": "list.get",
       "summary": "Read a ClickUp list",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "list",
       "action_class": "read"
+    },
+    {
+      "id": "list.create",
+      "summary": "Create a ClickUp list",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "list",
+      "action_class": "write"
     },
     {
       "id": "task.list",
@@ -262,7 +337,7 @@
       "action_class": "read"
     },
     {
-      "id": "task.read",
+      "id": "task.get",
       "summary": "Read a ClickUp task",
       "required_mode": "readonly",
       "supports_json": true,
@@ -270,20 +345,100 @@
       "action_class": "read"
     },
     {
-      "id": "task.create_draft",
-      "summary": "Create a draft task payload",
+      "id": "task.create",
+      "summary": "Create a ClickUp task",
       "required_mode": "write",
       "supports_json": true,
       "resource": "task",
       "action_class": "write"
     },
     {
-      "id": "task.update_draft",
-      "summary": "Update a draft task payload",
+      "id": "task.update",
+      "summary": "Update a ClickUp task",
       "required_mode": "write",
       "supports_json": true,
       "resource": "task",
       "action_class": "write"
+    },
+    {
+      "id": "task.delete",
+      "summary": "Delete a ClickUp task",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "write"
+    },
+    {
+      "id": "comment.list",
+      "summary": "List comments on a ClickUp task",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "comment",
+      "action_class": "read"
+    },
+    {
+      "id": "comment.create",
+      "summary": "Create a comment on a ClickUp task",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "comment",
+      "action_class": "write"
+    },
+    {
+      "id": "doc.list",
+      "summary": "List ClickUp docs in a workspace",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "doc",
+      "action_class": "read"
+    },
+    {
+      "id": "doc.get",
+      "summary": "Read a ClickUp doc",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "doc",
+      "action_class": "read"
+    },
+    {
+      "id": "doc.create",
+      "summary": "Create a ClickUp doc",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "doc",
+      "action_class": "write"
+    },
+    {
+      "id": "time_tracking.list",
+      "summary": "List time entries for a ClickUp task",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "time_tracking",
+      "action_class": "read"
+    },
+    {
+      "id": "time_tracking.create",
+      "summary": "Create a time entry for a ClickUp task",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "time_tracking",
+      "action_class": "write"
+    },
+    {
+      "id": "goal.list",
+      "summary": "List goals in a ClickUp workspace",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "goal",
+      "action_class": "read"
+    },
+    {
+      "id": "goal.get",
+      "summary": "Read a ClickUp goal",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "goal",
+      "action_class": "read"
     }
   ]
 }

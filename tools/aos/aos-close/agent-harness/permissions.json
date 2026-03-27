@@ -1,0 +1,27 @@
+{
+  "tool": "aos-close",
+  "backend": "close-api",
+  "permissions": {
+    "lead.list": "readonly",
+    "lead.get": "readonly",
+    "lead.create": "write",
+    "lead.update": "write",
+    "contact.list": "readonly",
+    "contact.get": "readonly",
+    "contact.create": "write",
+    "opportunity.list": "readonly",
+    "opportunity.get": "readonly",
+    "opportunity.create": "write",
+    "activity.list": "readonly",
+    "activity.create": "write",
+    "task.list": "readonly",
+    "task.create": "write",
+    "email.send": "write",
+    "sms.send": "write",
+    "call.create": "write",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

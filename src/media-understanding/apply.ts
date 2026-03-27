@@ -466,6 +466,16 @@ export async function applyMediaUnderstanding(params: {
       .find((value) => value && value.trim()) ?? undefined;
 
   const attachments = normalizeMediaAttachments(ctx);
+  if (attachments.length === 0) {
+    return {
+      outputs: [],
+      decisions: [],
+      appliedImage: false,
+      appliedAudio: false,
+      appliedVideo: false,
+      appliedFile: false,
+    };
+  }
   const providerRegistry = buildProviderRegistry(params.providers);
   const cache = createMediaAttachmentCache(attachments);
 

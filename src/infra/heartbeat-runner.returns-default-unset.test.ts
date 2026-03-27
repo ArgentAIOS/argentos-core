@@ -17,6 +17,7 @@ import {
 } from "../config/sessions.js";
 import { setActivePluginRegistry } from "../plugins/runtime.js";
 import { createPluginRuntime } from "../plugins/runtime/index.js";
+import { CommandLane } from "../process/lanes.js";
 import { buildAgentPeerSessionKey } from "../routing/session-key.js";
 import { createTestRegistry } from "../test-utils/channel-plugins.js";
 import {
@@ -397,6 +398,29 @@ describe("runHeartbeatOnce", () => {
     }
   });
 
+  it("skips when the interactive lane has requests in flight", async () => {
+    const cfg: ArgentConfig = {
+      agents: {
+        defaults: {
+          heartbeat: { every: "30m" },
+        },
+      },
+    };
+
+    const res = await runHeartbeatOnce({
+      cfg,
+      deps: {
+        getQueueSize: (lane) => (lane === CommandLane.Interactive ? 1 : 0),
+        nowMs: () => 0,
+      },
+    });
+
+    expect(res.status).toBe("skipped");
+    if (res.status === "skipped") {
+      expect(res.reason).toBe("requests-in-flight");
+    }
+  });
+
   it("uses the last non-empty payload for delivery", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-hb-"));
     const storePath = path.join(tmpDir, "sessions.json");
@@ -516,7 +540,7 @@ describe("runHeartbeatOnce", () => {
       expect(sendWhatsApp).toHaveBeenCalledWith("+1555", "Final alert", expect.any(Object));
       expect(replySpy).toHaveBeenCalledWith(
         expect.objectContaining({ Body: "Ops check", SessionKey: sessionKey }),
-        { isHeartbeat: true },
+        expect.objectContaining({ isHeartbeat: true, lane: "background" }),
         cfg,
       );
     } finally {
@@ -599,7 +623,7 @@ describe("runHeartbeatOnce", () => {
       expect(sendWhatsApp).toHaveBeenCalledWith(groupId, "Group alert", expect.any(Object));
       expect(replySpy).toHaveBeenCalledWith(
         expect.objectContaining({ SessionKey: groupSessionKey }),
-        { isHeartbeat: true },
+        expect.objectContaining({ isHeartbeat: true, lane: "background" }),
         cfg,
       );
     } finally {

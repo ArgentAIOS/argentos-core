@@ -73,7 +73,7 @@ def test_manifest_and_permissions_are_in_sync():
     permissions = json.loads(PERMISSIONS_PATH.read_text())["permissions"]
     command_ids = [command["id"] for command in manifest["commands"]]
     assert set(command_ids) == set(permissions.keys())
-    assert manifest["scope"]["kind"] == "social-publishing"
+    assert manifest["scope"]["kind"] == "social-media"
 
 
 def test_capabilities_exposes_manifest():

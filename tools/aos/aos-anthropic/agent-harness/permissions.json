@@ -1,0 +1,13 @@
+{
+  "tool": "aos-anthropic",
+  "backend": "anthropic-api",
+  "permissions": {
+    "message.create": "write",
+    "message.stream": "write",
+    "model.list": "readonly",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

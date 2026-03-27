@@ -25,7 +25,7 @@ AUTH_DESCRIPTOR = {
         "Create a Notion internal integration for the workspace you want this worker to use.",
         "Share the target databases and pages with that integration before enabling any worker-visible commands.",
         f"Add {NOTION_TOKEN_ENV} in API Keys; optionally set {NOTION_VERSION_ENV} if you want to pin a specific Notion API release.",
-        "Live reads are enabled now; keep write commands scaffolded until a live Notion write bridge is implemented.",
+        "Live reads and writes are enabled now; write commands execute against the live Notion API.",
     ],
 }
 

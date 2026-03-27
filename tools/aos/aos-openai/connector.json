@@ -1,0 +1,348 @@
+{
+  "tool": "aos-openai",
+  "backend": "openai-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "ai-api",
+    "surface": "chat-embedding-image-audio-moderation",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": [
+      "model",
+      "prompt",
+      "messages_json",
+      "max_tokens",
+      "temperature",
+      "image_prompt",
+      "image_size",
+      "audio_file",
+      "voice"
+    ],
+    "worker_visible_actions": [
+      "chat.complete",
+      "embedding.create",
+      "image.generate",
+      "image.edit",
+      "audio.transcribe",
+      "audio.tts",
+      "moderation.check",
+      "model.list"
+    ],
+    "fields": [
+      {
+        "id": "model",
+        "label": "Model",
+        "type": "text",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": [
+          "chat.complete",
+          "embedding.create",
+          "image.generate",
+          "image.edit",
+          "audio.transcribe",
+          "audio.tts",
+          "moderation.check"
+        ],
+        "placeholder": "gpt-4o",
+        "description": "OpenAI model to use (e.g., gpt-4o, gpt-4-turbo, text-embedding-3-small).",
+        "example": "gpt-4o"
+      },
+      {
+        "id": "prompt",
+        "label": "Prompt",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "rows": 4,
+        "applies_to": ["chat.complete", "image.generate"],
+        "placeholder": "Summarize the following text...",
+        "description": "Prompt text for chat completion or image generation.",
+        "example": "Summarize the following text..."
+      },
+      {
+        "id": "messages_json",
+        "label": "Messages (JSON Array)",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "json",
+        "applies_to": ["chat.complete"],
+        "placeholder": "[{\"role\":\"user\",\"content\":\"Hello\"}]",
+        "description": "Conversation history as a JSON array of message objects.",
+        "example": "[{\"role\":\"user\",\"content\":\"Hello\"}]"
+      },
+      {
+        "id": "max_tokens",
+        "label": "Max Tokens",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "applies_to": ["chat.complete"],
+        "placeholder": "4096",
+        "description": "Maximum tokens in the response.",
+        "example": "4096"
+      },
+      {
+        "id": "temperature",
+        "label": "Temperature",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "applies_to": ["chat.complete"],
+        "placeholder": "0.7",
+        "description": "Sampling temperature (0-2). Controls randomness of responses.",
+        "example": "0.7"
+      },
+      {
+        "id": "image_prompt",
+        "label": "Image Prompt",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "rows": 3,
+        "applies_to": ["image.generate", "image.edit"],
+        "placeholder": "A futuristic city skyline at sunset",
+        "description": "Detailed prompt describing the image to generate or edit.",
+        "example": "A futuristic city skyline at sunset"
+      },
+      {
+        "id": "image_size",
+        "label": "Image Size",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "applies_to": ["image.generate", "image.edit"],
+        "placeholder": "1024x1024",
+        "description": "Output image dimensions.",
+        "options": [
+          { "value": "256x256", "label": "256x256" },
+          { "value": "512x512", "label": "512x512" },
+          { "value": "1024x1024", "label": "1024x1024" },
+          { "value": "1792x1024", "label": "1792x1024 (Landscape)" },
+          { "value": "1024x1792", "label": "1024x1792 (Portrait)" }
+        ],
+        "example": "1024x1024"
+      },
+      {
+        "id": "audio_file",
+        "label": "Audio File Path or URL",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["audio.transcribe"],
+        "placeholder": "/path/to/audio.mp3",
+        "description": "Local path or URL of the audio file to transcribe.",
+        "example": "/path/to/audio.mp3"
+      },
+      {
+        "id": "voice",
+        "label": "TTS Voice",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "applies_to": ["audio.tts"],
+        "placeholder": "alloy",
+        "description": "Voice to use for text-to-speech synthesis.",
+        "options": [
+          { "value": "alloy", "label": "Alloy" },
+          { "value": "echo", "label": "Echo" },
+          { "value": "fable", "label": "Fable" },
+          { "value": "onyx", "label": "Onyx" },
+          { "value": "nova", "label": "Nova" },
+          { "value": "shimmer", "label": "Shimmer" }
+        ],
+        "example": "alloy"
+      }
+    ],
+    "commandDefaults": {
+      "chat.complete": {
+        "selection_surface": "chat",
+        "model": "gpt-4o",
+        "max_tokens": 4096,
+        "temperature": 0.7
+      },
+      "embedding.create": {
+        "selection_surface": "embedding",
+        "model": "text-embedding-3-small"
+      },
+      "image.generate": {
+        "selection_surface": "image",
+        "model": "dall-e-3",
+        "image_size": "1024x1024"
+      },
+      "image.edit": {
+        "selection_surface": "image",
+        "model": "dall-e-2"
+      },
+      "audio.transcribe": {
+        "selection_surface": "audio",
+        "model": "whisper-1"
+      },
+      "audio.tts": {
+        "selection_surface": "audio",
+        "model": "tts-1",
+        "voice": "alloy"
+      },
+      "moderation.check": {
+        "selection_surface": "moderation",
+        "model": "omni-moderation-latest"
+      },
+      "model.list": {
+        "selection_surface": "model",
+        "limit": 50
+      }
+    },
+    "pickerHints": {
+      "model": {
+        "kind": "model",
+        "selection_surface": "model",
+        "resource": "openai.model",
+        "source_command": "model.list",
+        "source_fields": ["id", "object", "created", "owned_by"]
+      }
+    }
+  },
+  "connector": {
+    "label": "OpenAI",
+    "category": "ai-ml",
+    "categories": [
+      "ai-ml",
+      "language-model",
+      "embedding",
+      "image-generation",
+      "audio",
+      "moderation"
+    ],
+    "resources": ["chat", "embedding", "image", "audio", "moderation", "model"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["OPENAI_API_KEY"],
+    "interactive_setup": [
+      "Create or choose an OpenAI API key from https://platform.openai.com/api-keys.",
+      "Add OPENAI_API_KEY in API Keys before enabling live calls.",
+      "Optionally set OPENAI_ORG_ID to scope requests to a specific organization.",
+      "All actions call the OpenAI REST API directly — these are raw API calls, not agent steps.",
+      "Image generation uses DALL-E, audio uses Whisper/TTS, embeddings use text-embedding-3."
+    ]
+  },
+  "commands": [
+    {
+      "id": "chat.complete",
+      "summary": "Create a chat completion",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "chat",
+      "action_class": "write"
+    },
+    {
+      "id": "embedding.create",
+      "summary": "Create text embeddings",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "embedding",
+      "action_class": "write"
+    },
+    {
+      "id": "image.generate",
+      "summary": "Generate an image from a prompt",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "image",
+      "action_class": "write"
+    },
+    {
+      "id": "image.edit",
+      "summary": "Edit an image with a prompt",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "image",
+      "action_class": "write"
+    },
+    {
+      "id": "audio.transcribe",
+      "summary": "Transcribe audio to text",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "audio",
+      "action_class": "write"
+    },
+    {
+      "id": "audio.tts",
+      "summary": "Generate speech from text",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "audio",
+      "action_class": "write"
+    },
+    {
+      "id": "moderation.check",
+      "summary": "Check text for policy violations",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "moderation",
+      "action_class": "read"
+    },
+    {
+      "id": "model.list",
+      "summary": "List available OpenAI models",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "model",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

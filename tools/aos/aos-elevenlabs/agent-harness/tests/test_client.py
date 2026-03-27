@@ -15,6 +15,7 @@ class FakeHeaders(dict[str, str]):
 class FakeResponse:
     def __init__(self, payload: bytes, *, headers: dict[str, str] | None = None) -> None:
         self._payload = payload
+        self._pos = 0
         self.headers = FakeHeaders({key.lower(): value for key, value in (headers or {}).items()})
 
     def __enter__(self) -> "FakeResponse":
@@ -23,8 +24,14 @@ class FakeResponse:
     def __exit__(self, exc_type, exc, tb) -> bool:
         return False
 
-    def read(self) -> bytes:
-        return self._payload
+    def read(self, size: int = -1) -> bytes:
+        if size == -1:
+            data = self._payload[self._pos:]
+            self._pos = len(self._payload)
+            return data
+        data = self._payload[self._pos:self._pos + size]
+        self._pos += size
+        return data
 
 
 def test_client_uses_base_url_and_api_key_header(monkeypatch):
@@ -86,3 +93,102 @@ def test_client_synthesize_posts_binary_audio(monkeypatch):
     assert payload["content_type"] == "audio/mpeg"
     assert payload["request_id"] == "req_123"
     assert payload["character_count"] == 13
+
+
+def test_client_synthesize_with_voice_settings(monkeypatch):
+    captured: dict[str, Any] = {}
+
+    def fake_urlopen(request, timeout=90):
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse(b"audio", headers={"Content-Type": "audio/mpeg"})
+
+    monkeypatch.setattr(client_module, "urlopen", fake_urlopen)
+    client = ElevenLabsClient(api_key="key", base_url="https://example.test")
+    client.synthesize("Hi", voice_id="v1", stability=0.8, similarity_boost=0.6, style=0.3)
+    assert captured["body"]["voice_settings"] == {"stability": 0.8, "similarity_boost": 0.6, "style": 0.3}
+
+
+def test_client_synthesize_stream_uses_stream_endpoint(monkeypatch):
+    captured: dict[str, Any] = {}
+    audio_bytes = b"streamed-audio-data"
+
+    def fake_urlopen(request, timeout=120):
+        captured["url"] = request.full_url
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse(audio_bytes, headers={"Content-Type": "audio/mpeg"})
+
+    monkeypatch.setattr(client_module, "urlopen", fake_urlopen)
+    client = ElevenLabsClient(api_key="key", base_url="https://example.test")
+    payload = client.synthesize_stream("Hello stream", voice_id="voice_1")
+    assert "/stream" in captured["url"]
+    assert payload["audio"] == audio_bytes
+    assert payload["chunk_count"] >= 1
+
+
+def test_client_generate_sound_effect(monkeypatch):
+    captured: dict[str, Any] = {}
+
+    def fake_urlopen(request, timeout=120):
+        captured["url"] = request.full_url
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse(b"sfx-audio", headers={"Content-Type": "audio/mpeg"})
+
+    monkeypatch.setattr(client_module, "urlopen", fake_urlopen)
+    client = ElevenLabsClient(api_key="key", base_url="https://example.test")
+    payload = client.generate_sound_effect("thunderstorm", duration_seconds=5.0)
+    assert "/v1/sound-generation" in captured["url"]
+    assert captured["body"]["text"] == "thunderstorm"
+    assert captured["body"]["duration_seconds"] == 5.0
+    assert payload["audio"] == b"sfx-audio"
+
+
+def test_client_isolate_audio(monkeypatch):
+    captured: dict[str, Any] = {}
+
+    def fake_urlopen(request, timeout=120):
+        captured["url"] = request.full_url
+        captured["content_type"] = dict(request.header_items()).get("Content-type", "")
+        return FakeResponse(b"isolated-audio", headers={"Content-Type": "audio/mpeg"})
+
+    monkeypatch.setattr(client_module, "urlopen", fake_urlopen)
+    client = ElevenLabsClient(api_key="key", base_url="https://example.test")
+    payload = client.isolate_audio(b"noisy-audio")
+    assert "/v1/audio-isolation" in captured["url"]
+    assert "multipart/form-data" in captured["content_type"]
+    assert payload["audio"] == b"isolated-audio"
+
+
+def test_client_download_history_audio(monkeypatch):
+    captured: dict[str, Any] = {}
+
+    def fake_urlopen(request, timeout=90):
+        captured["url"] = request.full_url
+        captured["method"] = request.method
+        return FakeResponse(b"history-audio", headers={"Content-Type": "audio/mpeg"})
+
+    monkeypatch.setattr(client_module, "urlopen", fake_urlopen)
+    client = ElevenLabsClient(api_key="key", base_url="https://example.test")
+    payload = client.download_history_audio("hist_abc")
+    assert "/v1/history/hist_abc/audio" in captured["url"]
+    assert captured["method"] == "GET"
+    assert payload["audio"] == b"history-audio"
+    assert payload["history_item_id"] == "hist_abc"
+
+
+def test_client_clone_voice(monkeypatch, tmp_path):
+    captured: dict[str, Any] = {}
+    sample = tmp_path / "sample.mp3"
+    sample.write_bytes(b"fake-audio-sample")
+
+    def fake_urlopen(request, timeout=120):
+        captured["url"] = request.full_url
+        captured["content_type"] = dict(request.header_items()).get("Content-type", "")
+        captured["body"] = request.data
+        return FakeResponse(b'{"voice_id":"cloned_v1"}')
+
+    monkeypatch.setattr(client_module, "urlopen", fake_urlopen)
+    client = ElevenLabsClient(api_key="key", base_url="https://example.test")
+    payload = client.clone_voice(name="My Clone", description="Test clone", files=[str(sample)])
+    assert "/v1/voices/add" in captured["url"]
+    assert "multipart/form-data" in captured["content_type"]
+    assert payload["voice_id"] == "cloned_v1"

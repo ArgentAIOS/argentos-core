@@ -1,0 +1,22 @@
+{
+  "tool": "aos-discord-workflow",
+  "backend": "discord-bot-api",
+  "permissions": {
+    "message.send": "write",
+    "message.edit": "write",
+    "message.delete": "write",
+    "reaction.add": "write",
+    "channel.list": "readonly",
+    "channel.create": "write",
+    "thread.create": "write",
+    "embed.send": "write",
+    "role.list": "readonly",
+    "role.assign": "write",
+    "member.list": "readonly",
+    "webhook.send": "write",
+    "capabilities": "readonly",
+    "health": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly"
+  }
+}

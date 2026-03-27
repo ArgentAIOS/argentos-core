@@ -1,0 +1,27 @@
+{
+  "tool": "aos-salesforce",
+  "backend": "salesforce-api",
+  "permissions": {
+    "lead.list": "readonly",
+    "lead.get": "readonly",
+    "lead.create": "write",
+    "lead.update": "write",
+    "contact.list": "readonly",
+    "contact.get": "readonly",
+    "contact.create": "write",
+    "opportunity.list": "readonly",
+    "opportunity.get": "readonly",
+    "opportunity.create": "write",
+    "opportunity.update": "write",
+    "account.list": "readonly",
+    "account.get": "readonly",
+    "task.list": "readonly",
+    "task.create": "write",
+    "report.run": "readonly",
+    "search.soql": "readonly",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

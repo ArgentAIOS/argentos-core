@@ -3,6 +3,7 @@ import {
   DEFAULT_MEMORY_FLUSH_SOFT_TOKENS,
   resolveMemoryFlushContextWindowTokens,
   resolveMemoryFlushSettings,
+  shouldForceMemoryFlushBeforeReply,
   shouldRunMemoryFlush,
 } from "./memory-flush.js";
 
@@ -110,6 +111,28 @@ describe("shouldRunMemoryFlush", () => {
         contextWindowTokens: 100_000,
         reserveTokensFloor: 5_000,
         softThresholdTokens: 2_000,
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("shouldForceMemoryFlushBeforeReply", () => {
+  it("does not force a pre-reply flush in the soft-threshold zone", () => {
+    expect(
+      shouldForceMemoryFlushBeforeReply({
+        entry: { totalTokens: 79_000, compactionCount: 1 },
+        contextWindowTokens: 100_000,
+        reserveTokensFloor: 20_000,
+      }),
+    ).toBe(false);
+  });
+
+  it("forces a pre-reply flush at the hard reserve boundary", () => {
+    expect(
+      shouldForceMemoryFlushBeforeReply({
+        entry: { totalTokens: 80_000, compactionCount: 1 },
+        contextWindowTokens: 100_000,
+        reserveTokensFloor: 20_000,
       }),
     ).toBe(true);
   });

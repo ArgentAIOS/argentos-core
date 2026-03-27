@@ -1,142 +1,335 @@
 {
-  "backend": "stripe",
+  "tool": "aos-stripe",
+  "backend": "stripe-api",
+  "manifest_schema_version": "1.0.0",
   "connector": {
     "label": "Stripe",
-    "category": "finance-payments",
-    "categories": ["finance-payments", "billing", "revenue-ops"],
-    "resources": [
-      "account",
-      "balance",
-      "customer",
-      "invoice",
-      "payment",
-      "refund",
-      "subscription",
-      "dispute",
-      "payout"
-    ]
-  },
-  "scope": {
-    "kind": "payments-ledger",
-    "summary": "Scope Stripe workers by connected account, customer focus, invoice status, and created date window.",
-    "fields": [
-      {
-        "id": "connected_account",
-        "label": "Connected account",
-        "required": false,
-        "applies_to": [
-          "account.read",
-          "balance.read",
-          "customer.list",
-          "customer.search",
-          "customer.read",
-          "payment.list",
-          "payment.read",
-          "invoice.list",
-          "invoice.read"
-        ],
-        "example": "acct_123456789"
-      },
-      {
-        "id": "customer_focus",
-        "label": "Customer focus",
-        "required": false,
-        "applies_to": [
-          "customer.list",
-          "customer.search",
-          "customer.read",
-          "payment.list",
-          "invoice.list"
-        ],
-        "example": "cus_123, customer@example.com, or Acme Corp"
-      },
-      {
-        "id": "invoice_status",
-        "label": "Invoice status",
-        "required": false,
-        "applies_to": ["invoice.list"],
-        "example": "draft, open, paid, uncollectible, void"
-      },
-      {
-        "id": "created_after",
-        "label": "Created after",
-        "required": false,
-        "applies_to": ["payment.list", "invoice.list"],
-        "example": "2026-01-01 or 1704067200"
-      },
-      {
-        "id": "created_before",
-        "label": "Created before",
-        "required": false,
-        "applies_to": ["payment.list", "invoice.list"],
-        "example": "2026-01-31 or 1706745600"
-      }
-    ],
-    "command_defaults": {
-      "account.read": {
-        "account_env": "STRIPE_ACCOUNT_ID"
-      },
-      "balance.read": {
-        "account_env": "STRIPE_ACCOUNT_ID"
-      },
-      "customer.list": {
-        "account_env": "STRIPE_ACCOUNT_ID",
-        "customer_focus_env": "STRIPE_CUSTOMER_FOCUS"
-      },
-      "customer.search": {
-        "account_env": "STRIPE_ACCOUNT_ID",
-        "customer_focus_env": "STRIPE_CUSTOMER_FOCUS"
-      },
-      "customer.read": {
-        "account_env": "STRIPE_ACCOUNT_ID",
-        "customer_focus_env": "STRIPE_CUSTOMER_FOCUS"
-      },
-      "payment.list": {
-        "account_env": "STRIPE_ACCOUNT_ID",
-        "customer_focus_env": "STRIPE_CUSTOMER_FOCUS",
-        "created_after_env": "STRIPE_CREATED_AFTER",
-        "created_before_env": "STRIPE_CREATED_BEFORE"
-      },
-      "invoice.list": {
-        "account_env": "STRIPE_ACCOUNT_ID",
-        "customer_focus_env": "STRIPE_CUSTOMER_FOCUS",
-        "invoice_status_env": "STRIPE_INVOICE_STATUS",
-        "created_after_env": "STRIPE_CREATED_AFTER",
-        "created_before_env": "STRIPE_CREATED_BEFORE"
-      }
-    }
+    "category": "payments",
+    "categories": ["payments", "billing", "crm-revenue"],
+    "resources": ["customer", "payment", "subscription", "invoice", "balance"]
   },
   "auth": {
     "kind": "service-key",
     "required": true,
     "service_keys": ["STRIPE_SECRET_KEY"],
     "interactive_setup": [
-      "Create a restricted Stripe secret key for the target account.",
+      "Create or choose a Stripe secret API key (sk_live_... or sk_test_...) from the Stripe Dashboard.",
       "Add STRIPE_SECRET_KEY in API Keys before enabling live reads or writes.",
-      "Optionally set STRIPE_WEBHOOK_SECRET and STRIPE_ACCOUNT_ID for webhook-backed and connected-account workflows.",
-      "Keep refund, invoice, and payout scopes narrow before enabling write actions."
+      "Set STRIPE_CUSTOMER_ID, STRIPE_SUBSCRIPTION_ID, and STRIPE_PRICE_ID to give worker flows stable scope defaults.",
+      "Use test-mode keys (sk_test_...) during development to avoid live charges.",
+      "Write commands (customer.create, payment.create, subscription.create/cancel, invoice.send) require mode=write."
     ]
+  },
+  "scope": {
+    "kind": "payments",
+    "surface": "customer-payment-subscription",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["customer_id", "payment_intent_id", "subscription_id", "amount", "currency"],
+    "worker_visible_actions": [
+      "customer.list",
+      "customer.get",
+      "customer.create",
+      "payment.list",
+      "payment.get",
+      "payment.create",
+      "subscription.list",
+      "subscription.get",
+      "subscription.create",
+      "subscription.cancel",
+      "invoice.list",
+      "invoice.get",
+      "invoice.send",
+      "balance.get"
+    ],
+    "fields": [
+      {
+        "id": "customer_id",
+        "label": "Customer",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "customer",
+        "applies_to": [
+          "customer.get",
+          "payment.list",
+          "payment.create",
+          "subscription.list",
+          "subscription.create",
+          "invoice.list"
+        ],
+        "placeholder": "Select a customer...",
+        "description": "The Stripe customer to operate on."
+      },
+      {
+        "id": "email",
+        "label": "Customer Email",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["customer.create", "customer.list"],
+        "placeholder": "user@example.com",
+        "description": "Email address for the customer."
+      },
+      {
+        "id": "customer_name",
+        "label": "Customer Name",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["customer.create"],
+        "placeholder": "Jane Doe",
+        "description": "Full name for the new customer."
+      },
+      {
+        "id": "payment_intent_id",
+        "label": "Payment Intent",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "payment",
+        "applies_to": ["payment.get"],
+        "placeholder": "Select a payment...",
+        "description": "The Stripe PaymentIntent to read."
+      },
+      {
+        "id": "amount",
+        "label": "Amount (cents)",
+        "type": "number",
+        "renderAs": "number",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["payment.create"],
+        "placeholder": "5000",
+        "description": "Payment amount in the smallest currency unit (e.g. cents for USD)."
+      },
+      {
+        "id": "currency",
+        "label": "Currency",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": false,
+        "applies_to": ["payment.create"],
+        "options": [
+          { "value": "usd", "label": "USD — US Dollar" },
+          { "value": "eur", "label": "EUR — Euro" },
+          { "value": "gbp", "label": "GBP — British Pound" },
+          { "value": "cad", "label": "CAD — Canadian Dollar" },
+          { "value": "aud", "label": "AUD — Australian Dollar" },
+          { "value": "jpy", "label": "JPY — Japanese Yen" }
+        ],
+        "default": "usd",
+        "description": "Three-letter ISO currency code."
+      },
+      {
+        "id": "payment_method",
+        "label": "Payment Method",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "applies_to": ["payment.create"],
+        "options": [
+          { "value": "card", "label": "Card", "description": "Credit or debit card" },
+          { "value": "bank_transfer", "label": "Bank Transfer" },
+          { "value": "us_bank_account", "label": "ACH Direct Debit" }
+        ],
+        "description": "Allowed payment method type. Leave empty for automatic."
+      },
+      {
+        "id": "subscription_id",
+        "label": "Subscription",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "subscription",
+        "applies_to": ["subscription.get", "subscription.cancel"],
+        "placeholder": "Select a subscription...",
+        "description": "The Stripe subscription to operate on."
+      },
+      {
+        "id": "price_id",
+        "label": "Price ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["subscription.create"],
+        "placeholder": "price_1N...",
+        "description": "The Stripe Price ID to subscribe the customer to."
+      },
+      {
+        "id": "invoice_id",
+        "label": "Invoice",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "invoice",
+        "applies_to": ["invoice.get", "invoice.send"],
+        "placeholder": "Select an invoice...",
+        "description": "The Stripe invoice to operate on."
+      },
+      {
+        "id": "description",
+        "label": "Description",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "rows": 3,
+        "applies_to": ["payment.create", "customer.create"],
+        "placeholder": "Payment for Q1 consulting services",
+        "description": "An optional description attached to the object."
+      },
+      {
+        "id": "metadata_json",
+        "label": "Metadata (JSON)",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["customer.create", "payment.create", "subscription.create"],
+        "placeholder": "{\"order_id\": \"ORD-1234\", \"source\": \"workflow\"}",
+        "description": "Key-value metadata to attach to the Stripe object."
+      },
+      {
+        "id": "options",
+        "label": "Options",
+        "type": "options_group",
+        "applies_to": ["customer.list", "payment.list", "subscription.list", "invoice.list"],
+        "children": [
+          {
+            "id": "limit",
+            "label": "Max Results",
+            "type": "number",
+            "default": 10,
+            "description": "Maximum records to return (1-100)."
+          },
+          {
+            "id": "starting_after",
+            "label": "Starting After",
+            "type": "text",
+            "description": "Cursor for pagination — Stripe object ID to start after."
+          }
+        ]
+      }
+    ],
+    "commandDefaults": {
+      "balance.get": {
+        "selection_surface": "balance"
+      },
+      "customer.list": {
+        "selection_surface": "customer",
+        "limit": 10
+      },
+      "customer.get": {
+        "selection_surface": "customer",
+        "args": ["STRIPE_CUSTOMER_ID"]
+      },
+      "customer.create": {
+        "selection_surface": "customer",
+        "args": ["STRIPE_CUSTOMER_EMAIL"]
+      },
+      "payment.list": {
+        "selection_surface": "payment",
+        "limit": 10
+      },
+      "payment.get": {
+        "selection_surface": "payment",
+        "args": ["STRIPE_PAYMENT_INTENT_ID"]
+      },
+      "payment.create": {
+        "selection_surface": "payment",
+        "args": ["STRIPE_CUSTOMER_ID"]
+      },
+      "subscription.list": {
+        "selection_surface": "subscription",
+        "limit": 10
+      },
+      "subscription.get": {
+        "selection_surface": "subscription",
+        "args": ["STRIPE_SUBSCRIPTION_ID"]
+      },
+      "subscription.create": {
+        "selection_surface": "subscription",
+        "args": ["STRIPE_CUSTOMER_ID", "STRIPE_PRICE_ID"]
+      },
+      "subscription.cancel": {
+        "selection_surface": "subscription",
+        "args": ["STRIPE_SUBSCRIPTION_ID"]
+      },
+      "invoice.list": {
+        "selection_surface": "invoice",
+        "limit": 10
+      },
+      "invoice.get": {
+        "selection_surface": "invoice",
+        "args": ["STRIPE_INVOICE_ID"]
+      },
+      "invoice.send": {
+        "selection_surface": "invoice",
+        "args": ["STRIPE_INVOICE_ID"]
+      }
+    },
+    "pickerHints": {
+      "customer": {
+        "kind": "customer",
+        "selection_surface": "customer",
+        "resource": "stripe.customer",
+        "source_command": "customer.list",
+        "source_fields": ["id", "email", "name", "created", "currency", "default_source"]
+      },
+      "payment": {
+        "kind": "payment",
+        "selection_surface": "payment",
+        "resource": "stripe.payment_intent",
+        "source_command": "payment.list",
+        "source_fields": ["id", "amount", "currency", "status", "customer", "created"]
+      },
+      "subscription": {
+        "kind": "subscription",
+        "selection_surface": "subscription",
+        "resource": "stripe.subscription",
+        "source_command": "subscription.list",
+        "source_fields": [
+          "id",
+          "customer",
+          "status",
+          "current_period_start",
+          "current_period_end",
+          "plan"
+        ]
+      },
+      "invoice": {
+        "kind": "invoice",
+        "selection_surface": "invoice",
+        "resource": "stripe.invoice",
+        "source_command": "invoice.list",
+        "source_fields": ["id", "customer", "status", "amount_due", "currency", "due_date"]
+      }
+    }
   },
   "commands": [
     {
-      "id": "account.read",
-      "summary": "Read Stripe connected account context",
+      "id": "balance.get",
+      "summary": "Read Stripe account balance",
       "required_mode": "readonly",
       "supports_json": true,
-      "resource": "account",
+      "resource": "balance",
       "action_class": "read"
     },
     {
       "id": "capabilities",
       "summary": "Describe the connector manifest",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "connector",
-      "action_class": "read"
-    },
-    {
-      "id": "health",
-      "summary": "Report connector health and configuration readiness",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "connector",
@@ -151,19 +344,19 @@
       "action_class": "read"
     },
     {
-      "id": "doctor",
-      "summary": "Run connector diagnostics",
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "connector",
       "action_class": "read"
     },
     {
-      "id": "balance.read",
-      "summary": "Read Stripe balance state",
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
       "required_mode": "readonly",
       "supports_json": true,
-      "resource": "balance",
+      "resource": "connector",
       "action_class": "read"
     },
     {
@@ -175,36 +368,80 @@
       "action_class": "read"
     },
     {
-      "id": "customer.search",
-      "summary": "Search Stripe customers",
+      "id": "customer.get",
+      "summary": "Read a Stripe customer by ID",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "customer",
       "action_class": "read"
     },
     {
-      "id": "customer.read",
-      "summary": "Read a Stripe customer",
-      "required_mode": "readonly",
+      "id": "customer.create",
+      "summary": "Create a new Stripe customer",
+      "required_mode": "write",
       "supports_json": true,
       "resource": "customer",
-      "action_class": "read"
+      "action_class": "write",
+      "side_effect_level": "external_mutation"
     },
     {
       "id": "payment.list",
-      "summary": "List Stripe payments",
+      "summary": "List Stripe payment intents",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "payment",
       "action_class": "read"
     },
     {
-      "id": "payment.read",
-      "summary": "Read a Stripe payment",
+      "id": "payment.get",
+      "summary": "Read a Stripe payment intent by ID",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "payment",
       "action_class": "read"
+    },
+    {
+      "id": "payment.create",
+      "summary": "Create a Stripe payment intent",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "payment",
+      "action_class": "write",
+      "side_effect_level": "external_mutation"
+    },
+    {
+      "id": "subscription.list",
+      "summary": "List Stripe subscriptions",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "subscription",
+      "action_class": "read"
+    },
+    {
+      "id": "subscription.get",
+      "summary": "Read a Stripe subscription by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "subscription",
+      "action_class": "read"
+    },
+    {
+      "id": "subscription.create",
+      "summary": "Create a new Stripe subscription",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "subscription",
+      "action_class": "write",
+      "side_effect_level": "external_mutation"
+    },
+    {
+      "id": "subscription.cancel",
+      "summary": "Cancel a Stripe subscription",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "subscription",
+      "action_class": "write",
+      "side_effect_level": "external_mutation"
     },
     {
       "id": "invoice.list",
@@ -215,28 +452,148 @@
       "action_class": "read"
     },
     {
-      "id": "invoice.read",
-      "summary": "Read a Stripe invoice",
+      "id": "invoice.get",
+      "summary": "Read a Stripe invoice by ID",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "invoice",
       "action_class": "read"
     },
     {
-      "id": "invoice.create_draft",
-      "summary": "Create a draft Stripe invoice",
+      "id": "invoice.send",
+      "summary": "Send a Stripe invoice to the customer",
       "required_mode": "write",
       "supports_json": true,
       "resource": "invoice",
-      "action_class": "write"
+      "action_class": "write",
+      "side_effect_level": "outbound_delivery"
+    }
+  ],
+  "events": [
+    {
+      "id": "payment_intent.succeeded",
+      "resource": "payment",
+      "summary": "Payment intent succeeded",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_customer_filter",
+          "label": "Customer Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "pickerHint": "customer",
+          "description": "Only trigger for payments from this customer. Leave empty for all customers."
+        },
+        {
+          "id": "event_min_amount",
+          "label": "Minimum Amount (cents)",
+          "type": "number",
+          "renderAs": "number",
+          "required": false,
+          "placeholder": "1000",
+          "description": "Only trigger for payments above this amount. Leave empty for any amount."
+        },
+        {
+          "id": "event_currency_filter",
+          "label": "Currency Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "options": [
+            { "value": "usd", "label": "USD" },
+            { "value": "eur", "label": "EUR" },
+            { "value": "gbp", "label": "GBP" }
+          ],
+          "description": "Only trigger for payments in this currency. Leave empty for any currency."
+        }
+      ]
     },
     {
-      "id": "refund.create",
-      "summary": "Create a Stripe refund",
-      "required_mode": "full",
-      "supports_json": true,
-      "resource": "refund",
-      "action_class": "write"
+      "id": "invoice.paid",
+      "resource": "invoice",
+      "summary": "Invoice paid by customer",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_customer_filter",
+          "label": "Customer Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "pickerHint": "customer",
+          "description": "Only trigger for invoices from this customer. Leave empty for all customers."
+        },
+        {
+          "id": "event_subscription_filter",
+          "label": "Subscription Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "pickerHint": "subscription",
+          "description": "Only trigger for invoices tied to this subscription. Leave empty for all."
+        }
+      ]
+    },
+    {
+      "id": "customer.created",
+      "resource": "customer",
+      "summary": "New customer created in Stripe",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_email_domain_filter",
+          "label": "Email Domain Filter",
+          "type": "text",
+          "renderAs": "text",
+          "required": false,
+          "placeholder": "acme.com",
+          "description": "Only trigger for customers with this email domain. Leave empty for all."
+        }
+      ]
+    },
+    {
+      "id": "charge.failed",
+      "resource": "payment",
+      "summary": "Charge failed for a customer",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_customer_filter",
+          "label": "Customer Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "pickerHint": "customer",
+          "description": "Only trigger for failed charges from this customer. Leave empty for all customers."
+        }
+      ]
+    },
+    {
+      "id": "subscription.updated",
+      "resource": "subscription",
+      "summary": "Subscription updated (status change, plan change, etc.)",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_status_filter",
+          "label": "Status Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "options": [
+            { "value": "active", "label": "Active" },
+            { "value": "past_due", "label": "Past Due" },
+            { "value": "canceled", "label": "Canceled" },
+            { "value": "unpaid", "label": "Unpaid" },
+            { "value": "trialing", "label": "Trialing" },
+            { "value": "incomplete", "label": "Incomplete" },
+            { "value": "incomplete_expired", "label": "Incomplete Expired" },
+            { "value": "paused", "label": "Paused" }
+          ],
+          "description": "Only trigger when subscription moves to this status. Leave empty for any update."
+        }
+      ]
     }
   ]
 }

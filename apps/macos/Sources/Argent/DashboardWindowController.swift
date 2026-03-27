@@ -14,7 +14,10 @@ final class DashboardWindowController: NSWindowController, WKNavigationDelegate,
         config.preferences.isElementFullscreenEnabled = true
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
         let nativeVoiceFlagScript = WKUserScript(
-            source: "window.__argentNativeVoiceActive = true;",
+            source: """
+            window.__argentNativeVoiceActive = true;
+            window.__argentNativeSpeechActive = true;
+            """,
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true)
         config.userContentController.addUserScript(nativeVoiceFlagScript)
@@ -43,6 +46,7 @@ final class DashboardWindowController: NSWindowController, WKNavigationDelegate,
         self.webView.navigationDelegate = self
         self.webView.uiDelegate = self
         self.webView.configuration.userContentController.add(self, name: "argentNativeVoiceEvent")
+        self.webView.configuration.userContentController.add(self, name: "argentNativeSpeechEvent")
         self.load(url: dashboardURL)
     }
 
@@ -51,6 +55,7 @@ final class DashboardWindowController: NSWindowController, WKNavigationDelegate,
 
     deinit {
         self.webView.configuration.userContentController.removeScriptMessageHandler(forName: "argentNativeVoiceEvent")
+        self.webView.configuration.userContentController.removeScriptMessageHandler(forName: "argentNativeSpeechEvent")
     }
 
     func show() {
@@ -60,6 +65,30 @@ final class DashboardWindowController: NSWindowController, WKNavigationDelegate,
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == "argentNativeSpeechEvent" {
+            guard let body = message.body as? [String: Any],
+                  let kind = body["kind"] as? String
+            else { return }
+            Task { @MainActor in
+                switch kind {
+                case "start":
+                    let granted = await PermissionManager.ensureVoiceWakePermissions(interactive: true)
+                    guard granted else {
+                        await self.setNativeSpeechState(listening: false, error: "Microphone or speech recognition access denied.")
+                        return
+                    }
+                    await self.setNativeSpeechState(listening: true, error: nil)
+                    await VoicePushToTalk.shared.begin()
+                case "stop":
+                    await VoicePushToTalk.shared.end()
+                    await self.setNativeSpeechState(listening: false, error: nil)
+                default:
+                    break
+                }
+            }
+            return
+        }
+
         guard message.name == "argentNativeVoiceEvent" else { return }
         guard let body = message.body as? [String: Any] else { return }
         if let kind = body["kind"] as? String, kind == "tts_stop" {
@@ -90,6 +119,7 @@ final class DashboardWindowController: NSWindowController, WKNavigationDelegate,
         (() => {
           try {
             window.__argentNativeVoiceActive = true;
+            window.__argentNativeSpeechActive = true;
             return true;
           } catch {
             return false;
@@ -236,6 +266,29 @@ final class DashboardWindowController: NSWindowController, WKNavigationDelegate,
         _ = try? await self.webView.callAsyncJavaScript(
             js,
             arguments: ["speaking": speaking],
+            in: nil,
+            in: .page
+        )
+    }
+
+    func setNativeSpeechState(listening: Bool, error: String?) async {
+        let js = """
+        (() => {
+          try {
+            if (typeof window.__argentNativeSpeechStateChanged !== 'function') return false;
+            window.__argentNativeSpeechStateChanged({ listening, error });
+            return true;
+          } catch {
+            return false;
+          }
+        })();
+        """
+        _ = try? await self.webView.callAsyncJavaScript(
+            js,
+            arguments: [
+                "listening": listening,
+                "error": error as Any,
+            ],
             in: nil,
             in: .page
         )

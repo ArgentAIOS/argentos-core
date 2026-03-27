@@ -113,6 +113,38 @@ class FakeNotionClient:
             "next_cursor": None,
         }
 
+    def read_database(self, database_id: str):
+        return {
+            "object": "database",
+            "id": database_id,
+            "title": [{"plain_text": "Quarterly Notes"}],
+            "properties": {
+                "Name": {"id": "title", "type": "title", "title": {}},
+            },
+        }
+
+    def create_page(self, *, title: str, database_id: str | None, parent_page_id: str | None):
+        return {
+            "object": "page",
+            "id": "page_created",
+            "parent": {"database_id": database_id, "page_id": parent_page_id},
+            "title": title,
+        }
+
+    def update_page(self, page_id: str, *, title: str):
+        return {
+            "object": "page",
+            "id": page_id,
+            "title": title,
+        }
+
+    def append_block_children(self, block_id: str, *, content: str):
+        return {
+            "object": "block",
+            "id": block_id,
+            "content": content,
+        }
+
 
 def _invoke(args: list[str], monkeypatch):
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeNotionClient())
@@ -305,19 +337,36 @@ def test_search_query_returns_live_payload(monkeypatch):
     assert payload["live_backend_available"] is True
 
 
-def test_write_commands_stay_scaffolded(monkeypatch):
+def test_write_commands_execute_live(monkeypatch):
     monkeypatch.setenv("NOTION_TOKEN", "secret_token")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeNotionClient())
 
-    result = CliRunner().invoke(
+    create_result = CliRunner().invoke(
         cli,
         ["--json", "--mode", "write", "page", "create", "--database-id", "db_1", "--title", "Quarterly Notes"],
     )
-    assert result.exit_code == 0
-    assert '"status": "scaffold"' in result.output
-    assert '"command_id": "page.create"' in result.output
-    assert '"executed": false' in result.output
-    assert '"database_id": "db_1"' in result.output
+    assert create_result.exit_code == 0
+    assert '"status": "live_write"' in create_result.output
+    assert '"command_id": "page.create"' in create_result.output
+    assert '"executed": true' in create_result.output
+
+    update_result = CliRunner().invoke(
+        cli,
+        ["--json", "--mode", "write", "page", "update", "page_1", "--title", "Updated Notes"],
+    )
+    assert update_result.exit_code == 0
+    assert '"status": "live_write"' in update_result.output
+    assert '"command_id": "page.update"' in update_result.output
+    assert '"executed": true' in update_result.output
+
+    append_result = CliRunner().invoke(
+        cli,
+        ["--json", "--mode", "write", "block", "append", "block_1", "--content", "New text"],
+    )
+    assert append_result.exit_code == 0
+    assert '"status": "live_write"' in append_result.output
+    assert '"command_id": "block.append"' in append_result.output
+    assert '"executed": true' in append_result.output
 
 
 def test_probe_runtime_reports_live_read_when_token_exists(monkeypatch):

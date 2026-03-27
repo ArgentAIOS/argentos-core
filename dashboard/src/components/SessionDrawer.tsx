@@ -1,5 +1,6 @@
 import { Plus, Trash2, MessageSquare, Search, X, Clock, FileSearch } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { isVisibleOperatorSession } from "../lib/sessionVisibility";
 
 export interface SessionEntry {
   key: string;
@@ -28,6 +29,8 @@ interface SessionDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   currentSessionKey: string;
+  selectedAgentId: string;
+  defaultAgentId?: string;
   onSelectSession: (sessionKey: string) => void;
   onNewSession: () => void;
   onDeleteSession: (sessionKey: string) => void;
@@ -65,44 +68,12 @@ function getSessionTitle(session: SessionEntry): string {
   return "Untitled chat";
 }
 
-function inferSessionSurface(sessionKey: string): string {
-  const key = sessionKey.trim().toLowerCase();
-  if (!key) return "";
-  if (key === "global" || key === "unknown") return key;
-
-  const agentMatch = /^agent:[^:]+:(.+)$/i.exec(key);
-  const raw = (agentMatch?.[1] ?? key).trim();
-  if (!raw) return "";
-
-  const match = /^([a-z0-9_]+)(?:[:\-]|$)/i.exec(raw);
-  return match?.[1]?.toLowerCase() ?? "";
-}
-
-function isOperatorSession(session: SessionEntry, currentSessionKey: string): boolean {
-  const key = session.key.trim().toLowerCase();
-  const current = currentSessionKey.trim().toLowerCase();
-  if (!key) return false;
-  if (key === current) return true;
-
-  const channel = session.channel?.trim().toLowerCase();
-  if (channel && channel !== "webchat") return false;
-
-  const surface = (session.surface?.trim().toLowerCase() ?? inferSessionSurface(key)).toLowerCase();
-  if (surface === "webchat" || surface === "main") return true;
-
-  return (
-    key === "main" ||
-    key.endsWith(":main") ||
-    key.startsWith("webchat-") ||
-    key.includes(":webchat-") ||
-    key.includes(":webchat:")
-  );
-}
-
 export function SessionDrawer({
   isOpen,
   onClose,
   currentSessionKey,
+  selectedAgentId,
+  defaultAgentId,
   onSelectSession,
   onNewSession,
   onDeleteSession,
@@ -152,7 +123,14 @@ export function SessionDrawer({
   }, [search, onSearchTranscripts]);
 
   // Filter sessions by search (instant local filter)
-  const operatorSessions = sessions.filter((s) => isOperatorSession(s, currentSessionKey));
+  const operatorSessions = sessions.filter((session) =>
+    isVisibleOperatorSession({
+      session,
+      currentSessionKey,
+      selectedAgentId,
+      defaultAgentId,
+    }),
+  );
   const filtered = search
     ? operatorSessions.filter((s) => {
         const title = getSessionTitle(s).toLowerCase();
@@ -180,7 +158,12 @@ export function SessionDrawer({
   // Group transcript hits by session
   const visibleSessionMap = new Map(operatorSessions.map((s) => [s.key, s]));
   const filteredTranscriptHits = transcriptHits.filter((candidate) =>
-    isOperatorSession({ key: candidate.sessionKey }, currentSessionKey),
+    isVisibleOperatorSession({
+      session: { key: candidate.sessionKey },
+      currentSessionKey,
+      selectedAgentId,
+      defaultAgentId,
+    }),
   );
   const groupedHits = new Map<string, TranscriptHit[]>();
   for (const hit of filteredTranscriptHits) {

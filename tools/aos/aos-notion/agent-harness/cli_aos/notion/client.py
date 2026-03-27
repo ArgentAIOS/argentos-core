@@ -137,6 +137,9 @@ class NotionClient:
     def current_user(self) -> dict[str, Any]:
         return self._request("GET", "/users/me")
 
+    def read_database(self, database_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/databases/{database_id}")
+
     def search(
         self,
         *,
@@ -203,6 +206,72 @@ class NotionClient:
             "blocks": blocks,
         }
 
+    def create_page(
+        self,
+        *,
+        title: str,
+        database_id: str | None = None,
+        parent_page_id: str | None = None,
+    ) -> dict[str, Any]:
+        if database_id:
+            database = self.read_database(database_id)
+            title_property = self._title_property_name(database) or "Name"
+            body = {
+                "parent": {"database_id": database_id},
+                "properties": {
+                    title_property: {
+                        "title": [{"type": "text", "text": {"content": title}}],
+                    }
+                },
+            }
+            return self._request("POST", "/pages", body=body)
+
+        if parent_page_id:
+            body = {
+                "parent": {"page_id": parent_page_id},
+                "properties": {
+                    "title": {
+                        "title": [{"type": "text", "text": {"content": title}}],
+                    }
+                },
+            }
+            return self._request("POST", "/pages", body=body)
+
+        raise NotionApiError(
+            status_code=None,
+            code="NOTION_VALIDATION_ERROR",
+            message="database_id or parent_page_id is required",
+            details={"field": "parent"},
+        )
+
+    def update_page(self, page_id: str, *, title: str) -> dict[str, Any]:
+        page = self._request("GET", f"/pages/{page_id}")
+        title_property = self._title_property_name(page) or "title"
+        body = {
+            "properties": {
+                title_property: {
+                    "title": [{"type": "text", "text": {"content": title}}],
+                }
+            }
+        }
+        return self._request("PATCH", f"/pages/{page_id}", body=body)
+
+    def append_block_children(self, block_id: str, *, content: str) -> dict[str, Any]:
+        body = {
+            "children": [
+                {
+                    "object": "block",
+                    "type": "paragraph",
+                    "paragraph": {
+                        "rich_text": [
+                            {"type": "text", "text": {"content": content}},
+                        ]
+                    },
+                }
+            ]
+        }
+        return self._request("PATCH", f"/blocks/{block_id}/children", body=body)
+
     def read_block(self, block_id: str, *, max_depth: int = 2) -> dict[str, Any]:
         block = self._request("GET", f"/blocks/{block_id}")
         return {
@@ -229,3 +298,12 @@ class NotionClient:
         if node.get("has_children"):
             node["children"] = self.block_children(block_id, max_depth=max_depth)
         return node
+
+    def _title_property_name(self, payload: dict[str, Any]) -> str | None:
+        properties = payload.get("properties")
+        if not isinstance(properties, dict):
+            return None
+        for key, value in properties.items():
+            if isinstance(value, dict) and value.get("type") == "title":
+                return str(key)
+        return None

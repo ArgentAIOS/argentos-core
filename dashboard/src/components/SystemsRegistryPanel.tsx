@@ -1,14 +1,7 @@
-import { KeyRound, RefreshCw, Wrench } from "lucide-react";
+import { AlertTriangle, CheckCircle, KeyRound, Package, RefreshCw, Wrench } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DashboardSurfaceProfile } from "../lib/configSurfaceProfile";
-import {
-  fetchConnectorSetupStatus,
-  launchConnectorSetupAction,
-  runConnectorSetupCheck,
-  type ConnectorSetupStatus,
-} from "../lib/connectorSetup";
 import { ConnectorBuilderPanel } from "./ConnectorBuilderPanel";
-import { ConnectorSetupCard } from "./ConnectorSetupCard";
 
 type GatewayRequestFn = <T = unknown>(
   method: string,
@@ -85,6 +78,32 @@ type ToolStatusResponse = {
   tools?: ToolStatusEntry[];
 };
 
+type AosGooglePreflightCheck = {
+  name: string;
+  ok: boolean;
+  details?: Record<string, unknown>;
+};
+
+type AosGooglePreflightResponse = {
+  ok?: boolean;
+  error?: string;
+  details?: string;
+  next_steps?: string[];
+  checks?: AosGooglePreflightCheck[];
+};
+
+type AosGoogleLaunchResponse = {
+  ok?: boolean;
+  action?: string;
+  message?: string;
+  error?: string;
+  details?: string;
+  path?: string;
+  url?: string;
+  command?: string;
+  cwd?: string;
+};
+
 type SystemsRegistryPanelProps = {
   defaultAgentId: string;
   gatewayRequest?: GatewayRequestFn;
@@ -120,6 +139,73 @@ function toolSourceChipClasses(source: ToolStatusEntry["source"]) {
   }
 }
 
+function formatGoogleCheckLabel(name: string): string {
+  switch (name) {
+    case "gws_binary":
+      return "Google Workspace CLI installed";
+    case "gws_version":
+      return "Google Workspace CLI responds";
+    case "gcloud_cli":
+      return "Google Cloud SDK available";
+    case "oauth_client_config":
+      return "OAuth client configured";
+    case "gws_auth":
+      return "Google account login completed";
+    case "model_armor_config":
+      return "Model Armor sanitize defaults";
+    default:
+      return name.replace(/_/g, " ");
+  }
+}
+
+function isOptionalGoogleCheck(name: string): boolean {
+  return name === "gcloud_cli" || name === "model_armor_config";
+}
+
+function summarizeGoogleCheck(check: AosGooglePreflightCheck): string {
+  const details = check.details ?? {};
+  switch (check.name) {
+    case "gws_binary":
+      return typeof details.resolved_path === "string" && details.resolved_path
+        ? `Resolved at ${details.resolved_path}`
+        : "Install with npm install -g @googleworkspace/cli";
+    case "gws_version":
+      return typeof details.stdout === "string" && details.stdout
+        ? details.stdout
+        : "Version check did not return output.";
+    case "gcloud_cli":
+      return typeof details.resolved_path === "string" && details.resolved_path
+        ? `Resolved at ${details.resolved_path}`
+        : "Needed only for guided OAuth client setup via gws auth setup --login.";
+    case "oauth_client_config":
+      if (details.client_secret_present === true) {
+        return `Using client_secret.json at ${String(details.client_secret_path || "")}`;
+      }
+      if (details.env_client_id_present === true && details.env_client_secret_present === true) {
+        return "Using GOOGLE_WORKSPACE_CLI_CLIENT_ID and GOOGLE_WORKSPACE_CLI_CLIENT_SECRET.";
+      }
+      return "Missing OAuth client. Configure via gws auth setup --login, client_secret.json, or env vars.";
+    case "gws_auth": {
+      const status = details.status;
+      if (status && typeof status === "object") {
+        const typed = status as Record<string, unknown>;
+        const email = typeof typed.email === "string" ? typed.email : "";
+        if (email) return `Authenticated as ${email}`;
+      }
+      if (typeof details.stderr === "string" && details.stderr) {
+        return details.stderr;
+      }
+      return "Run gws auth login after the OAuth client is configured.";
+    }
+    case "model_armor_config":
+      return details.sanitize_template_configured === true
+        ? "Sanitize-by-default is configured."
+        : "Optional. Only needed if you want sanitize-by-default behavior.";
+    default:
+      return "";
+  }
+}
+
 export function SystemsRegistryPanel(props: SystemsRegistryPanelProps) {
   const { defaultAgentId, gatewayRequest, surfaceProfile, onOpenTab } = props;
   const [loading, setLoading] = useState(false);
@@ -129,18 +215,12 @@ export function SystemsRegistryPanel(props: SystemsRegistryPanelProps) {
   const [toolAgentId, setToolAgentId] = useState(defaultAgentId || "main");
   const [toolQuery, setToolQuery] = useState("");
   const [connectorQuery, setConnectorQuery] = useState("");
-  const [connectorSetupByTool, setConnectorSetupByTool] = useState<
-    Record<string, ConnectorSetupStatus | null>
-  >({});
-  const [connectorSetupLoadingByTool, setConnectorSetupLoadingByTool] = useState<
-    Record<string, boolean>
-  >({});
-  const [connectorSetupLaunchActionByTool, setConnectorSetupLaunchActionByTool] = useState<
-    Record<string, string | null>
-  >({});
-  const [connectorSetupAutoRefreshUntilByTool, setConnectorSetupAutoRefreshUntilByTool] = useState<
-    Record<string, number | null>
-  >({});
+  const [aosGoogleLoading, setAosGoogleLoading] = useState(false);
+  const [aosGoogleLaunchAction, setAosGoogleLaunchAction] = useState<string | null>(null);
+  const [aosGoogleAutoRefreshUntil, setAosGoogleAutoRefreshUntil] = useState<number | null>(null);
+  const [aosGooglePreflight, setAosGooglePreflight] = useState<AosGooglePreflightResponse | null>(
+    null,
+  );
 
   const loadRegistry = useCallback(async () => {
     if (!gatewayRequest) {
@@ -176,119 +256,99 @@ export function SystemsRegistryPanel(props: SystemsRegistryPanelProps) {
     void loadRegistry();
   }, [loadRegistry]);
 
-  const loadConnectorSetupStatus = useCallback(
-    async (
-      tool: string,
-      options: { manual?: boolean; installMissing?: boolean } = {},
-    ): Promise<ConnectorSetupStatus | null> => {
+  const runAosGooglePreflight = useCallback(
+    async (installMissing: boolean) => {
       try {
-        setConnectorSetupLoadingByTool((prev) => ({ ...prev, [tool]: true }));
-        if (options.manual) {
-          setMessage(null);
-        }
-        const payload = options.manual
-          ? await runConnectorSetupCheck(tool, {
-              installMissing: options.installMissing === true,
-              requireAuth: true,
-            })
-          : await fetchConnectorSetupStatus(tool);
-        setConnectorSetupByTool((prev) => ({ ...prev, [tool]: payload }));
-        if (options.manual) {
-          if (payload?.ok) {
-            setConnectorSetupAutoRefreshUntilByTool((prev) => ({ ...prev, [tool]: null }));
-            setMessage({
-              type: "success",
-              text: `${tool} is ready. Connector actions can now be granted to workers.`,
-            });
-          } else {
-            setMessage({
-              type: "error",
-              text: payload?.summary || `${tool} still needs operator setup.`,
-            });
-          }
-        }
-        await loadRegistry();
-        return payload;
-      } catch (error) {
-        if (options.manual) {
+        setAosGoogleLoading(true);
+        setMessage(null);
+        const response = await fetch("/api/settings/aos-google/preflight", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ installMissing, requireAuth: true }),
+        });
+        const payload = (await response.json().catch(() => ({}))) as AosGooglePreflightResponse;
+        setAosGooglePreflight(payload);
+        if (payload.ok === true) {
+          setAosGoogleAutoRefreshUntil(null);
+          setMessage({
+            type: "success",
+            text: "aos-google is ready. Connector actions can now be granted to workers.",
+          });
+        } else {
           setMessage({
             type: "error",
-            text: error instanceof Error ? error.message : `Failed to check ${tool} setup.`,
+            text: payload.error || payload.details || "aos-google still needs operator setup.",
           });
         }
-        return null;
+        await loadRegistry();
+      } catch (error) {
+        setMessage({
+          type: "error",
+          text: error instanceof Error ? error.message : "Failed to run aos-google setup.",
+        });
       } finally {
-        setConnectorSetupLoadingByTool((prev) => ({ ...prev, [tool]: false }));
+        setAosGoogleLoading(false);
       }
     },
     [loadRegistry],
   );
 
-  const launchConnectorSetup = useCallback(
-    async (tool: string, action: string) => {
+  const launchAosGoogleAction = useCallback(
+    async (action: string) => {
       try {
-        setConnectorSetupLaunchActionByTool((prev) => ({ ...prev, [tool]: action }));
+        setAosGoogleLaunchAction(action);
         setMessage(null);
-        const payload = await launchConnectorSetupAction(tool, action);
-        if (payload.watchForChanges) {
-          setConnectorSetupAutoRefreshUntilByTool((prev) => ({
-            ...prev,
-            [tool]: Date.now() + 2 * 60 * 1000,
-          }));
+        const response = await fetch("/api/settings/aos-google/launch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        });
+        const payload = (await response.json().catch(() => ({}))) as AosGoogleLaunchResponse;
+        if (!response.ok || payload.ok === false) {
+          throw new Error(payload.details || payload.error || `HTTP ${response.status}`);
+        }
+        const shouldWatch = action === "launch-auth-setup" || action === "launch-auth-login";
+        if (shouldWatch) {
+          setAosGoogleAutoRefreshUntil(Date.now() + 2 * 60 * 1000);
           globalThis.setTimeout(() => {
-            void loadConnectorSetupStatus(tool, { manual: false, installMissing: false });
+            void runAosGooglePreflight(false);
           }, 1500);
         }
         setMessage({
           type: "success",
-          text: payload.watchForChanges
-            ? `${payload.message || `Launched ${tool} setup action.`} Watching for readiness changes now.`
-            : payload.message || `Launched ${tool} setup action.`,
+          text: shouldWatch
+            ? `${payload.message || "Launched Google Workspace setup action."} Watching for readiness changes now.`
+            : payload.message ||
+              "Launched local Google Workspace setup action. Finish the flow, then click Check setup.",
         });
       } catch (error) {
         setMessage({
           type: "error",
-          text: error instanceof Error ? error.message : `Failed to launch ${tool} setup action.`,
+          text:
+            error instanceof Error
+              ? error.message
+              : "Failed to launch Google Workspace setup action.",
         });
       } finally {
-        setConnectorSetupLaunchActionByTool((prev) => ({ ...prev, [tool]: null }));
+        setAosGoogleLaunchAction(null);
       }
     },
-    [loadConnectorSetupStatus],
+    [runAosGooglePreflight],
   );
 
   useEffect(() => {
-    const activeTools = Object.entries(connectorSetupAutoRefreshUntilByTool)
-      .filter(([, until]) => typeof until === "number" && until > Date.now())
-      .map(([tool]) => tool);
-    if (activeTools.length === 0) return;
+    if (!aosGoogleAutoRefreshUntil) return;
     const interval = globalThis.setInterval(() => {
-      const now = Date.now();
-      for (const tool of activeTools) {
-        const until = connectorSetupAutoRefreshUntilByTool[tool];
-        if (!until || now >= until) {
-          setConnectorSetupAutoRefreshUntilByTool((prev) => ({ ...prev, [tool]: null }));
-          continue;
-        }
-        if (!connectorSetupLoadingByTool[tool]) {
-          void loadConnectorSetupStatus(tool, { manual: false, installMissing: false });
-        }
+      if (Date.now() >= aosGoogleAutoRefreshUntil) {
+        setAosGoogleAutoRefreshUntil(null);
+        return;
+      }
+      if (!aosGoogleLoading) {
+        void runAosGooglePreflight(false);
       }
     }, 5000);
     return () => globalThis.clearInterval(interval);
-  }, [connectorSetupAutoRefreshUntilByTool, connectorSetupLoadingByTool, loadConnectorSetupStatus]);
-
-  useEffect(() => {
-    for (const connector of connectors) {
-      if (
-        connector.installState === "ready" ||
-        Object.prototype.hasOwnProperty.call(connectorSetupByTool, connector.tool)
-      ) {
-        continue;
-      }
-      void loadConnectorSetupStatus(connector.tool, { manual: false, installMissing: false });
-    }
-  }, [connectorSetupByTool, connectors, loadConnectorSetupStatus]);
+  }, [aosGoogleAutoRefreshUntil, aosGoogleLoading, runAosGooglePreflight]);
 
   const filteredConnectors = useMemo(() => {
     const query = connectorQuery.trim().toLowerCase();
@@ -357,6 +417,14 @@ export function SystemsRegistryPanel(props: SystemsRegistryPanelProps) {
   }, [tools]);
 
   const isPublicCoreSurface = surfaceProfile === "public-core";
+  const aosGoogleChecks = useMemo(() => {
+    const checks = new Map<string, AosGooglePreflightCheck>();
+    for (const check of aosGooglePreflight?.checks ?? []) {
+      checks.set(check.name, check);
+    }
+    return checks;
+  }, [aosGooglePreflight]);
+  const aosGoogleAutoRefreshing = aosGoogleAutoRefreshUntil !== null;
 
   return (
     <div className="space-y-4">
@@ -450,20 +518,12 @@ export function SystemsRegistryPanel(props: SystemsRegistryPanelProps) {
               </div>
             ) : (
               filteredConnectors.map((connector) => {
-                const connectorSetup = Object.prototype.hasOwnProperty.call(
-                  connectorSetupByTool,
-                  connector.tool,
-                )
-                  ? connectorSetupByTool[connector.tool]
-                  : undefined;
-                const connectorSetupLoading = connectorSetupLoadingByTool[connector.tool] === true;
-                const connectorSetupLaunchAction =
-                  connectorSetupLaunchActionByTool[connector.tool] ?? null;
-                const connectorSetupAutoRefreshUntil =
-                  connectorSetupAutoRefreshUntilByTool[connector.tool];
-                const connectorSetupAutoRefreshing =
-                  typeof connectorSetupAutoRefreshUntil === "number" &&
-                  connectorSetupAutoRefreshUntil > Date.now();
+                const isGoogle = connector.tool === "aos-google";
+                const googleGwsInstalled = aosGoogleChecks.get("gws_binary")?.ok === true;
+                const googleGcloudAvailable = aosGoogleChecks.get("gcloud_cli")?.ok === true;
+                const googleOauthConfigured =
+                  aosGoogleChecks.get("oauth_client_config")?.ok === true;
+                const googleAuthReady = aosGoogleChecks.get("gws_auth")?.ok === true;
                 return (
                   <div
                     key={connector.tool}
@@ -491,6 +551,26 @@ export function SystemsRegistryPanel(props: SystemsRegistryPanelProps) {
                           </div>
                         )}
                       </div>
+                      {isGoogle && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => void runAosGooglePreflight(false)}
+                            disabled={aosGoogleLoading || isPublicCoreSurface}
+                            className="inline-flex items-center gap-2 rounded-lg border border-fuchsia-500/20 bg-fuchsia-500/10 px-3 py-2 text-xs text-fuchsia-200 hover:bg-fuchsia-500/15 disabled:opacity-50"
+                          >
+                            <Wrench className="w-3.5 h-3.5" />
+                            {aosGoogleLoading ? "Checking..." : "Check setup"}
+                          </button>
+                          <button
+                            onClick={() => void runAosGooglePreflight(true)}
+                            disabled={aosGoogleLoading || isPublicCoreSurface}
+                            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/80 hover:bg-white/10 disabled:opacity-50"
+                          >
+                            <Package className="w-3.5 h-3.5" />
+                            {aosGoogleLoading ? "Checking..." : "Install gws"}
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] text-white/50">
@@ -538,24 +618,170 @@ export function SystemsRegistryPanel(props: SystemsRegistryPanelProps) {
                       </div>
                     </div>
 
-                    {connector.installState !== "ready" ? (
-                      <ConnectorSetupCard
-                        connector={connector}
-                        setupStatus={connectorSetup}
-                        loading={connectorSetupLoading}
-                        launchingAction={connectorSetupLaunchAction}
-                        autoRefreshing={connectorSetupAutoRefreshing}
-                        disabled={isPublicCoreSurface}
-                        onOpenApiKeys={() => onOpenTab?.("apikeys")}
-                        onCheck={(installMissing) =>
-                          void loadConnectorSetupStatus(connector.tool, {
-                            manual: true,
-                            installMissing,
-                          })
-                        }
-                        onLaunch={(action) => void launchConnectorSetup(connector.tool, action)}
-                      />
-                    ) : null}
+                    {isGoogle && aosGooglePreflight && (
+                      <div className="rounded-lg border border-white/10 bg-black/10 px-3 py-3 space-y-2 text-xs text-white/70">
+                        <div className="flex items-center gap-2">
+                          {aosGooglePreflight.ok ? (
+                            <CheckCircle className="w-4 h-4 text-emerald-400" />
+                          ) : (
+                            <AlertTriangle className="w-4 h-4 text-amber-400" />
+                          )}
+                          <span>
+                            {aosGooglePreflight.ok
+                              ? "aos-google passed readiness checks"
+                              : "aos-google still needs operator action"}
+                          </span>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/60">
+                          Dashboard setup currently handles dependency install and readiness checks.
+                          OAuth client setup and Google login may still require terminal steps until
+                          the connector flow is fully in-product.
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-3 space-y-2">
+                          <div className="text-white/80 font-medium">Guided Setup</div>
+                          <div className="text-white/45">
+                            Use these actions in order. Each one opens the exact local path or
+                            terminal command needed.
+                          </div>
+                          {aosGoogleAutoRefreshing && (
+                            <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-[11px] text-cyan-100">
+                              Watching for Google setup changes. Finish the browser or terminal
+                              flow, then this card will re-check automatically for up to two
+                              minutes.
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                              onClick={() => void launchAosGoogleAction("open-config-folder")}
+                              disabled={isPublicCoreSurface || aosGoogleLaunchAction !== null}
+                              className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-gray-900/40 px-3 py-2 text-xs text-white/80 hover:bg-gray-900/60 disabled:opacity-50"
+                            >
+                              <Package className="w-3.5 h-3.5" />
+                              {aosGoogleLaunchAction === "open-config-folder"
+                                ? "Opening..."
+                                : "Open config folder"}
+                            </button>
+                            {!googleGcloudAvailable && (
+                              <button
+                                onClick={() =>
+                                  void launchAosGoogleAction("open-gcloud-install-docs")
+                                }
+                                disabled={isPublicCoreSurface || aosGoogleLaunchAction !== null}
+                                className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-gray-900/40 px-3 py-2 text-xs text-white/80 hover:bg-gray-900/60 disabled:opacity-50"
+                              >
+                                <Wrench className="w-3.5 h-3.5" />
+                                {aosGoogleLaunchAction === "open-gcloud-install-docs"
+                                  ? "Opening..."
+                                  : "Open gcloud install docs"}
+                              </button>
+                            )}
+                            {googleGwsInstalled &&
+                              !googleOauthConfigured &&
+                              googleGcloudAvailable && (
+                                <button
+                                  onClick={() => void launchAosGoogleAction("launch-auth-setup")}
+                                  disabled={isPublicCoreSurface || aosGoogleLaunchAction !== null}
+                                  className="inline-flex items-center gap-2 rounded-lg border border-fuchsia-500/20 bg-fuchsia-500/10 px-3 py-2 text-xs text-fuchsia-200 hover:bg-fuchsia-500/15 disabled:opacity-50"
+                                >
+                                  <Wrench className="w-3.5 h-3.5" />
+                                  {aosGoogleLaunchAction === "launch-auth-setup"
+                                    ? "Launching..."
+                                    : "Run gws auth setup"}
+                                </button>
+                              )}
+                            {googleGwsInstalled && googleOauthConfigured && !googleAuthReady && (
+                              <button
+                                onClick={() => void launchAosGoogleAction("launch-auth-login")}
+                                disabled={isPublicCoreSurface || aosGoogleLaunchAction !== null}
+                                className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200 hover:bg-emerald-500/15 disabled:opacity-50"
+                              >
+                                <CheckCircle className="w-3.5 h-3.5" />
+                                {aosGoogleLaunchAction === "launch-auth-login"
+                                  ? "Launching..."
+                                  : "Run gws auth login"}
+                              </button>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-white/45 space-y-1">
+                            <div>
+                              Config folder: <code className="text-cyan-300">~/.config/gws</code>
+                            </div>
+                            {!googleOauthConfigured && (
+                              <div>
+                                OAuth client can come from{" "}
+                                <code className="text-cyan-300">client_secret.json</code> or env
+                                vars{" "}
+                                <code className="text-cyan-300">
+                                  GOOGLE_WORKSPACE_CLI_CLIENT_ID
+                                </code>{" "}
+                                and{" "}
+                                <code className="text-cyan-300">
+                                  GOOGLE_WORKSPACE_CLI_CLIENT_SECRET
+                                </code>
+                                .
+                              </div>
+                            )}
+                            {googleOauthConfigured && !googleAuthReady && (
+                              <div>
+                                OAuth client is configured. Finish browser login, then come back and
+                                click <span className="text-white/75">Check setup</span>.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {Array.isArray(aosGooglePreflight.checks) &&
+                          aosGooglePreflight.checks.length > 0 && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                              {aosGooglePreflight.checks.map((check) => (
+                                <div
+                                  key={check.name}
+                                  className="rounded border border-white/10 bg-white/5 px-2 py-1.5"
+                                >
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span
+                                      className={
+                                        check.ok
+                                          ? "text-emerald-300"
+                                          : isOptionalGoogleCheck(check.name)
+                                            ? "text-sky-200"
+                                            : "text-amber-200"
+                                      }
+                                    >
+                                      {check.ok
+                                        ? "PASS"
+                                        : isOptionalGoogleCheck(check.name)
+                                          ? "OPTIONAL"
+                                          : "WAIT"}
+                                    </span>
+                                    <span className="text-white/85">
+                                      {formatGoogleCheckLabel(check.name)}
+                                    </span>
+                                    {isOptionalGoogleCheck(check.name) && (
+                                      <span className="rounded-full border border-white/10 bg-black/10 px-1.5 py-0.5 text-[10px] text-white/40">
+                                        optional
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="mt-1 text-white/45">
+                                    {summarizeGoogleCheck(check)}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        {Array.isArray(aosGooglePreflight.next_steps) &&
+                          aosGooglePreflight.next_steps.length > 0 && (
+                            <div className="space-y-1">
+                              <div className="text-white/45 uppercase tracking-wide text-[10px]">
+                                Next steps
+                              </div>
+                              {aosGooglePreflight.next_steps.map((step) => (
+                                <div key={step}>• {step}</div>
+                              ))}
+                            </div>
+                          )}
+                      </div>
+                    )}
                   </div>
                 );
               })

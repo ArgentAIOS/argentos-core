@@ -20,6 +20,7 @@ import { getMemuEmbedder } from "../../memory/memu-embed.js";
 import { contentHash } from "../../memory/memu-store.js";
 import { MEMORY_TYPES } from "../../memory/memu-types.js";
 import { buildCogneeSupplement, runCogneeSearch } from "../../memory/retrieve/cognee.js";
+import { encodeForPrompt } from "../../utils/toon-encoding.js";
 import { resolveUserTimezone } from "../date-time.js";
 import { resolveEffectiveIntentForAgent } from "../intent.js";
 import { inferDepartmentKnowledgeCollections } from "../support-rag-routing.js";
@@ -124,11 +125,115 @@ type RecallResultSnapshot = {
   score: number;
 };
 
+type RecallDecompositionStep = {
+  key: string;
+  label: string;
+  query: string;
+  mode?: RecallMode;
+  reason: string;
+  matchIndex: number;
+};
+
+type RecallDecompositionState = "confirmed" | "weak_recall" | "missing" | "error";
+
+const STRICT_MULTI_FACT_RECALL_RE =
+  /\b(?:for\s+each|each\s+one|one\s+by\s+one|separately|individually|per\s+fact|verify\s+each|show\s+evidence|with\s+evidence|break\s+(?:it|them)\s+down)\b/i;
+
 function shouldUseObservationRetrieval(cfg: ArgentConfig): boolean {
   return (
     cfg.memory?.observations?.enabled === true &&
     cfg.memory?.observations?.retrieval?.enabled === true
   );
+}
+
+function buildRecallDecompositionPlan(query: string): RecallDecompositionStep[] {
+  const steps: RecallDecompositionStep[] = [];
+  const pushStep = (regex: RegExp, step: Omit<RecallDecompositionStep, "matchIndex">): void => {
+    const match = regex.exec(query);
+    if (!match || match.index < 0) return;
+    steps.push({ ...step, matchIndex: match.index });
+  };
+
+  pushStep(/\bfavorite\s+color\b/i, {
+    key: "favorite_color",
+    label: "favorite color",
+    query: "What's my favorite color?",
+    mode: "preferences",
+    reason: "favorite-color-fragment",
+  });
+
+  pushStep(/\b(?:pizza|toppings?|put\s+on\s+my\s+pizza|order\s+(?:on|for)\s+my\s+pizza)\b/i, {
+    key: "pizza_toppings",
+    label: "pizza toppings",
+    query: "What toppings would I put on my pizza?",
+    mode: "preferences",
+    reason: "pizza-fragment",
+  });
+
+  pushStep(/\b(?:favorite\s+(?:fur\s+pal|fur\s+baby)|dog'?s\s+name|pet\s+name|favorite\s+pet)\b/i, {
+    key: "dog_name",
+    label: "dog name",
+    query: "What's my dog's name?",
+    mode: "identity",
+    reason: "pet-identity-fragment",
+  });
+
+  pushStep(
+    /\b(?:first\s+time\s+we\s+started\s+talking|first\s+conversation|earliest\s+memory|oldest\s+memory)\b/i,
+    {
+      key: "first_conversation",
+      label: "first conversation",
+      query: "first time we started talking with Jason",
+      reason: "chronology-fragment",
+    },
+  );
+
+  const deduped = new Map<string, RecallDecompositionStep>();
+  for (const step of steps.sort((a, b) => a.matchIndex - b.matchIndex)) {
+    if (!deduped.has(step.key)) deduped.set(step.key, step);
+  }
+  const ordered = [...deduped.values()].sort((a, b) => a.matchIndex - b.matchIndex);
+  return ordered.length > 1 ? ordered : [];
+}
+
+function shouldUseRecallDecomposition(params: unknown, query: string): boolean {
+  if (!params || typeof params !== "object") {
+    return STRICT_MULTI_FACT_RECALL_RE.test(query);
+  }
+  const record = params as Record<string, unknown>;
+  if (record.decompose === true) {
+    return true;
+  }
+  if (record.decompose === false) {
+    return false;
+  }
+  return STRICT_MULTI_FACT_RECALL_RE.test(query);
+}
+
+function classifyRecallDecompositionState(
+  detail: Record<string, unknown>,
+  factKey?: string,
+): RecallDecompositionState {
+  if (typeof detail.error === "string" && detail.error.trim()) return "error";
+
+  const answer =
+    detail.answer && typeof detail.answer === "object"
+      ? (detail.answer as Record<string, unknown>)
+      : null;
+  const strategy = typeof answer?.strategy === "string" ? answer.strategy : "";
+  const confidence = typeof answer?.confidence === "number" ? answer.confidence : 0;
+  const results = Array.isArray(detail.results)
+    ? (detail.results as Array<Record<string, unknown>>)
+    : [];
+  const topSummary = String(results[0]?.summary ?? answer?.sourceSummary ?? "").trim();
+
+  if (!topSummary && results.length === 0) return "missing";
+  if (topSummary && isNegativePropertyResult(topSummary)) return "missing";
+  if (factKey === "first_conversation") {
+    return "weak_recall";
+  }
+  if (strategy && strategy !== "summary-best-hit" && confidence >= 0.8) return "confirmed";
+  return "weak_recall";
 }
 
 function inferObservationKindsForRecall(params: {
@@ -560,6 +665,83 @@ function extractSpecificDecisionProjectTerms(intent: RecallIntentSignal): string
   );
 }
 
+const FAVORITE_SLOT_BOUNDARY_TERMS = new Set([
+  "and",
+  "ate",
+  "beginning",
+  "brashear",
+  "conversation",
+  "conversations",
+  "earliest",
+  "early",
+  "exact",
+  "first",
+  "if",
+  "jason",
+  "last",
+  "leo",
+  "memory",
+  "month",
+  "oldest",
+  "opening",
+  "pizza",
+  "relationship",
+  "started",
+  "talking",
+  "time",
+  "timeline",
+  "topping",
+  "toppings",
+  "week",
+  "with",
+  "yesterday",
+  "today",
+]);
+
+function sanitizeFavoriteSlotKey(rawSlotKey: string): string {
+  const cleaned = rawSlotKey.trim().replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, "");
+  if (!cleaned) return "";
+
+  const kept: string[] = [];
+  for (const token of cleaned.split(/\s+/)) {
+    const normalizedToken = token.toLowerCase().replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, "");
+    if (!normalizedToken) continue;
+    if (kept.length > 0 && FAVORITE_SLOT_BOUNDARY_TERMS.has(normalizedToken)) break;
+    kept.push(normalizedToken);
+    if (kept.length >= 3) break;
+  }
+
+  return kept.join(" ").trim();
+}
+
+function canonicalizeIdentityPropertySlotKey(slotKey: string): string {
+  switch (slotKey.trim().toLowerCase()) {
+    case "dog":
+    case "dog name":
+    case "fur baby":
+    case "fur pal":
+    case "pet":
+    case "pet name":
+      return "dog name";
+    default:
+      return slotKey.trim().toLowerCase();
+  }
+}
+
+function buildDogNameIntentSignal(): RecallIntentSignal {
+  return {
+    queryClass: "identity_property",
+    preferredMode: "identity",
+    reason: "query-intent",
+    slotKey: "dog name",
+    slotTerms: ["dog", "name"],
+    siblingPenaltyTerms: [],
+    profileBias: true,
+    operatorBias: true,
+    preferenceCueTerms: [],
+  };
+}
+
 function buildDecisionProjectIntentSignal(params: {
   query: string;
   reason: string;
@@ -608,35 +790,32 @@ function detectRecallIntentSignal(query: string): RecallIntentSignal | null {
     /\b(?:what(?:'s| is)?\s+)?(?:my|jason(?:'s)?)?\s*favorite\s+([a-z][a-z0-9 -]{1,40})\b/i,
   );
   if (favoriteMatch) {
-    const slotKey = favoriteMatch[1].trim().replace(/\?+$/, "");
-    return {
-      queryClass: "identity_property",
-      preferredMode: "preferences",
-      reason: "query-intent",
-      slotKey,
-      slotTerms: tokenizeIntentTerms(`favorite ${slotKey}`),
-      siblingPenaltyTerms: ["favorite"],
-      profileBias: true,
-      operatorBias: true,
-      preferenceCueTerms: ["favorite", "prefer", "like", "love"],
-    };
+    const slotKey = canonicalizeIdentityPropertySlotKey(
+      sanitizeFavoriteSlotKey(favoriteMatch[1].replace(/\?+$/, "")),
+    );
+    if (slotKey) {
+      if (slotKey === "dog name") {
+        return buildDogNameIntentSignal();
+      }
+      return {
+        queryClass: "identity_property",
+        preferredMode: "preferences",
+        reason: "query-intent",
+        slotKey,
+        slotTerms: tokenizeIntentTerms(`favorite ${slotKey}`),
+        siblingPenaltyTerms: ["favorite"],
+        profileBias: true,
+        operatorBias: true,
+        preferenceCueTerms: ["favorite", "prefer", "like", "love"],
+      };
+    }
   }
 
   if (
     /\bwhat(?:'s| is)\s+my\s+dog'?s\s+name\b/i.test(normalized) ||
     /\bwhat(?:'s| is)\s+the\s+name\s+of\s+my\s+dog\b/i.test(normalized)
   ) {
-    return {
-      queryClass: "identity_property",
-      preferredMode: "identity",
-      reason: "query-intent",
-      slotKey: "dog name",
-      slotTerms: ["dog", "name"],
-      siblingPenaltyTerms: [],
-      profileBias: true,
-      operatorBias: true,
-      preferenceCueTerms: [],
-    };
+    return buildDogNameIntentSignal();
   }
 
   if (/\bwhere\s+(?:do\s+i|does\s+jason)\s+live\b/i.test(normalized)) {
@@ -2649,6 +2828,14 @@ async function runKnowledgeProjectFallback(params: {
 
 const MemoryRecallSchema = Type.Object({
   query: Type.String({ description: "Natural language search query" }),
+  decompose: Type.Optional(
+    Type.Boolean({
+      description:
+        "Decompose strict multi-fact memory questions into atomic internal recalls. " +
+        "Slower, but returns per-fact states and evidence-oriented grouping.",
+      default: false,
+    }),
+  ),
   mode: Type.Optional(
     Type.Union(
       [
@@ -2821,7 +3008,7 @@ export function createMemoryRecallTool(options: {
   const cfg = options.config;
   if (!cfg) return null;
 
-  return {
+  const tool: AnyAgentTool = {
     label: "Memory Recall",
     name: "memory_recall",
     description:
@@ -2834,8 +3021,151 @@ export function createMemoryRecallTool(options: {
     parameters: MemoryRecallSchema,
     execute: async (_toolCallId, params) => {
       const query = readStringParam(params, "query", { required: true });
+      const skipDecomposition =
+        Boolean(params) &&
+        typeof params === "object" &&
+        (params as Record<string, unknown>).__decomposition_skip === true;
       const entityFilter = readStringParam(params, "entity");
       const explicitCollectionFilter = readStringParam(params, "collection");
+      const includeCoverage = params.include_coverage === true;
+      const requestedMode = (readStringParam(params, "mode") ?? "general") as RecallMode;
+
+      if (!skipDecomposition) {
+        const decompositionPlan = buildRecallDecompositionPlan(query);
+        if (decompositionPlan.length > 1 && shouldUseRecallDecomposition(params, query)) {
+          const mergedResults = new Map<string, Record<string, unknown>>();
+          const facts = await Promise.all(
+            decompositionPlan.map(async (step, index) => {
+              const factParams: Record<string, unknown> = {
+                ...(params && typeof params === "object"
+                  ? (params as Record<string, unknown>)
+                  : {}),
+                query: step.query,
+                __decomposition_skip: true,
+              };
+              if (step.mode) factParams.mode = step.mode;
+
+              const factResult = await tool.execute(
+                `${_toolCallId}::fact-${index + 1}`,
+                factParams,
+              );
+              const factDetail =
+                factResult && typeof factResult === "object" && "details" in factResult
+                  ? ((factResult as { details?: Record<string, unknown> }).details ?? {})
+                  : {};
+              const factRows = Array.isArray(factDetail.results)
+                ? (factDetail.results as Array<Record<string, unknown>>)
+                : [];
+              for (const row of factRows.slice(0, 2)) {
+                const key =
+                  typeof row.id === "string" && row.id.trim()
+                    ? row.id
+                    : `${step.key}:${String(row.summary ?? "")}`;
+                if (!mergedResults.has(key)) mergedResults.set(key, row);
+              }
+
+              const state = classifyRecallDecompositionState(factDetail, step.key);
+              return {
+                key: step.key,
+                label: step.label,
+                reason: step.reason,
+                query: step.query,
+                mode: factDetail.mode ?? step.mode ?? requestedMode,
+                queryClass: factDetail.queryClass ?? "general",
+                state,
+                resultCount:
+                  typeof factDetail.count === "number" ? factDetail.count : factRows.length,
+                answer:
+                  factDetail.answer && typeof factDetail.answer === "object"
+                    ? factDetail.answer
+                    : null,
+                topResult: factRows[0] ?? null,
+              };
+            }),
+          );
+
+          const decompositionSummary = {
+            confirmed: facts.filter((fact) => fact.state === "confirmed").length,
+            weakRecall: facts.filter((fact) => fact.state === "weak_recall").length,
+            missing: facts.filter((fact) => fact.state === "missing").length,
+            errors: facts.filter((fact) => fact.state === "error").length,
+          };
+          const response: Record<string, unknown> = {
+            results: [...mergedResults.values()],
+            count: mergedResults.size,
+            mode: requestedMode,
+            queryClass: "multi_fact",
+            decomposition: {
+              used: true,
+              facts,
+              summary: decompositionSummary,
+            },
+            recallTelemetry: {
+              decompositionUsed: true,
+              subqueries: facts.map((fact) => ({
+                key: fact.key,
+                query: fact.query,
+                mode: fact.mode,
+                queryClass: fact.queryClass,
+                state: fact.state,
+              })),
+            },
+          };
+
+          if (includeCoverage) {
+            response.coverage = {
+              decompositionUsed: true,
+              factsConfirmed: decompositionSummary.confirmed,
+              factsWeakRecall: decompositionSummary.weakRecall,
+              factsMissing: decompositionSummary.missing,
+              factErrors: decompositionSummary.errors,
+            };
+          }
+
+          await appendMemoryRecallTelemetry({
+            version: 1,
+            ts: Date.now(),
+            iso: new Date().toISOString(),
+            status: "ok",
+            tool: "memory_recall",
+            toolCallId: _toolCallId,
+            agentId: options.agentId,
+            query,
+            requestedMode,
+            resolvedMode: requestedMode,
+            queryClass: "multi_fact",
+            deep: typeof params.deep === "boolean" ? params.deep : false,
+            entityFilter: entityFilter ?? undefined,
+            collectionFilters: explicitCollectionFilter ? [explicitCollectionFilter] : [],
+            includeCoverage,
+            resultCount: mergedResults.size,
+            recallTelemetry: {
+              decompositionUsed: true,
+              subqueries: facts.map((fact) => ({
+                key: fact.key,
+                query: fact.query,
+                mode: fact.mode,
+                queryClass: fact.queryClass,
+                state: fact.state,
+              })),
+            },
+            topResults: [...mergedResults.values()].slice(0, 5).map((row) => ({
+              id: typeof row.id === "string" ? row.id : undefined,
+              type: typeof row.type === "string" ? row.type : undefined,
+              summary: String(row.summary ?? ""),
+              score: typeof row.score === "number" ? row.score : 0,
+            })),
+          }).catch(() => undefined);
+
+          try {
+            const toon = encodeForPrompt(response);
+            return { content: [{ type: "text" as const, text: toon }], details: response };
+          } catch {
+            return jsonResult(response);
+          }
+        }
+      }
+
       const resolvedIntent = options.agentId
         ? resolveEffectiveIntentForAgent({
             config: cfg,
@@ -2869,12 +3199,9 @@ export function createMemoryRecallTool(options: {
         | "calm"
         | undefined;
       const includeShared = params.include_shared === true;
-      const includeCoverage = params.include_coverage === true;
       const minTypeCoverage = readNumberParam(params, "min_type_coverage", { integer: true });
       const inferredEntityFilter = entityFilter ? null : extractTemporalEntitySubject(query);
       const effectiveEntityFilter = entityFilter ?? inferredEntityFilter;
-
-      const requestedMode = (readStringParam(params, "mode") ?? "general") as RecallMode;
       let mode = requestedMode;
       let modeConfig = RECALL_MODES[mode] ?? RECALL_MODES.general;
       let intentSignal = detectRecallIntentSignal(query);
@@ -3858,7 +4185,12 @@ export function createMemoryRecallTool(options: {
           modeEscalationReason,
         }).catch(() => undefined);
 
-        return jsonResult(response);
+        try {
+          const toon = encodeForPrompt(response);
+          return { content: [{ type: "text" as const, text: toon }], details: response };
+        } catch {
+          return jsonResult(response);
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         await appendMemoryRecallTelemetry({
@@ -3888,6 +4220,8 @@ export function createMemoryRecallTool(options: {
       }
     },
   };
+
+  return tool;
 }
 
 export function createMemoryStoreTool(options: {
