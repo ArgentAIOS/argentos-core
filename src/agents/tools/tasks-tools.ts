@@ -21,6 +21,7 @@ import type {
 } from "../../data/types.js";
 import { getStorageAdapter } from "../../data/storage-factory.js";
 import { callGateway } from "../../gateway/call.js";
+import { encodeForPrompt } from "../../utils/toon-encoding.js";
 import { type AnyAgentTool, readStringParam } from "./common.js";
 
 // Helper to return text result
@@ -272,6 +273,20 @@ function formatTaskList(tasks: Task[]): string {
   return lines.join("\n");
 }
 
+function taskToRow(task: Task): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    id: task.id.slice(0, 8),
+    title: task.title,
+    status: task.status,
+    priority: task.priority,
+  };
+  if (task.assignee) row.assignee = task.assignee;
+  if (task.parentTaskId) row.parentTaskId = task.parentTaskId;
+  if (task.dueAt) row.due = new Date(task.dueAt).toLocaleDateString();
+  if (task.tags && task.tags.length > 0) row.tags = task.tags;
+  return row;
+}
+
 function isProjectTask(task: Task): boolean {
   if (!task.metadata || typeof task.metadata !== "object") return false;
   return (task.metadata as Record<string, unknown>).type === "project";
@@ -407,7 +422,8 @@ ACTIONS:
             return textResult("No tasks found matching the criteria.");
           }
 
-          return textResult(`Found ${tasks.length} task(s):\n\n${formatTaskList(tasks)}`);
+          const toon = encodeForPrompt({ count: tasks.length, tasks: tasks.map(taskToRow) });
+          return { content: [{ type: "text" as const, text: toon }] };
         }
 
         case "add": {
@@ -567,9 +583,12 @@ ACTIONS:
             return textResult(`No tasks found matching: "${query}"`);
           }
 
-          return textResult(
-            `Found ${tasks.length} task(s) matching "${query}":\n\n${formatTaskList(tasks)}`,
-          );
+          const toon = encodeForPrompt({
+            query,
+            count: tasks.length,
+            tasks: tasks.map(taskToRow),
+          });
+          return { content: [{ type: "text" as const, text: toon }] };
         }
 
         case "counts": {

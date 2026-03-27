@@ -6,12 +6,16 @@
     "config.show": "readonly",
     "health": "readonly",
     "doctor": "readonly",
-    "voice.list": "readonly",
-    "voice.read": "readonly",
+    "voices.list": "readonly",
+    "voices.get": "readonly",
+    "voices.clone": "write",
     "model.list": "readonly",
     "history.list": "readonly",
-    "history.read": "readonly",
+    "history.download": "readonly",
     "user.read": "readonly",
-    "synthesize": "write"
+    "tts.generate": "write",
+    "tts.stream": "write",
+    "sfx.generate": "write",
+    "audio.isolate": "write"
   }
 }

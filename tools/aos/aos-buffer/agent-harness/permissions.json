@@ -7,13 +7,13 @@
     "config.show": "readonly",
     "health": "readonly",
     "doctor": "readonly",
-    "channel.list": "readonly",
-    "channel.read": "readonly",
     "profile.list": "readonly",
-    "profile.read": "readonly",
+    "channel.list": "readonly",
+    "post.create": "write",
     "post.list": "readonly",
-    "post.read": "readonly",
-    "post.create_draft": "write",
-    "post.schedule": "write"
+    "post.update": "write",
+    "post.delete": "full",
+    "calendar.list": "readonly",
+    "analytics.get": "readonly"
   }
 }

@@ -25,37 +25,67 @@
       {
         "id": "account",
         "label": "Account",
+        "type": "select",
+        "renderAs": "select",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "pickerHint": "account",
         "applies_to": ["account.read"],
-        "example": "connected Trello member"
+        "placeholder": "Select account...",
+        "description": "Connected Trello member account"
       },
       {
         "id": "member_id",
-        "label": "Member ID",
+        "label": "Member",
+        "type": "select",
+        "renderAs": "select",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "pickerHint": "member",
         "applies_to": ["member.read"],
-        "example": "5abbe4b7ddc1b351ef961414"
+        "placeholder": "Select member...",
+        "description": "Trello member ID to read from"
       },
       {
         "id": "board_id",
-        "label": "Board ID",
+        "label": "Board",
+        "type": "select",
+        "renderAs": "select",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "pickerHint": "board",
         "applies_to": ["member.list", "board.read", "list.list"],
-        "example": "5abbe4b7ddc1b351ef961414"
+        "placeholder": "Select board...",
+        "description": "Trello board ID to operate on"
       },
       {
         "id": "list_id",
-        "label": "List ID",
+        "label": "List",
+        "type": "select",
+        "renderAs": "select",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "pickerHint": "list",
         "applies_to": ["list.read", "card.list", "card.create_draft"],
-        "example": "5abbe4b7ddc1b351ef961415"
+        "placeholder": "Select list...",
+        "description": "Trello list ID to operate on"
       },
       {
         "id": "card_id",
-        "label": "Card ID",
+        "label": "Card",
+        "type": "select",
+        "renderAs": "select",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "pickerHint": "card",
         "applies_to": ["card.read", "card.update_draft"],
-        "example": "5abbe4b7ddc1b351ef961416"
+        "placeholder": "Select card...",
+        "description": "Trello card ID to operate on"
       }
     ],
     "commandDefaults": {

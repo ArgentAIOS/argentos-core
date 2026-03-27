@@ -16,16 +16,20 @@ import {
 } from "../hooks/internal-hooks.js";
 import { loadInternalHooks } from "../hooks/loader.js";
 import { isTruthyEnvValue } from "../infra/env.js";
-import { validateLicenseOnStartup } from "../infra/license.js";
 import { startJournal } from "../memory/journal.js";
 import { registerObservationHooks } from "../memory/memo.js";
 import { type PluginServicesHandle, startPluginServices } from "../plugins/services.js";
+import { loadOptionalExport } from "../utils/optional-module.js";
 import { startBrowserControlServerIfEnabled } from "./server-browser.js";
 import { startDashboardApiServer } from "./server-dashboard-api.js";
 import {
   scheduleRestartSentinelWake,
   shouldWakeFromRestartSentinel,
 } from "./server-restart-sentinel.js";
+
+const validateLicenseOnStartupOptional = loadOptionalExport<
+  (params: { info: (msg: string) => void; warn: (msg: string) => void }) => Promise<void> | void
+>(import.meta.url, "../infra/license.js", "validateLicenseOnStartup");
 
 export async function startGatewaySidecars(params: {
   cfg: ReturnType<typeof loadConfig>;
@@ -43,10 +47,12 @@ export async function startGatewaySidecars(params: {
   logBrowser: { error: (msg: string) => void };
 }) {
   // Validate license against marketplace (non-blocking — gateway still starts).
-  void validateLicenseOnStartup({
-    info: (msg) => params.logHooks.info(`[license] ${msg}`),
-    warn: (msg) => params.log.warn(`[license] ${msg}`),
-  });
+  if (validateLicenseOnStartupOptional) {
+    void validateLicenseOnStartupOptional({
+      info: (msg) => params.logHooks.info(`[license] ${msg}`),
+      warn: (msg) => params.log.warn(`[license] ${msg}`),
+    });
+  }
 
   // Start Argent browser control server (unless disabled via config).
   let browserControl: Awaited<ReturnType<typeof startBrowserControlServerIfEnabled>> = null;

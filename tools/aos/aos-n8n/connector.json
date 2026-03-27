@@ -7,7 +7,65 @@
     "surface": "workflow",
     "scaffold_only": false,
     "live_backend_available": true,
-    "worker_visible_actions": ["workflow.list", "workflow.status", "workflow.trigger"]
+    "worker_visible_actions": ["workflow.list", "workflow.status", "workflow.trigger"],
+    "workerFields": ["workflow_id", "workflow_name", "event", "payload"],
+    "fields": [
+      {
+        "id": "workflow_id",
+        "label": "Workflow ID",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "n8n workflow ID to target",
+        "placeholder": "12345",
+        "applies_to": ["workflow.status", "workflow.trigger"]
+      },
+      {
+        "id": "workflow_name",
+        "label": "Workflow Name",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Optional workflow name for display",
+        "placeholder": "my-workflow",
+        "applies_to": ["workflow.list", "workflow.trigger"]
+      },
+      {
+        "id": "event",
+        "label": "Event Type",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "description": "Type of event triggering the workflow",
+        "options": [
+          { "value": "manual", "label": "Manual Trigger" },
+          { "value": "webhook", "label": "Webhook" },
+          { "value": "schedule", "label": "Scheduled" },
+          { "value": "replay", "label": "Replay" },
+          { "value": "custom", "label": "Custom" }
+        ],
+        "default": "manual",
+        "applies_to": ["workflow.trigger"]
+      },
+      {
+        "id": "payload",
+        "label": "Trigger Payload",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "json",
+        "description": "JSON payload data to pass to the workflow",
+        "placeholder": "{\"source\": \"agent\", \"reason\": \"follow-up\"}",
+        "applies_to": ["workflow.trigger"]
+      }
+    ]
   },
   "connector": {
     "label": "n8n",

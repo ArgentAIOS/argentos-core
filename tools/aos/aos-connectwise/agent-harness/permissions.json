@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "ticket.list": "readonly",
+    "ticket.get": "readonly",
+    "ticket.create": "write",
+    "ticket.update": "write",
+    "company.list": "readonly",
+    "company.get": "readonly",
+    "company.create": "write",
+    "contact.list": "readonly",
+    "contact.get": "readonly",
+    "contact.create": "write",
+    "project.list": "readonly",
+    "project.get": "readonly",
+    "board.list": "readonly",
+    "status.list": "readonly",
+    "member.list": "readonly",
+    "time_entry.create": "write",
+    "configuration.list": "readonly",
+    "configuration.get": "readonly",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

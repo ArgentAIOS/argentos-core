@@ -37,6 +37,12 @@ import { appendUsageLine, formatResponseUsageLine } from "./agent-runner-utils.j
 import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
 import { resolveBlockStreamingCoalescing } from "./block-streaming.js";
 import { createFollowupRunner } from "./followup-runner.js";
+import {
+  resolveMemoryFlushContextWindowTokens,
+  resolveMemoryFlushSettings,
+  shouldForceMemoryFlushBeforeReply,
+  shouldRunMemoryFlush,
+} from "./memory-flush.js";
 import { enqueueFollowupRun, type FollowupRun, type QueueSettings } from "./queue.js";
 import { createReplyToModeFilterForChannel, resolveReplyToMode } from "./reply-threading.js";
 import { incrementCompactionCount } from "./session-updates.js";
@@ -200,20 +206,48 @@ export async function runReplyAgent(params: {
 
   await typingSignals.signalRunStart();
 
-  activeSessionEntry = await runMemoryFlushIfNeeded({
-    cfg,
-    followupRun,
-    sessionCtx,
-    opts,
-    defaultModel,
+  const memoryFlushSettings = resolveMemoryFlushSettings(cfg);
+  const memoryFlushEntry =
+    activeSessionEntry ?? (sessionKey ? activeSessionStore?.[sessionKey] : undefined);
+  const memoryFlushContextTokens = resolveMemoryFlushContextWindowTokens({
+    modelId: followupRun.run.model ?? defaultModel,
     agentCfgContextTokens,
-    resolvedVerboseLevel,
-    sessionEntry: activeSessionEntry,
-    sessionStore: activeSessionStore,
-    sessionKey,
-    storePath,
-    isHeartbeat,
   });
+  const shouldForcePreReplyMemoryFlush = Boolean(
+    memoryFlushSettings &&
+    shouldForceMemoryFlushBeforeReply({
+      entry: memoryFlushEntry,
+      contextWindowTokens: memoryFlushContextTokens,
+      reserveTokensFloor: memoryFlushSettings.reserveTokensFloor,
+    }),
+  );
+  const shouldDeferMemoryFlush = Boolean(
+    memoryFlushSettings &&
+    !shouldForcePreReplyMemoryFlush &&
+    shouldRunMemoryFlush({
+      entry: memoryFlushEntry,
+      contextWindowTokens: memoryFlushContextTokens,
+      reserveTokensFloor: memoryFlushSettings.reserveTokensFloor,
+      softThresholdTokens: memoryFlushSettings.softThresholdTokens,
+    }),
+  );
+
+  if (shouldForcePreReplyMemoryFlush) {
+    activeSessionEntry = await runMemoryFlushIfNeeded({
+      cfg,
+      followupRun,
+      sessionCtx,
+      opts,
+      defaultModel,
+      agentCfgContextTokens,
+      resolvedVerboseLevel,
+      sessionEntry: activeSessionEntry,
+      sessionStore: activeSessionStore,
+      sessionKey,
+      storePath,
+      isHeartbeat,
+    });
+  }
 
   const runFollowupTurn = createFollowupRunner({
     opts,
@@ -226,6 +260,31 @@ export async function runReplyAgent(params: {
     defaultModel,
     agentCfgContextTokens,
   });
+  const runDeferredMemoryFlush = async (): Promise<void> => {
+    if (!shouldDeferMemoryFlush) {
+      return;
+    }
+    activeSessionEntry = await runMemoryFlushIfNeeded({
+      cfg,
+      followupRun,
+      sessionCtx,
+      opts,
+      defaultModel,
+      agentCfgContextTokens,
+      resolvedVerboseLevel,
+      sessionEntry: activeSessionEntry,
+      sessionStore: activeSessionStore,
+      sessionKey,
+      storePath,
+      isHeartbeat,
+    });
+  };
+  const finalizeReply = async (
+    payload: ReplyPayload | ReplyPayload[] | undefined,
+  ): Promise<ReplyPayload | ReplyPayload[] | undefined> => {
+    await runDeferredMemoryFlush();
+    return finalizeWithFollowup(payload, queueKey, runFollowupTurn);
+  };
 
   let responseUsageLine: string | undefined;
   type SessionResetOptions = {
@@ -357,7 +416,7 @@ export async function runReplyAgent(params: {
     });
 
     if (runOutcome.kind === "final") {
-      return finalizeWithFollowup(runOutcome.payload, queueKey, runFollowupTurn);
+      return finalizeReply(runOutcome.payload);
     }
 
     const { runResult, fallbackProvider, fallbackModel, directlySentBlockKeys } = runOutcome;
@@ -424,7 +483,7 @@ export async function runReplyAgent(params: {
     // Otherwise, a late typing trigger (e.g. from a tool callback) can outlive the run and
     // keep the typing indicator stuck.
     if (payloadArray.length === 0) {
-      return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
+      return finalizeReply(undefined);
     }
 
     const payloadResult = buildReplyPayloads({
@@ -447,7 +506,7 @@ export async function runReplyAgent(params: {
     didLogHeartbeatStrip = payloadResult.didLogHeartbeatStrip;
 
     if (replyPayloads.length === 0) {
-      return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
+      return finalizeReply(undefined);
     }
 
     await signalTypingIfNeeded(replyPayloads, typingSignals);
@@ -538,11 +597,7 @@ export async function runReplyAgent(params: {
       finalPayloads = appendUsageLine(finalPayloads, responseUsageLine);
     }
 
-    return finalizeWithFollowup(
-      finalPayloads.length === 1 ? finalPayloads[0] : finalPayloads,
-      queueKey,
-      runFollowupTurn,
-    );
+    return finalizeReply(finalPayloads.length === 1 ? finalPayloads[0] : finalPayloads);
   } finally {
     blockReplyPipeline?.stop();
     typing.markRunComplete();

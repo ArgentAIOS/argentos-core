@@ -336,7 +336,10 @@ export async function runEmbeddedPiAgent(
   params: RunEmbeddedPiAgentParams,
 ): Promise<EmbeddedPiRunResult> {
   const sessionLane = resolveSessionLane(params.sessionKey?.trim() || params.sessionId);
-  const globalLane = resolveGlobalLane(params.lane);
+  const globalLane = resolveGlobalLane(params.lane, {
+    messageProvider: params.messageProvider,
+    messageChannel: params.messageChannel,
+  });
   const isPriority = params.priority === true;
   const enqueueGlobal =
     params.enqueue ??
@@ -376,6 +379,7 @@ export async function runEmbeddedPiAgent(
       const configPrimary = params.config?.agents?.defaults?.model?.primary;
       const hasProvidedSelection =
         (params.provider?.trim().length ?? 0) > 0 || (params.model?.trim().length ?? 0) > 0;
+      const isPreselectedModel = params.preselectedModel === true && hasProvidedSelection;
       const isExplicitOverride =
         params.respectProvidedModel && hasProvidedSelection
           ? true
@@ -493,30 +497,40 @@ export async function runEmbeddedPiAgent(
         params.messageChannel === "sis" || params.sessionKey?.includes("sis") === true;
       const effectiveRouterConfig =
         isSisSession && routerConfig ? { ...routerConfig, enabled: false } : routerConfig;
-      const routing = routeModel({
-        signals: {
-          prompt: promptText,
-          thinkingLevel: effectiveThinkingLevel,
-          hasImages: (params.images?.length ?? 0) > 0,
-          sessionType: isProbeSession
-            ? "heartbeat"
-            : params.sessionKey?.includes("heartbeat")
-              ? "heartbeat"
-              : params.sessionKey?.includes("contemplation")
-                ? "contemplation"
-                : params.sessionKey?.includes("sub-")
-                  ? "subagent"
-                  : "main",
-          hasHistory: !!(params.sessionId || params.sessionKey),
-          toolName: detectedToolName,
-          forceMaxTier,
-        },
-        config: effectiveRouterConfig,
-        requestedProvider: isExplicitOverride ? params.provider : undefined,
-        requestedModel: isExplicitOverride ? params.model : undefined,
-        defaultProvider: rawProvider,
-        defaultModel: rawModelId,
-      });
+      const routing =
+        isPreselectedModel && !isExplicitOverride
+          ? {
+              provider: rawProvider,
+              model: rawModelId,
+              tier: "powerful" as const,
+              score: 1,
+              reason: "preselected model",
+              routed: false,
+            }
+          : routeModel({
+              signals: {
+                prompt: promptText,
+                thinkingLevel: effectiveThinkingLevel,
+                hasImages: (params.images?.length ?? 0) > 0,
+                sessionType: isProbeSession
+                  ? "heartbeat"
+                  : params.sessionKey?.includes("heartbeat")
+                    ? "heartbeat"
+                    : params.sessionKey?.includes("contemplation")
+                      ? "contemplation"
+                      : params.sessionKey?.includes("sub-")
+                        ? "subagent"
+                        : "main",
+                hasHistory: !!(params.sessionId || params.sessionKey),
+                toolName: detectedToolName,
+                forceMaxTier,
+              },
+              config: effectiveRouterConfig,
+              requestedProvider: isExplicitOverride ? params.provider : undefined,
+              requestedModel: isExplicitOverride ? params.model : undefined,
+              defaultProvider: rawProvider,
+              defaultModel: rawModelId,
+            });
 
       let provider = routing.provider;
       let modelId = routing.model;

@@ -1,0 +1,268 @@
+{
+  "tool": "aos-claude-code",
+  "backend": "claude-code-cli",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "ai-coding",
+    "surface": "prompt-session-hook",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["prompt", "project_dir", "session_id", "model"],
+    "worker_visible_actions": [
+      "prompt.send",
+      "prompt.stream",
+      "session.list",
+      "session.resume",
+      "hook.list",
+      "hook.create",
+      "config.get",
+      "config.set",
+      "mcp.list",
+      "mcp.call"
+    ],
+    "fields": [
+      {
+        "id": "prompt",
+        "label": "Prompt",
+        "required": false,
+        "applies_to": ["prompt.send", "prompt.stream"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "project_dir",
+        "label": "Project Directory",
+        "required": false,
+        "example": "/Users/sem/code/argentos",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "session_id",
+        "label": "Session ID",
+        "required": false,
+        "applies_to": ["session.resume"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "model",
+        "label": "Model Override",
+        "required": false,
+        "example": "claude-sonnet-4-6",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "hook_event",
+        "label": "Hook Event",
+        "required": false,
+        "applies_to": ["hook.create"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      }
+    ],
+    "commandDefaults": {
+      "prompt.send": {
+        "selection_surface": "prompt"
+      },
+      "prompt.stream": {
+        "selection_surface": "prompt"
+      },
+      "session.list": {
+        "selection_surface": "session",
+        "limit": 10
+      },
+      "session.resume": {
+        "selection_surface": "session",
+        "args": ["CLAUDE_CODE_SESSION_ID"]
+      },
+      "hook.list": {
+        "selection_surface": "hook"
+      },
+      "hook.create": {
+        "selection_surface": "hook"
+      },
+      "config.get": {
+        "selection_surface": "config"
+      },
+      "config.set": {
+        "selection_surface": "config"
+      },
+      "mcp.list": {
+        "selection_surface": "mcp"
+      },
+      "mcp.call": {
+        "selection_surface": "mcp"
+      }
+    },
+    "pickerHints": {
+      "session": {
+        "kind": "session",
+        "selection_surface": "session",
+        "resource": "claude-code.session",
+        "source_command": "session.list",
+        "source_fields": ["id", "project", "model", "created", "updated", "status"]
+      },
+      "hook": {
+        "kind": "hook",
+        "selection_surface": "hook",
+        "resource": "claude-code.hook",
+        "source_command": "hook.list",
+        "source_fields": ["id", "event", "matcher", "command", "enabled"]
+      },
+      "mcp": {
+        "kind": "mcp",
+        "selection_surface": "mcp",
+        "resource": "claude-code.mcp",
+        "source_command": "mcp.list",
+        "source_fields": ["name", "type", "status", "tools"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Claude Code",
+    "category": "developer-tools",
+    "categories": ["developer-tools", "ai-coding", "automation"],
+    "resources": ["prompt", "session", "hook", "config", "mcp"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["ANTHROPIC_API_KEY"],
+    "interactive_setup": [
+      "Ensure Claude Code CLI is installed and authenticated (claude login or ANTHROPIC_API_KEY).",
+      "Add ANTHROPIC_API_KEY in API Keys for programmatic access via the SDK.",
+      "Optionally set CLAUDE_CODE_PROJECT_DIR to a default project directory.",
+      "Optionally set CLAUDE_CODE_MODEL to override the default model (e.g., claude-sonnet-4-6).",
+      "The connector supports both read and write operations (prompts, hooks, config, MCP calls).",
+      "The connector is live-read-first and will report API failures instead of masking them."
+    ]
+  },
+  "commands": [
+    {
+      "id": "prompt.send",
+      "summary": "Send a prompt to Claude Code and get a response",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "prompt",
+      "action_class": "write"
+    },
+    {
+      "id": "prompt.stream",
+      "summary": "Stream a prompt response from Claude Code",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "prompt",
+      "action_class": "write"
+    },
+    {
+      "id": "session.list",
+      "summary": "List recent Claude Code sessions",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "session",
+      "action_class": "read"
+    },
+    {
+      "id": "session.resume",
+      "summary": "Resume an existing Claude Code session",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "session",
+      "action_class": "write"
+    },
+    {
+      "id": "hook.list",
+      "summary": "List configured Claude Code hooks",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "hook",
+      "action_class": "read"
+    },
+    {
+      "id": "hook.create",
+      "summary": "Create a new Claude Code hook",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "hook",
+      "action_class": "write"
+    },
+    {
+      "id": "config.get",
+      "summary": "Get Claude Code configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "config",
+      "action_class": "read"
+    },
+    {
+      "id": "config.set",
+      "summary": "Update Claude Code configuration",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "config",
+      "action_class": "write"
+    },
+    {
+      "id": "mcp.list",
+      "summary": "List connected MCP servers",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "mcp",
+      "action_class": "read"
+    },
+    {
+      "id": "mcp.call",
+      "summary": "Call a tool on a connected MCP server",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "mcp",
+      "action_class": "write"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

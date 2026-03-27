@@ -20,12 +20,14 @@ export const BUILTIN_PROFILES: Record<
   {
     label: string;
     tiers: Record<ModelTier, TierModelMapping>;
+    routingPolicy?: ModelProfile["routingPolicy"];
     sessionOverrides?: ModelProfile["sessionOverrides"];
   }
 > = {
   default: {
     label: "Default (Anthropic)",
     tiers: { ...DEFAULT_TIER_MODELS },
+    routingPolicy: { likelyToolUseMinTier: "balanced" },
   },
   "minimax-mix": {
     label: "MiniMax Mix",
@@ -35,6 +37,7 @@ export const BUILTIN_PROFILES: Record<
       balanced: { provider: "minimax", model: "MiniMax-M2.5" },
       powerful: { provider: "anthropic", model: "claude-opus-4-6" },
     },
+    routingPolicy: { likelyToolUseMinTier: "balanced" },
   },
   budget: {
     label: "Budget",
@@ -44,6 +47,7 @@ export const BUILTIN_PROFILES: Record<
       balanced: { provider: "minimax", model: "MiniMax-M2.5" },
       powerful: { provider: "anthropic", model: "claude-sonnet-4-6" },
     },
+    routingPolicy: { likelyToolUseMinTier: "balanced" },
   },
   "nvidia-free": {
     label: "NVIDIA Free",
@@ -53,5 +57,6 @@ export const BUILTIN_PROFILES: Record<
       balanced: { provider: "nvidia", model: "nvidia/llama-3.3-70b-instruct" },
       powerful: { provider: "nvidia", model: "nvidia/llama-3.1-nemotron-70b-instruct" },
     },
+    routingPolicy: { likelyToolUseMinTier: "balanced" },
   },
 };

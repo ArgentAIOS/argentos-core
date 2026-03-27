@@ -1,0 +1,17 @@
+{
+  "tool": "aos-coderabbit",
+  "backend": "coderabbit-api",
+  "permissions": {
+    "review.request": "write",
+    "review.status": "readonly",
+    "review.get": "readonly",
+    "report.list": "readonly",
+    "report.get": "readonly",
+    "config.get": "readonly",
+    "config.update": "write",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

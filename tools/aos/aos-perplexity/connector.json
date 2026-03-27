@@ -1,0 +1,193 @@
+{
+  "tool": "aos-perplexity",
+  "backend": "perplexity-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "ai-search",
+    "surface": "search-chat",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": false,
+    "workerFields": ["query", "model", "search_domain"],
+    "worker_visible_actions": ["search.query", "search.chat", "chat.complete", "chat.stream"],
+    "fields": [
+      {
+        "id": "query",
+        "label": "Search Query",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "rows": 2,
+        "applies_to": ["search.query", "search.chat"],
+        "placeholder": "What are the latest developments in AI?",
+        "description": "Web search query to find current information."
+      },
+      {
+        "id": "model",
+        "label": "Model",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "placeholder": "llama-3.1-sonar-large-128k-online",
+        "description": "Perplexity model to use for search and reasoning.",
+        "options": [
+          { "value": "llama-3.1-sonar-small-128k-online", "label": "Llama 3.1 Sonar Small (Fast)" },
+          {
+            "value": "llama-3.1-sonar-large-128k-online",
+            "label": "Llama 3.1 Sonar Large (Balanced)"
+          },
+          {
+            "value": "llama-3.1-sonar-huge-128k-online",
+            "label": "Llama 3.1 Sonar Huge (Powerful)"
+          },
+          { "value": "grok-2-1212", "label": "Grok 2" },
+          { "value": "claude-3-5-sonnet-20241022", "label": "Claude 3.5 Sonnet" }
+        ],
+        "example": "llama-3.1-sonar-large-128k-online"
+      },
+      {
+        "id": "search_domain",
+        "label": "Search Domain Filter",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "github.com",
+        "description": "Restrict search results to a specific domain (optional)."
+      },
+      {
+        "id": "system_prompt",
+        "label": "System Prompt",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "rows": 3,
+        "applies_to": ["chat.complete", "chat.stream"],
+        "placeholder": "You are a research assistant providing accurate, cited information.",
+        "description": "System instructions for the reasoning model."
+      }
+    ],
+    "commandDefaults": {
+      "search.query": {
+        "selection_surface": "search"
+      },
+      "search.chat": {
+        "selection_surface": "search"
+      },
+      "chat.complete": {
+        "selection_surface": "chat"
+      },
+      "chat.stream": {
+        "selection_surface": "chat"
+      }
+    },
+    "pickerHints": {
+      "search": {
+        "kind": "search",
+        "selection_surface": "search",
+        "resource": "perplexity.search",
+        "source_command": "search.query",
+        "source_fields": ["query", "model", "citations", "answer"]
+      },
+      "chat": {
+        "kind": "chat",
+        "selection_surface": "chat",
+        "resource": "perplexity.chat",
+        "source_command": "chat.complete",
+        "source_fields": ["model", "messages", "citations", "answer"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Perplexity",
+    "category": "ai-search",
+    "categories": ["ai-search", "research", "developer-tools"],
+    "resources": ["search", "chat"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["PERPLEXITY_API_KEY"],
+    "interactive_setup": [
+      "Create a Perplexity API key at https://www.perplexity.ai/settings/api.",
+      "Add PERPLEXITY_API_KEY in API Keys before enabling live reads.",
+      "Optionally set PERPLEXITY_MODEL to override the default model (default: llama-3.1-sonar-large-128k-online).",
+      "Optionally set PERPLEXITY_SEARCH_DOMAIN to restrict search results to a specific domain.",
+      "The connector is live-read-first and will report API failures instead of masking them."
+    ]
+  },
+  "commands": [
+    {
+      "id": "search.query",
+      "summary": "Run a Perplexity web search query",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "search",
+      "action_class": "read"
+    },
+    {
+      "id": "search.chat",
+      "summary": "Run a conversational search with follow-ups",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "search",
+      "action_class": "read"
+    },
+    {
+      "id": "chat.complete",
+      "summary": "Send a chat completion request",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "chat",
+      "action_class": "read"
+    },
+    {
+      "id": "chat.stream",
+      "summary": "Stream a chat completion response",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "chat",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

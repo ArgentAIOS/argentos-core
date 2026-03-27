@@ -1,0 +1,206 @@
+{
+  "tool": "aos-anthropic",
+  "backend": "anthropic-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "ai-api",
+    "surface": "message-stream",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": [
+      "model",
+      "system_prompt",
+      "messages_json",
+      "max_tokens",
+      "temperature",
+      "thinking_budget"
+    ],
+    "worker_visible_actions": ["message.create", "message.stream", "model.list"],
+    "fields": [
+      {
+        "id": "model",
+        "label": "Model",
+        "type": "text",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["message.create", "message.stream"],
+        "placeholder": "claude-sonnet-4-20250514",
+        "description": "Claude model to use for the completion request.",
+        "example": "claude-sonnet-4-20250514"
+      },
+      {
+        "id": "system_prompt",
+        "label": "System Prompt",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "rows": 4,
+        "applies_to": ["message.create", "message.stream"],
+        "placeholder": "You are a helpful assistant.",
+        "description": "System instructions for Claude's behavior and response style.",
+        "example": "You are a helpful assistant."
+      },
+      {
+        "id": "messages_json",
+        "label": "Messages (JSON Array)",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "json",
+        "applies_to": ["message.create", "message.stream"],
+        "placeholder": "[{\"role\":\"user\",\"content\":\"Hello\"}]",
+        "description": "Conversation history as a JSON array of message objects with role and content.",
+        "example": "[{\"role\":\"user\",\"content\":\"Hello\"}]"
+      },
+      {
+        "id": "max_tokens",
+        "label": "Max Tokens",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "applies_to": ["message.create", "message.stream"],
+        "placeholder": "4096",
+        "description": "Maximum number of tokens in the completion response.",
+        "example": "4096"
+      },
+      {
+        "id": "temperature",
+        "label": "Temperature",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "applies_to": ["message.create", "message.stream"],
+        "placeholder": "0.7",
+        "description": "Sampling temperature (0-2). Lower values = more deterministic, higher = more creative.",
+        "example": "0.7"
+      },
+      {
+        "id": "thinking_budget",
+        "label": "Extended Thinking Budget (Tokens)",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "applies_to": ["message.create", "message.stream"],
+        "placeholder": "10000",
+        "description": "Number of tokens for extended thinking. Requires a model that supports thinking.",
+        "example": "10000"
+      }
+    ],
+    "commandDefaults": {
+      "message.create": {
+        "selection_surface": "message",
+        "model": "claude-sonnet-4-20250514",
+        "max_tokens": 4096,
+        "temperature": 0.7
+      },
+      "message.stream": {
+        "selection_surface": "message",
+        "model": "claude-sonnet-4-20250514",
+        "max_tokens": 4096,
+        "temperature": 0.7
+      },
+      "model.list": {
+        "selection_surface": "model",
+        "limit": 50
+      }
+    },
+    "pickerHints": {
+      "model": {
+        "kind": "model",
+        "selection_surface": "model",
+        "resource": "anthropic.model",
+        "source_command": "model.list",
+        "source_fields": ["id", "display_name", "type", "created_at"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Anthropic",
+    "category": "ai-ml",
+    "categories": ["ai-ml", "language-model"],
+    "resources": ["message", "model"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["ANTHROPIC_API_KEY"],
+    "interactive_setup": [
+      "Create or choose an Anthropic API key from https://console.anthropic.com/settings/keys.",
+      "Add ANTHROPIC_API_KEY in API Keys before enabling live calls.",
+      "All actions call the Anthropic Messages API directly — these are raw API calls, not agent steps.",
+      "message.stream returns server-sent events for real-time token streaming.",
+      "Set thinking_budget to enable extended thinking (requires a supported model)."
+    ]
+  },
+  "commands": [
+    {
+      "id": "message.create",
+      "summary": "Create a message completion",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "message",
+      "action_class": "write"
+    },
+    {
+      "id": "message.stream",
+      "summary": "Create a streaming message completion",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "message",
+      "action_class": "write"
+    },
+    {
+      "id": "model.list",
+      "summary": "List available Anthropic models",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "model",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

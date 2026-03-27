@@ -3,7 +3,6 @@ import type { createDefaultDeps } from "../../cli/deps.js";
 import type { HealthSummary } from "../../commands/health.js";
 import type { CronService } from "../../cron/service.js";
 import type { ContemplationRunner } from "../../infra/contemplation-runner.js";
-import type { ExecutionWorkerRunner } from "../../infra/execution-worker-runner.js";
 import type { JobOrchestratorRunner } from "../../infra/job-orchestrator-runner.js";
 import type { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { WizardSession } from "../../wizard/session.js";
@@ -15,6 +14,16 @@ import type { ChannelRuntimeSnapshot } from "../server-channels.js";
 import type { DedupeEntry } from "../server-shared.js";
 
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
+
+type ExecutionWorkerRunnerLike = {
+  stop: () => void;
+  updateConfig: (cfg: import("../../config/config.js").ArgentConfig) => void;
+  getStatus: (opts?: { agentId?: string }) => unknown;
+  dispatchNow: (opts?: { agentId?: string; reason?: string }) => unknown;
+  pause: (opts?: { agentId?: string }) => unknown;
+  resume: (opts?: { agentId?: string }) => unknown;
+  resetMetrics: (opts?: { agentId?: string }) => unknown;
+};
 
 export type GatewayClient = {
   connect: ConnectParams;
@@ -101,7 +110,7 @@ export type GatewayRequestContext = {
   broadcastVoiceWakeChanged: (triggers: string[]) => void;
   agentStateBroadcaster?: AgentStateBroadcaster;
   contemplationRunner?: ContemplationRunner;
-  executionWorkerRunner?: ExecutionWorkerRunner;
+  executionWorkerRunner?: ExecutionWorkerRunnerLike;
   jobOrchestratorRunner?: JobOrchestratorRunner;
 };
 

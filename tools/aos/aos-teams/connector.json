@@ -1,0 +1,287 @@
+{
+  "tool": "aos-teams",
+  "backend": "microsoft-graph",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "communication",
+    "surface": "team-channel-chat",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": [
+      "team_id",
+      "channel_id",
+      "chat_id",
+      "message",
+      "meeting_subject",
+      "start_time"
+    ],
+    "worker_visible_actions": [
+      "message.send",
+      "message.reply",
+      "channel.list",
+      "channel.create",
+      "chat.send",
+      "meeting.create",
+      "meeting.list",
+      "team.list",
+      "file.upload",
+      "adaptive_card.send"
+    ],
+    "fields": [
+      {
+        "id": "team_id",
+        "label": "Team ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["channel.list", "channel.create", "file.upload"],
+        "placeholder": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "description": "The Microsoft Teams team UUID to operate in. Required for channel and file operations."
+      },
+      {
+        "id": "channel_id",
+        "label": "Channel ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["message.send", "message.reply", "file.upload", "adaptive_card.send"],
+        "placeholder": "19:abcdef1234567890@thread.tacv2",
+        "description": "The Teams channel ID (Graph format starting with 19:) where messages will be sent."
+      },
+      {
+        "id": "chat_id",
+        "label": "Chat ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["chat.send", "adaptive_card.send"],
+        "placeholder": "19:abcdef1234567890_abcdef1234567890@unq.gbl.spaces",
+        "description": "The Teams 1:1 or group chat ID (Graph format) for direct message sending."
+      },
+      {
+        "id": "message",
+        "label": "Message body",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "rows": 4,
+        "applies_to": ["message.send", "message.reply", "chat.send"],
+        "placeholder": "Hello from ArgentOS",
+        "description": "The text content of the message. Supports Teams markdown formatting."
+      },
+      {
+        "id": "meeting_subject",
+        "label": "Meeting subject",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["meeting.create"],
+        "placeholder": "Weekly standup",
+        "description": "The subject line for the Teams meeting to create."
+      },
+      {
+        "id": "start_time",
+        "label": "Meeting start time (ISO 8601)",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "datetime",
+        "applies_to": ["meeting.create"],
+        "placeholder": "2026-04-01T10:00:00-05:00",
+        "description": "Meeting start time in ISO 8601 format with timezone (e.g. 2026-04-01T10:00:00-05:00)."
+      }
+    ],
+    "commandDefaults": {
+      "team.list": {
+        "selection_surface": "team",
+        "limit": 20
+      },
+      "channel.list": {
+        "selection_surface": "channel",
+        "args": ["TEAMS_TEAM_ID"],
+        "limit": 20
+      },
+      "meeting.list": {
+        "selection_surface": "meeting",
+        "limit": 10
+      },
+      "message.send": {
+        "selection_surface": "channel",
+        "args": ["TEAMS_TEAM_ID", "TEAMS_CHANNEL_ID"]
+      },
+      "chat.send": {
+        "selection_surface": "chat",
+        "args": ["TEAMS_CHAT_ID"]
+      }
+    },
+    "pickerHints": {
+      "team": {
+        "kind": "team",
+        "selection_surface": "team",
+        "resource": "teams.team",
+        "source_command": "team.list",
+        "source_fields": ["id", "displayName", "description", "visibility"]
+      },
+      "channel": {
+        "kind": "channel",
+        "selection_surface": "channel",
+        "resource": "teams.channel",
+        "source_command": "channel.list",
+        "source_fields": ["id", "displayName", "description", "membershipType"]
+      },
+      "meeting": {
+        "kind": "meeting",
+        "selection_surface": "meeting",
+        "resource": "teams.meeting",
+        "source_command": "meeting.list",
+        "source_fields": ["id", "subject", "startDateTime", "endDateTime", "joinUrl"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Microsoft Teams",
+    "category": "communication",
+    "categories": ["communication", "messaging", "collaboration", "workflow-automation"],
+    "resources": ["message", "channel", "chat", "meeting", "team", "file", "adaptive_card"]
+  },
+  "auth": {
+    "kind": "oauth-service-key",
+    "required": true,
+    "service_keys": ["TEAMS_TENANT_ID", "TEAMS_CLIENT_ID", "TEAMS_CLIENT_SECRET"],
+    "interactive_setup": [
+      "Register an application in Microsoft Entra ID (Azure AD).",
+      "Grant Microsoft Graph permissions: ChannelMessage.Send, Channel.ReadBasic.All, Team.ReadBasic.All, Chat.ReadWrite, OnlineMeetings.ReadWrite, Files.ReadWrite.All.",
+      "Add TEAMS_TENANT_ID, TEAMS_CLIENT_ID, and TEAMS_CLIENT_SECRET in API Keys.",
+      "For delegated flows set TEAMS_USER_ID to the target user's object ID.",
+      "Set TEAMS_TEAM_ID and TEAMS_CHANNEL_ID to give worker flows stable team and channel scope defaults.",
+      "For adaptive_card.send actions the bot must be installed in the target team or chat."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and backend readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "message.send",
+      "summary": "Send a message to a Teams channel",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "message",
+      "action_class": "write"
+    },
+    {
+      "id": "message.reply",
+      "summary": "Reply to a Teams channel message",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "message",
+      "action_class": "write"
+    },
+    {
+      "id": "channel.list",
+      "summary": "List channels in a Teams team",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "channel",
+      "action_class": "read"
+    },
+    {
+      "id": "channel.create",
+      "summary": "Create a new channel in a Teams team",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "channel",
+      "action_class": "write"
+    },
+    {
+      "id": "chat.send",
+      "summary": "Send a message in a Teams 1:1 or group chat",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "chat",
+      "action_class": "write"
+    },
+    {
+      "id": "meeting.create",
+      "summary": "Create an online Teams meeting",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "meeting",
+      "action_class": "write"
+    },
+    {
+      "id": "meeting.list",
+      "summary": "List upcoming Teams meetings",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "meeting",
+      "action_class": "read"
+    },
+    {
+      "id": "team.list",
+      "summary": "List Teams teams accessible to the app",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "team",
+      "action_class": "read"
+    },
+    {
+      "id": "file.upload",
+      "summary": "Upload a file to a Teams channel",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "file",
+      "action_class": "write"
+    },
+    {
+      "id": "adaptive_card.send",
+      "summary": "Send an Adaptive Card to a Teams channel or chat",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "adaptive_card",
+      "action_class": "write"
+    }
+  ]
+}

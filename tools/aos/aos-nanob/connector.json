@@ -8,6 +8,104 @@
     "categories": ["creative-media", "image-generation", "marketing-creative"],
     "resources": ["image", "prompt", "session", "model"]
   },
+  "scope": {
+    "kind": "image-generation",
+    "fields": [
+      {
+        "id": "prompt",
+        "label": "Image Prompt",
+        "type": "string",
+        "renderAs": "richtext",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Detailed image generation prompt describing the desired image",
+        "placeholder": "A serene landscape with mountains and a lake at sunset",
+        "applies_to": ["generate", "edit"]
+      },
+      {
+        "id": "model",
+        "label": "Model",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "description": "Gemini image generation model to use",
+        "options": [
+          { "value": "gemini-2.0-flash", "label": "Gemini 2.0 Flash" },
+          { "value": "gemini-pro-vision", "label": "Gemini Pro Vision" }
+        ],
+        "default": "gemini-2.0-flash",
+        "applies_to": ["generate", "edit"]
+      },
+      {
+        "id": "image_file",
+        "label": "Source Image File",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Path or URL to image file for editing operations",
+        "placeholder": "/path/to/image.jpg",
+        "applies_to": ["edit"]
+      },
+      {
+        "id": "num_images",
+        "label": "Number of Images",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "description": "Number of images to generate (1-4)",
+        "placeholder": "1",
+        "default": 1,
+        "applies_to": ["generate", "batch"]
+      },
+      {
+        "id": "quality",
+        "label": "Quality",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "description": "Image quality level",
+        "options": [
+          { "value": "standard", "label": "Standard" },
+          { "value": "high", "label": "High Definition" }
+        ],
+        "default": "standard",
+        "applies_to": ["generate", "edit"]
+      },
+      {
+        "id": "session_name",
+        "label": "Session Name",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Name to save or identify the generation session",
+        "placeholder": "product-shots-2026",
+        "applies_to": ["sessions.create"]
+      },
+      {
+        "id": "batch_file",
+        "label": "Batch File",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Path to file containing batch prompts (one per line)",
+        "placeholder": "/path/to/prompts.txt",
+        "applies_to": ["batch"]
+      }
+    ]
+  },
   "auth": {
     "kind": "service-key",
     "required": true,

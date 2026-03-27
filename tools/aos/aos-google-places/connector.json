@@ -10,6 +10,80 @@
   },
   "delivery_model": "poll",
   "risk_tier": "readonly-external",
+  "scope": {
+    "kind": "location-search",
+    "fields": [
+      {
+        "id": "query",
+        "label": "Search Query",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Text search query for places (e.g., restaurant, coffee shop, hospital)",
+        "placeholder": "pizza restaurants near Times Square",
+        "applies_to": ["search"]
+      },
+      {
+        "id": "place_id",
+        "label": "Place ID",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Google Places ID for detailed place lookup",
+        "placeholder": "ChIJ0bX0yvqUZIgRSqWAhVQoJio",
+        "applies_to": ["place"]
+      },
+      {
+        "id": "location",
+        "label": "Location",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Location string to resolve (address or landmark)",
+        "placeholder": "1600 Pennsylvania Avenue, Washington DC",
+        "applies_to": ["resolve"]
+      },
+      {
+        "id": "radius",
+        "label": "Radius (meters)",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "description": "Search radius in meters from a location",
+        "placeholder": "1000",
+        "default": 5000,
+        "applies_to": ["search"]
+      },
+      {
+        "id": "fields",
+        "label": "Result Fields",
+        "type": "string",
+        "renderAs": "multiselect",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "description": "Fields to include in response (comma-separated)",
+        "options": [
+          { "value": "name", "label": "Place Name" },
+          { "value": "formatted_address", "label": "Address" },
+          { "value": "phone_number", "label": "Phone Number" },
+          { "value": "opening_hours", "label": "Hours" },
+          { "value": "website", "label": "Website" },
+          { "value": "rating", "label": "Rating" },
+          { "value": "photos", "label": "Photos" }
+        ],
+        "applies_to": ["search", "place"]
+      }
+    ]
+  },
   "auth": {
     "kind": "service-key",
     "required": true,

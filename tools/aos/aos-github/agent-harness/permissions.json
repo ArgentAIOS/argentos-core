@@ -1,0 +1,28 @@
+{
+  "tool": "aos-github",
+  "backend": "github-api",
+  "permissions": {
+    "repo.list": "readonly",
+    "repo.get": "readonly",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "issue.list": "readonly",
+    "issue.get": "readonly",
+    "issue.create": "write",
+    "issue.update": "write",
+    "issue.comment": "write",
+    "pr.list": "readonly",
+    "pr.get": "readonly",
+    "pr.create": "write",
+    "pr.merge": "write",
+    "pr.review": "write",
+    "branch.list": "readonly",
+    "branch.create": "write",
+    "actions.list_runs": "readonly",
+    "actions.trigger": "write",
+    "release.list": "readonly",
+    "release.create": "write"
+  }
+}

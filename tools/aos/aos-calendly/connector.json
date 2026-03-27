@@ -1,0 +1,396 @@
+{
+  "tool": "aos-calendly",
+  "backend": "calendly-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "scheduling",
+    "surface": "event-availability",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": false,
+    "workerFields": ["event_type", "invitee_email", "start_time", "end_time"],
+    "worker_visible_actions": [
+      "events.list",
+      "events.get",
+      "events.cancel",
+      "event_types.list",
+      "event_types.get",
+      "invitees.list",
+      "availability.get",
+      "scheduling_links.create"
+    ],
+    "fields": [
+      {
+        "id": "event_type",
+        "label": "Event Type",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "event_type",
+        "applies_to": ["events.list", "events.get", "availability.get", "scheduling_links.create"],
+        "placeholder": "Select an event type...",
+        "description": "The Calendly event type to scope this operation to.",
+        "valueType": "string"
+      },
+      {
+        "id": "event_uuid",
+        "label": "Event UUID",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "pickerHint": "event",
+        "applies_to": ["events.get", "events.cancel", "invitees.list"],
+        "placeholder": "Select an event...",
+        "description": "The specific scheduled event to operate on.",
+        "valueType": "string"
+      },
+      {
+        "id": "invitee_email",
+        "label": "Invitee Email",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["invitees.list", "events.list"],
+        "placeholder": "jane@example.com",
+        "description": "Filter by invitee email address.",
+        "valueType": "string"
+      },
+      {
+        "id": "status_filter",
+        "label": "Status Filter",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "applies_to": ["events.list"],
+        "options": [
+          {
+            "value": "active",
+            "label": "Active",
+            "description": "Only upcoming/confirmed events"
+          },
+          {
+            "value": "canceled",
+            "label": "Canceled",
+            "description": "Only canceled events"
+          }
+        ],
+        "placeholder": "All statuses",
+        "description": "Filter events by status.",
+        "valueType": "string"
+      },
+      {
+        "id": "start_time",
+        "label": "Start Time",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["events.list", "availability.get"],
+        "placeholder": "2026-03-28T00:00:00Z",
+        "description": "ISO 8601 start of the time range to query.",
+        "valueType": "string"
+      },
+      {
+        "id": "end_time",
+        "label": "End Time",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["events.list", "availability.get"],
+        "placeholder": "2026-04-04T00:00:00Z",
+        "description": "ISO 8601 end of the time range to query.",
+        "valueType": "string"
+      },
+      {
+        "id": "cancel_reason",
+        "label": "Cancellation Reason",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "rows": 3,
+        "applies_to": ["events.cancel"],
+        "placeholder": "Meeting rescheduled \u2014 will send new invite.",
+        "description": "Optional reason sent to invitees when canceling.",
+        "valueType": "string"
+      },
+      {
+        "id": "max_event_count",
+        "label": "Max Booking Links",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["scheduling_links.create"],
+        "placeholder": "1",
+        "description": "Maximum number of bookings this link allows. Default: 1 (single-use).",
+        "valueType": "string"
+      },
+      {
+        "id": "options",
+        "label": "Options",
+        "type": "options_group",
+        "applies_to": ["events.list", "invitees.list"],
+        "children": [
+          {
+            "id": "sort_order",
+            "label": "Sort Order",
+            "type": "select",
+            "renderAs": "select",
+            "expressionEnabled": false,
+            "options": [
+              {
+                "value": "asc",
+                "label": "Ascending (oldest first)"
+              },
+              {
+                "value": "desc",
+                "label": "Descending (newest first)"
+              }
+            ],
+            "default": "asc",
+            "description": "Sort results by start time."
+          },
+          {
+            "id": "count",
+            "label": "Max Results",
+            "type": "text",
+            "renderAs": "text",
+            "expressionEnabled": true,
+            "placeholder": "20",
+            "description": "Maximum number of results to return."
+          }
+        ],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "unknown",
+        "description": ""
+      }
+    ],
+    "commandDefaults": {
+      "events.list": {
+        "selection_surface": "event",
+        "limit": 20
+      },
+      "events.get": {
+        "selection_surface": "event",
+        "args": ["CALENDLY_EVENT_UUID"]
+      },
+      "events.cancel": {
+        "selection_surface": "event",
+        "args": ["CALENDLY_EVENT_UUID"]
+      },
+      "event_types.list": {
+        "selection_surface": "event_type",
+        "limit": 20
+      },
+      "event_types.get": {
+        "selection_surface": "event_type",
+        "args": ["CALENDLY_EVENT_TYPE_UUID"]
+      },
+      "invitees.list": {
+        "selection_surface": "invitee",
+        "limit": 20
+      },
+      "availability.get": {
+        "selection_surface": "availability",
+        "args": ["CALENDLY_EVENT_TYPE_UUID"]
+      },
+      "scheduling_links.create": {
+        "selection_surface": "scheduling_link",
+        "args": ["CALENDLY_EVENT_TYPE_UUID"]
+      }
+    },
+    "pickerHints": {
+      "event": {
+        "kind": "event",
+        "selection_surface": "event",
+        "resource": "calendly.event",
+        "source_command": "events.list",
+        "source_fields": ["uri", "name", "status", "start_time", "end_time", "event_type"]
+      },
+      "event_type": {
+        "kind": "event_type",
+        "selection_surface": "event_type",
+        "resource": "calendly.event_type",
+        "source_command": "event_types.list",
+        "source_fields": ["uri", "name", "slug", "duration_minutes", "active", "scheduling_url"]
+      },
+      "invitee": {
+        "kind": "invitee",
+        "selection_surface": "invitee",
+        "resource": "calendly.invitee",
+        "source_command": "invitees.list",
+        "source_fields": ["uri", "name", "email", "status", "created_at"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Calendly",
+    "category": "scheduling",
+    "categories": ["scheduling", "crm-revenue", "productivity"],
+    "resources": ["event", "event_type", "invitee", "availability", "scheduling_link"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["CALENDLY_API_KEY"],
+    "interactive_setup": [
+      "Create a Calendly personal access token from Settings > Integrations > API & Webhooks.",
+      "Add CALENDLY_API_KEY in API Keys before enabling live reads.",
+      "Set CALENDLY_EVENT_TYPE_UUID to give worker flows a stable event type scope default.",
+      "Write commands (events.cancel, scheduling_links.create) require mode=write.",
+      "The connector auto-discovers your Calendly user URI on first probe."
+    ]
+  },
+  "events": [
+    {
+      "id": "event.scheduled",
+      "resource": "event",
+      "summary": "New event scheduled",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_type_filter",
+          "label": "Event Type Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "pickerHint": "event_type",
+          "description": "Only trigger for this event type. Leave empty for all."
+        },
+        {
+          "id": "event_invitee_email",
+          "label": "Invitee Email Filter",
+          "type": "text",
+          "renderAs": "text",
+          "required": false,
+          "expressionEnabled": false,
+          "placeholder": "vip@example.com",
+          "description": "Only trigger when this email books. Leave empty for all."
+        }
+      ]
+    },
+    {
+      "id": "event.canceled",
+      "resource": "event",
+      "summary": "Event canceled",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_type_filter",
+          "label": "Event Type Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "pickerHint": "event_type",
+          "description": "Only trigger for cancellations of this event type. Leave empty for all."
+        }
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "events.list",
+      "summary": "List scheduled Calendly events",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "event",
+      "action_class": "read"
+    },
+    {
+      "id": "events.get",
+      "summary": "Read a Calendly event",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "event",
+      "action_class": "read"
+    },
+    {
+      "id": "events.cancel",
+      "summary": "Cancel a Calendly event",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "event",
+      "action_class": "write"
+    },
+    {
+      "id": "event_types.list",
+      "summary": "List Calendly event types",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "event_type",
+      "action_class": "read"
+    },
+    {
+      "id": "event_types.get",
+      "summary": "Read a Calendly event type",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "event_type",
+      "action_class": "read"
+    },
+    {
+      "id": "invitees.list",
+      "summary": "List invitees for a Calendly event",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "invitee",
+      "action_class": "read"
+    },
+    {
+      "id": "availability.get",
+      "summary": "Get availability for a Calendly event type",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "availability",
+      "action_class": "read"
+    },
+    {
+      "id": "scheduling_links.create",
+      "summary": "Create a single-use Calendly scheduling link",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "scheduling_link",
+      "action_class": "write"
+    }
+  ]
+}

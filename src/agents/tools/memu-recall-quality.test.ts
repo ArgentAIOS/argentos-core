@@ -1228,6 +1228,29 @@ describe("MRQL Gold-Set Regression", () => {
       expect(data.answer?.strategy).toBe("dog-name");
     });
 
+    it("favorite-fur-pal query maps to the dog-name path instead of generic favorite noise", async () => {
+      const result = await tool.execute("call_18c_fur_pal", {
+        query:
+          "first time we started talking first conversation beginning of relationship with Jason Brashear exact opening earliest memory pizza toppings Leo favorite fur pal",
+        __decomposition_skip: true,
+      });
+      const data = result.details as any;
+      expect(data.queryClass).toBe("identity_property");
+      expect(data.mode).toBe("identity");
+      expect(String(data.answer?.value).toLowerCase()).toBe("leo");
+      expect(data.answer?.strategy).toBe("dog-name");
+      expect(data.recallTelemetry?.queryVariants).toContain("Jason dog name");
+      expect(
+        data.recallTelemetry?.queryVariants.some((entry: string) =>
+          entry.includes("favorite fur pal early conversation"),
+        ),
+      ).toBe(false);
+      const topFive = data.results.slice(0, 5).map((r: any) => String(r.summary).toLowerCase());
+      expect(topFive.some((entry: string) => entry.includes("no personal information"))).toBe(
+        false,
+      );
+    });
+
     it("favorite-color query with short-name entity filter resolves canonical profile answer", async () => {
       const result = await tool.execute("call_18d", {
         query: "Jason favorite color",
@@ -1258,6 +1281,28 @@ describe("MRQL Gold-Set Regression", () => {
       expect(data.entityFilterResolved.matchTerms).toContain("Jason");
     });
 
+    it("mixed favorite-color query trims adjacent clauses before reranking", async () => {
+      const result = await tool.execute("call_18e_mixed", {
+        query: "oldest memory first time we talked favorite color pizza toppings Jason Brashear",
+        __decomposition_skip: true,
+      });
+      const data = result.details as any;
+      expect(data.queryClass).toBe("identity_property");
+      expect(data.mode).toBe("preferences");
+      expect(String(data.results[0]?.summary).toLowerCase()).toContain("mossy oak green");
+      expect(String(data.answer?.value).toLowerCase()).toContain("mossy oak green");
+      expect(data.answer?.strategy).toBe("favorite-slot");
+      expect(data.recallTelemetry?.queryVariants).toContain("Jason's favorite color");
+      expect(data.recallTelemetry?.queryVariants).not.toContain(
+        "Jason's favorite color pizza toppings jason brashear",
+      );
+      const topFive = data.results.slice(0, 5).map((r: any) => String(r.summary).toLowerCase());
+      expect(topFive.some((entry: string) => entry.includes("favorite number"))).toBe(false);
+      expect(
+        topFive.some((entry: string) => entry.includes("pizza topping preferences was found")),
+      ).toBe(false);
+    });
+
     it("pizza topping preference query surfaces direct pizza preference memory", async () => {
       const result = await tool.execute("call_18f", {
         query: "What toppings would I put on my pizza?",
@@ -1276,6 +1321,78 @@ describe("MRQL Gold-Set Regression", () => {
       );
       expect(topFive.some((entry: string) => entry.includes("memo earning his keep"))).toBe(false);
       expect(topFive.some((entry: string) => entry.includes("want me to order"))).toBe(false);
+    });
+
+    it("keeps natural multi-fact prompts on the default fast path", async () => {
+      const result = await tool.execute("call_18f_fast_path", {
+        query: "What's my favorite color and what toppings would I put on my pizza?",
+        include_coverage: true,
+      });
+      const data = result.details as any;
+      expect(data.queryClass).not.toBe("multi_fact");
+      expect(data.decomposition).toBeUndefined();
+      expect(data.coverage?.decompositionUsed).toBeUndefined();
+      expect(data.recallTelemetry?.decompositionUsed).not.toBe(true);
+    });
+
+    it("still decomposes clearly strict multi-fact recall prompts", async () => {
+      const result = await tool.execute("call_18f_strict_phrase", {
+        query:
+          "What's my favorite color and what toppings would I put on my pizza? Answer separately for each.",
+      });
+      const data = result.details as any;
+      expect(data.queryClass).toBe("multi_fact");
+      expect(data.decomposition?.used).toBe(true);
+      expect(data.decomposition?.facts).toHaveLength(2);
+    });
+
+    it("decomposes multi-fact preference questions into atomic recalls", async () => {
+      const result = await tool.execute("call_18f_decomp", {
+        query: "What's my favorite color and what toppings would I put on my pizza?",
+        decompose: true,
+        include_coverage: true,
+      });
+      const data = result.details as any;
+      expect(data.queryClass).toBe("multi_fact");
+      expect(data.decomposition?.used).toBe(true);
+      expect(data.decomposition?.facts).toHaveLength(2);
+      expect(data.decomposition?.facts[0]?.key).toBe("favorite_color");
+      expect(data.decomposition?.facts[1]?.key).toBe("pizza_toppings");
+      expect(data.decomposition?.facts.every((fact: any) => fact.state === "confirmed")).toBe(true);
+      const summaries = data.results.map((r: any) => String(r.summary).toLowerCase());
+      expect(summaries.some((entry: string) => entry.includes("mossy oak green"))).toBe(true);
+      expect(summaries.some((entry: string) => entry.includes("canadian bacon"))).toBe(true);
+      expect(data.coverage?.decompositionUsed).toBe(true);
+      expect(data.recallTelemetry?.decompositionUsed).toBe(true);
+    });
+
+    it("decomposes mixed chronology and identity questions while preserving weak vs confirmed facts", async () => {
+      const result = await tool.execute("call_18f_decomp_mixed", {
+        query:
+          "Do you remember the first time we started talking, what I would put on my pizza, and who's my favorite fur pal?",
+        decompose: true,
+      });
+      const data = result.details as any;
+      expect(data.queryClass).toBe("multi_fact");
+      expect(data.decomposition?.used).toBe(true);
+      expect(data.decomposition?.facts).toHaveLength(3);
+      expect(data.decomposition?.facts.map((fact: any) => fact.key)).toEqual([
+        "first_conversation",
+        "pizza_toppings",
+        "dog_name",
+      ]);
+      const pizzaFact = data.decomposition?.facts.find(
+        (fact: any) => fact.key === "pizza_toppings",
+      );
+      const dogFact = data.decomposition?.facts.find((fact: any) => fact.key === "dog_name");
+      const firstConversationFact = data.decomposition?.facts.find(
+        (fact: any) => fact.key === "first_conversation",
+      );
+      expect(pizzaFact?.state).toBe("confirmed");
+      expect(dogFact?.state).toBe("confirmed");
+      expect(["weak_recall", "missing"]).toContain(firstConversationFact?.state);
+      expect(String(dogFact?.answer?.value).toLowerCase()).toBe("leo");
+      expect(String(pizzaFact?.answer?.value).toLowerCase()).toContain("canadian bacon");
     });
 
     it("timeline-style question routes to timeline class and deep recall", async () => {

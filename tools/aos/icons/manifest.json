@@ -1,0 +1,198 @@
+{
+  "salesforce": {
+    "slug": "salesforce",
+    "hasIcon": true
+  },
+  "pipedrive": {
+    "slug": "pipedrive",
+    "hasIcon": false,
+    "error": "HTTP 404"
+  },
+  "close": {
+    "slug": "close",
+    "hasIcon": false,
+    "error": "HTTP 404"
+  },
+  "hubspot": {
+    "slug": "hubspot",
+    "hasIcon": true
+  },
+  "jira": {
+    "slug": "jira",
+    "hasIcon": true
+  },
+  "clickup": {
+    "slug": "clickup",
+    "hasIcon": true
+  },
+  "asana": {
+    "slug": "asana",
+    "hasIcon": true
+  },
+  "linear": {
+    "slug": "linear",
+    "hasIcon": true
+  },
+  "monday": {
+    "slug": "monday",
+    "hasIcon": false,
+    "error": "HTTP 404"
+  },
+  "trello": {
+    "slug": "trello",
+    "hasIcon": true
+  },
+  "notion": {
+    "slug": "notion",
+    "hasIcon": true
+  },
+  "slack": {
+    "slug": "slack",
+    "hasIcon": false,
+    "error": "HTTP 404"
+  },
+  "discord": {
+    "slug": "discord",
+    "hasIcon": true
+  },
+  "teams": {
+    "slug": "microsoftteams",
+    "hasIcon": false,
+    "error": "HTTP 404"
+  },
+  "twilio": {
+    "slug": "twilio",
+    "hasIcon": false,
+    "error": "HTTP 404"
+  },
+  "sendgrid": {
+    "slug": "sendgrid",
+    "hasIcon": false,
+    "error": "HTTP 404"
+  },
+  "resend": {
+    "slug": "resend",
+    "hasIcon": true
+  },
+  "klaviyo": {
+    "slug": "klaviyo",
+    "hasIcon": false,
+    "error": "HTTP 404"
+  },
+  "mailchimp": {
+    "slug": "mailchimp",
+    "hasIcon": true
+  },
+  "stripe": {
+    "slug": "stripe",
+    "hasIcon": true
+  },
+  "square": {
+    "slug": "square",
+    "hasIcon": true
+  },
+  "woocommerce": {
+    "slug": "woocommerce",
+    "hasIcon": true
+  },
+  "shopify": {
+    "slug": "shopify",
+    "hasIcon": true
+  },
+  "google-drive": {
+    "slug": "googledrive",
+    "hasIcon": true
+  },
+  "dropbox": {
+    "slug": "dropbox",
+    "hasIcon": true
+  },
+  "box": {
+    "slug": "box",
+    "hasIcon": true
+  },
+  "wordpress": {
+    "slug": "wordpress",
+    "hasIcon": true
+  },
+  "supabase": {
+    "slug": "supabase",
+    "hasIcon": true
+  },
+  "neon": {
+    "slug": "neon",
+    "hasIcon": false,
+    "error": "HTTP 404"
+  },
+  "pinecone": {
+    "slug": "pinecone",
+    "hasIcon": false,
+    "error": "HTTP 404"
+  },
+  "openai": {
+    "slug": "openai",
+    "hasIcon": true
+  },
+  "anthropic": {
+    "slug": "anthropic",
+    "hasIcon": true
+  },
+  "elevenlabs": {
+    "slug": "elevenlabs",
+    "hasIcon": true
+  },
+  "xero": {
+    "slug": "xero",
+    "hasIcon": true
+  },
+  "quickbooks": {
+    "slug": "quickbooks",
+    "hasIcon": true
+  },
+  "pagerduty": {
+    "slug": "pagerduty",
+    "hasIcon": true
+  },
+  "calendly": {
+    "slug": "calendly",
+    "hasIcon": true
+  },
+  "buffer": {
+    "slug": "buffer",
+    "hasIcon": true
+  },
+  "hootsuite": {
+    "slug": "hootsuite",
+    "hasIcon": true
+  },
+  "zapier": {
+    "slug": "zapier",
+    "hasIcon": true
+  },
+  "n8n": {
+    "slug": "n8n",
+    "hasIcon": true
+  },
+  "github": {
+    "slug": "github",
+    "hasIcon": true
+  },
+  "airtable": {
+    "slug": "airtable",
+    "hasIcon": true
+  },
+  "google": {
+    "slug": "google",
+    "hasIcon": true
+  },
+  "m365": {
+    "slug": "microsoft365",
+    "hasIcon": false,
+    "error": "HTTP 404"
+  },
+  "firecrawl": {
+    "slug": "firecrawl",
+    "hasIcon": false,
+    "error": "HTTP 404"
+  }
+}

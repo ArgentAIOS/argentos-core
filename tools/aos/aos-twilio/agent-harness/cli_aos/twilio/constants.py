@@ -1,0 +1,18 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+TOOL_NAME = "aos-twilio"
+BACKEND_NAME = "twilio-api"
+TWILIO_ACCOUNT_SID_ENV = "TWILIO_ACCOUNT_SID"
+TWILIO_AUTH_TOKEN_ENV = "TWILIO_AUTH_TOKEN"
+TWILIO_FROM_NUMBER_ENV = "TWILIO_FROM_NUMBER"
+TWILIO_TO_NUMBER_ENV = "TWILIO_TO_NUMBER"
+TWILIO_MESSAGE_ENV = "TWILIO_MESSAGE"
+TWILIO_VOICE_URL_ENV = "TWILIO_VOICE_URL"
+TWILIO_STATUS_CALLBACK_ENV = "TWILIO_STATUS_CALLBACK_URL"
+
+MODE_ORDER = ["readonly", "write", "full", "admin"]
+HARNESS_ROOT = Path(__file__).resolve().parents[2]
+CONNECTOR_PATH = HARNESS_ROOT.parent / "connector.json"
+PERMISSIONS_PATH = HARNESS_ROOT / "permissions.json"

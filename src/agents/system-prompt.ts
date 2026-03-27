@@ -104,6 +104,45 @@ function buildMemuSection(params: { isMinimal: boolean; availableTools: Set<stri
   return lines;
 }
 
+const PROMPT_SIS_LESSONS_CACHE_TTL_MS = 30_000;
+const promptSisLessonsCache = new Map<
+  string,
+  {
+    cachedAt: number;
+    value: Promise<Lesson[]>;
+  }
+>();
+
+function buildPromptSisLessonsCacheKey(limit: number): string {
+  return String(limit);
+}
+
+export function clearPromptSisLessonsCache(): void {
+  promptSisLessonsCache.clear();
+}
+
+async function listPromptSisLessons(limit: number): Promise<Lesson[]> {
+  const cacheKey = buildPromptSisLessonsCacheKey(limit);
+  const cached = promptSisLessonsCache.get(cacheKey);
+  if (cached && Date.now() - cached.cachedAt < PROMPT_SIS_LESSONS_CACHE_TTL_MS) {
+    return cached.value;
+  }
+
+  const value = (async () => {
+    const store = await getMemoryAdapter();
+    return store.listLessons({ limit });
+  })().catch((error) => {
+    promptSisLessonsCache.delete(cacheKey);
+    throw error;
+  });
+
+  promptSisLessonsCache.set(cacheKey, {
+    cachedAt: Date.now(),
+    value,
+  });
+  return value;
+}
+
 async function buildSisLessonsSection(params: {
   isMinimal: boolean;
   availableTools: string[];
@@ -112,10 +151,10 @@ async function buildSisLessonsSection(params: {
   if (params.isMinimal) {
     return [];
   }
+  const lessonLimit = 5;
   let lessons: Lesson[];
   try {
-    const store = await getMemoryAdapter();
-    lessons = await store.listLessons({ limit: 5 });
+    lessons = await listPromptSisLessons(lessonLimit);
   } catch {
     return [];
   }

@@ -44,6 +44,7 @@ import {
   appendCrossChannelContextEvent,
   readCrossChannelContextEvents,
 } from "../../../data/redis-shared-context.js";
+import { getAgentRunContext, recordAgentRunTiming } from "../../../infra/agent-events.js";
 import { getMachineDisplayName } from "../../../infra/machine-name.js";
 import { MAX_IMAGE_BYTES } from "../../../media/constants.js";
 import { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
@@ -66,10 +67,13 @@ import {
 } from "../../channel-tools.js";
 import { resolveArgentDocsPath } from "../../docs-path.js";
 import { isTimeoutError } from "../../failover-error.js";
-import { evaluateIntentSimulationGateForConfig } from "../../intent-runtime-gate.js";
-import { buildIntentSystemPromptHint, resolveEffectiveIntentForAgent } from "../../intent.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { resolveDefaultModelForAgent } from "../../model-selection.js";
+import {
+  buildIntentSystemPromptHintIfAvailable,
+  evaluateIntentSimulationGateForConfigIfAvailable,
+  resolveEffectiveIntentForAgentIfAvailable,
+} from "../../optional-intent.js";
 import {
   isCloudCodeAssistFormatError,
   resolveBootstrapMaxChars,
@@ -237,6 +241,7 @@ type OpenAICodexModelRegistryLike = {
 type AuthStorageWithRuntimeOverrides = {
   runtimeOverrides?: Map<string, string>;
 };
+
 export function resolveOpenAICodexVisionModelId(params: {
   model: Pick<Model<Api>, "id" | "provider" | "input">;
   context: { messages?: unknown[] } | undefined;
@@ -455,7 +460,7 @@ export async function runEmbeddedAttempt(
       warn: makeBootstrapWarn({ sessionLabel, warn: (message) => log.warn(message) }),
     });
     const machineNamePromise = getMachineDisplayName();
-    const intentGatePromise = evaluateIntentSimulationGateForConfig({
+    const intentGatePromise = evaluateIntentSimulationGateForConfigIfAvailable({
       intent: params.config?.intent,
       workspaceDir: effectiveWorkspace,
     });
@@ -465,6 +470,11 @@ export async function runEmbeddedAttempt(
       cwd: process.cwd(),
       moduleUrl: import.meta.url,
     });
+    const hadSessionFilePromise = fs
+      .stat(params.sessionFile)
+      .then(() => true)
+      .catch(() => false);
+    const prewarmSessionFilePromise = prewarmSessionFile(params.sessionFile);
     const crossChannelPromise = !isSystemSessionKey(params.sessionKey)
       ? readCrossChannelContextEvents({
           agentId: sessionAgentId,
@@ -589,7 +599,7 @@ export async function runEmbeddedAttempt(
             return undefined;
           })()
         : undefined;
-    const intentResolution = resolveEffectiveIntentForAgent({
+    const intentResolution = resolveEffectiveIntentForAgentIfAvailable({
       config: params.config,
       agentId: sessionAgentId,
     });
@@ -627,7 +637,7 @@ export async function runEmbeddedAttempt(
     }
     const intentPromptHint =
       intentResolution && intentResolution.runtimeMode !== "off"
-        ? buildIntentSystemPromptHint(intentResolution.policy)
+        ? buildIntentSystemPromptHintIfAvailable(intentResolution.policy)
         : undefined;
 
     const crossChannelContextHint = crossChannelEvents
@@ -715,28 +725,6 @@ export async function runEmbeddedAttempt(
       memoryCitationsMode: params.config?.memory?.citations,
       sessionKey: params.sessionKey,
     });
-    const systemPromptReport = buildSystemPromptReport({
-      source: "run",
-      generatedAt: Date.now(),
-      sessionId: params.sessionId,
-      sessionKey: params.sessionKey,
-      provider: params.provider,
-      model: params.modelId,
-      workspaceDir: effectiveWorkspace,
-      bootstrapMaxChars: resolveBootstrapMaxChars(params.config),
-      sandbox: (() => {
-        const runtime = resolveSandboxRuntimeStatus({
-          cfg: params.config,
-          sessionKey: params.sessionKey ?? params.sessionId,
-        });
-        return { mode: runtime.mode, sandboxed: runtime.sandboxed };
-      })(),
-      systemPrompt: appendPrompt,
-      bootstrapFiles: hookAdjustedBootstrapFiles,
-      injectedFiles: contextFiles,
-      skillsPrompt,
-      tools,
-    });
     const systemPromptOverride = createSystemPromptOverride(appendPrompt);
     const systemPromptText = systemPromptOverride();
 
@@ -755,10 +743,7 @@ export async function runEmbeddedAttempt(
         sessionFile: params.sessionFile,
         warn: (message) => log.warn(message),
       });
-      const hadSessionFile = await fs
-        .stat(params.sessionFile)
-        .then(() => true)
-        .catch(() => false);
+      const hadSessionFile = await hadSessionFilePromise;
 
       const transcriptPolicy = resolveTranscriptPolicy({
         modelApi: params.model?.api,
@@ -766,7 +751,7 @@ export async function runEmbeddedAttempt(
         modelId: params.modelId,
       });
 
-      await prewarmSessionFile(params.sessionFile);
+      await prewarmSessionFilePromise;
 
       // Session manager: Argent-native when ARGENT_RUNTIME is enabled, Pi otherwise.
       // Both implement the same operations (appendMessage, getLeafEntry, branch, etc.)
@@ -1108,13 +1093,24 @@ export async function runEmbeddedAttempt(
         shouldEmitToolResult: params.shouldEmitToolResult,
         shouldEmitToolOutput: params.shouldEmitToolOutput,
         onToolResult: params.onToolResult,
-        onReasoningStream: params.onReasoningStream,
+        onReasoningStream: async (payload) => {
+          recordAgentRunTiming(params.runId, "firstModelActivityAt");
+          await params.onReasoningStream?.(payload);
+        },
         onBlockReply: params.onBlockReply,
         onBlockReplyFlush: params.onBlockReplyFlush,
         blockReplyBreak: params.blockReplyBreak,
         blockReplyChunking: params.blockReplyChunking,
-        onPartialReply: params.onPartialReply,
-        onAssistantMessageStart: params.onAssistantMessageStart,
+        onPartialReply: async (payload) => {
+          recordAgentRunTiming(params.runId, "firstModelActivityAt");
+          recordAgentRunTiming(params.runId, "firstPartialReplyAt");
+          await params.onPartialReply?.(payload);
+        },
+        onAssistantMessageStart: async () => {
+          recordAgentRunTiming(params.runId, "firstModelActivityAt");
+          recordAgentRunTiming(params.runId, "firstAssistantMessageStartAt");
+          await params.onAssistantMessageStart?.();
+        },
         onAgentEvent: params.onAgentEvent,
         enforceFinalTag: params.enforceFinalTag,
       });
@@ -1189,6 +1185,7 @@ export async function runEmbeddedAttempt(
       // Track message boundary so fallback text only considers assistant output
       // produced by THIS run attempt (prevents replaying prior-turn assistant text).
       let promptStartMessageCount = activeSession.messages.length;
+      let beforeAgentStartHookMs: number | undefined;
 
       markPhase("pre_prompt");
       let promptError: unknown = null;
@@ -1198,6 +1195,7 @@ export async function runEmbeddedAttempt(
         // Run before_agent_start hooks to allow plugins to inject context
         let effectivePrompt = params.prompt;
         if (hookRunner?.hasHooks("before_agent_start")) {
+          const hookStartedAt = Date.now();
           try {
             const hookResult = await hookRunner.runBeforeAgentStart(
               {
@@ -1219,6 +1217,8 @@ export async function runEmbeddedAttempt(
             }
           } catch (hookErr) {
             log.warn(`before_agent_start hook failed: ${String(hookErr)}`);
+          } finally {
+            beforeAgentStartHookMs = Date.now() - hookStartedAt;
           }
         }
 
@@ -1300,12 +1300,41 @@ export async function runEmbeddedAttempt(
           promptError = err;
         } finally {
           markPhase("prompt_done");
+          const runTimings = getAgentRunContext(params.runId)?.timings;
+          const startedAt = runTimings?.startedAt;
+          const firstModelActivityMs =
+            typeof startedAt === "number" && typeof runTimings?.firstModelActivityAt === "number"
+              ? runTimings.firstModelActivityAt - startedAt
+              : undefined;
+          const firstAssistantStartMs =
+            typeof startedAt === "number" &&
+            typeof runTimings?.firstAssistantMessageStartAt === "number"
+              ? runTimings.firstAssistantMessageStartAt - startedAt
+              : undefined;
+          const firstPartialReplyMs =
+            typeof startedAt === "number" && typeof runTimings?.firstPartialReplyAt === "number"
+              ? runTimings.firstPartialReplyAt - startedAt
+              : undefined;
+          const firstVisibleDeltaMs =
+            typeof startedAt === "number" && typeof runTimings?.firstVisibleDeltaAt === "number"
+              ? runTimings.firstVisibleDeltaAt - startedAt
+              : undefined;
           log.info(
             `[tony-stark] runId=${params.runId} phases: ${Object.entries(phaseTimes)
               .map(([k, v]) => `${k}=${v}ms`)
               .join(
                 " ",
               )} total=${Date.now() - t0}ms provider=${params.provider} model=${params.modelId} tools=${tools.length}`,
+          );
+          log.info(
+            `[turn-latency] runId=${params.runId} ` +
+              `hook_before_agent_start_ms=${beforeAgentStartHookMs ?? -1} ` +
+              `first_model_activity_ms=${firstModelActivityMs ?? -1} ` +
+              `first_assistant_start_ms=${firstAssistantStartMs ?? -1} ` +
+              `first_partial_reply_ms=${firstPartialReplyMs ?? -1} ` +
+              `first_visible_delta_ms=${firstVisibleDeltaMs ?? -1} ` +
+              `prompt_ms=${Date.now() - promptStartedAt} ` +
+              `provider=${params.provider} model=${params.modelId}`,
           );
           log.debug(
             `embedded run prompt end: runId=${params.runId} sessionId=${params.sessionId} durationMs=${Date.now() - promptStartedAt}`,
@@ -1425,6 +1454,29 @@ export async function runEmbeddedAttempt(
           }
         }
       }
+
+      const systemPromptReport = buildSystemPromptReport({
+        source: "run",
+        generatedAt: Date.now(),
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
+        provider: params.provider,
+        model: params.modelId,
+        workspaceDir: effectiveWorkspace,
+        bootstrapMaxChars: resolveBootstrapMaxChars(params.config),
+        sandbox: (() => {
+          const runtime = resolveSandboxRuntimeStatus({
+            cfg: params.config,
+            sessionKey: params.sessionKey ?? params.sessionId,
+          });
+          return { mode: runtime.mode, sandboxed: runtime.sandboxed };
+        })(),
+        systemPrompt: appendPrompt,
+        bootstrapFiles: hookAdjustedBootstrapFiles,
+        injectedFiles: contextFiles,
+        skillsPrompt,
+        tools,
+      });
 
       return {
         aborted,

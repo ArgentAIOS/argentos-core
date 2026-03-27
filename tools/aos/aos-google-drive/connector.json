@@ -1,0 +1,394 @@
+{
+  "tool": "aos-google-drive",
+  "backend": "google-drive-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "document-storage",
+    "surface": "file-folder-share",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": false,
+    "workerFields": [
+      "file_id",
+      "folder_id",
+      "name",
+      "mime_type",
+      "query",
+      "share_email",
+      "permission"
+    ],
+    "worker_visible_actions": ["file.list", "file.get", "folder.list", "search.query"],
+    "fields": [
+      {
+        "id": "file_id",
+        "label": "File ID",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Google Drive file ID for file operations",
+        "placeholder": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms",
+        "applies_to": [
+          "file.get",
+          "file.copy",
+          "file.move",
+          "file.delete",
+          "export.pdf",
+          "export.docx",
+          "share.create",
+          "share.list"
+        ],
+        "example": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
+      },
+      {
+        "id": "folder_id",
+        "label": "Folder ID",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Google Drive folder ID for listing or creating files",
+        "placeholder": "0BwwA4oUTeiV1TGRPeTVjaWRDY1E",
+        "applies_to": ["file.list", "file.create", "file.move", "folder.list", "folder.create"],
+        "example": "0BwwA4oUTeiV1TGRPeTVjaWRDY1E"
+      },
+      {
+        "id": "name",
+        "label": "Name",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "File or folder name",
+        "placeholder": "Q4 Report.docx",
+        "applies_to": ["file.create", "file.copy", "folder.create"],
+        "example": "Q4 Report.docx"
+      },
+      {
+        "id": "mime_type",
+        "label": "MIME type",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "File MIME type for filtering or creation",
+        "placeholder": "application/pdf",
+        "options": [
+          { "value": "application/pdf", "label": "PDF" },
+          { "value": "application/vnd.google-apps.document", "label": "Google Docs" },
+          { "value": "application/vnd.google-apps.spreadsheet", "label": "Google Sheets" },
+          { "value": "application/vnd.google-apps.presentation", "label": "Google Slides" },
+          {
+            "value": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "label": "Word (DOCX)"
+          },
+          {
+            "value": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "label": "Excel (XLSX)"
+          },
+          { "value": "text/plain", "label": "Text" }
+        ],
+        "applies_to": ["file.create", "file.list", "search.query"],
+        "example": "application/vnd.google-apps.document"
+      },
+      {
+        "id": "query",
+        "label": "Search query",
+        "type": "string",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Google Drive search query (supports operators like name contains, mimeType)",
+        "placeholder": "name contains 'budget' and mimeType = 'application/pdf'",
+        "applies_to": ["search.query"],
+        "example": "name contains 'budget' and mimeType = 'application/pdf'"
+      },
+      {
+        "id": "share_email",
+        "label": "Share email",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Email address to share the file with",
+        "placeholder": "colleague@company.com",
+        "applies_to": ["share.create"],
+        "example": "colleague@company.com"
+      },
+      {
+        "id": "permission",
+        "label": "Permission role",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "description": "Permission level for the share",
+        "options": [
+          { "value": "reader", "label": "Viewer (read-only)" },
+          { "value": "commenter", "label": "Commenter" },
+          { "value": "writer", "label": "Editor" }
+        ],
+        "default": "reader",
+        "applies_to": ["share.create"],
+        "example": "reader"
+      }
+    ],
+    "commandDefaults": {
+      "file.list": {
+        "selection_surface": "file",
+        "args": ["GOOGLE_DRIVE_FOLDER_ID"],
+        "limit": 25
+      },
+      "file.get": {
+        "selection_surface": "file",
+        "args": ["GOOGLE_DRIVE_FILE_ID"]
+      },
+      "file.create": {
+        "selection_surface": "file",
+        "args": ["GOOGLE_DRIVE_FOLDER_ID"],
+        "name": "GOOGLE_DRIVE_FILE_NAME",
+        "mimeType": "GOOGLE_DRIVE_MIME_TYPE"
+      },
+      "file.copy": {
+        "selection_surface": "file",
+        "args": ["GOOGLE_DRIVE_FILE_ID"],
+        "name": "GOOGLE_DRIVE_FILE_NAME"
+      },
+      "file.move": {
+        "selection_surface": "file",
+        "args": ["GOOGLE_DRIVE_FILE_ID"],
+        "folder": "GOOGLE_DRIVE_FOLDER_ID"
+      },
+      "file.delete": {
+        "selection_surface": "file",
+        "args": ["GOOGLE_DRIVE_FILE_ID"]
+      },
+      "folder.list": {
+        "selection_surface": "folder",
+        "args": ["GOOGLE_DRIVE_FOLDER_ID"],
+        "limit": 25
+      },
+      "folder.create": {
+        "selection_surface": "folder",
+        "name": "GOOGLE_DRIVE_FOLDER_NAME"
+      },
+      "share.create": {
+        "selection_surface": "share",
+        "args": ["GOOGLE_DRIVE_FILE_ID"],
+        "email": "GOOGLE_DRIVE_SHARE_EMAIL",
+        "role": "GOOGLE_DRIVE_PERMISSION"
+      },
+      "share.list": {
+        "selection_surface": "share",
+        "args": ["GOOGLE_DRIVE_FILE_ID"]
+      },
+      "export.pdf": {
+        "selection_surface": "file",
+        "args": ["GOOGLE_DRIVE_FILE_ID"]
+      },
+      "export.docx": {
+        "selection_surface": "file",
+        "args": ["GOOGLE_DRIVE_FILE_ID"]
+      },
+      "search.query": {
+        "selection_surface": "file",
+        "query": "GOOGLE_DRIVE_QUERY",
+        "limit": 25
+      }
+    },
+    "pickerHints": {
+      "file": {
+        "kind": "file",
+        "selection_surface": "file",
+        "resource": "google-drive.file",
+        "source_command": "file.list",
+        "source_fields": ["id", "name", "mimeType", "size", "modifiedTime", "owners"]
+      },
+      "folder": {
+        "kind": "folder",
+        "selection_surface": "folder",
+        "resource": "google-drive.folder",
+        "source_command": "folder.list",
+        "source_fields": ["id", "name", "modifiedTime", "owners"]
+      },
+      "share": {
+        "kind": "permission",
+        "selection_surface": "share",
+        "resource": "google-drive.permission",
+        "source_command": "share.list",
+        "source_fields": ["id", "type", "role", "emailAddress", "displayName"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Google Drive",
+    "category": "document-storage",
+    "categories": ["document-storage", "productivity", "collaboration"],
+    "resources": ["file", "folder", "share"]
+  },
+  "auth": {
+    "kind": "oauth2",
+    "required": true,
+    "service_keys": [
+      "GOOGLE_DRIVE_CLIENT_ID",
+      "GOOGLE_DRIVE_CLIENT_SECRET",
+      "GOOGLE_DRIVE_REFRESH_TOKEN"
+    ],
+    "interactive_setup": [
+      "Create a Google Cloud project and enable the Google Drive API.",
+      "Configure OAuth 2.0 credentials (Desktop or Web application type).",
+      "Add GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET, and GOOGLE_DRIVE_REFRESH_TOKEN in API Keys.",
+      "Scopes required: https://www.googleapis.com/auth/drive for full access, or https://www.googleapis.com/auth/drive.readonly for read-only.",
+      "Set GOOGLE_DRIVE_FOLDER_ID to scope default file listings to a specific folder (optional).",
+      "Set GOOGLE_DRIVE_FILE_ID, GOOGLE_DRIVE_SHARE_EMAIL, and GOOGLE_DRIVE_PERMISSION for worker flow defaults.",
+      "Export actions (export.pdf, export.docx) only work on Google Workspace native files (Docs, Sheets, Slides).",
+      "The connector is live-read-first and will report API failures instead of masking them."
+    ]
+  },
+  "commands": [
+    {
+      "id": "file.list",
+      "summary": "List files in a Google Drive folder",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "file",
+      "action_class": "read"
+    },
+    {
+      "id": "file.get",
+      "summary": "Get metadata for a Google Drive file",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "file",
+      "action_class": "read"
+    },
+    {
+      "id": "file.create",
+      "summary": "Create a new file in Google Drive",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "file",
+      "action_class": "write"
+    },
+    {
+      "id": "file.copy",
+      "summary": "Copy a Google Drive file",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "file",
+      "action_class": "write"
+    },
+    {
+      "id": "file.move",
+      "summary": "Move a Google Drive file to a different folder",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "file",
+      "action_class": "write"
+    },
+    {
+      "id": "file.delete",
+      "summary": "Delete a Google Drive file",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "file",
+      "action_class": "write"
+    },
+    {
+      "id": "folder.list",
+      "summary": "List subfolders in a Google Drive folder",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "folder",
+      "action_class": "read"
+    },
+    {
+      "id": "folder.create",
+      "summary": "Create a new folder in Google Drive",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "folder",
+      "action_class": "write"
+    },
+    {
+      "id": "share.create",
+      "summary": "Share a Google Drive file with a user",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "share",
+      "action_class": "write"
+    },
+    {
+      "id": "share.list",
+      "summary": "List permissions on a Google Drive file",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "share",
+      "action_class": "read"
+    },
+    {
+      "id": "export.pdf",
+      "summary": "Export a Google Workspace file as PDF",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "file",
+      "action_class": "read"
+    },
+    {
+      "id": "export.docx",
+      "summary": "Export a Google Workspace file as DOCX",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "file",
+      "action_class": "read"
+    },
+    {
+      "id": "search.query",
+      "summary": "Search for files in Google Drive",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "file",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

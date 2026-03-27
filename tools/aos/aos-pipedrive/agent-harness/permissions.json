@@ -1,0 +1,25 @@
+{
+  "tool": "aos-pipedrive",
+  "backend": "pipedrive-api",
+  "permissions": {
+    "deal.list": "readonly",
+    "deal.get": "readonly",
+    "deal.create": "write",
+    "deal.update": "write",
+    "person.list": "readonly",
+    "person.get": "readonly",
+    "person.create": "write",
+    "organization.list": "readonly",
+    "organization.get": "readonly",
+    "organization.create": "write",
+    "activity.list": "readonly",
+    "activity.create": "write",
+    "pipeline.list": "readonly",
+    "stage.list": "readonly",
+    "note.create": "write",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

@@ -27,6 +27,25 @@ export type MemoryFlushSettings = {
   reserveTokensFloor: number;
 };
 
+function hasFlushedForCurrentCompaction(
+  entry?: Pick<SessionEntry, "compactionCount" | "memoryFlushCompactionCount">,
+): boolean {
+  const compactionCount = entry?.compactionCount ?? 0;
+  const lastFlushAt = entry?.memoryFlushCompactionCount;
+  return typeof lastFlushAt === "number" && lastFlushAt === compactionCount;
+}
+
+function resolveMemoryFlushThreshold(params: {
+  contextWindowTokens: number;
+  reserveTokensFloor: number;
+  softThresholdTokens: number;
+}): number {
+  const contextWindow = Math.max(1, Math.floor(params.contextWindowTokens));
+  const reserveTokens = Math.max(0, Math.floor(params.reserveTokensFloor));
+  const softThreshold = Math.max(0, Math.floor(params.softThresholdTokens));
+  return Math.max(0, contextWindow - reserveTokens - softThreshold);
+}
+
 const normalizeNonNegativeInt = (value: unknown): number | null => {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return null;
@@ -84,10 +103,7 @@ export function shouldRunMemoryFlush(params: {
   if (!totalTokens || totalTokens <= 0) {
     return false;
   }
-  const contextWindow = Math.max(1, Math.floor(params.contextWindowTokens));
-  const reserveTokens = Math.max(0, Math.floor(params.reserveTokensFloor));
-  const softThreshold = Math.max(0, Math.floor(params.softThresholdTokens));
-  const threshold = Math.max(0, contextWindow - reserveTokens - softThreshold);
+  const threshold = resolveMemoryFlushThreshold(params);
   if (threshold <= 0) {
     return false;
   }
@@ -95,11 +111,35 @@ export function shouldRunMemoryFlush(params: {
     return false;
   }
 
-  const compactionCount = params.entry?.compactionCount ?? 0;
-  const lastFlushAt = params.entry?.memoryFlushCompactionCount;
-  if (typeof lastFlushAt === "number" && lastFlushAt === compactionCount) {
+  if (hasFlushedForCurrentCompaction(params.entry)) {
     return false;
   }
 
+  return true;
+}
+
+export function shouldForceMemoryFlushBeforeReply(params: {
+  entry?: Pick<SessionEntry, "totalTokens" | "compactionCount" | "memoryFlushCompactionCount">;
+  contextWindowTokens: number;
+  reserveTokensFloor: number;
+}): boolean {
+  const totalTokens = params.entry?.totalTokens;
+  if (!totalTokens || totalTokens <= 0) {
+    return false;
+  }
+  const hardThreshold = resolveMemoryFlushThreshold({
+    contextWindowTokens: params.contextWindowTokens,
+    reserveTokensFloor: params.reserveTokensFloor,
+    softThresholdTokens: 0,
+  });
+  if (hardThreshold <= 0) {
+    return false;
+  }
+  if (totalTokens < hardThreshold) {
+    return false;
+  }
+  if (hasFlushedForCurrentCompaction(params.entry)) {
+    return false;
+  }
   return true;
 }

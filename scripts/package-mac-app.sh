@@ -48,6 +48,28 @@ fi
 echo "🖼  Syncing canonical macOS branding assets"
 "$ROOT_DIR/scripts/sync-macos-branding-assets.sh"
 
+ensure_workspace_dependencies() {
+  if [[ "${FORCE_PNPM_INSTALL:-0}" == "1" ]]; then
+    echo "📦 FORCE_PNPM_INSTALL=1 — running pnpm install in active workspace"
+    (cd "$ROOT_DIR" && pnpm install --frozen-lockfile)
+    return 0
+  fi
+
+  if [[ ! -d "$ROOT_DIR/node_modules" ]]; then
+    echo "ERROR: node_modules missing in active workspace." >&2
+    echo "Run 'pnpm install' first, or rerun packaging with FORCE_PNPM_INSTALL=1." >&2
+    exit 1
+  fi
+
+  if [[ ! -f "$ROOT_DIR/node_modules/.modules.yaml" ]]; then
+    echo "ERROR: pnpm workspace metadata missing under node_modules/.modules.yaml." >&2
+    echo "Run 'pnpm install' first, or rerun packaging with FORCE_PNPM_INSTALL=1." >&2
+    exit 1
+  fi
+
+  echo "📦 Using existing workspace dependencies (no install mutation)"
+}
+
 build_path_for_arch() {
   echo "$BUILD_ROOT/$1"
 }
@@ -121,8 +143,7 @@ merge_framework_machos() {
   done < <(find "$primary" -type f -print0)
 }
 
-echo "📦 Ensuring deps (pnpm install)"
-(cd "$ROOT_DIR" && pnpm install --no-frozen-lockfile --config.node-linker=hoisted)
+ensure_workspace_dependencies
 if [[ "${SKIP_TSC:-0}" != "1" ]]; then
   echo "📦 Building JS (pnpm build)"
   (cd "$ROOT_DIR" && pnpm build)

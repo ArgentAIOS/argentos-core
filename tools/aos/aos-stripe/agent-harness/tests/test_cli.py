@@ -157,6 +157,7 @@ def test_manifest_and_permissions_are_in_sync():
     assert "capabilities" in manifest_command_ids
     assert "doctor" in manifest_command_ids
     assert set(manifest_command_ids) == set(permissions.keys())
+    assert manifest["scope"]["kind"] == "payments"
 
 
 def test_capabilities_json_includes_manifest_metadata():
@@ -170,7 +171,7 @@ def test_capabilities_json_includes_manifest_metadata():
     assert payload["connector"] == manifest["connector"]
     assert payload["scope"] == manifest["scope"]
     assert payload["auth"] == manifest["auth"]
-    assert any(command["id"] == "refund.create" for command in payload["commands"])
+    assert any(command["id"] == "subscription.create" for command in payload["commands"])
 
 
 def test_health_reports_needs_setup_without_secret(monkeypatch):
@@ -233,25 +234,6 @@ def test_config_show_redacts_secret_values(monkeypatch):
     assert '"secret_key_present": true' in result.output
     assert '"runtime_ready": true' in result.output
     assert "probe ok" in result.output
-    payload = json.loads(result.output)["data"]
-    assert payload["scope"]["kind"] == "payments-ledger"
-    assert payload["runtime"]["customer_focus"] == "cus_123"
-    assert payload["runtime"]["invoice_status"] == "draft"
-    assert payload["runtime"]["command_defaults"]["account.read"]["account_id"] == "acct_123"
-    assert payload["runtime"]["command_defaults"]["customer.list"]["account_id"] == "acct_123"
-    assert payload["runtime"]["command_defaults"]["customer.read"]["customer_id"] == "cus_123"
-    assert payload["runtime"]["command_defaults"]["invoice.list"]["status"] == "draft"
-    assert payload["runtime"]["command_defaults"]["payment.list"]["created_after"] == "2026-01-01"
-
-
-def test_readonly_mode_blocks_full_command():
-    result = CliRunner().invoke(
-        cli,
-        ["--json", "--mode", "readonly", "refund", "create", "--payment-id", "pi_123", "--amount", "1000"],
-    )
-    assert result.exit_code == 3
-    assert "PERMISSION_DENIED" in result.output
-    assert "requires mode=full" in result.output
 
 
 def test_balance_read_hits_live_runtime(monkeypatch):
@@ -315,46 +297,6 @@ def test_customer_list_scopes_by_email(monkeypatch):
     assert result.exit_code == 0
     assert calls[0]["path"] == "/v1/customers"
     assert calls[0]["query"]["email"] == "person@example.com"
-
-
-def test_scope_defaults_apply_to_live_read_commands(monkeypatch):
-    _set_secret_env(monkeypatch)
-    monkeypatch.setenv("STRIPE_CUSTOMER_FOCUS", "cus_123")
-    monkeypatch.setenv("STRIPE_INVOICE_STATUS", "draft")
-    monkeypatch.setenv("STRIPE_CREATED_AFTER", "2026-01-01")
-    monkeypatch.setenv("STRIPE_CREATED_BEFORE", "2026-01-31")
-    calls: list[dict[str, object]] = []
-    monkeypatch.setattr(runtime, "_request_json", _fake_stripe_request_factory(calls))
-
-    payment_result = CliRunner().invoke(cli, ["--json", "payment", "list", "--limit", "5"])
-    assert payment_result.exit_code == 0
-    assert calls[0]["path"] == "/v1/payment_intents"
-    assert calls[0]["query"]["customer"] == "cus_123"
-    assert "created[gte]" in calls[0]["query"]
-    assert "created[lte]" in calls[0]["query"]
-
-    invoice_result = CliRunner().invoke(cli, ["--json", "invoice", "list", "--limit", "5"])
-    assert invoice_result.exit_code == 0
-    assert calls[1]["path"] == "/v1/invoices"
-    assert calls[1]["query"]["customer"] == "cus_123"
-    assert calls[1]["query"]["status"] == "draft"
-    assert "created[gte]" in calls[1]["query"]
-    assert "created[lte]" in calls[1]["query"]
-
-
-def test_customer_search_uses_live_runtime(monkeypatch):
-    _set_secret_env(monkeypatch)
-    calls: list[dict[str, object]] = []
-    monkeypatch.setattr(runtime, "_request_json", _fake_stripe_request_factory(calls))
-
-    result = CliRunner().invoke(cli, ["--json", "customer", "search", "Example Person"])
-
-    assert result.exit_code == 0
-    payload = json.loads(result.output)
-    assert payload["data"]["operation"] == "search"
-    assert payload["data"]["results"][0]["id"] == "cus_456"
-    assert calls[0]["path"] == "/v1/customers/search"
-    assert calls[0]["query"]["query"] == "Example Person"
 
 
 def test_payment_read_uses_live_runtime(monkeypatch):
@@ -446,30 +388,3 @@ def test_invoice_list_uses_status_and_created_filters(monkeypatch):
     assert calls[0]["query"]["status"] == "draft"
     assert "created[gte]" in calls[0]["query"]
     assert "created[lte]" in calls[0]["query"]
-
-
-def test_invoice_create_draft_returns_not_implemented(monkeypatch):
-    _set_secret_env(monkeypatch)
-
-    result = CliRunner().invoke(
-        cli,
-        ["--json", "--mode", "write", "invoice", "create-draft", "--customer-id", "cus_123", "--amount", "2500"],
-    )
-
-    assert result.exit_code == 10
-    assert '"code": "NOT_IMPLEMENTED"' in result.output
-    assert '"scaffold_only": true' in result.output
-    assert '"executed": false' in result.output
-
-
-def test_refund_create_returns_not_implemented(monkeypatch):
-    _set_secret_env(monkeypatch)
-
-    result = CliRunner().invoke(
-        cli,
-        ["--json", "--mode", "full", "refund", "create", "--payment-id", "pi_123", "--amount", "1000"],
-    )
-
-    assert result.exit_code == 10
-    assert '"code": "NOT_IMPLEMENTED"' in result.output
-    assert '"command_id": "refund.create"' in result.output

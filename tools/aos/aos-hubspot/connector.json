@@ -1,5 +1,7 @@
 {
+  "tool": "aos-hubspot",
   "backend": "hubspot",
+  "manifest_schema_version": "1.0.0",
   "connector": {
     "label": "HubSpot",
     "category": "crm-revenue",
@@ -17,6 +19,354 @@
       "Restrict pipelines, owners, teams, and ticket queues before enabling write actions."
     ]
   },
+  "scope": {
+    "kind": "crm",
+    "surface": "contact-company-deal-ticket",
+    "workerFields": [
+      "contact_id",
+      "company_id",
+      "deal_id",
+      "ticket_id",
+      "owner_id",
+      "pipeline_id",
+      "email",
+      "query"
+    ],
+    "fields": [
+      {
+        "id": "contact_id",
+        "label": "Contact",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "contact",
+        "applies_to": ["contact.read", "contact.update", "note.create"],
+        "placeholder": "Select a contact...",
+        "description": "The HubSpot contact to operate on."
+      },
+      {
+        "id": "company_id",
+        "label": "Company",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "company",
+        "applies_to": ["company.read", "company.update", "note.create"],
+        "placeholder": "Select a company...",
+        "description": "The HubSpot company to operate on."
+      },
+      {
+        "id": "deal_id",
+        "label": "Deal",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "deal",
+        "applies_to": ["deal.read", "deal.update_stage", "note.create"],
+        "placeholder": "Select a deal...",
+        "description": "The HubSpot deal to operate on."
+      },
+      {
+        "id": "ticket_id",
+        "label": "Ticket",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "ticket",
+        "applies_to": ["ticket.read", "ticket.update_status", "note.create"],
+        "placeholder": "Select a ticket...",
+        "description": "The HubSpot ticket to operate on."
+      },
+      {
+        "id": "owner_id",
+        "label": "Owner",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "owner",
+        "applies_to": [
+          "owner.assign",
+          "contact.create",
+          "contact.update",
+          "deal.create",
+          "ticket.create"
+        ],
+        "placeholder": "Select an owner...",
+        "description": "HubSpot user to assign as owner."
+      },
+      {
+        "id": "pipeline_id",
+        "label": "Pipeline",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "pipeline",
+        "applies_to": ["deal.create", "deal.update_stage", "ticket.create"],
+        "placeholder": "Select a pipeline...",
+        "description": "The pipeline for deals or tickets."
+      },
+      {
+        "id": "email",
+        "label": "Email",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["contact.create", "contact.search"],
+        "placeholder": "user@example.com",
+        "description": "Contact email address."
+      },
+      {
+        "id": "firstname",
+        "label": "First Name",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["contact.create", "contact.update"],
+        "placeholder": "Jane"
+      },
+      {
+        "id": "lastname",
+        "label": "Last Name",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["contact.create", "contact.update"],
+        "placeholder": "Doe"
+      },
+      {
+        "id": "query",
+        "label": "Search Query",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["contact.search", "company.search", "deal.search", "ticket.search"],
+        "placeholder": "acme corp",
+        "description": "Full-text search across record properties."
+      },
+      {
+        "id": "company_name",
+        "label": "Company Name",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["company.create", "company.update"],
+        "placeholder": "Acme Corporation"
+      },
+      {
+        "id": "deal_name",
+        "label": "Deal Name",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["deal.create"],
+        "placeholder": "Q1 Enterprise License"
+      },
+      {
+        "id": "deal_stage",
+        "label": "Deal Stage",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["deal.create", "deal.update_stage"],
+        "options": [
+          { "value": "appointmentscheduled", "label": "Appointment Scheduled" },
+          { "value": "qualifiedtobuy", "label": "Qualified to Buy" },
+          { "value": "presentationscheduled", "label": "Presentation Scheduled" },
+          { "value": "decisionmakerboughtin", "label": "Decision Maker Bought-In" },
+          { "value": "contractsent", "label": "Contract Sent" },
+          { "value": "closedwon", "label": "Closed Won" },
+          { "value": "closedlost", "label": "Closed Lost" }
+        ],
+        "description": "Default pipeline stages. Custom pipelines may have different stage IDs."
+      },
+      {
+        "id": "deal_amount",
+        "label": "Deal Amount",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["deal.create"],
+        "placeholder": "50000",
+        "description": "Deal value in your portal's default currency."
+      },
+      {
+        "id": "ticket_subject",
+        "label": "Ticket Subject",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["ticket.create"],
+        "placeholder": "Issue with billing portal"
+      },
+      {
+        "id": "ticket_status",
+        "label": "Ticket Status",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": false,
+        "applies_to": ["ticket.create", "ticket.update_status"],
+        "options": [
+          { "value": "1", "label": "New" },
+          { "value": "2", "label": "Waiting on Contact" },
+          { "value": "3", "label": "Waiting on Us" },
+          { "value": "4", "label": "Closed" }
+        ],
+        "default": "1"
+      },
+      {
+        "id": "ticket_priority",
+        "label": "Ticket Priority",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "applies_to": ["ticket.create"],
+        "options": [
+          { "value": "LOW", "label": "Low" },
+          { "value": "MEDIUM", "label": "Medium" },
+          { "value": "HIGH", "label": "High" }
+        ],
+        "default": "MEDIUM"
+      },
+      {
+        "id": "note_body",
+        "label": "Note Body",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": true,
+        "expressionEnabled": true,
+        "rows": 4,
+        "applies_to": ["note.create"],
+        "placeholder": "Called client, discussed renewal terms...",
+        "description": "The note content. Supports basic HTML."
+      },
+      {
+        "id": "note_association_type",
+        "label": "Associate With",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": false,
+        "applies_to": ["note.create"],
+        "options": [
+          { "value": "contact", "label": "Contact" },
+          { "value": "company", "label": "Company" },
+          { "value": "deal", "label": "Deal" },
+          { "value": "ticket", "label": "Ticket" }
+        ],
+        "default": "contact",
+        "description": "The record type to attach this note to."
+      },
+      {
+        "id": "properties",
+        "label": "Custom Properties (JSON)",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": [
+          "contact.create",
+          "contact.update",
+          "company.create",
+          "company.update",
+          "deal.create"
+        ],
+        "placeholder": "{\"phone\": \"+1-555-0100\", \"industry\": \"TECHNOLOGY\"}",
+        "description": "Additional HubSpot properties as a JSON object."
+      },
+      {
+        "id": "options",
+        "label": "Options",
+        "type": "options_group",
+        "applies_to": [
+          "contact.list",
+          "company.list",
+          "deal.list",
+          "ticket.list",
+          "contact.search",
+          "company.search",
+          "deal.search",
+          "ticket.search"
+        ],
+        "children": [
+          {
+            "id": "limit",
+            "label": "Max Results",
+            "type": "number",
+            "default": 20,
+            "description": "Maximum records to return (1-100)."
+          },
+          {
+            "id": "include_associations",
+            "label": "Include Associations",
+            "type": "boolean",
+            "default": false,
+            "description": "Include associated records in response."
+          }
+        ]
+      }
+    ],
+    "pickerHints": {
+      "contact": {
+        "kind": "contact",
+        "resource": "hubspot.contact",
+        "source_command": "contact.list",
+        "source_fields": ["id", "email", "firstname", "lastname"]
+      },
+      "company": {
+        "kind": "company",
+        "resource": "hubspot.company",
+        "source_command": "company.list",
+        "source_fields": ["id", "name", "domain", "industry"]
+      },
+      "deal": {
+        "kind": "deal",
+        "resource": "hubspot.deal",
+        "source_command": "deal.list",
+        "source_fields": ["id", "dealname", "amount", "dealstage", "pipeline"]
+      },
+      "ticket": {
+        "kind": "ticket",
+        "resource": "hubspot.ticket",
+        "source_command": "ticket.list",
+        "source_fields": ["id", "subject", "hs_pipeline", "hs_ticket_priority"]
+      },
+      "owner": {
+        "kind": "owner",
+        "resource": "hubspot.owner",
+        "source_command": "owner.list",
+        "source_fields": ["id", "email", "firstName", "lastName"]
+      },
+      "pipeline": {
+        "kind": "pipeline",
+        "resource": "hubspot.pipeline",
+        "source_command": "pipeline.list",
+        "source_fields": ["id", "label", "stages"]
+      }
+    },
+    "commandDefaults": {
+      "contact.list": { "limit": 20 },
+      "company.list": { "limit": 20 },
+      "deal.list": { "limit": 20 },
+      "ticket.list": { "limit": 20 }
+    }
+  },
   "commands": [
     {
       "id": "owner.list",
@@ -28,15 +378,16 @@
     },
     {
       "id": "owner.assign",
-      "summary": "Assign a HubSpot owner",
+      "summary": "Assign a HubSpot owner to a record",
       "required_mode": "write",
       "supports_json": true,
       "resource": "owner",
-      "action_class": "write"
+      "action_class": "write",
+      "side_effect_level": "external_mutation"
     },
     {
       "id": "pipeline.list",
-      "summary": "List HubSpot pipelines",
+      "summary": "List HubSpot pipelines and stages",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "pipeline",
@@ -52,7 +403,7 @@
     },
     {
       "id": "contact.search",
-      "summary": "Search HubSpot contacts",
+      "summary": "Search HubSpot contacts by query",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "contact",
@@ -60,7 +411,7 @@
     },
     {
       "id": "contact.read",
-      "summary": "Read a HubSpot contact",
+      "summary": "Read a single HubSpot contact",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "contact",
@@ -68,19 +419,21 @@
     },
     {
       "id": "contact.create",
-      "summary": "Create a HubSpot contact",
+      "summary": "Create a new HubSpot contact",
       "required_mode": "write",
       "supports_json": true,
       "resource": "contact",
-      "action_class": "write"
+      "action_class": "write",
+      "side_effect_level": "external_mutation"
     },
     {
       "id": "contact.update",
-      "summary": "Update a HubSpot contact",
+      "summary": "Update an existing HubSpot contact",
       "required_mode": "write",
       "supports_json": true,
       "resource": "contact",
-      "action_class": "write"
+      "action_class": "write",
+      "side_effect_level": "external_mutation"
     },
     {
       "id": "company.list",
@@ -92,7 +445,7 @@
     },
     {
       "id": "company.search",
-      "summary": "Search HubSpot companies",
+      "summary": "Search HubSpot companies by query",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "company",
@@ -100,7 +453,7 @@
     },
     {
       "id": "company.read",
-      "summary": "Read a HubSpot company",
+      "summary": "Read a single HubSpot company",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "company",
@@ -108,19 +461,21 @@
     },
     {
       "id": "company.create",
-      "summary": "Create a HubSpot company",
+      "summary": "Create a new HubSpot company",
       "required_mode": "write",
       "supports_json": true,
       "resource": "company",
-      "action_class": "write"
+      "action_class": "write",
+      "side_effect_level": "external_mutation"
     },
     {
       "id": "company.update",
-      "summary": "Update a HubSpot company",
+      "summary": "Update an existing HubSpot company",
       "required_mode": "write",
       "supports_json": true,
       "resource": "company",
-      "action_class": "write"
+      "action_class": "write",
+      "side_effect_level": "external_mutation"
     },
     {
       "id": "deal.list",
@@ -132,7 +487,7 @@
     },
     {
       "id": "deal.search",
-      "summary": "Search HubSpot deals",
+      "summary": "Search HubSpot deals by query",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "deal",
@@ -140,7 +495,7 @@
     },
     {
       "id": "deal.read",
-      "summary": "Read a HubSpot deal",
+      "summary": "Read a single HubSpot deal",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "deal",
@@ -148,11 +503,12 @@
     },
     {
       "id": "deal.create",
-      "summary": "Create a HubSpot deal",
+      "summary": "Create a new HubSpot deal",
       "required_mode": "write",
       "supports_json": true,
       "resource": "deal",
-      "action_class": "write"
+      "action_class": "write",
+      "side_effect_level": "external_mutation"
     },
     {
       "id": "deal.update_stage",
@@ -160,7 +516,8 @@
       "required_mode": "full",
       "supports_json": true,
       "resource": "deal",
-      "action_class": "write"
+      "action_class": "write",
+      "side_effect_level": "external_mutation"
     },
     {
       "id": "ticket.list",
@@ -172,7 +529,7 @@
     },
     {
       "id": "ticket.search",
-      "summary": "Search HubSpot tickets",
+      "summary": "Search HubSpot tickets by query",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "ticket",
@@ -180,7 +537,7 @@
     },
     {
       "id": "ticket.read",
-      "summary": "Read a HubSpot ticket",
+      "summary": "Read a single HubSpot ticket",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "ticket",
@@ -188,11 +545,12 @@
     },
     {
       "id": "ticket.create",
-      "summary": "Create a HubSpot ticket",
+      "summary": "Create a new HubSpot ticket",
       "required_mode": "write",
       "supports_json": true,
       "resource": "ticket",
-      "action_class": "write"
+      "action_class": "write",
+      "side_effect_level": "external_mutation"
     },
     {
       "id": "ticket.update_status",
@@ -200,15 +558,148 @@
       "required_mode": "write",
       "supports_json": true,
       "resource": "ticket",
-      "action_class": "write"
+      "action_class": "write",
+      "side_effect_level": "external_mutation"
     },
     {
       "id": "note.create",
-      "summary": "Create a HubSpot note",
+      "summary": "Create a HubSpot engagement note",
       "required_mode": "write",
       "supports_json": true,
       "resource": "note",
-      "action_class": "write"
+      "action_class": "write",
+      "side_effect_level": "external_mutation"
+    }
+  ],
+  "events": [
+    {
+      "id": "contact.creation",
+      "resource": "contact",
+      "summary": "New contact created in HubSpot",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_list_filter",
+          "label": "List Filter",
+          "type": "text",
+          "renderAs": "text",
+          "required": false,
+          "placeholder": "VIP Contacts",
+          "description": "Only trigger for contacts added to this list. Leave empty for all new contacts."
+        },
+        {
+          "id": "event_property_filter",
+          "label": "Required Property",
+          "type": "text",
+          "renderAs": "text",
+          "required": false,
+          "placeholder": "email",
+          "description": "Only trigger if the new contact has this property set. Leave empty for all new contacts."
+        }
+      ]
+    },
+    {
+      "id": "deal.creation",
+      "resource": "deal",
+      "summary": "New deal created in HubSpot",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_pipeline_filter",
+          "label": "Pipeline Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "pickerHint": "pipeline",
+          "description": "Only trigger for deals in this pipeline. Leave empty for all pipelines."
+        },
+        {
+          "id": "event_min_amount",
+          "label": "Minimum Deal Amount",
+          "type": "number",
+          "renderAs": "number",
+          "required": false,
+          "placeholder": "1000",
+          "description": "Only trigger for deals above this amount. Leave empty for any amount."
+        }
+      ]
+    },
+    {
+      "id": "contact.propertyChange",
+      "resource": "contact",
+      "summary": "Contact property changed in HubSpot",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_property_name",
+          "label": "Property Name",
+          "type": "text",
+          "renderAs": "text",
+          "required": true,
+          "placeholder": "lifecyclestage",
+          "description": "The internal name of the HubSpot property to watch for changes."
+        },
+        {
+          "id": "event_new_value_filter",
+          "label": "New Value Filter",
+          "type": "text",
+          "renderAs": "text",
+          "required": false,
+          "placeholder": "customer",
+          "description": "Only trigger when the property changes to this value. Leave empty for any change."
+        }
+      ]
+    },
+    {
+      "id": "deal.stage_changed",
+      "resource": "deal",
+      "summary": "Deal moved to a new pipeline stage",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_pipeline_filter",
+          "label": "Pipeline Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "pickerHint": "pipeline",
+          "description": "Only trigger for deals in this pipeline. Leave empty for all pipelines."
+        },
+        {
+          "id": "event_stage_filter",
+          "label": "Stage Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "options": [
+            { "value": "appointmentscheduled", "label": "Appointment Scheduled" },
+            { "value": "qualifiedtobuy", "label": "Qualified to Buy" },
+            { "value": "presentationscheduled", "label": "Presentation Scheduled" },
+            { "value": "decisionmakerboughtin", "label": "Decision Maker Bought-In" },
+            { "value": "contractsent", "label": "Contract Sent" },
+            { "value": "closedwon", "label": "Closed Won" },
+            { "value": "closedlost", "label": "Closed Lost" }
+          ],
+          "description": "Only trigger when the deal moves to this stage. Leave empty for any stage change."
+        }
+      ]
+    },
+    {
+      "id": "form.submitted",
+      "resource": "contact",
+      "summary": "HubSpot form submitted by a visitor",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_form_id",
+          "label": "Form ID",
+          "type": "text",
+          "renderAs": "text",
+          "required": false,
+          "placeholder": "abc123-def456",
+          "description": "Only trigger for submissions of this form. Leave empty for all forms."
+        }
+      ]
     }
   ]
 }

@@ -93,6 +93,22 @@ def _read_result_base(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     return probe
 
 
+def _write_error(err: NotionApiError, *, operation: str) -> CliError:
+    code = "NOTION_AUTH_FAILED" if err.status_code in {401, 403} else "NOTION_API_ERROR"
+    message = err.message if err.status_code not in {401, 403} else f"Notion {operation} failed because the integration lacks access"
+    return CliError(
+        code=code,
+        message=message,
+        exit_code=5 if err.status_code in {401, 403} else 4,
+        details={
+            "operation": operation,
+            "status_code": err.status_code,
+            "error_code": err.code,
+            "error_details": err.details or {},
+        },
+    )
+
+
 def _flatten_text(value: Any) -> str:
     if value is None:
         return ""
@@ -213,10 +229,10 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         next_steps = [f"Set {runtime['token_env']} to a Notion internal integration token."]
     elif probe["ok"]:
         status = "ready"
-        summary = "Notion live read runtime is ready."
+        summary = "Notion live runtime is ready."
         next_steps = [
             "Share the target databases and pages with the Notion integration.",
-            "Keep write actions scaffolded until a live Notion write bridge exists.",
+            "Write actions now execute live mutations with the configured Notion integration.",
         ]
     else:
         status = "degraded"
@@ -224,7 +240,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         next_steps = [
             "Check the Notion token and workspace sharing.",
             "Share the target databases and pages with the integration.",
-            "Keep write actions scaffolded until a live Notion write bridge exists.",
+            "Write actions use the same live Notion integration and will recover once access is restored.",
         ]
 
     return {
@@ -234,7 +250,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "backend": "notion-api",
             "live_backend_available": bool(probe.get("ok")),
             "live_read_available": bool(probe.get("ok")),
-            "write_bridge_available": False,
+            "write_bridge_available": True,
             "scaffold_only": False,
         },
         "auth": {
@@ -258,7 +274,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "runtime_ready": bool(probe.get("ok")),
         "live_backend_available": bool(probe.get("ok")),
         "live_read_available": bool(probe.get("ok")),
-        "write_bridge_available": False,
+        "write_bridge_available": True,
         "scaffold_only": False,
         "probe": probe,
         "next_steps": next_steps,
@@ -273,7 +289,7 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     next_steps = [
         f"Set {runtime['token_env']} in API Keys.",
         "Share the target databases and pages with the Notion integration.",
-        "Keep page.create, page.update, and block.append scaffolded until a live write bridge exists.",
+        "page.create, page.update, and block.append now execute live mutations with the configured integration.",
     ]
     return {
         "status": "needs_setup" if not setup_complete else ("ready" if live_ready else "degraded"),
@@ -281,7 +297,7 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "runtime_ready": live_ready,
         "live_backend_available": live_ready,
         "live_read_available": live_ready,
-        "write_bridge_available": False,
+        "write_bridge_available": True,
         "scaffold_only": False,
         "setup_complete": setup_complete,
         "missing_keys": [] if setup_complete else [runtime["token_env"]],
@@ -317,10 +333,39 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "runtime_ready": bool(probe.get("ok")),
             "live_backend_available": bool(probe.get("ok")),
             "live_read_available": bool(probe.get("ok")),
-            "write_bridge_available": False,
+            "write_bridge_available": True,
             "scaffold_only": False,
         },
         "probe": probe,
+    }
+
+
+def scaffold_result(
+    ctx_obj: dict[str, Any],
+    *,
+    command_id: str,
+    resource: str,
+    operation: str,
+    inputs: dict[str, Any],
+    consequential: bool = False,
+) -> dict[str, Any]:
+    return {
+        "status": "scaffold",
+        "backend": "notion-api",
+        "command_id": command_id,
+        "resource": resource,
+        "operation": operation,
+        "executed": False,
+        "consequential": consequential,
+        "live_write_available": False,
+        "scaffold_only": True,
+        "inputs": inputs,
+        "summary": "Write bridge not implemented yet; returning draft payload only.",
+        "scope": {
+            "kind": resource,
+            "selection_surface": resource,
+        },
+        "scope_preview": f"{resource}:{operation}",
     }
 
 
@@ -563,33 +608,80 @@ def search_query(ctx_obj: dict[str, Any], *, query: str, limit: int) -> dict[str
     }
 
 
-def scaffold_result(
+def create_page_result(
     ctx_obj: dict[str, Any],
     *,
-    command_id: str,
-    resource: str,
-    operation: str,
-    inputs: dict[str, Any],
-    consequential: bool = False,
+    database_id: str | None,
+    parent_page_id: str | None,
+    title: str,
 ) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
+    client = create_client(ctx_obj)
+    try:
+        page = client.create_page(title=title, database_id=database_id, parent_page_id=parent_page_id)
+    except NotionApiError as err:
+        raise _write_error(err, operation="page.create") from err
+
     return {
-        "status": "scaffold",
+        "status": "live_write",
         "backend": "notion-api",
-        "command_id": command_id,
-        "resource": resource,
-        "operation": operation,
-        "executed": False,
-        "scaffold_only": True,
-        "live_backend_available": False,
-        "consequential": consequential,
-        "inputs": inputs,
-        "setup": {
-            "configured": runtime["token_present"],
-            "token_present": runtime["token_present"],
-            "version": runtime["version"],
-            "workspace_id_present": runtime["workspace_id_present"],
+        "command_id": "page.create",
+        "resource": "page",
+        "operation": "create",
+        "executed": True,
+        "scaffold_only": False,
+        "live_backend_available": True,
+        "consequential": True,
+        "inputs": {
+            "database_id": database_id,
+            "parent_page_id": parent_page_id,
+            "title": title,
         },
-        "summary": f"{command_id} is write-scaffolded and does not perform live Notion write calls yet.",
-        "next_step": "Keep writes disabled until a live Notion write bridge is implemented.",
+        "page": page,
+        "summary": "Created a Notion page through the live API.",
+    }
+
+
+def update_page_result(ctx_obj: dict[str, Any], *, page_id: str, title: str) -> dict[str, Any]:
+    client = create_client(ctx_obj)
+    try:
+        page = client.update_page(page_id, title=title)
+    except NotionApiError as err:
+        raise _write_error(err, operation="page.update") from err
+
+    return {
+        "status": "live_write",
+        "backend": "notion-api",
+        "command_id": "page.update",
+        "resource": "page",
+        "operation": "update",
+        "executed": True,
+        "scaffold_only": False,
+        "live_backend_available": True,
+        "consequential": True,
+        "inputs": {"page_id": page_id, "title": title},
+        "page": page,
+        "summary": f"Updated Notion page {page_id} through the live API.",
+    }
+
+
+def append_block_result(ctx_obj: dict[str, Any], *, block_id: str, content: str) -> dict[str, Any]:
+    client = create_client(ctx_obj)
+    try:
+        block = client.append_block_children(block_id, content=content)
+    except NotionApiError as err:
+        raise _write_error(err, operation="block.append") from err
+
+    return {
+        "status": "live_write",
+        "backend": "notion-api",
+        "command_id": "block.append",
+        "resource": "block",
+        "operation": "append",
+        "executed": True,
+        "scaffold_only": False,
+        "live_backend_available": True,
+        "consequential": True,
+        "inputs": {"block_id": block_id, "content": content},
+        "block": block,
+        "summary": f"Appended content to Notion block {block_id} through the live API.",
     }

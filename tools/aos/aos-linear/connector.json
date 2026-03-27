@@ -10,6 +10,142 @@
   },
   "delivery_model": "poll",
   "risk_tier": "bounded-write",
+  "scope": {
+    "kind": "issue-tracking",
+    "surface": "project-issue-state",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["team_id", "project_id", "issue_id", "status_id", "assignee_id"],
+    "worker_visible_actions": [
+      "list-projects",
+      "list-issues",
+      "create-issue",
+      "update-issue",
+      "search"
+    ],
+    "fields": [
+      {
+        "id": "team_id",
+        "label": "Team",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "Select team...",
+        "description": "Linear team to scope operations to (default: WEB)"
+      },
+      {
+        "id": "project_id",
+        "label": "Project",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "Select project...",
+        "description": "Linear project ID or key to filter issues by"
+      },
+      {
+        "id": "issue_id",
+        "label": "Issue",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "Select issue...",
+        "description": "Linear issue ID or key to operate on"
+      },
+      {
+        "id": "title",
+        "label": "Title",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["create-issue", "update-issue"],
+        "placeholder": "Enter issue title...",
+        "description": "The title of the issue"
+      },
+      {
+        "id": "description",
+        "label": "Description",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["create-issue", "update-issue"],
+        "placeholder": "Enter issue description...",
+        "description": "Detailed description of the issue"
+      },
+      {
+        "id": "status_id",
+        "label": "Status",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "applies_to": ["update-issue"],
+        "options": [
+          { "value": "backlog", "label": "Backlog" },
+          { "value": "todo", "label": "Todo" },
+          { "value": "in_progress", "label": "In Progress" },
+          { "value": "in_review", "label": "In Review" },
+          { "value": "done", "label": "Done" },
+          { "value": "cancelled", "label": "Cancelled" }
+        ],
+        "description": "The workflow state of the issue"
+      },
+      {
+        "id": "assignee_id",
+        "label": "Assignee",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["create-issue", "update-issue"],
+        "placeholder": "Email or user ID...",
+        "description": "Team member to assign the issue to"
+      },
+      {
+        "id": "priority",
+        "label": "Priority",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "applies_to": ["create-issue", "update-issue"],
+        "options": [
+          { "value": "0", "label": "No priority" },
+          { "value": "1", "label": "Urgent" },
+          { "value": "2", "label": "High" },
+          { "value": "3", "label": "Medium" },
+          { "value": "4", "label": "Low" }
+        ],
+        "description": "Priority level of the issue"
+      },
+      {
+        "id": "search_query",
+        "label": "Search Query",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["search"],
+        "placeholder": "Search terms...",
+        "description": "Text search query to find issues"
+      }
+    ]
+  },
   "auth": {
     "kind": "service-key",
     "required": true,

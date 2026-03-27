@@ -1,0 +1,19 @@
+{
+  "tool": "aos-twilio",
+  "backend": "twilio-api",
+  "permissions": {
+    "sms.send": "write",
+    "sms.list": "readonly",
+    "sms.read": "readonly",
+    "call.create": "write",
+    "call.list": "readonly",
+    "call.status": "readonly",
+    "whatsapp.send": "write",
+    "whatsapp.list": "readonly",
+    "lookup.phone": "readonly",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

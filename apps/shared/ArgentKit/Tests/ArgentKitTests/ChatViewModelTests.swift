@@ -275,7 +275,7 @@ extension TestChatTransportState {
         let recentOlder = now - (5 * 60 * 60 * 1000)
         let stale = now - (26 * 60 * 60 * 1000)
         let history = ArgentChatHistoryPayload(
-            sessionKey: "main",
+            sessionKey: "agent:main:main",
             sessionId: "sess-main",
             messages: [],
             thinkingLevel: "off")
@@ -286,10 +286,10 @@ extension TestChatTransportState {
             defaults: nil,
             sessions: [
                 ArgentChatSessionEntry(
-                    key: "recent-1",
+                    key: "agent:main:webchat-1",
                     kind: nil,
                     displayName: nil,
-                    surface: nil,
+                    surface: "webchat",
                     subject: nil,
                     room: nil,
                     space: nil,
@@ -305,10 +305,10 @@ extension TestChatTransportState {
                     model: nil,
                     contextTokens: nil),
                 ArgentChatSessionEntry(
-                    key: "main",
+                    key: "agent:main:main",
                     kind: nil,
                     displayName: nil,
-                    surface: nil,
+                    surface: "main",
                     subject: nil,
                     room: nil,
                     space: nil,
@@ -324,10 +324,10 @@ extension TestChatTransportState {
                     model: nil,
                     contextTokens: nil),
                 ArgentChatSessionEntry(
-                    key: "recent-2",
+                    key: "agent:main:webchat-2",
                     kind: nil,
                     displayName: nil,
-                    surface: nil,
+                    surface: "webchat",
                     subject: nil,
                     room: nil,
                     space: nil,
@@ -343,10 +343,10 @@ extension TestChatTransportState {
                     model: nil,
                     contextTokens: nil),
                 ArgentChatSessionEntry(
-                    key: "old-1",
+                    key: "agent:main:discord:group:old-1",
                     kind: nil,
                     displayName: nil,
-                    surface: nil,
+                    surface: "discord",
                     subject: nil,
                     room: nil,
                     space: nil,
@@ -366,12 +366,14 @@ extension TestChatTransportState {
         let transport = TestChatTransport(
             historyResponses: [history],
             sessionsResponses: [sessions])
-        let vm = await MainActor.run { ArgentChatViewModel(sessionKey: "main", transport: transport) }
+        let vm = await MainActor.run {
+            ArgentChatViewModel(sessionKey: "agent:main:main", transport: transport)
+        }
         await MainActor.run { vm.load() }
         try await waitUntil("sessions loaded") { await MainActor.run { !vm.sessions.isEmpty } }
 
         let keys = await MainActor.run { vm.sessionChoices.map(\.key) }
-        #expect(keys == ["main", "recent-1", "recent-2"])
+        #expect(keys == ["agent:main:webchat-1", "agent:main:webchat-2", "agent:main:main"])
     }
 
     @Test func sessionChoicesIncludeCurrentWhenMissing() async throws {
@@ -418,6 +420,131 @@ extension TestChatTransportState {
 
         let keys = await MainActor.run { vm.sessionChoices.map(\.key) }
         #expect(keys == ["main", "custom"])
+    }
+
+    @Test func sessionFetchFiltersToActiveAgentVisibleSessions() async throws {
+        let now = Date().timeIntervalSince1970 * 1000
+        let history = ArgentChatHistoryPayload(
+            sessionKey: "agent:argent:main",
+            sessionId: "sess-argent-main",
+            messages: [],
+            thinkingLevel: "off")
+        let sessions = ArgentChatSessionsListResponse(
+            ts: now,
+            path: nil,
+            count: 5,
+            defaults: nil,
+            sessions: [
+                ArgentChatSessionEntry(
+                    key: "agent:argent:main",
+                    kind: nil,
+                    displayName: nil,
+                    surface: "main",
+                    subject: nil,
+                    room: nil,
+                    space: nil,
+                    updatedAt: now,
+                    sessionId: nil,
+                    systemSent: nil,
+                    abortedLastRun: nil,
+                    thinkingLevel: nil,
+                    verboseLevel: nil,
+                    inputTokens: nil,
+                    outputTokens: nil,
+                    totalTokens: nil,
+                    model: nil,
+                    contextTokens: nil),
+                ArgentChatSessionEntry(
+                    key: "agent:argent:webchat-1",
+                    kind: nil,
+                    displayName: nil,
+                    surface: "webchat",
+                    subject: nil,
+                    room: nil,
+                    space: nil,
+                    updatedAt: now - 1000,
+                    sessionId: nil,
+                    systemSent: nil,
+                    abortedLastRun: nil,
+                    thinkingLevel: nil,
+                    verboseLevel: nil,
+                    inputTokens: nil,
+                    outputTokens: nil,
+                    totalTokens: nil,
+                    model: nil,
+                    contextTokens: nil),
+                ArgentChatSessionEntry(
+                    key: "agent:argent:main:contemplation",
+                    kind: nil,
+                    displayName: nil,
+                    surface: "main",
+                    subject: nil,
+                    room: nil,
+                    space: nil,
+                    updatedAt: now - 2000,
+                    sessionId: nil,
+                    systemSent: nil,
+                    abortedLastRun: nil,
+                    thinkingLevel: nil,
+                    verboseLevel: nil,
+                    inputTokens: nil,
+                    outputTokens: nil,
+                    totalTokens: nil,
+                    model: nil,
+                    contextTokens: nil),
+                ArgentChatSessionEntry(
+                    key: "agent:elon:webchat-2",
+                    kind: nil,
+                    displayName: nil,
+                    surface: "webchat",
+                    subject: nil,
+                    room: nil,
+                    space: nil,
+                    updatedAt: now - 3000,
+                    sessionId: nil,
+                    systemSent: nil,
+                    abortedLastRun: nil,
+                    thinkingLevel: nil,
+                    verboseLevel: nil,
+                    inputTokens: nil,
+                    outputTokens: nil,
+                    totalTokens: nil,
+                    model: nil,
+                    contextTokens: nil),
+                ArgentChatSessionEntry(
+                    key: "agent:argent:discord:group:dev",
+                    kind: nil,
+                    displayName: nil,
+                    surface: "discord",
+                    subject: nil,
+                    room: nil,
+                    space: nil,
+                    updatedAt: now - 4000,
+                    sessionId: nil,
+                    systemSent: nil,
+                    abortedLastRun: nil,
+                    thinkingLevel: nil,
+                    verboseLevel: nil,
+                    inputTokens: nil,
+                    outputTokens: nil,
+                    totalTokens: nil,
+                    model: nil,
+                    contextTokens: nil),
+            ])
+
+        let transport = TestChatTransport(
+            historyResponses: [history],
+            sessionsResponses: [sessions])
+        let vm = await MainActor.run {
+            ArgentChatViewModel(sessionKey: "agent:argent:main", transport: transport)
+        }
+        await MainActor.run { vm.load() }
+        try await waitUntil("filtered sessions loaded") {
+            await MainActor.run { vm.sessions.count == 2 }
+        }
+
+        let keys = await MainActor.run { vm.sessions.map(\.key) }
+        #expect(keys == ["agent:argent:main", "agent:argent:webchat-1"])
     }
 
     @Test func clearsStreamingOnExternalErrorEvent() async throws {

@@ -1,6 +1,7 @@
 {
   "tool": "aos-linear",
   "permissions": {
+    "capabilities": "readonly",
     "health": "readonly",
     "doctor": "readonly",
     "config.show": "readonly",

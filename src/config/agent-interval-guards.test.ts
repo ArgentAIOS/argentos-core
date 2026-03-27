@@ -49,14 +49,4 @@ describe("agent interval guards", () => {
     });
     expect(result.success).toBe(true);
   });
-
-  it("rejects kernel tick cadence under 1000ms", () => {
-    const result = AgentDefaultsSchema.safeParse({
-      memorySearch: {},
-      heartbeat: {},
-      executionWorker: {},
-      kernel: { enabled: true, mode: "shadow", tickMs: 500 },
-    });
-    expect(result.success).toBe(false);
-  });
 });

@@ -812,8 +812,9 @@ async function runContemplationOnce(
   // Queue must be empty — check both main and cron lanes (only for default agent)
   if (isDefault) {
     const mainQueueSize = getQueueSize(CommandLane.Main);
+    const interactiveQueueSize = getQueueSize(CommandLane.Interactive);
     const cronQueueSize = getQueueSize(CommandLane.Cron);
-    if (mainQueueSize > 0 || cronQueueSize > 0) {
+    if (mainQueueSize > 0 || interactiveQueueSize > 0 || cronQueueSize > 0) {
       return { status: "skipped", reason: "requests-in-flight" };
     }
   }

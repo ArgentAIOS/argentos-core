@@ -25,30 +25,56 @@
       {
         "id": "account",
         "label": "Account",
+        "type": "select",
+        "renderAs": "select",
         "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
         "applies_to": ["account.read"],
-        "example": "us1"
+        "options": [
+          { "value": "us1", "label": "US (us1)" },
+          { "value": "us2", "label": "US (us2)" },
+          { "value": "us3", "label": "US (us3)" },
+          { "value": "eu1", "label": "EU (eu1)" },
+          { "value": "eu2", "label": "EU (eu2)" }
+        ],
+        "description": "Mailchimp server prefix (data center region). Found in Mailchimp API key."
       },
       {
         "id": "audience_id",
         "label": "Audience ID",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
         "applies_to": ["audience.read", "member.list", "member.read"],
-        "example": "a1b2c3d4e5"
+        "placeholder": "a1b2c3d4e5",
+        "description": "The Mailchimp audience/list ID to read members from."
       },
       {
         "id": "campaign_id",
         "label": "Campaign ID",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
         "applies_to": ["campaign.read", "report.read"],
-        "example": "9f8e7d6c5b"
+        "placeholder": "9f8e7d6c5b",
+        "description": "The Mailchimp campaign ID to read or get reports for."
       },
       {
         "id": "member_email",
         "label": "Member email",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
         "applies_to": ["member.read"],
-        "example": "contact@example.com"
+        "placeholder": "contact@example.com",
+        "description": "Email address of the audience member to read details for."
       }
     ],
     "commandDefaults": {

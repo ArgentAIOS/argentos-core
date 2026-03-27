@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aos-notion"
 version = "0.1.0"
-description = "Setup-first Notion connector scaffold"
+description = "Agent-native Notion connector harness"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["click>=8.1"]

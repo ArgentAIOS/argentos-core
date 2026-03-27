@@ -1,0 +1,19 @@
+{
+  "tool": "aos-resend",
+  "backend": "resend-api",
+  "permissions": {
+    "email.send": "write",
+    "email.batch_send": "write",
+    "domains.list": "readonly",
+    "domains.verify": "write",
+    "audiences.list": "readonly",
+    "audiences.create": "write",
+    "contacts.list": "readonly",
+    "contacts.create": "write",
+    "contacts.remove": "write",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="currentColor">
+  <!-- Phone handset -->
+  <path d="M32 20c-8 0-14 6-14 14v12c0 20 8 38 22 52s32 22 52 22h12c8 0 14-6 14-14v-10c0-4-3-8-7-9l-16-4c-4-1-8 1-10 4l-6 8c-12-6-22-16-28-28l8-6c3-2 5-6 4-10l-4-16c-1-4-5-7-9-7H32z"/>
+  <!-- Audio analysis bars -->
+  <rect x="78" y="20" width="6" height="32" rx="3"/>
+  <rect x="90" y="12" width="6" height="48" rx="3"/>
+  <rect x="102" y="24" width="6" height="24" rx="3"/>
+  <rect x="114" y="18" width="6" height="36" rx="3"/>
+</svg>

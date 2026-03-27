@@ -67,7 +67,7 @@ def redacted_config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "runtime_ready": runtime["token_present"],
             "live_backend_available": runtime["token_present"],
             "live_read_available": runtime["token_present"],
-            "write_bridge_available": False,
+            "write_bridge_available": True,
             "scaffold_only": False,
         },
     }

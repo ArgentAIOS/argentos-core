@@ -15,6 +15,14 @@ export type AgentRunContext = {
   sessionKey?: string;
   verboseLevel?: VerboseLevel;
   isHeartbeat?: boolean;
+  timings?: Partial<{
+    startedAt: number;
+    firstModelActivityAt: number;
+    firstAssistantMessageStartAt: number;
+    firstPartialReplyAt: number;
+    firstVisibleDeltaAt: number;
+    completedAt: number;
+  }>;
 };
 
 // Keep per-run counters so streams stay strictly monotonic per runId.
@@ -28,7 +36,10 @@ export function registerAgentRunContext(runId: string, context: AgentRunContext)
   }
   const existing = runContextById.get(runId);
   if (!existing) {
-    runContextById.set(runId, { ...context });
+    runContextById.set(runId, {
+      ...context,
+      timings: context.timings ? { ...context.timings } : undefined,
+    });
     return;
   }
   if (context.sessionKey && existing.sessionKey !== context.sessionKey) {
@@ -40,6 +51,34 @@ export function registerAgentRunContext(runId: string, context: AgentRunContext)
   if (context.isHeartbeat !== undefined && existing.isHeartbeat !== context.isHeartbeat) {
     existing.isHeartbeat = context.isHeartbeat;
   }
+  if (context.timings) {
+    existing.timings = {
+      ...(existing.timings ?? {}),
+      ...context.timings,
+    };
+  }
+}
+
+export function recordAgentRunTiming(
+  runId: string,
+  key: NonNullable<AgentRunContext["timings"]> extends infer T
+    ? T extends Record<string, unknown>
+      ? keyof T
+      : never
+    : never,
+  timestamp = Date.now(),
+  opts?: { overwrite?: boolean },
+) {
+  const context = runContextById.get(runId);
+  if (!context) {
+    return;
+  }
+  const timings = (context.timings ??= {});
+  const existing = timings[key];
+  if (typeof existing === "number" && !opts?.overwrite) {
+    return;
+  }
+  timings[key] = timestamp;
 }
 
 export function getAgentRunContext(runId: string) {

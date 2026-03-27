@@ -1,0 +1,22 @@
+{
+  "tool": "aos-sendgrid",
+  "backend": "sendgrid-api",
+  "permissions": {
+    "email.send": "write",
+    "email.send_template": "write",
+    "contacts.list": "readonly",
+    "contacts.add": "write",
+    "contacts.search": "readonly",
+    "lists.list": "readonly",
+    "lists.create": "write",
+    "lists.add_contacts": "write",
+    "templates.list": "readonly",
+    "templates.get": "readonly",
+    "stats.global": "readonly",
+    "stats.category": "readonly",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

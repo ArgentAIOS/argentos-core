@@ -1,0 +1,22 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+TOOL_NAME = "aos-lion-report"
+BACKEND_NAME = "lion-report-api"
+MODE_ORDER = ["readonly", "write", "admin"]
+
+PACKAGE_ROOT = Path(__file__).resolve().parent
+HARNESS_ROOT = PACKAGE_ROOT.parents[1]
+CONNECTOR_ROOT = HARNESS_ROOT.parent
+CONNECTOR_PATH = CONNECTOR_ROOT / "connector.json"
+PERMISSIONS_PATH = HARNESS_ROOT / "permissions.json"
+
+API_KEY_ENV = "LION_REPORT_API_KEY"
+BASE_URL_ENV = "LION_REPORT_BASE_URL"
+REPORT_ID_ENV = "LION_REPORT_ID"
+REPORT_TYPE_ENV = "LION_REPORT_TYPE"
+DATE_RANGE_ENV = "LION_DATE_RANGE"
+DATA_SOURCE_ENV = "LION_DATA_SOURCE"
+TEMPLATE_ID_ENV = "LION_TEMPLATE_ID"
+RECIPIENT_EMAIL_ENV = "LION_RECIPIENT_EMAIL"

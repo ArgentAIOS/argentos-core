@@ -211,13 +211,15 @@ def page_read(ctx: click.Context, page_id: str) -> None:
 @click.option("--title", required=True)
 @click.pass_context
 def page_create(ctx: click.Context, database_id: str, parent_page_id: str, title: str) -> None:
-    _scaffold_command(
+    _live_command(
         ctx,
         command_id="page.create",
-        resource="page",
-        operation="create",
-        inputs={"database_id": database_id or None, "parent_page_id": parent_page_id or None, "title": title},
-        consequential=True,
+        runner=lambda ctx_obj: runtime_module.create_page_result(
+            ctx_obj,
+            database_id=database_id or None,
+            parent_page_id=parent_page_id or None,
+            title=title,
+        ),
     )
 
 
@@ -226,13 +228,10 @@ def page_create(ctx: click.Context, database_id: str, parent_page_id: str, title
 @click.option("--title", default="", show_default=False)
 @click.pass_context
 def page_update(ctx: click.Context, page_id: str, title: str) -> None:
-    _scaffold_command(
+    _live_command(
         ctx,
         command_id="page.update",
-        resource="page",
-        operation="update",
-        inputs={"page_id": page_id, "title": title or None},
-        consequential=True,
+        runner=lambda ctx_obj: runtime_module.update_page_result(ctx_obj, page_id=page_id, title=title or ""),
     )
 
 
@@ -257,13 +256,10 @@ def block_read(ctx: click.Context, block_id: str) -> None:
 @click.option("--content", required=True)
 @click.pass_context
 def block_append(ctx: click.Context, block_id: str, content: str) -> None:
-    _scaffold_command(
+    _live_command(
         ctx,
         command_id="block.append",
-        resource="block",
-        operation="append",
-        inputs={"block_id": block_id, "content": content},
-        consequential=True,
+        runner=lambda ctx_obj: runtime_module.append_block_result(ctx_obj, block_id=block_id, content=content),
     )
 
 

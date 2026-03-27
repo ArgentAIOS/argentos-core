@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { registerAgentRunContext, resetAgentRunContextForTest } from "../infra/agent-events.js";
+import {
+  getAgentRunContext,
+  registerAgentRunContext,
+  resetAgentRunContextForTest,
+} from "../infra/agent-events.js";
 import {
   createAgentEventHandler,
   createChatRunState,
@@ -46,6 +50,57 @@ describe("agent event handler", () => {
     expect(payload.message?.content?.[0]?.text).toBe("Hello world");
     const sessionChatCalls = nodeSendToSession.mock.calls.filter(([, event]) => event === "chat");
     expect(sessionChatCalls).toHaveLength(1);
+    nowSpy.mockRestore();
+  });
+
+  it("flushes the first delta immediately and throttles subsequent deltas", () => {
+    const nowSpy = vi.spyOn(Date, "now");
+    nowSpy.mockReturnValue(1_000);
+    const broadcast = vi.fn();
+    const broadcastToConnIds = vi.fn();
+    const nodeSendToSession = vi.fn();
+    const agentRunSeq = new Map<string, number>();
+    const chatRunState = createChatRunState();
+    const toolEventRecipients = createToolEventRecipientRegistry();
+    chatRunState.registry.add("run-1", { sessionKey: "session-1", clientRunId: "client-1" });
+    registerAgentRunContext("run-1", {
+      sessionKey: "session-1",
+      timings: { startedAt: 900 },
+    });
+
+    const handler = createAgentEventHandler({
+      broadcast,
+      broadcastToConnIds,
+      nodeSendToSession,
+      agentRunSeq,
+      chatRunState,
+      resolveSessionKeyForRun: () => undefined,
+      clearAgentRunContext: vi.fn(),
+      toolEventRecipients,
+    });
+
+    handler({
+      runId: "run-1",
+      seq: 1,
+      stream: "assistant",
+      ts: Date.now(),
+      data: { text: "Hello" },
+    });
+
+    nowSpy.mockReturnValue(1_050);
+    handler({
+      runId: "run-1",
+      seq: 2,
+      stream: "assistant",
+      ts: Date.now(),
+      data: { text: "Hello again" },
+    });
+
+    const chatCalls = broadcast.mock.calls.filter(([event]) => event === "chat");
+    expect(chatCalls).toHaveLength(1);
+    expect(nodeSendToSession.mock.calls.filter(([, event]) => event === "chat")).toHaveLength(1);
+    expect(getAgentRunContext("run-1")?.timings?.firstVisibleDeltaAt).toBe(1_000);
+    resetAgentRunContextForTest();
     nowSpy.mockRestore();
   });
 

@@ -1,0 +1,18 @@
+{
+  "tool": "aos-calendly",
+  "backend": "calendly-api",
+  "permissions": {
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "events.list": "readonly",
+    "events.get": "readonly",
+    "events.cancel": "write",
+    "event_types.list": "readonly",
+    "event_types.get": "readonly",
+    "invitees.list": "readonly",
+    "availability.get": "readonly",
+    "scheduling_links.create": "write"
+  }
+}

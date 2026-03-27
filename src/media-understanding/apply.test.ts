@@ -172,6 +172,38 @@ describe("applyMediaUnderstanding", () => {
     expect(ctx.BodyForCommands).toBe("/capture status");
   });
 
+  it("returns immediately when there are no media attachments", async () => {
+    const { applyMediaUnderstanding } = await loadApply();
+
+    const ctx: MsgContext = {
+      Body: "plain text only",
+    };
+    const cfg: ArgentConfig = {
+      tools: {
+        media: {
+          audio: {
+            enabled: true,
+            models: [{ provider: "groq" }],
+          },
+        },
+      },
+    };
+
+    const result = await applyMediaUnderstanding({ ctx, cfg });
+
+    expect(result).toEqual({
+      outputs: [],
+      decisions: [],
+      appliedImage: false,
+      appliedAudio: false,
+      appliedVideo: false,
+      appliedFile: false,
+    });
+    expect(ctx.Body).toBe("plain text only");
+    expect(mockedResolveApiKey).not.toHaveBeenCalled();
+    expect(mockedFetchRemoteMedia).not.toHaveBeenCalled();
+  });
+
   it("handles URL-only attachments for audio transcription", async () => {
     const { applyMediaUnderstanding } = await loadApply();
     const ctx: MsgContext = {
