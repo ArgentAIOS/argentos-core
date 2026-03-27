@@ -30,6 +30,32 @@ const DEFAULT_THRESHOLDS = {
   balanced: 0.8,
 };
 
+const TIER_PRIORITY: Record<ModelTier, number> = {
+  local: 0,
+  fast: 1,
+  balanced: 2,
+  powerful: 3,
+};
+
+const TOOL_TRIGGER_PATTERNS = [
+  /\b(save|store|record|log|write)\b.*\b(memory|that|this|it)\b/i,
+  /\b(remember|don't forget|note that|keep in mind)\b/i,
+  /\b(check|show|list|view)\b.*\b(task|tasks|todo|schedule)\b/i,
+  /\b(send|message|dm|notify|ping)\b.*\b(discord|telegram|slack|email)\b/i,
+  /\b(search|look up|find|fetch)\b.*\b(web|online|google|news)\b/i,
+  /\b(add|create|start|complete|finish|block)\b.*\b(task|tasks)\b/i,
+  /\b(generate|create|make)\b.*\b(image|audio|video|speech)\b/i,
+  /\b(open|push|update)\b.*\b(doc|document|panel|canvas)\b/i,
+];
+
+const MEMORY_TRIGGER_PATTERNS = [
+  /\b(remember|recall|what do you remember)\b/i,
+  /\b(memory|memories|timeline)\b/i,
+  /\b(earlier|previous|last)\s+(conversation|session|chat)\b/i,
+  /\b(search|find|look up)\b.*\b(memory|memories|conversation|timeline|session)\b/i,
+  /\b(when did|did we|have we)\b.*\b(talk|discuss|mention)\b/i,
+];
+
 function normalizeProvider(provider: string): string {
   const normalized = provider.trim().toLowerCase();
   if (normalized === "z.ai" || normalized === "z-ai") {
@@ -149,6 +175,14 @@ function normalizeFallbackRefs(
     normalized.push(key);
   }
   return normalized.length > 0 ? normalized : [];
+}
+
+function isLikelyToolUsePrompt(prompt: string): boolean {
+  return TOOL_TRIGGER_PATTERNS.some((pattern) => pattern.test(prompt));
+}
+
+function isLikelyMemoryUsePrompt(prompt: string): boolean {
+  return MEMORY_TRIGGER_PATTERNS.some((pattern) => pattern.test(prompt));
 }
 
 /**
@@ -280,30 +314,6 @@ export function scoreComplexity(signals: ComplexitySignals): {
       score = FAST_FLOOR;
       reasons.push("user-facing floor (tools + context)");
     }
-
-    // Haiku occasionally simulates tool calls as text on short prompts
-    // instead of making real tool_use blocks. Boost to Sonnet when the
-    // prompt is likely to trigger tool use.
-    const toolTriggerPatterns = [
-      /\b(save|store|record|log|write)\b.*\b(memory|that|this|it)\b/i,
-      /\b(remember|don't forget|note that|keep in mind)\b/i,
-      /\b(check|show|list|view)\b.*\b(task|tasks|todo|schedule)\b/i,
-      /\b(send|message|dm|notify|ping)\b.*\b(discord|telegram|slack|email)\b/i,
-      /\b(search|look up|find|fetch)\b.*\b(web|online|google|news)\b/i,
-      /\b(add|create|start|complete|finish|block)\b.*\b(task|tasks)\b/i,
-      /\b(generate|create|make)\b.*\b(image|audio|video|speech)\b/i,
-      /\b(open|push|update)\b.*\b(doc|document|panel|canvas)\b/i,
-    ];
-    const BALANCED_FLOOR = 0.5;
-    if (score < BALANCED_FLOOR) {
-      for (const pattern of toolTriggerPatterns) {
-        if (pattern.test(prompt)) {
-          score = BALANCED_FLOOR;
-          reasons.push("tool-likely prompt (boosted to balanced)");
-          break;
-        }
-      }
-    }
   }
 
   // ---- Code/technical patterns ----
@@ -416,6 +426,22 @@ function resolveTier(
   if (score < thresholds.fast) return "fast";
   if (score < thresholds.balanced) return "balanced";
   return "powerful";
+}
+
+function applyTierFloor(
+  tier: ModelTier,
+  minTier: ModelTier | undefined,
+  reason: string,
+  reasons: string[],
+): ModelTier {
+  if (!minTier) {
+    return tier;
+  }
+  if (TIER_PRIORITY[tier] >= TIER_PRIORITY[minTier]) {
+    return tier;
+  }
+  reasons.push(reason);
+  return minTier;
 }
 
 // ============================================================================
@@ -565,6 +591,25 @@ export function routeModel(params: {
 
   // Map score to tier
   let tier = resolveTier(score, thresholds);
+
+  if (signals.sessionType === "main") {
+    tier = applyTierFloor(
+      tier,
+      isLikelyMemoryUsePrompt(signals.prompt)
+        ? activeProfile?.routingPolicy?.likelyMemoryUseMinTier
+        : undefined,
+      "memory-likely floor",
+      reasons,
+    );
+    tier = applyTierFloor(
+      tier,
+      isLikelyToolUsePrompt(signals.prompt)
+        ? activeProfile?.routingPolicy?.likelyToolUseMinTier
+        : undefined,
+      "tool-likely floor",
+      reasons,
+    );
+  }
 
   // Images require a vision-capable model. Local and fast tiers often lack
   // vision support, so force at least balanced when images are present.

@@ -1,0 +1,17 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+TOOL_NAME = "aos-pipedrive"
+BACKEND_NAME = "pipedrive-api"
+PIPEDRIVE_API_TOKEN_ENV = "PIPEDRIVE_API_TOKEN"
+PIPEDRIVE_COMPANY_DOMAIN_ENV = "PIPEDRIVE_COMPANY_DOMAIN"
+PIPEDRIVE_DEAL_ID_ENV = "PIPEDRIVE_DEAL_ID"
+PIPEDRIVE_PERSON_ID_ENV = "PIPEDRIVE_PERSON_ID"
+PIPEDRIVE_ORG_ID_ENV = "PIPEDRIVE_ORG_ID"
+PIPEDRIVE_PIPELINE_ID_ENV = "PIPEDRIVE_PIPELINE_ID"
+
+MODE_ORDER = ["readonly", "write", "full", "admin"]
+HARNESS_ROOT = Path(__file__).resolve().parents[2]
+CONNECTOR_PATH = HARNESS_ROOT.parent / "connector.json"
+PERMISSIONS_PATH = HARNESS_ROOT / "permissions.json"

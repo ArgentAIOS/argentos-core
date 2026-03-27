@@ -1,0 +1,23 @@
+{
+  "tool": "aos-dart",
+  "backend": "dart-api",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly",
+    "dartboard.list": "readonly",
+    "dartboard.get": "readonly",
+    "task.list": "readonly",
+    "task.get": "readonly",
+    "task.create": "write",
+    "task.update": "write",
+    "task.delete": "write",
+    "doc.list": "readonly",
+    "doc.get": "readonly",
+    "doc.create": "write",
+    "comment.list": "readonly",
+    "comment.create": "write",
+    "property.list": "readonly"
+  }
+}

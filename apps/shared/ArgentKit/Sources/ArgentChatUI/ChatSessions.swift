@@ -38,3 +38,86 @@ public struct ArgentChatSessionsListResponse: Codable, Sendable {
     public let defaults: ArgentChatSessionsDefaults?
     public let sessions: [ArgentChatSessionEntry]
 }
+
+private func normalizedSessionKey(_ raw: String?) -> String {
+    raw?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+}
+
+private func sessionAgentId(from sessionKey: String) -> String? {
+    let key = normalizedSessionKey(sessionKey)
+    guard key.hasPrefix("agent:") else { return nil }
+    let parts = key.split(separator: ":", omittingEmptySubsequences: false)
+    guard parts.count >= 3 else { return nil }
+    let agentId = String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+    return agentId.isEmpty ? nil : agentId
+}
+
+private func sessionRestKey(_ sessionKey: String) -> String {
+    let key = normalizedSessionKey(sessionKey)
+    guard key.hasPrefix("agent:") else { return key }
+    let parts = key.split(separator: ":", omittingEmptySubsequences: false)
+    guard parts.count >= 3 else { return key }
+    return parts.dropFirst(2).joined(separator: ":")
+}
+
+private func sessionSurface(_ entry: ArgentChatSessionEntry) -> String {
+    let explicit = normalizedSessionKey(entry.surface)
+    if !explicit.isEmpty {
+        return explicit
+    }
+    let raw = sessionRestKey(entry.key)
+    guard !raw.isEmpty else { return "" }
+    if raw == "global" || raw == "unknown" {
+        return raw
+    }
+    let separators = CharacterSet(charactersIn: ":-")
+    let token = raw.components(separatedBy: separators).first ?? raw
+    return token.lowercased()
+}
+
+private func isBackgroundSession(_ sessionKey: String) -> Bool {
+    let raw = sessionRestKey(sessionKey)
+    guard !raw.isEmpty else { return false }
+    return raw.hasPrefix("temp:")
+        || raw.hasPrefix("temp-")
+        || raw == "worker-execution"
+        || raw.contains(":worker-execution")
+        || raw.hasSuffix(":contemplation")
+        || raw.contains(":contemplation:")
+        || raw.hasSuffix(":sis-consolidation")
+        || raw.contains(":sis-consolidation:")
+        || raw.hasSuffix(":heartbeat")
+        || raw.contains(":heartbeat:")
+        || raw.hasSuffix(":cron")
+        || raw.contains(":cron:")
+}
+
+private func isVisibleOperatorSession(
+    _ entry: ArgentChatSessionEntry,
+    currentSessionKey: String
+) -> Bool {
+    let key = normalizedSessionKey(entry.key)
+    guard !key.isEmpty else { return false }
+    if isBackgroundSession(key) {
+        return false
+    }
+
+    let activeAgentId = sessionAgentId(from: currentSessionKey) ?? "main"
+    let entryAgentId = sessionAgentId(from: key) ?? activeAgentId
+    guard entryAgentId == activeAgentId else {
+        return false
+    }
+
+    if key == normalizedSessionKey(currentSessionKey) {
+        return true
+    }
+
+    let surface = sessionSurface(entry)
+    return surface == "main" || surface == "webchat"
+}
+
+extension Array where Element == ArgentChatSessionEntry {
+    func filteredVisibleOperatorSessions(currentSessionKey: String) -> [ArgentChatSessionEntry] {
+        self.filter { isVisibleOperatorSession($0, currentSessionKey: currentSessionKey) }
+    }
+}

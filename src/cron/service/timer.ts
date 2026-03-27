@@ -81,6 +81,16 @@ function resolvePaperTradeEvidence(
       reason,
     };
   }
+  if (job.payload.kind === "workflowRun") {
+    return {
+      mode: "paper_trade",
+      policy: "external_side_effect_gate",
+      simulatedAtMs: nowMs,
+      payloadKind: "workflowRun",
+      action: "workflow_run",
+      reason,
+    };
+  }
   return undefined;
 }
 
@@ -436,10 +446,96 @@ export async function executeJob(
       return;
     }
 
+    if (job.payload.kind === "workflowRun") {
+      try {
+        const { executeWorkflow, CoreAgentDispatcher } =
+          await import("../../infra/workflow-runner.js");
+        const { randomUUID } = await import("node:crypto");
+
+        // Lazy-import PG connection for loading workflow definition
+        const postgres = (await import("postgres")).default;
+        const { resolvePostgresUrl } = await import("../../data/storage-resolver.js");
+        const connectionString = resolvePostgresUrl();
+        const sql = postgres(connectionString, {
+          max: 2,
+          idle_timeout: 10,
+          connect_timeout: 5,
+          prepare: false,
+        });
+
+        const workflowId = job.payload.workflowId;
+        const [wf] = await sql`
+          SELECT * FROM workflows WHERE id = ${workflowId} AND is_active = true
+        `;
+        if (!wf) {
+          await sql.end();
+          await finish("error", `Workflow ${workflowId} not found or inactive`);
+          return;
+        }
+
+        const runId = randomUUID();
+        // Create PG run record
+        await sql`
+          INSERT INTO workflow_runs (
+            id, workflow_id, workflow_version, status,
+            trigger_type, trigger_payload, variables
+          ) VALUES (
+            ${runId}, ${workflowId}, ${wf.version},
+            'running', 'cron',
+            ${JSON.stringify(job.payload.triggerPayload ?? {})}::jsonb,
+            '{}'::jsonb
+          )
+        `;
+
+        const definition = {
+          id: wf.id as string,
+          name: wf.name as string,
+          description: wf.description as string | undefined,
+          nodes: wf.nodes as import("../../infra/workflow-types.js").WorkflowNode[],
+          edges: wf.edges as import("../../infra/workflow-types.js").WorkflowEdge[],
+          defaultOnError:
+            (wf.default_on_error as import("../../infra/workflow-types.js").ErrorConfig) ?? {
+              strategy: "fail" as const,
+              notifyOnError: true,
+            },
+          maxRunDurationMs: wf.max_run_duration_ms as number | undefined,
+          maxRunCostUsd: wf.max_run_cost_usd as number | undefined,
+        };
+
+        const dispatcher = new CoreAgentDispatcher();
+        const result = await executeWorkflow({
+          workflow: definition,
+          runId,
+          dispatcher,
+          triggerPayload: job.payload.triggerPayload,
+          triggerSource: `cron:${job.id}`,
+        });
+
+        // Update PG run record with result
+        await sql`
+          UPDATE workflow_runs SET
+            status = ${result.status},
+            total_tokens = ${result.totalTokens},
+            total_cost_usd = ${result.totalCostUsd},
+            duration_ms = ${result.durationMs},
+            ended_at = NOW()
+          WHERE id = ${runId}
+        `;
+
+        await sql.end();
+
+        const summary = `Workflow "${wf.name}" ${result.status} (${result.steps.length} steps, ${result.durationMs}ms)`;
+        await finish(result.status === "completed" ? "ok" : "error", undefined, summary);
+      } catch (err) {
+        await finish("error", err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
+
     if (job.payload.kind !== "agentTurn") {
       await finish(
         "skipped",
-        "isolated job requires payload.kind=agentTurn, nudge, vipEmailScan, or slackSignalScan",
+        "isolated job requires payload.kind=agentTurn, nudge, vipEmailScan, slackSignalScan, or workflowRun",
       );
       return;
     }

@@ -1,0 +1,21 @@
+{
+  "tool": "aos-pagerduty",
+  "backend": "pagerduty-api",
+  "permissions": {
+    "incident.list": "readonly",
+    "incident.get": "readonly",
+    "incident.create": "write",
+    "incident.acknowledge": "write",
+    "incident.resolve": "write",
+    "service.list": "readonly",
+    "service.get": "readonly",
+    "escalation_policy.list": "readonly",
+    "on_call.list": "readonly",
+    "alert.list": "readonly",
+    "change_event.create": "write",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

@@ -1,7 +1,7 @@
+import { createRequire } from "node:module";
 import path from "node:path";
 import type { ArgentConfig, ConfigValidationIssue } from "./types.js";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { resolveIntentValidationMode, validateIntentHierarchy } from "../agents/intent.js";
 import { CHANNEL_IDS, normalizeChatChannelId } from "../channels/registry.js";
 import {
   normalizePluginsConfig,
@@ -15,6 +15,8 @@ import { applyAgentDefaults, applyModelDefaults, applySessionDefaults } from "./
 import { validateGatewayAuthConfig } from "./gateway-auth-validation.js";
 import { findLegacyConfigIssues } from "./legacy.js";
 import { ArgentSchema } from "./zod-schema.js";
+
+const requireModule = createRequire(import.meta.url);
 
 const AVATAR_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 const AVATAR_DATA_RE = /^data:/i;
@@ -84,6 +86,29 @@ function validateIdentityAvatar(config: ArgentConfig): ConfigValidationIssue[] {
   return issues;
 }
 
+type OptionalIntentApi = {
+  resolveIntentValidationMode: (config: ArgentConfig) => "off" | "warn" | "enforce";
+  validateIntentHierarchy: (config: ArgentConfig) => ConfigValidationIssue[];
+};
+
+let optionalIntentApi: OptionalIntentApi | null | undefined;
+
+function getOptionalIntentApi(): OptionalIntentApi | null {
+  if (optionalIntentApi === undefined) {
+    try {
+      const mod = requireModule("../agents/intent.js") as Partial<OptionalIntentApi>;
+      optionalIntentApi =
+        typeof mod.resolveIntentValidationMode === "function" &&
+        typeof mod.validateIntentHierarchy === "function"
+          ? (mod as OptionalIntentApi)
+          : null;
+    } catch {
+      optionalIntentApi = null;
+    }
+  }
+  return optionalIntentApi;
+}
+
 export function validateConfigObject(
   raw: unknown,
 ): { ok: true; config: ArgentConfig } | { ok: false; issues: ConfigValidationIssue[] } {
@@ -107,18 +132,21 @@ export function validateConfigObject(
       })),
     };
   }
-  const intentIssues = validateIntentHierarchy(validated.data as ArgentConfig);
-  if (
-    intentIssues.length > 0 &&
-    resolveIntentValidationMode(validated.data as ArgentConfig) === "enforce"
-  ) {
-    return {
-      ok: false,
-      issues: intentIssues.map((issue) => ({
-        path: issue.path,
-        message: issue.message,
-      })),
-    };
+  const intentApi = getOptionalIntentApi();
+  if (intentApi) {
+    const intentIssues = intentApi.validateIntentHierarchy(validated.data as ArgentConfig);
+    if (
+      intentIssues.length > 0 &&
+      intentApi.resolveIntentValidationMode(validated.data as ArgentConfig) === "enforce"
+    ) {
+      return {
+        ok: false,
+        issues: intentIssues.map((issue) => ({
+          path: issue.path,
+          message: issue.message,
+        })),
+      };
+    }
   }
   const duplicates = findDuplicateAgentDirs(validated.data as ArgentConfig);
   if (duplicates.length > 0) {

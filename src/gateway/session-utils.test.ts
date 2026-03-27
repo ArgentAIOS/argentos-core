@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
@@ -8,6 +9,7 @@ import {
   classifySessionKey,
   deriveSessionTitle,
   listSessionsFromStore,
+  loadCombinedSessionStoreForGateway,
   parseGroupKey,
   resolveGatewaySessionStoreTarget,
   resolveSessionStoreKey,
@@ -91,6 +93,59 @@ describe("gateway session utils", () => {
     expect(target.canonicalKey).toBe("agent:ops:main");
     expect(target.storeKeys).toEqual(expect.arrayContaining(["agent:ops:main", "main"]));
     expect(target.storePath).toBe(path.resolve(storeTemplate.replace("{agentId}", "ops")));
+  });
+
+  test("resolveGatewaySessionStoreTarget includes legacy main-agent aliases for webchat sessions", () => {
+    const storeTemplate = path.join(
+      os.tmpdir(),
+      "argent-session-utils",
+      "{agentId}",
+      "sessions.json",
+    );
+    const cfg = {
+      session: { mainKey: "main", store: storeTemplate },
+      agents: { list: [{ id: "argent", default: true }] },
+    } as ArgentConfig;
+    const target = resolveGatewaySessionStoreTarget({
+      cfg,
+      key: "agent:argent:webchat-1773256438382",
+    });
+    expect(target.agentId).toBe("argent");
+    expect(target.storeKeys).toEqual(
+      expect.arrayContaining([
+        "agent:argent:webchat-1773256438382",
+        "agent:main:webchat-1773256438382",
+      ]),
+    );
+  });
+
+  test("loadCombinedSessionStoreForGateway remaps legacy main webchat keys inside agent stores", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "argent-session-utils-store-"));
+    const storeTemplate = path.join(root, "{agentId}", "sessions.json");
+    const argentStorePath = path.resolve(storeTemplate.replace("{agentId}", "argent"));
+    fs.mkdirSync(path.dirname(argentStorePath), { recursive: true });
+    fs.writeFileSync(
+      argentStorePath,
+      JSON.stringify(
+        {
+          "agent:main:webchat-1773256438382": {
+            sessionId: "sess-legacy-webchat",
+            updatedAt: Date.now(),
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const cfg = {
+      session: { mainKey: "main", store: storeTemplate },
+      agents: { list: [{ id: "argent", default: true }] },
+    } as ArgentConfig;
+
+    const { store } = loadCombinedSessionStoreForGateway(cfg);
+    expect(store["agent:argent:webchat-1773256438382"]?.sessionId).toBe("sess-legacy-webchat");
+    expect(store["agent:main:webchat-1773256438382"]).toBeUndefined();
   });
 });
 

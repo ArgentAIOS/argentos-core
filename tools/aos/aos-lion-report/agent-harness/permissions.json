@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "report.list": "readonly",
+    "report.get": "readonly",
+    "report.generate": "write",
+    "report.schedule": "write",
+    "data.list_sources": "readonly",
+    "data.query": "readonly",
+    "data.import": "write",
+    "analysis.run": "write",
+    "analysis.list": "readonly",
+    "template.list": "readonly",
+    "template.get": "readonly",
+    "export.pdf": "readonly",
+    "export.csv": "readonly",
+    "export.email": "write",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

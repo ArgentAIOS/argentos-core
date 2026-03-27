@@ -1,0 +1,24 @@
+{
+  "tool": "aos-asana",
+  "backend": "asana-api",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly",
+    "project.list": "readonly",
+    "project.get": "readonly",
+    "project.sections": "readonly",
+    "section.list": "readonly",
+    "section.tasks": "readonly",
+    "task.list": "readonly",
+    "task.get": "readonly",
+    "task.create": "write",
+    "task.update": "write",
+    "comment.list": "readonly",
+    "comment.create": "write",
+    "portfolio.list": "readonly",
+    "portfolio.get": "readonly",
+    "search.tasks": "readonly"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "tool": "aos-supabase",
+  "backend": "supabase-api",
+  "permissions": {
+    "project.info": "readonly",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "table.select": "readonly",
+    "table.insert": "write",
+    "table.update": "write",
+    "table.delete": "write",
+    "rpc.call": "write",
+    "storage.list": "readonly",
+    "storage.upload": "write",
+    "storage.download": "readonly"
+  }
+}

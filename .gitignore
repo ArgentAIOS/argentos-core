@@ -75,3 +75,4 @@ USER.md
 .serena/
 __pycache__/
 dashboard/public/live2d/
+.tmp/

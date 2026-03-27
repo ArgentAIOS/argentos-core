@@ -1,0 +1,580 @@
+{
+  "tool": "aos-clientsync",
+  "backend": "clientsync-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "msp-management",
+    "surface": "client-ticket-compliance-analytics",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["client_id", "ticket_id", "technician_id", "compliance_id", "report_type"],
+    "worker_visible_actions": [
+      "client.list",
+      "client.get",
+      "client.create",
+      "client.update",
+      "client.portal",
+      "ticket.list",
+      "ticket.get",
+      "ticket.create",
+      "ticket.update",
+      "ticket.assign",
+      "ticket.resolve",
+      "technician.list",
+      "technician.get",
+      "technician.availability",
+      "compliance.list",
+      "compliance.get",
+      "compliance.check",
+      "compliance.report",
+      "asset.list",
+      "asset.get",
+      "asset.create",
+      "contract.list",
+      "contract.get",
+      "contract.renew",
+      "analytics.dashboard",
+      "analytics.client_health",
+      "analytics.sla_performance",
+      "report.generate",
+      "report.list",
+      "audit.list",
+      "audit.create"
+    ],
+    "fields": [
+      {
+        "id": "client_id",
+        "label": "Client ID",
+        "required": false,
+        "applies_to": [
+          "client.get",
+          "client.update",
+          "client.portal",
+          "ticket.list",
+          "asset.list",
+          "contract.list",
+          "analytics.client_health",
+          "compliance.check"
+        ],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "ticket_id",
+        "label": "Ticket ID",
+        "required": false,
+        "applies_to": ["ticket.get", "ticket.update", "ticket.assign", "ticket.resolve"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "technician_id",
+        "label": "Technician",
+        "required": false,
+        "applies_to": ["technician.get", "technician.availability", "ticket.assign", "ticket.list"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "compliance_id",
+        "label": "Compliance Framework",
+        "required": false,
+        "applies_to": ["compliance.get", "compliance.check"],
+        "example": "SOC2",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "priority",
+        "label": "Priority",
+        "required": false,
+        "applies_to": ["ticket.create", "ticket.update", "ticket.list"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "status",
+        "label": "Status",
+        "required": false,
+        "applies_to": ["ticket.update", "ticket.list"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "report_type",
+        "label": "Report Type",
+        "required": false,
+        "applies_to": ["report.generate", "analytics.dashboard"],
+        "example": "monthly_client_review",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "date_range",
+        "label": "Date Range",
+        "required": false,
+        "applies_to": [
+          "analytics.dashboard",
+          "analytics.sla_performance",
+          "report.generate",
+          "audit.list"
+        ],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "sla_id",
+        "label": "SLA Agreement",
+        "required": false,
+        "applies_to": ["analytics.sla_performance", "contract.get"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      }
+    ],
+    "commandDefaults": {
+      "client.list": {
+        "selection_surface": "client",
+        "limit": 25
+      },
+      "client.get": {
+        "selection_surface": "client",
+        "args": ["CLIENTSYNC_CLIENT_ID"]
+      },
+      "ticket.list": {
+        "selection_surface": "ticket",
+        "args": ["CLIENTSYNC_CLIENT_ID"],
+        "limit": 25
+      },
+      "ticket.get": {
+        "selection_surface": "ticket",
+        "args": ["CLIENTSYNC_TICKET_ID"]
+      },
+      "technician.list": {
+        "selection_surface": "technician",
+        "limit": 25
+      },
+      "compliance.list": {
+        "selection_surface": "compliance",
+        "limit": 25
+      },
+      "compliance.check": {
+        "selection_surface": "compliance",
+        "args": ["CLIENTSYNC_CLIENT_ID", "CLIENTSYNC_COMPLIANCE_ID"]
+      },
+      "asset.list": {
+        "selection_surface": "asset",
+        "args": ["CLIENTSYNC_CLIENT_ID"],
+        "limit": 25
+      },
+      "contract.list": {
+        "selection_surface": "contract",
+        "args": ["CLIENTSYNC_CLIENT_ID"],
+        "limit": 25
+      },
+      "analytics.dashboard": {
+        "selection_surface": "analytics",
+        "args": ["CLIENTSYNC_REPORT_TYPE"]
+      },
+      "analytics.client_health": {
+        "selection_surface": "analytics",
+        "args": ["CLIENTSYNC_CLIENT_ID"]
+      },
+      "analytics.sla_performance": {
+        "selection_surface": "analytics",
+        "args": ["CLIENTSYNC_SLA_ID"]
+      },
+      "report.list": {
+        "selection_surface": "report",
+        "limit": 25
+      },
+      "audit.list": {
+        "selection_surface": "audit",
+        "limit": 25
+      }
+    },
+    "pickerHints": {
+      "client": {
+        "kind": "client",
+        "selection_surface": "client",
+        "resource": "clientsync.client",
+        "source_command": "client.list",
+        "source_fields": ["id", "name", "contact_email", "status", "plan", "created", "updated"]
+      },
+      "ticket": {
+        "kind": "ticket",
+        "selection_surface": "ticket",
+        "resource": "clientsync.ticket",
+        "source_command": "ticket.list",
+        "source_fields": [
+          "id",
+          "subject",
+          "priority",
+          "status",
+          "client_id",
+          "technician_id",
+          "created",
+          "updated"
+        ]
+      },
+      "technician": {
+        "kind": "technician",
+        "selection_surface": "technician",
+        "resource": "clientsync.technician",
+        "source_command": "technician.list",
+        "source_fields": ["id", "name", "email", "role", "active", "availability"]
+      },
+      "compliance": {
+        "kind": "compliance",
+        "selection_surface": "compliance",
+        "resource": "clientsync.compliance",
+        "source_command": "compliance.list",
+        "source_fields": ["id", "framework", "version", "status", "last_audit", "next_audit"]
+      },
+      "asset": {
+        "kind": "asset",
+        "selection_surface": "asset",
+        "resource": "clientsync.asset",
+        "source_command": "asset.list",
+        "source_fields": ["id", "name", "type", "serial", "client_id", "status", "warranty_end"]
+      },
+      "contract": {
+        "kind": "contract",
+        "selection_surface": "contract",
+        "resource": "clientsync.contract",
+        "source_command": "contract.list",
+        "source_fields": ["id", "name", "client_id", "type", "start_date", "end_date", "mrr"]
+      }
+    }
+  },
+  "connector": {
+    "label": "ClientSync",
+    "category": "msp-management",
+    "categories": ["msp-management", "ticketing", "compliance", "analytics"],
+    "resources": [
+      "client",
+      "ticket",
+      "technician",
+      "compliance",
+      "asset",
+      "contract",
+      "analytics",
+      "report",
+      "audit"
+    ]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["CLIENTSYNC_API_KEY"],
+    "interactive_setup": [
+      "Create or choose a ClientSync API key from your ClientSync admin portal.",
+      "Add CLIENTSYNC_API_KEY in API Keys before enabling live reads.",
+      "Set CLIENTSYNC_API_URL if your instance is self-hosted (defaults to https://api.clientsync.io/v1).",
+      "Optionally set CLIENTSYNC_CLIENT_ID, CLIENTSYNC_TICKET_ID, CLIENTSYNC_TECHNICIAN_ID, CLIENTSYNC_COMPLIANCE_ID, CLIENTSYNC_SLA_ID, and CLIENTSYNC_REPORT_TYPE to give worker flows stable scope defaults.",
+      "Write commands (ticket.create, ticket.update, ticket.assign, ticket.resolve, client.create, client.update, asset.create, contract.renew, compliance.report, report.generate, audit.create) are live and require write mode.",
+      "The connector supports both reads and writes against the ClientSync API."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "client.list",
+      "summary": "List MSP clients",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "client",
+      "action_class": "read"
+    },
+    {
+      "id": "client.get",
+      "summary": "Get a client by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "client",
+      "action_class": "read"
+    },
+    {
+      "id": "client.create",
+      "summary": "Create a new client",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "client",
+      "action_class": "write"
+    },
+    {
+      "id": "client.update",
+      "summary": "Update client details",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "client",
+      "action_class": "write"
+    },
+    {
+      "id": "client.portal",
+      "summary": "Get client portal link and status",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "client",
+      "action_class": "read"
+    },
+    {
+      "id": "ticket.list",
+      "summary": "List support tickets",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "ticket",
+      "action_class": "read"
+    },
+    {
+      "id": "ticket.get",
+      "summary": "Get a ticket by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "ticket",
+      "action_class": "read"
+    },
+    {
+      "id": "ticket.create",
+      "summary": "Create a support ticket",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "ticket",
+      "action_class": "write"
+    },
+    {
+      "id": "ticket.update",
+      "summary": "Update a ticket",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "ticket",
+      "action_class": "write"
+    },
+    {
+      "id": "ticket.assign",
+      "summary": "Assign a ticket to a technician",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "ticket",
+      "action_class": "write"
+    },
+    {
+      "id": "ticket.resolve",
+      "summary": "Resolve a ticket with resolution notes",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "ticket",
+      "action_class": "write"
+    },
+    {
+      "id": "technician.list",
+      "summary": "List technicians",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "technician",
+      "action_class": "read"
+    },
+    {
+      "id": "technician.get",
+      "summary": "Get a technician by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "technician",
+      "action_class": "read"
+    },
+    {
+      "id": "technician.availability",
+      "summary": "Check technician availability",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "technician",
+      "action_class": "read"
+    },
+    {
+      "id": "compliance.list",
+      "summary": "List compliance frameworks",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "compliance",
+      "action_class": "read"
+    },
+    {
+      "id": "compliance.get",
+      "summary": "Get a compliance framework by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "compliance",
+      "action_class": "read"
+    },
+    {
+      "id": "compliance.check",
+      "summary": "Run a compliance check against a client",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "compliance",
+      "action_class": "read"
+    },
+    {
+      "id": "compliance.report",
+      "summary": "Generate a compliance report",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "compliance",
+      "action_class": "write"
+    },
+    {
+      "id": "asset.list",
+      "summary": "List client assets",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "asset",
+      "action_class": "read"
+    },
+    {
+      "id": "asset.get",
+      "summary": "Get an asset by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "asset",
+      "action_class": "read"
+    },
+    {
+      "id": "asset.create",
+      "summary": "Register a new client asset",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "asset",
+      "action_class": "write"
+    },
+    {
+      "id": "contract.list",
+      "summary": "List client contracts",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "contract",
+      "action_class": "read"
+    },
+    {
+      "id": "contract.get",
+      "summary": "Get a contract by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "contract",
+      "action_class": "read"
+    },
+    {
+      "id": "contract.renew",
+      "summary": "Renew a client contract",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "contract",
+      "action_class": "write"
+    },
+    {
+      "id": "analytics.dashboard",
+      "summary": "Get MSP analytics dashboard data",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "analytics",
+      "action_class": "read"
+    },
+    {
+      "id": "analytics.client_health",
+      "summary": "Get client health score and metrics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "analytics",
+      "action_class": "read"
+    },
+    {
+      "id": "analytics.sla_performance",
+      "summary": "Get SLA performance metrics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "analytics",
+      "action_class": "read"
+    },
+    {
+      "id": "report.generate",
+      "summary": "Generate a report",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "report",
+      "action_class": "write"
+    },
+    {
+      "id": "report.list",
+      "summary": "List generated reports",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "report",
+      "action_class": "read"
+    },
+    {
+      "id": "audit.list",
+      "summary": "List audit log entries",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "audit",
+      "action_class": "read"
+    },
+    {
+      "id": "audit.create",
+      "summary": "Create an audit log entry",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "audit",
+      "action_class": "write"
+    }
+  ]
+}

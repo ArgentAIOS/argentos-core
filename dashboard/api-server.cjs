@@ -13148,7 +13148,7 @@ app.get("/api/settings/model-profiles", async (req, res) => {
 // PATCH /api/settings/model-profiles — Create or update a profile
 app.patch("/api/settings/model-profiles", (req, res) => {
   try {
-    const { name, label, tiers, sessionOverrides } = req.body;
+    const { name, label, tiers, routingPolicy, sessionOverrides } = req.body;
     if (!name) return res.status(400).json({ error: "name is required" });
 
     const config = readArgentConfig();
@@ -13161,6 +13161,7 @@ app.patch("/api/settings/model-profiles", (req, res) => {
     config.agents.defaults.modelRouter.profiles[name] = {
       label,
       tiers,
+      ...(routingPolicy ? { routingPolicy } : {}),
       ...(sessionOverrides ? { sessionOverrides } : {}),
     };
     writeArgentConfig(config);

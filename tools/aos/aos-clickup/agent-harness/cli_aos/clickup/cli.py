@@ -12,21 +12,29 @@ from .errors import ClickUpError, ClickUpPermissionError
 from .output import emit, failure, success
 from .runtime import (
     build_capabilities_payload,
+    build_comment_create_payload,
+    build_comment_list_payload,
     build_config_show_payload,
+    build_doc_create_payload,
+    build_doc_get_payload,
+    build_doc_list_payload,
     build_doctor_payload,
-    build_folder_list_payload,
-    build_folder_read_payload,
+    build_goal_get_payload,
+    build_goal_list_payload,
     build_health_payload,
+    build_list_create_payload,
+    build_list_get_payload,
     build_list_list_payload,
-    build_list_read_payload,
+    build_space_get_payload,
     build_space_list_payload,
-    build_space_read_payload,
-    build_task_create_draft_payload,
+    build_task_create_payload,
+    build_task_delete_payload,
+    build_task_get_payload,
     build_task_list_payload,
-    build_task_read_payload,
-    build_task_update_draft_payload,
+    build_task_update_payload,
+    build_time_tracking_create_payload,
+    build_time_tracking_list_payload,
     build_workspace_list_payload,
-    build_workspace_read_payload,
 )
 
 
@@ -48,6 +56,19 @@ def require_mode(ctx: click.Context, command_id: str) -> None:
         f"Command requires mode={required}",
         details={"required_mode": required, "actual_mode": mode},
     )
+
+
+def _emit_success(ctx: click.Context, command: str, data: Any) -> None:
+    payload = success(
+        tool=TOOL_NAME,
+        backend=BACKEND_NAME,
+        command=command,
+        data=data,
+        started=ctx.obj["started"],
+        mode=ctx.obj["mode"],
+        version=ctx.obj["version"],
+    )
+    emit(payload, as_json=ctx.obj["json"])
 
 
 class AosGroup(click.Group):
@@ -122,16 +143,7 @@ def config_group() -> None:
 def config_show(ctx: click.Context) -> None:
     _set_command(ctx, "config.show")
     require_mode(ctx, "config.show")
-    payload = success(
-        tool=TOOL_NAME,
-        backend=BACKEND_NAME,
-        command="config.show",
-        data=build_config_show_payload()["data"],
-        started=ctx.obj["started"],
-        mode=ctx.obj["mode"],
-        version=ctx.obj["version"],
-    )
-    emit(payload, as_json=ctx.obj["json"])
+    _emit_success(ctx, "config.show", build_config_show_payload()["data"])
 
 
 @cli.command("health")
@@ -139,16 +151,7 @@ def config_show(ctx: click.Context) -> None:
 def health(ctx: click.Context) -> None:
     _set_command(ctx, "health")
     require_mode(ctx, "health")
-    payload = success(
-        tool=TOOL_NAME,
-        backend=BACKEND_NAME,
-        command="health",
-        data=build_health_payload()["data"],
-        started=ctx.obj["started"],
-        mode=ctx.obj["mode"],
-        version=ctx.obj["version"],
-    )
-    emit(payload, as_json=ctx.obj["json"])
+    _emit_success(ctx, "health", build_health_payload()["data"])
 
 
 @cli.command("doctor")
@@ -156,17 +159,10 @@ def health(ctx: click.Context) -> None:
 def doctor(ctx: click.Context) -> None:
     _set_command(ctx, "doctor")
     require_mode(ctx, "doctor")
-    payload = success(
-        tool=TOOL_NAME,
-        backend=BACKEND_NAME,
-        command="doctor",
-        data=build_doctor_payload()["data"],
-        started=ctx.obj["started"],
-        mode=ctx.obj["mode"],
-        version=ctx.obj["version"],
-    )
-    emit(payload, as_json=ctx.obj["json"])
+    _emit_success(ctx, "doctor", build_doctor_payload()["data"])
 
+
+# --- Workspace ---
 
 @cli.group("workspace")
 def workspace_group() -> None:
@@ -179,35 +175,10 @@ def workspace_group() -> None:
 def workspace_list(ctx: click.Context, limit: int) -> None:
     _set_command(ctx, "workspace.list")
     require_mode(ctx, "workspace.list")
-    payload = success(
-        tool=TOOL_NAME,
-        backend=BACKEND_NAME,
-        command="workspace.list",
-        data=build_workspace_list_payload(limit=limit)["data"],
-        started=ctx.obj["started"],
-        mode=ctx.obj["mode"],
-        version=ctx.obj["version"],
-    )
-    emit(payload, as_json=ctx.obj["json"])
+    _emit_success(ctx, "workspace.list", build_workspace_list_payload(limit=limit)["data"])
 
 
-@workspace_group.command("read")
-@click.argument("workspace_id", required=False)
-@click.pass_context
-def workspace_read(ctx: click.Context, workspace_id: str | None) -> None:
-    _set_command(ctx, "workspace.read")
-    require_mode(ctx, "workspace.read")
-    payload = success(
-        tool=TOOL_NAME,
-        backend=BACKEND_NAME,
-        command="workspace.read",
-        data=build_workspace_read_payload(workspace_id=workspace_id)["data"],
-        started=ctx.obj["started"],
-        mode=ctx.obj["mode"],
-        version=ctx.obj["version"],
-    )
-    emit(payload, as_json=ctx.obj["json"])
-
+# --- Space ---
 
 @cli.group("space")
 def space_group() -> None:
@@ -221,77 +192,19 @@ def space_group() -> None:
 def space_list(ctx: click.Context, limit: int, workspace_id: str | None) -> None:
     _set_command(ctx, "space.list")
     require_mode(ctx, "space.list")
-    payload = success(
-        tool=TOOL_NAME,
-        backend=BACKEND_NAME,
-        command="space.list",
-        data=build_space_list_payload(workspace_id=workspace_id, limit=limit)["data"],
-        started=ctx.obj["started"],
-        mode=ctx.obj["mode"],
-        version=ctx.obj["version"],
-    )
-    emit(payload, as_json=ctx.obj["json"])
+    _emit_success(ctx, "space.list", build_space_list_payload(workspace_id=workspace_id, limit=limit)["data"])
 
 
-@space_group.command("read")
+@space_group.command("get")
 @click.argument("space_id", required=False)
 @click.pass_context
-def space_read(ctx: click.Context, space_id: str | None) -> None:
-    _set_command(ctx, "space.read")
-    require_mode(ctx, "space.read")
-    payload = success(
-        tool=TOOL_NAME,
-        backend=BACKEND_NAME,
-        command="space.read",
-        data=build_space_read_payload(space_id=space_id)["data"],
-        started=ctx.obj["started"],
-        mode=ctx.obj["mode"],
-        version=ctx.obj["version"],
-    )
-    emit(payload, as_json=ctx.obj["json"])
+def space_get(ctx: click.Context, space_id: str | None) -> None:
+    _set_command(ctx, "space.get")
+    require_mode(ctx, "space.get")
+    _emit_success(ctx, "space.get", build_space_get_payload(space_id=space_id)["data"])
 
 
-@cli.group("folder")
-def folder_group() -> None:
-    pass
-
-
-@folder_group.command("list")
-@click.option("--limit", default=25, show_default=True, type=int)
-@click.argument("space_id", required=False)
-@click.pass_context
-def folder_list(ctx: click.Context, limit: int, space_id: str | None) -> None:
-    _set_command(ctx, "folder.list")
-    require_mode(ctx, "folder.list")
-    payload = success(
-        tool=TOOL_NAME,
-        backend=BACKEND_NAME,
-        command="folder.list",
-        data=build_folder_list_payload(space_id=space_id, limit=limit)["data"],
-        started=ctx.obj["started"],
-        mode=ctx.obj["mode"],
-        version=ctx.obj["version"],
-    )
-    emit(payload, as_json=ctx.obj["json"])
-
-
-@folder_group.command("read")
-@click.argument("folder_id", required=False)
-@click.pass_context
-def folder_read(ctx: click.Context, folder_id: str | None) -> None:
-    _set_command(ctx, "folder.read")
-    require_mode(ctx, "folder.read")
-    payload = success(
-        tool=TOOL_NAME,
-        backend=BACKEND_NAME,
-        command="folder.read",
-        data=build_folder_read_payload(folder_id=folder_id)["data"],
-        started=ctx.obj["started"],
-        mode=ctx.obj["mode"],
-        version=ctx.obj["version"],
-    )
-    emit(payload, as_json=ctx.obj["json"])
-
+# --- List ---
 
 @cli.group("list")
 def list_group() -> None:
@@ -301,40 +214,33 @@ def list_group() -> None:
 @list_group.command("list")
 @click.option("--limit", default=25, show_default=True, type=int)
 @click.option("--space-id", default=None)
-@click.option("--folder-id", default=None)
 @click.pass_context
-def list_list(ctx: click.Context, limit: int, space_id: str | None, folder_id: str | None) -> None:
+def list_list(ctx: click.Context, limit: int, space_id: str | None) -> None:
     _set_command(ctx, "list.list")
     require_mode(ctx, "list.list")
-    payload = success(
-        tool=TOOL_NAME,
-        backend=BACKEND_NAME,
-        command="list.list",
-        data=build_list_list_payload(space_id=space_id, folder_id=folder_id, limit=limit)["data"],
-        started=ctx.obj["started"],
-        mode=ctx.obj["mode"],
-        version=ctx.obj["version"],
-    )
-    emit(payload, as_json=ctx.obj["json"])
+    _emit_success(ctx, "list.list", build_list_list_payload(space_id=space_id, limit=limit)["data"])
 
 
-@list_group.command("read")
+@list_group.command("get")
 @click.argument("list_id", required=False)
 @click.pass_context
-def list_read(ctx: click.Context, list_id: str | None) -> None:
-    _set_command(ctx, "list.read")
-    require_mode(ctx, "list.read")
-    payload = success(
-        tool=TOOL_NAME,
-        backend=BACKEND_NAME,
-        command="list.read",
-        data=build_list_read_payload(list_id=list_id)["data"],
-        started=ctx.obj["started"],
-        mode=ctx.obj["mode"],
-        version=ctx.obj["version"],
-    )
-    emit(payload, as_json=ctx.obj["json"])
+def list_get(ctx: click.Context, list_id: str | None) -> None:
+    _set_command(ctx, "list.get")
+    require_mode(ctx, "list.get")
+    _emit_success(ctx, "list.get", build_list_get_payload(list_id=list_id)["data"])
 
+
+@list_group.command("create")
+@click.argument("name")
+@click.option("--space-id", default=None)
+@click.pass_context
+def list_create(ctx: click.Context, name: str, space_id: str | None) -> None:
+    _set_command(ctx, "list.create")
+    require_mode(ctx, "list.create")
+    _emit_success(ctx, "list.create", build_list_create_payload(space_id=space_id, name=name)["data"])
+
+
+# --- Task ---
 
 @cli.group("task")
 def task_group() -> None:
@@ -348,93 +254,165 @@ def task_group() -> None:
 def task_list(ctx: click.Context, limit: int, list_id: str | None) -> None:
     _set_command(ctx, "task.list")
     require_mode(ctx, "task.list")
-    payload = success(
-        tool=TOOL_NAME,
-        backend=BACKEND_NAME,
-        command="task.list",
-        data=build_task_list_payload(list_id=list_id, limit=limit)["data"],
-        started=ctx.obj["started"],
-        mode=ctx.obj["mode"],
-        version=ctx.obj["version"],
-    )
-    emit(payload, as_json=ctx.obj["json"])
+    _emit_success(ctx, "task.list", build_task_list_payload(list_id=list_id, limit=limit)["data"])
 
 
-@task_group.command("read")
+@task_group.command("get")
 @click.argument("task_id", required=False)
 @click.pass_context
-def task_read(ctx: click.Context, task_id: str | None) -> None:
-    _set_command(ctx, "task.read")
-    require_mode(ctx, "task.read")
-    payload = success(
-        tool=TOOL_NAME,
-        backend=BACKEND_NAME,
-        command="task.read",
-        data=build_task_read_payload(task_id=task_id)["data"],
-        started=ctx.obj["started"],
-        mode=ctx.obj["mode"],
-        version=ctx.obj["version"],
-    )
-    emit(payload, as_json=ctx.obj["json"])
+def task_get(ctx: click.Context, task_id: str | None) -> None:
+    _set_command(ctx, "task.get")
+    require_mode(ctx, "task.get")
+    _emit_success(ctx, "task.get", build_task_get_payload(task_id=task_id)["data"])
 
 
-@task_group.command("create-draft")
+@task_group.command("create")
 @click.argument("name")
 @click.option("--list-id", default=None)
 @click.option("--description", default=None)
-@click.option("--due-date", default=None)
+@click.option("--priority", default=None, type=int)
+@click.option("--status", default=None)
 @click.pass_context
-def task_create_draft(ctx: click.Context, name: str, list_id: str | None, description: str | None, due_date: str | None) -> None:
-    _set_command(ctx, "task.create_draft")
-    require_mode(ctx, "task.create_draft")
-    payload = success(
-        tool=TOOL_NAME,
-        backend=BACKEND_NAME,
-        command="task.create_draft",
-        data=build_task_create_draft_payload(list_id=list_id, name=name, description=description, due_date=due_date)["data"],
-        started=ctx.obj["started"],
-        mode=ctx.obj["mode"],
-        version=ctx.obj["version"],
-    )
-    emit(payload, as_json=ctx.obj["json"])
+def task_create(ctx: click.Context, name: str, list_id: str | None, description: str | None, priority: int | None, status: str | None) -> None:
+    _set_command(ctx, "task.create")
+    require_mode(ctx, "task.create")
+    _emit_success(ctx, "task.create", build_task_create_payload(list_id=list_id, name=name, description=description, priority=priority, status=status)["data"])
 
 
-@task_group.command("update-draft")
+@task_group.command("update")
 @click.argument("task_id", required=False)
 @click.option("--name", default=None)
 @click.option("--description", default=None)
-@click.option("--list-id", default=None)
-@click.option("--due-date", default=None)
 @click.option("--status", default=None)
+@click.option("--priority", default=None, type=int)
 @click.pass_context
-def task_update_draft(
-    ctx: click.Context,
-    task_id: str | None,
-    name: str | None,
-    description: str | None,
-    list_id: str | None,
-    due_date: str | None,
-    status: str | None,
-) -> None:
-    _set_command(ctx, "task.update_draft")
-    require_mode(ctx, "task.update_draft")
-    payload = success(
-        tool=TOOL_NAME,
-        backend=BACKEND_NAME,
-        command="task.update_draft",
-        data=build_task_update_draft_payload(
-            task_id=task_id,
-            name=name,
-            description=description,
-            list_id=list_id,
-            due_date=due_date,
-            status=status,
-        )["data"],
-        started=ctx.obj["started"],
-        mode=ctx.obj["mode"],
-        version=ctx.obj["version"],
-    )
-    emit(payload, as_json=ctx.obj["json"])
+def task_update(ctx: click.Context, task_id: str | None, name: str | None, description: str | None, status: str | None, priority: int | None) -> None:
+    _set_command(ctx, "task.update")
+    require_mode(ctx, "task.update")
+    _emit_success(ctx, "task.update", build_task_update_payload(task_id=task_id, name=name, description=description, status=status, priority=priority)["data"])
+
+
+@task_group.command("delete")
+@click.argument("task_id", required=False)
+@click.pass_context
+def task_delete(ctx: click.Context, task_id: str | None) -> None:
+    _set_command(ctx, "task.delete")
+    require_mode(ctx, "task.delete")
+    _emit_success(ctx, "task.delete", build_task_delete_payload(task_id=task_id)["data"])
+
+
+# --- Comment ---
+
+@cli.group("comment")
+def comment_group() -> None:
+    pass
+
+
+@comment_group.command("list")
+@click.argument("task_id", required=False)
+@click.pass_context
+def comment_list(ctx: click.Context, task_id: str | None) -> None:
+    _set_command(ctx, "comment.list")
+    require_mode(ctx, "comment.list")
+    _emit_success(ctx, "comment.list", build_comment_list_payload(task_id=task_id)["data"])
+
+
+@comment_group.command("create")
+@click.argument("comment_text")
+@click.option("--task-id", default=None)
+@click.pass_context
+def comment_create(ctx: click.Context, comment_text: str, task_id: str | None) -> None:
+    _set_command(ctx, "comment.create")
+    require_mode(ctx, "comment.create")
+    _emit_success(ctx, "comment.create", build_comment_create_payload(task_id=task_id, comment_text=comment_text)["data"])
+
+
+# --- Doc ---
+
+@cli.group("doc")
+def doc_group() -> None:
+    pass
+
+
+@doc_group.command("list")
+@click.argument("workspace_id", required=False)
+@click.pass_context
+def doc_list(ctx: click.Context, workspace_id: str | None) -> None:
+    _set_command(ctx, "doc.list")
+    require_mode(ctx, "doc.list")
+    _emit_success(ctx, "doc.list", build_doc_list_payload(workspace_id=workspace_id)["data"])
+
+
+@doc_group.command("get")
+@click.argument("doc_id")
+@click.pass_context
+def doc_get(ctx: click.Context, doc_id: str) -> None:
+    _set_command(ctx, "doc.get")
+    require_mode(ctx, "doc.get")
+    _emit_success(ctx, "doc.get", build_doc_get_payload(doc_id=doc_id)["data"])
+
+
+@doc_group.command("create")
+@click.argument("name")
+@click.option("--workspace-id", default=None)
+@click.option("--content", default=None)
+@click.pass_context
+def doc_create(ctx: click.Context, name: str, workspace_id: str | None, content: str | None) -> None:
+    _set_command(ctx, "doc.create")
+    require_mode(ctx, "doc.create")
+    _emit_success(ctx, "doc.create", build_doc_create_payload(workspace_id=workspace_id, name=name, content=content)["data"])
+
+
+# --- Time Tracking ---
+
+@cli.group("time-tracking")
+def time_tracking_group() -> None:
+    pass
+
+
+@time_tracking_group.command("list")
+@click.argument("task_id", required=False)
+@click.pass_context
+def time_tracking_list(ctx: click.Context, task_id: str | None) -> None:
+    _set_command(ctx, "time_tracking.list")
+    require_mode(ctx, "time_tracking.list")
+    _emit_success(ctx, "time_tracking.list", build_time_tracking_list_payload(task_id=task_id)["data"])
+
+
+@time_tracking_group.command("create")
+@click.argument("duration", type=int)
+@click.option("--task-id", default=None)
+@click.option("--description", default=None)
+@click.pass_context
+def time_tracking_create(ctx: click.Context, duration: int, task_id: str | None, description: str | None) -> None:
+    _set_command(ctx, "time_tracking.create")
+    require_mode(ctx, "time_tracking.create")
+    _emit_success(ctx, "time_tracking.create", build_time_tracking_create_payload(task_id=task_id, duration=duration, description=description)["data"])
+
+
+# --- Goal ---
+
+@cli.group("goal")
+def goal_group() -> None:
+    pass
+
+
+@goal_group.command("list")
+@click.argument("workspace_id", required=False)
+@click.pass_context
+def goal_list(ctx: click.Context, workspace_id: str | None) -> None:
+    _set_command(ctx, "goal.list")
+    require_mode(ctx, "goal.list")
+    _emit_success(ctx, "goal.list", build_goal_list_payload(workspace_id=workspace_id)["data"])
+
+
+@goal_group.command("get")
+@click.argument("goal_id")
+@click.pass_context
+def goal_get(ctx: click.Context, goal_id: str) -> None:
+    _set_command(ctx, "goal.get")
+    require_mode(ctx, "goal.get")
+    _emit_success(ctx, "goal.get", build_goal_get_payload(goal_id=goal_id)["data"])
 
 
 if __name__ == "__main__":

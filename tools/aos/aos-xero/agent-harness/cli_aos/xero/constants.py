@@ -1,0 +1,27 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+TOOL_NAME = "aos-xero"
+BACKEND_NAME = "xero-api"
+MODE_ORDER = ["readonly", "write", "admin"]
+
+PACKAGE_ROOT = Path(__file__).resolve().parent
+HARNESS_ROOT = PACKAGE_ROOT.parents[1]
+CONNECTOR_ROOT = HARNESS_ROOT.parent
+CONNECTOR_PATH = CONNECTOR_ROOT / "connector.json"
+PERMISSIONS_PATH = HARNESS_ROOT / "permissions.json"
+
+CLIENT_ID_ENV = "XERO_CLIENT_ID"
+CLIENT_SECRET_ENV = "XERO_CLIENT_SECRET"
+REFRESH_TOKEN_ENV = "XERO_REFRESH_TOKEN"
+TENANT_ID_ENV = "XERO_TENANT_ID"
+CONTACT_ID_ENV = "XERO_CONTACT_ID"
+INVOICE_ID_ENV = "XERO_INVOICE_ID"
+PAYMENT_ID_ENV = "XERO_PAYMENT_ID"
+API_BASE_URL_ENV = "XERO_API_BASE_URL"
+TOKEN_URL_ENV = "XERO_TOKEN_URL"
+
+DEFAULT_API_BASE_URL = "https://api.xero.com/api.xro/2.0"
+DEFAULT_TOKEN_URL = "https://identity.xero.com/connect/token"
+DEFAULT_TIMEOUT_SECONDS = 30.0

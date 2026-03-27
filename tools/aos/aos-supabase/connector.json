@@ -1,0 +1,402 @@
+{
+  "tool": "aos-supabase",
+  "backend": "supabase-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "database",
+    "surface": "table-storage-rpc",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["project_url", "table", "filter", "rpc_function"],
+    "worker_visible_actions": [
+      "table.select",
+      "table.insert",
+      "table.update",
+      "table.delete",
+      "rpc.call",
+      "storage.list",
+      "storage.upload",
+      "storage.download"
+    ],
+    "fields": [
+      {
+        "id": "project_url",
+        "label": "Supabase Project URL",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": false,
+        "placeholder": "https://xxx.supabase.co",
+        "description": "The Supabase project URL from Settings > API."
+      },
+      {
+        "id": "table",
+        "label": "Table",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "pickerHint": "table",
+        "applies_to": ["table.select", "table.insert", "table.update", "table.delete"],
+        "placeholder": "Select a table...",
+        "description": "The database table to operate on."
+      },
+      {
+        "id": "select_columns",
+        "label": "Columns",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["table.select"],
+        "placeholder": "id, name, email, created_at",
+        "description": "Comma-separated column names. Leave empty for all columns (SELECT *)."
+      },
+      {
+        "id": "filter",
+        "label": "Filter",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["table.select", "table.update", "table.delete"],
+        "placeholder": "status=eq.active",
+        "description": "PostgREST filter syntax (e.g. status=eq.active, age=gt.21). Multiple filters use &."
+      },
+      {
+        "id": "order_by",
+        "label": "Order By",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["table.select"],
+        "placeholder": "created_at.desc",
+        "description": "Sort order using PostgREST syntax (e.g. created_at.desc, name.asc)."
+      },
+      {
+        "id": "limit",
+        "label": "Limit",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["table.select"],
+        "placeholder": "100",
+        "description": "Maximum number of rows to return."
+      },
+      {
+        "id": "row_data",
+        "label": "Row Data",
+        "type": "json",
+        "renderAs": "json",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["table.insert", "table.update"],
+        "placeholder": "{\"name\": \"Jane\", \"email\": \"jane@example.com\"}",
+        "description": "JSON object with column values to insert or update."
+      },
+      {
+        "id": "upsert",
+        "label": "Upsert (Insert or Update)",
+        "type": "boolean",
+        "renderAs": "boolean",
+        "required": false,
+        "expressionEnabled": false,
+        "applies_to": ["table.insert"],
+        "default": false,
+        "description": "If true, update existing rows on conflict instead of erroring."
+      },
+      {
+        "id": "return_data",
+        "label": "Return Modified Rows",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "applies_to": ["table.insert", "table.update", "table.delete"],
+        "options": [
+          {
+            "value": "representation",
+            "label": "Return rows",
+            "description": "Return the inserted/updated/deleted rows"
+          },
+          {
+            "value": "minimal",
+            "label": "Minimal",
+            "description": "Return only status, no row data"
+          }
+        ],
+        "default": "representation",
+        "description": "Whether to return the modified rows in the response."
+      },
+      {
+        "id": "rpc_function",
+        "label": "RPC Function",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["rpc.call"],
+        "placeholder": "get_user_stats",
+        "description": "Name of the Postgres function to call via RPC."
+      },
+      {
+        "id": "rpc_params",
+        "label": "RPC Parameters",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["rpc.call"],
+        "placeholder": "{\"user_id\": \"abc-123\"}",
+        "description": "JSON object of named parameters to pass to the function."
+      },
+      {
+        "id": "bucket",
+        "label": "Storage Bucket",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "pickerHint": "storage",
+        "applies_to": ["storage.list", "storage.upload", "storage.download"],
+        "placeholder": "Select a bucket...",
+        "description": "The storage bucket to operate on."
+      },
+      {
+        "id": "file_path",
+        "label": "File Path",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["storage.upload", "storage.download"],
+        "placeholder": "uploads/report-2026.pdf",
+        "description": "Path within the bucket (e.g. folder/filename.ext)."
+      },
+      {
+        "id": "storage_prefix",
+        "label": "Path Prefix",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["storage.list"],
+        "placeholder": "uploads/",
+        "description": "Filter listed files to those under this prefix."
+      },
+      {
+        "id": "options",
+        "label": "Options",
+        "type": "options_group",
+        "applies_to": ["table.select", "table.insert", "table.update", "table.delete"],
+        "children": [
+          {
+            "id": "count_algorithm",
+            "label": "Count Algorithm",
+            "type": "select",
+            "renderAs": "select",
+            "expressionEnabled": false,
+            "options": [
+              { "value": "exact", "label": "Exact", "description": "Full row count (slower)" },
+              {
+                "value": "planned",
+                "label": "Planned",
+                "description": "Estimate from query plan (fast)"
+              },
+              {
+                "value": "estimated",
+                "label": "Estimated",
+                "description": "Hybrid: planned for large, exact for small"
+              }
+            ],
+            "default": "exact",
+            "description": "How to count total matching rows."
+          },
+          {
+            "id": "single_row",
+            "label": "Expect Single Row",
+            "type": "boolean",
+            "renderAs": "boolean",
+            "default": false,
+            "description": "Return a single object instead of an array. Errors if 0 or 2+ rows match."
+          }
+        ]
+      }
+    ],
+    "commandDefaults": {
+      "table.select": {
+        "selection_surface": "table",
+        "limit": 100
+      },
+      "table.insert": {
+        "selection_surface": "table"
+      },
+      "table.update": {
+        "selection_surface": "table"
+      },
+      "table.delete": {
+        "selection_surface": "table"
+      },
+      "rpc.call": {
+        "selection_surface": "rpc"
+      },
+      "storage.list": {
+        "selection_surface": "storage",
+        "limit": 100
+      },
+      "storage.upload": {
+        "selection_surface": "storage"
+      },
+      "storage.download": {
+        "selection_surface": "storage"
+      }
+    },
+    "pickerHints": {
+      "table": {
+        "kind": "table",
+        "selection_surface": "table",
+        "resource": "supabase.table",
+        "source_command": "table.select",
+        "source_fields": ["name", "schema", "row_count"]
+      },
+      "storage": {
+        "kind": "bucket",
+        "selection_surface": "storage",
+        "resource": "supabase.bucket",
+        "source_command": "storage.list",
+        "source_fields": ["id", "name", "public", "created_at"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Supabase",
+    "category": "database",
+    "categories": ["database", "storage", "backend-as-a-service"],
+    "resources": ["table", "rpc", "storage"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"],
+    "interactive_setup": [
+      "Copy the project URL from Supabase dashboard Settings > API.",
+      "Set SUPABASE_URL to the project URL (e.g. https://xxx.supabase.co).",
+      "Copy the service_role key from Settings > API > Project API keys.",
+      "Set SUPABASE_SERVICE_ROLE_KEY to the service role secret.",
+      "Optionally set SUPABASE_ANON_KEY for public-level access only.",
+      "Optionally set SUPABASE_TABLE to scope table operations to a default table.",
+      "Optionally set SUPABASE_BUCKET to scope storage operations to a default bucket.",
+      "The connector uses the PostgREST and Storage APIs via the project URL."
+    ]
+  },
+  "commands": [
+    {
+      "id": "project.info",
+      "summary": "Read Supabase project health and metadata",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "project",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "table.select",
+      "summary": "Select rows from a Supabase table",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "table",
+      "action_class": "read"
+    },
+    {
+      "id": "table.insert",
+      "summary": "Insert a row into a Supabase table",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "table",
+      "action_class": "write"
+    },
+    {
+      "id": "table.update",
+      "summary": "Update rows in a Supabase table",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "table",
+      "action_class": "write"
+    },
+    {
+      "id": "table.delete",
+      "summary": "Delete rows from a Supabase table",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "table",
+      "action_class": "write"
+    },
+    {
+      "id": "rpc.call",
+      "summary": "Call a Supabase RPC function",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "rpc",
+      "action_class": "write"
+    },
+    {
+      "id": "storage.list",
+      "summary": "List files in a Supabase storage bucket",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "storage",
+      "action_class": "read"
+    },
+    {
+      "id": "storage.upload",
+      "summary": "Upload a file to Supabase storage",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "storage",
+      "action_class": "write"
+    },
+    {
+      "id": "storage.download",
+      "summary": "Download a file from Supabase storage",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "storage",
+      "action_class": "read"
+    }
+  ]
+}

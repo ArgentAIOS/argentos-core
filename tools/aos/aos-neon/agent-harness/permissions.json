@@ -1,0 +1,16 @@
+{
+  "tool": "aos-neon",
+  "backend": "neon-api",
+  "permissions": {
+    "project.info": "readonly",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "sql.query": "readonly",
+    "sql.execute": "write",
+    "branch.list": "readonly",
+    "branch.create": "write",
+    "branch.delete": "write"
+  }
+}

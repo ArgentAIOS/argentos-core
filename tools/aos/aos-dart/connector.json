@@ -1,0 +1,343 @@
+{
+  "tool": "aos-dart",
+  "backend": "dart-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "project-management",
+    "surface": "task-dartboard-doc",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["dartboard_id", "task_id", "assignee", "status", "priority"],
+    "worker_visible_actions": [
+      "task.list",
+      "task.get",
+      "task.create",
+      "task.update",
+      "task.delete",
+      "dartboard.list",
+      "dartboard.get",
+      "doc.list",
+      "doc.get",
+      "doc.create",
+      "comment.list",
+      "comment.create",
+      "property.list"
+    ],
+    "fields": [
+      {
+        "id": "dartboard_id",
+        "label": "Dartboard",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "pickerHint": "dartboard",
+        "placeholder": "Select dartboard...",
+        "description": "The Dart dartboard ID to operate in"
+      },
+      {
+        "id": "task_id",
+        "label": "Task",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "pickerHint": "task",
+        "applies_to": ["task.get", "task.update", "task.delete", "comment.list", "comment.create"],
+        "placeholder": "Select task...",
+        "description": "The Dart task ID to operate on"
+      },
+      {
+        "id": "title",
+        "label": "Title",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["task.create", "doc.create"],
+        "placeholder": "Enter title...",
+        "description": "The title of the task or document"
+      },
+      {
+        "id": "description",
+        "label": "Description",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["task.create", "task.update"],
+        "placeholder": "Enter description...",
+        "description": "Detailed description of the task"
+      },
+      {
+        "id": "assignee",
+        "label": "Assignee",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["task.create", "task.update", "task.list"],
+        "placeholder": "Assignee name or ID...",
+        "description": "Person or team to assign the task to"
+      },
+      {
+        "id": "status",
+        "label": "Status",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "applies_to": ["task.update", "task.list"],
+        "options": [
+          { "value": "todo", "label": "To Do" },
+          { "value": "in_progress", "label": "In Progress" },
+          { "value": "done", "label": "Done" }
+        ],
+        "description": "The status to set or filter tasks by"
+      },
+      {
+        "id": "priority",
+        "label": "Priority",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "applies_to": ["task.create", "task.update"],
+        "options": [
+          { "value": "low", "label": "Low" },
+          { "value": "medium", "label": "Medium" },
+          { "value": "high", "label": "High" },
+          { "value": "urgent", "label": "Urgent" }
+        ],
+        "description": "The priority level of the task"
+      }
+    ],
+    "commandDefaults": {
+      "dartboard.list": {
+        "selection_surface": "dartboard",
+        "limit": 25
+      },
+      "dartboard.get": {
+        "selection_surface": "dartboard",
+        "args": ["DART_DARTBOARD_ID"]
+      },
+      "task.list": {
+        "selection_surface": "task",
+        "args": ["DART_DARTBOARD_ID"],
+        "limit": 25
+      },
+      "task.get": {
+        "selection_surface": "task",
+        "args": ["DART_TASK_ID"]
+      },
+      "task.create": {
+        "options": {
+          "dartboard_id": "DART_DARTBOARD_ID"
+        }
+      },
+      "task.update": {
+        "options": {
+          "task_id": "DART_TASK_ID"
+        }
+      },
+      "doc.list": {
+        "selection_surface": "doc",
+        "limit": 25
+      },
+      "doc.get": {
+        "args": ["DART_DOC_ID"]
+      },
+      "comment.list": {
+        "args": ["DART_TASK_ID"]
+      }
+    },
+    "pickerHints": {
+      "dartboard": {
+        "kind": "dartboard",
+        "selection_surface": "dartboard",
+        "resource": "dart.dartboard",
+        "source_command": "dartboard.list",
+        "source_fields": ["id", "title", "description"]
+      },
+      "task": {
+        "kind": "task",
+        "selection_surface": "task",
+        "resource": "dart.task",
+        "source_command": "task.list",
+        "source_fields": ["id", "title", "status", "assignee", "priority"]
+      },
+      "doc": {
+        "kind": "doc",
+        "selection_surface": "doc",
+        "resource": "dart.doc",
+        "source_command": "doc.list",
+        "source_fields": ["id", "title", "date_created"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Dart",
+    "category": "project-management",
+    "categories": ["project-management", "task-management", "work-management"],
+    "resources": ["dartboard", "task", "doc", "comment", "property"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["DART_API_KEY"],
+    "interactive_setup": [
+      "Create a Dart API key from your Dart workspace settings.",
+      "Add DART_API_KEY in API Keys before enabling live reads.",
+      "Optionally set DART_DARTBOARD_ID to pin a default dartboard scope.",
+      "Optionally set DART_TASK_ID for default task scope.",
+      "The connector supports live reads and writes for tasks, dartboards, docs, and comments."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and Dart setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "dartboard.list",
+      "summary": "List Dart dartboards",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "dartboard",
+      "action_class": "read"
+    },
+    {
+      "id": "dartboard.get",
+      "summary": "Read a Dart dartboard",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "dartboard",
+      "action_class": "read"
+    },
+    {
+      "id": "task.list",
+      "summary": "List tasks in a Dart dartboard",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "read"
+    },
+    {
+      "id": "task.get",
+      "summary": "Read a Dart task",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "read"
+    },
+    {
+      "id": "task.create",
+      "summary": "Create a Dart task",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "write"
+    },
+    {
+      "id": "task.update",
+      "summary": "Update a Dart task",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "write"
+    },
+    {
+      "id": "task.delete",
+      "summary": "Delete a Dart task",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "write"
+    },
+    {
+      "id": "doc.list",
+      "summary": "List Dart docs",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "doc",
+      "action_class": "read"
+    },
+    {
+      "id": "doc.get",
+      "summary": "Read a Dart doc",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "doc",
+      "action_class": "read"
+    },
+    {
+      "id": "doc.create",
+      "summary": "Create a Dart doc",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "doc",
+      "action_class": "write"
+    },
+    {
+      "id": "comment.list",
+      "summary": "List comments on a Dart task",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "comment",
+      "action_class": "read"
+    },
+    {
+      "id": "comment.create",
+      "summary": "Create a comment on a Dart task",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "comment",
+      "action_class": "write"
+    },
+    {
+      "id": "property.list",
+      "summary": "List custom properties in a Dart workspace",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "property",
+      "action_class": "read"
+    }
+  ]
+}

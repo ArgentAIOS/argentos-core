@@ -57,7 +57,7 @@ export const WorkflowMapIcon: React.FC<IconProps> = ({
 }) => {
   const mode = darkMode ? "dark" : "light";
   const color = getColor(mode, "primary");
-  const glow = getColor(mode, "glow");
+  const _glow = getColor(mode, "glow");
 
   return (
     <svg
@@ -1043,7 +1043,7 @@ export const DeepThinkIcon: React.FC<IconProps> = ({
   darkMode = true,
   animated = false,
 }) => {
-  const mode = darkMode ? "dark" : "light";
+  const _mode = darkMode ? "dark" : "light";
   const color = "#ffab00"; // warm gold always — this is the thinking warmth
 
   return (
@@ -1332,7 +1332,10 @@ export const ResearchIcon: React.FC<IconProps> = ({
 };
 
 // RESEARCH ACTIVE — Bright cyan with stronger glow
-export const ResearchActiveIcon: React.FC<IconProps> = ({ size = 24, darkMode = true }) => {
+export const ResearchActiveIcon: React.FC<IconProps> = ({
+  size = 24,
+  darkMode: _darkMode = true,
+}) => {
   const color = "#00ccff";
 
   return (
@@ -1778,7 +1781,7 @@ export const CopyIcon: React.FC<IconProps> = ({ size = 24, darkMode = true }) =>
 };
 
 // CHECK — Confirmation arc
-export const CheckIcon: React.FC<IconProps> = ({ size = 24, darkMode = true }) => {
+export const CheckIcon: React.FC<IconProps> = ({ size = 24, darkMode: _darkMode = true }) => {
   const color = "#00ffcc"; // always teal/green for success
 
   return (
@@ -3089,6 +3092,72 @@ export const WorkerAddIcon: React.FC<IconProps> = ({ size = 24, darkMode = true 
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WORKFLOWS — Pipeline builder icon (connected nodes in a flow)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const WorkflowsIcon: React.FC<IconProps> = ({ size = 24, darkMode = true }) => {
+  const mode = darkMode ? "dark" : "light";
+  const primary = getColor(mode, "primary");
+  const secondary = getColor(mode, "secondary");
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      {/* Top node */}
+      <circle cx="12" cy="4" r="2.5" stroke={primary} strokeWidth="1.5" fill="none" />
+      {/* Connection line top to middle */}
+      <line
+        x1="12"
+        y1="6.5"
+        x2="12"
+        y2="9.5"
+        stroke={primary}
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+      {/* Middle node */}
+      <rect
+        x="9"
+        y="9.5"
+        width="6"
+        height="5"
+        rx="1.5"
+        stroke={secondary}
+        strokeWidth="1.5"
+        fill="none"
+      />
+      {/* Connection lines middle to bottom pair */}
+      <line
+        x1="10.5"
+        y1="14.5"
+        x2="7"
+        y2="17.5"
+        stroke={primary}
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+      <line
+        x1="13.5"
+        y1="14.5"
+        x2="17"
+        y2="17.5"
+        stroke={primary}
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+      {/* Bottom left node */}
+      <circle cx="7" cy="19.5" r="2" stroke={primary} strokeWidth="1.5" fill="none" />
+      {/* Bottom right node */}
+      <circle cx="17" cy="19.5" r="2" stroke={secondary} strokeWidth="1.5" fill="none" />
+    </svg>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // EXPORT MAP FOR EASY REFERENCE
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -3156,6 +3225,7 @@ export const ICON_MAP = {
   "network-grid": NetworkGridIcon,
   board: BoardIcon,
   "worker-add": WorkerAddIcon,
+  workflows: WorkflowsIcon,
 };
 
 export type IconName = keyof typeof ICON_MAP;

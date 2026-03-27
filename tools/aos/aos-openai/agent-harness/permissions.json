@@ -1,0 +1,18 @@
+{
+  "tool": "aos-openai",
+  "backend": "openai-api",
+  "permissions": {
+    "chat.complete": "write",
+    "embedding.create": "write",
+    "image.generate": "write",
+    "image.edit": "write",
+    "audio.transcribe": "write",
+    "audio.tts": "write",
+    "moderation.check": "readonly",
+    "model.list": "readonly",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

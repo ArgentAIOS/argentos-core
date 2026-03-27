@@ -51,6 +51,7 @@ import {
   getCustomWidgetId,
 } from "./components/widgets/widgetRegistry";
 import { WorkflowMapCanvas } from "./components/widgets/WorkflowMapCanvas";
+import { WorkflowsWidget } from "./components/widgets/WorkflowsWidget";
 import { WorkerFlowModal } from "./components/WorkerFlowModalBridge";
 import { WorkforceBoard } from "./components/WorkforceBoardBridge";
 import { useAgentState } from "./hooks/useAgentState";
@@ -68,6 +69,7 @@ import { useWeather } from "./hooks/useWeather";
 import { useWidgets } from "./hooks/useWidgets";
 import {
   WorkflowMapIcon,
+  WorkflowsIcon,
   WorkloadsIcon,
   TaskManagerIcon,
   OrgChartIcon,
@@ -1239,9 +1241,9 @@ function App() {
   const [showBoard, setShowBoard] = useState(false);
   const [showWorkforce, setShowWorkforce] = useState(false);
   const [widgetPickerOpen, setWidgetPickerOpen] = useState(false);
-  const [opsView, setOpsView] = useState<"map" | "workers" | "jobs" | "tasks" | "org" | "schedule">(
-    "map",
-  );
+  const [opsView, setOpsView] = useState<
+    "map" | "workers" | "jobs" | "tasks" | "org" | "schedule" | "workflows"
+  >("map");
   const [operationsChatOpen, setOperationsChatOpen] = useState(false);
   const [operationsPresenceVisible, setOperationsPresenceVisible] = useState(false);
   const [operationsPresencePosition, setOperationsPresencePosition] = useState(() => {
@@ -4847,6 +4849,7 @@ function App() {
             {(() => {
               const OPS_TAB_ICONS: Record<string, React.ReactNode> = {
                 map: <WorkflowMapIcon size={16} />,
+                workflows: <WorkflowsIcon size={16} />,
                 jobs: <WorkloadsIcon size={16} />,
                 tasks: <TaskManagerIcon size={16} />,
                 org: <OrgChartIcon size={16} />,
@@ -4855,6 +4858,7 @@ function App() {
               return (
                 [
                   { id: "map", label: "Workflow Map" },
+                  { id: "workflows", label: "Workflows" },
                   { id: "jobs", label: "Workloads" },
                   { id: "tasks", label: "Task Manager" },
                   { id: "org", label: "Org Chart" },
@@ -4891,6 +4895,10 @@ function App() {
                 agentStatus={gateway.connected ? "Connected" : "Offline"}
                 gatewayRequest={gateway.request}
               />
+            </div>
+          ) : opsView === "workflows" ? (
+            <div className="flex-1 min-h-0 relative flex">
+              <WorkflowsWidget />
             </div>
           ) : opsView === "jobs" ? (
             <div className="flex-1 min-h-0 overflow-auto p-4">

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="currentColor">
+  <!-- Sync arrows circle -->
+  <path d="M96 40A40 40 0 0 1 96 88" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round"/>
+  <path d="M32 88A40 40 0 0 1 32 40" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round"/>
+  <!-- Arrow heads -->
+  <path d="M96 88l12-8-12-8" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M32 40l-12 8 12 8" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Person icon in center -->
+  <circle cx="64" cy="54" r="12"/>
+  <path d="M44 88c0-11 9-20 20-20s20 9 20 20"/>
+</svg>

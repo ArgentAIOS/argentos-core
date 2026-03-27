@@ -5,9 +5,19 @@ export function resolveSessionLane(key: string) {
   return cleaned.startsWith("session:") ? cleaned : `session:${cleaned}`;
 }
 
-export function resolveGlobalLane(lane?: string) {
+export function resolveGlobalLane(
+  lane?: string,
+  opts?: {
+    messageProvider?: string;
+    messageChannel?: string;
+  },
+) {
   const cleaned = lane?.trim();
-  return cleaned ? cleaned : CommandLane.Main;
+  if (cleaned) {
+    return cleaned;
+  }
+  const messageSurface = opts?.messageChannel?.trim() || opts?.messageProvider?.trim();
+  return messageSurface ? CommandLane.Interactive : CommandLane.Main;
 }
 
 export function resolveEmbeddedSessionLane(key: string) {

@@ -1,0 +1,250 @@
+{
+  "tool": "aos-blacksmith",
+  "backend": "blacksmith-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "ci-cd",
+    "surface": "runner-build-cache",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": false,
+    "workerFields": ["repo", "run_id", "workflow_name"],
+    "worker_visible_actions": [
+      "runner.list",
+      "runner.status",
+      "build.list",
+      "build.get",
+      "build.logs",
+      "cache.list",
+      "cache.stats",
+      "usage.summary",
+      "usage.billing"
+    ],
+    "fields": [
+      {
+        "id": "repo",
+        "label": "Repository",
+        "required": false,
+        "example": "ArgentAIOS/argentos",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "run_id",
+        "label": "Run ID",
+        "required": false,
+        "applies_to": ["build.get", "build.logs"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "workflow_name",
+        "label": "Workflow Name",
+        "required": false,
+        "applies_to": ["build.list"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "date_range",
+        "label": "Date Range",
+        "required": false,
+        "applies_to": ["usage.summary", "usage.billing"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      }
+    ],
+    "commandDefaults": {
+      "runner.list": {
+        "selection_surface": "runner"
+      },
+      "runner.status": {
+        "selection_surface": "runner"
+      },
+      "build.list": {
+        "selection_surface": "build",
+        "args": ["BLACKSMITH_REPO"],
+        "limit": 10
+      },
+      "build.get": {
+        "selection_surface": "build",
+        "args": ["BLACKSMITH_RUN_ID"]
+      },
+      "build.logs": {
+        "selection_surface": "build",
+        "args": ["BLACKSMITH_RUN_ID"]
+      },
+      "cache.list": {
+        "selection_surface": "cache",
+        "args": ["BLACKSMITH_REPO"]
+      },
+      "cache.stats": {
+        "selection_surface": "cache",
+        "args": ["BLACKSMITH_REPO"]
+      },
+      "usage.summary": {
+        "selection_surface": "usage"
+      },
+      "usage.billing": {
+        "selection_surface": "usage"
+      }
+    },
+    "pickerHints": {
+      "runner": {
+        "kind": "runner",
+        "selection_surface": "runner",
+        "resource": "blacksmith.runner",
+        "source_command": "runner.list",
+        "source_fields": ["id", "name", "status", "os", "arch", "labels"]
+      },
+      "build": {
+        "kind": "build",
+        "selection_surface": "build",
+        "resource": "blacksmith.build",
+        "source_command": "build.list",
+        "source_fields": ["id", "run_id", "workflow", "status", "duration", "created"]
+      },
+      "cache": {
+        "kind": "cache",
+        "selection_surface": "cache",
+        "resource": "blacksmith.cache",
+        "source_command": "cache.list",
+        "source_fields": ["key", "size", "created", "last_accessed"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Blacksmith",
+    "category": "developer-tools",
+    "categories": ["developer-tools", "ci-cd", "infrastructure"],
+    "resources": ["runner", "build", "cache", "usage"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["BLACKSMITH_API_KEY"],
+    "interactive_setup": [
+      "Create a Blacksmith API key at https://app.blacksmith.sh/settings.",
+      "Add BLACKSMITH_API_KEY in API Keys before enabling live reads.",
+      "Optionally set BLACKSMITH_REPO to a default repository for build and cache queries.",
+      "Optionally set BLACKSMITH_RUN_ID to pin a specific build run for log retrieval.",
+      "The connector is live-read-first and does not perform write mutations.",
+      "The connector will report API failures instead of masking them."
+    ]
+  },
+  "commands": [
+    {
+      "id": "runner.list",
+      "summary": "List Blacksmith CI runners",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "runner",
+      "action_class": "read"
+    },
+    {
+      "id": "runner.status",
+      "summary": "Check status of Blacksmith runners",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "runner",
+      "action_class": "read"
+    },
+    {
+      "id": "build.list",
+      "summary": "List recent CI builds",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "build",
+      "action_class": "read"
+    },
+    {
+      "id": "build.get",
+      "summary": "Get details of a specific build run",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "build",
+      "action_class": "read"
+    },
+    {
+      "id": "build.logs",
+      "summary": "Retrieve logs for a build run",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "build",
+      "action_class": "read"
+    },
+    {
+      "id": "cache.list",
+      "summary": "List cached artifacts for a repository",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "cache",
+      "action_class": "read"
+    },
+    {
+      "id": "cache.stats",
+      "summary": "Get cache hit/miss statistics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "cache",
+      "action_class": "read"
+    },
+    {
+      "id": "usage.summary",
+      "summary": "Get CI usage summary and compute minutes",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "usage",
+      "action_class": "read"
+    },
+    {
+      "id": "usage.billing",
+      "summary": "Get billing details and cost breakdown",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "usage",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

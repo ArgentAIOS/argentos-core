@@ -217,6 +217,7 @@ export function createGatewayHttpServer(opts: {
   openResponsesConfig?: import("../config/types.gateway.js").GatewayHttpResponsesConfig;
   handleHooksRequest: HooksRequestHandler;
   handlePluginRequest?: HooksRequestHandler;
+  handleWorkflowWebhook?: HooksRequestHandler;
   resolvedAuth: import("./auth.js").ResolvedGatewayAuth;
   tlsOptions?: TlsOptions;
 }): HttpServer {
@@ -230,6 +231,7 @@ export function createGatewayHttpServer(opts: {
     openResponsesConfig,
     handleHooksRequest,
     handlePluginRequest,
+    handleWorkflowWebhook,
     resolvedAuth,
   } = opts;
   const httpServer: HttpServer = opts.tlsOptions
@@ -272,6 +274,9 @@ export function createGatewayHttpServer(opts: {
       const configSnapshot = loadConfig();
       const trustedProxies = configSnapshot.gateway?.trustedProxies ?? [];
       if (await handleSisFeedbackRequest(req, res)) {
+        return;
+      }
+      if (handleWorkflowWebhook && (await handleWorkflowWebhook(req, res))) {
         return;
       }
       if (await handleHooksRequest(req, res)) {

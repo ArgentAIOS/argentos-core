@@ -20,11 +20,26 @@ export type SessionModelOverride = TierModelMapping & {
   fallbacks?: string[];
 };
 
+export type ModelProfileRoutingPolicy = {
+  /**
+   * Minimum tier to use when the prompt is likely to require a tool call.
+   * Omit to disable this floor for the profile.
+   */
+  likelyToolUseMinTier?: ModelTier;
+  /**
+   * Minimum tier to use when the prompt is likely to require memory/timeline retrieval.
+   * Omit to disable this floor for the profile.
+   */
+  likelyMemoryUseMinTier?: ModelTier;
+};
+
 export type ModelProfile = {
   label?: string;
   tiers: Partial<Record<ModelTier, TierModelMapping>>;
   /** Next profile to try when this profile's provider is unavailable (rate-limited). */
   fallbackProfile?: string;
+  /** Optional routing heuristics for this profile. */
+  routingPolicy?: ModelProfileRoutingPolicy;
   /**
    * Session-specific model overrides for this profile.
    * Useful for forcing contemplation/SIS to a dedicated model chain.

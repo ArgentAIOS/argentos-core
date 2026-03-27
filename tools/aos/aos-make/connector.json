@@ -20,6 +20,76 @@
       "scenario.trigger",
       "execution.run"
     ],
+    "workerFields": ["scenario_id", "scenario_name", "event", "payload", "active"],
+    "fields": [
+      {
+        "id": "scenario_id",
+        "label": "Scenario ID",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Make scenario ID to target",
+        "placeholder": "54321",
+        "applies_to": ["scenario.status", "scenario.trigger", "execution.run"]
+      },
+      {
+        "id": "scenario_name",
+        "label": "Scenario Name",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Scenario name for display and filtering",
+        "placeholder": "my-scenario",
+        "applies_to": ["scenario.list", "scenario.trigger"]
+      },
+      {
+        "id": "event",
+        "label": "Event Type",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "description": "Type of event triggering the scenario",
+        "options": [
+          { "value": "manual", "label": "Manual Trigger" },
+          { "value": "webhook", "label": "Webhook" },
+          { "value": "scheduled", "label": "Scheduled" },
+          { "value": "replay", "label": "Replay" },
+          { "value": "custom", "label": "Custom" }
+        ],
+        "default": "manual",
+        "applies_to": ["scenario.trigger", "execution.run"]
+      },
+      {
+        "id": "payload",
+        "label": "Trigger Payload",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "json",
+        "description": "JSON payload data to pass to the scenario",
+        "placeholder": "{\"source\": \"agent\", \"reason\": \"follow-up\"}",
+        "applies_to": ["scenario.trigger", "execution.run"]
+      },
+      {
+        "id": "active",
+        "label": "Activate Scenario",
+        "type": "boolean",
+        "renderAs": "boolean",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "boolean",
+        "description": "Automatically activate scenario after trigger",
+        "default": true,
+        "applies_to": ["scenario.trigger"]
+      }
+    ],
     "commandDefaults": {
       "organization.list": {
         "selection_surface": "organization",

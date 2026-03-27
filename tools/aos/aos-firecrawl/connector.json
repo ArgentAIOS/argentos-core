@@ -2,6 +2,99 @@
   "tool": "aos-firecrawl",
   "backend": "firecrawl",
   "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "knowledge-docs",
+    "surface": "web-scrape-extract",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": false,
+    "workerFields": ["url", "format", "limit", "include_html_tags", "wait_for_selector"],
+    "worker_visible_actions": ["scrape"],
+    "fields": [
+      {
+        "id": "url",
+        "label": "URL",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["scrape"],
+        "placeholder": "https://example.com/page",
+        "description": "Public URL of the web page to scrape."
+      },
+      {
+        "id": "format",
+        "label": "Output Format",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "applies_to": ["scrape"],
+        "placeholder": "markdown",
+        "description": "Format for the extracted content.",
+        "options": [
+          { "value": "markdown", "label": "Markdown" },
+          { "value": "html", "label": "HTML" },
+          { "value": "json", "label": "JSON" },
+          { "value": "plaintext", "label": "Plain Text" }
+        ],
+        "default": "markdown"
+      },
+      {
+        "id": "limit",
+        "label": "Content Limit (Characters)",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "applies_to": ["scrape"],
+        "placeholder": "10000",
+        "description": "Maximum characters to extract from the page."
+      },
+      {
+        "id": "include_html_tags",
+        "label": "Include HTML Tags",
+        "type": "boolean",
+        "renderAs": "boolean",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "boolean",
+        "applies_to": ["scrape"],
+        "default": false,
+        "description": "Include HTML tags in the output (useful for markdown with formatting)."
+      },
+      {
+        "id": "wait_for_selector",
+        "label": "CSS Selector to Wait For",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["scrape"],
+        "placeholder": ".dynamic-content",
+        "description": "CSS selector for elements to wait for before scraping (for dynamic content)."
+      }
+    ],
+    "commandDefaults": {
+      "scrape": {
+        "selection_surface": "page",
+        "format": "markdown"
+      }
+    },
+    "pickerHints": {
+      "page": {
+        "kind": "page",
+        "selection_surface": "page",
+        "resource": "firecrawl.page",
+        "source_fields": ["url", "format", "content_length"]
+      }
+    }
+  },
   "connector": {
     "label": "Firecrawl",
     "category": "knowledge-docs",

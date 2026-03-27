@@ -4,6 +4,7 @@ import {
   emitAgentEvent,
   getAgentRunContext,
   onAgentEvent,
+  recordAgentRunTiming,
   registerAgentRunContext,
   resetAgentRunContextForTest,
 } from "./agent-events.js";
@@ -15,6 +16,23 @@ describe("agent-events sequencing", () => {
     expect(getAgentRunContext("run-1")?.sessionKey).toBe("main");
     clearAgentRunContext("run-1");
     expect(getAgentRunContext("run-1")).toBeUndefined();
+  });
+
+  test("records first timing once unless overwrite is requested", async () => {
+    resetAgentRunContextForTest();
+    registerAgentRunContext("run-1", {
+      sessionKey: "main",
+      timings: { startedAt: 100 },
+    });
+
+    recordAgentRunTiming("run-1", "firstVisibleDeltaAt", 150);
+    recordAgentRunTiming("run-1", "firstVisibleDeltaAt", 175);
+    recordAgentRunTiming("run-1", "completedAt", 300, { overwrite: true });
+    recordAgentRunTiming("run-1", "completedAt", 325, { overwrite: true });
+
+    expect(getAgentRunContext("run-1")?.timings?.startedAt).toBe(100);
+    expect(getAgentRunContext("run-1")?.timings?.firstVisibleDeltaAt).toBe(150);
+    expect(getAgentRunContext("run-1")?.timings?.completedAt).toBe(325);
   });
 
   test("maintains monotonic seq per runId", async () => {

@@ -1,0 +1,330 @@
+{
+  "tool": "aos-pagerduty",
+  "backend": "pagerduty-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "incident-management",
+    "surface": "incident-service-oncall",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": false,
+    "workerFields": [
+      "service_id",
+      "incident_id",
+      "escalation_policy_id",
+      "urgency",
+      "title",
+      "description"
+    ],
+    "worker_visible_actions": [
+      "incident.list",
+      "incident.get",
+      "service.list",
+      "service.get",
+      "escalation_policy.list",
+      "on_call.list",
+      "alert.list"
+    ],
+    "fields": [
+      {
+        "id": "service_id",
+        "label": "Service ID",
+        "required": false,
+        "applies_to": ["service.get", "incident.list", "incident.create", "alert.list"],
+        "example": "PABC123",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "incident_id",
+        "label": "Incident ID",
+        "required": false,
+        "applies_to": ["incident.get", "incident.acknowledge", "incident.resolve", "alert.list"],
+        "example": "P1234XYZ",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "urgency",
+        "label": "Urgency",
+        "required": false,
+        "applies_to": ["incident.create", "incident.list"],
+        "example": "high",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "title",
+        "label": "Title",
+        "required": false,
+        "applies_to": ["incident.create"],
+        "example": "Database connection pool exhausted",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "description",
+        "label": "Description",
+        "required": false,
+        "applies_to": ["incident.create", "change_event.create"],
+        "example": "Primary DB connection pool at 100% capacity",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "escalation_policy_id",
+        "label": "Escalation Policy ID",
+        "required": false,
+        "applies_to": ["escalation_policy.list", "incident.create"],
+        "example": "PESC456",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      }
+    ],
+    "commandDefaults": {
+      "incident.list": {
+        "selection_surface": "incident",
+        "limit": 25,
+        "statuses": ["triggered", "acknowledged"]
+      },
+      "incident.get": {
+        "selection_surface": "incident",
+        "args": ["PAGERDUTY_INCIDENT_ID"]
+      },
+      "incident.create": {
+        "selection_surface": "incident",
+        "args": ["PAGERDUTY_SERVICE_ID"],
+        "urgency": "PAGERDUTY_URGENCY"
+      },
+      "incident.acknowledge": {
+        "selection_surface": "incident",
+        "args": ["PAGERDUTY_INCIDENT_ID"]
+      },
+      "incident.resolve": {
+        "selection_surface": "incident",
+        "args": ["PAGERDUTY_INCIDENT_ID"]
+      },
+      "service.list": {
+        "selection_surface": "service",
+        "limit": 25
+      },
+      "service.get": {
+        "selection_surface": "service",
+        "args": ["PAGERDUTY_SERVICE_ID"]
+      },
+      "escalation_policy.list": {
+        "selection_surface": "escalation_policy",
+        "limit": 25
+      },
+      "on_call.list": {
+        "selection_surface": "on_call",
+        "limit": 25
+      },
+      "alert.list": {
+        "selection_surface": "alert",
+        "limit": 25,
+        "args": ["PAGERDUTY_INCIDENT_ID"]
+      },
+      "change_event.create": {
+        "selection_surface": "change_event"
+      }
+    },
+    "pickerHints": {
+      "incident": {
+        "kind": "incident",
+        "selection_surface": "incident",
+        "resource": "pagerduty.incident",
+        "source_command": "incident.list",
+        "source_fields": ["id", "title", "status", "urgency", "service", "created_at", "updated_at"]
+      },
+      "service": {
+        "kind": "service",
+        "selection_surface": "service",
+        "resource": "pagerduty.service",
+        "source_command": "service.list",
+        "source_fields": ["id", "name", "status", "description", "escalation_policy"]
+      },
+      "escalation_policy": {
+        "kind": "escalation_policy",
+        "selection_surface": "escalation_policy",
+        "resource": "pagerduty.escalation_policy",
+        "source_command": "escalation_policy.list",
+        "source_fields": ["id", "name", "num_loops", "teams", "services"]
+      },
+      "on_call": {
+        "kind": "on_call",
+        "selection_surface": "on_call",
+        "resource": "pagerduty.on_call",
+        "source_command": "on_call.list",
+        "source_fields": [
+          "user",
+          "schedule",
+          "escalation_policy",
+          "escalation_level",
+          "start",
+          "end"
+        ]
+      },
+      "alert": {
+        "kind": "alert",
+        "selection_surface": "alert",
+        "resource": "pagerduty.alert",
+        "source_command": "alert.list",
+        "source_fields": ["id", "status", "severity", "summary", "created_at", "incident"]
+      }
+    }
+  },
+  "connector": {
+    "label": "PagerDuty",
+    "category": "it-operations",
+    "categories": ["it-operations", "incident-management", "monitoring-alerting"],
+    "resources": ["incident", "service", "escalation_policy", "on_call", "alert", "change_event"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["PAGERDUTY_API_KEY"],
+    "interactive_setup": [
+      "Create or choose a PagerDuty REST API key (v2) from Settings > API Access Keys.",
+      "Add PAGERDUTY_API_KEY in API Keys before enabling live reads.",
+      "Optionally set PAGERDUTY_SERVICE_ID, PAGERDUTY_INCIDENT_ID, and PAGERDUTY_ESCALATION_POLICY_ID for stable scope defaults.",
+      "incident.create and change_event.create are write actions \u2014 keep scaffolded until write workflows are approved.",
+      "The connector is live-read-first and will report API failures instead of masking them."
+    ]
+  },
+  "commands": [
+    {
+      "id": "incident.list",
+      "summary": "List PagerDuty incidents",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "incident",
+      "action_class": "read"
+    },
+    {
+      "id": "incident.get",
+      "summary": "Get a PagerDuty incident by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "incident",
+      "action_class": "read"
+    },
+    {
+      "id": "incident.create",
+      "summary": "Create a PagerDuty incident",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "incident",
+      "action_class": "write"
+    },
+    {
+      "id": "incident.acknowledge",
+      "summary": "Acknowledge a PagerDuty incident",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "incident",
+      "action_class": "write"
+    },
+    {
+      "id": "incident.resolve",
+      "summary": "Resolve a PagerDuty incident",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "incident",
+      "action_class": "write"
+    },
+    {
+      "id": "service.list",
+      "summary": "List PagerDuty services",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "service",
+      "action_class": "read"
+    },
+    {
+      "id": "service.get",
+      "summary": "Get a PagerDuty service by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "service",
+      "action_class": "read"
+    },
+    {
+      "id": "escalation_policy.list",
+      "summary": "List PagerDuty escalation policies",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "escalation_policy",
+      "action_class": "read"
+    },
+    {
+      "id": "on_call.list",
+      "summary": "List who is currently on call",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "on_call",
+      "action_class": "read"
+    },
+    {
+      "id": "alert.list",
+      "summary": "List alerts for an incident",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "alert",
+      "action_class": "read"
+    },
+    {
+      "id": "change_event.create",
+      "summary": "Send a change event to PagerDuty",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "change_event",
+      "action_class": "write"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

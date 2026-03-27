@@ -84,5 +84,8 @@ export function normalizePayloadToSystemText(payload: CronPayload) {
   if (payload.kind === "slackSignalScan") {
     return "Slack signal scan";
   }
+  if (payload.kind === "workflowRun") {
+    return `Workflow run: ${payload.workflowId}`;
+  }
   return "VIP email scan";
 }

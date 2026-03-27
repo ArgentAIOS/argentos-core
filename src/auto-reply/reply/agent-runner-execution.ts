@@ -121,12 +121,14 @@ export async function runAgentTurnWithFallback(params: {
   const directlySentBlockKeys = new Set<string>();
 
   const runId = params.opts?.runId ?? crypto.randomUUID();
+  const runStartedAt = Date.now();
   params.opts?.onAgentRunStart?.(runId);
   if (params.sessionKey) {
     registerAgentRunContext(runId, {
       sessionKey: params.sessionKey,
       verboseLevel: params.resolvedVerboseLevel,
       isHeartbeat: params.isHeartbeat,
+      timings: { startedAt: runStartedAt },
     });
   }
   let runResult: Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
@@ -325,6 +327,7 @@ export async function runAgentTurnWithFallback(params: {
             enforceFinalTag: resolveEnforceFinalTag(params.followupRun.run, provider),
             provider,
             model,
+            preselectedModel: true,
             authProfileId,
             authProfileIdSource: authProfileId
               ? params.followupRun.run.authProfileIdSource

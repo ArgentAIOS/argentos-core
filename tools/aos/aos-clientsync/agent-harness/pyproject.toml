@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aos-clientsync"
+version = "0.1.0"
+description = "ArgentOS ClientSync MSP management connector"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["click>=8.1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+aos-clientsync = "cli_aos.clientsync.cli:cli"
+
+[tool.setuptools]
+package-dir = { "" = "." }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cli_aos*"]
