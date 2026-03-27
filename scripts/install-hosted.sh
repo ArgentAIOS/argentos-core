@@ -271,15 +271,41 @@ resolve_pnpm_runner() {
   node_dir="$(dirname "$node_bin")"
   PNPM_EXEC=""
   PNPM_SUBCOMMAND=""
+
+  # 1. Try corepack (ships with Node 22+, needs enabling)
   if [[ -x "$node_dir/corepack" ]]; then
+    # Enable corepack if not already (idempotent)
+    "$node_dir/corepack" enable 2>/dev/null || true
     PNPM_EXEC="$node_dir/corepack"
     PNPM_SUBCOMMAND="pnpm"
     return 0
   fi
+
+  # 2. Try system pnpm
   if command -v pnpm >/dev/null 2>&1; then
     PNPM_EXEC="$(command -v pnpm)"
     return 0
   fi
+
+  # 3. Install pnpm via npm (brand new system fallback)
+  local npm_bin="$node_dir/npm"
+  if [[ ! -x "$npm_bin" ]]; then
+    npm_bin="$(command -v npm 2>/dev/null || true)"
+  fi
+  if [[ -x "$npm_bin" ]]; then
+    info "Installing pnpm via npm..."
+    "$npm_bin" install -g pnpm 2>/dev/null || true
+    if command -v pnpm >/dev/null 2>&1; then
+      PNPM_EXEC="$(command -v pnpm)"
+      return 0
+    fi
+    # npm install -g may put it in node_dir
+    if [[ -x "$node_dir/pnpm" ]]; then
+      PNPM_EXEC="$node_dir/pnpm"
+      return 0
+    fi
+  fi
+
   return 1
 }
 
