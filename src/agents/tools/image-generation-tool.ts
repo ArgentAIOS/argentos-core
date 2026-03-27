@@ -10,8 +10,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AnyAgentTool } from "./common.js";
-import { readStringParam } from "./common.js";
 import { resolveServiceKey } from "../../infra/service-keys.js";
+import { readStringParam } from "./common.js";
 
 const ImageGenSchema = Type.Object({
   prompt: Type.String({ description: "Description of the image to generate." }),
