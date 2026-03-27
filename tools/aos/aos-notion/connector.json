@@ -2,6 +2,109 @@
   "tool": "aos-notion",
   "backend": "notion-api",
   "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "knowledge-base",
+    "surface": "database-page-block",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["database_id", "page_id", "parent_id"],
+    "worker_visible_actions": [
+      "database.list",
+      "database.query",
+      "page.read",
+      "page.create",
+      "page.update",
+      "block.read",
+      "block.append",
+      "search.query"
+    ],
+    "fields": [
+      {
+        "id": "database_id",
+        "label": "Database",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "Select database...",
+        "description": "Notion database ID to query or operate on"
+      },
+      {
+        "id": "page_id",
+        "label": "Page",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "Select page...",
+        "description": "Notion page ID to read or update"
+      },
+      {
+        "id": "parent_id",
+        "label": "Parent Page/Database",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["page.create"],
+        "placeholder": "Select parent...",
+        "description": "Parent page or database ID for new pages"
+      },
+      {
+        "id": "title",
+        "label": "Page Title",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["page.create", "page.update"],
+        "placeholder": "Enter page title...",
+        "description": "Title of the Notion page"
+      },
+      {
+        "id": "content",
+        "label": "Content",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["page.create", "page.update", "block.append"],
+        "placeholder": "Enter content...",
+        "description": "Page or block content"
+      },
+      {
+        "id": "properties",
+        "label": "Database Properties",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "json",
+        "applies_to": ["page.create", "page.update"],
+        "placeholder": "{}",
+        "description": "JSON object of database property values"
+      },
+      {
+        "id": "search_query",
+        "label": "Search Query",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["search.query"],
+        "placeholder": "Search terms...",
+        "description": "Text to search for in pages and databases"
+      }
+    ]
+  },
   "connector": {
     "label": "Notion",
     "category": "productivity-suite",
@@ -16,7 +119,7 @@
       "Create a Notion internal integration for the workspace you want this worker to use.",
       "Share the target databases and pages with that integration before enabling any worker-visible commands.",
       "Add NOTION_TOKEN in API Keys; optionally set NOTION_VERSION if you want to pin a specific Notion API release.",
-      "Live reads are enabled now; keep write commands scaffolded until a live Notion write bridge is implemented."
+      "Live reads and writes are enabled now; write commands execute against the live Notion API."
     ]
   },
   "commands": [

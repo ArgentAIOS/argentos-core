@@ -314,12 +314,17 @@ export async function createModelSelectionState(params: {
     allowedModelKeys = allowed.allowedKeys;
   }
 
+  // Providers that exist in Pi's built-in catalog but are never configured locally.
+  // Stale session overrides can reference them; reject early rather than propagate.
+  const BLOCKED_PROVIDERS = new Set(["amazon-bedrock", "azure-openai"]);
+
   if (sessionEntry && sessionStore && sessionKey && hasStoredOverride) {
     const overrideProvider = sessionEntry.providerOverride?.trim() || defaultProvider;
     const overrideModel = sessionEntry.modelOverride?.trim();
     if (overrideModel) {
       const key = modelKey(overrideProvider, overrideModel);
-      if (allowedModelKeys.size > 0 && !allowedModelKeys.has(key)) {
+      const isBlocked = BLOCKED_PROVIDERS.has(normalizeProviderId(overrideProvider));
+      if (isBlocked || (allowedModelKeys.size > 0 && !allowedModelKeys.has(key))) {
         const { updated } = applyModelOverrideToSessionEntry({
           entry: sessionEntry,
           selection: { provider: defaultProvider, model: defaultModel, isDefault: true },
@@ -346,7 +351,25 @@ export async function createModelSelectionState(params: {
   if (storedOverride?.model) {
     const candidateProvider = storedOverride.provider || defaultProvider;
     const key = modelKey(candidateProvider, storedOverride.model);
-    if (allowedModelKeys.size === 0 || allowedModelKeys.has(key)) {
+    const isBlocked = BLOCKED_PROVIDERS.has(normalizeProviderId(candidateProvider));
+    if (isBlocked) {
+      // Clear the stale override so it doesn't keep firing
+      if (sessionEntry && sessionStore && sessionKey) {
+        const { updated } = applyModelOverrideToSessionEntry({
+          entry: sessionEntry,
+          selection: { provider: defaultProvider, model: defaultModel, isDefault: true },
+        });
+        if (updated) {
+          sessionStore[sessionKey] = sessionEntry;
+          if (storePath) {
+            await updateSessionStore(storePath, (store) => {
+              store[sessionKey] = sessionEntry;
+            });
+          }
+        }
+        resetModelOverride = true;
+      }
+    } else if (allowedModelKeys.size === 0 || allowedModelKeys.has(key)) {
       provider = candidateProvider;
       model = storedOverride.model;
     }

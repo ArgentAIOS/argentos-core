@@ -1,5 +1,100 @@
 {
+  "tool": "aos-slack",
   "backend": "slack-web-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "messaging",
+    "surface": "channel-message-thread",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["channel", "message_text", "thread_ts", "username", "user_id"],
+    "worker_visible_actions": [
+      "message.search",
+      "message.reply",
+      "channel.list",
+      "mention.scan",
+      "people.list",
+      "reaction.list"
+    ],
+    "fields": [
+      {
+        "id": "channel",
+        "label": "Channel ID or Name",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["message.search", "message.reply", "channel.list"],
+        "placeholder": "C1234567890 or #general",
+        "description": "The Slack channel ID (e.g. C1234567890) or channel name (e.g. #general) to send or search messages in."
+      },
+      {
+        "id": "message_text",
+        "label": "Message text",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "rows": 4,
+        "applies_to": ["message.reply"],
+        "placeholder": "Your message here...",
+        "description": "The text content of the message to send. Supports Slack markdown, mentions, and emoji."
+      },
+      {
+        "id": "thread_ts",
+        "label": "Thread timestamp",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["message.reply"],
+        "placeholder": "1609459200.001200",
+        "description": "The thread timestamp (ts) to reply in. If omitted, sends to channel root."
+      },
+      {
+        "id": "username",
+        "label": "Username",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["message.reply"],
+        "placeholder": "argent-bot",
+        "description": "Optional username for the bot when posting (username override in workspace app settings)."
+      },
+      {
+        "id": "user_id",
+        "label": "User ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["people.list"],
+        "placeholder": "U1234567890",
+        "description": "A Slack user ID to filter or mention. Used in people listing and mention scanning."
+      },
+      {
+        "id": "search_query",
+        "label": "Search query",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "rows": 3,
+        "applies_to": ["message.search"],
+        "placeholder": "text from:@username",
+        "description": "Search query in Slack's query syntax (supports filters like from:, in:, before:, etc.)."
+      }
+    ]
+  },
   "connector": {
     "label": "Slack",
     "category": "general",

@@ -318,7 +318,8 @@ public final class ArgentChatViewModel {
     private func fetchSessions(limit: Int?) async {
         do {
             let res = try await self.transport.listSessions(limit: limit)
-            self.sessions = res.sessions
+            self.sessions = res.sessions.filteredVisibleOperatorSessions(
+                currentSessionKey: self.sessionKey)
         } catch {
             // Best-effort.
         }

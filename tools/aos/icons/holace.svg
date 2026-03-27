@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="currentColor">
+  <!-- Shield -->
+  <path d="M64 8L16 28v36c0 28 20 48 48 56 28-8 48-28 48-56V28L64 8z" fill="none" stroke="currentColor" stroke-width="7"/>
+  <!-- Scales of justice (simplified) -->
+  <line x1="64" y1="36" x2="64" y2="88" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+  <line x1="40" y1="52" x2="88" y2="52" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="40" cy="68" r="10" fill="none" stroke="currentColor" stroke-width="4"/>
+  <circle cx="88" cy="68" r="10" fill="none" stroke="currentColor" stroke-width="4"/>
+</svg>

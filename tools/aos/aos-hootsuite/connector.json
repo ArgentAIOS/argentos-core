@@ -25,37 +25,62 @@
       {
         "id": "member",
         "label": "Authenticated member",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
         "applies_to": ["me.read"],
-        "example": "authenticated member"
+        "placeholder": "authenticated member",
+        "description": "Refers to the currently authenticated Hootsuite member (read-only, populated on query)."
       },
       {
         "id": "organization_id",
         "label": "Organization ID",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
-        "applies_to": ["team.list"],
-        "example": "626731"
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["team.list", "social_profile.list"],
+        "placeholder": "626731",
+        "description": "Hootsuite organization ID. Required to list teams and social profiles."
       },
       {
         "id": "social_profile_id",
         "label": "Social profile ID",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
         "applies_to": ["social_profile.read", "message.list", "message.schedule"],
-        "example": "115185509"
+        "placeholder": "115185509",
+        "description": "The Hootsuite social profile ID (Twitter, Facebook, LinkedIn, Instagram, etc.) to fetch or publish messages on."
       },
       {
         "id": "team_id",
         "label": "Team ID",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
         "applies_to": ["team.read"],
-        "example": "359493"
+        "placeholder": "359493",
+        "description": "Hootsuite team ID to read team information."
       },
       {
         "id": "message_id",
         "label": "Message ID",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
         "applies_to": ["message.read"],
-        "example": "4138476039"
+        "placeholder": "4138476039",
+        "description": "The Hootsuite message ID to read details or status of a scheduled or published message."
       }
     ],
     "commandDefaults": {

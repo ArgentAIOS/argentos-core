@@ -2,6 +2,95 @@
   "tool": "aos-monday",
   "backend": "monday-api",
   "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "work-management",
+    "surface": "board-item-update",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["workspace_id", "board_id", "item_id", "column_id"],
+    "worker_visible_actions": [
+      "workspace.list",
+      "board.list",
+      "board.read",
+      "item.read",
+      "item.create",
+      "item.update",
+      "update.list",
+      "update.create"
+    ],
+    "fields": [
+      {
+        "id": "workspace_id",
+        "label": "Workspace",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "Select workspace...",
+        "description": "Monday workspace to operate in"
+      },
+      {
+        "id": "board_id",
+        "label": "Board",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "Select board...",
+        "description": "Monday board ID to operate on"
+      },
+      {
+        "id": "item_id",
+        "label": "Item",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "Select item...",
+        "description": "Monday item ID to operate on"
+      },
+      {
+        "id": "item_name",
+        "label": "Item Name",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["item.create", "item.update"],
+        "placeholder": "Enter item name...",
+        "description": "Name of the item to create or update"
+      },
+      {
+        "id": "column_id",
+        "label": "Column",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "Select column...",
+        "description": "Monday column ID for status or field updates"
+      },
+      {
+        "id": "column_value",
+        "label": "Column Value",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["item.update"],
+        "placeholder": "Enter value...",
+        "description": "Value to set in the specified column"
+      }
+    ]
+  },
   "connector": {
     "label": "Monday.com",
     "category": "productivity-suite",

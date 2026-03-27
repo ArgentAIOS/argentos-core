@@ -113,6 +113,13 @@ export type CronPayload =
       emitAlerts?: boolean;
       createTasks?: boolean;
       accountId?: string;
+    }
+  | {
+      kind: "workflowRun";
+      /** UUID of the workflow to execute. */
+      workflowId: string;
+      /** Optional payload forwarded to the trigger node. */
+      triggerPayload?: Record<string, unknown>;
     };
 
 export type CronPayloadPatch =
@@ -155,6 +162,11 @@ export type CronPayloadPatch =
       emitAlerts?: boolean;
       createTasks?: boolean;
       accountId?: string;
+    }
+  | {
+      kind: "workflowRun";
+      workflowId?: string;
+      triggerPayload?: Record<string, unknown>;
     };
 
 export type CronJobState = {

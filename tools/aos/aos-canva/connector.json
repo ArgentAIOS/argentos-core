@@ -1,0 +1,405 @@
+{
+  "tool": "aos-canva",
+  "backend": "canva-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "design",
+    "surface": "design-asset-export-brand",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["design_id", "template_id", "folder_id", "brand_template_id", "export_format"],
+    "worker_visible_actions": [
+      "design.list",
+      "design.get",
+      "design.create",
+      "design.clone",
+      "template.list",
+      "template.get",
+      "brand_template.list",
+      "brand_template.create_design",
+      "asset.upload",
+      "asset.list",
+      "folder.list",
+      "folder.create",
+      "export.start",
+      "export.status",
+      "export.download",
+      "autofill.create"
+    ],
+    "fields": [
+      {
+        "id": "design_id",
+        "label": "Design ID",
+        "required": false,
+        "applies_to": ["design.get", "design.clone", "export.start"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "template_id",
+        "label": "Template ID",
+        "required": false,
+        "applies_to": ["template.get", "design.create"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "brand_template_id",
+        "label": "Brand Template ID",
+        "required": false,
+        "applies_to": ["brand_template.create_design", "autofill.create"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "folder_id",
+        "label": "Folder ID",
+        "required": false,
+        "applies_to": ["design.list", "folder.list", "asset.list"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "title",
+        "label": "Design Title",
+        "required": false,
+        "applies_to": ["design.create", "design.clone"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "export_format",
+        "label": "Export Format",
+        "required": false,
+        "applies_to": ["export.start"],
+        "example": "png",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "autofill_data",
+        "label": "Autofill Data (JSON)",
+        "required": false,
+        "applies_to": ["autofill.create"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "asset_file",
+        "label": "Asset File",
+        "required": false,
+        "applies_to": ["asset.upload"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      }
+    ],
+    "commandDefaults": {
+      "design.list": {
+        "selection_surface": "design",
+        "limit": 10,
+        "folder_id": "CANVA_FOLDER_ID"
+      },
+      "design.get": {
+        "selection_surface": "design",
+        "args": ["CANVA_DESIGN_ID"]
+      },
+      "design.create": {
+        "selection_surface": "design",
+        "template_id": "CANVA_TEMPLATE_ID",
+        "title": "CANVA_DESIGN_TITLE"
+      },
+      "design.clone": {
+        "selection_surface": "design",
+        "args": ["CANVA_DESIGN_ID"],
+        "title": "CANVA_DESIGN_TITLE"
+      },
+      "template.list": {
+        "selection_surface": "template",
+        "limit": 10
+      },
+      "template.get": {
+        "selection_surface": "template",
+        "args": ["CANVA_TEMPLATE_ID"]
+      },
+      "brand_template.list": {
+        "selection_surface": "brand_template",
+        "limit": 10
+      },
+      "brand_template.create_design": {
+        "selection_surface": "brand_template",
+        "args": ["CANVA_BRAND_TEMPLATE_ID"],
+        "title": "CANVA_DESIGN_TITLE"
+      },
+      "asset.list": {
+        "selection_surface": "asset",
+        "limit": 10,
+        "folder_id": "CANVA_FOLDER_ID"
+      },
+      "asset.upload": {
+        "selection_surface": "asset"
+      },
+      "folder.list": {
+        "selection_surface": "folder",
+        "limit": 10
+      },
+      "folder.create": {
+        "selection_surface": "folder"
+      },
+      "export.start": {
+        "selection_surface": "export",
+        "args": ["CANVA_DESIGN_ID"],
+        "format": "CANVA_EXPORT_FORMAT"
+      },
+      "export.status": {
+        "selection_surface": "export",
+        "args": ["CANVA_EXPORT_JOB_ID"]
+      },
+      "export.download": {
+        "selection_surface": "export",
+        "args": ["CANVA_EXPORT_JOB_ID"]
+      },
+      "autofill.create": {
+        "selection_surface": "autofill",
+        "args": ["CANVA_BRAND_TEMPLATE_ID"],
+        "data": "CANVA_AUTOFILL_DATA"
+      }
+    },
+    "pickerHints": {
+      "design": {
+        "kind": "design",
+        "selection_surface": "design",
+        "resource": "canva.design",
+        "source_command": "design.list",
+        "source_fields": ["id", "title", "created", "updated", "thumbnail_url"]
+      },
+      "template": {
+        "kind": "template",
+        "selection_surface": "template",
+        "resource": "canva.template",
+        "source_command": "template.list",
+        "source_fields": ["id", "title", "created", "updated"]
+      },
+      "brand_template": {
+        "kind": "brand_template",
+        "selection_surface": "brand_template",
+        "resource": "canva.brand_template",
+        "source_command": "brand_template.list",
+        "source_fields": ["id", "title", "created", "updated"]
+      },
+      "asset": {
+        "kind": "asset",
+        "selection_surface": "asset",
+        "resource": "canva.asset",
+        "source_command": "asset.list",
+        "source_fields": ["id", "name", "type", "created", "updated", "thumbnail_url"]
+      },
+      "folder": {
+        "kind": "folder",
+        "selection_surface": "folder",
+        "resource": "canva.folder",
+        "source_command": "folder.list",
+        "source_fields": ["id", "name", "created", "updated"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Canva",
+    "category": "design",
+    "categories": ["design", "marketing-publishing", "content-creation"],
+    "resources": ["design", "template", "brand_template", "asset", "folder", "export"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["CANVA_API_KEY"],
+    "interactive_setup": [
+      "Create a Canva Connect API integration at https://www.canva.com/developers/ and generate an API key.",
+      "Add CANVA_API_KEY in API Keys before enabling live reads.",
+      "Required scopes: design:content:read, design:content:write, design:meta:read, asset:read, asset:write, folder:read, folder:write, brandtemplate:content:read, brandtemplate:meta:read.",
+      "Optionally set CANVA_FOLDER_ID to scope design and asset listings to a specific folder.",
+      "Set CANVA_BRAND_TEMPLATE_ID to preselect a brand template for autofill workflows.",
+      "Set CANVA_EXPORT_FORMAT to default the export format (png, jpg, pdf, svg, mp4, gif).",
+      "The autofill.create action is the primary automation surface \u2014 it populates brand template placeholders with agent-supplied data and creates a new design."
+    ]
+  },
+  "commands": [
+    {
+      "id": "design.list",
+      "summary": "List Canva designs",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "design",
+      "action_class": "read"
+    },
+    {
+      "id": "design.get",
+      "summary": "Get a Canva design by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "design",
+      "action_class": "read"
+    },
+    {
+      "id": "design.create",
+      "summary": "Create a new Canva design from a template",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "design",
+      "action_class": "write"
+    },
+    {
+      "id": "design.clone",
+      "summary": "Clone an existing Canva design",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "design",
+      "action_class": "write"
+    },
+    {
+      "id": "template.list",
+      "summary": "List available Canva templates",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "template",
+      "action_class": "read"
+    },
+    {
+      "id": "template.get",
+      "summary": "Get a Canva template by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "template",
+      "action_class": "read"
+    },
+    {
+      "id": "brand_template.list",
+      "summary": "List Canva brand templates",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "brand_template",
+      "action_class": "read"
+    },
+    {
+      "id": "brand_template.create_design",
+      "summary": "Create a design from a brand template",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "brand_template",
+      "action_class": "write"
+    },
+    {
+      "id": "asset.list",
+      "summary": "List Canva assets",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "asset",
+      "action_class": "read"
+    },
+    {
+      "id": "asset.upload",
+      "summary": "Upload an asset to Canva",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "asset",
+      "action_class": "write"
+    },
+    {
+      "id": "folder.list",
+      "summary": "List Canva folders",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "folder",
+      "action_class": "read"
+    },
+    {
+      "id": "folder.create",
+      "summary": "Create a Canva folder",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "folder",
+      "action_class": "write"
+    },
+    {
+      "id": "export.start",
+      "summary": "Start a design export job",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "export",
+      "action_class": "read"
+    },
+    {
+      "id": "export.status",
+      "summary": "Check the status of an export job",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "export",
+      "action_class": "read"
+    },
+    {
+      "id": "export.download",
+      "summary": "Download an exported design",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "export",
+      "action_class": "read"
+    },
+    {
+      "id": "autofill.create",
+      "summary": "Autofill a brand template with data and create a new design",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "brand_template",
+      "action_class": "write"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

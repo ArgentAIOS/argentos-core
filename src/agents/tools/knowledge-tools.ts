@@ -1,5 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import { callGateway } from "../../gateway/call.js";
+import { encodeForPrompt } from "../../utils/toon-encoding.js";
 import { type AnyAgentTool, jsonResult, readStringParam } from "./common.js";
 
 const KnowledgeSearchSchema = Type.Object({
@@ -102,7 +103,12 @@ PARAMETERS:
         },
       });
 
-      return jsonResult(result);
+      // TOON-encode results array for compact agent context; keep metadata as-is
+      const { results: hits, ...meta } = result;
+      const text = [JSON.stringify(meta, null, 2), encodeForPrompt(hits, "knowledge_results")].join(
+        "\n",
+      );
+      return { content: [{ type: "text", text }], details: result };
     },
   };
 }

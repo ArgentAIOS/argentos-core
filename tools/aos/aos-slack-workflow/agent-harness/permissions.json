@@ -1,0 +1,23 @@
+{
+  "tool": "aos-slack-workflow",
+  "backend": "slack-web-api",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly",
+    "message.post": "write",
+    "message.update": "write",
+    "message.delete": "write",
+    "reaction.add": "write",
+    "channel.list": "readonly",
+    "channel.create": "write",
+    "channel.archive": "write",
+    "thread.reply": "write",
+    "canvas.create": "write",
+    "canvas.update": "write",
+    "user.list": "readonly",
+    "reminder.create": "write",
+    "file.upload": "write"
+  }
+}

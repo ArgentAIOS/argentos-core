@@ -336,6 +336,7 @@ describe("runEmbeddedPiAgent", () => {
       enqueue: immediateEnqueue,
     });
     expect(result.payloads[0]?.isError).toBe(true);
+    expect(result.meta.systemPromptReport?.source).toBe("run");
 
     const messages = await readSessionMessages(sessionFile);
     const userIndex = messages.findIndex(
@@ -383,7 +384,7 @@ describe("runEmbeddedPiAgent", () => {
       const cfg = makeOpenAiConfig(["mock-1"]);
       await ensureModels(cfg);
 
-      await runEmbeddedPiAgent({
+      const result = await runEmbeddedPiAgent({
         sessionId: "session:test",
         sessionKey: testSessionKey,
         sessionFile,
@@ -396,6 +397,8 @@ describe("runEmbeddedPiAgent", () => {
         agentDir,
         enqueue: immediateEnqueue,
       });
+
+      expect(result.meta.systemPromptReport?.source).toBe("run");
 
       const messages = await readSessionMessages(sessionFile);
       const seedUserIndex = messages.findIndex(
@@ -534,5 +537,53 @@ describe("runEmbeddedPiAgent", () => {
 
     expect(result.meta.error).toBeUndefined();
     expect(result.payloads?.length ?? 0).toBeGreaterThan(0);
+  });
+
+  it("logs preselected upstream models distinctly from user overrides", async () => {
+    const sessionFile = nextSessionFile();
+    const cfg = {
+      ...makeOpenAiConfig(["mock-1"]),
+      agents: {
+        defaults: {
+          model: {
+            primary: "openai/mock-1",
+          },
+          modelRouter: {
+            enabled: true,
+            activeProfile: "default",
+          },
+        },
+      },
+    } satisfies ArgentConfig;
+    await ensureModels(cfg);
+
+    const { log } = await import("./pi-embedded-runner/logger.js");
+    const infoSpy = vi.spyOn(log, "info").mockImplementation(() => {});
+
+    let modelRouterCall: string | undefined;
+    try {
+      await runEmbeddedPiAgent({
+        sessionId: "session:test",
+        sessionKey: testSessionKey,
+        sessionFile,
+        workspaceDir,
+        config: cfg,
+        prompt: "hello",
+        provider: "openai",
+        model: "mock-1",
+        preselectedModel: true,
+        timeoutMs: 5_000,
+        agentDir,
+        enqueue: immediateEnqueue,
+      });
+      modelRouterCall = infoSpy.mock.calls
+        .map(([message]) => String(message))
+        .find((message) => message.includes("[model-router]"));
+    } finally {
+      infoSpy.mockRestore();
+    }
+
+    expect(modelRouterCall).toContain('reason="preselected model"');
+    expect(modelRouterCall).not.toContain('reason="user override"');
   });
 });

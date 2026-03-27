@@ -39,6 +39,7 @@ import { usageHandlers } from "./server-methods/usage.js";
 import { voicewakeHandlers } from "./server-methods/voicewake.js";
 import { webHandlers } from "./server-methods/web.js";
 import { wizardHandlers } from "./server-methods/wizard.js";
+import { workflowsHandlers } from "./server-methods/workflows.js";
 
 const ADMIN_SCOPE = "operator.admin";
 const READ_SCOPE = "operator.read";
@@ -109,6 +110,17 @@ const READ_METHODS = new Set([
   "copilot.run.story",
   "providers.status",
   "providers.registry",
+  "workflows.get",
+  "workflows.list",
+  "workflows.runs.list",
+  "workflows.runs.get",
+  "workflows.subscribe",
+  "workflows.pendingApprovals",
+  "credentials.list",
+  "credentials.validate",
+  "workflows.manifest",
+  "workflows.connectors",
+  "workflows.connectorCommand",
 ]);
 const WRITE_METHODS = new Set([
   "send",
@@ -153,6 +165,15 @@ const WRITE_METHODS = new Set([
   "terminal.resize",
   "terminal.kill",
   "contemplation.runOnce",
+  "workflows.create",
+  "workflows.update",
+  "workflows.delete",
+  "workflows.duplicate",
+  "workflows.run",
+  "workflows.approve",
+  "workflows.deny",
+  "credentials.create",
+  "credentials.delete",
 ]);
 
 function authorizeGatewayMethod(method: string, client: GatewayRequestOptions["client"]) {
@@ -264,6 +285,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...aevpHandlers,
   ...specforgeHandlers,
   ...intentHandlers,
+  ...workflowsHandlers,
 };
 
 export async function handleGatewayRequest(

@@ -23,7 +23,7 @@ type LaneState = {
   maxConcurrent: number;
   draining: boolean;
   /** When set, pause draining when the named lane has queued or active items. */
-  yieldsTo?: string;
+  yieldsTo?: string[];
   /** Lanes to kick (call drainLane) when a task on this lane completes. */
   resumesLanes?: string[];
 };
@@ -55,9 +55,12 @@ function drainLane(lane: string) {
 
   const pump = () => {
     // Yield to higher-priority lane: pause when it has queued or active items.
-    if (state.yieldsTo) {
-      const primary = lanes.get(state.yieldsTo);
-      if (primary && (primary.queue.length > 0 || primary.active > 0)) {
+    if (state.yieldsTo?.length) {
+      const shouldYield = state.yieldsTo.some((yieldLane) => {
+        const primary = lanes.get(yieldLane);
+        return Boolean(primary && (primary.queue.length > 0 || primary.active > 0));
+      });
+      if (shouldYield) {
         state.draining = false;
         return;
       }
@@ -187,9 +190,12 @@ function resumeDependentLanes(state: LaneState) {
   }
 }
 
-export function setLaneYieldsTo(lane: string, yieldsTo: string) {
+export function setLaneYieldsTo(lane: string, yieldsTo: string | string[]) {
   const state = getLaneState(lane);
-  state.yieldsTo = yieldsTo;
+  const list = (Array.isArray(yieldsTo) ? yieldsTo : [yieldsTo])
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  state.yieldsTo = list.length > 0 ? list : undefined;
 }
 
 export function setLaneResumes(lane: string, resumesLanes: string[]) {

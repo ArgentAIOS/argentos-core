@@ -587,7 +587,8 @@ export async function runHeartbeatOnce(opts: {
     return { status: "skipped", reason: "quiet-hours" };
   }
 
-  const queueSize = (opts.deps?.getQueueSize ?? getQueueSize)(CommandLane.Main);
+  const getLaneSize = opts.deps?.getQueueSize ?? getQueueSize;
+  const queueSize = getLaneSize(CommandLane.Main) + getLaneSize(CommandLane.Interactive);
   if (queueSize > 0) {
     return { status: "skipped", reason: "requests-in-flight" };
   }

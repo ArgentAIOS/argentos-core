@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "prompt.send": "write",
+    "prompt.stream": "write",
+    "session.list": "readonly",
+    "session.resume": "write",
+    "hook.list": "readonly",
+    "hook.create": "write",
+    "config.get": "readonly",
+    "config.set": "write",
+    "mcp.list": "readonly",
+    "mcp.call": "write",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

@@ -1,0 +1,521 @@
+{
+  "tool": "aos-jira",
+  "backend": "jira-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "project-management",
+    "surface": "issue-board-sprint",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["project_key", "issue_key", "assignee", "status", "sprint_id"],
+    "worker_visible_actions": [
+      "issue.list",
+      "issue.get",
+      "issue.create",
+      "issue.update",
+      "issue.transition",
+      "issue.comment",
+      "project.list",
+      "project.get",
+      "board.list",
+      "board.get",
+      "sprint.list",
+      "sprint.get",
+      "sprint.issues",
+      "search.jql"
+    ],
+    "fields": [
+      {
+        "id": "project_key",
+        "label": "Project",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "pickerHint": "project",
+        "applies_to": ["issue.list", "issue.create", "project.get", "search.jql"],
+        "placeholder": "Select a project..."
+      },
+      {
+        "id": "issue_key",
+        "label": "Issue",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "pickerHint": "issue",
+        "applies_to": ["issue.get", "issue.update", "issue.transition", "issue.comment"],
+        "placeholder": "Select an issue...",
+        "description": "The issue key (e.g. ARG-123) to operate on."
+      },
+      {
+        "id": "issue_type",
+        "label": "Issue Type",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": false,
+        "applies_to": ["issue.create"],
+        "options": [
+          { "value": "Task", "label": "Task", "description": "A unit of work" },
+          { "value": "Bug", "label": "Bug", "description": "A defect to fix" },
+          { "value": "Story", "label": "Story", "description": "A user story" },
+          { "value": "Epic", "label": "Epic", "description": "A large body of work" },
+          { "value": "Subtask", "label": "Sub-task", "description": "A child of another issue" }
+        ],
+        "default": "Task"
+      },
+      {
+        "id": "summary",
+        "label": "Summary",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["issue.create", "issue.update"],
+        "placeholder": "Brief description of the issue",
+        "description": "The issue title shown in lists and boards."
+      },
+      {
+        "id": "description",
+        "label": "Description",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "rows": 8,
+        "applies_to": ["issue.create", "issue.update"],
+        "placeholder": "Detailed description of the issue...",
+        "description": "Full description in Jira wiki markup or ADF."
+      },
+      {
+        "id": "priority",
+        "label": "Priority",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "applies_to": ["issue.create", "issue.update"],
+        "options": [
+          { "value": "Highest", "label": "Highest" },
+          { "value": "High", "label": "High" },
+          { "value": "Medium", "label": "Medium" },
+          { "value": "Low", "label": "Low" },
+          { "value": "Lowest", "label": "Lowest" }
+        ],
+        "default": "Medium"
+      },
+      {
+        "id": "assignee",
+        "label": "Assignee",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["issue.create", "issue.update"],
+        "placeholder": "Account ID or email",
+        "description": "Atlassian account ID of the assignee."
+      },
+      {
+        "id": "labels",
+        "label": "Labels",
+        "type": "multiselect",
+        "renderAs": "multiselect",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["issue.create", "issue.update"],
+        "placeholder": "Add labels...",
+        "description": "Comma-separated labels to tag the issue."
+      },
+      {
+        "id": "status",
+        "label": "Target Status",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["issue.transition"],
+        "options": [
+          { "value": "To Do", "label": "To Do" },
+          { "value": "In Progress", "label": "In Progress" },
+          { "value": "In Review", "label": "In Review" },
+          { "value": "Done", "label": "Done" }
+        ],
+        "description": "The status to transition the issue to. Must match a valid workflow transition."
+      },
+      {
+        "id": "comment_body",
+        "label": "Comment",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": true,
+        "expressionEnabled": true,
+        "rows": 4,
+        "applies_to": ["issue.comment"],
+        "placeholder": "Add a comment...",
+        "description": "Comment text in Jira wiki markup or plain text."
+      },
+      {
+        "id": "board_id",
+        "label": "Board",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "pickerHint": "board",
+        "applies_to": ["board.get", "sprint.list"],
+        "placeholder": "Select a board..."
+      },
+      {
+        "id": "sprint_id",
+        "label": "Sprint",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "pickerHint": "sprint",
+        "applies_to": ["sprint.get", "sprint.issues"],
+        "placeholder": "Select a sprint..."
+      },
+      {
+        "id": "jql",
+        "label": "JQL Query",
+        "type": "expression",
+        "renderAs": "expression",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["search.jql"],
+        "placeholder": "project = ARG AND status = \"In Progress\"",
+        "description": "Jira Query Language expression. Supports all JQL operators and functions."
+      }
+    ],
+    "commandDefaults": {
+      "project.list": {
+        "selection_surface": "project",
+        "limit": 50
+      },
+      "project.get": {
+        "selection_surface": "project",
+        "args": ["JIRA_PROJECT_KEY"]
+      },
+      "issue.list": {
+        "selection_surface": "issue",
+        "args": ["JIRA_PROJECT_KEY"],
+        "limit": 50
+      },
+      "issue.get": {
+        "selection_surface": "issue",
+        "args": ["JIRA_ISSUE_KEY"]
+      },
+      "board.list": {
+        "selection_surface": "board",
+        "limit": 50
+      },
+      "board.get": {
+        "selection_surface": "board",
+        "args": ["JIRA_BOARD_ID"]
+      },
+      "sprint.list": {
+        "selection_surface": "sprint",
+        "args": ["JIRA_BOARD_ID"],
+        "limit": 50
+      },
+      "sprint.get": {
+        "selection_surface": "sprint",
+        "args": ["JIRA_SPRINT_ID"]
+      },
+      "sprint.issues": {
+        "selection_surface": "issue",
+        "args": ["JIRA_SPRINT_ID"],
+        "limit": 50
+      },
+      "search.jql": {
+        "selection_surface": "issue",
+        "limit": 50
+      }
+    },
+    "pickerHints": {
+      "project": {
+        "kind": "project",
+        "selection_surface": "project",
+        "resource": "jira.project",
+        "source_command": "project.list",
+        "source_fields": ["id", "key", "name", "projectTypeKey", "lead"]
+      },
+      "issue": {
+        "kind": "issue",
+        "selection_surface": "issue",
+        "resource": "jira.issue",
+        "source_command": "issue.list",
+        "source_fields": [
+          "key",
+          "summary",
+          "status",
+          "assignee",
+          "issuetype",
+          "priority",
+          "created"
+        ]
+      },
+      "board": {
+        "kind": "board",
+        "selection_surface": "board",
+        "resource": "jira.board",
+        "source_command": "board.list",
+        "source_fields": ["id", "name", "type"]
+      },
+      "sprint": {
+        "kind": "sprint",
+        "selection_surface": "sprint",
+        "resource": "jira.sprint",
+        "source_command": "sprint.list",
+        "source_fields": ["id", "name", "state", "startDate", "endDate", "goal"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Jira",
+    "category": "project-management",
+    "categories": ["project-management", "issue-tracking", "agile"],
+    "resources": ["project", "issue", "board", "sprint"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["JIRA_API_TOKEN", "JIRA_EMAIL", "JIRA_BASE_URL"],
+    "interactive_setup": [
+      "Create a Jira API token at https://id.atlassian.com/manage-profile/security/api-tokens.",
+      "Set JIRA_BASE_URL to your Atlassian instance (e.g. https://yourorg.atlassian.net).",
+      "Set JIRA_EMAIL to the email associated with your Atlassian account.",
+      "Set JIRA_API_TOKEN to the generated API token.",
+      "Set JIRA_PROJECT_KEY to pin the default project scope (e.g. ARG).",
+      "Optionally set JIRA_BOARD_ID and JIRA_SPRINT_ID for board/sprint-scoped flows.",
+      "Write commands require appropriate project permissions in Jira.",
+      "The connector reports API failures transparently instead of masking them."
+    ]
+  },
+  "events": [
+    {
+      "id": "issue.created",
+      "resource": "issue",
+      "summary": "New issue created in project",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_project_key",
+          "label": "Project Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "pickerHint": "project",
+          "description": "Only trigger for issues in this project. Leave empty for all projects."
+        },
+        {
+          "id": "event_issue_type",
+          "label": "Issue Type Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "options": [
+            { "value": "Task", "label": "Task" },
+            { "value": "Bug", "label": "Bug" },
+            { "value": "Story", "label": "Story" },
+            { "value": "Epic", "label": "Epic" }
+          ],
+          "description": "Only trigger for this issue type."
+        }
+      ]
+    },
+    {
+      "id": "issue.updated",
+      "resource": "issue",
+      "summary": "Issue fields or status changed",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_project_key",
+          "label": "Project Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "pickerHint": "project",
+          "description": "Only trigger for issues in this project."
+        },
+        {
+          "id": "event_field_filter",
+          "label": "Changed Field Filter",
+          "type": "text",
+          "renderAs": "text",
+          "required": false,
+          "placeholder": "status",
+          "description": "Only trigger when this specific field changes (e.g. status, assignee, priority)."
+        }
+      ]
+    },
+    {
+      "id": "sprint.started",
+      "resource": "sprint",
+      "summary": "Sprint started on a board",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_board_id",
+          "label": "Board Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "pickerHint": "board",
+          "description": "Only trigger for sprints on this board."
+        }
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "id": "project.list",
+      "summary": "List Jira projects",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "project",
+      "action_class": "read"
+    },
+    {
+      "id": "project.get",
+      "summary": "Get a Jira project by key",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "project",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "issue.list",
+      "summary": "List issues in a Jira project",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "issue",
+      "action_class": "read"
+    },
+    {
+      "id": "issue.get",
+      "summary": "Get a single Jira issue by key",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "issue",
+      "action_class": "read"
+    },
+    {
+      "id": "issue.create",
+      "summary": "Create a new Jira issue",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "issue",
+      "action_class": "write"
+    },
+    {
+      "id": "issue.update",
+      "summary": "Update a Jira issue",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "issue",
+      "action_class": "write"
+    },
+    {
+      "id": "issue.transition",
+      "summary": "Transition a Jira issue to a new status",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "issue",
+      "action_class": "write"
+    },
+    {
+      "id": "issue.comment",
+      "summary": "Add a comment to a Jira issue",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "issue",
+      "action_class": "write"
+    },
+    {
+      "id": "board.list",
+      "summary": "List Jira boards",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "board",
+      "action_class": "read"
+    },
+    {
+      "id": "board.get",
+      "summary": "Get a Jira board by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "board",
+      "action_class": "read"
+    },
+    {
+      "id": "sprint.list",
+      "summary": "List sprints for a board",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "sprint",
+      "action_class": "read"
+    },
+    {
+      "id": "sprint.get",
+      "summary": "Get a sprint by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "sprint",
+      "action_class": "read"
+    },
+    {
+      "id": "sprint.issues",
+      "summary": "List issues in a sprint",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "sprint",
+      "action_class": "read"
+    },
+    {
+      "id": "search.jql",
+      "summary": "Search issues using JQL",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "issue",
+      "action_class": "read"
+    }
+  ]
+}

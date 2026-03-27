@@ -23,8 +23,23 @@ def _mode_allows(actual: str, required: str) -> bool:
     return MODE_ORDER.index(actual) >= MODE_ORDER.index(required)
 
 
+COMMAND_PERMISSION_ALIASES = {
+    "account.read": "readonly",
+    "balance.read": "balance.get",
+    "customer.read": "customer.get",
+    "customer.search": "customer.list",
+    "payment.read": "payment.get",
+    "invoice.read": "invoice.get",
+}
+
+
 def require_mode(ctx: click.Context, command_id: str) -> None:
-    required = _permissions().get(command_id, "admin")
+    permissions = _permissions()
+    alias = COMMAND_PERMISSION_ALIASES.get(command_id)
+    if alias in MODE_ORDER:
+        required = alias
+    else:
+        required = permissions.get(alias or command_id, "admin")
     mode = ctx.obj["mode"]
     if _mode_allows(mode, required):
         return

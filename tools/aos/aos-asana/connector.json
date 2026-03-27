@@ -1,0 +1,370 @@
+{
+  "tool": "aos-asana",
+  "backend": "asana-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "project-management",
+    "surface": "task-project-portfolio",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["workspace_gid", "project_gid", "task_gid", "assignee"],
+    "worker_visible_actions": [
+      "task.list",
+      "task.get",
+      "task.create",
+      "task.update",
+      "project.list",
+      "project.get",
+      "project.sections",
+      "section.list",
+      "section.tasks",
+      "comment.list",
+      "comment.create",
+      "portfolio.list",
+      "portfolio.get",
+      "search.tasks"
+    ],
+    "fields": [
+      {
+        "id": "workspace_gid",
+        "label": "Workspace",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "pickerHint": "workspace",
+        "placeholder": "Select workspace...",
+        "description": "The Asana workspace GID to operate in"
+      },
+      {
+        "id": "project_gid",
+        "label": "Project",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "pickerHint": "project",
+        "placeholder": "Select project...",
+        "description": "The Asana project GID (optional, scopes task operations)"
+      },
+      {
+        "id": "task_gid",
+        "label": "Task",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "pickerHint": "task",
+        "applies_to": ["task.get", "task.update", "comment.list", "comment.create"],
+        "placeholder": "Select task...",
+        "description": "The Asana task GID to operate on"
+      },
+      {
+        "id": "title",
+        "label": "Task Name",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["task.create"],
+        "placeholder": "Enter task name...",
+        "description": "The name of the task to create"
+      },
+      {
+        "id": "notes",
+        "label": "Description",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["task.create", "task.update"],
+        "placeholder": "Enter task description...",
+        "description": "Detailed description of the task"
+      },
+      {
+        "id": "assignee",
+        "label": "Assignee",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "user@example.com",
+        "description": "Email address of the person to assign the task to"
+      },
+      {
+        "id": "due_on",
+        "label": "Due Date",
+        "type": "text",
+        "renderAs": "datetime",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "YYYY-MM-DD",
+        "description": "Due date in YYYY-MM-DD format"
+      },
+      {
+        "id": "search_query",
+        "label": "Search Query",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["search.tasks"],
+        "placeholder": "Search terms...",
+        "description": "Search query to find tasks in the workspace"
+      }
+    ],
+    "commandDefaults": {
+      "project.list": {
+        "args": ["ASANA_WORKSPACE_GID"],
+        "limit": 25
+      },
+      "project.get": {
+        "args": ["ASANA_PROJECT_GID"]
+      },
+      "project.sections": {
+        "args": ["ASANA_PROJECT_GID"]
+      },
+      "section.list": {
+        "args": ["ASANA_PROJECT_GID"]
+      },
+      "task.list": {
+        "args": ["ASANA_PROJECT_GID"],
+        "limit": 25
+      },
+      "task.get": {
+        "args": ["ASANA_TASK_GID"]
+      },
+      "task.create": {
+        "options": {
+          "project_gid": "ASANA_PROJECT_GID"
+        }
+      },
+      "task.update": {
+        "options": {
+          "task_gid": "ASANA_TASK_GID"
+        }
+      },
+      "comment.list": {
+        "args": ["ASANA_TASK_GID"]
+      },
+      "portfolio.list": {
+        "args": ["ASANA_WORKSPACE_GID"]
+      },
+      "search.tasks": {
+        "args": ["ASANA_WORKSPACE_GID"]
+      }
+    },
+    "pickerHints": {
+      "workspace": {
+        "kind": "workspace",
+        "selection_surface": "workspace",
+        "resource": "asana.workspace",
+        "source_command": "workspace.list",
+        "source_fields": ["gid", "name"]
+      },
+      "project": {
+        "kind": "project",
+        "selection_surface": "project",
+        "resource": "asana.project",
+        "source_command": "project.list",
+        "source_fields": ["gid", "name", "color", "archived"]
+      },
+      "task": {
+        "kind": "task",
+        "selection_surface": "task",
+        "resource": "asana.task",
+        "source_command": "task.list",
+        "source_fields": ["gid", "name", "assignee", "due_on", "completed"]
+      },
+      "section": {
+        "kind": "section",
+        "selection_surface": "section",
+        "resource": "asana.section",
+        "source_command": "section.list",
+        "source_fields": ["gid", "name"]
+      },
+      "portfolio": {
+        "kind": "portfolio",
+        "selection_surface": "portfolio",
+        "resource": "asana.portfolio",
+        "source_command": "portfolio.list",
+        "source_fields": ["gid", "name", "color"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Asana",
+    "category": "project-management",
+    "categories": ["project-management", "task-management", "work-management"],
+    "resources": ["workspace", "project", "task", "section", "comment", "portfolio"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["ASANA_ACCESS_TOKEN"],
+    "interactive_setup": [
+      "Create an Asana personal access token from your Asana developer console.",
+      "Add ASANA_ACCESS_TOKEN in API Keys before enabling live reads.",
+      "Pin ASANA_WORKSPACE_GID so workspace-scoped reads have a stable scope.",
+      "Optionally set ASANA_PROJECT_GID for project-scoped reads.",
+      "Optionally set ASANA_TASK_GID for task-scoped reads.",
+      "The connector supports live reads and writes for tasks, projects, sections, comments, and portfolios."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and Asana setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "project.list",
+      "summary": "List Asana projects in a workspace",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "project",
+      "action_class": "read"
+    },
+    {
+      "id": "project.get",
+      "summary": "Read an Asana project",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "project",
+      "action_class": "read"
+    },
+    {
+      "id": "project.sections",
+      "summary": "List sections in an Asana project",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "section",
+      "action_class": "read"
+    },
+    {
+      "id": "section.list",
+      "summary": "List sections in an Asana project",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "section",
+      "action_class": "read"
+    },
+    {
+      "id": "section.tasks",
+      "summary": "List tasks in an Asana section",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "read"
+    },
+    {
+      "id": "task.list",
+      "summary": "List tasks in an Asana project",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "read"
+    },
+    {
+      "id": "task.get",
+      "summary": "Read an Asana task",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "read"
+    },
+    {
+      "id": "task.create",
+      "summary": "Create an Asana task",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "write"
+    },
+    {
+      "id": "task.update",
+      "summary": "Update an Asana task",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "write"
+    },
+    {
+      "id": "comment.list",
+      "summary": "List stories/comments on an Asana task",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "comment",
+      "action_class": "read"
+    },
+    {
+      "id": "comment.create",
+      "summary": "Create a comment on an Asana task",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "comment",
+      "action_class": "write"
+    },
+    {
+      "id": "portfolio.list",
+      "summary": "List portfolios in an Asana workspace",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "portfolio",
+      "action_class": "read"
+    },
+    {
+      "id": "portfolio.get",
+      "summary": "Read an Asana portfolio",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "portfolio",
+      "action_class": "read"
+    },
+    {
+      "id": "search.tasks",
+      "summary": "Search tasks in an Asana workspace",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "read"
+    }
+  ]
+}

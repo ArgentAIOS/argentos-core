@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aos-supabase"
+version = "0.1.0"
+description = "ArgentOS Supabase connector"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["click>=8.1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+aos-supabase = "cli_aos.supabase.cli:cli"
+
+[tool.setuptools]
+package-dir = { "" = "." }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cli_aos*"]

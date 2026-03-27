@@ -9,7 +9,76 @@
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": true,
+    "workerFields": ["zap_id", "zap_name", "event", "payload", "enabled"],
     "worker_visible_actions": ["zap.list", "zap.status", "zap.trigger"],
+    "fields": [
+      {
+        "id": "zap_id",
+        "label": "Zap ID",
+        "type": "string",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Zapier Zap ID to target",
+        "placeholder": "98765",
+        "applies_to": ["zap.status", "zap.trigger"]
+      },
+      {
+        "id": "zap_name",
+        "label": "Zap Name",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Zap name for display",
+        "placeholder": "my-zap",
+        "applies_to": ["zap.list", "zap.trigger"]
+      },
+      {
+        "id": "event",
+        "label": "Event Type",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "description": "Type of event triggering the Zap",
+        "options": [
+          { "value": "manual", "label": "Manual Trigger" },
+          { "value": "scheduled", "label": "Scheduled" },
+          { "value": "webhook", "label": "Webhook" },
+          { "value": "test", "label": "Test" }
+        ],
+        "default": "manual",
+        "applies_to": ["zap.trigger"]
+      },
+      {
+        "id": "payload",
+        "label": "Trigger Payload",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "json",
+        "description": "JSON payload data to pass to the Zap",
+        "placeholder": "{\"source\": \"agent\", \"reason\": \"manual\"}",
+        "applies_to": ["zap.trigger"]
+      },
+      {
+        "id": "enabled",
+        "label": "Zap Enabled",
+        "type": "boolean",
+        "renderAs": "boolean",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "boolean",
+        "description": "Whether the Zap is enabled",
+        "default": true,
+        "applies_to": ["zap.status"]
+      }
+    ],
     "commandDefaults": {
       "zap.list": {
         "selection_surface": "zap",

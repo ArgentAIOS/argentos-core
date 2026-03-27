@@ -4,58 +4,211 @@
   "manifest_schema_version": "1.0.0",
   "scope": {
     "kind": "voice-generation",
-    "surface": "voices-models-history-user",
+    "surface": "tts-clone-sfx",
     "scaffold_only": false,
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": true,
     "worker_visible_actions": [
-      "voice.list",
-      "voice.read",
-      "model.list",
+      "tts.generate",
+      "tts.stream",
+      "voices.list",
+      "voices.get",
+      "voices.clone",
+      "sfx.generate",
+      "audio.isolate",
       "history.list",
-      "history.read",
-      "user.read",
-      "synthesize"
+      "history.download",
+      "model.list",
+      "user.read"
     ],
     "fields": [
       {
+        "id": "text",
+        "label": "Text to Speak",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "rows": 4,
+        "applies_to": ["tts.generate", "tts.stream"],
+        "placeholder": "Hello, welcome to ElevenLabs text-to-speech.",
+        "description": "The text content to convert to speech."
+      },
+      {
         "id": "voice_id",
         "label": "Voice ID",
+        "type": "text",
+        "renderAs": "select",
         "required": false,
-        "applies_to": ["voice.read", "synthesize"],
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["tts.generate", "tts.stream", "voices.get"],
+        "placeholder": "21m00Tcm4TlvDq8ikWAM",
+        "description": "ElevenLabs voice identifier. Use voices.list to discover available voices.",
         "example": "21m00Tcm4TlvDq8ikWAM"
       },
       {
         "id": "model_id",
-        "label": "Model ID",
+        "label": "Model",
+        "type": "select",
+        "renderAs": "select",
         "required": false,
-        "applies_to": ["synthesize"],
+        "expressionEnabled": false,
+        "valueType": "string",
+        "placeholder": "eleven_multilingual_v2",
+        "description": "ElevenLabs TTS model to use.",
+        "options": [
+          { "value": "eleven_monolingual_v1", "label": "Monolingual v1" },
+          { "value": "eleven_multilingual_v1", "label": "Multilingual v1" },
+          { "value": "eleven_multilingual_v2", "label": "Multilingual v2" },
+          { "value": "eleven_turbo_v2_5", "label": "Turbo v2.5 (Fastest)" }
+        ],
         "example": "eleven_multilingual_v2"
       },
       {
-        "id": "output_path",
-        "label": "Output path",
+        "id": "stability",
+        "label": "Stability (0-1)",
+        "type": "number",
+        "renderAs": "number",
         "required": false,
-        "applies_to": ["synthesize"],
+        "expressionEnabled": true,
+        "valueType": "number",
+        "applies_to": ["tts.generate", "tts.stream"],
+        "placeholder": "0.5",
+        "description": "Voice stability parameter. Higher = more consistent. Range: 0.0-1.0"
+      },
+      {
+        "id": "similarity_boost",
+        "label": "Similarity Boost (0-1)",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "applies_to": ["tts.generate", "tts.stream"],
+        "placeholder": "0.75",
+        "description": "How closely to match the original voice. Range: 0.0-1.0"
+      },
+      {
+        "id": "style",
+        "label": "Style (0-1)",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "applies_to": ["tts.generate", "tts.stream"],
+        "placeholder": "0",
+        "description": "Add exaggeration to voice performance. Range: 0.0-1.0"
+      },
+      {
+        "id": "sfx_prompt",
+        "label": "Sound Effect Description",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "rows": 3,
+        "applies_to": ["sfx.generate"],
+        "placeholder": "A dog barking in the distance with birds chirping",
+        "description": "Natural language description of the sound effect to generate."
+      },
+      {
+        "id": "sfx_duration",
+        "label": "SFX Duration (seconds)",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "applies_to": ["sfx.generate"],
+        "placeholder": "5",
+        "description": "Desired length of generated sound effect in seconds."
+      },
+      {
+        "id": "clone_name",
+        "label": "Clone Voice Name",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["voices.clone"],
+        "placeholder": "My Custom Voice",
+        "description": "Name for the cloned voice."
+      },
+      {
+        "id": "clone_description",
+        "label": "Clone Voice Description",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "rows": 2,
+        "applies_to": ["voices.clone"],
+        "placeholder": "A professional narrator with a warm tone",
+        "description": "Optional description of the voice characteristics."
+      },
+      {
+        "id": "clone_files",
+        "label": "Audio Sample File Paths",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["voices.clone"],
+        "placeholder": "/path/to/sample1.mp3,/path/to/sample2.mp3",
+        "description": "Comma-separated paths to audio samples for voice cloning."
+      },
+      {
+        "id": "output_path",
+        "label": "Output Path",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": [
+          "tts.generate",
+          "tts.stream",
+          "sfx.generate",
+          "audio.isolate",
+          "history.download"
+        ],
+        "placeholder": "artifacts/demo.mp3",
+        "description": "Local file path where the audio output will be saved.",
         "example": "artifacts/demo.mp3"
       },
       {
         "id": "history_item_id",
-        "label": "History item ID",
+        "label": "History Item ID",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
-        "applies_to": ["history.read"],
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["history.download"],
+        "placeholder": "VW7YKqPnjY4h39yTbx2L",
+        "description": "ID of a history item to download.",
         "example": "VW7YKqPnjY4h39yTbx2L"
       }
     ],
     "commandDefaults": {
-      "voice.read": {
+      "voices.get": {
         "args": ["ELEVENLABS_VOICE_ID"]
       },
-      "history.read": {
+      "history.download": {
         "args": ["ELEVENLABS_HISTORY_ITEM_ID"]
       },
-      "synthesize": {
+      "tts.generate": {
+        "args": ["ELEVENLABS_VOICE_ID", "ELEVENLABS_MODEL_ID"]
+      },
+      "tts.stream": {
         "args": ["ELEVENLABS_VOICE_ID", "ELEVENLABS_MODEL_ID"]
       }
     }
@@ -64,7 +217,7 @@
     "label": "ElevenLabs",
     "category": "creative-media",
     "categories": ["creative-media", "audio-generation", "voice-infrastructure"],
-    "resources": ["voice", "model", "history", "user", "audio"]
+    "resources": ["voice", "model", "history", "user", "audio", "sfx"]
   },
   "auth": {
     "kind": "service-key",
@@ -75,7 +228,11 @@
       "Add ELEVENLABS_API_KEY in API Keys before enabling live reads.",
       "Optional: set ELEVENLABS_BASE_URL only if you need a non-default ElevenLabs API host.",
       "Optional: pin ELEVENLABS_VOICE_ID, ELEVENLABS_MODEL_ID, and ELEVENLABS_HISTORY_ITEM_ID for worker defaults.",
-      "Use synthesize for live text-to-speech; return inline base64 by default or pass --output to write an audio file."
+      "Use tts.generate for text-to-speech; return inline base64 by default or pass --output to write an audio file.",
+      "Use tts.stream for chunked streaming TTS output to a file.",
+      "Use voices.clone with --file to create instant voice clones from audio samples.",
+      "Use sfx.generate with a text prompt to create sound effects.",
+      "Use audio.isolate to remove background noise from an audio file."
     ]
   },
   "commands": [
@@ -112,20 +269,28 @@
       "action_class": "read"
     },
     {
-      "id": "voice.list",
-      "summary": "List ElevenLabs voices",
+      "id": "voices.list",
+      "summary": "List ElevenLabs voices with optional search and pagination",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "voice",
       "action_class": "read"
     },
     {
-      "id": "voice.read",
-      "summary": "Read a single ElevenLabs voice",
+      "id": "voices.get",
+      "summary": "Get details for a single ElevenLabs voice",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "voice",
       "action_class": "read"
+    },
+    {
+      "id": "voices.clone",
+      "summary": "Create an instant voice clone from audio samples",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "voice",
+      "action_class": "write"
     },
     {
       "id": "model.list",
@@ -144,8 +309,8 @@
       "action_class": "read"
     },
     {
-      "id": "history.read",
-      "summary": "Read a generated speech history item",
+      "id": "history.download",
+      "summary": "Download audio from a history item",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "history",
@@ -160,8 +325,32 @@
       "action_class": "read"
     },
     {
-      "id": "synthesize",
-      "summary": "Generate ElevenLabs speech",
+      "id": "tts.generate",
+      "summary": "Generate speech from text (returns complete audio)",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "audio",
+      "action_class": "write"
+    },
+    {
+      "id": "tts.stream",
+      "summary": "Stream speech from text (chunked output to file)",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "audio",
+      "action_class": "write"
+    },
+    {
+      "id": "sfx.generate",
+      "summary": "Generate a sound effect from a text description",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "sfx",
+      "action_class": "write"
+    },
+    {
+      "id": "audio.isolate",
+      "summary": "Remove background noise from an audio file",
       "required_mode": "write",
       "supports_json": true,
       "resource": "audio",

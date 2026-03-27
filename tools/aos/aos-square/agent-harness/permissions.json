@@ -1,0 +1,27 @@
+{
+  "tool": "aos-square",
+  "backend": "square-api",
+  "permissions": {
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "payment.list": "readonly",
+    "payment.get": "readonly",
+    "payment.create": "write",
+    "customer.list": "readonly",
+    "customer.get": "readonly",
+    "customer.create": "write",
+    "customer.update": "write",
+    "order.list": "readonly",
+    "order.get": "readonly",
+    "order.create": "write",
+    "item.list": "readonly",
+    "item.get": "readonly",
+    "item.create": "write",
+    "invoice.list": "readonly",
+    "invoice.create": "write",
+    "invoice.send": "write",
+    "location.list": "readonly"
+  }
+}

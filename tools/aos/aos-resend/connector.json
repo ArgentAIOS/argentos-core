@@ -1,0 +1,271 @@
+{
+  "tool": "aos-resend",
+  "backend": "resend-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "email-delivery",
+    "surface": "send-domain-audience",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["to", "from", "subject", "html", "audience_id"],
+    "worker_visible_actions": [
+      "email.send",
+      "email.batch_send",
+      "domains.list",
+      "domains.verify",
+      "audiences.list",
+      "audiences.create",
+      "contacts.list",
+      "contacts.create",
+      "contacts.remove"
+    ],
+    "fields": [
+      {
+        "id": "to",
+        "label": "To Email(s)",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["email.send", "email.batch_send"],
+        "placeholder": "recipient@example.com or [\"one@example.com\", \"two@example.com\"]",
+        "description": "Recipient email address(es). Can be a single email or JSON array of emails."
+      },
+      {
+        "id": "from",
+        "label": "From Email",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["email.send", "email.batch_send"],
+        "placeholder": "noreply@example.com",
+        "description": "Sender email address (must be verified in Resend). Defaults to RESEND_FROM_EMAIL config."
+      },
+      {
+        "id": "subject",
+        "label": "Subject",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["email.send", "email.batch_send"],
+        "placeholder": "Your Subject Line",
+        "description": "Email subject line."
+      },
+      {
+        "id": "html",
+        "label": "HTML Body",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "rows": 6,
+        "applies_to": ["email.send"],
+        "placeholder": "<h1>Welcome</h1><p>Hello {{name}}</p>",
+        "description": "HTML body content for the email. Supports variables and styling."
+      },
+      {
+        "id": "audience_id",
+        "label": "Audience ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["contacts.list", "contacts.create"],
+        "placeholder": "abc123def456",
+        "description": "Resend audience ID for managing contact lists and segments."
+      }
+    ],
+    "commandDefaults": {
+      "email.send": {
+        "selection_surface": "email",
+        "args": ["RESEND_FROM_EMAIL"]
+      },
+      "email.batch_send": {
+        "selection_surface": "email",
+        "args": ["RESEND_FROM_EMAIL"]
+      },
+      "domains.list": {
+        "selection_surface": "domain"
+      },
+      "domains.verify": {
+        "selection_surface": "domain",
+        "args": ["RESEND_DOMAIN_ID"]
+      },
+      "audiences.list": {
+        "selection_surface": "audience"
+      },
+      "audiences.create": {
+        "selection_surface": "audience"
+      },
+      "contacts.list": {
+        "selection_surface": "contact",
+        "args": ["RESEND_AUDIENCE_ID"]
+      },
+      "contacts.create": {
+        "selection_surface": "contact",
+        "args": ["RESEND_AUDIENCE_ID"]
+      },
+      "contacts.remove": {
+        "selection_surface": "contact",
+        "args": ["RESEND_AUDIENCE_ID"]
+      }
+    },
+    "pickerHints": {
+      "domain": {
+        "kind": "domain",
+        "selection_surface": "domain",
+        "resource": "resend.domain",
+        "source_command": "domains.list",
+        "source_fields": ["id", "name", "status", "created_at"]
+      },
+      "audience": {
+        "kind": "audience",
+        "selection_surface": "audience",
+        "resource": "resend.audience",
+        "source_command": "audiences.list",
+        "source_fields": ["id", "name", "created_at"]
+      },
+      "contact": {
+        "kind": "contact",
+        "selection_surface": "contact",
+        "resource": "resend.contact",
+        "source_command": "contacts.list",
+        "source_fields": ["id", "email", "first_name", "last_name", "created_at", "unsubscribed"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Resend",
+    "category": "email-delivery",
+    "categories": ["email-delivery", "transactional-email", "developer-tools"],
+    "resources": ["email", "domain", "audience", "contact"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["RESEND_API_KEY"],
+    "interactive_setup": [
+      "Create a Resend API key at resend.com/api-keys.",
+      "Add RESEND_API_KEY in API Keys before enabling live reads and writes.",
+      "Optionally set RESEND_FROM_EMAIL to pin the default sender address.",
+      "Set RESEND_AUDIENCE_ID to give worker flows a stable audience scope default.",
+      "Set RESEND_DOMAIN_ID to pin a specific sending domain for verification.",
+      "The connector supports transactional sends and batch sends via the Resend API."
+    ]
+  },
+  "commands": [
+    {
+      "id": "email.send",
+      "summary": "Send an email via Resend",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "email",
+      "action_class": "write"
+    },
+    {
+      "id": "email.batch_send",
+      "summary": "Send a batch of emails via Resend",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "email",
+      "action_class": "write"
+    },
+    {
+      "id": "domains.list",
+      "summary": "List verified sending domains",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "domain",
+      "action_class": "read"
+    },
+    {
+      "id": "domains.verify",
+      "summary": "Trigger domain verification",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "domain",
+      "action_class": "write"
+    },
+    {
+      "id": "audiences.list",
+      "summary": "List Resend audiences",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "audience",
+      "action_class": "read"
+    },
+    {
+      "id": "audiences.create",
+      "summary": "Create a new audience",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "audience",
+      "action_class": "write"
+    },
+    {
+      "id": "contacts.list",
+      "summary": "List contacts in an audience",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "contact",
+      "action_class": "read"
+    },
+    {
+      "id": "contacts.create",
+      "summary": "Create a contact in an audience",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "contact",
+      "action_class": "write"
+    },
+    {
+      "id": "contacts.remove",
+      "summary": "Remove a contact from an audience",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "contact",
+      "action_class": "write"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

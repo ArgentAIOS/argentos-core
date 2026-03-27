@@ -23,37 +23,62 @@
       {
         "id": "account",
         "label": "Account",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
         "applies_to": ["account.read"],
-        "example": "connected account"
+        "placeholder": "connected account",
+        "description": "Refers to the connected Klaviyo account (read-only, populated on query)."
       },
       {
         "id": "list_id",
         "label": "List ID",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
         "applies_to": ["list.read", "profile.list", "profile.read"],
-        "example": "01HZY3YB4J5R1A2B3C4D5E6F7G"
+        "placeholder": "01HZY3YB4J5R1A2B3C4D5E6F7G",
+        "description": "Klaviyo list ID (UUID format). Required to read list details or list profiles within a list."
       },
       {
         "id": "profile_id",
         "label": "Profile ID",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
         "applies_to": ["profile.read"],
-        "example": "01HZY3Z3T5W7Q8R9S0T1U2V3W4"
+        "placeholder": "01HZY3Z3T5W7Q8R9S0T1U2V3W4",
+        "description": "Klaviyo profile ID (UUID format) to read individual customer profile."
       },
       {
         "id": "profile_email",
         "label": "Profile email",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
         "applies_to": ["profile.list", "profile.read"],
-        "example": "contact@example.com"
+        "placeholder": "contact@example.com",
+        "description": "Customer email address. Can be used to filter or directly query a profile."
       },
       {
         "id": "campaign_id",
         "label": "Campaign ID",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
         "applies_to": ["campaign.read"],
-        "example": "01HZY402V9ABCD1234EFGH5678"
+        "placeholder": "01HZY402V9ABCD1234EFGH5678",
+        "description": "Klaviyo campaign ID (UUID format) to read campaign details and performance."
       }
     ],
     "commandDefaults": {

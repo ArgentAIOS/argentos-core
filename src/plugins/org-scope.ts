@@ -1,17 +1,12 @@
-/**
- * Public Core override for org-scope.ts.
- *
- * The Business licensing store is intentionally excluded from public core, so
- * org scoping falls back to explicit ARGENT_ORG_ID and local allowlist files.
- */
-
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import type { ArgentConfig } from "../config/config.js";
 import { resolveConfigDir } from "../utils.js";
 
 const ORG_ID_ENV = "ARGENT_ORG_ID";
 const ORG_ALLOWLIST_FILENAME = "plugins.allowlist.json";
+const requireModule = createRequire(import.meta.url);
 
 export type OrgPluginScope = {
   orgId: string | null;
@@ -35,12 +30,37 @@ function parseAllowlist(raw: unknown): Set<string> | null {
   );
 }
 
+function resolveOrgIdFromLicense(config: ArgentConfig): string | null {
+  try {
+    const mod = requireModule("../licensing/storage.js") as Record<string, unknown>;
+    const LicenseStorage = mod.LicenseStorage as
+      | (new () => {
+          retrieveLicense: (
+            cfg: Record<string, unknown>,
+          ) => { metadata?: { organizationId?: string | null } } | null | undefined;
+        })
+      | undefined;
+    if (!LicenseStorage) {
+      return null;
+    }
+    const storage = new LicenseStorage();
+    const license = storage.retrieveLicense(config as unknown as Record<string, unknown>);
+    const orgId = license?.metadata?.organizationId?.trim();
+    return orgId || null;
+  } catch {
+    return null;
+  }
+}
+
 export function resolveOrgId(
-  _config: ArgentConfig,
+  config: ArgentConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): string | null {
   const fromEnv = env[ORG_ID_ENV]?.trim();
-  return fromEnv || null;
+  if (fromEnv) {
+    return fromEnv;
+  }
+  return resolveOrgIdFromLicense(config);
 }
 
 export function resolveOrgPluginsDir(orgId: string): string {

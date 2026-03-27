@@ -96,6 +96,9 @@ class FakeElevenLabsClient:
         voice_id: str,
         model_id: str | None = None,
         output_format: str = "mp3_44100_128",
+        stability: float | None = None,
+        similarity_boost: float | None = None,
+        style: float | None = None,
     ) -> dict[str, Any]:
         audio = f"{voice_id}:{model_id or 'default'}:{text}:{output_format}".encode("utf-8")
         return {
@@ -107,6 +110,69 @@ class FakeElevenLabsClient:
             "voice_id": voice_id,
             "model_id": model_id,
             "request": {"method": "POST", "url": f"https://example.test/v1/text-to-speech/{voice_id}", "text_length": len(text)},
+        }
+
+    def synthesize_stream(
+        self,
+        text: str,
+        *,
+        voice_id: str,
+        model_id: str | None = None,
+        output_format: str = "mp3_44100_128",
+        stability: float | None = None,
+        similarity_boost: float | None = None,
+        style: float | None = None,
+    ) -> dict[str, Any]:
+        audio = f"stream:{voice_id}:{text}".encode("utf-8")
+        return {
+            "audio": audio,
+            "content_type": "audio/mpeg",
+            "request_id": "req_stream",
+            "output_format": output_format,
+            "voice_id": voice_id,
+            "model_id": model_id,
+            "chunk_count": 3,
+            "request": {"method": "POST", "url": f"https://example.test/v1/text-to-speech/{voice_id}/stream", "text_length": len(text)},
+        }
+
+    def clone_voice(
+        self,
+        *,
+        name: str,
+        description: str | None = None,
+        files: list[str],
+    ) -> dict[str, Any]:
+        return {"voice_id": "cloned_v1", "name": name}
+
+    def generate_sound_effect(
+        self,
+        text: str,
+        *,
+        duration_seconds: float | None = None,
+        prompt_influence: float | None = None,
+    ) -> dict[str, Any]:
+        audio = f"sfx:{text}".encode("utf-8")
+        return {
+            "audio": audio,
+            "content_type": "audio/mpeg",
+            "request_id": "req_sfx",
+            "request": {"method": "POST", "url": "https://example.test/v1/sound-generation", "prompt_length": len(text)},
+        }
+
+    def isolate_audio(self, audio_data: bytes) -> dict[str, Any]:
+        return {
+            "audio": b"isolated:" + audio_data[:20],
+            "content_type": "audio/mpeg",
+            "request_id": "req_isolate",
+            "request": {"method": "POST", "url": "https://example.test/v1/audio-isolation", "input_size_bytes": len(audio_data)},
+        }
+
+    def download_history_audio(self, history_item_id: str) -> dict[str, Any]:
+        return {
+            "audio": f"audio:{history_item_id}".encode("utf-8"),
+            "content_type": "audio/mpeg",
+            "history_item_id": history_item_id,
+            "request": {"method": "GET", "url": f"https://example.test/v1/history/{history_item_id}/audio"},
         }
 
 
@@ -134,8 +200,11 @@ def test_capabilities_exposes_manifest():
     payload = invoke_json(["capabilities"])
     assert payload["tool"] == "aos-elevenlabs"
     assert payload["data"]["backend"] == "elevenlabs-api"
-    assert "voice.read" in json.dumps(payload["data"])
-    assert payload["data"]["write_support"]["synthesize"] == "live"
+    assert "voices.get" in json.dumps(payload["data"])
+    assert payload["data"]["write_support"]["tts.generate"] == "live"
+    assert payload["data"]["write_support"]["sfx.generate"] == "live"
+    assert payload["data"]["write_support"]["audio.isolate"] == "live"
+    assert payload["data"]["write_support"]["voices.clone"] == "live"
 
 
 def test_health_requires_api_key(monkeypatch):
@@ -164,26 +233,39 @@ def test_config_show_redacts_api_key(monkeypatch):
     data = payload["data"]
     assert "super-secret-key" not in json.dumps(data)
     assert data["scope"]["voice_id"] == "voice_1"
-    assert data["runtime"]["implementation_mode"] == "live_read_with_live_synthesis"
+    assert data["runtime"]["implementation_mode"] == "live_read_with_live_write"
     assert data["runtime"]["write_bridge_available"] is True
 
 
-def test_voice_list_returns_picker(monkeypatch):
+def test_voices_list_returns_picker(monkeypatch):
     monkeypatch.setenv("ELEVENLABS_API_KEY", "abc123")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeElevenLabsClient())
-    payload = invoke_json(["voice", "list", "--page-size", "1"])
+    payload = invoke_json(["voices", "list", "--page-size", "1"])
     data = payload["data"]
     assert data["voice_count"] == 1
     assert data["picker"]["kind"] == "voice"
     assert data["picker"]["items"][0]["id"] == "voice_1"
 
 
-def test_voice_read_uses_scoped_voice(monkeypatch):
+def test_voices_get_uses_scoped_voice(monkeypatch):
     monkeypatch.setenv("ELEVENLABS_API_KEY", "abc123")
     monkeypatch.setenv("ELEVENLABS_VOICE_ID", "voice_2")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeElevenLabsClient())
-    payload = invoke_json(["voice", "read"])
+    payload = invoke_json(["voices", "get"])
     assert payload["data"]["voice"]["voice_id"] == "voice_2"
+
+
+def test_voices_clone_creates_voice(monkeypatch, tmp_path):
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "abc123")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeElevenLabsClient())
+    sample = tmp_path / "sample.mp3"
+    sample.write_bytes(b"fake-audio")
+    payload = invoke_json_with_mode("write", ["voices", "clone", "--name", "TestClone", "--file", str(sample)])
+    data = payload["data"]
+    assert data["status"] == "live_write"
+    assert data["voice_id"] == "cloned_v1"
+    assert data["clone"]["name"] == "TestClone"
+    assert data["clone"]["sample_count"] == 1
 
 
 def test_model_list_returns_models(monkeypatch):
@@ -207,12 +289,25 @@ def test_history_list_uses_cursor_and_filters(monkeypatch):
     assert data["scope_preview"]["model_id"] == "eleven_multilingual_v2"
 
 
-def test_history_read_uses_scoped_history_item(monkeypatch):
+def test_history_download_returns_audio(monkeypatch):
     monkeypatch.setenv("ELEVENLABS_API_KEY", "abc123")
     monkeypatch.setenv("ELEVENLABS_HISTORY_ITEM_ID", "hist_2")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeElevenLabsClient())
-    payload = invoke_json(["history", "read"])
-    assert payload["data"]["history_item"]["history_item_id"] == "hist_2"
+    payload = invoke_json(["history", "download"])
+    data = payload["data"]
+    assert data["download"]["history_item_id"] == "hist_2"
+    assert data["download"]["output_reference"]["kind"] == "inline_base64"
+    assert b64decode(data["download"]["audio_base64"]) == b"audio:hist_2"
+
+
+def test_history_download_to_file(monkeypatch, tmp_path):
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "abc123")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeElevenLabsClient())
+    output = tmp_path / "download.mp3"
+    payload = invoke_json(["history", "download", "hist_1", "--output", str(output)])
+    data = payload["data"]
+    assert data["download"]["output_reference"]["kind"] == "file"
+    assert output.read_bytes() == b"audio:hist_1"
 
 
 def test_user_read_returns_subscription(monkeypatch):
@@ -223,10 +318,10 @@ def test_user_read_returns_subscription(monkeypatch):
     assert payload["data"]["subscription"]["tier"] == "starter"
 
 
-def test_synthesize_returns_inline_base64(monkeypatch):
+def test_tts_generate_returns_inline_base64(monkeypatch):
     monkeypatch.setenv("ELEVENLABS_API_KEY", "abc123")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeElevenLabsClient())
-    payload = invoke_json_with_mode("write", ["synthesize", "Hello world", "--voice-id", "voice_1", "--model-id", "eleven_multilingual_v2"])
+    payload = invoke_json_with_mode("write", ["tts", "generate", "Hello world", "--voice-id", "voice_1", "--model-id", "eleven_multilingual_v2"])
     data = payload["data"]
     assert data["status"] == "live_write"
     assert data["synthesis"]["voice_id"] == "voice_1"
@@ -235,13 +330,13 @@ def test_synthesize_returns_inline_base64(monkeypatch):
     assert b64decode(data["synthesis"]["audio_base64"]).startswith(b"voice_1:eleven_multilingual_v2:Hello world")
 
 
-def test_synthesize_can_write_output_file(monkeypatch, tmp_path):
+def test_tts_generate_can_write_output_file(monkeypatch, tmp_path):
     monkeypatch.setenv("ELEVENLABS_API_KEY", "abc123")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeElevenLabsClient())
     output_path = tmp_path / "demo.mp3"
     result = CliRunner().invoke(
         cli,
-        ["--json", "--mode", "write", "synthesize", "Hello world", "--voice-id", "voice_1", "--output", str(output_path)],
+        ["--json", "--mode", "write", "tts", "generate", "Hello world", "--voice-id", "voice_1", "--output", str(output_path)],
     )
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
@@ -249,3 +344,56 @@ def test_synthesize_can_write_output_file(monkeypatch, tmp_path):
     assert data["output_reference"]["kind"] == "file"
     assert data["output_reference"]["path"] == str(output_path)
     assert output_path.read_bytes().startswith(b"voice_1:default:Hello world")
+
+
+def test_tts_stream_returns_chunk_count(monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "abc123")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeElevenLabsClient())
+    payload = invoke_json_with_mode("write", ["tts", "stream", "Hello stream", "--voice-id", "voice_1"])
+    data = payload["data"]
+    assert data["status"] == "live_write"
+    assert data["synthesis"]["chunk_count"] == 3
+    assert b64decode(data["synthesis"]["audio_base64"]).startswith(b"stream:voice_1:")
+
+
+def test_sfx_generate_returns_audio(monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "abc123")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeElevenLabsClient())
+    payload = invoke_json_with_mode("write", ["sfx", "generate", "thunderstorm with rain"])
+    data = payload["data"]
+    assert data["status"] == "live_write"
+    assert data["sfx"]["prompt"] == "thunderstorm with rain"
+    assert data["sfx"]["output_reference"]["kind"] == "inline_base64"
+    assert b64decode(data["sfx"]["audio_base64"]) == b"sfx:thunderstorm with rain"
+
+
+def test_sfx_generate_to_file(monkeypatch, tmp_path):
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "abc123")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeElevenLabsClient())
+    output = tmp_path / "thunder.mp3"
+    payload = invoke_json_with_mode("write", ["sfx", "generate", "thunder", "--output", str(output)])
+    assert payload["data"]["sfx"]["output_reference"]["kind"] == "file"
+    assert output.read_bytes() == b"sfx:thunder"
+
+
+def test_audio_isolate_returns_cleaned_audio(monkeypatch, tmp_path):
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "abc123")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeElevenLabsClient())
+    input_file = tmp_path / "noisy.mp3"
+    input_file.write_bytes(b"noisy-audio-content-here")
+    payload = invoke_json_with_mode("write", ["audio", "isolate", str(input_file)])
+    data = payload["data"]
+    assert data["status"] == "live_write"
+    assert data["isolation"]["input_path"] == str(input_file)
+    assert data["isolation"]["output_reference"]["kind"] == "inline_base64"
+
+
+def test_audio_isolate_to_file(monkeypatch, tmp_path):
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "abc123")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeElevenLabsClient())
+    input_file = tmp_path / "noisy.mp3"
+    input_file.write_bytes(b"noisy-audio-data")
+    output = tmp_path / "clean.mp3"
+    payload = invoke_json_with_mode("write", ["audio", "isolate", str(input_file), "--output", str(output)])
+    assert payload["data"]["isolation"]["output_reference"]["kind"] == "file"
+    assert output.exists()

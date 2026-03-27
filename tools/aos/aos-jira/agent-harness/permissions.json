@@ -1,0 +1,24 @@
+{
+  "tool": "aos-jira",
+  "backend": "jira-api",
+  "permissions": {
+    "project.list": "readonly",
+    "project.get": "readonly",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "issue.list": "readonly",
+    "issue.get": "readonly",
+    "issue.create": "write",
+    "issue.update": "write",
+    "issue.transition": "write",
+    "issue.comment": "write",
+    "board.list": "readonly",
+    "board.get": "readonly",
+    "sprint.list": "readonly",
+    "sprint.get": "readonly",
+    "sprint.issues": "readonly",
+    "search.jql": "readonly"
+  }
+}

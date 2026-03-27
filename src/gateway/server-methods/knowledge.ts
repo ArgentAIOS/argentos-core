@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import type { GatewayRequestHandlers } from "./types.js";
 import { resolveSessionAgentIds } from "../../agents/agent-scope.js";
-import { resolveEffectiveIntentForAgent } from "../../agents/intent.js";
 import { inferDepartmentKnowledgeCollections } from "../../agents/support-rag-routing.js";
 import { loadConfig } from "../../config/config.js";
 import {
@@ -31,6 +31,8 @@ import {
 import { shouldEnforceV3EmbeddingContract } from "../../memory/embedding-contract.js";
 import { getMemuEmbedder } from "../../memory/memu-embed.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+
+const requireModule = createRequire(import.meta.url);
 
 type KnowledgeIngestFile = {
   fileName?: string;
@@ -231,6 +233,38 @@ function normalizeIngestItemExtra(value: unknown): Record<string, unknown> {
     }
   }
   return out;
+}
+
+type OptionalIntentResolution = {
+  departmentId?: string | null;
+};
+
+let resolveEffectiveIntentForAgentOptional:
+  | ((params: { config: unknown; agentId: string }) => OptionalIntentResolution | null)
+  | null
+  | undefined;
+
+function resolveEffectiveIntentForAgentIfAvailable(params: {
+  config: unknown;
+  agentId: string;
+}): OptionalIntentResolution | null {
+  if (resolveEffectiveIntentForAgentOptional === undefined) {
+    try {
+      const mod = requireModule("../../agents/intent.js") as {
+        resolveEffectiveIntentForAgent?: (params: {
+          config: unknown;
+          agentId: string;
+        }) => OptionalIntentResolution | null;
+      };
+      resolveEffectiveIntentForAgentOptional =
+        typeof mod.resolveEffectiveIntentForAgent === "function"
+          ? mod.resolveEffectiveIntentForAgent
+          : null;
+    } catch {
+      resolveEffectiveIntentForAgentOptional = null;
+    }
+  }
+  return resolveEffectiveIntentForAgentOptional?.(params) ?? null;
 }
 
 async function getPgKnowledgeMemory(agentId: string) {
@@ -816,7 +850,7 @@ export const knowledgeHandlers: GatewayRequestHandlers = {
       const { sessionAgentId } = resolveSessionAgentIds({ sessionKey, config: cfg });
 
       const memory = await getPgKnowledgeMemory(sessionAgentId);
-      const resolvedIntent = resolveEffectiveIntentForAgent({
+      const resolvedIntent = resolveEffectiveIntentForAgentIfAvailable({
         config: cfg,
         agentId: sessionAgentId,
       });

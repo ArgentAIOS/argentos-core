@@ -24,6 +24,7 @@ import {
   sendFamilyMessage,
   setAgentState,
 } from "../../data/redis-client.js";
+import { encodeForPrompt } from "../../utils/toon-encoding.js";
 import { provisionFamilyWorker } from "../family-worker-provisioning.js";
 import { jsonResult, readStringParam, readStringArrayParam, readNumberParam } from "./common.js";
 
@@ -584,17 +585,17 @@ async function handleList() {
   const family = await getAgentFamily();
   const members = await family.listMembers();
 
-  return jsonResult({
-    count: members.length,
-    agents: members.map((m) => ({
-      id: m.id,
-      name: m.name,
-      role: m.role,
-      team: m.team ?? "unassigned",
-      status: m.status,
-      alive: m.alive,
-    })),
-  });
+  // Encode family list as TOON for compact LLM context
+  const agents = members.map((m) => ({
+    id: m.id,
+    name: m.name,
+    role: m.role,
+    team: m.team ?? "unassigned",
+    status: m.status,
+    alive: m.alive,
+  }));
+  const toon = encodeForPrompt({ count: agents.length, agents });
+  return { content: [{ type: "text" as const, text: toon }] };
 }
 
 // ── message ───────────────────────────────────────────────────────────────
@@ -684,16 +685,18 @@ async function handleInbox(params: Record<string, unknown>, callerAgentId?: stri
       );
     }
 
-    return jsonResult({
-      agentId,
-      count: mine.length,
-      messages: mine.map((m) => ({
-        id: m.id,
-        from: m.message.sender,
-        type: m.message.type,
-        content: m.message.payload,
-      })),
-    });
+    // Encode inbox messages as TOON for compact LLM context (40-50% token savings)
+    const messages = mine.map((m) => ({
+      id: m.id,
+      from: m.message.sender,
+      type: m.message.type,
+      content: m.message.payload,
+    }));
+    const toonEncoded =
+      messages.length > 0 ? encodeForPrompt({ agentId, count: messages.length, messages }) : null;
+    return toonEncoded
+      ? { content: [{ type: "text" as const, text: toonEncoded }] }
+      : jsonResult({ agentId, count: 0, messages: [] });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return jsonResult({ error: `Failed to read inbox: ${msg}` });

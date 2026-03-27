@@ -1,27 +1,30 @@
-# aos-clickup harness
+# aos-clickup agent-harness
 
-Click-based harness for the ClickUp connector.
+Python Click CLI harness for the aos-clickup connector.
 
-## Local run
+## Install
 
 ```bash
-cd tools/aos/aos-clickup/agent-harness
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .[dev]
-pytest -q
+cd agent-harness
+pip install -e ".[dev]"
 ```
 
-## Commands
+## Usage
 
-- `aos-clickup capabilities`
-- `aos-clickup health`
-- `aos-clickup config show`
-- `aos-clickup doctor`
-- `aos-clickup workspace list`
-- `aos-clickup space list`
-- `aos-clickup folder list`
-- `aos-clickup list list`
-- `aos-clickup task list`
-- `aos-clickup task create-draft`
-- `aos-clickup task update-draft`
+```bash
+aos-clickup --json capabilities
+aos-clickup --json health
+aos-clickup --json config show
+aos-clickup --json workspace list
+aos-clickup --json --mode write task create "My task" --list-id list_abc123
+aos-clickup --json comment list task_abc123
+aos-clickup --json --mode write doc create "Meeting notes"
+aos-clickup --json goal list
+```
+
+## Test
+
+```bash
+cd agent-harness
+pytest tests/
+```

@@ -36,6 +36,7 @@ struct LaunchAgentPlistSnapshot: Equatable, Sendable {
     let bind: String?
     let token: String?
     let password: String?
+    let dashboardApiToken: String?
 }
 
 enum LaunchAgentPlist {
@@ -61,6 +62,8 @@ enum LaunchAgentPlist {
         let bind = Self.extractFlagString(programArguments, flag: "--bind")?.lowercased()
         let token = env["ARGENT_GATEWAY_TOKEN"]?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
         let password = env["ARGENT_GATEWAY_PASSWORD"]?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        let dashboardApiToken =
+            env["DASHBOARD_API_TOKEN"]?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
         return LaunchAgentPlistSnapshot(
             programArguments: programArguments,
             environment: env,
@@ -69,7 +72,8 @@ enum LaunchAgentPlist {
             port: port,
             bind: bind,
             token: token,
-            password: password)
+            password: password,
+            dashboardApiToken: dashboardApiToken)
     }
 
     private static func extractFlagInt(_ args: [String], flag: String) -> Int? {

@@ -128,7 +128,6 @@ export function resolveModel(
 
     // Fallback 2: Inline models from config providers.
     const providers = cfg?.models?.providers ?? {};
-    const providerCfg = providers[provider] ?? providers[normalizedProvider];
     const inlineModels = buildInlineProviderModels(providers);
     const inlineMatch = inlineModels.find(
       (entry) => normalizeProviderId(entry.provider) === normalizedProvider && entry.id === modelId,
@@ -159,6 +158,7 @@ export function resolveModel(
       } as Model<Api>);
       return { model: localModel, authStorage, modelRegistry };
     }
+    const providerCfg = providers[provider];
     if (providerCfg || modelId.startsWith("mock-")) {
       const fallbackModel: Model<Api> = normalizeModelCompat({
         id: modelId,

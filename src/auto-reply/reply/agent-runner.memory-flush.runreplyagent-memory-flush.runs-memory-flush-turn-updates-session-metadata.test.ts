@@ -122,6 +122,69 @@ function createBaseRun(params: {
 }
 
 describe("runReplyAgent memory flush", () => {
+  it("defers soft-threshold memory flush until after the main reply run", async () => {
+    runEmbeddedPiAgentMock.mockReset();
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "argent-flush-"));
+    const storePath = path.join(tmp, "sessions.json");
+    const sessionKey = "main";
+    const sessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      totalTokens: 79_000,
+      compactionCount: 1,
+    };
+
+    await seedSessionStore({ storePath, sessionKey, entry: sessionEntry });
+
+    const calls: Array<{ prompt?: string }> = [];
+    runEmbeddedPiAgentMock.mockImplementation(async (params: EmbeddedRunParams) => {
+      calls.push({ prompt: params.prompt });
+      if (params.prompt === DEFAULT_MEMORY_FLUSH_PROMPT) {
+        return { payloads: [], meta: {} };
+      }
+      return {
+        payloads: [{ text: "ok" }],
+        meta: { agentMeta: { usage: { input: 1, output: 1 } } },
+      };
+    });
+
+    const { typing, sessionCtx, resolvedQueue, followupRun } = createBaseRun({
+      storePath,
+      sessionEntry,
+    });
+
+    await runReplyAgent({
+      commandBody: "hello",
+      followupRun,
+      queueKey: "main",
+      resolvedQueue,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      typing,
+      sessionCtx,
+      sessionEntry,
+      sessionStore: { [sessionKey]: sessionEntry },
+      sessionKey,
+      storePath,
+      defaultModel: "anthropic/claude-opus-4-5",
+      agentCfgContextTokens: 100_000,
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    expect(calls.map((call) => call.prompt)).toEqual(["hello", DEFAULT_MEMORY_FLUSH_PROMPT]);
+
+    const stored = JSON.parse(await fs.readFile(storePath, "utf-8"));
+    expect(stored[sessionKey].memoryFlushAt).toBeTypeOf("number");
+    expect(stored[sessionKey].memoryFlushCompactionCount).toBe(1);
+  });
+
   it("runs a memory flush turn and updates session metadata", async () => {
     runEmbeddedPiAgentMock.mockReset();
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "argent-flush-"));

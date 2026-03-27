@@ -1,0 +1,210 @@
+{
+  "tool": "aos-coderabbit",
+  "backend": "coderabbit-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "code-review",
+    "surface": "review-report",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["repo", "pr_number", "review_id"],
+    "worker_visible_actions": [
+      "review.request",
+      "review.status",
+      "review.get",
+      "report.list",
+      "report.get",
+      "config.get",
+      "config.update"
+    ],
+    "fields": [
+      {
+        "id": "repo",
+        "label": "Repository (owner/repo)",
+        "required": true,
+        "example": "ArgentAIOS/argentos",
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "pr_number",
+        "label": "PR Number",
+        "required": false,
+        "applies_to": ["review.request", "review.status", "review.get"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      },
+      {
+        "id": "review_id",
+        "label": "Review ID",
+        "required": false,
+        "applies_to": ["review.get"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": ""
+      }
+    ],
+    "commandDefaults": {
+      "review.request": {
+        "selection_surface": "review",
+        "args": ["CODERABBIT_REPO"]
+      },
+      "review.status": {
+        "selection_surface": "review",
+        "args": ["CODERABBIT_REPO"]
+      },
+      "review.get": {
+        "selection_surface": "review",
+        "args": ["CODERABBIT_REPO"]
+      },
+      "report.list": {
+        "selection_surface": "report",
+        "args": ["CODERABBIT_REPO"],
+        "limit": 10
+      },
+      "report.get": {
+        "selection_surface": "report",
+        "args": ["CODERABBIT_REPO"]
+      },
+      "config.get": {
+        "selection_surface": "config",
+        "args": ["CODERABBIT_REPO"]
+      },
+      "config.update": {
+        "selection_surface": "config",
+        "args": ["CODERABBIT_REPO"]
+      }
+    },
+    "pickerHints": {
+      "review": {
+        "kind": "review",
+        "selection_surface": "review",
+        "resource": "coderabbit.review",
+        "source_command": "review.status",
+        "source_fields": ["id", "pr_number", "status", "summary", "created", "updated"]
+      },
+      "report": {
+        "kind": "report",
+        "selection_surface": "report",
+        "resource": "coderabbit.report",
+        "source_command": "report.list",
+        "source_fields": ["id", "repo", "type", "generated", "summary"]
+      }
+    }
+  },
+  "connector": {
+    "label": "CodeRabbit",
+    "category": "developer-tools",
+    "categories": ["developer-tools", "code-review", "ci-cd"],
+    "resources": ["review", "report", "config"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["CODERABBIT_API_KEY"],
+    "interactive_setup": [
+      "Create a CodeRabbit API key at https://app.coderabbit.ai/settings.",
+      "Add CODERABBIT_API_KEY in API Keys before enabling live reads.",
+      "Set CODERABBIT_REPO to a default repository (owner/repo) for worker flows.",
+      "The connector supports both read and write operations (review requests, config updates).",
+      "The connector is live-read-first and will report API failures instead of masking them."
+    ]
+  },
+  "commands": [
+    {
+      "id": "review.request",
+      "summary": "Request a CodeRabbit review on a PR",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "review",
+      "action_class": "write"
+    },
+    {
+      "id": "review.status",
+      "summary": "Check the status of a CodeRabbit review",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "review",
+      "action_class": "read"
+    },
+    {
+      "id": "review.get",
+      "summary": "Get a completed CodeRabbit review",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "review",
+      "action_class": "read"
+    },
+    {
+      "id": "report.list",
+      "summary": "List CodeRabbit reports for a repository",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "report",
+      "action_class": "read"
+    },
+    {
+      "id": "report.get",
+      "summary": "Get a CodeRabbit report",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "report",
+      "action_class": "read"
+    },
+    {
+      "id": "config.get",
+      "summary": "Get CodeRabbit configuration for a repository",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "config",
+      "action_class": "read"
+    },
+    {
+      "id": "config.update",
+      "summary": "Update CodeRabbit configuration for a repository",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "config",
+      "action_class": "write"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

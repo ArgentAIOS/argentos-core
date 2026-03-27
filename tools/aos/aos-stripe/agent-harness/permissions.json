@@ -1,21 +1,24 @@
 {
   "tool": "aos-stripe",
-  "backend": "stripe",
+  "backend": "stripe-api",
   "permissions": {
-    "account.read": "readonly",
+    "balance.get": "readonly",
     "capabilities": "readonly",
-    "health": "readonly",
     "config.show": "readonly",
+    "health": "readonly",
     "doctor": "readonly",
-    "balance.read": "readonly",
     "customer.list": "readonly",
-    "customer.search": "readonly",
-    "customer.read": "readonly",
+    "customer.get": "readonly",
+    "customer.create": "write",
     "payment.list": "readonly",
-    "payment.read": "readonly",
+    "payment.get": "readonly",
+    "payment.create": "write",
+    "subscription.list": "readonly",
+    "subscription.get": "readonly",
+    "subscription.create": "write",
+    "subscription.cancel": "write",
     "invoice.list": "readonly",
-    "invoice.read": "readonly",
-    "invoice.create_draft": "write",
-    "refund.create": "full"
+    "invoice.get": "readonly",
+    "invoice.send": "write"
   }
 }

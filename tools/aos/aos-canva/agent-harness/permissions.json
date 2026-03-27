@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "design.list": "readonly",
+    "design.get": "readonly",
+    "design.create": "write",
+    "design.clone": "write",
+    "template.list": "readonly",
+    "template.get": "readonly",
+    "brand_template.list": "readonly",
+    "brand_template.create_design": "write",
+    "asset.upload": "write",
+    "asset.list": "readonly",
+    "folder.list": "readonly",
+    "folder.create": "write",
+    "export.start": "readonly",
+    "export.status": "readonly",
+    "export.download": "readonly",
+    "autofill.create": "write",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

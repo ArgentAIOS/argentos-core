@@ -1,0 +1,675 @@
+{
+  "tool": "aos-close",
+  "backend": "close-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "crm",
+    "surface": "lead-contact-opportunity-activity",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": false,
+    "workerFields": ["lead_id", "contact_id", "query", "status", "assignee"],
+    "worker_visible_actions": [
+      "lead.list",
+      "lead.get",
+      "lead.create",
+      "lead.update",
+      "contact.list",
+      "contact.get",
+      "contact.create",
+      "opportunity.list",
+      "opportunity.get",
+      "opportunity.create",
+      "activity.list",
+      "activity.create",
+      "task.list",
+      "task.create",
+      "email.send",
+      "sms.send",
+      "call.create"
+    ],
+    "fields": [
+      {
+        "id": "lead_id",
+        "label": "Lead",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "pickerHint": "lead",
+        "applies_to": [
+          "lead.get",
+          "lead.update",
+          "contact.list",
+          "contact.create",
+          "opportunity.list",
+          "opportunity.create",
+          "activity.list",
+          "activity.create"
+        ],
+        "placeholder": "Select a lead...",
+        "description": "The parent lead for this operation."
+      },
+      {
+        "id": "contact_id",
+        "label": "Contact",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": true,
+        "pickerHint": "contact",
+        "applies_to": ["contact.get", "email.send", "sms.send", "call.create"],
+        "placeholder": "Select a contact...",
+        "description": "The contact to interact with."
+      },
+      {
+        "id": "lead_name",
+        "label": "Lead Name",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["lead.create"],
+        "placeholder": "Acme Corp",
+        "description": "Display name for the new lead (usually company name)."
+      },
+      {
+        "id": "status",
+        "label": "Lead Status",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "applies_to": ["lead.list", "lead.create", "lead.update"],
+        "options": [
+          { "value": "Potential", "label": "Potential" },
+          { "value": "Bad Fit", "label": "Bad Fit" },
+          { "value": "Qualified", "label": "Qualified" },
+          { "value": "Customer", "label": "Customer" }
+        ],
+        "default": "Potential"
+      },
+      {
+        "id": "query",
+        "label": "Search Query",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["lead.list"],
+        "placeholder": "company:\"Acme Corp\"",
+        "description": "Close search query syntax. Supports field:value filters."
+      },
+      {
+        "id": "assignee",
+        "label": "Assignee",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["lead.create", "lead.update", "task.create"],
+        "placeholder": "user_abc123",
+        "description": "Close user ID to assign this item to."
+      },
+      {
+        "id": "contact_name",
+        "label": "Contact Name",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["contact.create"],
+        "placeholder": "Jane Doe"
+      },
+      {
+        "id": "contact_email",
+        "label": "Contact Email",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["contact.create"],
+        "placeholder": "jane@acme.com"
+      },
+      {
+        "id": "contact_phone",
+        "label": "Contact Phone",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["contact.create"],
+        "placeholder": "+1 555-0100"
+      },
+      {
+        "id": "contact_title",
+        "label": "Contact Title",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["contact.create"],
+        "placeholder": "VP of Sales"
+      },
+      {
+        "id": "opportunity_note",
+        "label": "Opportunity Note",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["opportunity.create"],
+        "placeholder": "Enterprise license deal"
+      },
+      {
+        "id": "opportunity_value",
+        "label": "Value",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["opportunity.create"],
+        "placeholder": "50000",
+        "description": "Deal value in cents (e.g. 5000000 = $50,000)."
+      },
+      {
+        "id": "opportunity_confidence",
+        "label": "Confidence",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["opportunity.create"],
+        "placeholder": "75",
+        "description": "Win confidence percentage (0-100)."
+      },
+      {
+        "id": "opportunity_status",
+        "label": "Opportunity Status",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "applies_to": ["opportunity.create", "opportunity.list"],
+        "options": [
+          { "value": "active", "label": "Active" },
+          { "value": "won", "label": "Won" },
+          { "value": "lost", "label": "Lost" }
+        ],
+        "default": "active"
+      },
+      {
+        "id": "activity_note",
+        "label": "Activity Note",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": true,
+        "expressionEnabled": true,
+        "rows": 4,
+        "applies_to": ["activity.create"],
+        "placeholder": "Called about renewal — they want to upgrade."
+      },
+      {
+        "id": "email_subject",
+        "label": "Subject",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["email.send"],
+        "placeholder": "Following up on our conversation"
+      },
+      {
+        "id": "email_body",
+        "label": "Email Body",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": true,
+        "expressionEnabled": true,
+        "rows": 8,
+        "applies_to": ["email.send"],
+        "placeholder": "Hi Jane,\n\nThank you for...",
+        "description": "HTML email body content."
+      },
+      {
+        "id": "sms_text",
+        "label": "SMS Text",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["sms.send"],
+        "placeholder": "Hi Jane, just following up...",
+        "description": "Plain text SMS message (max 160 chars for single segment)."
+      },
+      {
+        "id": "call_direction",
+        "label": "Call Direction",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "applies_to": ["call.create"],
+        "options": [
+          { "value": "outbound", "label": "Outbound" },
+          { "value": "inbound", "label": "Inbound" }
+        ],
+        "default": "outbound"
+      },
+      {
+        "id": "call_note",
+        "label": "Call Note",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "rows": 4,
+        "applies_to": ["call.create"],
+        "placeholder": "Discussed pricing and timeline..."
+      },
+      {
+        "id": "call_duration",
+        "label": "Duration (seconds)",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["call.create"],
+        "placeholder": "300",
+        "description": "Call duration in seconds."
+      },
+      {
+        "id": "task_text",
+        "label": "Task Description",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["task.create"],
+        "placeholder": "Follow up with lead about proposal"
+      },
+      {
+        "id": "task_due_date",
+        "label": "Due Date",
+        "type": "text",
+        "renderAs": "datetime",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["task.create"],
+        "placeholder": "2026-04-15",
+        "description": "Due date in YYYY-MM-DD format."
+      }
+    ],
+    "commandDefaults": {
+      "lead.list": {
+        "selection_surface": "lead",
+        "limit": 10
+      },
+      "lead.get": {
+        "selection_surface": "lead",
+        "args": ["CLOSE_LEAD_ID"]
+      },
+      "lead.create": {
+        "selection_surface": "lead"
+      },
+      "lead.update": {
+        "selection_surface": "lead",
+        "args": ["CLOSE_LEAD_ID"]
+      },
+      "contact.list": {
+        "selection_surface": "contact",
+        "limit": 10
+      },
+      "contact.get": {
+        "selection_surface": "contact",
+        "args": ["CLOSE_CONTACT_ID"]
+      },
+      "contact.create": {
+        "selection_surface": "contact"
+      },
+      "opportunity.list": {
+        "selection_surface": "opportunity",
+        "limit": 10
+      },
+      "opportunity.get": {
+        "selection_surface": "opportunity",
+        "args": ["CLOSE_OPPORTUNITY_ID"]
+      },
+      "opportunity.create": {
+        "selection_surface": "opportunity"
+      },
+      "activity.list": {
+        "selection_surface": "activity",
+        "limit": 10
+      },
+      "activity.create": {
+        "selection_surface": "activity"
+      },
+      "task.list": {
+        "selection_surface": "task",
+        "limit": 10
+      },
+      "task.create": {
+        "selection_surface": "task"
+      },
+      "email.send": {
+        "selection_surface": "email"
+      },
+      "sms.send": {
+        "selection_surface": "sms"
+      },
+      "call.create": {
+        "selection_surface": "call"
+      }
+    },
+    "pickerHints": {
+      "lead": {
+        "kind": "lead",
+        "selection_surface": "lead",
+        "resource": "close.lead",
+        "source_command": "lead.list",
+        "source_fields": [
+          "id",
+          "display_name",
+          "status_label",
+          "description",
+          "contacts",
+          "created_by"
+        ]
+      },
+      "contact": {
+        "kind": "contact",
+        "selection_surface": "contact",
+        "resource": "close.contact",
+        "source_command": "contact.list",
+        "source_fields": ["id", "name", "title", "emails", "phones", "lead_id"]
+      },
+      "opportunity": {
+        "kind": "opportunity",
+        "selection_surface": "opportunity",
+        "resource": "close.opportunity",
+        "source_command": "opportunity.list",
+        "source_fields": [
+          "id",
+          "note",
+          "confidence",
+          "value",
+          "value_period",
+          "lead_id",
+          "status_type"
+        ]
+      },
+      "activity": {
+        "kind": "activity",
+        "selection_surface": "activity",
+        "resource": "close.activity",
+        "source_command": "activity.list",
+        "source_fields": ["id", "type", "date_created", "lead_id", "user_id"]
+      },
+      "task": {
+        "kind": "task",
+        "selection_surface": "task",
+        "resource": "close.task",
+        "source_command": "task.list",
+        "source_fields": ["id", "text", "is_complete", "due_date", "assigned_to", "lead_id"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Close",
+    "category": "crm-revenue",
+    "categories": ["crm-revenue", "sales", "outreach"],
+    "resources": ["lead", "contact", "opportunity", "activity", "task", "email", "sms", "call"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["CLOSE_API_KEY"],
+    "interactive_setup": [
+      "Navigate to Close Settings > API Keys to create or find your API key.",
+      "Add CLOSE_API_KEY in API Keys before enabling live reads.",
+      "Optionally set CLOSE_LEAD_ID and CLOSE_CONTACT_ID for default scope hints.",
+      "Keep write commands (email.send, sms.send, call.create) scaffolded until outreach workflows are approved.",
+      "The connector is live-read-first and will report API failures instead of masking them."
+    ]
+  },
+  "events": [
+    {
+      "id": "lead.created",
+      "resource": "lead",
+      "summary": "New lead created in Close",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_status_filter",
+          "label": "Status Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "options": [
+            { "value": "Potential", "label": "Potential" },
+            { "value": "Qualified", "label": "Qualified" }
+          ],
+          "description": "Only trigger for leads with this initial status."
+        }
+      ]
+    },
+    {
+      "id": "call.completed",
+      "resource": "call",
+      "summary": "Call logged or completed",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_direction_filter",
+          "label": "Direction Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "options": [
+            { "value": "outbound", "label": "Outbound" },
+            { "value": "inbound", "label": "Inbound" }
+          ],
+          "description": "Only trigger for calls in this direction."
+        },
+        {
+          "id": "event_min_duration",
+          "label": "Minimum Duration (seconds)",
+          "type": "number",
+          "renderAs": "number",
+          "required": false,
+          "placeholder": "30",
+          "description": "Only trigger for calls longer than this duration."
+        }
+      ]
+    },
+    {
+      "id": "email.received",
+      "resource": "email",
+      "summary": "Inbound email received on a lead",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_lead_filter",
+          "label": "Lead Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "pickerHint": "lead",
+          "description": "Only trigger for emails on this lead."
+        }
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "id": "lead.list",
+      "summary": "List Close leads",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "lead",
+      "action_class": "read"
+    },
+    {
+      "id": "lead.get",
+      "summary": "Get a Close lead by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "lead",
+      "action_class": "read"
+    },
+    {
+      "id": "lead.create",
+      "summary": "Create a Close lead",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "lead",
+      "action_class": "write"
+    },
+    {
+      "id": "lead.update",
+      "summary": "Update a Close lead",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "lead",
+      "action_class": "write"
+    },
+    {
+      "id": "contact.list",
+      "summary": "List Close contacts",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "contact",
+      "action_class": "read"
+    },
+    {
+      "id": "contact.get",
+      "summary": "Get a Close contact by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "contact",
+      "action_class": "read"
+    },
+    {
+      "id": "contact.create",
+      "summary": "Create a Close contact",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "contact",
+      "action_class": "write"
+    },
+    {
+      "id": "opportunity.list",
+      "summary": "List Close opportunities",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "opportunity",
+      "action_class": "read"
+    },
+    {
+      "id": "opportunity.get",
+      "summary": "Get a Close opportunity by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "opportunity",
+      "action_class": "read"
+    },
+    {
+      "id": "opportunity.create",
+      "summary": "Create a Close opportunity",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "opportunity",
+      "action_class": "write"
+    },
+    {
+      "id": "activity.list",
+      "summary": "List Close activities",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "activity",
+      "action_class": "read"
+    },
+    {
+      "id": "activity.create",
+      "summary": "Create a Close activity",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "activity",
+      "action_class": "write"
+    },
+    {
+      "id": "task.list",
+      "summary": "List Close tasks",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "read"
+    },
+    {
+      "id": "task.create",
+      "summary": "Create a Close task",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "write"
+    },
+    {
+      "id": "email.send",
+      "summary": "Send an email via Close",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "email",
+      "action_class": "write"
+    },
+    {
+      "id": "sms.send",
+      "summary": "Send an SMS via Close",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "sms",
+      "action_class": "write"
+    },
+    {
+      "id": "call.create",
+      "summary": "Log a call in Close",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "call",
+      "action_class": "write"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

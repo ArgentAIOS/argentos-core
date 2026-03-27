@@ -1,0 +1,637 @@
+{
+  "tool": "aos-salesforce",
+  "backend": "salesforce-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "crm",
+    "surface": "lead-contact-opportunity-account",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["object_type", "record_id", "soql_query", "lead_source"],
+    "worker_visible_actions": [
+      "lead.list",
+      "lead.get",
+      "lead.create",
+      "lead.update",
+      "contact.list",
+      "contact.get",
+      "contact.create",
+      "opportunity.list",
+      "opportunity.get",
+      "opportunity.create",
+      "opportunity.update",
+      "account.list",
+      "account.get",
+      "task.list",
+      "task.create",
+      "report.run",
+      "search.soql"
+    ],
+    "fields": [
+      {
+        "id": "record_id",
+        "label": "Record",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": [
+          "lead.get",
+          "lead.update",
+          "contact.get",
+          "opportunity.get",
+          "opportunity.update",
+          "account.get"
+        ],
+        "placeholder": "00Q5e000001abc123",
+        "description": "The 18-character Salesforce record ID."
+      },
+      {
+        "id": "first_name",
+        "label": "First Name",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["lead.create", "lead.update", "contact.create"],
+        "placeholder": "Jane"
+      },
+      {
+        "id": "last_name",
+        "label": "Last Name",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["lead.create", "lead.update", "contact.create"],
+        "placeholder": "Doe",
+        "description": "Required for lead and contact creation."
+      },
+      {
+        "id": "email",
+        "label": "Email",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["lead.create", "lead.update", "contact.create"],
+        "placeholder": "jane@example.com"
+      },
+      {
+        "id": "company",
+        "label": "Company",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["lead.create", "lead.update"],
+        "placeholder": "Acme Corp",
+        "description": "Required for lead creation."
+      },
+      {
+        "id": "phone",
+        "label": "Phone",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["lead.create", "lead.update", "contact.create"],
+        "placeholder": "+1 555-0100"
+      },
+      {
+        "id": "lead_status",
+        "label": "Lead Status",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "applies_to": ["lead.create", "lead.update", "lead.list"],
+        "options": [
+          { "value": "Open - Not Contacted", "label": "Open - Not Contacted" },
+          { "value": "Working - Contacted", "label": "Working - Contacted" },
+          { "value": "Closed - Converted", "label": "Closed - Converted" },
+          { "value": "Closed - Not Converted", "label": "Closed - Not Converted" }
+        ],
+        "default": "Open - Not Contacted"
+      },
+      {
+        "id": "lead_source",
+        "label": "Lead Source",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "applies_to": ["lead.create", "lead.update", "lead.list"],
+        "options": [
+          { "value": "Web", "label": "Web" },
+          { "value": "Phone Inquiry", "label": "Phone Inquiry" },
+          { "value": "Partner Referral", "label": "Partner Referral" },
+          { "value": "Purchased List", "label": "Purchased List" },
+          { "value": "Other", "label": "Other" }
+        ]
+      },
+      {
+        "id": "account_id",
+        "label": "Account",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "account",
+        "applies_to": ["contact.create", "opportunity.create"],
+        "placeholder": "Select an account...",
+        "description": "The parent account for this contact or opportunity."
+      },
+      {
+        "id": "opportunity_name",
+        "label": "Opportunity Name",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["opportunity.create", "opportunity.update"],
+        "placeholder": "Acme Corp — Enterprise License"
+      },
+      {
+        "id": "opportunity_stage",
+        "label": "Stage",
+        "type": "select",
+        "renderAs": "select",
+        "required": true,
+        "expressionEnabled": false,
+        "applies_to": ["opportunity.create", "opportunity.update", "opportunity.list"],
+        "options": [
+          { "value": "Prospecting", "label": "Prospecting" },
+          { "value": "Qualification", "label": "Qualification" },
+          { "value": "Needs Analysis", "label": "Needs Analysis" },
+          { "value": "Value Proposition", "label": "Value Proposition" },
+          { "value": "Negotiation/Review", "label": "Negotiation/Review" },
+          { "value": "Closed Won", "label": "Closed Won" },
+          { "value": "Closed Lost", "label": "Closed Lost" }
+        ],
+        "default": "Prospecting"
+      },
+      {
+        "id": "opportunity_amount",
+        "label": "Amount",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["opportunity.create", "opportunity.update"],
+        "placeholder": "50000",
+        "description": "Deal value in the org's default currency."
+      },
+      {
+        "id": "close_date",
+        "label": "Close Date",
+        "type": "text",
+        "renderAs": "datetime",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["opportunity.create", "opportunity.update"],
+        "placeholder": "2026-06-30",
+        "description": "Expected close date in YYYY-MM-DD format."
+      },
+      {
+        "id": "task_subject",
+        "label": "Task Subject",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["task.create"],
+        "placeholder": "Follow up with client"
+      },
+      {
+        "id": "task_status",
+        "label": "Task Status",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "applies_to": ["task.create", "task.list"],
+        "options": [
+          { "value": "Not Started", "label": "Not Started" },
+          { "value": "In Progress", "label": "In Progress" },
+          { "value": "Completed", "label": "Completed" },
+          { "value": "Waiting on someone else", "label": "Waiting" },
+          { "value": "Deferred", "label": "Deferred" }
+        ],
+        "default": "Not Started"
+      },
+      {
+        "id": "task_priority",
+        "label": "Task Priority",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "applies_to": ["task.create"],
+        "options": [
+          { "value": "High", "label": "High" },
+          { "value": "Normal", "label": "Normal" },
+          { "value": "Low", "label": "Low" }
+        ],
+        "default": "Normal"
+      },
+      {
+        "id": "task_due_date",
+        "label": "Due Date",
+        "type": "text",
+        "renderAs": "datetime",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["task.create"],
+        "placeholder": "2026-04-15",
+        "description": "Due date in YYYY-MM-DD format."
+      },
+      {
+        "id": "report_id",
+        "label": "Report ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["report.run"],
+        "placeholder": "00O5e000001abc123",
+        "description": "The 18-character Salesforce report ID."
+      },
+      {
+        "id": "soql_query",
+        "label": "SOQL Query",
+        "type": "expression",
+        "renderAs": "expression",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["search.soql"],
+        "placeholder": "SELECT Id, Name FROM Lead WHERE Status = 'Open'",
+        "description": "Salesforce Object Query Language expression."
+      }
+    ],
+    "commandDefaults": {
+      "lead.list": {
+        "selection_surface": "lead",
+        "limit": 10
+      },
+      "lead.get": {
+        "selection_surface": "lead",
+        "args": ["SALESFORCE_RECORD_ID"]
+      },
+      "lead.create": {
+        "selection_surface": "lead"
+      },
+      "lead.update": {
+        "selection_surface": "lead",
+        "args": ["SALESFORCE_RECORD_ID"]
+      },
+      "contact.list": {
+        "selection_surface": "contact",
+        "limit": 10
+      },
+      "contact.get": {
+        "selection_surface": "contact",
+        "args": ["SALESFORCE_RECORD_ID"]
+      },
+      "contact.create": {
+        "selection_surface": "contact"
+      },
+      "opportunity.list": {
+        "selection_surface": "opportunity",
+        "limit": 10
+      },
+      "opportunity.get": {
+        "selection_surface": "opportunity",
+        "args": ["SALESFORCE_RECORD_ID"]
+      },
+      "opportunity.create": {
+        "selection_surface": "opportunity"
+      },
+      "opportunity.update": {
+        "selection_surface": "opportunity",
+        "args": ["SALESFORCE_RECORD_ID"]
+      },
+      "account.list": {
+        "selection_surface": "account",
+        "limit": 10
+      },
+      "account.get": {
+        "selection_surface": "account",
+        "args": ["SALESFORCE_RECORD_ID"]
+      },
+      "task.list": {
+        "selection_surface": "task",
+        "limit": 10
+      },
+      "task.create": {
+        "selection_surface": "task"
+      },
+      "report.run": {
+        "selection_surface": "report",
+        "args": ["SALESFORCE_REPORT_ID"]
+      },
+      "search.soql": {
+        "selection_surface": "search",
+        "args": ["SALESFORCE_SOQL_QUERY"]
+      }
+    },
+    "pickerHints": {
+      "lead": {
+        "kind": "lead",
+        "selection_surface": "lead",
+        "resource": "salesforce.lead",
+        "source_command": "lead.list",
+        "source_fields": ["id", "name", "email", "company", "status", "lead_source", "created"]
+      },
+      "contact": {
+        "kind": "contact",
+        "selection_surface": "contact",
+        "resource": "salesforce.contact",
+        "source_command": "contact.list",
+        "source_fields": ["id", "name", "email", "phone", "account_id", "created"]
+      },
+      "opportunity": {
+        "kind": "opportunity",
+        "selection_surface": "opportunity",
+        "resource": "salesforce.opportunity",
+        "source_command": "opportunity.list",
+        "source_fields": ["id", "name", "stage", "amount", "close_date", "account_id"]
+      },
+      "account": {
+        "kind": "account",
+        "selection_surface": "account",
+        "resource": "salesforce.account",
+        "source_command": "account.list",
+        "source_fields": ["id", "name", "industry", "type", "phone", "website"]
+      },
+      "task": {
+        "kind": "task",
+        "selection_surface": "task",
+        "resource": "salesforce.task",
+        "source_command": "task.list",
+        "source_fields": ["id", "subject", "status", "priority", "who_id", "due_date"]
+      }
+    }
+  },
+  "connector": {
+    "label": "Salesforce",
+    "category": "crm-revenue",
+    "categories": ["crm-revenue", "sales", "enterprise"],
+    "resources": ["lead", "contact", "opportunity", "account", "task", "report", "search"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["SALESFORCE_ACCESS_TOKEN", "SALESFORCE_INSTANCE_URL"],
+    "interactive_setup": [
+      "Create a Connected App in Salesforce Setup and complete the OAuth flow to obtain an access token.",
+      "Add SALESFORCE_ACCESS_TOKEN and SALESFORCE_INSTANCE_URL in API Keys before enabling live access.",
+      "Optionally set SALESFORCE_RECORD_ID to give worker flows a default record scope.",
+      "Optionally set SALESFORCE_REPORT_ID to give report.run a default report scope.",
+      "Write commands execute live mutations against the Salesforce API.",
+      "The connector uses the live Salesforce API and reports API failures instead of masking them."
+    ]
+  },
+  "events": [
+    {
+      "id": "lead.created",
+      "resource": "lead",
+      "summary": "New lead created in Salesforce",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_lead_source",
+          "label": "Lead Source Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "options": [
+            { "value": "Web", "label": "Web" },
+            { "value": "Phone Inquiry", "label": "Phone Inquiry" },
+            { "value": "Partner Referral", "label": "Partner Referral" }
+          ],
+          "description": "Only trigger for leads from this source."
+        }
+      ]
+    },
+    {
+      "id": "opportunity.updated",
+      "resource": "opportunity",
+      "summary": "Opportunity stage or fields changed",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_stage_filter",
+          "label": "Stage Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "options": [
+            { "value": "Closed Won", "label": "Closed Won" },
+            { "value": "Closed Lost", "label": "Closed Lost" },
+            { "value": "Negotiation/Review", "label": "Negotiation/Review" }
+          ],
+          "description": "Only trigger when opportunity moves to this stage."
+        },
+        {
+          "id": "event_min_amount",
+          "label": "Minimum Amount",
+          "type": "number",
+          "renderAs": "number",
+          "required": false,
+          "placeholder": "10000",
+          "description": "Only trigger for opportunities above this dollar amount."
+        }
+      ]
+    },
+    {
+      "id": "contact.created",
+      "resource": "contact",
+      "summary": "New contact created in Salesforce",
+      "delivery": "webhook",
+      "configFields": [
+        {
+          "id": "event_account_filter",
+          "label": "Account Filter",
+          "type": "select",
+          "renderAs": "select",
+          "required": false,
+          "pickerHint": "account",
+          "description": "Only trigger for contacts under this account."
+        }
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "id": "lead.list",
+      "summary": "List Salesforce leads",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "lead",
+      "action_class": "read"
+    },
+    {
+      "id": "lead.get",
+      "summary": "Get a Salesforce lead by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "lead",
+      "action_class": "read"
+    },
+    {
+      "id": "lead.create",
+      "summary": "Create a Salesforce lead",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "lead",
+      "action_class": "write"
+    },
+    {
+      "id": "lead.update",
+      "summary": "Update a Salesforce lead",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "lead",
+      "action_class": "write"
+    },
+    {
+      "id": "contact.list",
+      "summary": "List Salesforce contacts",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "contact",
+      "action_class": "read"
+    },
+    {
+      "id": "contact.get",
+      "summary": "Get a Salesforce contact by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "contact",
+      "action_class": "read"
+    },
+    {
+      "id": "contact.create",
+      "summary": "Create a Salesforce contact",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "contact",
+      "action_class": "write"
+    },
+    {
+      "id": "opportunity.list",
+      "summary": "List Salesforce opportunities",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "opportunity",
+      "action_class": "read"
+    },
+    {
+      "id": "opportunity.get",
+      "summary": "Get a Salesforce opportunity by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "opportunity",
+      "action_class": "read"
+    },
+    {
+      "id": "opportunity.create",
+      "summary": "Create a Salesforce opportunity",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "opportunity",
+      "action_class": "write"
+    },
+    {
+      "id": "opportunity.update",
+      "summary": "Update a Salesforce opportunity",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "opportunity",
+      "action_class": "write"
+    },
+    {
+      "id": "account.list",
+      "summary": "List Salesforce accounts",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "account",
+      "action_class": "read"
+    },
+    {
+      "id": "account.get",
+      "summary": "Get a Salesforce account by ID",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "account",
+      "action_class": "read"
+    },
+    {
+      "id": "task.list",
+      "summary": "List Salesforce tasks",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "read"
+    },
+    {
+      "id": "task.create",
+      "summary": "Create a Salesforce task",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "task",
+      "action_class": "write"
+    },
+    {
+      "id": "report.run",
+      "summary": "Run a Salesforce report",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "report",
+      "action_class": "read"
+    },
+    {
+      "id": "search.soql",
+      "summary": "Execute a SOQL query against Salesforce",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "search",
+      "action_class": "read"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

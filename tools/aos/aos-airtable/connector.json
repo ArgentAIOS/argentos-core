@@ -24,6 +24,88 @@
     "required": ["AIRTABLE_API_TOKEN", "AIRTABLE_BASE_ID"],
     "optional": ["AIRTABLE_WORKSPACE_ID", "AIRTABLE_TABLE_NAME"],
     "workerFields": ["base_id", "table_name", "workspace_id"],
+    "worker_visible_actions": [
+      "base.list",
+      "base.read",
+      "table.list",
+      "table.read",
+      "record.list",
+      "record.search",
+      "record.read",
+      "record.create_draft",
+      "record.update_draft"
+    ],
+    "fields": [
+      {
+        "id": "workspace_id",
+        "label": "Workspace",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "Select workspace...",
+        "description": "Airtable workspace ID"
+      },
+      {
+        "id": "base_id",
+        "label": "Base",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "Select base...",
+        "description": "Airtable base ID to operate on"
+      },
+      {
+        "id": "table_name",
+        "label": "Table",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "placeholder": "Select table...",
+        "description": "Table name or ID to query or modify"
+      },
+      {
+        "id": "record_id",
+        "label": "Record",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["record.read"],
+        "placeholder": "Enter record ID...",
+        "description": "Airtable record ID to read or update"
+      },
+      {
+        "id": "field_values",
+        "label": "Field Values",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "json",
+        "applies_to": ["record.create_draft", "record.update_draft"],
+        "placeholder": "{}",
+        "description": "JSON object of field values for the record"
+      },
+      {
+        "id": "search_query",
+        "label": "Search Query",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["record.search"],
+        "placeholder": "Search terms...",
+        "description": "Text search within record fields"
+      }
+    ],
     "commandDefaults": {
       "base.read": {
         "args": ["AIRTABLE_BASE_ID"]

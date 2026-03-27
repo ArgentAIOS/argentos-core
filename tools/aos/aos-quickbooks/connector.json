@@ -1,5 +1,6 @@
 {
   "backend": "quickbooks-online",
+  "manifest_schema_version": "1.0.0",
   "connector": {
     "label": "QuickBooks Online",
     "category": "finance-backoffice",
@@ -14,6 +15,140 @@
       "account",
       "transaction"
     ]
+  },
+  "scope": {
+    "kind": "accounting",
+    "surface": "invoice-customer-vendor-payment-account",
+    "fields": [
+      {
+        "id": "customer_id",
+        "label": "Customer ID",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["customer.read", "invoice.create_draft"],
+        "placeholder": "Select customer...",
+        "description": "The QuickBooks customer ID for invoicing."
+      },
+      {
+        "id": "vendor_id",
+        "label": "Vendor ID",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["vendor.read", "bill.create_draft"],
+        "placeholder": "Select vendor...",
+        "description": "The QuickBooks vendor ID for bill creation."
+      },
+      {
+        "id": "invoice_id",
+        "label": "Invoice ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["invoice.read"],
+        "placeholder": "e.g., 123",
+        "description": "The QuickBooks invoice ID to retrieve."
+      },
+      {
+        "id": "bill_id",
+        "label": "Bill ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["bill.read"],
+        "placeholder": "e.g., 456",
+        "description": "The QuickBooks bill ID to retrieve."
+      },
+      {
+        "id": "amount",
+        "label": "Amount",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "applies_to": ["invoice.create_draft", "bill.create_draft", "payment.create_draft"],
+        "placeholder": "e.g., 1500.00",
+        "description": "Transaction amount in the default currency."
+      },
+      {
+        "id": "account_id",
+        "label": "Account ID",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["account.read"],
+        "placeholder": "Select account...",
+        "description": "The QuickBooks account (chart of accounts) ID."
+      },
+      {
+        "id": "description",
+        "label": "Description",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["invoice.create_draft", "bill.create_draft"],
+        "placeholder": "Describe the transaction...",
+        "description": "Description or memo for the invoice or bill."
+      },
+      {
+        "id": "due_date",
+        "label": "Due Date",
+        "type": "text",
+        "renderAs": "datetime",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "datetime",
+        "applies_to": ["invoice.create_draft", "bill.create_draft"],
+        "placeholder": "YYYY-MM-DD",
+        "description": "Due date for the invoice or bill in ISO 8601 format."
+      },
+      {
+        "id": "query",
+        "label": "Search Query",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["customer.search", "vendor.search", "invoice.search", "bill.search"],
+        "placeholder": "e.g., Acme Corp",
+        "description": "Search query for finding customers, vendors, or transactions."
+      }
+    ],
+    "pickerHints": {
+      "customer": {
+        "kind": "customer",
+        "resource": "quickbooks.customer",
+        "source_command": "customer.list",
+        "source_fields": ["id", "displayName", "email", "primaryPhone"]
+      },
+      "vendor": {
+        "kind": "vendor",
+        "resource": "quickbooks.vendor",
+        "source_command": "vendor.list",
+        "source_fields": ["id", "displayName", "email", "primaryPhone"]
+      },
+      "account": {
+        "kind": "account",
+        "resource": "quickbooks.account",
+        "source_command": "account.list",
+        "source_fields": ["id", "name", "type", "currentBalance"]
+      }
+    }
   },
   "auth": {
     "kind": "oauth-service-key",
