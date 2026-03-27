@@ -9,7 +9,7 @@ export function noteWorkspaceStatus(cfg: ArgentConfig) {
   const workspaceDir = resolveAgentWorkspaceDir(cfg, resolveDefaultAgentId(cfg));
   const legacyWorkspace = detectLegacyWorkspaceDirs({ workspaceDir });
   if (legacyWorkspace.legacyDirs.length > 0) {
-    note(formatLegacyWorkspaceWarning(legacyWorkspace), "Extra workspace");
+    note(formatLegacyWorkspaceWarning(legacyWorkspace), "Extra Argent workspace");
   }
 
   const skillsReport = buildWorkspaceSkillStatus(workspaceDir, { config: cfg });
@@ -22,7 +22,7 @@ export function noteWorkspaceStatus(cfg: ArgentConfig) {
       }`,
       `Blocked by allowlist: ${skillsReport.skills.filter((s) => s.blockedByAllowlist).length}`,
     ].join("\n"),
-    "Skills status",
+    "Argent skills status",
   );
 
   const pluginRegistry = loadArgentPlugins({
@@ -52,7 +52,7 @@ export function noteWorkspaceStatus(cfg: ArgentConfig) {
         : null,
     ].filter((line): line is string => Boolean(line));
 
-    note(lines.join("\n"), "Plugins");
+    note(lines.join("\n"), "Argent plugins");
   }
   if (pluginRegistry.diagnostics.length > 0) {
     const lines = pluginRegistry.diagnostics.map((diag) => {
@@ -61,7 +61,7 @@ export function noteWorkspaceStatus(cfg: ArgentConfig) {
       const source = diag.source ? ` (${diag.source})` : "";
       return `- ${prefix}${plugin}: ${diag.message}${source}`;
     });
-    note(lines.join("\n"), "Plugin diagnostics");
+    note(lines.join("\n"), "Argent plugin diagnostics");
   }
 
   return { workspaceDir };

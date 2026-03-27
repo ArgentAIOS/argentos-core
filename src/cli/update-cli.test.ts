@@ -236,7 +236,7 @@ describe("update-cli", () => {
     try {
       await fs.writeFile(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ name: "argent", version: "1.0.0" }),
+        JSON.stringify({ name: "argentos", version: "1.0.0" }),
         "utf-8",
       );
 
@@ -301,7 +301,7 @@ describe("update-cli", () => {
     try {
       await fs.writeFile(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ name: "argent", version: "1.0.0" }),
+        JSON.stringify({ name: "argentos", version: "1.0.0" }),
         "utf-8",
       );
 
@@ -354,7 +354,7 @@ describe("update-cli", () => {
     try {
       await fs.writeFile(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ name: "argent", version: "1.0.0" }),
+        JSON.stringify({ name: "argentos", version: "1.0.0" }),
         "utf-8",
       );
 
@@ -554,7 +554,7 @@ describe("update-cli", () => {
       setTty(false);
       await fs.writeFile(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ name: "argent", version: "2.0.0" }),
+        JSON.stringify({ name: "argentos", version: "2.0.0" }),
         "utf-8",
       );
 
@@ -607,7 +607,7 @@ describe("update-cli", () => {
       setTty(false);
       await fs.writeFile(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ name: "argent", version: "2.0.0" }),
+        JSON.stringify({ name: "argentos", version: "2.0.0" }),
         "utf-8",
       );
 

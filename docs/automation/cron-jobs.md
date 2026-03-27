@@ -17,10 +17,18 @@ the right time, and can optionally deliver output back to a chat.
 If you want _“run this every morning”_ or _“poke the agent in 20 minutes”_,
 cron is the mechanism.
 
+Important: for user-facing recurring workflows such as morning briefs, reports,
+check-ins, or delivery pipelines, prefer the higher-level `scheduled_tasks`
+agent tool. It uses cron underneath but keeps the agent off raw low-level cron
+JSON and carries workflow-specific defaults such as isolated execution and
+artifact verification.
+
 ## TL;DR
 
 - Cron runs **inside the Gateway** (not inside the model).
 - Jobs persist under `~/.argentos/cron/` so restarts don’t lose schedules.
+- Cron is the low-level scheduler rail; managed scheduled workflows should
+  usually be created through `scheduled_tasks`, not raw `cron`.
 - Two execution styles:
   - **Main session**: enqueue a system event, then run on the next heartbeat.
   - **Isolated**: run a dedicated agent turn in `cron:<jobId>`, with delivery (announce by default or none).

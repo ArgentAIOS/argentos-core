@@ -5,7 +5,6 @@ import type { ContemplationRunner } from "../infra/contemplation-runner.js";
 import type { ExecutionWorkerRunner } from "../infra/execution-worker-runner.js";
 import type { HeartbeatRunner } from "../infra/heartbeat-runner.js";
 import type { JobOrchestratorRunner } from "../infra/job-orchestrator-runner.js";
-import type { KnowledgeObservationRunner } from "../infra/knowledge-observation-runner.js";
 import type { SisRunner } from "../infra/sis-runner.js";
 import type { ChannelKind, GatewayReloadPlan } from "./config-reload.js";
 import { clearBootstrapContextCache } from "../agents/bootstrap-files.js";
@@ -35,7 +34,6 @@ type GatewayHotReloadState = {
   executionWorkerRunner: ExecutionWorkerRunner;
   jobOrchestratorRunner: JobOrchestratorRunner;
   sisRunner: SisRunner;
-  knowledgeObservationRunner: KnowledgeObservationRunner;
   consciousnessKernelRunner: ConsciousnessKernelRunner;
   cronState: GatewayCronState;
   browserControl: Awaited<ReturnType<typeof startBrowserControlServerIfEnabled>> | null;
@@ -91,10 +89,6 @@ export function createGatewayReloadHandlers(params: {
 
     if (plan.restartSis) {
       nextState.sisRunner.updateConfig(nextConfig);
-    }
-
-    if (plan.restartKnowledgeObservations) {
-      nextState.knowledgeObservationRunner.updateConfig(nextConfig);
     }
 
     if (plan.restartKernel) {

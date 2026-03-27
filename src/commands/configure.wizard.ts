@@ -51,12 +51,12 @@ async function promptConfigureSection(
 ): Promise<ConfigureSectionChoice> {
   return guardCancel(
     await select<ConfigureSectionChoice>({
-      message: "Select sections to configure",
+      message: "What should Argent tune next?",
       options: [
         ...CONFIGURE_SECTION_OPTIONS,
         {
           value: "__continue",
-          label: "Continue",
+          label: "Lock it in",
           hint: hasSelection ? "Done" : "Skip for now",
         },
       ],
@@ -69,17 +69,17 @@ async function promptConfigureSection(
 async function promptChannelMode(runtime: RuntimeEnv): Promise<ChannelsWizardMode> {
   return guardCancel(
     await select({
-      message: "Channels",
+      message: "How should Argent handle channel config?",
       options: [
         {
           value: "configure",
-          label: "Configure/link",
-          hint: "Add/update channels; disable unselected accounts",
+          label: "Configure and link",
+          hint: "Add or update channels; disable unselected accounts",
         },
         {
           value: "remove",
-          label: "Remove channel config",
-          hint: "Delete channel tokens/settings from argent.json",
+          label: "Remove config",
+          hint: "Delete channel settings from argent.json",
         },
       ],
       initialValue: "configure",
@@ -98,16 +98,16 @@ async function promptWebToolsConfig(
 
   note(
     [
-      "Web search lets your agent look things up online using the `web_search` tool.",
-      "It requires a Brave Search API key (you can store it in the config or set BRAVE_API_KEY in the Gateway environment).",
+      "Web search lets Argent look things up online with the `web_search` tool.",
+      "It uses a Brave Search API key stored in config or provided through BRAVE_API_KEY.",
       "Docs: https://docs.argent.ai/tools/web",
     ].join("\n"),
-    "Web search",
+    "Argent web search",
   );
 
   const enableSearch = guardCancel(
     await confirm({
-      message: "Enable web_search (Brave Search)?",
+      message: "Enable Argent web search (Brave Search)?",
       initialValue: existingSearch?.enabled ?? hasSearchKey,
     }),
     runtime,
@@ -122,8 +122,8 @@ async function promptWebToolsConfig(
     const keyInput = guardCancel(
       await text({
         message: hasSearchKey
-          ? "Brave Search API key (leave blank to keep current or use BRAVE_API_KEY)"
-          : "Brave Search API key (paste it here; leave blank to use BRAVE_API_KEY)",
+          ? "Brave Search API key (leave blank to keep the current value or use BRAVE_API_KEY)"
+          : "Brave Search API key (paste it here, or leave blank to use BRAVE_API_KEY)",
         placeholder: hasSearchKey ? "Leave blank to keep current" : "BSA...",
       }),
       runtime,
@@ -138,14 +138,14 @@ async function promptWebToolsConfig(
           "Store a key here or set BRAVE_API_KEY in the Gateway environment.",
           "Docs: https://docs.argent.ai/tools/web",
         ].join("\n"),
-        "Web search",
+        "Argent web search",
       );
     }
   }
 
   const enableFetch = guardCancel(
     await confirm({
-      message: "Enable web_fetch (keyless HTTP fetch)?",
+      message: "Enable Argent web fetch (keyless HTTP fetch)?",
       initialValue: existingFetch?.enabled ?? true,
     }),
     runtime,
@@ -175,14 +175,14 @@ export async function runConfigureWizard(
 ) {
   try {
     printWizardHeader(runtime);
-    intro(opts.command === "update" ? "Argent update wizard" : "Argent configure");
+    intro(opts.command === "update" ? "Refine Argent" : "Shape Argent");
     const prompter = createClackPrompter();
 
     const snapshot = await readConfigFileSnapshot();
     const baseConfig: ArgentConfig = snapshot.valid ? snapshot.config : {};
 
     if (snapshot.exists) {
-      const title = snapshot.valid ? "Existing config detected" : "Invalid config";
+      const title = snapshot.valid ? "Existing Argent config" : "Argent config needs repair";
       note(summarizeExistingConfig(baseConfig), title);
       if (!snapshot.valid && snapshot.issues.length > 0) {
         note(
@@ -191,12 +191,12 @@ export async function runConfigureWizard(
             "",
             "Docs: https://docs.argent.ai/gateway/configuration",
           ].join("\n"),
-          "Config issues",
+          "Argent config issues",
         );
       }
       if (!snapshot.valid) {
         outro(
-          `Config invalid. Run \`${formatCliCommand("argent doctor")}\` to repair it, then re-run configure.`,
+          `Argent config is invalid. Run \`${formatCliCommand("argent doctor")}\` to repair it, then come back here.`,
         );
         runtime.exit(1);
         return;
@@ -223,16 +223,16 @@ export async function runConfigureWizard(
         options: [
           {
             value: "local",
-            label: "Local (this machine)",
+            label: "Here on this machine",
             hint: localProbe.ok
               ? `Gateway reachable (${localUrl})`
-              : `No gateway detected (${localUrl})`,
+              : `No local gateway detected yet (${localUrl})`,
           },
           {
             value: "remote",
-            label: "Remote (info-only)",
+            label: "On another machine",
             hint: !remoteUrl
-              ? "No remote URL configured yet"
+              ? "No remote gateway URL configured yet"
               : remoteProbe?.ok
                 ? `Gateway reachable (${remoteUrl})`
                 : `Configured but unreachable (${remoteUrl})`,
@@ -250,7 +250,7 @@ export async function runConfigureWizard(
       });
       await writeConfigFile(remoteConfig);
       logConfigUpdated(runtime);
-      outro("Remote gateway configured.");
+      outro("Remote gateway details saved.");
       return;
     }
 
@@ -288,14 +288,14 @@ export async function runConfigureWizard(
     if (opts.sections) {
       const selected = opts.sections;
       if (!selected || selected.length === 0) {
-        outro("No changes selected.");
+        outro("Nothing changed.");
         return;
       }
 
       if (selected.includes("workspace")) {
         const workspaceInput = guardCancel(
           await text({
-            message: "Workspace directory",
+            message: "Argent workspace directory",
             initialValue: workspaceDir,
           }),
           runtime,
@@ -355,7 +355,7 @@ export async function runConfigureWizard(
         if (!selected.includes("gateway")) {
           const portInput = guardCancel(
             await text({
-              message: "Gateway port for service install",
+              message: "Gateway port for Argent service install",
               initialValue: String(gatewayPort),
               validate: (value) => (Number.isFinite(Number(value)) ? undefined : "Invalid port"),
             }),
@@ -395,7 +395,7 @@ export async function runConfigureWizard(
               "https://docs.argent.ai/gateway/health",
               "https://docs.argent.ai/gateway/troubleshooting",
             ].join("\n"),
-            "Health check help",
+            "Argent systems check help",
           );
         }
       }
@@ -413,7 +413,7 @@ export async function runConfigureWizard(
         if (choice === "workspace") {
           const workspaceInput = guardCancel(
             await text({
-              message: "Workspace directory",
+              message: "Argent workspace directory",
               initialValue: workspaceDir,
             }),
             runtime,
@@ -478,7 +478,7 @@ export async function runConfigureWizard(
           if (!didConfigureGateway) {
             const portInput = guardCancel(
               await text({
-                message: "Gateway port for service install",
+                message: "Gateway port for Argent service install",
                 initialValue: String(gatewayPort),
                 validate: (value) => (Number.isFinite(Number(value)) ? undefined : "Invalid port"),
               }),
@@ -522,7 +522,7 @@ export async function runConfigureWizard(
                 "https://docs.argent.ai/gateway/health",
                 "https://docs.argent.ai/gateway/troubleshooting",
               ].join("\n"),
-              "Health check help",
+              "Argent systems check help",
             );
           }
         }
@@ -531,10 +531,10 @@ export async function runConfigureWizard(
       if (!ranSection) {
         if (didSetGatewayMode) {
           await persistConfig();
-          outro("Gateway mode set to local.");
+          outro("Argent is set to local gateway mode.");
           return;
         }
-        outro("No changes selected.");
+        outro("Nothing changed.");
         return;
       }
     }
@@ -580,10 +580,10 @@ export async function runConfigureWizard(
         gatewayStatusLine,
         "Docs: https://docs.argent.ai/web/control-ui",
       ].join("\n"),
-      "Control UI",
+      "Argent control surface",
     );
 
-    outro("Configure complete.");
+    outro("Argent configuration updated.");
   } catch (err) {
     if (err instanceof WizardCancelledError) {
       runtime.exit(0);

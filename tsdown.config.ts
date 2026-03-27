@@ -105,6 +105,8 @@ export default defineConfig([
       "gateway/server-methods/knowledge": "src/gateway/server-methods/knowledge.ts",
       "data/knowledge-acl": "src/data/knowledge-acl.ts",
       "data/agent-family": "src/data/agent-family.ts",
+      "infra/execution-worker-runner": "src/infra/execution-worker-runner.ts",
+      "infra/exec-approval-forwarder": "src/infra/exec-approval-forwarder.ts",
     },
     env,
     define,

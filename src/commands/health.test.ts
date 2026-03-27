@@ -139,9 +139,6 @@ describe("healthCommand", () => {
         reflectionModel: "ollama/qwen3.5:latest",
         currentFocus: "Review current internal priorities",
         effectiveFocus: "website launch blockers",
-        activeLane: "operator",
-        activeLaneFocus: "website launch blockers",
-        activeLaneThreadTitle: "website launch blockers",
         continuityLane: "operator",
         continuitySource: "operator",
         continuityUpdatedAt: "2026-03-19T12:01:10.000Z",
@@ -165,20 +162,6 @@ describe("healthCommand", () => {
         agendaActiveTitle: "website launch blockers",
         agendaActiveSource: "operator",
         agendaActiveRationale: "This is still the best unresolved carried thread.",
-        executiveUpdatedAt: "2026-03-19T12:01:30.000Z",
-        executiveWorkTitle: "launch blocker brief",
-        executiveWorkLane: "operator",
-        executiveLastActionAt: "2026-03-19T12:01:30.000Z",
-        executiveLastActionKind: "plan_note",
-        executiveLastActionSummary: "Drafted a concrete action plan for website launch blockers.",
-        executiveLastArtifactAt: "2026-03-19T12:01:30.000Z",
-        executiveLastArtifactType: "plan-note",
-        executiveLastArtifactPath: "/tmp/kernel/artifacts/launch-plan.md",
-        executiveArtifactCount: 2,
-        executivePendingSurfaceMode: "queue",
-        executivePendingSurfaceTitle: "launch blocker brief",
-        executivePendingSurfaceSummary:
-          "Drafted a concrete action plan for website launch blockers.",
         reflectionRepeatCount: 1,
         activeWorkUpdatedAt: "2026-03-19T12:01:10.000Z",
         activeWorkThreadTitle: "website launch blockers",
@@ -216,11 +199,6 @@ describe("healthCommand", () => {
     expect(output).toContain("agendaSource=operator");
     expect(output).toContain("agendaWhy=This is still the best unresolved carried thread.");
     expect(output).toContain("question=Which blocker is ripest to move next?");
-    expect(output).toContain("exec=launch blocker brief");
-    expect(output).toContain("action=plan_note");
-    expect(output).toContain("artifact=plan-note");
-    expect(output).toContain("artifacts=2");
-    expect(output).toContain("surface=queue");
     expect(output).toContain("thread=website launch blockers");
     expect(output).toContain("next=Trace the next deployment blocker and surface it clearly.");
     expect(output).toContain("stall=x2");

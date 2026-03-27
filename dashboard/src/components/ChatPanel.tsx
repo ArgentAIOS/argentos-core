@@ -1,43 +1,47 @@
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  Send,
-  Mic,
-  MicOff,
-  Volume2,
-  VolumeX,
-  // Image as ImageIcon,
-  X,
-  Play,
-  Square,
-  RotateCcw,
-  Copy,
-  Check,
-  Menu,
-  Plus,
-  Download,
-  Maximize2,
-  Pause,
-  ChevronDown,
-  ChevronRight,
-  ThumbsUp,
-  ThumbsDown,
-  FileText,
-  PanelRightClose,
-  Minimize2,
-  FolderOpen,
-  TerminalSquare,
-  Paperclip,
-  Database,
-  CircleHelp,
-  Eye,
-  EyeOff,
-} from "lucide-react";
 import { useState, useRef, useEffect, useCallback, useId } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import remarkGfm from "remark-gfm";
+import {
+  MicOnIcon,
+  MicOffIcon,
+  SpeakerOnIcon,
+  SpeakerOffIcon,
+  CloseIcon,
+  PlayIcon,
+  StopIcon,
+  RefreshIcon,
+  CopyIcon,
+  CheckIcon,
+  MenuIcon,
+  AddIcon,
+  DownloadIcon,
+  MaximizeIcon,
+  PauseIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ThumbsUpIcon,
+  ThumbsDownIcon,
+  FileIcon,
+  PanelCollapseIcon,
+  MinimizeIcon,
+  FolderIcon,
+  TerminalIcon,
+  AttachIcon,
+  DatabaseIcon,
+  HelpIcon,
+  EyeOpenIcon,
+  EyeClosedIcon,
+  SendIcon,
+  DeepThinkIcon,
+  DeepThinkOffIcon,
+  ResearchIcon,
+  ResearchActiveIcon,
+  CanvasIcon,
+} from "../icons/ArgentOS";
 import { getMoodColor, getMoodIcon, type MoodName } from "../lib/moodSystem";
 import { AudioDeviceSelector, type Voice } from "./AudioDeviceSelector";
 
@@ -54,20 +58,16 @@ function CodeBlock({ language, children }: { language?: string; children: string
   return (
     <div className="relative group my-2 rounded-lg overflow-hidden">
       {language && (
-        <div className="flex items-center justify-between px-3 py-1 bg-white/5 text-white/40 text-xs">
+        <div className="flex items-center justify-between px-3 py-1 bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 text-xs">
           <span>{language}</span>
         </div>
       )}
       <button
         onClick={handleCopy}
-        className="absolute top-1 right-1 p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white/50 hover:text-white/80 opacity-0 group-hover:opacity-100 transition-all z-10"
+        className="absolute top-1 right-1 p-1.5 rounded-md bg-[hsl(var(--card))] hover:bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--muted-foreground))] opacity-0 group-hover:opacity-100 transition-all z-10"
         title="Copy code"
       >
-        {copied ? (
-          <Check className="w-3.5 h-3.5 text-green-400" />
-        ) : (
-          <Copy className="w-3.5 h-3.5" />
-        )}
+        {copied ? <CheckIcon size={14} className="text-green-400" /> : <CopyIcon size={14} />}
       </button>
       <SyntaxHighlighter
         language={language || "text"}
@@ -110,10 +110,10 @@ function MediaDownloadButton({ mediaUrl, fileName }: { mediaUrl: string; fileNam
   return (
     <button
       onClick={handleDownload}
-      className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white/70 hover:text-white opacity-0 group-hover:opacity-100 transition-all z-10 backdrop-blur-sm"
+      className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-[hsl(var(--muted-foreground))] hover:text-white opacity-0 group-hover:opacity-100 transition-all z-10 backdrop-blur-sm"
       title="Save to Disk"
     >
-      <Download className="w-4 h-4" />
+      <DownloadIcon size={16} />
     </button>
   );
 }
@@ -186,17 +186,17 @@ function MediaLightbox({ src, onClose }: { src: string; onClose: () => void }) {
               e.stopPropagation();
               handleDownload();
             }}
-            className="p-2 rounded-lg bg-black/60 hover:bg-black/80 text-white/70 hover:text-white transition-all backdrop-blur-sm"
+            className="p-2 rounded-lg bg-black/60 hover:bg-black/80 text-[hsl(var(--muted-foreground))] hover:text-white transition-all backdrop-blur-sm"
             title="Download"
           >
-            <Download className="w-5 h-5" />
+            <DownloadIcon size={20} />
           </button>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg bg-black/60 hover:bg-black/80 text-white/70 hover:text-white transition-all backdrop-blur-sm"
+            className="p-2 rounded-lg bg-black/60 hover:bg-black/80 text-[hsl(var(--muted-foreground))] hover:text-white transition-all backdrop-blur-sm"
             title="Close"
           >
-            <X className="w-5 h-5" />
+            <CloseIcon size={20} />
           </button>
         </div>
       </motion.div>
@@ -235,16 +235,16 @@ function InlineMedia({
         <MediaDownloadButton mediaUrl={mediaUrl} fileName={fileName} />
         <button
           onClick={() => onImageClick?.(mediaUrl)}
-          className="absolute top-2 left-2 p-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white/70 hover:text-white opacity-0 group-hover:opacity-100 transition-all z-10 backdrop-blur-sm"
+          className="absolute top-2 left-2 p-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-[hsl(var(--muted-foreground))] hover:text-white opacity-0 group-hover:opacity-100 transition-all z-10 backdrop-blur-sm"
           title="Expand"
         >
-          <Maximize2 className="w-4 h-4" />
+          <MaximizeIcon size={16} />
         </button>
         <video
           controls
           preload="metadata"
           src={mediaUrl}
-          className="max-w-full rounded-lg border border-white/20"
+          className="max-w-full rounded-lg border border-[hsl(var(--border))]"
           onError={(e) => console.error("[Video] Failed to load:", mediaUrl, e)}
         />
       </div>
@@ -258,7 +258,7 @@ function InlineMedia({
         <img
           src={mediaUrl}
           alt="Generated"
-          className="max-w-full rounded-lg border border-white/20 cursor-pointer hover:brightness-110 transition-all"
+          className="max-w-full rounded-lg border border-[hsl(var(--border))] cursor-pointer hover:brightness-110 transition-all"
           onClick={() => onImageClick?.(mediaUrl)}
         />
       </div>
@@ -267,9 +267,9 @@ function InlineMedia({
 
   if (type === "audio") {
     return (
-      <div className="relative group my-2 flex items-center gap-2 p-2 bg-white/5 rounded-lg">
+      <div className="relative group my-2 flex items-center gap-2 p-2 bg-[hsl(var(--card))] rounded-lg">
         <MediaDownloadButton mediaUrl={mediaUrl} fileName={fileName} />
-        <Play className="w-4 h-4 text-purple-400 flex-shrink-0" />
+        <PlayIcon size={16} className="text-[hsl(var(--primary))] flex-shrink-0" />
         <DeferredAudio
           src={mediaUrl}
           className="h-8 flex-1 max-w-[250px]"
@@ -356,27 +356,27 @@ function PathLink({ path: filePath }: { path: string }) {
   return (
     <span ref={menuRef} className="relative inline-flex items-center group/path">
       <code
-        className="px-1.5 py-0.5 rounded bg-white/10 text-purple-300 text-xs font-mono cursor-pointer hover:bg-purple-500/20 hover:text-purple-200 transition-colors"
+        className="px-1.5 py-0.5 rounded bg-[hsl(var(--card))] text-[hsl(var(--primary))] text-xs font-mono cursor-pointer hover:bg-[hsl(var(--primary))]/20 hover:text-[hsl(var(--primary))] transition-colors"
         onClick={() => setShowMenu((v) => !v)}
         title="Click for actions"
       >
         {filePath}
       </code>
-      {status === "ok" && <Check className="w-3 h-3 text-green-400 ml-1 flex-shrink-0" />}
+      {status === "ok" && <CheckIcon size={12} className="text-green-400 ml-1 flex-shrink-0" />}
       {showMenu && (
-        <span className="absolute top-full left-0 mt-1 z-50 bg-gray-800 border border-white/20 rounded-lg shadow-xl overflow-hidden min-w-[160px]">
+        <span className="absolute top-full left-0 mt-1 z-50 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg shadow-xl overflow-hidden min-w-[160px]">
           <button
             onClick={() => openPath("finder")}
-            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-white/80 hover:bg-purple-500/20 hover:text-white transition-colors"
+            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--primary))]/20 hover:text-white transition-colors"
           >
-            <FolderOpen className="w-3.5 h-3.5" />
+            <FolderIcon size={14} />
             Open in Finder
           </button>
           <button
             onClick={() => openPath("terminal")}
-            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-white/80 hover:bg-green-500/20 hover:text-white transition-colors"
+            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[hsl(var(--muted-foreground))] hover:bg-green-500/20 hover:text-white transition-colors"
           >
-            <TerminalSquare className="w-3.5 h-3.5" />
+            <TerminalIcon size={14} />
             Open Terminal Here
           </button>
           <button
@@ -386,9 +386,9 @@ function PathLink({ path: filePath }: { path: string }) {
               setStatus("ok");
               setTimeout(() => setStatus("idle"), 1500);
             }}
-            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-white/80 hover:bg-white/10 hover:text-white transition-colors"
+            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--card))] hover:text-white transition-colors"
           >
-            <Copy className="w-3.5 h-3.5" />
+            <CopyIcon size={14} />
             Copy Path
           </button>
         </span>
@@ -423,7 +423,7 @@ function MessageContent({
         href={mediaUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-purple-400 underline text-sm"
+        className="text-[hsl(var(--primary))] underline text-sm"
       >
         {fileName}
       </a>
@@ -457,7 +457,7 @@ function MessageContent({
                 href={part}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-purple-400 hover:text-purple-300 underline break-all"
+                className="text-[hsl(var(--primary))] hover:text-[hsl(var(--primary))] underline break-all"
               >
                 {part}
               </a>
@@ -502,7 +502,7 @@ function MessageContent({
               // Inline code
               return (
                 <code
-                  className="px-1.5 py-0.5 rounded bg-white/10 text-purple-300 text-xs font-mono"
+                  className="px-1.5 py-0.5 rounded bg-[hsl(var(--card))] text-[hsl(var(--primary))] text-xs font-mono"
                   {...props}
                 >
                   {children}
@@ -530,7 +530,7 @@ function MessageContent({
                       controls
                       preload="metadata"
                       src={mediaSrc}
-                      className="max-w-full rounded-lg border border-white/20"
+                      className="max-w-full rounded-lg border border-[hsl(var(--border))]"
                     />
                   </div>
                 );
@@ -541,7 +541,7 @@ function MessageContent({
                   <img
                     src={mediaSrc}
                     alt={alt || "Media"}
-                    className="max-w-full rounded-lg border border-white/20 cursor-pointer hover:brightness-110 transition-all"
+                    className="max-w-full rounded-lg border border-[hsl(var(--border))] cursor-pointer hover:brightness-110 transition-all"
                     onClick={() => onImageClick?.(mediaSrc)}
                   />
                 </span>
@@ -553,7 +553,7 @@ function MessageContent({
                   href={href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-purple-400 hover:text-purple-300 underline break-all"
+                  className="text-[hsl(var(--primary))] hover:text-[hsl(var(--primary))] underline break-all"
                 >
                   {children}
                 </a>
@@ -569,20 +569,32 @@ function MessageContent({
               return <ol className="list-decimal list-inside mb-2 space-y-0.5">{children}</ol>;
             },
             li({ children }) {
-              return <li className="text-white/90">{children}</li>;
+              return <li className="text-[hsl(var(--foreground))]">{children}</li>;
             },
             h1({ children }) {
-              return <h1 className="text-lg font-bold text-white mb-2 mt-3">{children}</h1>;
+              return (
+                <h1 className="text-lg font-bold text-[hsl(var(--foreground))] mb-2 mt-3">
+                  {children}
+                </h1>
+              );
             },
             h2({ children }) {
-              return <h2 className="text-base font-bold text-white mb-1.5 mt-2">{children}</h2>;
+              return (
+                <h2 className="text-base font-bold text-[hsl(var(--foreground))] mb-1.5 mt-2">
+                  {children}
+                </h2>
+              );
             },
             h3({ children }) {
-              return <h3 className="text-sm font-bold text-white mb-1 mt-2">{children}</h3>;
+              return (
+                <h3 className="text-sm font-bold text-[hsl(var(--foreground))] mb-1 mt-2">
+                  {children}
+                </h3>
+              );
             },
             blockquote({ children }) {
               return (
-                <blockquote className="border-l-2 border-purple-400/50 pl-3 my-2 text-white/60 italic">
+                <blockquote className="border-l-2 border-[hsl(var(--primary))]/50 pl-3 my-2 text-[hsl(var(--muted-foreground))]/80 italic">
                   {children}
                 </blockquote>
               );
@@ -590,7 +602,7 @@ function MessageContent({
             table({ children }) {
               return (
                 <div className="overflow-x-auto my-2">
-                  <table className="min-w-full text-xs border-collapse border border-white/10">
+                  <table className="min-w-full text-xs border-collapse border border-[hsl(var(--border))]">
                     {children}
                   </table>
                 </div>
@@ -598,22 +610,28 @@ function MessageContent({
             },
             th({ children }) {
               return (
-                <th className="px-2 py-1 bg-white/10 border border-white/10 text-left font-semibold text-white/80">
+                <th className="px-2 py-1 bg-[hsl(var(--card))] border border-[hsl(var(--border))] text-left font-semibold text-[hsl(var(--muted-foreground))]">
                   {children}
                 </th>
               );
             },
             td({ children }) {
-              return <td className="px-2 py-1 border border-white/10 text-white/70">{children}</td>;
+              return (
+                <td className="px-2 py-1 border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]">
+                  {children}
+                </td>
+              );
             },
             hr() {
-              return <hr className="border-white/10 my-3" />;
+              return <hr className="border-[hsl(var(--border))] my-3" />;
             },
             strong({ children }) {
-              return <strong className="font-bold text-white">{children}</strong>;
+              return (
+                <strong className="font-bold text-[hsl(var(--foreground))]">{children}</strong>
+              );
             },
             em({ children }) {
-              return <em className="italic text-white/80">{children}</em>;
+              return <em className="italic text-[hsl(var(--muted-foreground))]">{children}</em>;
             },
           }}
         >
@@ -831,43 +849,41 @@ function TTSSummary({
   };
 
   return (
-    <div className="mt-2 border-t border-white/10 pt-2">
+    <div className="mt-2 border-t border-[hsl(var(--border))] pt-2">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1.5 text-[11px] text-purple-300/80 hover:text-purple-300 transition-colors"
+        className="flex items-center gap-1.5 text-[11px] text-[hsl(var(--primary))]/80 hover:text-[hsl(var(--primary))] transition-colors"
       >
-        {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-        <Volume2 className="w-3 h-3" />
+        {expanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
+        <SpeakerOnIcon size={12} />
         <span className="font-medium">Spoken Summary</span>
       </button>
       {expanded && (
         <div className="mt-1.5 pl-1">
-          <p className="text-[12px] text-white/60 leading-relaxed whitespace-pre-wrap">{summary}</p>
+          <p className="text-[12px] text-[hsl(var(--muted-foreground))]/80 leading-relaxed whitespace-pre-wrap">
+            {summary}
+          </p>
           {(audioUrl || onReplay || onStop) && (
             <div className="mt-1.5 flex items-center gap-2">
               <button
                 onClick={() => void handleTogglePlayPause()}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-[10px] transition-colors"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(var(--primary))]/20 hover:bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))] text-[10px] transition-colors"
               >
-                {playing || isSpeaking ? (
-                  <Pause className="w-3 h-3" />
-                ) : (
-                  <Play className="w-3 h-3" />
-                )}
+                {playing || isSpeaking ? <PauseIcon size={12} /> : <PlayIcon size={12} />}
                 {playing || isSpeaking ? "Pause" : "Play"}
               </button>
               <button
                 onClick={() => void handleReplay()}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-[10px] transition-colors"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(var(--primary))]/20 hover:bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))] text-[10px] transition-colors"
               >
-                <RotateCcw className="w-3 h-3" />
+                <RefreshIcon size={12} />
                 Replay
               </button>
               <button
                 onClick={handleStop}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-[10px] transition-colors"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(var(--primary))]/20 hover:bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))] text-[10px] transition-colors"
               >
-                <Square className="w-3 h-3" />
+                <StopIcon size={12} />
                 Stop
               </button>
               {audioUrl && (
@@ -875,9 +891,9 @@ function TTSSummary({
                   <a
                     href={audioUrl}
                     download="argent-spoken-summary.mp3"
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-[10px] transition-colors"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(var(--primary))]/20 hover:bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))] text-[10px] transition-colors"
                   >
-                    <Download className="w-3 h-3" />
+                    <DownloadIcon size={12} />
                     Download
                   </a>
                   <audio
@@ -1152,7 +1168,25 @@ export function ChatPanel({
         setAttachmentError(`Failed to read image attachment: ${file.name}`);
       };
       reader.onload = (e) => {
-        setAttachedImage(e.target?.result as string);
+        const dataUrl = e.target?.result as string;
+        // First image → preview slot, additional images → attachments array
+        setAttachedImage((prev) => {
+          if (!prev) return dataUrl;
+          // Already have a primary image — push this one to attachedFiles
+          const imgMatch = dataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
+          if (imgMatch) {
+            setAttachedFiles((files) => [
+              ...files,
+              {
+                type: "image" as const,
+                mimeType: imgMatch[1],
+                fileName: file.name,
+                content: imgMatch[2],
+              },
+            ]);
+          }
+          return prev;
+        });
       };
       reader.readAsDataURL(file);
       return;
@@ -1520,21 +1554,23 @@ export function ChatPanel({
       {showIngestModal &&
         createPortal(
           <div className="fixed inset-0 z-[120] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="w-full max-w-2xl bg-[#0e1224] border border-white/15 rounded-2xl shadow-2xl">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+            <div className="w-full max-w-2xl bg-[#0e1224] border border-[hsl(var(--border))] rounded-2xl shadow-2xl">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[hsl(var(--border))]">
                 <div>
-                  <div className="text-white font-semibold">Knowledge Ingest</div>
-                  <div className="text-xs text-white/50">
+                  <div className="text-[hsl(var(--foreground))] font-semibold">
+                    Knowledge Ingest
+                  </div>
+                  <div className="text-xs text-[hsl(var(--muted-foreground))]/60">
                     Explicit pipeline: chunk + embed + citation pointers. Separate from chat sends.
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowIngestModal(false)}
-                  className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10"
+                  className="p-1.5 rounded-lg text-[hsl(var(--muted-foreground))]/60 hover:text-white hover:bg-[hsl(var(--card))]"
                   title="Close"
                 >
-                  <X className="w-4 h-4" />
+                  <CloseIcon size={16} />
                 </button>
               </div>
 
@@ -1569,11 +1605,11 @@ export function ChatPanel({
                     }}
                     role="button"
                     tabIndex={0}
-                    className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-sm cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg bg-[hsl(var(--card))] hover:bg-[hsl(var(--card))] text-white text-sm cursor-pointer"
                   >
                     Add Files
                   </label>
-                  <div className="text-xs text-white/50">
+                  <div className="text-xs text-[hsl(var(--muted-foreground))]/60">
                     {ingestFiles.length} file(s) queued for ingest
                   </div>
                 </div>
@@ -1583,17 +1619,21 @@ export function ChatPanel({
                     {ingestFiles.map((file, idx) => (
                       <div
                         key={`${file.fileName}-${idx}`}
-                        className="flex items-center gap-2 px-2 py-1 rounded bg-white/5 border border-white/10 text-xs"
+                        className="flex items-center gap-2 px-2 py-1 rounded bg-[hsl(var(--card))] border border-[hsl(var(--border))] text-xs"
                       >
-                        <FileText className="w-3 h-3 text-purple-300" />
-                        <span className="text-white/80 truncate flex-1">{file.fileName}</span>
-                        <span className="text-white/40">{file.mimeType || "unknown"}</span>
+                        <FileIcon size={12} className="text-[hsl(var(--primary))]" />
+                        <span className="text-[hsl(var(--muted-foreground))] truncate flex-1">
+                          {file.fileName}
+                        </span>
+                        <span className="text-[hsl(var(--muted-foreground))]/60">
+                          {file.mimeType || "unknown"}
+                        </span>
                         <button
                           type="button"
                           onClick={() => setIngestFiles((prev) => prev.filter((_, i) => i !== idx))}
-                          className="p-0.5 rounded hover:bg-white/10 text-white/50"
+                          className="p-0.5 rounded hover:bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60"
                         >
-                          <X className="w-3 h-3" />
+                          <CloseIcon size={12} />
                         </button>
                       </div>
                     ))}
@@ -1601,16 +1641,16 @@ export function ChatPanel({
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                  <label className="text-xs text-white/60 relative">
+                  <label className="text-xs text-[hsl(var(--muted-foreground))]/80 relative">
                     <div className="flex items-center justify-between">
                       <span>Collection</span>
                       <button
                         type="button"
                         onClick={() => setShowIngestHelp((prev) => !prev)}
-                        className="p-0.5 rounded text-white/40 hover:text-white/80 hover:bg-white/10"
+                        className="p-0.5 rounded text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--card))]"
                         title="Knowledge ingest help"
                       >
-                        <CircleHelp className="w-3.5 h-3.5" />
+                        <HelpIcon size={14} />
                       </button>
                     </div>
                     <select
@@ -1625,7 +1665,7 @@ export function ChatPanel({
                         setNewIngestCollection("");
                         setIngestCollection(next);
                       }}
-                      className="mt-1 w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white"
+                      className="mt-1 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg px-2 py-1.5 text-sm text-white"
                       disabled={ingestCollectionsLoading}
                     >
                       {ingestCollections.map((entry) => (
@@ -1642,19 +1682,21 @@ export function ChatPanel({
                         value={newIngestCollection}
                         onChange={(e) => setNewIngestCollection(e.target.value)}
                         placeholder="New collection name"
-                        className="mt-1 w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white placeholder:text-white/30"
+                        className="mt-1 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg px-2 py-1.5 text-sm text-white placeholder:text-[hsl(var(--muted-foreground))]/40"
                       />
                     )}
                     {ingestCollectionsLoading && (
-                      <div className="mt-1 text-[11px] text-white/40">Loading collections...</div>
+                      <div className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]/60">
+                        Loading collections...
+                      </div>
                     )}
                   </label>
-                  <label className="text-xs text-white/60">
+                  <label className="text-xs text-[hsl(var(--muted-foreground))]/80">
                     Chunk Size
                     <select
                       value={ingestChunkSize}
                       onChange={(e) => setIngestChunkSize(Number(e.target.value) || 1800)}
-                      className="mt-1 w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white"
+                      className="mt-1 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg px-2 py-1.5 text-sm text-white"
                     >
                       {INGEST_CHUNK_SIZE_PRESETS.map((entry) => (
                         <option
@@ -1667,12 +1709,12 @@ export function ChatPanel({
                       ))}
                     </select>
                   </label>
-                  <label className="text-xs text-white/60">
+                  <label className="text-xs text-[hsl(var(--muted-foreground))]/80">
                     Overlap
                     <select
                       value={ingestChunkOverlap}
                       onChange={(e) => setIngestChunkOverlap(Number(e.target.value) || 200)}
-                      className="mt-1 w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white"
+                      className="mt-1 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg px-2 py-1.5 text-sm text-white"
                     >
                       {INGEST_OVERLAP_PRESETS.map((entry) => (
                         <option
@@ -1687,19 +1729,21 @@ export function ChatPanel({
                   </label>
                 </div>
                 {showIngestHelp && (
-                  <div className="text-xs text-white/75 bg-white/5 border border-white/10 rounded-lg px-3 py-2 space-y-1">
+                  <div className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg px-3 py-2 space-y-1">
                     <div>
-                      <span className="text-white font-medium">Collections:</span> Buckets of
-                      related documents. Use one collection per topic/team so retrieval stays
-                      precise.
+                      <span className="text-[hsl(var(--foreground))] font-medium">
+                        Collections:
+                      </span>{" "}
+                      Buckets of related documents. Use one collection per topic/team so retrieval
+                      stays precise.
                     </div>
                     <div>
-                      <span className="text-white font-medium">Chunk Size:</span>{" "}
+                      <span className="text-[hsl(var(--foreground))] font-medium">Chunk Size:</span>{" "}
                       {INGEST_CHUNK_SIZE_PRESETS.find((entry) => entry.value === ingestChunkSize)
                         ?.reason || "Controls how much text is embedded per chunk."}
                     </div>
                     <div>
-                      <span className="text-white font-medium">Overlap:</span>{" "}
+                      <span className="text-[hsl(var(--foreground))] font-medium">Overlap:</span>{" "}
                       {INGEST_OVERLAP_PRESETS.find((entry) => entry.value === ingestChunkOverlap)
                         ?.reason || "Controls repeated text between adjacent chunks."}
                     </div>
@@ -1707,17 +1751,17 @@ export function ChatPanel({
                 )}
 
                 {ingestMessage && (
-                  <div className="text-xs text-white/70 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                  <div className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg px-3 py-2">
                     {ingestMessage}
                   </div>
                 )}
               </div>
 
-              <div className="px-4 py-3 border-t border-white/10 flex items-center justify-end gap-2">
+              <div className="px-4 py-3 border-t border-[hsl(var(--border))] flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setShowIngestModal(false)}
-                  className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-sm text-white"
+                  className="px-3 py-1.5 rounded-lg bg-[hsl(var(--card))] hover:bg-[hsl(var(--card))] text-sm text-white"
                 >
                   Close
                 </button>
@@ -1725,7 +1769,7 @@ export function ChatPanel({
                   type="button"
                   disabled={ingestFiles.length === 0 || isIngesting}
                   onClick={handleKnowledgeIngest}
-                  className="px-3 py-1.5 rounded-lg bg-purple-500/80 hover:bg-purple-500 disabled:bg-white/10 disabled:text-white/30 text-sm text-white"
+                  className="px-3 py-1.5 rounded-lg bg-[hsl(var(--primary))]/80 hover:bg-[hsl(var(--primary))] disabled:bg-[hsl(var(--card))] disabled:text-[hsl(var(--muted-foreground))]/40 text-sm text-white"
                 >
                   {isIngesting ? "Ingesting..." : "Ingest to Knowledge"}
                 </button>
@@ -1746,28 +1790,32 @@ export function ChatPanel({
             {onToggleSessions && (
               <button
                 onClick={onToggleSessions}
-                className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-all"
+                className="p-1.5 rounded-lg hover:bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 hover:text-white transition-all"
                 title="Sessions"
               >
-                <Menu className="w-4 h-4" />
+                <MenuIcon size={16} />
               </button>
             )}
-            <h2 className="text-white/90 font-semibold text-lg truncate max-w-[120px] sm:max-w-[220px]">
+            <h2 className="text-[hsl(var(--foreground))] font-semibold text-lg truncate max-w-[120px] sm:max-w-[220px]">
               {sessionTitle || "Chat"}
             </h2>
-            {onChangeChatAgent && chatAgentOptions.length > 0 && (
-              <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1">
-                <span className="text-[10px] uppercase tracking-[0.18em] text-white/35">
+            {onChangeChatAgent && chatAgentOptions.length > 1 && (
+              <label className="flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 py-1">
+                <span className="text-[10px] uppercase tracking-[0.18em] text-[hsl(var(--muted-foreground))]/50">
                   Chat Agent
                 </span>
                 <select
                   value={chatAgentId || chatAgentOptions[0]?.id || ""}
                   onChange={(e) => onChangeChatAgent(e.target.value)}
-                  className="bg-transparent text-sm text-white/80 focus:outline-none cursor-pointer"
+                  className="bg-transparent text-sm text-[hsl(var(--muted-foreground))] focus:outline-none cursor-pointer"
                   title="Choose who this chat talks to"
                 >
                   {chatAgentOptions.map((option) => (
-                    <option key={option.id} value={option.id} className="bg-gray-900 text-white">
+                    <option
+                      key={option.id}
+                      value={option.id}
+                      className="bg-[hsl(var(--card))] text-white"
+                    >
                       {option.label}
                     </option>
                   ))}
@@ -1777,18 +1825,18 @@ export function ChatPanel({
             {onNewChat && (
               <button
                 onClick={onNewChat}
-                className="p-1 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 transition-all"
+                className="p-1 rounded-lg bg-[hsl(var(--primary))]/20 hover:bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))] transition-all"
                 title="New chat"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <AddIcon size={14} />
               </button>
             )}
             <button
               onClick={() => (onCommand ? onCommand("compact") : onSend("/compact"))}
-              className="p-1 rounded-lg hover:bg-white/10 text-white/40 hover:text-white/70 transition-all"
+              className="p-1 rounded-lg hover:bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--muted-foreground))] transition-all"
               title="Compact conversation (save context)"
             >
-              <Minimize2 className="w-3.5 h-3.5" />
+              <MinimizeIcon size={14} />
             </button>
             <button
               onClick={() => {
@@ -1798,8 +1846,8 @@ export function ChatPanel({
               }}
               className={`p-1 rounded-lg transition-all ${
                 compactThinking
-                  ? "bg-purple-500/20 text-purple-400"
-                  : "hover:bg-white/10 text-white/40 hover:text-white/70"
+                  ? "bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]"
+                  : "hover:bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--muted-foreground))]"
               }`}
               title={
                 compactThinking
@@ -1807,11 +1855,7 @@ export function ChatPanel({
                   : "Showing live stream (click to hide)"
               }
             >
-              {compactThinking ? (
-                <EyeOff className="w-3.5 h-3.5" />
-              ) : (
-                <Eye className="w-3.5 h-3.5" />
-              )}
+              {compactThinking ? <EyeClosedIcon size={14} /> : <EyeOpenIcon size={14} />}
             </button>
             {contextUsage &&
               contextUsage.total > 0 &&
@@ -1846,7 +1890,7 @@ export function ChatPanel({
                     className="flex items-center gap-1.5 text-xs"
                     title={`${usedK} / ${totalK} tokens`}
                   >
-                    <div className="w-12 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                    <div className="w-12 h-1.5 rounded-full bg-[hsl(var(--card))] overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${colorClass}`}
                         style={{ width: `${pct}%` }}
@@ -1854,7 +1898,9 @@ export function ChatPanel({
                     </div>
                     <span className={`${textColor} font-mono text-[10px]`}>{Math.round(pct)}%</span>
                     {contextUsage.estimated ? (
-                      <span className="text-[10px] text-white/45">estimating...</span>
+                      <span className="text-[10px] text-[hsl(var(--muted-foreground))]/60">
+                        estimating...
+                      </span>
                     ) : null}
                   </div>
                 );
@@ -1862,10 +1908,10 @@ export function ChatPanel({
             {onToggleCollapse && (
               <button
                 onClick={onToggleCollapse}
-                className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white/70 transition-all"
+                className="p-1.5 rounded-lg hover:bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--muted-foreground))] transition-all"
                 title="Collapse chat"
               >
-                <PanelRightClose className="w-4 h-4" />
+                <PanelCollapseIcon size={16} />
               </button>
             )}
           </div>
@@ -1881,7 +1927,7 @@ export function ChatPanel({
                       ? isListening
                         ? "bg-red-500/20 text-red-400 animate-pulse"
                         : "bg-green-500/20 text-green-400"
-                      : "bg-white/5 text-white/40 hover:bg-white/10"
+                      : "bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 hover:bg-[hsl(var(--card))]"
               }`}
               title={
                 isProcessingSpeech
@@ -1896,26 +1942,26 @@ export function ChatPanel({
               {isProcessingSpeech ? (
                 <div className="w-5 h-5 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
               ) : micEnabled ? (
-                <Mic className="w-5 h-5" />
+                <MicOnIcon size={20} />
               ) : (
-                <MicOff className="w-5 h-5" />
+                <MicOffIcon size={20} />
               )}
             </button>
             <button
               onClick={onToggleAudio}
               className={`p-2 rounded-lg transition-all ${
                 audioEnabled
-                  ? "bg-purple-500/20 text-purple-400"
-                  : "bg-white/5 text-white/40 hover:bg-white/10"
+                  ? "bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]"
+                  : "bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 hover:bg-[hsl(var(--card))]"
               }`}
               title={audioEnabled ? "Disable voice" : "Enable voice"}
             >
-              {audioEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+              {audioEnabled ? <SpeakerOnIcon size={20} /> : <SpeakerOffIcon size={20} />}
             </button>
             {onCycleTtsDisplayMode && (
               <button
                 onClick={onCycleTtsDisplayMode}
-                className="px-2 py-1.5 rounded-lg bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/85 transition-all text-[10px] font-medium border border-white/10"
+                className="px-2 py-1.5 rounded-lg bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/80 hover:bg-[hsl(var(--card))] hover:text-[hsl(var(--foreground))] transition-all text-[10px] font-medium border border-[hsl(var(--border))]"
                 title={`TTS Display: ${ttsDisplayMode}`}
               >
                 {ttsDisplayMode === "text-voice"
@@ -1930,20 +1976,24 @@ export function ChatPanel({
               className={`p-2 rounded-lg transition-all ${
                 deepThinkMode
                   ? "bg-yellow-500/30 text-yellow-400"
-                  : "bg-white/5 text-white/40 hover:bg-white/10"
+                  : "bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 hover:bg-[hsl(var(--card))]"
               }`}
               title={
                 deepThinkMode ? "Deep Think ON (Powerful tier + max reasoning)" : "Deep Think OFF"
               }
             >
-              <span className="text-lg">{deepThinkMode ? "💡" : "🔅"}</span>
+              {deepThinkMode ? (
+                <DeepThinkIcon size={18} animated />
+              ) : (
+                <DeepThinkOffIcon size={18} />
+              )}
             </button>
             <button
               onClick={onToggleDeepResearch}
               className={`p-2 rounded-lg transition-all ${
                 deepResearchMode
                   ? "bg-cyan-500/30 text-cyan-300"
-                  : "bg-white/5 text-white/40 hover:bg-white/10"
+                  : "bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 hover:bg-[hsl(var(--card))]"
               }`}
               title={
                 deepResearchMode
@@ -1951,19 +2001,19 @@ export function ChatPanel({
                   : "Research Mode OFF (10 results / 10 searches target)"
               }
             >
-              <span className="text-lg">{deepResearchMode ? "🔎" : "🔍"}</span>
+              {deepResearchMode ? <ResearchActiveIcon size={18} /> : <ResearchIcon size={18} />}
             </button>
             {onToggleCanvas && (
               <button
                 onClick={onToggleCanvas}
                 className={`p-2 rounded-lg transition-all ${
                   canvasOpen
-                    ? "bg-purple-500/20 text-purple-400"
-                    : "bg-white/5 text-white/40 hover:bg-white/10"
+                    ? "bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]"
+                    : "bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 hover:bg-[hsl(var(--card))]"
                 }`}
                 title={canvasOpen ? "Hide Canvas" : "Show Canvas"}
               >
-                <span className="text-lg">📋</span>
+                <CanvasIcon size={18} />
               </button>
             )}
             <AudioDeviceSelector
@@ -1980,8 +2030,8 @@ export function ChatPanel({
         </div>
 
         {routingTelemetry?.counters && (
-          <div className="mb-3 px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 flex flex-wrap items-center gap-2 text-[11px]">
-            <span className="text-white/45">Routing</span>
+          <div className="mb-3 px-2 py-1.5 rounded-lg bg-[hsl(var(--card))] border border-[hsl(var(--border))] flex flex-wrap items-center gap-2 text-[11px]">
+            <span className="text-[hsl(var(--muted-foreground))]/60">Routing</span>
             <span className="px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/25">
               family {routingTelemetry.counters.dispatchRouteFamily ?? 0}
             </span>
@@ -2019,17 +2069,17 @@ export function ChatPanel({
                   <div
                     className={`max-w-[80%] rounded-2xl px-4 py-2 group/msg ${
                       msg.role === "user"
-                        ? "bg-purple-500/30 text-white"
+                        ? "bg-[hsl(var(--primary))]/30 text-white"
                         : msg.toolsUsed && msg.toolsUsed.length > 0
-                          ? "bg-indigo-500/8 border border-indigo-400/15 text-white/90"
-                          : "bg-white/10 text-white/90"
+                          ? "bg-indigo-500/8 border border-indigo-400/15 text-[hsl(var(--foreground))]"
+                          : "bg-[hsl(var(--card))] text-[hsl(var(--foreground))]"
                     }`}
                   >
                     {msg.image && (
                       <img
                         src={msg.image}
                         alt="Attached"
-                        className="max-w-full rounded-lg mb-2 border border-white/20 cursor-pointer hover:brightness-110 transition-all"
+                        className="max-w-full rounded-lg mb-2 border border-[hsl(var(--border))] cursor-pointer hover:brightness-110 transition-all"
                         onClick={() => setLightboxSrc(msg.image!)}
                       />
                     )}
@@ -2037,27 +2087,29 @@ export function ChatPanel({
                       <div className="flex items-center gap-2 py-1">
                         <div className="flex gap-1">
                           <span
-                            className="w-1.5 h-1.5 bg-purple-400/60 rounded-full animate-bounce"
+                            className="w-1.5 h-1.5 bg-[hsl(var(--primary))]/60 rounded-full animate-bounce"
                             style={{ animationDelay: "0ms" }}
                           />
                           <span
-                            className="w-1.5 h-1.5 bg-purple-400/60 rounded-full animate-bounce"
+                            className="w-1.5 h-1.5 bg-[hsl(var(--primary))]/60 rounded-full animate-bounce"
                             style={{ animationDelay: "150ms" }}
                           />
                           <span
-                            className="w-1.5 h-1.5 bg-purple-400/60 rounded-full animate-bounce"
+                            className="w-1.5 h-1.5 bg-[hsl(var(--primary))]/60 rounded-full animate-bounce"
                             style={{ animationDelay: "300ms" }}
                           />
                         </div>
-                        <span className="text-white/40 text-sm italic">Thinking...</span>
+                        <span className="text-[hsl(var(--muted-foreground))]/60 text-sm italic">
+                          Thinking...
+                        </span>
                       </div>
                     ) : msg.role === "assistant" &&
                       msg.ttsSummary &&
                       ttsDisplayMode === "voice-only" ? null : msg.role === "assistant" &&
                       msg.ttsSummary &&
                       ttsDisplayMode === "voice-first" ? (
-                      <details className="text-xs text-white/60 bg-white/5 border border-white/10 rounded-lg px-2 py-1">
-                        <summary className="cursor-pointer select-none text-white/70">
+                      <details className="text-xs text-[hsl(var(--muted-foreground))]/80 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg px-2 py-1">
+                        <summary className="cursor-pointer select-none text-[hsl(var(--muted-foreground))]">
                           Show full text
                         </summary>
                         <div className="mt-1">
@@ -2080,7 +2132,7 @@ export function ChatPanel({
                         (msg.toolsUsed && msg.toolsUsed.length > 0) ||
                         msg.mood ||
                         msg.familySource) && (
-                        <div className="mt-2 flex items-center gap-2 flex-wrap border-t border-white/5 pt-1.5">
+                        <div className="mt-2 flex items-center gap-2 flex-wrap border-t border-[hsl(var(--border))] pt-1.5">
                           {msg.familySource && (
                             <span
                               className="text-xs px-2.5 py-0.5 rounded-full font-medium"
@@ -2123,7 +2175,7 @@ export function ChatPanel({
                                         : "bg-purple-400"
                                 }`}
                               />
-                              <span className="text-xs text-white/40">
+                              <span className="text-xs text-[hsl(var(--muted-foreground))]/60">
                                 {msg.modelInfo.model.replace(/-20\d{6}$/, "")}
                               </span>
                             </span>
@@ -2131,12 +2183,12 @@ export function ChatPanel({
                           {msg.toolsUsed && msg.toolsUsed.length > 0 && (
                             <>
                               {(msg.modelInfo || msg.mood) && (
-                                <span className="text-white/10">|</span>
+                                <span className="text-[hsl(var(--muted-foreground))]/15">|</span>
                               )}
                               {msg.toolsUsed.map((tool) => (
                                 <span
                                   key={tool}
-                                  className="text-xs px-1.5 py-0.5 rounded bg-white/8 text-white/50 border border-white/15"
+                                  className="text-xs px-1.5 py-0.5 rounded bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 border border-[hsl(var(--border))]"
                                 >
                                   {tool}
                                 </span>
@@ -2164,22 +2216,22 @@ export function ChatPanel({
                           className={`p-1 rounded transition-all ${
                             msg.feedback === "up"
                               ? "text-green-400 bg-green-500/20"
-                              : "text-white/25 hover:text-green-400 hover:bg-green-500/10"
+                              : "text-[hsl(var(--muted-foreground))]/30 hover:text-green-400 hover:bg-green-500/10"
                           }`}
                           title="Good response (+3 points)"
                         >
-                          <ThumbsUp className="w-3.5 h-3.5" />
+                          <ThumbsUpIcon size={14} />
                         </button>
                         <button
                           onClick={() => onFeedback?.(msg.id, "down")}
                           className={`p-1 rounded transition-all ${
                             msg.feedback === "down"
                               ? "text-red-400 bg-red-500/20"
-                              : "text-white/25 hover:text-red-400 hover:bg-red-500/10"
+                              : "text-[hsl(var(--muted-foreground))]/30 hover:text-red-400 hover:bg-red-500/10"
                           }`}
                           title="Bad/false response (-10 points)"
                         >
-                          <ThumbsDown className="w-3.5 h-3.5" />
+                          <ThumbsDownIcon size={14} />
                         </button>
                         {msg.feedback && (
                           <span
@@ -2205,7 +2257,7 @@ export function ChatPanel({
               className="flex justify-start"
             >
               <div
-                className={`rounded-2xl px-4 py-3 min-w-[120px] ${activeTool ? "bg-indigo-500/8 border border-indigo-400/15" : "bg-white/10"}`}
+                className={`rounded-2xl px-4 py-3 min-w-[120px] ${activeTool ? "bg-indigo-500/8 border border-indigo-400/15" : "bg-[hsl(var(--card))]"}`}
               >
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1">
@@ -2223,7 +2275,7 @@ export function ChatPanel({
                     />
                   </div>
                   {(activeModelInfo || activeTool) && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-white/50">
+                    <div className="flex items-center gap-1.5 text-[11px] text-[hsl(var(--muted-foreground))]/60">
                       {activeModelInfo && (
                         <span className="flex items-center gap-1">
                           <span
@@ -2262,18 +2314,18 @@ export function ChatPanel({
                   animate={{ opacity: 1, y: 0 }}
                   className="flex justify-end"
                 >
-                  <div className="max-w-[80%] rounded-2xl px-4 py-2 bg-purple-500/10 text-white/50 border border-purple-500/20 relative group">
+                  <div className="max-w-[80%] rounded-2xl px-4 py-2 bg-[hsl(var(--primary))]/10 text-[hsl(var(--muted-foreground))]/60 border border-[hsl(var(--primary))]/20 relative group">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]">
                         Queued #{idx + 1}
                       </span>
                       {onDequeue && (
                         <button
                           onClick={() => onDequeue(idx)}
-                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-white/10 text-white/40 hover:text-white/70 transition-all"
+                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--muted-foreground))] transition-all"
                           title="Remove from queue"
                         >
-                          <X className="w-3 h-3" />
+                          <CloseIcon size={12} />
                         </button>
                       )}
                     </div>
@@ -2296,21 +2348,49 @@ export function ChatPanel({
 
         {/* Input */}
         <form onSubmit={handleSubmit} className="space-y-2">
-          {/* Image Preview */}
-          {attachedImage && (
-            <div className="relative inline-block">
-              <img
-                src={attachedImage}
-                alt="Attached"
-                className="max-h-32 rounded-lg border border-white/20"
-              />
-              <button
-                type="button"
-                onClick={() => setAttachedImage(null)}
-                className="absolute -top-2 -right-2 p-1 bg-red-500/80 hover:bg-red-500 text-white rounded-full transition-all"
-              >
-                <X className="w-4 h-4" />
-              </button>
+          {/* Image Preview — tiled thumbnails with individual delete */}
+          {(attachedImage || attachedFiles.some((f) => f.type === "image")) && (
+            <div className="flex flex-wrap gap-2 px-1">
+              {attachedImage && (
+                <div className="relative group">
+                  <img
+                    src={attachedImage}
+                    alt="Attached 1"
+                    className="h-20 w-20 object-cover rounded-lg border border-[hsl(var(--border))]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setAttachedImage(null)}
+                    className="absolute -top-1.5 -right-1.5 p-0.5 bg-red-500/80 hover:bg-red-500 text-white rounded-full transition-all opacity-0 group-hover:opacity-100"
+                  >
+                    <CloseIcon size={12} />
+                  </button>
+                  <div className="absolute bottom-0.5 left-0.5 text-[8px] bg-black/60 text-white px-1 rounded">
+                    1
+                  </div>
+                </div>
+              )}
+              {attachedFiles.map((file, idx) =>
+                file.type === "image" ? (
+                  <div key={`img-${idx}`} className="relative group">
+                    <img
+                      src={`data:${file.mimeType};base64,${file.content}`}
+                      alt={`Attached ${(attachedImage ? 2 : 1) + idx}`}
+                      className="h-20 w-20 object-cover rounded-lg border border-[hsl(var(--border))]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))}
+                      className="absolute -top-1.5 -right-1.5 p-0.5 bg-red-500/80 hover:bg-red-500 text-white rounded-full transition-all opacity-0 group-hover:opacity-100"
+                    >
+                      <CloseIcon size={12} />
+                    </button>
+                    <div className="absolute bottom-0.5 left-0.5 text-[8px] bg-black/60 text-white px-1 rounded">
+                      {(attachedImage ? 2 : 1) + idx}
+                    </div>
+                  </div>
+                ) : null,
+              )}
             </div>
           )}
 
@@ -2320,16 +2400,16 @@ export function ChatPanel({
               {attachedFiles.map((file, idx) => (
                 <div
                   key={`${file.fileName}-${idx}`}
-                  className="flex items-center gap-1.5 px-2 py-1 bg-purple-500/15 border border-purple-500/30 rounded-lg text-xs text-purple-300"
+                  className="flex items-center gap-1.5 px-2 py-1 bg-[hsl(var(--primary))]/15 border border-[hsl(var(--primary))]/30 rounded-lg text-xs text-[hsl(var(--primary))]"
                 >
-                  <FileText className="w-3 h-3 flex-shrink-0" />
+                  <FileIcon size={12} className="flex-shrink-0" />
                   <span className="truncate max-w-[150px]">{file.fileName}</span>
                   <button
                     type="button"
                     onClick={() => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))}
-                    className="p-0.5 hover:bg-purple-500/30 rounded transition-colors"
+                    className="p-0.5 hover:bg-[hsl(var(--primary))]/30 rounded transition-colors"
                   >
-                    <X className="w-3 h-3" />
+                    <CloseIcon size={12} />
                   </button>
                 </div>
               ))}
@@ -2341,25 +2421,25 @@ export function ChatPanel({
 
           {/* Drag Overlay */}
           {isDragging && (
-            <div className="absolute inset-0 bg-purple-500/20 border-2 border-dashed border-purple-400 rounded-xl flex items-center justify-center pointer-events-none">
-              <div className="text-purple-400 font-medium">Drop files here</div>
+            <div className="absolute inset-0 bg-[hsl(var(--primary))]/20 border-2 border-dashed border-purple-400 rounded-xl flex items-center justify-center pointer-events-none">
+              <div className="text-[hsl(var(--primary))] font-medium">Drop files here</div>
             </div>
           )}
 
           {/* Doc Focus Badge */}
           {focusDoc && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-              <FileText className="w-3.5 h-3.5 text-purple-400" />
-              <span className="text-purple-300 text-xs font-medium truncate max-w-[200px]">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-[hsl(var(--primary))]/10 border border-[hsl(var(--primary))]/20 rounded-lg">
+              <FileIcon size={14} className="text-[hsl(var(--primary))]" />
+              <span className="text-[hsl(var(--primary))] text-xs font-medium truncate max-w-[200px]">
                 {focusDoc.title}
               </span>
               <button
                 type="button"
                 onClick={onClearFocus}
-                className="ml-auto text-white/30 hover:text-white/60 transition-colors"
+                className="ml-auto text-[hsl(var(--muted-foreground))]/40 hover:text-[hsl(var(--muted-foreground))]/80 transition-colors"
                 title="Clear document focus"
               >
-                <X className="w-3 h-3" />
+                <CloseIcon size={12} />
               </button>
             </div>
           )}
@@ -2373,7 +2453,7 @@ export function ChatPanel({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 8 }}
                 transition={{ duration: 0.15 }}
-                className="bg-[#1a1a2e]/95 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden shadow-xl max-h-[240px] overflow-y-auto mb-2"
+                className="bg-[#1a1a2e]/95 backdrop-blur-md border border-[hsl(var(--border))] rounded-xl overflow-hidden shadow-xl max-h-[240px] overflow-y-auto mb-2"
               >
                 {filteredCommands.slice(0, 10).map((cmd, idx) => (
                   <button
@@ -2381,16 +2461,18 @@ export function ChatPanel({
                     type="button"
                     className={`w-full text-left px-3 py-2 flex items-center gap-3 transition-colors ${
                       idx === cmdSelectedIdx
-                        ? "bg-purple-500/20 text-white"
-                        : "text-white/70 hover:bg-white/5"
+                        ? "bg-[hsl(var(--primary))]/20 text-white"
+                        : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--card))]"
                     }`}
                     onMouseEnter={() => setCmdSelectedIdx(idx)}
                     onClick={() => selectCommand(cmd)}
                   >
-                    <span className="text-purple-400 font-mono text-sm font-medium min-w-[100px]">
+                    <span className="text-[hsl(var(--primary))] font-mono text-sm font-medium min-w-[100px]">
                       {cmd.aliases[0]}
                     </span>
-                    <span className="text-white/40 text-xs truncate">{cmd.description}</span>
+                    <span className="text-[hsl(var(--muted-foreground))]/60 text-xs truncate">
+                      {cmd.description}
+                    </span>
                   </button>
                 ))}
               </motion.div>
@@ -2398,7 +2480,7 @@ export function ChatPanel({
           </AnimatePresence>
 
           {/* Input Card — ChatGPT-style stacked layout */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl focus-within:border-purple-500/50 focus-within:ring-1 focus-within:ring-purple-500/30 transition-all">
+          <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl focus-within:border-[hsl(var(--primary))]/50 focus-within:ring-1 focus-within:ring-[hsl(var(--primary))]/30 transition-all">
             <input
               id={attachmentInputId}
               type="file"
@@ -2476,7 +2558,7 @@ export function ChatPanel({
               }
               disabled={isListening}
               rows={1}
-              className="w-full bg-transparent px-4 pt-3 pb-1 text-white placeholder-white/30 focus:outline-none disabled:opacity-50 resize-none overflow-hidden text-sm"
+              className="w-full bg-transparent px-4 pt-3 pb-1 text-white placeholder-[hsl(var(--muted-foreground))]/40 focus:outline-none disabled:opacity-50 resize-none overflow-hidden text-sm"
             />
 
             {/* Action toolbar */}
@@ -2485,7 +2567,7 @@ export function ChatPanel({
               <div className="flex items-center gap-1">
                 <label
                   htmlFor={attachmentInputId}
-                  className="p-1.5 text-white/40 hover:text-white/70 hover:bg-white/5 rounded-lg transition-all cursor-pointer block"
+                  className="p-1.5 text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--card))] rounded-lg transition-all cursor-pointer block"
                   title="Attach files"
                   aria-label="Attach files"
                   onClick={() => {
@@ -2501,15 +2583,15 @@ export function ChatPanel({
                   role="button"
                   tabIndex={0}
                 >
-                  <Paperclip className="w-4 h-4" />
+                  <AttachIcon size={16} />
                 </label>
                 <button
                   type="button"
                   onClick={() => setShowIngestModal(true)}
-                  className="p-1.5 text-white/40 hover:text-white/70 hover:bg-white/5 rounded-lg transition-all"
+                  className="p-1.5 text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--card))] rounded-lg transition-all"
                   title="Ingest to knowledge base"
                 >
-                  <Database className="w-4 h-4" />
+                  <DatabaseIcon size={16} />
                 </button>
                 {onToggleDeepThink && (
                   <button
@@ -2517,24 +2599,12 @@ export function ChatPanel({
                     onClick={onToggleDeepThink}
                     className={`p-1.5 rounded-lg transition-all ${
                       deepThinkMode
-                        ? "text-purple-400 bg-purple-500/20"
-                        : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                        ? "text-[hsl(var(--primary))] bg-[hsl(var(--primary))]/20"
+                        : "text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--card))]"
                     }`}
                     title={deepThinkMode ? "Deep think ON" : "Deep think OFF"}
                   >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                      />
-                    </svg>
+                    <DeepThinkIcon size={16} />
                   </button>
                 )}
               </div>
@@ -2542,14 +2612,14 @@ export function ChatPanel({
               {/* Right actions */}
               <div className="flex items-center gap-1">
                 {onBusyModeChange && (
-                  <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-lg bg-white/5 border border-white/10">
+                  <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-lg bg-[hsl(var(--card))] border border-[hsl(var(--border))]">
                     <button
                       type="button"
                       onClick={() => onBusyModeChange("cue")}
                       className={`px-1.5 py-0.5 rounded text-[10px] transition-all ${
                         busyMode === "cue"
-                          ? "bg-purple-500/25 text-purple-300"
-                          : "text-white/40 hover:text-white/70"
+                          ? "bg-[hsl(var(--primary))]/25 text-[hsl(var(--primary))]"
+                          : "text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--muted-foreground))]"
                       }`}
                       title="Queue after current run"
                     >
@@ -2561,7 +2631,7 @@ export function ChatPanel({
                       className={`px-1.5 py-0.5 rounded text-[10px] transition-all ${
                         busyMode === "steer"
                           ? "bg-cyan-500/25 text-cyan-300"
-                          : "text-white/40 hover:text-white/70"
+                          : "text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--muted-foreground))]"
                       }`}
                       title="Inject into current run"
                     >
@@ -2594,9 +2664,9 @@ export function ChatPanel({
                           : "Stop generating"
                     }
                   >
-                    <Square className="w-4 h-4" />
+                    <StopIcon size={16} />
                     {queuedMessages.length > 0 && (
-                      <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-purple-500 text-white text-[8px] rounded-full flex items-center justify-center">
+                      <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[hsl(var(--primary))] text-white text-[8px] rounded-full flex items-center justify-center">
                         {queuedMessages.length}
                       </span>
                     )}
@@ -2607,9 +2677,9 @@ export function ChatPanel({
                 <button
                   type="submit"
                   disabled={!input.trim() && !attachedImage && attachedFiles.length === 0}
-                  className="p-1.5 bg-purple-500/80 hover:bg-purple-500 disabled:bg-white/10 disabled:text-white/20 text-white rounded-lg transition-all disabled:cursor-not-allowed"
+                  className="p-1.5 bg-[hsl(var(--primary))]/80 hover:bg-[hsl(var(--primary))] disabled:bg-[hsl(var(--card))] disabled:text-[hsl(var(--muted-foreground))]/30 text-white rounded-lg transition-all disabled:cursor-not-allowed"
                 >
-                  <Send className="w-4 h-4" />
+                  <SendIcon size={16} />
                 </button>
               </div>
             </div>

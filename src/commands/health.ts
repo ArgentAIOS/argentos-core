@@ -1062,20 +1062,8 @@ export async function healthCommand(
       if (summary.kernel.effectiveFocus) {
         kernelParts.push(`focus=${summary.kernel.effectiveFocus}`);
       }
-      if (
-        summary.kernel.activeLaneFocus &&
-        summary.kernel.activeLaneFocus !== summary.kernel.effectiveFocus
-      ) {
-        kernelParts.push(`active=${summary.kernel.activeLaneFocus}`);
-      }
       if (summary.kernel.continuityLane) {
         kernelParts.push(`lane=${summary.kernel.continuityLane}`);
-      }
-      if (
-        summary.kernel.activeLane &&
-        summary.kernel.activeLane !== summary.kernel.continuityLane
-      ) {
-        kernelParts.push(`workingLane=${summary.kernel.activeLane}`);
       }
       if (summary.kernel.continuitySource) {
         kernelParts.push(`owner=${summary.kernel.continuitySource}`);
@@ -1101,25 +1089,6 @@ export async function healthCommand(
       }
       if (summary.kernel.agendaOpenQuestions[0]) {
         kernelParts.push(`question=${summary.kernel.agendaOpenQuestions[0]}`);
-      }
-      if (
-        summary.kernel.executiveWorkTitle &&
-        summary.kernel.executiveWorkTitle !== summary.kernel.effectiveFocus &&
-        summary.kernel.executiveWorkTitle !== summary.kernel.activeLaneFocus
-      ) {
-        kernelParts.push(`exec=${summary.kernel.executiveWorkTitle}`);
-      }
-      if (summary.kernel.executiveLastActionKind) {
-        kernelParts.push(`action=${summary.kernel.executiveLastActionKind}`);
-      }
-      if (summary.kernel.executiveLastArtifactType) {
-        kernelParts.push(`artifact=${summary.kernel.executiveLastArtifactType}`);
-      }
-      if (summary.kernel.executiveArtifactCount > 0) {
-        kernelParts.push(`artifacts=${summary.kernel.executiveArtifactCount}`);
-      }
-      if (summary.kernel.executivePendingSurfaceMode) {
-        kernelParts.push(`surface=${summary.kernel.executivePendingSurfaceMode}`);
       }
       if (summary.kernel.continuityThreadTitle) {
         kernelParts.push(`thread=${summary.kernel.continuityThreadTitle}`);

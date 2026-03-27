@@ -248,6 +248,14 @@ const entries: SubCliEntry[] = [
     },
   },
   {
+    name: "marketplace",
+    description: "Marketplace browsing and installs",
+    register: async (program) => {
+      const mod = await import("../marketplace-cli.js");
+      mod.registerMarketplaceCli(program);
+    },
+  },
+  {
     name: "extension",
     description: "Extension packaging and publishing",
     register: async (program) => {

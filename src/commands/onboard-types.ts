@@ -56,6 +56,9 @@ export type OnboardOptions = {
   /** "manual" is an alias for "advanced". */
   flow?: "quickstart" | "advanced" | "manual";
   workspace?: string;
+  localRuntime?: "ollama" | "lmstudio";
+  localTextModel?: string;
+  localEmbeddingModel?: string;
   nonInteractive?: boolean;
   /** Required for non-interactive onboarding; skips the interactive risk prompt when true. */
   acceptRisk?: boolean;

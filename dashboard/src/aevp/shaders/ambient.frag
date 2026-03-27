@@ -145,7 +145,7 @@ void main() {
   float speechWobbleBoost = amp * 0.3;        // Voice vibrates the surface
 
   // Base radius — SCALED for the canvas.
-  float baseRadius = mix(0.06, 0.14, u_formExpansion) * breathMod * (1.0 + speechExpand);
+  float baseRadius = mix(0.15, 0.32, u_formExpansion) * breathMod * (1.0 + speechExpand);
 
   // ── Squash/stretch: mood shape + speech elongation ────────────────────
 

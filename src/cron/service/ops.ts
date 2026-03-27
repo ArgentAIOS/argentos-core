@@ -1,5 +1,6 @@
 import type { CronJobCreate, CronJobPatch } from "../types.js";
 import type { CronServiceState } from "./state.js";
+import { resolveCronArtifactWatchdogDueAtMs } from "../artifact-contract.js";
 import {
   applyJobPatch,
   computeJobNextRunAtMs,
@@ -55,7 +56,11 @@ export async function list(state: CronServiceState, opts?: { includeDisabled?: b
     await ensureLoaded(state);
     const includeDisabled = opts?.includeDisabled === true;
     const jobs = (state.store?.jobs ?? []).filter((j) => includeDisabled || j.enabled);
-    return jobs.toSorted((a, b) => (a.state.nextRunAtMs ?? 0) - (b.state.nextRunAtMs ?? 0));
+    return jobs.toSorted((a, b) => {
+      const aWake = a.state.nextRunAtMs ?? resolveCronArtifactWatchdogDueAtMs(a) ?? 0;
+      const bWake = b.state.nextRunAtMs ?? resolveCronArtifactWatchdogDueAtMs(b) ?? 0;
+      return aWake - bWake;
+    });
   });
 }
 
@@ -131,7 +136,7 @@ export async function run(state: CronServiceState, id: string, mode?: "due" | "f
     if (!due) {
       return { ok: true, ran: false, reason: "not-due" as const };
     }
-    await executeJob(state, job, now, { forced: mode === "force" });
+    await executeJob(state, job, now, { forced: mode === "force", reason: "schedule" });
     await persist(state);
     armTimer(state);
     return { ok: true, ran: true } as const;

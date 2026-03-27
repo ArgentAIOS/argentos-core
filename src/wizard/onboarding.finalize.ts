@@ -144,7 +144,7 @@ export async function finalizeOnboardingWizard(
   if (process.platform === "linux" && !systemdAvailable) {
     await prompter.note(
       "Systemd user services are unavailable. Skipping lingering checks and service install.",
-      "Systemd",
+      "Linux service model",
     );
   }
 
@@ -197,8 +197,8 @@ export async function finalizeOnboardingWizard(
           });
     if (flow === "quickstart") {
       await prompter.note(
-        "QuickStart uses Node for the Gateway service (stable + supported).",
-        "Gateway service runtime",
+        "Argent Quickstart uses Node for the Gateway service. It is the stable path for first bring-up.",
+        "Gateway runtime",
       );
     }
     const service = resolveGatewayService();
@@ -207,9 +207,9 @@ export async function finalizeOnboardingWizard(
       const action = await prompter.select({
         message: "Gateway service already installed",
         options: [
-          { value: "restart", label: "Restart" },
-          { value: "reinstall", label: "Reinstall" },
-          { value: "skip", label: "Skip" },
+          { value: "restart", label: "Restart the existing service" },
+          { value: "reinstall", label: "Reinstall from this workspace" },
+          { value: "skip", label: "Leave it as-is" },
         ],
       });
       if (action === "restart") {
@@ -368,12 +368,12 @@ export async function finalizeOnboardingWizard(
 
   await prompter.note(
     [
-      "Add nodes for extra features:",
-      "- macOS app (system + notifications)",
-      "- iOS app (camera/canvas)",
-      "- Android app (camera/canvas)",
+      "You can add companion nodes later if you want a wider Argent presence:",
+      "- macOS app for native system integration and notifications",
+      "- iOS app for mobile camera and canvas flows",
+      "- Android app for mobile camera and canvas flows",
     ].join("\n"),
-    "Optional apps",
+    "Companion apps",
   );
 
   const controlUiBasePath =
@@ -408,7 +408,7 @@ export async function finalizeOnboardingWizard(
 
   await prompter.note(
     [
-      `Web UI: ${links.httpUrl}`,
+      `Argent dashboard: ${links.httpUrl}`,
       tokenParam ? `Web UI (with token): ${authedUrl}` : undefined,
       `Gateway WS: ${links.wsUrl}`,
       gatewayStatusLine,
@@ -429,29 +429,29 @@ export async function finalizeOnboardingWizard(
     if (hasBootstrap) {
       await prompter.note(
         [
-          "This is the moment your agent comes alive.",
-          "Take your time — the more you share, the better the experience.",
-          "We'll start the first-run ritual from BOOTSTRAP.md.",
+          "This is the first live moment for Argent in this workspace.",
+          "Take your time. The more grounded your starting context is, the better the continuity will feel.",
+          "The first-run ritual will start from BOOTSTRAP.md.",
         ].join("\n"),
-        "Hatch your agent",
+        "Bring Argent online",
       );
     }
 
     await prompter.note(
       [
-        "Gateway token: shared auth for the Gateway + Control UI.",
+        "Gateway token: shared auth for the Gateway and the dashboard.",
         "Stored in: ~/.argentos/argent.json (gateway.auth.token) or ARGENT_GATEWAY_TOKEN.",
-        "Web UI stores a copy in this browser's localStorage (argent.control.settings.v1).",
-        `Get the tokenized link anytime: ${formatCliCommand("argent dashboard --no-open")}`,
+        "The web UI also keeps a local browser copy for reconnects.",
+        `Get the tokenized dashboard link anytime: ${formatCliCommand("argent dashboard --no-open")}`,
       ].join("\n"),
-      "Token",
+      "Dashboard access",
     );
 
     hatchChoice = await prompter.select({
-      message: "How do you want to hatch your bot?",
+      message: "How do you want to meet Argent first?",
       options: [
-        { value: "tui", label: "Hatch in TUI (recommended)" },
-        { value: "web", label: "Open the Web UI" },
+        { value: "tui", label: "Meet Argent in the terminal (recommended)" },
+        { value: "web", label: "Open the Argent dashboard" },
         { value: "later", label: "Do this later" },
       ],
       initialValue: "tui",
@@ -492,8 +492,8 @@ export async function finalizeOnboardingWizard(
         [
           `Dashboard link (with token): ${authedUrl}`,
           controlUiOpened
-            ? "Opened in your browser. Keep that tab to control Argent."
-            : "Copy/paste this URL in a browser on this machine to control Argent.",
+            ? "Opened in your browser. Keep that tab open as Argent's control surface."
+            : "Open this URL in a browser on this machine to reach Argent's control surface.",
           controlUiOpenHint,
         ]
           .filter(Boolean)
@@ -502,7 +502,7 @@ export async function finalizeOnboardingWizard(
       );
     } else {
       await prompter.note(
-        `When you're ready: ${formatCliCommand("argent dashboard --no-open")}`,
+        `When you're ready, open the dashboard with: ${formatCliCommand("argent dashboard --no-open")}`,
         "Later",
       );
     }
@@ -511,15 +511,16 @@ export async function finalizeOnboardingWizard(
   }
 
   await prompter.note(
-    ["Back up your agent workspace.", "Docs: https://docs.argent.ai/concepts/agent-workspace"].join(
-      "\n",
-    ),
-    "Workspace backup",
+    [
+      "Back up the Argent workspace once you like the initial state.",
+      "Docs: https://docs.argent.ai/concepts/agent-workspace",
+    ].join("\n"),
+    "Workspace safety",
   );
 
   await prompter.note(
-    "Running agents on your computer is risky — harden your setup: https://docs.argent.ai/security",
-    "Security",
+    "Running Argent on your own machine is still high-trust software. Harden the setup: https://docs.argent.ai/security",
+    "Security posture",
   );
 
   // Shell completion setup
@@ -555,12 +556,12 @@ export async function finalizeOnboardingWizard(
               : "~/.config/fish/config.fish";
         await prompter.note(
           `Shell completion installed. Restart your shell or run: source ${profileHint}`,
-          "Shell completion",
+          "CLI ergonomics",
         );
       } else {
         await prompter.note(
           `Failed to generate completion cache. Run \`${cliName} completion --install\` later.`,
-          "Shell completion",
+          "CLI ergonomics",
         );
       }
     }
@@ -595,8 +596,8 @@ export async function finalizeOnboardingWizard(
       [
         `Dashboard link (with token): ${authedUrl}`,
         controlUiOpened
-          ? "Opened in your browser. Keep that tab to control Argent."
-          : "Copy/paste this URL in a browser on this machine to control Argent.",
+          ? "Opened in your browser. Keep that tab open as Argent's control surface."
+          : "Open this URL in a browser on this machine to reach Argent's control surface.",
         controlUiOpenHint,
       ]
         .filter(Boolean)
@@ -611,7 +612,7 @@ export async function finalizeOnboardingWizard(
   await prompter.note(
     hasWebSearchKey
       ? [
-          "Web search is enabled, so your agent can look things up online when needed.",
+          "Web search is enabled, so Argent can look things up online when needed.",
           "",
           webSearchKey
             ? "API key: stored in config (tools.web.search.apiKey)."
@@ -619,9 +620,9 @@ export async function finalizeOnboardingWizard(
           "Docs: https://docs.argent.ai/tools/web",
         ].join("\n")
       : [
-          "If you want your agent to be able to search the web, you’ll need an API key.",
+          "If you want Argent to search the web, you will need an API key.",
           "",
-          "Argent uses Brave Search for the `web_search` tool. Without a Brave Search API key, web search won’t work.",
+          "Argent uses Brave Search for the `web_search` tool. Without a Brave Search API key, web search will stay unavailable.",
           "",
           "Set it up interactively:",
           `- Run: ${formatCliCommand("argent configure --section web")}`,
@@ -634,16 +635,16 @@ export async function finalizeOnboardingWizard(
   );
 
   await prompter.note(
-    'What now: https://argent.ai/showcase ("What People Are Building").',
-    "What now",
+    'Next: https://argent.ai/showcase ("What People Are Building").',
+    "Next steps",
   );
 
   await prompter.outro(
     controlUiOpened
-      ? "Onboarding complete. Dashboard opened with your token; keep that tab to control Argent."
+      ? "Argent is online. The dashboard opened with your token; keep that tab as the active control surface."
       : seededInBackground
-        ? "Onboarding complete. Web UI seeded in the background; open it anytime with the tokenized link above."
-        : "Onboarding complete. Use the tokenized dashboard link above to control Argent.",
+        ? "Argent is online. The web UI was seeded in the background; open it anytime with the tokenized link above."
+        : "Argent is online. Use the tokenized dashboard link above to control it.",
   );
 
   return { launchedTui };

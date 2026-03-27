@@ -4,6 +4,12 @@ import type { OnboardOptions } from "../onboard-types.js";
 import { formatCliCommand } from "../../cli/command-format.js";
 import { resolveGatewayPort, writeConfigFile } from "../../config/config.js";
 import { logConfigUpdated } from "../../config/logging.js";
+import {
+  applyLocalRuntimeConfig,
+  DEFAULT_EMBEDDING_MODEL,
+  normalizeLocalRuntimeChoice,
+  resolveDefaultLocalTextModel,
+} from "../../wizard/onboarding.local-runtime.js";
 import { DEFAULT_GATEWAY_DAEMON_RUNTIME } from "../daemon-runtime.js";
 import { healthCommand } from "../health.js";
 import {
@@ -50,6 +56,22 @@ export async function runNonInteractiveOnboardingLocal(params: {
     },
   };
 
+  const localRuntime = normalizeLocalRuntimeChoice(opts.localRuntime);
+  if (opts.localRuntime && !localRuntime) {
+    runtime.error(`Invalid --local-runtime "${String(opts.localRuntime)}" (use ollama|lmstudio).`);
+    runtime.exit(1);
+    return;
+  }
+
+  if (localRuntime) {
+    nextConfig = applyLocalRuntimeConfig({
+      choice: localRuntime,
+      config: nextConfig,
+      textModel: opts.localTextModel?.trim() || resolveDefaultLocalTextModel(localRuntime),
+      embeddingModel: opts.localEmbeddingModel?.trim() || DEFAULT_EMBEDDING_MODEL,
+    });
+  }
+
   const inferredAuthChoice = inferAuthChoiceFromFlags(opts);
 
   let authChoice: string | undefined;
@@ -82,6 +104,15 @@ export async function runNonInteractiveOnboardingLocal(params: {
       return;
     }
     nextConfig = nextConfigAfterAuth;
+  }
+
+  if (localRuntime) {
+    nextConfig = applyLocalRuntimeConfig({
+      choice: localRuntime,
+      config: nextConfig,
+      textModel: opts.localTextModel?.trim() || resolveDefaultLocalTextModel(localRuntime),
+      embeddingModel: opts.localEmbeddingModel?.trim() || DEFAULT_EMBEDDING_MODEL,
+    });
   }
 
   const gatewayBasePort = resolveGatewayPort(baseConfig);
@@ -136,6 +167,7 @@ export async function runNonInteractiveOnboardingLocal(params: {
     mode,
     workspaceDir,
     authChoice,
+    localRuntime,
     gateway: {
       port: gatewayResult.port,
       bind: gatewayResult.bind,

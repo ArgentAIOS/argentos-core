@@ -21,6 +21,16 @@ const { nodesAction, registerNodesCli } = vi.hoisted(() => {
 vi.mock("../acp-cli.js", () => ({ registerAcpCli }));
 vi.mock("../nodes-cli.js", () => ({ registerNodesCli }));
 
+const { marketplaceAction, registerMarketplaceCli } = vi.hoisted(() => {
+  const action = vi.fn();
+  const register = vi.fn((program: Command) => {
+    const marketplace = program.command("marketplace");
+    marketplace.command("install <packageId>").action(action);
+  });
+  return { marketplaceAction: action, registerMarketplaceCli: register };
+});
+vi.mock("../marketplace-cli.js", () => ({ registerMarketplaceCli }));
+
 const { registerSubCliByName, registerSubCliCommands } = await import("./register.subclis.js");
 
 describe("registerSubCliCommands", () => {
@@ -34,6 +44,8 @@ describe("registerSubCliCommands", () => {
     acpAction.mockClear();
     registerNodesCli.mockClear();
     nodesAction.mockClear();
+    registerMarketplaceCli.mockClear();
+    marketplaceAction.mockClear();
   });
 
   afterEach(() => {
@@ -62,6 +74,7 @@ describe("registerSubCliCommands", () => {
     const names = program.commands.map((cmd) => cmd.name());
     expect(names).toContain("acp");
     expect(names).toContain("gateway");
+    expect(names).toContain("marketplace");
     expect(registerAcpCli).not.toHaveBeenCalled();
   });
 
@@ -77,6 +90,20 @@ describe("registerSubCliCommands", () => {
 
     expect(registerNodesCli).toHaveBeenCalledTimes(1);
     expect(nodesAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-parses argv for marketplace lazy subcommands", async () => {
+    process.argv = ["node", "argent", "marketplace", "install", "hubspot-api"];
+    const program = new Command();
+    program.name("argent");
+    registerSubCliCommands(program, process.argv);
+
+    expect(program.commands.map((cmd) => cmd.name())).toEqual(["marketplace"]);
+
+    await program.parseAsync(["marketplace", "install", "hubspot-api"], { from: "user" });
+
+    expect(registerMarketplaceCli).toHaveBeenCalledTimes(1);
+    expect(marketplaceAction).toHaveBeenCalledTimes(1);
   });
 
   it("replaces placeholder when registering a subcommand by name", async () => {

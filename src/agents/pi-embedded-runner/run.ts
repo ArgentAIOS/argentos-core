@@ -7,9 +7,11 @@ import { getMemoryAdapter } from "../../data/storage-factory.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import { sleepWithAbort } from "../../infra/backoff.js";
 import { recordConsciousnessKernelConversationTurn } from "../../infra/consciousness-kernel.js";
+import { retrieveActiveLessons, formatLessonsForPrompt } from "../../infra/sis-active-lessons.js";
 import { runSelfEvaluation } from "../../infra/sis-self-eval.js";
 import { routeModel } from "../../models/router.js";
 import { enqueueCommandInLane } from "../../process/command-queue.js";
+import { isSubagentSessionKey } from "../../routing/session-key.js";
 import { resolveUserPath } from "../../utils.js";
 import { isMarkdownCapableMessageChannel } from "../../utils/message-channel.js";
 import { resolveArgentAgentDir } from "../agent-paths.js";
@@ -224,22 +226,34 @@ function formatMissingValidationClaims(validation: CommitmentValidation): string
   return formatMissingToolClaims(validation.missingClaims);
 }
 
-function buildCommitmentGuardrailText(validation: CommitmentValidation): string {
+function buildCommitmentGuardrailText(
+  validation: CommitmentValidation,
+  failedResponse?: string,
+): string {
   const missingClaims = formatMissingValidationClaims(validation);
   const needsQuestions = validation.missingCommitments.some(
     (commitment) => commitment.satisfactionMode === "questions",
   );
-  return (
-    "[TOOL_EXECUTION_GUARDRAIL]\n" +
-    `Your previous response made a same-turn action claim (${missingClaims}) without completing it.\n` +
-    (validation.primaryClaimText ? `Claim text: ${validation.primaryClaimText}\n` : "") +
-    "Retry this request now. If you say you are doing something, execute the tool or create the artifact first.\n" +
-    (needsQuestions
-      ? "If clarification is required, ask the concrete questions in the same reply.\n"
-      : "") +
-    "Do not simulate tool activity in plain text.\n" +
-    "[/TOOL_EXECUTION_GUARDRAIL]"
-  );
+  let text = "[TOOL_EXECUTION_GUARDRAIL]\n";
+  text +=
+    "CRITICAL FAILURE: You said you would perform an action but did NOT execute the tool call.\n";
+  text += `Missing tool execution: ${missingClaims}\n`;
+  if (validation.primaryClaimText) {
+    text += `You claimed: "${validation.primaryClaimText}"\n`;
+  }
+  if (failedResponse) {
+    text += `Your failed response was:\n---\n${failedResponse}\n---\n`;
+  }
+  text += "\n";
+  text += "RULES:\n";
+  text += "1. You MUST call the actual tool in this response. Not describe it. CALL it.\n";
+  text += "2. If you cannot perform the action, say EXPLICITLY why — do not pretend.\n";
+  text += "3. Evidence beats narration. Tool calls beat descriptions. Always.\n";
+  if (needsQuestions) {
+    text += "4. If clarification is needed, ask the specific questions NOW.\n";
+  }
+  text += "[/TOOL_EXECUTION_GUARDRAIL]";
+  return text;
 }
 
 function resolveCommitmentClaimText(validation: CommitmentValidation): string {
@@ -439,9 +453,42 @@ export async function runEmbeddedPiAgent(
       const searchBudgetInstruction = deepResearchMode
         ? "Research mode is ON. For web_search in this run, target up to 20 search calls total and up to 20 results per call unless lower is sufficient."
         : "Research mode is OFF (normal). For web_search in this run, target up to 10 search calls total and up to 10 results per call unless lower is sufficient.";
-      const effectiveExtraSystemPrompt = [params.extraSystemPrompt, searchBudgetInstruction]
+      let effectiveExtraSystemPrompt = [params.extraSystemPrompt, searchBudgetInstruction]
         .filter((part) => typeof part === "string" && part.trim().length > 0)
         .join("\n\n");
+
+      // ── SIS Active Lesson Injection ─────────────────────────────────
+      // Skip lesson injection for internal sessions (heartbeat, contemplation, SIS, subagent)
+      const isInternalSession =
+        params.messageChannel === "sis" ||
+        params.sessionKey?.includes("sis") === true ||
+        params.sessionKey?.includes("heartbeat") === true ||
+        params.sessionKey?.includes("contemplation") === true ||
+        params.sessionKey?.includes("sub-") === true;
+
+      if (!isInternalSession && params.sessionKey && promptText) {
+        try {
+          const { sessionAgentId: lessonAgentId } = resolveSessionAgentIds({
+            sessionKey: params.sessionKey,
+            config: params.config,
+          });
+          const sisLessons = await retrieveActiveLessons({
+            sessionKey: params.sessionKey,
+            agentId: lessonAgentId,
+            prompt: promptText,
+            maxLessons: 5,
+          });
+          if (sisLessons.length > 0) {
+            const lessonBlock = formatLessonsForPrompt(sisLessons);
+            effectiveExtraSystemPrompt = effectiveExtraSystemPrompt
+              ? `${effectiveExtraSystemPrompt}\n\n${lessonBlock}`
+              : lessonBlock;
+          }
+        } catch {
+          // Non-fatal — lesson injection failure should never block agent runs
+        }
+      }
+
       const isSisSession =
         params.messageChannel === "sis" || params.sessionKey?.includes("sis") === true;
       const effectiveRouterConfig =
@@ -1176,7 +1223,9 @@ export async function runEmbeddedPiAgent(
             if (toolClaimRetryCount < MAX_TOOL_CLAIM_RETRIES) {
               toolClaimRetryCount += 1;
               commitmentRepairCount += 1;
-              promptText = `${basePromptText}\n\n${buildCommitmentGuardrailText(toolValidation)}`;
+              const failedResponseSnippet =
+                validationText.length > 500 ? validationText.slice(0, 500) + "..." : validationText;
+              promptText = `${basePromptText}\n\n${buildCommitmentGuardrailText(toolValidation, failedResponseSnippet)}`;
               log.warn(
                 `tool-claim mismatch on ${provider}/${modelId}; retrying once with guardrail (${missingClaims})`,
               );
@@ -1191,11 +1240,14 @@ export async function runEmbeddedPiAgent(
               const snippet = extractStructuredToolJsonSnippet(validationText);
               promptText =
                 `${basePromptText}\n\n` +
-                "[TOOL_EXECUTION_EMERGENCY]\n" +
-                `Structured tool JSON or an unfulfilled same-turn action claim was emitted without real execution (${missingClaims}).\n` +
-                "Execute the required tool call now. If you need clarification, ask the concrete questions now.\n" +
-                "Do not output raw JSON or prose before the tool call.\n" +
-                (snippet ? `Observed payload:\n${snippet}\n` : "") +
+                "[TOOL_EXECUTION_EMERGENCY — FINAL ATTEMPT]\n" +
+                `CRITICAL: You have failed ${toolClaimRetryCount + 1} times to execute: ${missingClaims}\n` +
+                (toolValidation.primaryClaimText
+                  ? `You keep saying: "${toolValidation.primaryClaimText}" without calling the tool.\n`
+                  : "") +
+                "This is your LAST chance. Execute the tool call NOW or explicitly state you cannot.\n" +
+                "Do NOT output any text before the tool call. Tool call FIRST, then explanation.\n" +
+                (snippet ? `Previously attempted payload:\n${snippet}\n` : "") +
                 "[/TOOL_EXECUTION_EMERGENCY]";
               log.warn(
                 `tool-claim mismatch on ${provider}/${modelId}; retrying with emergency structured guardrail (${missingClaims})`,
@@ -1557,6 +1609,14 @@ export async function runEmbeddedPiAgent(
               `empty assistant payload for ${provider}/${modelId}: stopReason=${attempt.lastAssistant?.stopReason ?? "unknown"} contentTypes=${contentTypes} promptError=${attempt.promptError ? describeUnknownError(attempt.promptError) : "none"} assistantTextCount=${assistantTextCount} nonEmptyAssistantTextCount=${nonEmptyAssistantTextCount}`,
             );
           }
+          // Sub-agent fallback: if payloads are empty on an internal channel,
+          // emit a diagnostic message so the caller doesn't see silent completion.
+          const needsSubagentEmptyFallback =
+            payloads.length === 0 &&
+            !aborted &&
+            !attempt.didSendViaMessagingTool &&
+            !isUserFacingChannel &&
+            isSubagentSessionKey(params.sessionKey);
           let payloadsForReturn = needsEmptyReplyFallback
             ? emergencyAssistantText
               ? [{ text: emergencyAssistantText }]
@@ -1568,7 +1628,16 @@ export async function runEmbeddedPiAgent(
                     isError: true,
                   },
                 ]
-            : payloads;
+            : needsSubagentEmptyFallback
+              ? emergencyAssistantText
+                ? [{ text: emergencyAssistantText }]
+                : [
+                    {
+                      text: "[Sub-agent produced no output. This may indicate insufficient context or a model routing issue.]",
+                      isError: true,
+                    },
+                  ]
+              : payloads;
           const commitmentDisposition = sawCommitmentMismatch
             ? hasToolClaimMismatch
               ? "blocked"
@@ -1593,8 +1662,9 @@ export async function runEmbeddedPiAgent(
             payloadsForReturn = [
               {
                 text:
-                  `Tool execution guardrail blocked this reply. Claimed same-turn action without execution: ${missingClaims}. ` +
-                  "I need to retry with real execution rather than pretend the action happened.",
+                  `I wasn't able to complete the requested action (${missingClaims}). ` +
+                  "The tool execution failed after multiple attempts. " +
+                  "Please try again or let me try a different approach.",
                 isError: true,
               },
             ];

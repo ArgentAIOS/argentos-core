@@ -6,22 +6,25 @@ import {
   CloudRain,
   CloudSnow,
   CloudLightning,
-  Mail,
-  Calendar,
-  Wifi,
-  WifiOff,
-  ClipboardList,
-  Settings,
   Sunrise,
   Sunset,
   Stars,
-  Boxes,
-  Users2,
-  Shield,
   Lock,
-  UserPlus,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  CalendarIcon,
+  MailIcon,
+  MailBadgeIcon,
+  SignalIcon,
+  SignalOffIcon,
+  ClipboardCountIcon,
+  SettingsIcon,
+  NetworkGridIcon,
+  AgentsGroupIcon,
+  ShieldIcon,
+  WorkerAddIcon,
+} from "../icons/ArgentOS";
 import {
   saveConfig,
   loadConfig,
@@ -263,8 +266,8 @@ export function StatusBar({
       {/* Time & Date */}
       <div className="flex items-center gap-4 min-w-0 sm:gap-6">
         <div>
-          <div className="text-white text-2xl font-light">{formattedTime}</div>
-          <div className="text-white/50 text-sm">{formattedDate}</div>
+          <div className="text-[hsl(var(--foreground))] text-2xl font-light">{formattedTime}</div>
+          <div className="text-[hsl(var(--muted-foreground))]/60 text-sm">{formattedDate}</div>
         </div>
 
         {/* Weather */}
@@ -273,7 +276,7 @@ export function StatusBar({
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             onClick={onWeatherClick}
-            className="flex items-center gap-2 text-white/70 hover:text-white/90 transition-colors cursor-pointer"
+            className="flex items-center gap-2 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors cursor-pointer"
           >
             {(() => {
               const hour = time.getHours();
@@ -287,7 +290,7 @@ export function StatusBar({
               } else if (condition.includes("thunder") || condition.includes("storm")) {
                 return <CloudLightning className="w-5 h-5 text-yellow-400" />;
               } else if (condition.includes("cloud") || condition.includes("overcast")) {
-                return <Cloud className="w-5 h-5 text-gray-400" />;
+                return <Cloud className="w-5 h-5 text-[hsl(var(--muted-foreground))]" />;
               } else if (isNight) {
                 return <Moon className="w-5 h-5 text-blue-300" />;
               } else {
@@ -307,18 +310,18 @@ export function StatusBar({
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             onClick={onCalendarClick}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[hsl(var(--card))] hover:bg-[hsl(var(--card))] transition-colors cursor-pointer"
             title={nextEvent}
           >
-            <Calendar className="w-4 h-4 text-orange-400" />
-            <span className="text-sm text-white/70 max-w-[180px] truncate sm:max-w-[300px]">
+            <CalendarIcon size={16} />
+            <span className="text-sm text-[hsl(var(--muted-foreground))] max-w-[180px] truncate sm:max-w-[300px]">
               {nextEvent}
             </span>
           </motion.button>
         )}
 
         {/* Background & Outfit switcher (temporary preview buttons) */}
-        <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/5 border border-white/10">
+        <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[hsl(var(--card))] border border-[hsl(var(--border))]">
           <button
             onClick={() => {
               setBackgroundOverride("professional");
@@ -332,7 +335,7 @@ export function StatusBar({
             className={`p-1 rounded transition-all ${
               currentBackground === "professional"
                 ? "bg-yellow-500/20 shadow-[0_0_10px_rgba(234,179,8,0.5)]"
-                : "hover:bg-white/10"
+                : "hover:bg-[hsl(var(--card))]"
             }`}
             title="Morning"
           >
@@ -355,7 +358,7 @@ export function StatusBar({
             className={`p-1 rounded transition-all ${
               currentBackground === "casual"
                 ? "bg-orange-500/20 shadow-[0_0_10px_rgba(249,115,22,0.5)]"
-                : "hover:bg-white/10"
+                : "hover:bg-[hsl(var(--card))]"
             }`}
             title="Evening"
           >
@@ -378,7 +381,7 @@ export function StatusBar({
             className={`p-1 rounded transition-all ${
               currentBackground === "tech"
                 ? "bg-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.5)]"
-                : "hover:bg-white/10"
+                : "hover:bg-[hsl(var(--card))]"
             }`}
             title="Night"
           >
@@ -398,16 +401,18 @@ export function StatusBar({
               applyCustomization(cfg.parameters);
               saveConfig(cfg);
             }}
-            className={`p-1 rounded transition-all ml-1 border-l border-white/10 ${
+            className={`p-1 rounded transition-all ml-1 border-l border-[hsl(var(--border))] ${
               currentBackground === "auto"
                 ? "bg-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.5)]"
-                : "hover:bg-white/10"
+                : "hover:bg-[hsl(var(--card))]"
             }`}
             title="Auto (time-based background + outfit)"
           >
             <span
               className={`text-[10px] ${
-                currentBackground === "auto" ? "text-blue-300" : "text-white/50"
+                currentBackground === "auto"
+                  ? "text-blue-300"
+                  : "text-[hsl(var(--muted-foreground))]/60"
               }`}
             >
               AUTO
@@ -428,19 +433,11 @@ export function StatusBar({
                 ? "bg-red-500/10 border-red-500/20"
                 : score.score >= score.target
                   ? "bg-emerald-500/10 border-emerald-500/20"
-                  : "bg-white/5 border-white/10"
+                  : "bg-[hsl(var(--card))] border-[hsl(var(--border))]"
             }`}
             title={`Accountability: ${score.score}/${score.target} | Verified: ${score.verified} | Failed: ${score.failed}`}
           >
-            <Shield
-              className={`w-3.5 h-3.5 ${
-                score.score < 0
-                  ? "text-red-400"
-                  : score.score >= score.target
-                    ? "text-emerald-400"
-                    : "text-white/40"
-              }`}
-            />
+            <ShieldIcon size={14} />
             <span
               className={`text-sm font-mono font-medium ${
                 score.score < 0 ? "text-red-400" : "text-emerald-400"
@@ -449,9 +446,9 @@ export function StatusBar({
               {score.score >= 0 ? "+" : ""}
               {score.score}
             </span>
-            <span className="text-white/20 text-sm">/</span>
+            <span className="text-[hsl(var(--muted-foreground))]/30 text-sm">/</span>
             <span
-              className={`text-sm font-mono ${score.failed > 0 ? "text-red-400" : "text-white/30"}`}
+              className={`text-sm font-mono ${score.failed > 0 ? "text-red-400" : "text-[hsl(var(--muted-foreground))]/40"}`}
             >
               {score.failed > 0 ? `-${score.failed}` : "0"}
             </span>
@@ -464,11 +461,13 @@ export function StatusBar({
           animate={{ opacity: 1, scale: 1 }}
           onClick={onAlertsClick}
           className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-            alertCount > 0 ? "bg-pink-500/10 hover:bg-pink-500/20" : "bg-white/5 hover:bg-white/10"
+            alertCount > 0
+              ? "bg-pink-500/10 hover:bg-pink-500/20"
+              : "bg-[hsl(var(--card))] hover:bg-[hsl(var(--card))]"
           }`}
           title="Alerts"
         >
-          <Mail className={`w-4 h-4 ${alertCount > 0 ? "text-pink-400" : "text-white/40"}`} />
+          {alertCount > 0 ? <MailBadgeIcon size={16} /> : <MailIcon size={16} />}
           {alertCount > 0 && (
             <span className="text-sm text-pink-400 font-medium">{alertCount}</span>
           )}
@@ -479,62 +478,64 @@ export function StatusBar({
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           onClick={onAppsClick}
-          className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
+          className="p-2 rounded-lg bg-[hsl(var(--card))] hover:bg-[hsl(var(--card))] transition-colors cursor-pointer"
           title="App Forge"
         >
-          <Boxes className="w-4 h-4 text-white/50" />
+          <NetworkGridIcon size={16} />
         </motion.button>
 
-        {/* Workforce */}
-        <motion.button
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          onClick={() => {
-            const focus =
-              workforceBlockedCount > 0 ? "blocked" : workforceDueCount > 0 ? "due-now" : "all";
-            onWorkforceClick?.(focus);
-          }}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-cyan-500/20 transition-colors cursor-pointer"
-          title="Workforce"
-        >
-          <div className="relative">
-            <Users2 className="w-4 h-4 text-cyan-300/80" />
-            {(workforceDueCount > 0 || workforceBlockedCount > 0) && (
-              <span
-                className={`absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-semibold leading-4 text-center ${
-                  workforceBlockedCount > 0 ? "bg-red-500 text-white" : "bg-cyan-500 text-white"
-                }`}
-              >
-                {workforceBlockedCount > 0
-                  ? `!${Math.min(99, workforceBlockedCount)}`
-                  : Math.min(99, workforceDueCount)}
-              </span>
-            )}
-          </div>
-          <span className="text-xs font-medium text-cyan-100/90">Workforce</span>
-        </motion.button>
+        {onWorkforceClick && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={() => {
+              const focus =
+                workforceBlockedCount > 0 ? "blocked" : workforceDueCount > 0 ? "due-now" : "all";
+              onWorkforceClick(focus);
+            }}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[hsl(var(--card))] hover:bg-[hsl(var(--accent))]/20 transition-colors cursor-pointer"
+            title="Workforce"
+          >
+            <div className="relative">
+              <AgentsGroupIcon size={16} />
+              {(workforceDueCount > 0 || workforceBlockedCount > 0) && (
+                <span
+                  className={`absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-semibold leading-4 text-center ${
+                    workforceBlockedCount > 0 ? "bg-red-500 text-white" : "bg-cyan-500 text-white"
+                  }`}
+                >
+                  {workforceBlockedCount > 0
+                    ? `!${Math.min(99, workforceBlockedCount)}`
+                    : Math.min(99, workforceDueCount)}
+                </span>
+              )}
+            </div>
+            <span className="text-xs font-medium text-[hsl(var(--accent))]">Workforce</span>
+          </motion.button>
+        )}
 
-        {/* New Worker */}
-        <motion.button
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          onClick={onNewWorkerClick}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/20 transition-colors cursor-pointer"
-          title="New Worker"
-        >
-          <UserPlus className="w-4 h-4 text-purple-300" />
-          <span className="text-xs font-medium text-purple-200">+ Worker</span>
-        </motion.button>
+        {onNewWorkerClick && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={onNewWorkerClick}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[hsl(var(--primary))]/20 hover:bg-[hsl(var(--primary))]/30 border border-[hsl(var(--primary))]/20 transition-colors cursor-pointer"
+            title="New Worker"
+          >
+            <WorkerAddIcon size={16} />
+            <span className="text-xs font-medium text-[hsl(var(--primary))]">+ Worker</span>
+          </motion.button>
+        )}
 
         {/* Activity Log */}
         <motion.button
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           onClick={onActivityClick}
-          className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
+          className="p-2 rounded-lg bg-[hsl(var(--card))] hover:bg-[hsl(var(--card))] transition-colors cursor-pointer"
           title="Activity Log"
         >
-          <ClipboardList className="w-4 h-4 text-white/50" />
+          <ClipboardCountIcon size={16} />
         </motion.button>
 
         {/* Lock */}
@@ -543,10 +544,10 @@ export function StatusBar({
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             onClick={onLockClick}
-            className="p-2 rounded-lg bg-white/5 hover:bg-purple-500/20 transition-colors cursor-pointer"
+            className="p-2 rounded-lg bg-[hsl(var(--card))] hover:bg-[hsl(var(--primary))]/20 transition-colors cursor-pointer"
             title="Lock Dashboard (⌘L)"
           >
-            <Lock className="w-4 h-4 text-white/50" />
+            <Lock className="w-4 h-4 text-[hsl(var(--muted-foreground))]/60" />
           </motion.button>
         )}
 
@@ -555,10 +556,10 @@ export function StatusBar({
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           onClick={onSettingsClick}
-          className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
+          className="p-2 rounded-lg bg-[hsl(var(--card))] hover:bg-[hsl(var(--card))] transition-colors cursor-pointer"
           title="Settings"
         >
-          <Settings className="w-4 h-4 text-white/50" />
+          <SettingsIcon size={16} />
         </motion.button>
 
         {/* Connection status - just icon */}
@@ -568,11 +569,7 @@ export function StatusBar({
           className={`p-2 rounded-lg ${connected ? "bg-green-500/10" : "bg-red-500/10"}`}
           title={connected ? "Connected" : "Offline"}
         >
-          {connected ? (
-            <Wifi className="w-4 h-4 text-green-400" />
-          ) : (
-            <WifiOff className="w-4 h-4 text-red-400" />
-          )}
+          {connected ? <SignalIcon size={16} /> : <SignalOffIcon size={16} />}
         </motion.div>
       </div>
     </div>

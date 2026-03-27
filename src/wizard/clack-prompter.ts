@@ -14,7 +14,12 @@ import {
 import type { WizardProgress, WizardPrompter } from "./prompts.js";
 import { createCliProgress } from "../cli/progress.js";
 import { note as emitNote } from "../terminal/note.js";
-import { stylePromptHint, stylePromptMessage, stylePromptTitle } from "../terminal/prompt-style.js";
+import {
+  stylePromptHint,
+  stylePromptMessage,
+  stylePromptOption,
+  stylePromptTitle,
+} from "../terminal/prompt-style.js";
 import { theme } from "../terminal/theme.js";
 import { WizardCancelledError } from "./prompts.js";
 
@@ -60,7 +65,7 @@ export function createClackPrompter(): WizardPrompter {
         await select({
           message: stylePromptMessage(params.message),
           options: params.options.map((opt) => {
-            const base = { value: opt.value, label: opt.label };
+            const base = { value: opt.value, label: stylePromptOption(opt.label) };
             return opt.hint === undefined ? base : { ...base, hint: stylePromptHint(opt.hint) };
           }) as Option<(typeof params.options)[number]["value"]>[],
           initialValue: params.initialValue,
@@ -71,7 +76,7 @@ export function createClackPrompter(): WizardPrompter {
         await multiselect({
           message: stylePromptMessage(params.message),
           options: params.options.map((opt) => {
-            const base = { value: opt.value, label: opt.label };
+            const base = { value: opt.value, label: stylePromptOption(opt.label) };
             return opt.hint === undefined ? base : { ...base, hint: stylePromptHint(opt.hint) };
           }) as Option<(typeof params.options)[number]["value"]>[],
           initialValues: params.initialValues,

@@ -1,0 +1,11 @@
+{
+  "tool": "aos-google-places",
+  "permissions": {
+    "health": "readonly",
+    "doctor": "readonly",
+    "config.show": "readonly",
+    "search": "readonly",
+    "place": "readonly",
+    "resolve": "readonly"
+  }
+}

@@ -2,6 +2,13 @@ import type { HeartbeatRunResult } from "../../infra/heartbeat-wake.js";
 import type { CronJob } from "../types.js";
 import type { CronExecutionMode, CronGateDecision, CronSimulationEvidence } from "../types.js";
 import type { CronEvent, CronServiceState } from "./state.js";
+import {
+  hasPendingCronArtifactWatchdog,
+  resolveCronArtifactWatchdogDelayMs,
+  resolveCronArtifactWatchdogDueAtMs,
+  resolveCronWatchdogContract,
+  shouldAnnounceCronArtifactWatchdogFailure,
+} from "../artifact-contract.js";
 import { computeJobNextRunAtMs, nextWakeAtMs, resolveJobPayloadTextForMain } from "./jobs.js";
 import { locked } from "./locked.js";
 import { ensureLoaded, persist } from "./store.js";
@@ -129,11 +136,18 @@ export async function runDueJobs(state: CronServiceState) {
     if (typeof j.state.runningAtMs === "number") {
       return false;
     }
+    if (hasPendingCronArtifactWatchdog(j)) {
+      const watchdogDueAtMs = resolveCronArtifactWatchdogDueAtMs(j);
+      return typeof watchdogDueAtMs === "number" && now >= watchdogDueAtMs;
+    }
     const next = j.state.nextRunAtMs;
     return typeof next === "number" && now >= next;
   });
   for (const job of due) {
-    await executeJob(state, job, now, { forced: false });
+    await executeJob(state, job, now, {
+      forced: false,
+      reason: hasPendingCronArtifactWatchdog(job) ? "watchdog" : "schedule",
+    });
   }
 }
 
@@ -141,7 +155,7 @@ export async function executeJob(
   state: CronServiceState,
   job: CronJob,
   nowMs: number,
-  opts: { forced: boolean },
+  opts: { forced: boolean; reason?: "schedule" | "watchdog" },
 ) {
   const startedAt = state.deps.nowMs();
   const executionMode = resolveExecutionMode(job);
@@ -173,11 +187,13 @@ export async function executeJob(
     job.state.lastSimulationEvidence = gate?.simulationEvidence;
 
     const isAtJob = job.schedule.kind === "at";
-    const shouldDelete = isAtJob && status === "ok" && job.deleteAfterRun === true;
-    const shouldRetireAfterAttempt = isAtJob && job.deleteAfterRun === true;
+    const hasPendingWatchdog = hasPendingCronArtifactWatchdog(job);
+    const shouldDelete =
+      !hasPendingWatchdog && isAtJob && status === "ok" && job.deleteAfterRun === true;
+    const shouldRetireAfterAttempt = !hasPendingWatchdog && isAtJob && job.deleteAfterRun === true;
 
     if (!shouldDelete) {
-      if (shouldRetireAfterAttempt || (isAtJob && status === "ok")) {
+      if (shouldRetireAfterAttempt || (!hasPendingWatchdog && isAtJob && status === "ok")) {
         // One-shot jobs should not run more than once.
         job.enabled = false;
         job.state.nextRunAtMs = undefined;
@@ -211,6 +227,60 @@ export async function executeJob(
   };
 
   try {
+    if (opts.reason === "watchdog") {
+      const watchdogContract = resolveCronWatchdogContract(job);
+      if (!watchdogContract || !state.deps.verifyIsolatedAgentJobWatchdog) {
+        const message = "cron artifact watchdog is not configured";
+        job.state.watchdog = {
+          status: "error",
+          dueAtMs: undefined,
+          lastCheckedAtMs: startedAt,
+          error: message,
+        };
+        if (shouldAnnounceCronArtifactWatchdogFailure(job)) {
+          state.deps.enqueueSystemEvent(`Cron watchdog (error): ${message}`, {
+            agentId: job.agentId,
+          });
+          if (job.wakeMode === "now") {
+            state.deps.requestHeartbeatNow({ reason: `cron:${job.id}:watchdog` });
+          }
+        }
+        await finish("error", message, message);
+        return;
+      }
+
+      const watchdogRes = await state.deps.verifyIsolatedAgentJobWatchdog({ job });
+      const watchdogStatus = watchdogRes.status === "ok" ? "ok" : "error";
+      const watchdogError =
+        watchdogRes.status === "ok"
+          ? undefined
+          : (watchdogRes.error ?? "cron artifact watchdog failed");
+      const checkedAt = state.deps.nowMs();
+      job.state.watchdog = {
+        status: watchdogStatus,
+        dueAtMs: undefined,
+        lastCheckedAtMs: checkedAt,
+        verifiedAtMs: watchdogStatus === "ok" ? checkedAt : undefined,
+        error: watchdogError,
+        summary: watchdogRes.summary,
+      };
+      if (watchdogStatus === "error" && shouldAnnounceCronArtifactWatchdogFailure(job)) {
+        const summary = watchdogRes.summary?.trim() || watchdogError || "cron watchdog failed";
+        state.deps.enqueueSystemEvent(`Cron watchdog (error): ${summary}`, {
+          agentId: job.agentId,
+        });
+        if (job.wakeMode === "now") {
+          state.deps.requestHeartbeatNow({ reason: `cron:${job.id}:watchdog` });
+        }
+      }
+      await finish(
+        watchdogStatus,
+        watchdogError,
+        watchdogRes.summary ?? (watchdogStatus === "ok" ? "cron watchdog verified" : watchdogError),
+      );
+      return;
+    }
+
     const paperTradeEvidence = resolvePaperTradeEvidence(job, startedAt, executionMode);
     if (paperTradeEvidence) {
       const gateReason = paperTradeEvidence.reason;
@@ -378,6 +448,16 @@ export async function executeJob(
       job,
       message: job.payload.message,
     });
+
+    const watchdogDelayMs = res.status === "ok" ? resolveCronArtifactWatchdogDelayMs(job) : null;
+    if (res.status === "ok" && watchdogDelayMs !== null) {
+      job.state.watchdog = {
+        status: "pending",
+        dueAtMs: state.deps.nowMs() + watchdogDelayMs,
+      };
+    } else {
+      job.state.watchdog = undefined;
+    }
 
     // Post a short summary back to the main session so the user sees
     // the cron result without opening the isolated session.

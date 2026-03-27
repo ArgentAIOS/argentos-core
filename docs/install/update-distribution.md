@@ -68,6 +68,14 @@ Helper scripts:
 - `scripts/release-argent-manager.sh`
 - `scripts/notarize-mac-artifact.sh`
 
+Repository note:
+
+- `appcast.xml` in the repo should be treated as the source file that ultimately feeds the product's canonical Sparkle URL.
+- If the public release feed is served directly from GitHub, use `https://raw.githubusercontent.com/ArgentAIOS/argentos-core/main/appcast.xml` as the public `appcast.xml` URL.
+- If the source repo or release pipeline is private, do **not** treat the raw GitHub URL as canonical; publish the generated `appcast.xml` to a separate public release endpoint instead, and point `SUFeedURL` there.
+- Keep the checked-in `appcast.xml` file as either the latest generated ArgentOS appcast or a neutral placeholder that points operators to the intended public feed endpoint.
+- Any inherited or upstream feed entries inside `appcast.xml` must be removed or replaced with the intended ArgentOS public feed URL, or clients can silently follow the wrong product feed.
+
 ## Private Repo Constraints
 
 If `ArgentAIOS/argentos` stays private:
@@ -80,6 +88,7 @@ If `ArgentAIOS/argentos` stays private:
 2. Sparkle app updates:
 
 - Sparkle cannot rely on private raw GitHub URLs without auth plumbing.
+- The public-facing Sparkle feed may still be generated from `ArgentAIOS/argentos-core`, but clients must consume it from a public release endpoint if the source repo is not public.
 - Treat Sparkle feed as a separate release artifact endpoint.
 
 ## Recommended Staging Model

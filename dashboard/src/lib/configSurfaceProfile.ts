@@ -34,7 +34,7 @@ export function parseDashboardMode(
   surfaceProfile: DashboardSurfaceProfile,
 ): DashboardMode {
   if (!rawConfigText) {
-    return "personal";
+    return surfaceProfile === "public-core" ? "personal" : "personal";
   }
   try {
     const parsed = JSON.parse(rawConfigText);

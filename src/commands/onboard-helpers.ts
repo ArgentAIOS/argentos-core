@@ -16,6 +16,7 @@ import { pickPrimaryTailnetIPv4 } from "../infra/tailnet.js";
 import { isWSL } from "../infra/wsl.js";
 import { runCommandWithTimeout } from "../process/exec.js";
 import { stylePromptTitle } from "../terminal/prompt-style.js";
+import { theme } from "../terminal/theme.js";
 import {
   CONFIG_DIR,
   resolveUserPath,
@@ -77,12 +78,12 @@ export function normalizeGatewayTokenInput(value: unknown): string {
 
 export function printWizardHeader(runtime: RuntimeEnv) {
   const header = [
-    "╔═══════════════════════════════════════════════╗",
-    "║  ╔═╗ ╦═╗ ╔═╗ ╔═╗ ╔╗╔ ╦╗╔    ╔═╗ ╔═╗       ║",
-    "║  ╠═╣ ╠╦╝ ║ ╦ ╠╣  ║║║  ║     ║ ║ ╚═╗       ║",
-    "║  ╩ ╩ ╩╚═ ╚═╝ ╚═╝ ╝╚╝  ╩     ╚═╝ ╚═╝       ║",
-    "╚═══════════════════════════════════════════════╝",
-    "          🤖 The OS for Personal AI 🤖          ",
+    theme.accentBright("╔═══════════════════════════════════════════════╗"),
+    theme.accentBright("║  ╔═╗ ╦═╗ ╔═╗ ╔═╗ ╔╗╔ ╦╗╔    ╔═╗ ╔═╗       ║"),
+    theme.accentBright("║  ╠═╣ ╠╦╝ ║ ╦ ╠╣  ║║║  ║     ║ ║ ╚═╗       ║"),
+    theme.accentBright("║  ╩ ╩ ╩╚═ ╚═╝ ╚═╝ ╝╚╝  ╩     ╚═╝ ╚═╝       ║"),
+    theme.accentBright("╚═══════════════════════════════════════════════╝"),
+    theme.muted("        Personal AI, brought online with care        "),
     " ",
   ].join("\n");
   runtime.log(header);

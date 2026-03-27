@@ -27,21 +27,21 @@ export async function removeChannelConfigWizard(
           "No channel config found in argent.json.",
           `Tip: \`${formatCliCommand("argent channels status")}\` shows what is configured and enabled.`,
         ].join("\n"),
-        "Remove channel",
+        "Argent channels",
       );
       return next;
     }
 
     const channel = guardCancel(
       await select({
-        message: "Remove which channel config?",
+        message: "Which channel config should Argent remove?",
         options: [
           ...configured.map((meta) => ({
             value: meta.id,
             label: meta.label,
             hint: "Deletes tokens + settings from config (credentials stay on disk)",
           })),
-          { value: "done", label: "Done" },
+          { value: "done", label: "Leave channels as-is" },
         ],
       }),
       runtime,
@@ -54,7 +54,7 @@ export async function removeChannelConfigWizard(
     const label = getChannelPlugin(channel)?.meta.label ?? channel;
     const confirmed = guardCancel(
       await confirm({
-        message: `Delete ${label} configuration from ${shortenHomePath(CONFIG_PATH)}?`,
+        message: `Remove ${label} from ${shortenHomePath(CONFIG_PATH)}?`,
         initialValue: false,
       }),
       runtime,
@@ -76,7 +76,7 @@ export async function removeChannelConfigWizard(
       [`${label} removed from config.`, "Note: credentials/sessions on disk are unchanged."].join(
         "\n",
       ),
-      "Channel removed",
+      "Argent channels",
     );
   }
 }

@@ -41,6 +41,11 @@ import { defaultRuntime } from "../runtime.js";
 import { resolveUserPath } from "../utils.js";
 import { finalizeOnboardingWizard } from "./onboarding.finalize.js";
 import { configureGatewayForOnboarding } from "./onboarding.gateway-config.js";
+import {
+  configureLocalRuntime,
+  ensureLocalRuntimeAvailable,
+  promptLocalRuntimeChoice,
+} from "./onboarding.local-runtime.js";
 import { WizardCancelledError, type WizardPrompter } from "./prompts.js";
 
 async function requireRiskAcknowledgement(params: {
@@ -53,14 +58,14 @@ async function requireRiskAcknowledgement(params: {
 
   await params.prompter.note(
     [
-      "Security warning — please read.",
+      "Before Argent comes online, set the boundary conditions.",
       "",
-      "Argent is a hobby project and still in beta. Expect sharp edges.",
-      "This bot can read files and run actions if tools are enabled.",
-      "A bad prompt can trick it into doing unsafe things.",
+      "ArgentOS is powerful and still sharp-edged.",
+      "If tools are enabled, Argent can read files, inspect state, and take actions.",
+      "A bad prompt or bad boundary can still push the system into unsafe behavior.",
       "",
-      "If you’re not comfortable with basic security and access control, don’t run Argent.",
-      "Ask someone experienced to help before enabling tools or exposing it to the internet.",
+      "If you are not comfortable with basic security and access control, do not expose it yet.",
+      "If needed, bring in an experienced operator before enabling tools or public channels.",
       "",
       "Recommended baseline:",
       "- Pairing/allowlists + mention gating.",
@@ -118,7 +123,7 @@ export async function runOnboardingWizard(
   }
 
   const quickstartHint = `Configure details later via ${formatCliCommand("argent configure")}.`;
-  const manualHint = "Configure port, network, Tailscale, and auth options.";
+  const manualHint = "Choose network, gateway, auth, and runtime details yourself.";
   const explicitFlowRaw = opts.flow?.trim();
   const normalizedExplicitFlow = explicitFlowRaw === "manual" ? "advanced" : explicitFlowRaw;
   if (
@@ -137,47 +142,47 @@ export async function runOnboardingWizard(
   let flow: WizardFlow =
     explicitFlow ??
     (await prompter.select({
-      message: "Onboarding mode",
+      message: "How should Argent come online?",
       options: [
-        { value: "quickstart", label: "QuickStart", hint: quickstartHint },
-        { value: "advanced", label: "Manual", hint: manualHint },
+        { value: "quickstart", label: "Argent Quickstart", hint: quickstartHint },
+        { value: "advanced", label: "Custom bring-up", hint: manualHint },
       ],
       initialValue: "quickstart",
     }));
 
   if (opts.mode === "remote" && flow === "quickstart") {
     await prompter.note(
-      "QuickStart only supports local gateways. Switching to Manual mode.",
-      "QuickStart",
+      "Argent Quickstart only supports local gateways. Switching to Custom bring-up mode.",
+      "Argent Quickstart",
     );
     flow = "advanced";
   }
 
   if (snapshot.exists) {
-    await prompter.note(summarizeExistingConfig(baseConfig), "Existing config detected");
+    await prompter.note(summarizeExistingConfig(baseConfig), "Existing Argent config");
 
     const action = await prompter.select({
-      message: "Config handling",
+      message: "How should I treat the existing Argent config?",
       options: [
-        { value: "keep", label: "Use existing values" },
-        { value: "modify", label: "Update values" },
-        { value: "reset", label: "Reset" },
+        { value: "keep", label: "Keep and build on it" },
+        { value: "modify", label: "Adjust it in place" },
+        { value: "reset", label: "Reset and rebuild" },
       ],
     });
 
     if (action === "reset") {
       const workspaceDefault = baseConfig.agents?.defaults?.workspace ?? DEFAULT_WORKSPACE;
       const resetScope = (await prompter.select({
-        message: "Reset scope",
+        message: "How deep should the reset go?",
         options: [
           { value: "config", label: "Config only" },
           {
             value: "config+creds+sessions",
-            label: "Config + creds + sessions",
+            label: "Config + credentials + sessions",
           },
           {
             value: "full",
-            label: "Full reset (config + creds + sessions + workspace)",
+            label: "Full reset (config + credentials + sessions + workspace)",
           },
         ],
       })) as ResetScope;
@@ -287,7 +292,7 @@ export async function runOnboardingWizard(
           "Tailscale exposure: Off",
           "Direct to chat channels.",
         ];
-    await prompter.note(quickstartLines.join("\n"), "QuickStart");
+    await prompter.note(quickstartLines.join("\n"), "Argent Quickstart");
   }
 
   const localPort = resolveGatewayPort(baseConfig);
@@ -314,16 +319,16 @@ export async function runOnboardingWizard(
           options: [
             {
               value: "local",
-              label: "Local gateway (this machine)",
+              label: "Run Argent on this machine",
               hint: localProbe.ok
                 ? `Gateway reachable (${localUrl})`
-                : `No gateway detected (${localUrl})`,
+                : `No local gateway detected yet (${localUrl})`,
             },
             {
               value: "remote",
-              label: "Remote gateway (info-only)",
+              label: "Connect to an existing remote gateway",
               hint: !remoteUrl
-                ? "No remote URL configured yet"
+                ? "No remote gateway configured yet"
                 : remoteProbe?.ok
                   ? `Gateway reachable (${remoteUrl})`
                   : `Configured but unreachable (${remoteUrl})`,
@@ -345,7 +350,7 @@ export async function runOnboardingWizard(
     (flow === "quickstart"
       ? (baseConfig.agents?.defaults?.workspace ?? DEFAULT_WORKSPACE)
       : await prompter.text({
-          message: "Workspace directory",
+          message: "Argent workspace directory",
           initialValue: baseConfig.agents?.defaults?.workspace ?? DEFAULT_WORKSPACE,
         }));
 
@@ -366,42 +371,79 @@ export async function runOnboardingWizard(
     },
   };
 
-  const authStore = ensureAuthProfileStore(undefined, {
-    allowKeychainPrompt: false,
-  });
-  const authChoiceFromPrompt = opts.authChoice === undefined;
-  const authChoice =
-    opts.authChoice ??
-    (await promptAuthChoiceGrouped({
-      prompter,
-      store: authStore,
-      includeSkip: true,
-    }));
-
-  const authResult = await applyAuthChoice({
-    authChoice,
-    config: nextConfig,
-    prompter,
-    runtime,
-    setDefaultModel: true,
-    opts: {
-      tokenProvider: opts.tokenProvider,
-      token: opts.authChoice === "apiKey" && opts.token ? opts.token : undefined,
-    },
-  });
-  nextConfig = authResult.config;
-
-  if (authChoiceFromPrompt) {
-    const modelSelection = await promptDefaultModel({
+  if (opts.authChoice === undefined) {
+    const localRuntimeChoice = await promptLocalRuntimeChoice({
       config: nextConfig,
       prompter,
-      allowKeep: true,
-      ignoreAllowlist: true,
-      preferredProvider: resolvePreferredProviderForAuthChoice(authChoice),
     });
-    if (modelSelection.model) {
-      nextConfig = applyPrimaryModel(nextConfig, modelSelection.model);
+    if (localRuntimeChoice === "ollama" || localRuntimeChoice === "lmstudio") {
+      await prompter.note(
+        [
+          "Argent works best when the local brain is established first.",
+          "This path sets up a local text model plus Nomic embeddings before channels, UI, and optional fallbacks.",
+        ].join("\n"),
+        "Argent runtime",
+      );
+      await ensureLocalRuntimeAvailable({
+        choice: localRuntimeChoice,
+        prompter,
+      });
+      nextConfig = await configureLocalRuntime({
+        choice: localRuntimeChoice,
+        config: nextConfig,
+        prompter,
+      });
+      await prompter.note(
+        `Configured ${localRuntimeChoice === "ollama" ? "Ollama" : "LM Studio"} as Argent's primary local runtime. Add cloud fallbacks later with \`${formatCliCommand("argent configure")}\` if needed.`,
+        "Argent runtime",
+      );
+    } else {
+      const authStore = ensureAuthProfileStore(undefined, {
+        allowKeychainPrompt: false,
+      });
+      const authChoice = await promptAuthChoiceGrouped({
+        prompter,
+        store: authStore,
+        includeSkip: true,
+      });
+
+      const authResult = await applyAuthChoice({
+        authChoice,
+        config: nextConfig,
+        prompter,
+        runtime,
+        setDefaultModel: true,
+        opts: {
+          tokenProvider: opts.tokenProvider,
+          token: opts.authChoice === "apiKey" && opts.token ? opts.token : undefined,
+        },
+      });
+      nextConfig = authResult.config;
+
+      const modelSelection = await promptDefaultModel({
+        config: nextConfig,
+        prompter,
+        allowKeep: true,
+        ignoreAllowlist: true,
+        preferredProvider: resolvePreferredProviderForAuthChoice(authChoice),
+      });
+      if (modelSelection.model) {
+        nextConfig = applyPrimaryModel(nextConfig, modelSelection.model);
+      }
     }
+  } else {
+    const authResult = await applyAuthChoice({
+      authChoice: opts.authChoice,
+      config: nextConfig,
+      prompter,
+      runtime,
+      setDefaultModel: true,
+      opts: {
+        tokenProvider: opts.tokenProvider,
+        token: opts.authChoice === "apiKey" && opts.token ? opts.token : undefined,
+      },
+    });
+    nextConfig = authResult.config;
   }
 
   await warnIfModelConfigLooksOff(nextConfig, prompter);
@@ -419,7 +461,7 @@ export async function runOnboardingWizard(
   const settings = gateway.settings;
 
   if (opts.skipChannels ?? opts.skipProviders) {
-    await prompter.note("Skipping channel setup.", "Channels");
+    await prompter.note("Skipping channel setup for now.", "Channels");
   } else {
     const quickstartAllowFromChannels =
       flow === "quickstart"
@@ -443,7 +485,7 @@ export async function runOnboardingWizard(
   });
 
   if (opts.skipSkills) {
-    await prompter.note("Skipping skills setup.", "Skills");
+    await prompter.note("Skipping skills setup for now.", "Skills");
   } else {
     nextConfig = await setupSkills(nextConfig, workspaceDir, runtime, prompter);
   }

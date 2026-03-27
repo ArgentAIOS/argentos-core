@@ -27,6 +27,78 @@ export const CronScheduleSchema = Type.Union([
   ),
 ]);
 
+const CronTaskStatusSchema = Type.Union([
+  Type.Literal("pending"),
+  Type.Literal("in_progress"),
+  Type.Literal("blocked"),
+  Type.Literal("completed"),
+  Type.Literal("failed"),
+  Type.Literal("cancelled"),
+]);
+
+const CronTaskSourceSchema = Type.Union([
+  Type.Literal("user"),
+  Type.Literal("agent"),
+  Type.Literal("heartbeat"),
+  Type.Literal("schedule"),
+  Type.Literal("channel"),
+  Type.Literal("job"),
+]);
+
+const NonEmptyStringListSchema = Type.Array(NonEmptyString, { minItems: 1 });
+
+const CronDocPanelArtifactRequirementSchema = Type.Object(
+  {
+    documentId: Type.Optional(NonEmptyString),
+    titleIncludes: Type.Optional(NonEmptyString),
+    collection: Type.Optional(Type.Union([NonEmptyString, NonEmptyStringListSchema])),
+    sourceFileIncludes: Type.Optional(NonEmptyString),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 5000 })),
+  },
+  { additionalProperties: false },
+);
+
+const CronTaskArtifactRequirementSchema = Type.Object(
+  {
+    taskId: Type.Optional(NonEmptyString),
+    titleIncludes: Type.Optional(NonEmptyString),
+    assignee: Type.Optional(NonEmptyString),
+    status: Type.Optional(Type.Union([CronTaskStatusSchema, Type.Array(CronTaskStatusSchema)])),
+    source: Type.Optional(Type.Union([CronTaskSourceSchema, Type.Array(CronTaskSourceSchema)])),
+    tags: Type.Optional(NonEmptyStringListSchema),
+    parentTaskId: Type.Optional(NonEmptyString),
+    agentId: Type.Optional(NonEmptyString),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 5000 })),
+  },
+  { additionalProperties: false },
+);
+
+const CronArtifactContractSchema = Type.Object(
+  {
+    docPanelDraft: Type.Optional(CronDocPanelArtifactRequirementSchema),
+    handoffTask: Type.Optional(CronTaskArtifactRequirementSchema),
+    deliveryTask: Type.Optional(CronTaskArtifactRequirementSchema),
+  },
+  { additionalProperties: false },
+);
+
+const CronArtifactWatchdogSchema = Type.Object(
+  {
+    afterMs: Type.Optional(Type.Integer({ minimum: 1000 })),
+    announceOnFailure: Type.Optional(Type.Boolean()),
+    required: Type.Optional(CronArtifactContractSchema),
+  },
+  { additionalProperties: false },
+);
+
+const CronAgentTurnArtifactContractSchema = Type.Object(
+  {
+    required: Type.Optional(CronArtifactContractSchema),
+    watchdog: Type.Optional(CronArtifactWatchdogSchema),
+  },
+  { additionalProperties: false },
+);
+
 export const CronPayloadSchema = Type.Union([
   Type.Object(
     {
@@ -55,6 +127,7 @@ export const CronPayloadSchema = Type.Union([
       model: Type.Optional(Type.String()),
       thinking: Type.Optional(Type.String()),
       timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1 })),
+      artifactContract: Type.Optional(CronAgentTurnArtifactContractSchema),
     },
     { additionalProperties: false },
   ),
@@ -107,6 +180,7 @@ export const CronPayloadPatchSchema = Type.Union([
       model: Type.Optional(Type.String()),
       thinking: Type.Optional(Type.String()),
       timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1 })),
+      artifactContract: Type.Optional(CronAgentTurnArtifactContractSchema),
     },
     { additionalProperties: false },
   ),
@@ -184,6 +258,19 @@ export const CronJobStateSchema = Type.Object(
           ]),
           action: NonEmptyString,
           reason: NonEmptyString,
+        },
+        { additionalProperties: false },
+      ),
+    ),
+    watchdog: Type.Optional(
+      Type.Object(
+        {
+          status: Type.Union([Type.Literal("pending"), Type.Literal("ok"), Type.Literal("error")]),
+          dueAtMs: Type.Optional(Type.Integer({ minimum: 0 })),
+          lastCheckedAtMs: Type.Optional(Type.Integer({ minimum: 0 })),
+          verifiedAtMs: Type.Optional(Type.Integer({ minimum: 0 })),
+          error: Type.Optional(Type.String()),
+          summary: Type.Optional(Type.String()),
         },
         { additionalProperties: false },
       ),

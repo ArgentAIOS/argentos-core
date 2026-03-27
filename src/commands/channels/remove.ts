@@ -41,9 +41,9 @@ export async function channelsRemoveCommand(
   const deleteConfig = Boolean(opts.delete);
 
   if (useWizard && prompter) {
-    await prompter.intro("Remove channel account");
+    await prompter.intro("Take a channel offline");
     const selectedChannel = await prompter.select({
-      message: "Channel",
+      message: "Which channel should Argent change?",
       options: listChannelPlugins().map((plugin) => ({
         value: plugin.id,
         label: plugin.meta.label,
@@ -54,7 +54,7 @@ export async function channelsRemoveCommand(
     accountId = await (async () => {
       const ids = listAccountIds(cfg, selectedChannel);
       const choice = await prompter.select({
-        message: "Account",
+        message: "Which account should Argent change?",
         options: ids.map((id) => ({
           value: id,
           label: id === DEFAULT_ACCOUNT_ID ? "default (primary)" : id,
@@ -65,7 +65,7 @@ export async function channelsRemoveCommand(
     })();
 
     const wantsDisable = await prompter.confirm({
-      message: `Disable ${channelLabel(selectedChannel)} account "${accountId}"? (keeps config)`,
+      message: `Take ${channelLabel(selectedChannel)} account "${accountId}" offline and keep its config?`,
       initialValue: true,
     });
     if (!wantsDisable) {
@@ -81,7 +81,7 @@ export async function channelsRemoveCommand(
     if (!deleteConfig) {
       const confirm = createClackPrompter();
       const ok = await confirm.confirm({
-        message: `Disable ${channelLabel(channel)} account "${accountId}"? (keeps config)`,
+        message: `Take ${channelLabel(channel)} account "${accountId}" offline and keep its config?`,
         initialValue: true,
       });
       if (!ok) {
@@ -129,14 +129,14 @@ export async function channelsRemoveCommand(
   if (useWizard && prompter) {
     await prompter.outro(
       deleteConfig
-        ? `Deleted ${channelLabel(channel)} account "${accountKey}".`
-        : `Disabled ${channelLabel(channel)} account "${accountKey}".`,
+        ? `Argent removed ${channelLabel(channel)} account "${accountKey}".`
+        : `Argent took ${channelLabel(channel)} account "${accountKey}" offline.`,
     );
   } else {
     runtime.log(
       deleteConfig
-        ? `Deleted ${channelLabel(channel)} account "${accountKey}".`
-        : `Disabled ${channelLabel(channel)} account "${accountKey}".`,
+        ? `Argent removed ${channelLabel(channel)} account "${accountKey}".`
+        : `Argent took ${channelLabel(channel)} account "${accountKey}" offline.`,
     );
   }
 }

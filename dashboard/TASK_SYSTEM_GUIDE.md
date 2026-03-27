@@ -155,7 +155,12 @@ Click any task to see:
 
 ## Schedules & Reminders
 
-I can set up recurring tasks and one-time reminders using cron jobs.
+I can set up recurring work and one-time reminders using the scheduler.
+
+There are two layers now:
+
+- `scheduled_tasks` for managed scheduled workflows such as briefs, reports, and recurring check-ins
+- raw cron for low-level reminders, wake events, and deterministic monitors
 
 ### Creating a Reminder
 
@@ -170,7 +175,7 @@ Me: Creates cron job → fires in 20 min
 
 ```
 You: "Every morning at 8am, greet me and show silver prices"
-Me: Creates daily cron job → 8am every day
+Me: Creates a managed scheduled task → 8am every day
 ```
 
 ### Schedule Examples
@@ -201,12 +206,12 @@ graph LR
 
 ## Task vs Schedule
 
-| Feature          | Task               | Schedule/Cron               |
-| ---------------- | ------------------ | --------------------------- |
-| **Timing**       | Do it now          | Do it later / recurring     |
-| **Visibility**   | Shows in task list | Background job              |
-| **Notification** | Progress updates   | Fires when scheduled        |
-| **Best For**     | Immediate actions  | Reminders, recurring checks |
+| Feature          | Task               | Scheduled Task / Cron              |
+| ---------------- | ------------------ | ---------------------------------- |
+| **Timing**       | Do it now          | Do it later / recurring            |
+| **Visibility**   | Shows in task list | Managed workflow or background     |
+| **Notification** | Progress updates   | Fires when scheduled               |
+| **Best For**     | Immediate actions  | Briefs, reports, reminders, checks |
 
 **Task Example:**
 

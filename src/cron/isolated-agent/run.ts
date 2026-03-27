@@ -41,6 +41,7 @@ import {
 } from "../../auto-reply/thinking.js";
 import { createOutboundSendDeps, type CliDeps } from "../../cli/outbound-send-deps.js";
 import { resolveSessionTranscriptPath, updateSessionStore } from "../../config/sessions.js";
+import { getAgentFamily } from "../../data/agent-family.js";
 import { registerAgentRunContext } from "../../infra/agent-events.js";
 import { deliverOutboundPayloads } from "../../infra/outbound/deliver.js";
 import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
@@ -52,6 +53,7 @@ import {
   getHookType,
   isExternalHookSession,
 } from "../../security/external-content.js";
+import { verifyCronArtifactContract } from "../artifact-contract.js";
 import { resolveCronDeliveryPlan } from "../delivery.js";
 import { resolveDeliveryTarget } from "./delivery-target.js";
 import {
@@ -343,6 +345,18 @@ export async function runCronIsolatedAgentTurn(params: {
     store[agentSessionKey] = cronSession.sessionEntry;
   });
 
+  // Set Redis presence so this agent lights up on the Workflow Map during execution
+  try {
+    const family = await getAgentFamily();
+    const redis = family.getRedis();
+    if (redis) {
+      const { refreshPresence } = await import("../../data/redis-client.js");
+      await refreshPresence(redis, agentId);
+    }
+  } catch {
+    /* Redis optional — cron proceeds without it */
+  }
+
   let runResult: Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
   let fallbackProvider = provider;
   let fallbackModel = model;
@@ -503,6 +517,33 @@ export async function runCronIsolatedAgentTurn(params: {
       if (!deliveryBestEffort) {
         return { status: "error", summary, outputText, error: String(err) };
       }
+    }
+  }
+
+  const requiredArtifactContract = agentPayload?.artifactContract?.required;
+  if (requiredArtifactContract) {
+    try {
+      const verification = await verifyCronArtifactContract({
+        agentId,
+        contract: requiredArtifactContract,
+      });
+      if (!verification.ok) {
+        return {
+          status: "error",
+          error: verification.error,
+          summary: verification.error,
+          outputText,
+        };
+      }
+      return { status: "ok", summary: summary ?? verification.summary, outputText };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        status: "error",
+        error: message,
+        summary: message,
+        outputText,
+      };
     }
   }
 

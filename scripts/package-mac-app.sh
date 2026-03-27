@@ -34,7 +34,7 @@ fi
 IFS=' ' read -r -a BUILD_ARCHS <<< "$BUILD_ARCHS_VALUE"
 PRIMARY_ARCH="${BUILD_ARCHS[0]}"
 SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-AGCY8w5vHirVfGGDGc8Szc5iuOqupZSh9pMj/Qs67XI=}"
-SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/ArgentAIOS/argentos/main/appcast.xml}"
+SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/ArgentAIOS/argentos-core/main/appcast.xml}"
 AUTO_CHECKS=true
 if [[ "$BUNDLE_ID" == *.debug ]]; then
   SPARKLE_FEED_URL=""

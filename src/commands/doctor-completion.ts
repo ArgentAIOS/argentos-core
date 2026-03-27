@@ -86,8 +86,8 @@ export async function doctorShellCompletion(
   // Profile uses slow dynamic pattern - upgrade to cached version
   if (status.usesSlowPattern) {
     note(
-      `Your ${status.shell} profile uses slow dynamic completion (source <(...)).\nUpgrading to cached completion for faster shell startup...`,
-      "Shell completion",
+      `Your ${status.shell} profile uses slow dynamic completion (source <(...)).\nUpgrading Argent shell completion to the cached path for faster startup...`,
+      "Argent shell completion",
     );
 
     // Ensure cache exists first
@@ -96,7 +96,7 @@ export async function doctorShellCompletion(
       if (!generated) {
         note(
           `Failed to generate completion cache. Run \`${cliName} completion --write-state\` manually.`,
-          "Shell completion",
+          "Argent shell completion",
         );
         return;
       }
@@ -105,8 +105,8 @@ export async function doctorShellCompletion(
     // Upgrade profile to use cached file
     await installCompletion(status.shell, true, cliName);
     note(
-      `Shell completion upgraded. Restart your shell or run: source ~/.${status.shell === "zsh" ? "zshrc" : status.shell === "bash" ? "bashrc" : "config/fish/config.fish"}`,
-      "Shell completion",
+      `Argent shell completion upgraded. Restart your shell or run: source ~/.${status.shell === "zsh" ? "zshrc" : status.shell === "bash" ? "bashrc" : "config/fish/config.fish"}`,
+      "Argent shell completion",
     );
     return;
   }
@@ -114,16 +114,16 @@ export async function doctorShellCompletion(
   // Profile has completion but no cache - auto-fix
   if (status.profileInstalled && !status.cacheExists) {
     note(
-      `Shell completion is configured in your ${status.shell} profile but the cache is missing.\nRegenerating cache...`,
-      "Shell completion",
+      `Argent shell completion is configured in your ${status.shell} profile but the cache is missing.\nRegenerating the cache now...`,
+      "Argent shell completion",
     );
     const generated = await generateCompletionCache();
     if (generated) {
-      note(`Completion cache regenerated at ${status.cachePath}`, "Shell completion");
+      note(`Completion cache regenerated at ${status.cachePath}`, "Argent shell completion");
     } else {
       note(
         `Failed to regenerate completion cache. Run \`${cliName} completion --write-state\` manually.`,
-        "Shell completion",
+        "Argent shell completion",
       );
     }
     return;
@@ -137,7 +137,7 @@ export async function doctorShellCompletion(
     }
 
     const shouldInstall = await prompter.confirm({
-      message: `Enable ${status.shell} shell completion for ${cliName}?`,
+      message: `Enable Argent shell completion for ${cliName}?`,
       initialValue: true,
     });
 
@@ -147,7 +147,7 @@ export async function doctorShellCompletion(
       if (!generated) {
         note(
           `Failed to generate completion cache. Run \`${cliName} completion --write-state\` manually.`,
-          "Shell completion",
+          "Argent shell completion",
         );
         return;
       }
@@ -155,8 +155,8 @@ export async function doctorShellCompletion(
       // Then install to profile
       await installCompletion(status.shell, true, cliName);
       note(
-        `Shell completion installed. Restart your shell or run: source ~/.${status.shell === "zsh" ? "zshrc" : status.shell === "bash" ? "bashrc" : "config/fish/config.fish"}`,
-        "Shell completion",
+        `Argent shell completion installed. Restart your shell or run: source ~/.${status.shell === "zsh" ? "zshrc" : status.shell === "bash" ? "bashrc" : "config/fish/config.fish"}`,
+        "Argent shell completion",
       );
     }
   }

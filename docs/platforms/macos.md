@@ -6,11 +6,9 @@ read_when:
 title: "macOS App"
 ---
 
-# ArgentOS macOS Companion (menu bar + gateway broker)
+# Argent macOS app (menu bar + gateway broker)
 
-The macOS app is the **menu‑bar companion** for ArgentOS. It owns permissions,
-manages/attaches to the Gateway locally (launchd or manual), and exposes macOS
-capabilities to the agent as a node.
+`Argent.app` is the flagship macOS operator surface for ArgentOS. It owns permissions, manages or attaches to the Gateway locally (launchd or manual), and exposes macOS capabilities to the agent as a node.
 
 ## What it does
 
@@ -134,7 +132,7 @@ Safety:
 
 ## Onboarding flow (typical)
 
-1. Install and launch **ArgentOS.app**.
+1. Install and launch **Argent.app**.
 2. Complete the permissions checklist (TCC prompts).
 3. Ensure **Local** mode is active and the Gateway is running.
 4. Install the CLI if you want terminal access.

@@ -35,6 +35,6 @@ export function noteSourceInstallIssues(root: string | null) {
   }
 
   if (warnings.length > 0) {
-    note(warnings.join("\n"), "Install");
+    note(warnings.join("\n"), "Argent install");
   }
 }

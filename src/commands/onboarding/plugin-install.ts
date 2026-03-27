@@ -96,7 +96,7 @@ async function promptInstallChoice(params: {
   const initialValue: InstallChoice =
     defaultChoice === "local" && !localPath ? "npm" : defaultChoice;
   return await prompter.select<InstallChoice>({
-    message: `Install ${entry.meta.label} plugin?`,
+    message: `How should Argent add the ${entry.meta.label} plugin?`,
     options,
     initialValue,
   });
@@ -180,12 +180,12 @@ export async function ensureOnboardingPluginInstalled(params: {
 
   await prompter.note(
     `Failed to install ${entry.install.npmSpec}: ${result.error}`,
-    "Plugin install",
+    "Argent plugins",
   );
 
   if (localPath) {
     const fallback = await prompter.confirm({
-      message: `Use local plugin path instead? (${localPath})`,
+      message: `Use the local ${entry.meta.label} plugin path instead? (${localPath})`,
       initialValue: true,
     });
     if (fallback) {

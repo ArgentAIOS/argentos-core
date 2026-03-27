@@ -234,4 +234,43 @@ describe("normalizeCronJobCreate", () => {
     expect(delivery.mode).toBe("announce");
     expect((normalized as { isolation?: unknown }).isolation).toBeUndefined();
   });
+
+  it("preserves agentTurn artifact contract configuration", () => {
+    const normalized = normalizeCronJobCreate({
+      name: "artifact contract",
+      enabled: true,
+      schedule: { kind: "cron", expr: "* * * * *" },
+      sessionTarget: "isolated",
+      wakeMode: "now",
+      payload: {
+        kind: "agentTurn",
+        message: "hi",
+        artifactContract: {
+          required: {
+            docPanelDraft: { titleIncludes: "Morning Brief", collection: "briefs" },
+            handoffTask: { titleIncludes: "Morning Brief", status: "pending" },
+          },
+          watchdog: {
+            afterMs: 300000,
+            announceOnFailure: true,
+            required: {
+              deliveryTask: { titleIncludes: "Morning Brief Delivery", status: "completed" },
+            },
+          },
+        },
+      },
+    }) as unknown as Record<string, unknown>;
+
+    const payload = normalized.payload as Record<string, unknown>;
+    const artifactContract = payload.artifactContract as Record<string, unknown>;
+    expect(artifactContract).toBeTruthy();
+    const required = artifactContract.required as Record<string, unknown>;
+    expect(required.docPanelDraft).toEqual({
+      titleIncludes: "Morning Brief",
+      collection: "briefs",
+    });
+    const watchdog = artifactContract.watchdog as Record<string, unknown>;
+    expect(watchdog.afterMs).toBe(300000);
+    expect(watchdog.announceOnFailure).toBe(true);
+  });
 });

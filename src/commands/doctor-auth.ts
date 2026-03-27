@@ -32,9 +32,9 @@ export async function maybeRepairAnthropicOAuthProfileId(
     return cfg;
   }
 
-  note(repair.changes.map((c) => `- ${c}`).join("\n"), "Auth profiles");
+  note(repair.changes.map((c) => `- ${c}`).join("\n"), "Argent auth profiles");
   const apply = await prompter.confirm({
-    message: "Update Anthropic OAuth profile id in config now?",
+    message: "Update Argent's Anthropic OAuth profile id in config now?",
     initialValue: true,
   });
   if (!apply) {
@@ -139,10 +139,10 @@ export async function maybeRemoveDeprecatedCliAuthProfiles(
       )}`,
     );
   }
-  note(lines.join("\n"), "Auth profiles");
+  note(lines.join("\n"), "Argent auth profiles");
 
   const shouldRemove = await prompter.confirmRepair({
-    message: "Remove deprecated CLI auth profiles now?",
+    message: "Remove deprecated Argent CLI auth profiles now?",
     initialValue: true,
   });
   if (!shouldRemove) {
@@ -193,7 +193,7 @@ export async function maybeRemoveDeprecatedCliAuthProfiles(
       Array.from(deprecated.values())
         .map((id) => `- removed ${id} from config`)
         .join("\n"),
-      "Doctor changes",
+      "Argent repairs",
     );
   }
   return pruned.next;
@@ -258,7 +258,7 @@ export async function noteAuthProfileHealth(params: {
   })();
 
   if (unusable.length > 0) {
-    note(unusable.join("\n"), "Auth profile cooldowns");
+    note(unusable.join("\n"), "Argent auth profile cooldowns");
   }
 
   let summary = buildAuthHealthSummary({
@@ -282,7 +282,7 @@ export async function noteAuthProfileHealth(params: {
   }
 
   const shouldRefresh = await params.prompter.confirmRepair({
-    message: "Refresh expiring OAuth tokens now? (static tokens need re-auth)",
+    message: "Refresh Argent's expiring OAuth tokens now? (static tokens need re-auth)",
     initialValue: true,
   });
 
@@ -304,7 +304,7 @@ export async function noteAuthProfileHealth(params: {
       }
     }
     if (errors.length > 0) {
-      note(errors.join("\n"), "OAuth refresh errors");
+      note(errors.join("\n"), "Argent OAuth refresh errors");
     }
     summary = buildAuthHealthSummary({
       store: ensureAuthProfileStore(undefined, {

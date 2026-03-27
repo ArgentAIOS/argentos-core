@@ -46,6 +46,11 @@ export type CronServiceDeps = {
     outputText?: string;
     error?: string;
   }>;
+  verifyIsolatedAgentJobWatchdog?: (params: { job: CronJob }) => Promise<{
+    status: "ok" | "error" | "skipped";
+    summary?: string;
+    error?: string;
+  }>;
   /** Send a nudge through the gateway agent handler with silent delivery */
   runNudge?: (params: { job: CronJob; text: string; label?: string }) => Promise<{
     status: "ok" | "error" | "skipped";

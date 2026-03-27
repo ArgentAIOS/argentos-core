@@ -13,7 +13,7 @@ Last updated: 2026-01-01
 ## TL;DR
 
 - **Tailoring lives outside the repo:** `~/.argentos/workspace` (workspace) + `~/.argentos/argent.json` (config).
-- **Stable workflow:** install the macOS app; let it run the bundled Gateway.
+- **Stable workflow:** install `Argent.app`; let it manage the local Gateway and onboarding.
 - **Bleeding edge workflow:** run the Gateway yourself via `pnpm gateway:watch`, then let the macOS app attach in Local mode.
 
 ## Prereqs (from source)
@@ -45,7 +45,7 @@ If you don’t have a global install yet, run it via `pnpm argent setup`.
 
 ## Stable workflow (macOS app first)
 
-1. Install + launch **ArgentOS.app** (menu bar).
+1. Install + launch **Argent.app** (menu bar).
 2. Complete the onboarding/permissions checklist (TCC prompts).
 3. Ensure Gateway is **Local** and running (the app manages it).
 4. Link surfaces (example: WhatsApp):
@@ -87,7 +87,7 @@ pnpm gateway:watch
 
 ### 2) Point the macOS app at your running Gateway
 
-In **ArgentOS.app**:
+In **Argent.app**:
 
 - Connection Mode: **Local**
   The app will attach to the running gateway on the configured port.

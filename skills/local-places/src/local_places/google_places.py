@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import subprocess
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -22,6 +26,7 @@ GOOGLE_PLACES_BASE_URL = os.getenv(
     "GOOGLE_PLACES_BASE_URL", "https://places.googleapis.com/v1"
 )
 logger = logging.getLogger("local_places.google_places")
+ARGENTOS_ROOT = Path(__file__).resolve().parents[4]
 
 _PRICE_LEVEL_TO_ENUM = {
     0: "PRICE_LEVEL_FREE",
@@ -81,7 +86,9 @@ class _GoogleResponse:
 
 
 def _api_headers(field_mask: str) -> dict[str, str]:
-    api_key = os.getenv("GOOGLE_PLACES_API_KEY")
+    api_key = os.getenv("GOOGLE_PLACES_API_KEY") or _resolve_service_key(
+        "GOOGLE_PLACES_API_KEY"
+    )
     if not api_key:
         raise HTTPException(
             status_code=500,
@@ -92,6 +99,51 @@ def _api_headers(field_mask: str) -> dict[str, str]:
         "X-Goog-Api-Key": api_key,
         "X-Goog-FieldMask": field_mask,
     }
+
+
+@lru_cache(maxsize=8)
+def _resolve_service_key(variable: str) -> str | None:
+    command = [
+        "node",
+        "--import",
+        "tsx",
+        "-e",
+        (
+            "import { resolveServiceKey } from './src/infra/service-keys.ts';"
+            f" process.stdout.write(resolveServiceKey('{variable}') || '');"
+            " process.exit(0);"
+        ),
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=ARGENTOS_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except OSError as exc:
+        logger.error("Failed to launch node for service key resolution: %s", exc)
+        return None
+    except subprocess.TimeoutExpired:
+        logger.error("Timed out resolving service key %s", variable)
+        return None
+
+    if result.returncode != 0:
+        logger.error(
+            "Service key resolution failed for %s. stderr=%s",
+            variable,
+            result.stderr.strip(),
+        )
+        return None
+
+    value = result.stdout.strip()
+    if variable == "GOOGLE_PLACES_API_KEY":
+        match = re.search(r"(AIza[0-9A-Za-z_-]{35})", value)
+        if match:
+            return match.group(1)
+    return value or None
 
 
 def _request(

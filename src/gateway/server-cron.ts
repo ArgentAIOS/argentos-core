@@ -14,6 +14,7 @@ import {
   appendAssistantMessageToSessionTranscript,
   resolveAgentMainSessionKey,
 } from "../config/sessions.js";
+import { verifyCronArtifactContract } from "../cron/artifact-contract.js";
 import { runCronIsolatedAgentTurn } from "../cron/isolated-agent.js";
 import { appendCronRunLog, resolveCronRunLogPath } from "../cron/run-log.js";
 import { CronService } from "../cron/service.js";
@@ -137,6 +138,36 @@ export function buildGatewayCronService(params: {
         sessionKey: `cron:${job.id}`,
         lane: "cron",
       });
+    },
+    verifyIsolatedAgentJobWatchdog: async ({ job }) => {
+      if (job.payload.kind !== "agentTurn") {
+        return {
+          status: "skipped" as const,
+          error: "cron artifact watchdog only supports agentTurn payloads",
+        };
+      }
+      const contract = job.payload.artifactContract?.watchdog?.required;
+      if (!contract) {
+        return {
+          status: "skipped" as const,
+          error: "cron artifact watchdog is missing required verification contract",
+        };
+      }
+      const { agentId } = resolveCronAgent(job.agentId);
+      try {
+        const verification = await verifyCronArtifactContract({
+          agentId,
+          contract,
+        });
+        return verification.ok
+          ? ({ status: "ok", summary: verification.summary } as const)
+          : ({ status: "error", error: verification.error, summary: verification.error } as const);
+      } catch (err) {
+        return {
+          status: "error" as const,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
     },
     runNudge: async ({ job, text, label }) => {
       const { agentId, cfg: runtimeConfig } = resolveCronAgent(job.agentId);

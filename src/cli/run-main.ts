@@ -29,6 +29,16 @@ export function rewriteUpdateFlagArgv(argv: string[]): string[] {
   return next;
 }
 
+export function shouldSkipGlobalPluginRegistration(
+  argv: string[],
+  _primary: string | null,
+): boolean {
+  if (!hasHelpOrVersion(argv)) {
+    return false;
+  }
+  return true;
+}
+
 export async function runCli(argv: string[] = process.argv) {
   const normalizedArgv = stripWindowsNodeExec(argv);
   loadDotEnv({ quiet: true });
@@ -68,7 +78,7 @@ export async function runCli(argv: string[] = process.argv) {
     await registerSubCliByName(program, primary);
   }
 
-  const shouldSkipPluginRegistration = !primary && hasHelpOrVersion(parseArgv);
+  const shouldSkipPluginRegistration = shouldSkipGlobalPluginRegistration(parseArgv, primary);
   if (!shouldSkipPluginRegistration) {
     // Register plugin CLI commands before parsing
     const { registerPluginCliCommands } = await import("../plugins/cli.js");

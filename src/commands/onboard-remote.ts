@@ -37,7 +37,7 @@ export async function promptRemoteGatewayConfig(
   const hasBonjourTool = (await detectBinary("dns-sd")) || (await detectBinary("avahi-browse"));
   const wantsDiscover = hasBonjourTool
     ? await prompter.confirm({
-        message: "Discover gateway on LAN (Bonjour)?",
+        message: "Let Argent look for another gateway on your LAN?",
         initialValue: true,
       })
     : false;
@@ -48,7 +48,7 @@ export async function promptRemoteGatewayConfig(
         "Bonjour discovery requires dns-sd (macOS) or avahi-browse (Linux).",
         "Docs: https://docs.argent.ai/gateway/discovery",
       ].join("\n"),
-      "Discovery",
+      "Argent discovery",
     );
   }
 
@@ -62,13 +62,13 @@ export async function promptRemoteGatewayConfig(
 
     if (beacons.length > 0) {
       const selection = await prompter.select({
-        message: "Select gateway",
+        message: "Which gateway should Argent connect to?",
         options: [
           ...beacons.map((beacon, index) => ({
             value: String(index),
             label: buildLabel(beacon),
           })),
-          { value: "manual", label: "Enter URL manually" },
+          { value: "manual", label: "Enter the gateway URL manually" },
         ],
       });
       if (selection !== "manual") {
@@ -83,7 +83,7 @@ export async function promptRemoteGatewayConfig(
     const port = selectedBeacon.gatewayPort ?? 18789;
     if (host) {
       const mode = await prompter.select({
-        message: "Connection method",
+        message: "How should Argent reach that gateway?",
         options: [
           {
             value: "direct",
@@ -104,14 +104,14 @@ export async function promptRemoteGatewayConfig(
             }`,
             "Docs: https://docs.argent.ai/gateway/remote",
           ].join("\n"),
-          "SSH tunnel",
+          "Argent remote access",
         );
       }
     }
   }
 
   const urlInput = await prompter.text({
-    message: "Gateway WebSocket URL",
+    message: "Remote gateway WebSocket URL",
     initialValue: suggestedUrl,
     validate: (value) =>
       String(value).trim().startsWith("ws://") || String(value).trim().startsWith("wss://")
@@ -121,7 +121,7 @@ export async function promptRemoteGatewayConfig(
   const url = ensureWsUrl(String(urlInput));
 
   const authChoice = await prompter.select({
-    message: "Gateway auth",
+    message: "How should Argent authenticate to that gateway?",
     options: [
       { value: "token", label: "Token (recommended)" },
       { value: "off", label: "No auth" },
@@ -132,7 +132,7 @@ export async function promptRemoteGatewayConfig(
   if (authChoice === "token") {
     token = String(
       await prompter.text({
-        message: "Gateway token",
+        message: "Gateway token for Argent",
         initialValue: token,
         validate: (value) => (value?.trim() ? undefined : "Required"),
       }),

@@ -48,7 +48,10 @@ export function resolveCronDeliveryPlan(job: CronJob): CronDeliveryPlan {
   );
   const deliveryTo = normalizeTo((delivery as { to?: unknown } | undefined)?.to);
 
-  const channel = deliveryChannel ?? payloadChannel ?? "last";
+  // Default to webchat (internal) instead of "last" which may resolve to Discord
+  // from a previous session. Cron job output should stay in the dashboard unless
+  // explicitly configured to deliver elsewhere.
+  const channel = deliveryChannel ?? payloadChannel ?? "webchat";
   const to = deliveryTo ?? payloadTo;
   if (hasDelivery) {
     const resolvedMode = mode ?? "none";

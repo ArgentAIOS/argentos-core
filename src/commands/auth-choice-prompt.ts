@@ -24,7 +24,7 @@ export async function promptAuthChoiceGrouped(params: {
     ];
 
     const providerSelection = (await params.prompter.select({
-      message: "Model/auth provider",
+      message: "Which cloud link should Argent use?",
       options: providerOptions,
     })) as string;
 
@@ -35,15 +35,12 @@ export async function promptAuthChoiceGrouped(params: {
     const group = availableGroups.find((candidate) => candidate.value === providerSelection);
 
     if (!group || group.options.length === 0) {
-      await params.prompter.note(
-        "No auth methods available for that provider.",
-        "Model/auth choice",
-      );
+      await params.prompter.note("No auth methods available for that provider.", "Argent auth");
       continue;
     }
 
     const methodSelection = await params.prompter.select({
-      message: `${group.label} auth method`,
+      message: `How should Argent authenticate with ${group.label}?`,
       options: [...group.options, { value: BACK_VALUE, label: "Back" }],
     });
 

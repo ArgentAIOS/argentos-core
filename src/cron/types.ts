@@ -1,4 +1,5 @@
 import type { ChannelId } from "../channels/plugins/types.js";
+import type { TaskSource, TaskStatus } from "../data/types.js";
 
 export type CronSchedule =
   | { kind: "at"; at: string }
@@ -32,6 +33,43 @@ export type CronDelivery = {
 
 export type CronDeliveryPatch = Partial<CronDelivery>;
 
+export type CronDocPanelArtifactRequirement = {
+  documentId?: string;
+  titleIncludes?: string;
+  collection?: string | string[];
+  sourceFileIncludes?: string;
+  limit?: number;
+};
+
+export type CronTaskArtifactRequirement = {
+  taskId?: string;
+  titleIncludes?: string;
+  assignee?: string;
+  status?: TaskStatus | TaskStatus[];
+  source?: TaskSource | TaskSource[];
+  tags?: string[];
+  parentTaskId?: string;
+  agentId?: string;
+  limit?: number;
+};
+
+export type CronArtifactContract = {
+  docPanelDraft?: CronDocPanelArtifactRequirement;
+  handoffTask?: CronTaskArtifactRequirement;
+  deliveryTask?: CronTaskArtifactRequirement;
+};
+
+export type CronArtifactWatchdog = {
+  afterMs?: number;
+  announceOnFailure?: boolean;
+  required?: CronArtifactContract;
+};
+
+export type CronAgentTurnArtifactContract = {
+  required?: CronArtifactContract;
+  watchdog?: CronArtifactWatchdog;
+};
+
 export type CronPayload =
   | { kind: "systemEvent"; text: string }
   | {
@@ -50,6 +88,7 @@ export type CronPayload =
       thinking?: string;
       timeoutSeconds?: number;
       allowUnsafeExternalContent?: boolean;
+      artifactContract?: CronAgentTurnArtifactContract;
       deliver?: boolean;
       channel?: CronMessageChannel;
       to?: string;
@@ -93,6 +132,7 @@ export type CronPayloadPatch =
       thinking?: string;
       timeoutSeconds?: number;
       allowUnsafeExternalContent?: boolean;
+      artifactContract?: CronAgentTurnArtifactContract;
       deliver?: boolean;
       channel?: CronMessageChannel;
       to?: string;
@@ -128,6 +168,14 @@ export type CronJobState = {
   lastGateDecision?: CronGateDecision;
   lastGateReason?: string;
   lastSimulationEvidence?: CronSimulationEvidence;
+  watchdog?: {
+    status: "pending" | "ok" | "error";
+    dueAtMs?: number;
+    lastCheckedAtMs?: number;
+    verifiedAtMs?: number;
+    error?: string;
+    summary?: string;
+  };
 };
 
 export type CronJob = {

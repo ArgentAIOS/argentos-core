@@ -36,6 +36,7 @@ const DEFAULT_FETCH_MAX_REDIRECTS = 3;
 const DEFAULT_ERROR_MAX_CHARS = 4_000;
 const DEFAULT_FIRECRAWL_BASE_URL = "https://api.firecrawl.dev";
 const DEFAULT_FIRECRAWL_MAX_AGE_MS = 172_800_000;
+const DEFAULT_DASHBOARD_API = "http://localhost:9242";
 const DEFAULT_FETCH_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
@@ -134,7 +135,16 @@ function resolveFirecrawlEnabled(params: {
   if (typeof params.firecrawl?.enabled === "boolean") {
     return params.firecrawl.enabled;
   }
-  return Boolean(params.apiKey);
+  return true;
+}
+
+function resolveDashboardApiBaseUrl(): string {
+  const raw = process.env.ARGENT_DASHBOARD_API;
+  const normalized = raw?.trim().toLowerCase();
+  if (normalized === "off" || normalized === "disabled" || normalized === "none") {
+    return "";
+  }
+  return (raw || DEFAULT_DASHBOARD_API).trim().replace(/\/+$/, "");
 }
 
 function resolveFirecrawlBaseUrl(firecrawl?: FirecrawlFetchConfig): string {
@@ -289,7 +299,7 @@ export async function fetchFirecrawlContent(params: {
   warning?: string;
 }> {
   // Route through Dashboard API proxy when available
-  const dashboardApi = process.env.ARGENT_DASHBOARD_API;
+  const dashboardApi = resolveDashboardApiBaseUrl();
   if (dashboardApi) {
     const res = await fetch(`${dashboardApi}/api/proxy/fetch/firecrawl`, {
       method: "POST",
@@ -462,11 +472,11 @@ async function runWebFetch(params: {
     if (error instanceof SsrFBlockedError) {
       throw error;
     }
-    if (params.firecrawlEnabled && params.firecrawlApiKey) {
+    if (params.firecrawlEnabled) {
       const firecrawl = await fetchFirecrawlContent({
         url: finalUrl,
         extractMode: params.extractMode,
-        apiKey: params.firecrawlApiKey,
+        apiKey: params.firecrawlApiKey ?? "",
         baseUrl: params.firecrawlBaseUrl,
         onlyMainContent: params.firecrawlOnlyMainContent,
         maxAgeMs: params.firecrawlMaxAgeMs,
@@ -501,11 +511,11 @@ async function runWebFetch(params: {
 
   try {
     if (!res.ok) {
-      if (params.firecrawlEnabled && params.firecrawlApiKey) {
+      if (params.firecrawlEnabled) {
         const firecrawl = await fetchFirecrawlContent({
           url: params.url,
           extractMode: params.extractMode,
-          apiKey: params.firecrawlApiKey,
+          apiKey: params.firecrawlApiKey ?? "",
           baseUrl: params.firecrawlBaseUrl,
           onlyMainContent: params.firecrawlOnlyMainContent,
           maxAgeMs: params.firecrawlMaxAgeMs,
@@ -645,14 +655,14 @@ async function tryFirecrawlFallback(params: {
   firecrawlStoreInCache: boolean;
   firecrawlTimeoutSeconds: number;
 }): Promise<{ text: string; title?: string } | null> {
-  if (!params.firecrawlEnabled || !params.firecrawlApiKey) {
+  if (!params.firecrawlEnabled) {
     return null;
   }
   try {
     const firecrawl = await fetchFirecrawlContent({
       url: params.url,
       extractMode: params.extractMode,
-      apiKey: params.firecrawlApiKey,
+      apiKey: params.firecrawlApiKey ?? "",
       baseUrl: params.firecrawlBaseUrl,
       onlyMainContent: params.firecrawlOnlyMainContent,
       maxAgeMs: params.firecrawlMaxAgeMs,

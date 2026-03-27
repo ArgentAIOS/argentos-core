@@ -6,6 +6,10 @@ import type { ArgentConfig } from "../config/config.js";
 import type { CronJob } from "./types.js";
 import { withTempHome as withTempHomeBase } from "../../test/helpers/temp-home.js";
 
+const mockTaskGet = vi.fn();
+const mockTaskList = vi.fn();
+const mockKnowledgeListItems = vi.fn();
+
 vi.mock("../agents/pi-embedded.js", () => ({
   abortEmbeddedPiRun: vi.fn().mockReturnValue(false),
   runEmbeddedPiAgent: vi.fn(),
@@ -13,6 +17,20 @@ vi.mock("../agents/pi-embedded.js", () => ({
 }));
 vi.mock("../agents/model-catalog.js", () => ({
   loadModelCatalog: vi.fn(),
+}));
+vi.mock("../data/storage-factory.js", () => ({
+  getStorageAdapter: vi.fn(async () => ({
+    tasks: {
+      get: mockTaskGet,
+      list: mockTaskList,
+    },
+  })),
+  getPgMemoryAdapter: vi.fn(() => ({
+    withAgentId: vi.fn(() => ({
+      listItems: mockKnowledgeListItems,
+    })),
+    listItems: mockKnowledgeListItems,
+  })),
 }));
 
 import { loadModelCatalog } from "../agents/model-catalog.js";
@@ -88,6 +106,11 @@ describe("runCronIsolatedAgentTurn", () => {
   beforeEach(() => {
     vi.mocked(runEmbeddedPiAgent).mockReset();
     vi.mocked(loadModelCatalog).mockResolvedValue([]);
+    mockTaskGet.mockReset();
+    mockTaskList.mockReset();
+    mockKnowledgeListItems.mockReset();
+    mockTaskList.mockResolvedValue([]);
+    mockKnowledgeListItems.mockResolvedValue([]);
   });
 
   it("uses last non-empty agent text as summary", async () => {
@@ -585,6 +608,118 @@ describe("runCronIsolatedAgentTurn", () => {
       expect(first?.sessionId).toBeDefined();
       expect(second?.sessionId).toBeDefined();
       expect(second?.sessionId).not.toBe(first?.sessionId);
+    });
+  });
+
+  it("fails when required DocPanel draft and handoff task artifacts are missing", async () => {
+    await withTempHome(async (home) => {
+      const storePath = await writeSessionStore(home);
+      const deps: CliDeps = {
+        sendMessageWhatsApp: vi.fn(),
+        sendMessageTelegram: vi.fn(),
+        sendMessageDiscord: vi.fn(),
+        sendMessageSignal: vi.fn(),
+        sendMessageIMessage: vi.fn(),
+      };
+      vi.mocked(runEmbeddedPiAgent).mockResolvedValue({
+        payloads: [{ text: "drafted the brief" }],
+        meta: {
+          durationMs: 5,
+          agentMeta: { sessionId: "s", provider: "p", model: "m" },
+        },
+      });
+
+      const res = await runCronIsolatedAgentTurn({
+        cfg: makeCfg(home, storePath),
+        deps,
+        job: makeJob({
+          kind: "agentTurn",
+          message: "create the morning brief",
+          artifactContract: {
+            required: {
+              docPanelDraft: { titleIncludes: "Morning Brief" },
+              handoffTask: { titleIncludes: "Morning Brief" },
+            },
+          },
+        }),
+        message: "create the morning brief",
+        sessionKey: "cron:job-1",
+        lane: "cron",
+      });
+
+      expect(res.status).toBe("error");
+      expect(res.error).toMatch(/missing DocPanel draft/i);
+      expect(res.error).toMatch(/missing handoff task/i);
+      expect(res.summary).toMatch(/missing DocPanel draft/i);
+    });
+  });
+
+  it("succeeds when required DocPanel draft and handoff task artifacts exist", async () => {
+    await withTempHome(async (home) => {
+      const storePath = await writeSessionStore(home);
+      const deps: CliDeps = {
+        sendMessageWhatsApp: vi.fn(),
+        sendMessageTelegram: vi.fn(),
+        sendMessageDiscord: vi.fn(),
+        sendMessageSignal: vi.fn(),
+        sendMessageIMessage: vi.fn(),
+      };
+      vi.mocked(runEmbeddedPiAgent).mockResolvedValue({
+        payloads: [{ text: "drafted the brief" }],
+        meta: {
+          durationMs: 5,
+          agentMeta: { sessionId: "s", provider: "p", model: "m" },
+        },
+      });
+      mockKnowledgeListItems.mockResolvedValue([
+        {
+          id: "mem-1",
+          memoryType: "knowledge",
+          summary: "Morning brief draft",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          extra: {
+            docId: "doc-1",
+            docTitle: "Morning Brief - March 24",
+            collection: "briefs",
+            sourceFile: "morning-brief.md",
+          },
+        },
+      ]);
+      mockTaskList.mockResolvedValue([
+        {
+          id: "task-1",
+          title: "Morning Brief Follow-up",
+          status: "pending",
+          priority: "high",
+          source: "job",
+          assignee: "jason",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          tags: ["morning-brief"],
+        },
+      ]);
+
+      const res = await runCronIsolatedAgentTurn({
+        cfg: makeCfg(home, storePath),
+        deps,
+        job: makeJob({
+          kind: "agentTurn",
+          message: "create the morning brief",
+          artifactContract: {
+            required: {
+              docPanelDraft: { titleIncludes: "Morning Brief", collection: "briefs" },
+              handoffTask: { titleIncludes: "Morning Brief", tags: ["morning-brief"] },
+            },
+          },
+        }),
+        message: "create the morning brief",
+        sessionKey: "cron:job-1",
+        lane: "cron",
+      });
+
+      expect(res.status).toBe("ok");
+      expect(res.summary).toBe("drafted the brief");
     });
   });
 });

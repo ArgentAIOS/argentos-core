@@ -157,7 +157,11 @@ export function createCronTool(opts?: CronToolOptions): AnyAgentTool {
   return {
     label: "Cron",
     name: "cron",
-    description: `Manage Gateway cron jobs (status/list/add/update/remove/run/runs) and send wake events.
+    description: `Manage low-level Gateway cron jobs (status/list/add/update/remove/run/runs) and send wake events.
+
+PREFERRED TOOL CHOICE:
+- Use scheduled_tasks for user-facing scheduled workflows such as briefs, reports, recurring check-ins, and delivery pipelines.
+- Use cron directly only for simple reminders, wake events, and deterministic low-level monitors/scans.
 
 ACTIONS:
 - status: Check cron scheduler status
@@ -210,6 +214,7 @@ CRITICAL CONSTRAINTS:
 - sessionTarget="main" REQUIRES payload.kind="systemEvent"
 - sessionTarget="isolated" REQUIRES payload.kind="agentTurn", "nudge", "vipEmailScan", or "slackSignalScan"
 Default: prefer isolated agentTurn jobs unless the user explicitly wants a main-session system event.
+If the scheduled work has artifact expectations, handoff requirements, or user-facing delivery verification, it should usually be created through scheduled_tasks instead of raw cron.
 
 WAKE MODES (for wake action):
 - "next-heartbeat" (default): Wake on next heartbeat

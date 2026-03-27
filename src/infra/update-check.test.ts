@@ -54,7 +54,7 @@ describe("checkUpdateStatus source readiness", () => {
     try {
       await fs.writeFile(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ name: "argent" }),
+        JSON.stringify({ name: "argentos" }),
         "utf-8",
       );
       await fs.mkdir(path.join(tempDir, "dist"), { recursive: true });
@@ -80,7 +80,7 @@ describe("checkUpdateStatus source readiness", () => {
     try {
       await fs.writeFile(
         path.join(tempDir, "package.json"),
-        JSON.stringify({ name: "argent" }),
+        JSON.stringify({ name: "argentos" }),
         "utf-8",
       );
 

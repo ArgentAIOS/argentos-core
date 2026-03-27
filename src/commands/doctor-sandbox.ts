@@ -40,7 +40,7 @@ function resolveSandboxScript(scriptRel: string): SandboxScriptInfo | null {
 async function runSandboxScript(scriptRel: string, runtime: RuntimeEnv): Promise<boolean> {
   const script = resolveSandboxScript(scriptRel);
   if (!script) {
-    note(`Unable to locate ${scriptRel}. Run it from the repo root.`, "Sandbox");
+    note(`Unable to locate ${scriptRel}. Run it from the Argent repo root.`, "Argent sandbox");
     return false;
   }
 
@@ -157,7 +157,7 @@ async function handleMissingSandboxImage(
   const buildHint = params.buildScript
     ? `Build it with ${params.buildScript}.`
     : "Build or pull it first.";
-  note(`Sandbox ${params.kind} image missing: ${params.image}. ${buildHint}`, "Sandbox");
+  note(`Sandbox ${params.kind} image missing: ${params.image}. ${buildHint}`, "Argent sandbox");
 
   let built = false;
   if (params.buildScript) {
@@ -188,7 +188,7 @@ export async function maybeRepairSandboxImages(
 
   const dockerAvailable = await isDockerAvailable();
   if (!dockerAvailable) {
-    note("Docker not available; skipping sandbox image checks.", "Sandbox");
+    note("Docker not available; skipping Argent sandbox image checks.", "Argent sandbox");
     return cfg;
   }
 
@@ -232,7 +232,7 @@ export async function maybeRepairSandboxImages(
   }
 
   if (changes.length > 0) {
-    note(changes.join("\n"), "Doctor changes");
+    note(changes.join("\n"), "Argent repairs");
   }
 
   return next;
@@ -283,6 +283,6 @@ export function noteSandboxScopeWarnings(cfg: ArgentConfig) {
   }
 
   if (warnings.length > 0) {
-    note(warnings.join("\n"), "Sandbox");
+    note(warnings.join("\n"), "Argent sandbox");
   }
 }

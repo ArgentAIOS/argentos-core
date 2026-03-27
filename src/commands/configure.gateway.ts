@@ -19,7 +19,7 @@ export async function promptGatewayConfig(
 }> {
   const portRaw = guardCancel(
     await text({
-      message: "Gateway port",
+      message: "Argent gateway port",
       initialValue: String(resolveGatewayPort(cfg)),
       validate: (value) => (Number.isFinite(Number(value)) ? undefined : "Invalid port"),
     }),
@@ -29,32 +29,32 @@ export async function promptGatewayConfig(
 
   let bind = guardCancel(
     await select({
-      message: "Gateway bind mode",
+      message: "How should Argent bind the gateway?",
       options: [
         {
           value: "loopback",
-          label: "Loopback (Local only)",
-          hint: "Bind to 127.0.0.1 - secure, local-only access",
+          label: "Loopback (local only)",
+          hint: "Bind to 127.0.0.1 for secure, local-only access",
         },
         {
           value: "tailnet",
           label: "Tailnet (Tailscale IP)",
-          hint: "Bind to your Tailscale IP only (100.x.x.x)",
+          hint: "Bind only to your Tailscale IP (100.x.x.x)",
         },
         {
           value: "auto",
-          label: "Auto (Loopback → LAN)",
-          hint: "Prefer loopback; fall back to all interfaces if unavailable",
+          label: "Auto (loopback to LAN)",
+          hint: "Prefer loopback, then fall back to all interfaces if needed",
         },
         {
           value: "lan",
-          label: "LAN (All interfaces)",
-          hint: "Bind to 0.0.0.0 - accessible from anywhere on your network",
+          label: "LAN (all interfaces)",
+          hint: "Bind to 0.0.0.0 so devices on your network can reach it",
         },
         {
           value: "custom",
           label: "Custom IP",
-          hint: "Specify a specific IP address, with 0.0.0.0 fallback if unavailable",
+          hint: "Specify a fixed IP address with 0.0.0.0 fallback if unavailable",
         },
       ],
     }),
@@ -65,7 +65,7 @@ export async function promptGatewayConfig(
   if (bind === "custom") {
     const input = guardCancel(
       await text({
-        message: "Custom IP address",
+        message: "Custom gateway IP address",
         placeholder: "192.168.1.100",
         validate: (value) => {
           if (!value) {
@@ -94,9 +94,9 @@ export async function promptGatewayConfig(
 
   let authMode = guardCancel(
     await select({
-      message: "Gateway auth",
+      message: "How should Argent protect the gateway?",
       options: [
-        { value: "token", label: "Token", hint: "Recommended default" },
+        { value: "token", label: "Token", hint: "Recommended default for Argent" },
         { value: "password", label: "Password" },
       ],
       initialValue: "token",
@@ -106,18 +106,18 @@ export async function promptGatewayConfig(
 
   const tailscaleMode = guardCancel(
     await select({
-      message: "Tailscale exposure",
+      message: "How should Argent expose the gateway through Tailscale?",
       options: [
-        { value: "off", label: "Off", hint: "No Tailscale exposure" },
+        { value: "off", label: "Off", hint: "Do not expose the gateway through Tailscale" },
         {
           value: "serve",
           label: "Serve",
-          hint: "Private HTTPS for your tailnet (devices on Tailscale)",
+          hint: "Private HTTPS for devices on your tailnet",
         },
         {
           value: "funnel",
           label: "Funnel",
-          hint: "Public HTTPS via Tailscale Funnel (internet)",
+          hint: "Public HTTPS through Tailscale Funnel",
         },
       ],
     }),
@@ -136,7 +136,7 @@ export async function promptGatewayConfig(
           "",
           "You can continue setup, but serve/funnel will fail at runtime.",
         ].join("\n"),
-        "Tailscale Warning",
+        "Argent Tailscale warning",
       );
     }
   }
@@ -147,12 +147,12 @@ export async function promptGatewayConfig(
       ["Docs:", "https://docs.argent.ai/gateway/tailscale", "https://docs.argent.ai/web"].join(
         "\n",
       ),
-      "Tailscale",
+      "Argent Tailscale",
     );
     tailscaleResetOnExit = Boolean(
       guardCancel(
         await confirm({
-          message: "Reset Tailscale serve/funnel on exit?",
+          message: "Reset Tailscale serve or funnel on exit?",
           initialValue: false,
         }),
         runtime,
@@ -161,12 +161,12 @@ export async function promptGatewayConfig(
   }
 
   if (tailscaleMode !== "off" && bind !== "loopback") {
-    note("Tailscale requires bind=loopback. Adjusting bind to loopback.", "Note");
+    note("Tailscale requires bind=loopback. Adjusting bind to loopback.", "Argent note");
     bind = "loopback";
   }
 
   if (tailscaleMode === "funnel" && authMode !== "password") {
-    note("Tailscale funnel requires password auth.", "Note");
+    note("Tailscale funnel requires password auth.", "Argent note");
     authMode = "password";
   }
 
@@ -177,7 +177,7 @@ export async function promptGatewayConfig(
   if (authMode === "token") {
     const tokenInput = guardCancel(
       await text({
-        message: "Gateway token (blank to generate)",
+        message: "Gateway token (leave blank to generate one for Argent)",
         initialValue: randomToken(),
       }),
       runtime,
@@ -188,7 +188,7 @@ export async function promptGatewayConfig(
   if (authMode === "password") {
     const password = guardCancel(
       await text({
-        message: "Gateway password",
+        message: "Gateway password for Argent",
         validate: (value) => (value?.trim() ? undefined : "Required"),
       }),
       runtime,

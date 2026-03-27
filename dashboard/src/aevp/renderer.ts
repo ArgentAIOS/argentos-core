@@ -47,10 +47,6 @@ export class AEVPRenderer {
   // Uniforms
   private ambientUniforms: UniformManager;
   private bloomUniforms: UniformManager;
-  private particleUniforms: {
-    presenceOffset: WebGLUniformLocation | null;
-    presenceScale: WebGLUniformLocation | null;
-  };
 
   // Geometry
   private quadVAO: WebGLVertexArrayObject;
@@ -115,7 +111,6 @@ export class AEVPRenderer {
     this.bloomProgram = null!;
     this.ambientUniforms = null!;
     this.bloomUniforms = null!;
-    this.particleUniforms = { presenceOffset: null, presenceScale: null };
     this.quadVAO = null!;
     this.particleVAO = null!;
     this.particleVBO = null!;
@@ -232,10 +227,6 @@ export class AEVPRenderer {
     // Uniform managers
     this.ambientUniforms = new UniformManager(gl, this.ambientProgram);
     this.bloomUniforms = new UniformManager(gl, this.bloomProgram);
-    this.particleUniforms = {
-      presenceOffset: gl.getUniformLocation(this.particleProgram, "u_presenceOffset"),
-      presenceScale: gl.getUniformLocation(this.particleProgram, "u_presenceScale"),
-    };
 
     // Fullscreen quad
     this.quadVAO = createFullscreenQuad(gl);
@@ -385,8 +376,10 @@ export class AEVPRenderer {
       gl.useProgram(this.particleProgram);
       const particleOffsetX = (this.presenceOffsetPx[0] / w) * 2.0;
       const particleOffsetY = -(this.presenceOffsetPx[1] / h) * 2.0;
-      gl.uniform2f(this.particleUniforms.presenceOffset, particleOffsetX, particleOffsetY);
-      gl.uniform1f(this.particleUniforms.presenceScale, this.presenceScale);
+      const particleOffsetLoc = gl.getUniformLocation(this.particleProgram, "u_presenceOffset");
+      const particleScaleLoc = gl.getUniformLocation(this.particleProgram, "u_presenceScale");
+      gl.uniform2f(particleOffsetLoc, particleOffsetX, particleOffsetY);
+      gl.uniform1f(particleScaleLoc, this.presenceScale);
 
       // Upload particle data
       const data = this.particles.getBufferData();

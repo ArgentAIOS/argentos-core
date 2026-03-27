@@ -57,6 +57,18 @@ export function registerOnboardCommand(program: Command) {
     .option("--flow <flow>", "Wizard flow: quickstart|advanced|manual")
     .option("--mode <mode>", "Wizard mode: local|remote")
     .option(
+      "--local-runtime <runtime>",
+      "Local runtime: ollama|lmstudio (non-interactive local onboarding)",
+    )
+    .option(
+      "--local-text-model <model>",
+      "Primary local text model for Argent (used with --local-runtime)",
+    )
+    .option(
+      "--local-embedding-model <model>",
+      "Local embedding model for memory (used with --local-runtime)",
+    )
+    .option(
       "--auth-choice <choice>",
       "Auth: setup-token|token|chutes|openai-codex|openai-api-key|mistral-api-key|openrouter-api-key|ai-gateway-api-key|cloudflare-ai-gateway-api-key|moonshot-api-key|moonshot-api-key-cn|kimi-code-api-key|synthetic-api-key|venice-api-key|gemini-api-key|zai-api-key|xiaomi-api-key|apiKey|minimax-api|minimax-api-m27|minimax-api-m27-highspeed|opencode-zen|skip",
     )
@@ -120,6 +132,9 @@ export function registerOnboardCommand(program: Command) {
             acceptRisk: Boolean(opts.acceptRisk),
             flow: opts.flow as "quickstart" | "advanced" | "manual" | undefined,
             mode: opts.mode as "local" | "remote" | undefined,
+            localRuntime: opts.localRuntime as "ollama" | "lmstudio" | undefined,
+            localTextModel: opts.localTextModel as string | undefined,
+            localEmbeddingModel: opts.localEmbeddingModel as string | undefined,
             authChoice: opts.authChoice as AuthChoice | undefined,
             tokenProvider: opts.tokenProvider as string | undefined,
             token: opts.token as string | undefined,

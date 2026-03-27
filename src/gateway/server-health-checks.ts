@@ -10,8 +10,6 @@ import { execSync } from "node:child_process";
 import { statfsSync } from "node:fs";
 import path from "node:path";
 import type { ArgentConfig } from "../config/config.js";
-import { resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("gateway/health-checks");
@@ -175,7 +173,7 @@ function resolvePreferredLocalRuntimeProvider(cfg?: ArgentConfig): "ollama" | "l
   if (hasProviderRef(kernelLocalModel, "ollama")) {
     return "ollama";
   }
-  const memorySearch = resolveMemorySearchConfig(cfg, resolveDefaultAgentId(cfg));
+  const memorySearch = cfg.agents?.defaults?.memorySearch;
   if (memorySearch?.provider === "lmstudio") {
     return "lmstudio";
   }

@@ -173,6 +173,16 @@ const DEFERRED_TOOL_KEYWORDS: Record<string, string[]> = {
   jobs: ["job", "queue", "orchestrator"],
   workforce_setup: ["workforce", "team", "setup", "agents"],
   accountability: ["accountability", "heartbeat", "checklist"],
+  scheduled_tasks: [
+    "schedule",
+    "scheduled",
+    "workflow",
+    "recurring",
+    "brief",
+    "report",
+    "check-in",
+    "morning brief",
+  ],
   // Canvas & Nodes
   canvas: ["canvas", "device", "screen"],
   nodes: ["node", "device", "remote"],
@@ -186,7 +196,7 @@ const DEFERRED_TOOL_KEYWORDS: Record<string, string[]> = {
   edit_line_range: ["edit", "file", "line", "range"],
   edit_regex: ["edit", "file", "regex", "replace"],
   // Misc
-  cron: ["cron", "schedule", "timer", "recurring"],
+  cron: ["cron", "wake", "timer", "reminder"],
   apps: ["app", "build", "forge", "create"],
   marketplace: ["marketplace", "extension", "plugin"],
   plugin_builder: ["plugin", "build", "create"],

@@ -99,6 +99,16 @@ export function resolveModel(
   const resolvedAgentDir = agentDir ?? resolveArgentAgentDir();
   const authStorage = discoverAuthStorage(resolvedAgentDir);
   const modelRegistry = discoverModels(authStorage, resolvedAgentDir);
+  // Block unconfigured cloud providers from Pi's built-in catalog (e.g. amazon-bedrock)
+  // to avoid "No API key" errors when the user doesn't use them.
+  const BLOCKED_PROVIDERS = new Set(["amazon-bedrock", "azure-openai"]);
+  if (BLOCKED_PROVIDERS.has(provider)) {
+    return {
+      error: `Provider "${provider}" is not configured. Remove it from fallback chains or add credentials.`,
+      authStorage,
+      modelRegistry,
+    };
+  }
   const model = modelRegistry.find(provider, modelId) as Model<Api> | null;
   if (!model) {
     // Fallback 1: Check Argent's own models database (handles new models

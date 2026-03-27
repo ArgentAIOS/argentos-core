@@ -229,6 +229,150 @@ describe("CronService", () => {
     await store.cleanup();
   });
 
+  it("keeps a one-shot isolated job pending until the delivery watchdog runs", async () => {
+    const store = await makeStorePath();
+    const enqueueSystemEvent = vi.fn();
+    const requestHeartbeatNow = vi.fn();
+    const runIsolatedAgentJob = vi.fn(async () => ({
+      status: "ok" as const,
+      summary: "draft created",
+    }));
+    const verifyIsolatedAgentJobWatchdog = vi.fn(async () => ({
+      status: "error" as const,
+      error: 'missing delivery task (title includes "Morning Brief Delivery")',
+      summary: 'missing delivery task (title includes "Morning Brief Delivery")',
+    }));
+
+    const cron = new CronService({
+      storePath: store.storePath,
+      cronEnabled: true,
+      log: noopLogger,
+      enqueueSystemEvent,
+      requestHeartbeatNow,
+      runIsolatedAgentJob,
+      verifyIsolatedAgentJobWatchdog,
+    });
+
+    await cron.start();
+    const atMs = Date.parse("2025-12-13T00:00:01.000Z");
+    const job = await cron.add({
+      enabled: true,
+      name: "morning brief",
+      schedule: { kind: "at", at: new Date(atMs).toISOString() },
+      sessionTarget: "isolated",
+      executionMode: "live",
+      wakeMode: "now",
+      payload: {
+        kind: "agentTurn",
+        message: "prepare the morning brief",
+        artifactContract: {
+          watchdog: {
+            afterMs: 5_000,
+            announceOnFailure: true,
+            required: {
+              deliveryTask: {
+                titleIncludes: "Morning Brief Delivery",
+                status: "completed",
+              },
+            },
+          },
+        },
+      },
+      delivery: { mode: "announce" },
+    });
+
+    vi.setSystemTime(new Date("2025-12-13T00:00:01.000Z"));
+    await vi.runOnlyPendingTimersAsync();
+
+    let jobs = await cron.list({ includeDisabled: true });
+    let updated = jobs.find((entry) => entry.id === job.id);
+    expect(runIsolatedAgentJob).toHaveBeenCalledTimes(1);
+    expect(updated?.state.watchdog?.status).toBe("pending");
+    expect(updated?.enabled).toBe(true);
+    expect(verifyIsolatedAgentJobWatchdog).toHaveBeenCalledTimes(0);
+
+    vi.setSystemTime(new Date("2025-12-13T00:00:06.000Z"));
+    await vi.runOnlyPendingTimersAsync();
+
+    jobs = await cron.list({ includeDisabled: true });
+    updated = jobs.find((entry) => entry.id === job.id);
+    expect(verifyIsolatedAgentJobWatchdog).toHaveBeenCalledTimes(1);
+    expect(updated?.state.lastStatus).toBe("error");
+    expect(updated?.state.lastError).toMatch(/missing delivery task/i);
+    expect(updated?.state.watchdog?.status).toBe("error");
+    expect(updated?.enabled).toBe(false);
+    expect(enqueueSystemEvent).toHaveBeenCalledWith(
+      expect.stringContaining("Cron watchdog (error): missing delivery task"),
+      { agentId: undefined },
+    );
+
+    cron.stop();
+    await store.cleanup();
+  });
+
+  it("removes a one-shot isolated job only after the delivery watchdog verifies success", async () => {
+    const store = await makeStorePath();
+    const runIsolatedAgentJob = vi.fn(async () => ({
+      status: "ok" as const,
+      summary: "draft created",
+    }));
+    const verifyIsolatedAgentJobWatchdog = vi.fn(async () => ({
+      status: "ok" as const,
+      summary: "delivery verified",
+    }));
+
+    const cron = new CronService({
+      storePath: store.storePath,
+      cronEnabled: true,
+      log: noopLogger,
+      enqueueSystemEvent: vi.fn(),
+      requestHeartbeatNow: vi.fn(),
+      runIsolatedAgentJob,
+      verifyIsolatedAgentJobWatchdog,
+    });
+
+    await cron.start();
+    const atMs = Date.parse("2025-12-13T00:00:01.000Z");
+    const job = await cron.add({
+      enabled: true,
+      name: "morning brief",
+      schedule: { kind: "at", at: new Date(atMs).toISOString() },
+      sessionTarget: "isolated",
+      executionMode: "live",
+      wakeMode: "now",
+      payload: {
+        kind: "agentTurn",
+        message: "prepare the morning brief",
+        artifactContract: {
+          watchdog: {
+            afterMs: 5_000,
+            required: {
+              deliveryTask: {
+                titleIncludes: "Morning Brief Delivery",
+                status: "completed",
+              },
+            },
+          },
+        },
+      },
+      delivery: { mode: "announce" },
+    });
+
+    vi.setSystemTime(new Date("2025-12-13T00:00:01.000Z"));
+    await vi.runOnlyPendingTimersAsync();
+    let jobs = await cron.list({ includeDisabled: true });
+    expect(jobs.find((entry) => entry.id === job.id)?.state.watchdog?.status).toBe("pending");
+
+    vi.setSystemTime(new Date("2025-12-13T00:00:06.000Z"));
+    await vi.runOnlyPendingTimersAsync();
+
+    jobs = await cron.list({ includeDisabled: true });
+    expect(jobs.find((entry) => entry.id === job.id)).toBeUndefined();
+
+    cron.stop();
+    await store.cleanup();
+  });
+
   it("paper_trade mode blocks isolated live execution and records simulation evidence", async () => {
     const store = await makeStorePath();
     const enqueueSystemEvent = vi.fn();

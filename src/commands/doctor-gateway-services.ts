@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import type { ArgentConfig } from "../config/config.js";
 import type { RuntimeEnv } from "../runtime.js";
 import type { DoctorOptions, DoctorPrompter } from "./doctor-prompter.js";
-import { resolveGatewayPort, resolveIsNixMode } from "../config/paths.js";
+import { resolveGatewayPort, resolveIsNixMode, resolveStateDir } from "../config/paths.js";
 import { findExtraGatewayServices, renderGatewayServiceCleanupHints } from "../daemon/inspect.js";
 import { renderSystemNodeWarning, resolveSystemNodeInfo } from "../daemon/runtime-paths.js";
 import {
@@ -88,19 +88,90 @@ async function cleanupLegacyLaunchdService(params: {
   }
 }
 
+function normalizeMaybePath(value?: string): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? path.resolve(trimmed) : null;
+}
+
+function resolveServicePort(params: {
+  serviceEnv?: Record<string, string>;
+  programArguments?: string[];
+}): number | null {
+  const envPort = params.serviceEnv?.ARGENT_GATEWAY_PORT?.trim();
+  if (envPort) {
+    const parsed = Number.parseInt(envPort, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  const args = params.programArguments ?? [];
+  const index = args.indexOf("--port");
+  if (index >= 0) {
+    const raw = args[index + 1];
+    const parsed = Number.parseInt(String(raw), 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function isServiceScopedToCurrentDoctorRun(params: {
+  serviceEnv?: Record<string, string>;
+  programArguments?: string[];
+  configPath?: string;
+  stateDir?: string;
+  port?: number;
+}): boolean {
+  const serviceConfigPath = normalizeMaybePath(params.serviceEnv?.ARGENT_CONFIG_PATH);
+  const serviceStateDir = normalizeMaybePath(params.serviceEnv?.ARGENT_STATE_DIR);
+  const servicePort = resolveServicePort({
+    serviceEnv: params.serviceEnv,
+    programArguments: params.programArguments,
+  });
+  const currentConfigPath = normalizeMaybePath(params.configPath);
+  const currentStateDir = normalizeMaybePath(params.stateDir);
+
+  if (serviceConfigPath && currentConfigPath) {
+    return serviceConfigPath === currentConfigPath;
+  }
+  if (serviceStateDir && currentStateDir) {
+    return serviceStateDir === currentStateDir;
+  }
+  if (servicePort !== null && typeof params.port === "number") {
+    return servicePort === params.port;
+  }
+  return true;
+}
+
+function resolveDoctorConfigPort(cfg: ArgentConfig): number {
+  const port = cfg.gateway?.port;
+  if (typeof port === "number" && Number.isFinite(port) && port > 0) {
+    return port;
+  }
+  return resolveGatewayPort(cfg, {});
+}
+
+function isAlternateHomeScope(env: NodeJS.ProcessEnv): boolean {
+  const envHome = normalizeMaybePath(env.HOME);
+  const realHome = normalizeMaybePath(os.userInfo().homedir);
+  return Boolean(envHome && realHome && envHome !== realHome);
+}
+
 export async function maybeRepairGatewayServiceConfig(
   cfg: ArgentConfig,
   mode: "local" | "remote",
   runtime: RuntimeEnv,
   prompter: DoctorPrompter,
+  options?: { configPath?: string },
 ) {
   if (resolveIsNixMode(process.env)) {
-    note("Nix mode detected; skip service updates.", "Gateway");
+    note("Nix mode detected; skipping Argent service updates.", "Argent gateway");
     return;
   }
 
   if (mode === "remote") {
-    note("Gateway mode is remote; skipped local service audit.", "Gateway");
+    note("Gateway mode is remote; skipping the local Argent service audit.", "Argent gateway");
     return;
   }
 
@@ -111,7 +182,49 @@ export async function maybeRepairGatewayServiceConfig(
   } catch {
     command = null;
   }
+  if (!command && isAlternateHomeScope(process.env)) {
+    note(
+      [
+        "- Existing Argent gateway service is loaded for the primary user home.",
+        `- Current HOME: ${process.env.HOME ?? ""}`,
+        `- Primary HOME: ${os.userInfo().homedir}`,
+        "- Skipping live service config audit for this alternate-home doctor run.",
+      ].join("\n"),
+      "Argent gateway service config",
+    );
+    return;
+  }
   if (!command) {
+    return;
+  }
+
+  const port = resolveDoctorConfigPort(cfg);
+  const currentStateDir = resolveStateDir(process.env, os.homedir);
+  if (
+    !isServiceScopedToCurrentDoctorRun({
+      serviceEnv: command.environment,
+      programArguments: command.programArguments,
+      configPath: options?.configPath,
+      stateDir: currentStateDir,
+      port,
+    })
+  ) {
+    const serviceConfigPath = command.environment?.ARGENT_CONFIG_PATH?.trim();
+    const serviceStateDir = command.environment?.ARGENT_STATE_DIR?.trim();
+    const servicePort = resolveServicePort({
+      serviceEnv: command.environment,
+      programArguments: command.programArguments,
+    });
+    const lines = [
+      "- Existing Argent gateway service belongs to a different config/state scope.",
+      serviceConfigPath ? `- Service config: ${serviceConfigPath}` : null,
+      serviceStateDir ? `- Service state: ${serviceStateDir}` : null,
+      servicePort !== null ? `- Service port: ${servicePort}` : null,
+      options?.configPath ? `- Current config: ${options.configPath}` : null,
+      `- Current port: ${port}`,
+      `- Skipping live service config audit for this doctor run.`,
+    ].filter((line): line is string => Boolean(line));
+    note(lines.join("\n"), "Argent gateway service config");
     return;
   }
 
@@ -127,15 +240,14 @@ export async function maybeRepairGatewayServiceConfig(
   if (needsNodeRuntime && !systemNodePath) {
     const warning = renderSystemNodeWarning(systemNodeInfo);
     if (warning) {
-      note(warning, "Gateway runtime");
+      note(warning, "Argent gateway runtime");
     }
     note(
       "System Node 22+ not found. Install via Homebrew/apt/choco and rerun doctor to migrate off Bun/version managers.",
-      "Gateway runtime",
+      "Argent gateway runtime",
     );
   }
 
-  const port = resolveGatewayPort(cfg, process.env);
   const runtimeChoice = detectGatewayRuntime(command.programArguments);
   const { programArguments, workingDirectory, environment } = await buildGatewayInstallPlan({
     env: process.env,
@@ -171,7 +283,7 @@ export async function maybeRepairGatewayServiceConfig(
         issue.detail ? `- ${issue.message} (${issue.detail})` : `- ${issue.message}`,
       )
       .join("\n"),
-    "Gateway service config",
+    "Argent gateway service config",
   );
 
   const aggressiveIssues = audit.issues.filter((issue) => issue.level === "aggressive");
@@ -180,7 +292,7 @@ export async function maybeRepairGatewayServiceConfig(
   if (needsAggressive && !prompter.shouldForce) {
     note(
       "Custom or unexpected service edits detected. Rerun with --force to overwrite.",
-      "Gateway service config",
+      "Argent gateway service config",
     );
   }
 
@@ -190,7 +302,7 @@ export async function maybeRepairGatewayServiceConfig(
         initialValue: Boolean(prompter.shouldForce),
       })
     : await prompter.confirmRepair({
-        message: "Update gateway service config to the recommended defaults now?",
+        message: "Update the Argent gateway service config to the recommended defaults now?",
         initialValue: true,
       });
   if (!repair) {
@@ -256,7 +368,7 @@ export async function maybeScanExtraGatewayServices(
         removed.push(dest ? `${svc.label} -> ${dest}` : svc.label);
       }
       if (removed.length > 0) {
-        note(removed.map((line) => `- ${line}`).join("\n"), "Legacy gateway removed");
+        note(removed.map((line) => `- ${line}`).join("\n"), "Legacy gateway services removed");
       }
       if (failed.length > 0) {
         note(failed.map((line) => `- ${line}`).join("\n"), "Legacy gateway cleanup skipped");
@@ -269,7 +381,7 @@ export async function maybeScanExtraGatewayServices(
 
   const cleanupHints = renderGatewayServiceCleanupHints();
   if (cleanupHints.length > 0) {
-    note(cleanupHints.map((hint) => `- ${hint}`).join("\n"), "Cleanup hints");
+    note(cleanupHints.map((hint) => `- ${hint}`).join("\n"), "Argent cleanup hints");
   }
 
   note(
@@ -278,6 +390,6 @@ export async function maybeScanExtraGatewayServices(
       "One gateway supports multiple agents.",
       "If you need multiple gateways (e.g., a rescue bot on the same host), isolate ports + config/state (see docs: /gateway#multiple-gateways-same-host).",
     ].join("\n"),
-    "Gateway recommendation",
+    "Argent gateway recommendation",
   );
 }

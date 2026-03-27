@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aos-firecrawl"
+version = "0.1.0"
+description = "Agent-native Firecrawl CLI"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["click>=8.1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+aos-firecrawl = "cli_aos.firecrawl.cli:cli"
+
+[tool.setuptools]
+package-dir = { "" = "." }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cli_aos*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

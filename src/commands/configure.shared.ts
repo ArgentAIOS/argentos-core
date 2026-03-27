@@ -5,7 +5,12 @@ import {
   select as clackSelect,
   text as clackText,
 } from "@clack/prompts";
-import { stylePromptHint, stylePromptMessage, stylePromptTitle } from "../terminal/prompt-style.js";
+import {
+  stylePromptHint,
+  stylePromptMessage,
+  stylePromptOption,
+  stylePromptTitle,
+} from "../terminal/prompt-style.js";
 
 export const CONFIGURE_WIZARD_SECTIONS = [
   "workspace",
@@ -32,25 +37,25 @@ export const CONFIGURE_SECTION_OPTIONS: Array<{
   label: string;
   hint: string;
 }> = [
-  { value: "workspace", label: "Workspace", hint: "Set workspace + sessions" },
-  { value: "model", label: "Model", hint: "Pick provider + credentials" },
-  { value: "web", label: "Web tools", hint: "Configure Brave search + fetch" },
-  { value: "gateway", label: "Gateway", hint: "Port, bind, auth, tailscale" },
+  { value: "workspace", label: "Workspace", hint: "Set Argent's home, memory, and session path" },
+  { value: "model", label: "Brain", hint: "Choose runtime, provider, and credentials" },
+  { value: "web", label: "Web", hint: "Configure Brave search and keyless fetch" },
+  { value: "gateway", label: "Gateway", hint: "Tune port, bind, auth, and Tailscale" },
   {
     value: "daemon",
-    label: "Daemon",
-    hint: "Install/manage the background service",
+    label: "Service",
+    hint: "Install or manage Argent's background service",
   },
   {
     value: "channels",
     label: "Channels",
-    hint: "Link WhatsApp/Telegram/etc and defaults",
+    hint: "Link WhatsApp, Telegram, and other delivery surfaces",
   },
-  { value: "skills", label: "Skills", hint: "Install/enable workspace skills" },
+  { value: "skills", label: "Skills", hint: "Install and enable workspace skills" },
   {
     value: "health",
-    label: "Health check",
-    hint: "Run gateway + channel checks",
+    label: "Systems check",
+    hint: "Run gateway and channel diagnostics",
   },
 ];
 
@@ -70,7 +75,9 @@ export const select = <T>(params: Parameters<typeof clackSelect<T>>[0]) =>
   clackSelect({
     ...params,
     message: stylePromptMessage(params.message),
-    options: params.options.map((opt) =>
-      opt.hint === undefined ? opt : { ...opt, hint: stylePromptHint(opt.hint) },
-    ),
+    options: params.options.map((opt) => ({
+      ...opt,
+      label: stylePromptOption(String(opt.label)),
+      ...(opt.hint === undefined ? {} : { hint: stylePromptHint(opt.hint) }),
+    })),
   });

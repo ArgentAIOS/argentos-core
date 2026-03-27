@@ -1,6 +1,6 @@
 {
   "name": "@argentos/copilot-proxy",
-  "version": "2026.2.4",
+  "version": "2026.3.2",
   "description": "ArgentOS Copilot Proxy provider plugin",
   "type": "module",
   "devDependencies": {

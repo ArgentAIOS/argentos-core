@@ -96,6 +96,7 @@ describe("Ollama provider", () => {
       vi.unstubAllEnvs();
     }
   });
+
   it("includes lmstudio when kernel localModel is configured without API auth", async () => {
     const agentDir = mkdtempSync(join(tmpdir(), "argent-test-"));
     const config = {
