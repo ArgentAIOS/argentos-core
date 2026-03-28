@@ -1,3 +1,1 @@
 * text=auto eol=lf
-dashboard/public/live2d/**/*.moc3 filter=lfs diff=lfs merge=lfs -text
-dashboard/public/live2d/**/*.png filter=lfs diff=lfs merge=lfs -text
