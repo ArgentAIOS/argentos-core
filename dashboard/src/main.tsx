@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
 import { ThemeProvider } from "./lib/ThemeProvider";
+import { installLocalApiFetchShim } from "./utils/localApiFetch";
 
 if (import.meta.env.VITE_SENTRY_DSN) {
   Sentry.init({
@@ -10,6 +11,8 @@ if (import.meta.env.VITE_SENTRY_DSN) {
     integrations: [Sentry.browserTracingIntegration()],
   });
 }
+
+installLocalApiFetchShim();
 
 createRoot(document.getElementById("root")!).render(
   <Sentry.ErrorBoundary fallback={<p className="text-red-400 p-4">Something went wrong.</p>}>

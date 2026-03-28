@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { fetchLocalApi } from "../utils/localApiFetch";
 
 const STORAGE_KEY = "argent-lockscreen-credentials";
 const LOCK_SETTINGS_KEY = "argent-lockscreen-settings";
@@ -120,9 +121,7 @@ export function useLockScreen() {
     if (sessionStorage.getItem(SESSION_UNLOCK_KEY)) return;
 
     // Check for admin emergency unlock file
-    const port = new URLSearchParams(window.location.search).get("port") || window.location.port;
-    const base = `${window.location.protocol}//${window.location.hostname}:${port}`;
-    fetch(`${base}/api/lockscreen/emergency-unlock`, { method: "POST" })
+    fetchLocalApi("/api/lockscreen/emergency-unlock", { method: "POST" })
       .then((r) => r.json())
       .then((data) => {
         if (data.unlocked) {

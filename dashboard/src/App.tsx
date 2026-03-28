@@ -1024,7 +1024,7 @@ function startMemoryStatsPolling() {
   if (memoryStatsInterval) return; // already polling
   const load = async () => {
     try {
-      const res = await fetch("/api/memory/stats");
+      const res = await fetchLocalApi("/api/memory/stats");
       if (res.ok) {
         const data = await res.json();
         memoryStatsCache = {

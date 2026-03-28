@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { fetchLocalApi } from "../utils/localApiFetch";
 
 export type CronExecutionMode = "live" | "paper_trade";
 
@@ -214,7 +215,7 @@ export function useCronJobs(options: UseCronJobsOptions = {}) {
       }
 
       // Fallback: HTTP API (reads static file — may be stale)
-      const response = await fetch("/api/cron/jobs");
+      const response = await fetchLocalApi("/api/cron/jobs");
       if (response.ok) {
         const data = await response.json();
         setCronJobs(Array.isArray(data.jobs) ? (data.jobs as CronJob[]) : []);

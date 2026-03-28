@@ -1,5 +1,6 @@
 const DEFAULT_TIMEOUT_MS = 10_000;
 const CONTROL_SETTINGS_KEY = "argent.control.settings.v1";
+const nativeFetch = globalThis.fetch.bind(globalThis);
 
 function isNativeShell(): boolean {
   if (typeof window === "undefined") return false;
@@ -33,6 +34,40 @@ function directDashboardApiUrl(path: string): string | null {
   return `http://${window.location.hostname}:9242${path}`;
 }
 
+function normalizeLocalApiPath(input: RequestInfo | URL): string | null {
+  if (typeof window === "undefined") return null;
+
+  if (typeof input === "string") {
+    if (input.startsWith("/api")) return input;
+    try {
+      const url = new URL(input, window.location.href);
+      if (url.origin === window.location.origin && url.pathname.startsWith("/api")) {
+        return `${url.pathname}${url.search}`;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  if (input instanceof URL) {
+    return input.origin === window.location.origin && input.pathname.startsWith("/api")
+      ? `${input.pathname}${input.search}`
+      : null;
+  }
+
+  try {
+    const url = new URL(input.url, window.location.href);
+    if (url.origin === window.location.origin && url.pathname.startsWith("/api")) {
+      return `${url.pathname}${url.search}`;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 function withDashboardApiAuth(init: RequestInit = {}): RequestInit {
   const token = dashboardApiTokenFromUrl();
   if (!token) return init;
@@ -62,7 +97,7 @@ async function fetchWithTimeout(
   init: RequestInit = {},
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<Response> {
-  if (!timeoutMs || timeoutMs <= 0) return fetch(input, init);
+  if (!timeoutMs || timeoutMs <= 0) return nativeFetch(input, init);
   const controller = new AbortController();
   const upstream = init.signal;
   const onAbort = () => controller.abort();
@@ -74,7 +109,7 @@ async function fetchWithTimeout(
 
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    return await nativeFetch(input, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timeout);
     if (upstream) upstream.removeEventListener("abort", onAbort);
@@ -88,18 +123,20 @@ export async function fetchLocalApi(
 ): Promise<Response> {
   const direct = directDashboardApiUrl(path);
   const alt = alternateLoopbackUrl(path);
-  const directInit = withDashboardApiAuth(init);
+  const authedInit = withDashboardApiAuth(init);
+  const directInit = authedInit;
+  const altInit = authedInit;
   const preferDirect = isNativeShell() && direct;
   if (preferDirect) {
     try {
       return await fetchWithTimeout(direct, directInit, timeoutMs);
     } catch (directErr) {
       try {
-        return await fetchWithTimeout(path, init, timeoutMs);
+        return await fetchWithTimeout(path, authedInit, timeoutMs);
       } catch {
         if (!alt) throw directErr;
         try {
-          return await fetchWithTimeout(alt, init, timeoutMs);
+          return await fetchWithTimeout(alt, altInit, timeoutMs);
         } catch {
           throw directErr;
         }
@@ -107,7 +144,6 @@ export async function fetchLocalApi(
     }
   }
   // Always include auth headers — api-server may require DASHBOARD_API_TOKEN
-  const authedInit = withDashboardApiAuth(init);
   try {
     return await fetchWithTimeout(path, authedInit, timeoutMs);
   } catch (primaryErr) {
@@ -120,9 +156,44 @@ export async function fetchLocalApi(
     }
     if (!alt) throw primaryErr;
     try {
-      return await fetchWithTimeout(alt, init, timeoutMs);
+      return await fetchWithTimeout(alt, altInit, timeoutMs);
     } catch {
       throw primaryErr;
     }
   }
+}
+
+let fetchShimInstalled = false;
+
+export function installLocalApiFetchShim(): void {
+  if (typeof window === "undefined" || fetchShimInstalled) return;
+  fetchShimInstalled = true;
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const localApiPath = normalizeLocalApiPath(input);
+    if (!localApiPath) {
+      return nativeFetch(input, init);
+    }
+
+    if (input instanceof Request && init === undefined) {
+      const cloned = input.clone();
+      const method = cloned.method.toUpperCase();
+      return fetchLocalApi(localApiPath, {
+        method: cloned.method,
+        headers: cloned.headers,
+        body: method === "GET" || method === "HEAD" ? undefined : await cloned.blob(),
+        cache: cloned.cache,
+        credentials: cloned.credentials,
+        integrity: cloned.integrity,
+        keepalive: cloned.keepalive,
+        mode: cloned.mode,
+        redirect: cloned.redirect,
+        referrer: cloned.referrer,
+        referrerPolicy: cloned.referrerPolicy,
+        signal: cloned.signal,
+      });
+    }
+
+    return fetchLocalApi(localApiPath, init ?? {});
+  }) as typeof globalThis.fetch;
 }

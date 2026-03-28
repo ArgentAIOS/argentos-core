@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { fetchLocalApi } from "../utils/localApiFetch";
 
 const STORAGE_KEY = "argent-weather-cache";
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
@@ -103,9 +104,9 @@ export function useWeather(refreshInterval = 900000, enabled = true) {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
-      const response = await fetch("/api/weather/detailed", { signal: controller.signal }).finally(
-        () => clearTimeout(timeout),
-      );
+      const response = await fetchLocalApi("/api/weather/detailed", {
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeout));
 
       if (!response.ok) {
         throw new Error(`Weather API failed with status ${response.status}`);
