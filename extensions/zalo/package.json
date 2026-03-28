@@ -5,7 +5,7 @@
   "type": "module",
   "dependencies": {
     "argentos": "workspace:*",
-    "undici": "7.20.0"
+    "undici": "7.24.5"
   },
   "devDependencies": {
     "argentos": "workspace:*"
