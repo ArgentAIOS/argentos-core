@@ -11,8 +11,10 @@ export async function runInteractiveOnboarding(
   runtime: RuntimeEnv = defaultRuntime,
 ) {
   const prompter = createClackPrompter();
+  let forceInstallerExit = false;
   try {
     await runOnboardingWizard(opts, runtime, prompter);
+    forceInstallerExit = process.env.ARGENT_INSTALLER_ONBOARD === "1";
   } catch (err) {
     if (err instanceof WizardCancelledError) {
       runtime.exit(0);
@@ -21,5 +23,8 @@ export async function runInteractiveOnboarding(
     throw err;
   } finally {
     restoreTerminalState("onboarding finish");
+  }
+  if (forceInstallerExit) {
+    runtime.exit(0);
   }
 }
