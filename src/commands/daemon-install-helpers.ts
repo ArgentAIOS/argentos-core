@@ -30,9 +30,18 @@ export function resolveGatewayDevMode(argv: string[] = process.argv): boolean {
 
 /**
  * Resolve or generate dashboard API token for gateway-dashboard authentication.
- * Reads from multiple sources, generates new token if missing, writes to ~/.argentos/.env
+ * Reuses the gateway token when available so the browser only needs one shared credential.
+ * Otherwise reads from multiple sources, generates new token if missing, writes to ~/.argentos/.env
  */
-function resolveDashboardApiToken(env: Record<string, string | undefined>): string {
+function resolveDashboardApiToken(
+  env: Record<string, string | undefined>,
+  gatewayToken?: string,
+): string {
+  const sharedToken = gatewayToken?.trim();
+  if (sharedToken) {
+    return sharedToken;
+  }
+
   // Check if already exists in environment
   const existing = env.DASHBOARD_API_TOKEN;
   if (existing && typeof existing === "string" && existing.length > 0) {
@@ -133,7 +142,7 @@ export async function buildGatewayInstallPlan(params: {
       params.warn?.(warning, "Gateway runtime");
     }
   }
-  const dashboardApiToken = resolveDashboardApiToken(params.env);
+  const dashboardApiToken = resolveDashboardApiToken(params.env, params.token);
   const serviceEnvironment = buildServiceEnvironment({
     env: params.env,
     port: params.port,
