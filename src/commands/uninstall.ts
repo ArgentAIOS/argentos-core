@@ -1,4 +1,5 @@
 import { cancel, confirm, isCancel, multiselect } from "@clack/prompts";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import type { RuntimeEnv } from "../runtime.js";
 import {
@@ -8,15 +9,17 @@ import {
   resolveOAuthDir,
   resolveStateDir,
 } from "../config/config.js";
-import { resolveGatewayService } from "../daemon/service.js";
+import { resolveDashboardApiService, resolveDashboardUiService } from "../daemon/dashboard-service.js";
+import { type GatewayService, resolveGatewayService } from "../daemon/service.js";
 import { stylePromptHint, stylePromptMessage, stylePromptTitle } from "../terminal/prompt-style.js";
-import { resolveHomeDir } from "../utils.js";
+import { resolveHomeDir, resolveUserPath } from "../utils.js";
 import { collectWorkspaceDirs, isPathWithin, removePath } from "./cleanup-utils.js";
 
-type UninstallScope = "service" | "state" | "workspace" | "app";
+type UninstallScope = "service" | "install" | "state" | "workspace" | "app";
 
 export type UninstallOptions = {
   service?: boolean;
+  install?: boolean;
   state?: boolean;
   workspace?: boolean;
   app?: boolean;
@@ -39,10 +42,15 @@ function buildScopeSelection(opts: UninstallOptions): {
   scopes: Set<UninstallScope>;
   hadExplicit: boolean;
 } {
-  const hadExplicit = Boolean(opts.all || opts.service || opts.state || opts.workspace || opts.app);
+  const hadExplicit = Boolean(
+    opts.all || opts.service || opts.install || opts.state || opts.workspace || opts.app,
+  );
   const scopes = new Set<UninstallScope>();
   if (opts.all || opts.service) {
     scopes.add("service");
+  }
+  if (opts.all || opts.install) {
+    scopes.add("install");
   }
   if (opts.all || opts.state) {
     scopes.add("state");
@@ -56,35 +64,90 @@ function buildScopeSelection(opts: UninstallOptions): {
   return { scopes, hadExplicit };
 }
 
-async function stopAndUninstallService(runtime: RuntimeEnv): Promise<boolean> {
+async function stopAndUninstallService(params: {
+  name: string;
+  runtime: RuntimeEnv;
+  service: GatewayService;
+}): Promise<boolean> {
+  const { name, runtime, service } = params;
   if (isNixMode) {
-    runtime.error("Nix mode detected; service uninstall is disabled.");
+    runtime.error(`${name}: Nix mode detected; service uninstall is disabled.`);
     return false;
   }
-  const service = resolveGatewayService();
   let loaded = false;
   try {
     loaded = await service.isLoaded({ env: process.env });
   } catch (err) {
-    runtime.error(`Gateway service check failed: ${String(err)}`);
+    runtime.error(`${name} check failed: ${String(err)}`);
     return false;
   }
-  if (!loaded) {
-    runtime.log(`Gateway service ${service.notLoadedText}.`);
-    return true;
-  }
-  try {
-    await service.stop({ env: process.env, stdout: process.stdout });
-  } catch (err) {
-    runtime.error(`Gateway stop failed: ${String(err)}`);
+  if (loaded) {
+    try {
+      await service.stop({ env: process.env, stdout: process.stdout });
+    } catch (err) {
+      runtime.error(`${name} stop failed: ${String(err)}`);
+    }
+  } else {
+    runtime.log(`${name} ${service.notLoadedText}; removing installed service files if present.`);
   }
   try {
     await service.uninstall({ env: process.env, stdout: process.stdout });
     return true;
   } catch (err) {
-    runtime.error(`Gateway uninstall failed: ${String(err)}`);
+    runtime.error(`${name} uninstall failed: ${String(err)}`);
     return false;
   }
+}
+
+function resolveInstallFootprintTargets(stateDir: string): string[] {
+  const targets = new Set<string>();
+  const installPackageDir =
+    process.env.ARGENT_INSTALL_PACKAGE_DIR?.trim() ||
+    path.join(stateDir, "lib", "node_modules", "argentos");
+  const runtimeDir = process.env.ARGENT_RUNTIME_DIR?.trim() || path.join(stateDir, "runtime");
+  const dashboardDir = path.join(stateDir, "dashboard");
+  const gitDir = process.env.ARGENTOS_GIT_DIR?.trim() || "~/argentos";
+
+  targets.add(resolveUserPath(installPackageDir));
+  targets.add(resolveUserPath(runtimeDir));
+  targets.add(resolveUserPath(dashboardDir));
+  targets.add(resolveUserPath(gitDir));
+  targets.add(resolveUserPath("~/.argent"));
+
+  for (const binDir of ["~/bin", "/usr/local/bin"]) {
+    for (const command of ["argent", "argentos"]) {
+      targets.add(resolveUserPath(path.posix.join(binDir, command)));
+    }
+  }
+
+  return [...targets];
+}
+
+async function removeInstallFootprint(runtime: RuntimeEnv, stateDir: string, dryRun?: boolean) {
+  const targets = resolveInstallFootprintTargets(stateDir);
+  for (const target of targets) {
+    await removePath(target, runtime, { dryRun, label: target });
+  }
+}
+
+function clearMacAppDefaults(runtime: RuntimeEnv, dryRun?: boolean) {
+  if (process.platform !== "darwin") {
+    return;
+  }
+  if (dryRun) {
+    runtime.log("[dry-run] remove Argent.app defaults (ai.argent.mac)");
+    return;
+  }
+  const result = spawnSync("defaults", ["delete", "ai.argent.mac"], { encoding: "utf8" });
+  if (result.error) {
+    runtime.error(`Failed to remove Argent.app defaults: ${String(result.error)}`);
+    return;
+  }
+  if ((result.status ?? 1) === 0) {
+    runtime.log("Removed Argent.app defaults");
+    return;
+  }
+  runtime.log("Argent.app defaults not found.");
 }
 
 async function removeMacApp(runtime: RuntimeEnv, dryRun?: boolean) {
@@ -117,8 +180,13 @@ export async function uninstallCommand(runtime: RuntimeEnv, opts: UninstallOptio
       options: [
         {
           value: "service",
-          label: "Gateway service",
-          hint: "launchd / systemd / schtasks",
+          label: "Managed services",
+          hint: "gateway + dashboard launch agents",
+        },
+        {
+          value: "install",
+          label: "Install footprint",
+          hint: "wrappers + runtime snapshot + checkout",
         },
         { value: "state", label: "State + config", hint: "~/.argentos" },
         { value: "workspace", label: "Workspace", hint: "agent files" },
@@ -128,7 +196,7 @@ export async function uninstallCommand(runtime: RuntimeEnv, opts: UninstallOptio
           hint: "/Applications/Argent.app",
         },
       ],
-      initialValues: ["service", "state", "workspace"],
+      initialValues: ["service", "install", "state", "workspace"],
     });
     if (isCancel(selection)) {
       cancel(stylePromptTitle("Uninstall cancelled.") ?? "Uninstall cancelled.");
@@ -167,13 +235,43 @@ export async function uninstallCommand(runtime: RuntimeEnv, opts: UninstallOptio
 
   if (scopes.has("service")) {
     if (dryRun) {
-      runtime.log("[dry-run] remove gateway service");
+      runtime.log("[dry-run] remove gateway + dashboard services");
     } else {
-      await stopAndUninstallService(runtime);
+      await stopAndUninstallService({
+        name: "Gateway service",
+        runtime,
+        service: resolveGatewayService(),
+      });
+      await stopAndUninstallService({
+        name: "Dashboard UI service",
+        runtime,
+        service: resolveDashboardUiService(),
+      });
+      await stopAndUninstallService({
+        name: "Dashboard API service",
+        runtime,
+        service: resolveDashboardApiService(),
+      });
     }
   }
 
+  if (scopes.has("install")) {
+    await removeInstallFootprint(runtime, stateDir, dryRun);
+  }
+
+  if (scopes.has("app")) {
+    await removeMacApp(runtime, dryRun);
+    clearMacAppDefaults(runtime, dryRun);
+  }
+
   if (scopes.has("state")) {
+    if (!scopes.has("install")) {
+      const legacyStateDir = resolveUserPath("~/.argent");
+      await removePath(legacyStateDir, runtime, {
+        dryRun,
+        label: legacyStateDir,
+      });
+    }
     await removePath(stateDir, runtime, { dryRun, label: stateDir });
     if (!configInsideState) {
       await removePath(configPath, runtime, { dryRun, label: configPath });
@@ -189,11 +287,11 @@ export async function uninstallCommand(runtime: RuntimeEnv, opts: UninstallOptio
     }
   }
 
-  if (scopes.has("app")) {
-    await removeMacApp(runtime, dryRun);
+  if (scopes.has("install")) {
+    runtime.log("Local install footprint removed.");
+  } else {
+    runtime.log("Installed wrappers/runtime preserved. Use --install or --all to remove them.");
   }
-
-  runtime.log("CLI still installed. Remove via npm/pnpm if desired.");
 
   if (scopes.has("state") && !scopes.has("workspace")) {
     const home = resolveHomeDir();

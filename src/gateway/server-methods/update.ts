@@ -1,14 +1,25 @@
 import type { GatewayRequestHandlers } from "./types.js";
+import { formatCliCommand } from "../../cli/command-format.js";
 import { loadConfig } from "../../config/config.js";
 import { resolveArgentPackageRoot } from "../../infra/argent-root.js";
+import {
+  checkUpdateStatus,
+  compareSemverStrings,
+  resolveNpmChannelTag,
+} from "../../infra/update-check.js";
+import {
+  DEFAULT_PACKAGE_CHANNEL,
+  normalizeUpdateChannel,
+  resolveEffectiveUpdateChannel,
+} from "../../infra/update-channels.js";
 import {
   formatDoctorNonInteractiveHint,
   type RestartSentinelPayload,
   writeRestartSentinel,
 } from "../../infra/restart-sentinel.js";
 import { scheduleGatewaySigusr1Restart } from "../../infra/restart.js";
-import { normalizeUpdateChannel } from "../../infra/update-channels.js";
 import { runGatewayUpdate } from "../../infra/update-runner.js";
+import { VERSION } from "../../version.js";
 import {
   ErrorCodes,
   errorShape,
@@ -17,6 +28,92 @@ import {
 } from "../protocol/index.js";
 
 export const updateHandlers: GatewayRequestHandlers = {
+  "update.status": async ({ respond }) => {
+    try {
+      const config = loadConfig();
+      const root =
+        (await resolveArgentPackageRoot({
+          moduleUrl: import.meta.url,
+          argv1: process.argv[1],
+          cwd: process.cwd(),
+        })) ?? process.cwd();
+      const status = await checkUpdateStatus({
+        root,
+        timeoutMs: 3500,
+        fetchGit: false,
+        includeRegistry: false,
+      });
+      const configuredChannel = normalizeUpdateChannel(config.update?.channel);
+      const resolvedChannel = resolveEffectiveUpdateChannel({
+        configChannel: configuredChannel,
+        installKind: status.installKind,
+        git: {
+          tag: status.git?.tag ?? null,
+          branch: status.git?.branch ?? null,
+        },
+      });
+      const effectiveChannel =
+        status.installKind === "package" && resolvedChannel.channel === "dev"
+          ? DEFAULT_PACKAGE_CHANNEL
+          : resolvedChannel.channel;
+
+      let latestVersion: string | null = null;
+      let available = false;
+      let gitBehind: number | null = null;
+
+      if (status.installKind === "git") {
+        gitBehind = typeof status.git?.behind === "number" ? status.git.behind : null;
+        available = Boolean(gitBehind && gitBehind > 0);
+      } else {
+        const resolved = await resolveNpmChannelTag({
+          channel: effectiveChannel,
+          timeoutMs: 3500,
+        });
+        latestVersion = resolved.version;
+        const cmp = compareSemverStrings(VERSION, latestVersion);
+        available = cmp != null && cmp < 0;
+      }
+
+      respond(
+        true,
+        {
+          ok: true,
+          installKind: status.installKind,
+          root: status.root,
+          channel: effectiveChannel,
+          channelSource: resolvedChannel.source,
+          currentVersion: VERSION,
+          latestVersion,
+          gitBehind,
+          available,
+          updateCommand: formatCliCommand("argent update"),
+          releaseUrl: latestVersion
+            ? `https://github.com/ArgentAIOS/argentos/releases/tag/v${latestVersion}`
+            : "https://github.com/ArgentAIOS/argentos/releases",
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(
+        true,
+        {
+          ok: false,
+          installKind: "unknown",
+          root: null,
+          channel: DEFAULT_PACKAGE_CHANNEL,
+          channelSource: "default",
+          currentVersion: VERSION,
+          latestVersion: null,
+          gitBehind: null,
+          available: false,
+          updateCommand: formatCliCommand("argent update"),
+          releaseUrl: "https://github.com/ArgentAIOS/argentos/releases",
+          error: err instanceof Error ? err.message : String(err),
+        },
+        undefined,
+      );
+    }
+  },
   "update.run": async ({ params, respond }) => {
     if (!validateUpdateRunParams(params)) {
       respond(

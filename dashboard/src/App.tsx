@@ -486,6 +486,21 @@ function formatCriticalAlertMessage(alert: CriticalServiceAlertPayload): string 
   return `[CRITICAL:${alert.service}] ${alert.message}${detail}${threshold} Last seen: ${seen}. Last success: ${success}. Remediation: ${alert.operatorCommand}`;
 }
 
+type DashboardUpdateStatus = {
+  ok?: boolean;
+  installKind?: "git" | "package" | "unknown";
+  root?: string | null;
+  channel?: string;
+  channelSource?: string;
+  currentVersion?: string | null;
+  latestVersion?: string | null;
+  gitBehind?: number | null;
+  available?: boolean;
+  updateCommand?: string;
+  releaseUrl?: string;
+  error?: string;
+};
+
 function isStrictPgJobsUnavailable(error: unknown): boolean {
   const message =
     error instanceof Error
@@ -2410,6 +2425,98 @@ function App() {
     url: GATEWAY_URL,
     token: GATEWAY_TOKEN,
   });
+  const [dashboardUpdate, setDashboardUpdate] = useState<DashboardUpdateStatus | null>(null);
+  const [updateBannerDismissedVersion, setUpdateBannerDismissedVersion] = useState<string | null>(
+    null,
+  );
+  const [updateBannerRunning, setUpdateBannerRunning] = useState(false);
+  const [updateBannerError, setUpdateBannerError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!gateway.connected) {
+      setDashboardUpdate(null);
+      setUpdateBannerError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadDashboardUpdateStatus = async () => {
+      try {
+        const status = await gateway.request<DashboardUpdateStatus>(
+          "update.status",
+          {},
+          { timeoutMs: 10_000 },
+        );
+        if (cancelled) return;
+        setDashboardUpdate(status);
+        setUpdateBannerError(
+          typeof status?.error === "string" && status.error.trim() ? status.error : null,
+        );
+      } catch (error) {
+        if (cancelled) return;
+        console.error("[Update] Failed to load dashboard update status:", error);
+        setUpdateBannerError(error instanceof Error ? error.message : "Update status unavailable");
+      }
+    };
+
+    void loadDashboardUpdateStatus();
+    const intervalId = window.setInterval(() => {
+      void loadDashboardUpdateStatus();
+    }, 15 * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [gateway.connected, gateway.request]);
+
+  const runDashboardUpdate = useCallback(async () => {
+    setUpdateBannerRunning(true);
+    setUpdateBannerError(null);
+    try {
+      const response = await gateway.request<{
+        ok?: boolean;
+        result?: { status?: string; reason?: string };
+      }>(
+        "update.run",
+        {
+          note: "Dashboard Banner Update & Restart",
+          restartDelayMs: 0,
+          timeoutMs: 20 * 60 * 1000,
+        },
+        { timeoutMs: 25 * 60 * 1000 },
+      );
+      const status = response?.result?.status ?? "unknown";
+      if (status === "ok" && response?.ok !== false) {
+        const targetVersion = dashboardUpdate?.latestVersion?.trim() || null;
+        if (targetVersion) {
+          setUpdateBannerDismissedVersion(targetVersion);
+        }
+        setDashboardUpdate((prev) =>
+          prev
+            ? {
+                ...prev,
+                available: false,
+                currentVersion: prev.latestVersion ?? prev.currentVersion ?? null,
+              }
+            : prev,
+        );
+        addAlert("Argent update applied. Gateway restart scheduled.", "info", "update");
+      } else {
+        const reason = response?.result?.reason?.trim();
+        const message = reason ? `Argent update failed: ${reason}` : `Argent update ${status}`;
+        setUpdateBannerError(message);
+        addAlert(message, "urgent", "update");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Update failed";
+      setUpdateBannerError(message);
+      addAlert(`Argent update failed: ${message}`, "urgent", "update");
+    } finally {
+      setUpdateBannerRunning(false);
+    }
+  }, [addAlert, dashboardUpdate?.latestVersion, gateway.request]);
 
   // Workflow Map data fetched by WorkflowMapCanvas via gateway WebSocket RPC
 
@@ -2433,6 +2540,11 @@ function App() {
   const primaryChatAgentId = resolvePrimaryChatAgentId(
     gateway.mainSessionKey,
     gateway.defaultAgentId || DEFAULT_AGENT_ID,
+  );
+  const showDashboardUpdateBanner = Boolean(
+    dashboardUpdate?.available &&
+      dashboardUpdate.latestVersion &&
+      dashboardUpdate.latestVersion !== updateBannerDismissedVersion,
   );
   const currentAgentTtsProfile = resolveAgentTtsProfile(currentChatAgentId);
   const nativeVoiceShouldHandlePlayback =
@@ -4798,6 +4910,57 @@ function App() {
           pollingEnabled={backgroundPollingEnabled}
         />
       </div>
+
+      {showDashboardUpdateBanner && (
+        <div className="flex-shrink-0 rounded-2xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-cyan-200">
+                Update available: v{dashboardUpdate?.latestVersion}
+              </div>
+              <div className="mt-1 text-xs text-cyan-50/80">
+                Current v{dashboardUpdate?.currentVersion ?? "unknown"}
+                {dashboardUpdate?.channel ? ` · Channel ${dashboardUpdate.channel}` : ""}
+                {dashboardUpdate?.installKind === "git" &&
+                typeof dashboardUpdate.gitBehind === "number" &&
+                dashboardUpdate.gitBehind > 0
+                  ? ` · Git behind ${dashboardUpdate.gitBehind}`
+                  : ""}
+              </div>
+              {updateBannerError && (
+                <div className="mt-1 text-xs text-red-200">{updateBannerError}</div>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={
+                  dashboardUpdate?.releaseUrl || "https://github.com/ArgentAIOS/argentos/releases"
+                }
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-white/80 transition-all hover:bg-white/10 hover:text-white"
+              >
+                View release
+              </a>
+              <button
+                onClick={() => void runDashboardUpdate()}
+                disabled={updateBannerRunning || !gateway.connected}
+                className="rounded-lg bg-cyan-400/20 px-3 py-1.5 text-xs font-medium text-cyan-100 transition-all hover:bg-cyan-400/30 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {updateBannerRunning ? "Updating..." : "Update now"}
+              </button>
+              <button
+                onClick={() =>
+                  setUpdateBannerDismissedVersion(dashboardUpdate?.latestVersion?.trim() || null)
+                }
+                className="rounded-lg px-3 py-1.5 text-xs font-medium text-white/55 transition-all hover:bg-white/5 hover:text-white/80"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Workspace tabs */}
       <div className="flex-shrink-0 flex items-center gap-1 px-1">

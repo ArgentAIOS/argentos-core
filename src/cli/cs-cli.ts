@@ -28,20 +28,9 @@ function hasDependencies(dir: string): boolean {
   return fs.existsSync(path.join(dir, "node_modules"));
 }
 
-/** Resolve the actual Vite JS entrypoint for LaunchAgent use.
- *  MUST return the real .js file, NOT the .bin/ shell wrapper —
- *  LaunchAgents run it via `node <path>` which can't execute bash scripts. */
-function resolveViteEntrypoint(dir: string): string | null {
-  // Primary: direct path to vite's JS entrypoint
-  const direct = path.join(dir, "node_modules", "vite", "bin", "vite.js");
-  if (fs.existsSync(direct)) return direct;
-  // Fallback: resolve through .bin symlink to find the real JS target
-  const binWrapper = path.join(dir, "node_modules", ".bin", "vite");
-  try {
-    const resolved = fs.realpathSync(binWrapper);
-    if (resolved.endsWith(".js") && fs.existsSync(resolved)) return resolved;
-  } catch {}
-  return null;
+function resolveStaticServerEntrypoint(dir: string): string | null {
+  const direct = path.join(dir, "static-server.cjs");
+  return fs.existsSync(direct) ? direct : null;
 }
 
 /** Install dependencies */
@@ -88,21 +77,10 @@ async function installDashboardServices(options: {
     }
   }
 
-  // Resolve the actual Vite JS entrypoint. The .bin wrapper is a shell script and
-  // cannot be passed directly to `node` from a LaunchAgent.
-  const viteEntrypoint = resolveViteEntrypoint(dashboardDir);
-  if (!viteEntrypoint) {
+  const staticServerEntrypoint = resolveStaticServerEntrypoint(dashboardDir);
+  if (!staticServerEntrypoint) {
     console.error(
-      `ERROR: vite entrypoint not found at ${path.join(
-        dashboardDir,
-        "node_modules",
-        "vite",
-        "bin",
-        "vite.js",
-      )}`,
-    );
-    console.error(
-      "Fix: run 'npm install' in the dashboard directory, then retry 'argent cs install'",
+      `ERROR: dashboard static server not found at ${path.join(dashboardDir, "static-server.cjs")}`,
     );
     process.exit(1);
   }
@@ -121,11 +99,12 @@ async function installDashboardServices(options: {
   await uiService.install({
     env,
     stdout: process.stdout,
-    programArguments: [nodePath, viteEntrypoint, "preview", "--port", uiPort],
+    programArguments: [nodePath, staticServerEntrypoint],
     workingDirectory: dashboardDir,
     environment: {
       ...uiEnv,
-      VITE_PORT: uiPort,
+      PORT: uiPort,
+      API_PORT: apiPort,
     },
     description: `ArgentOS Dashboard UI (v${VERSION})`,
   });

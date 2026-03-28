@@ -81,17 +81,18 @@ export function registerMaintenanceCommands(program: Command) {
 
   program
     .command("uninstall")
-    .description("Uninstall the gateway service + local data (CLI remains)")
+    .description("Uninstall local Argent services, install footprint, and/or local data")
     .addHelpText(
       "after",
       () =>
         `\n${theme.muted("Docs:")} ${formatDocsLink("/cli/uninstall", "docs.argent.ai/cli/uninstall")}\n`,
     )
-    .option("--service", "Remove the gateway service", false)
+    .option("--service", "Remove gateway + dashboard services", false)
+    .option("--install", "Remove installed wrappers + runtime snapshot + checkout", false)
     .option("--state", "Remove state + config", false)
     .option("--workspace", "Remove workspace dirs", false)
     .option("--app", "Remove the macOS app", false)
-    .option("--all", "Remove service + state + workspace + app", false)
+    .option("--all", "Remove service + install footprint + state + workspace + app", false)
     .option("--yes", "Skip confirmation prompts", false)
     .option("--non-interactive", "Disable prompts (requires --yes)", false)
     .option("--dry-run", "Print actions without removing files", false)
@@ -99,6 +100,7 @@ export function registerMaintenanceCommands(program: Command) {
       await runCommandWithRuntime(defaultRuntime, async () => {
         await uninstallCommand(defaultRuntime, {
           service: Boolean(opts.service),
+          install: Boolean(opts.install),
           state: Boolean(opts.state),
           workspace: Boolean(opts.workspace),
           app: Boolean(opts.app),
