@@ -281,13 +281,22 @@ resolve_pnpm_runner() {
     return 0
   fi
 
-  # 2. Try system pnpm
+  # 2. Try system pnpm (PATH)
   if command -v pnpm >/dev/null 2>&1; then
     PNPM_EXEC="$(command -v pnpm)"
     return 0
   fi
 
-  # 3. Install pnpm via npm (brand new system fallback)
+  # 3. Check standard pnpm standalone install locations (not always in PATH)
+  local pnpm_home="${PNPM_HOME:-$HOME/Library/pnpm}"
+  for candidate in "$pnpm_home/pnpm" "$HOME/.local/share/pnpm/pnpm" "$HOME/.pnpm/pnpm"; do
+    if [[ -x "$candidate" ]]; then
+      PNPM_EXEC="$candidate"
+      return 0
+    fi
+  done
+
+  # 4. Install pnpm via npm (brand new system fallback)
   local npm_bin="$node_dir/npm"
   if [[ ! -x "$npm_bin" ]]; then
     npm_bin="$(command -v npm 2>/dev/null || true)"
@@ -299,11 +308,25 @@ resolve_pnpm_runner() {
       PNPM_EXEC="$(command -v pnpm)"
       return 0
     fi
-    # npm install -g may put it in node_dir
     if [[ -x "$node_dir/pnpm" ]]; then
       PNPM_EXEC="$node_dir/pnpm"
       return 0
     fi
+  fi
+
+  # 5. Last resort: install pnpm standalone
+  info "Installing pnpm via standalone installer..."
+  curl -fsSL https://get.pnpm.io/install.sh | sh - 2>/dev/null || true
+  # Re-check after install
+  for candidate in "$pnpm_home/pnpm" "$HOME/Library/pnpm/pnpm" "$HOME/.local/share/pnpm/pnpm"; do
+    if [[ -x "$candidate" ]]; then
+      PNPM_EXEC="$candidate"
+      return 0
+    fi
+  done
+  if command -v pnpm >/dev/null 2>&1; then
+    PNPM_EXEC="$(command -v pnpm)"
+    return 0
   fi
 
   return 1
