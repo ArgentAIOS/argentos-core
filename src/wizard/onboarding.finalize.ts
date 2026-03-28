@@ -592,13 +592,9 @@ export async function finalizeOnboardingWizard(
     "Next steps",
   );
 
-  await prompter.outro(
-    controlUiOpened
-      ? "Argent is online. The dashboard opened with your token; keep that tab as the active control surface."
-      : seededInBackground
-        ? "Argent is online. The web UI was seeded in the background; open it anytime with the tokenized link above."
-        : "Argent is online. Use the tokenized dashboard link above to control it.",
-  );
+  // Use note instead of outro — outro blocks waiting for input,
+  // which prevents the installer from continuing to the app launch step.
+  await prompter.note("Argent is online. Finishing setup...", "Ready");
 
   return { launchedTui };
 }
