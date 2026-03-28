@@ -408,8 +408,7 @@ export async function finalizeOnboardingWizard(
 
   await prompter.note(
     [
-      `Argent dashboard: ${links.httpUrl}`,
-      tokenParam ? `Web UI (with token): ${authedUrl}` : undefined,
+      "Argent dashboard: http://127.0.0.1:8080/",
       `Gateway WS: ${links.wsUrl}`,
       gatewayStatusLine,
       "Docs: https://docs.argent.ai/web/control-ui",
@@ -447,65 +446,19 @@ export async function finalizeOnboardingWizard(
       "Dashboard access",
     );
 
-    hatchChoice = await prompter.select({
-      message: "How do you want to meet Argent first?",
-      options: [
-        { value: "tui", label: "Meet Argent in the terminal (recommended)" },
-        { value: "web", label: "Open the Argent dashboard" },
-        { value: "later", label: "Do this later" },
-      ],
-      initialValue: "tui",
-    });
-
-    if (hatchChoice === "tui") {
-      restoreTerminalState("pre-onboarding tui");
-      await runTui({
-        url: links.wsUrl,
-        token: settings.authMode === "token" ? settings.gatewayToken : undefined,
-        password: settings.authMode === "password" ? nextConfig.gateway?.auth?.password : "",
-        // Safety: onboarding TUI should not auto-deliver to lastProvider/lastTo.
-        deliver: false,
-        message: hasBootstrap
-          ? "Hey — this is our first conversation. Start the first-run ritual from BOOTSTRAP.md and guide it naturally."
-          : undefined,
-      });
-      launchedTui = true;
-    } else if (hatchChoice === "web") {
-      const browserSupport = await detectBrowserOpenSupport();
-      if (browserSupport.ok) {
-        controlUiOpened = await openUrl(authedUrl);
-        if (!controlUiOpened) {
-          controlUiOpenHint = formatControlUiSshHint({
-            port: settings.port,
-            basePath: controlUiBasePath,
-            token: settings.gatewayToken,
-          });
-        }
-      } else {
-        controlUiOpenHint = formatControlUiSshHint({
-          port: settings.port,
-          basePath: controlUiBasePath,
-          token: settings.gatewayToken,
-        });
-      }
-      await prompter.note(
-        [
-          `Dashboard link (with token): ${authedUrl}`,
-          controlUiOpened
-            ? "Opened in your browser. Keep that tab open as Argent's control surface."
-            : "Open this URL in a browser on this machine to reach Argent's control surface.",
-          controlUiOpenHint,
-        ]
-          .filter(Boolean)
-          .join("\n"),
-        "Dashboard ready",
-      );
-    } else {
-      await prompter.note(
-        `When you're ready, open the dashboard with: ${formatCliCommand("argent dashboard --no-open")}`,
-        "Later",
-      );
-    }
+    // App download and launch choice is handled by the installer script after onboarding.
+    // Just show a note about what's coming next.
+    hatchChoice = "later";
+    await prompter.note(
+      [
+        "Argent.app will be installed next (downloaded from argentos.ai).",
+        "",
+        "You can also access Argent at:",
+        "  Dashboard: http://127.0.0.1:8080/",
+        `  CLI: ${formatCliCommand("argent chat")}`,
+      ].join("\n"),
+      "Almost there",
+    );
   } else if (opts.skipUi) {
     await prompter.note("Skipping Control UI/TUI prompts.", "Control UI");
   }
