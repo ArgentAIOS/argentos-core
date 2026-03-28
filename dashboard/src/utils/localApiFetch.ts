@@ -1,8 +1,22 @@
 const DEFAULT_TIMEOUT_MS = 10_000;
+const CONTROL_SETTINGS_KEY = "argent.control.settings.v1";
 
 function isNativeShell(): boolean {
   if (typeof window === "undefined") return false;
   return Boolean(window.webkit?.messageHandlers);
+}
+
+function dashboardApiTokenFromStorage(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(CONTROL_SETTINGS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { token?: unknown };
+    const token = typeof parsed.token === "string" ? parsed.token.trim() : "";
+    return token || null;
+  } catch {
+    return null;
+  }
 }
 
 function dashboardApiTokenFromUrl(): string | null {
@@ -10,7 +24,7 @@ function dashboardApiTokenFromUrl(): string | null {
   const params = new URLSearchParams(window.location.search);
   // Accept both api_token (explicit) and token (gateway token — used for both WS and API)
   const token = (params.get("api_token") ?? params.get("token"))?.trim();
-  return token ? token : null;
+  return token || dashboardApiTokenFromStorage();
 }
 
 function directDashboardApiUrl(path: string): string | null {
