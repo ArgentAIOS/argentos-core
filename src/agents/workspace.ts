@@ -13,9 +13,9 @@ export function resolveDefaultAgentWorkspaceDir(
 ): string {
   const profile = env.ARGENT_PROFILE?.trim();
   if (profile && profile.toLowerCase() !== "default") {
-    return path.join(homedir(), ".argent", `workspace-${profile}`);
+    return path.join(homedir(), ".argentos", `workspace-${profile}`);
   }
-  return path.join(homedir(), ".argent", "workspace");
+  return path.join(homedir(), ".argentos", "workspace");
 }
 
 export const DEFAULT_AGENT_WORKSPACE_DIR = resolveDefaultAgentWorkspaceDir();

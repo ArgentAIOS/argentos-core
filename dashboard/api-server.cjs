@@ -10231,7 +10231,9 @@ async function buildKnowledgeAgentOptions(config, defaultAgentId) {
   const familyOptions = [];
   const stateDir = resolveAlignmentStateDir();
   const agentsDir = path.join(stateDir, "agents");
-  const workspaceMain = path.join(stateDir, "workspace-main");
+  const workspaceMain = fs.existsSync(path.join(stateDir, "workspace-main"))
+    ? path.join(stateDir, "workspace-main")
+    : path.join(stateDir, "workspace");
   try {
     if (fs.existsSync(workspaceMain)) {
       fsOptions.push({ id: "main", label: "main" });
@@ -12518,7 +12520,10 @@ function resolveAlignmentStateDir() {
 
 const ALIGNMENT_STATE_DIR = resolveAlignmentStateDir();
 const AGENTS_DIR = path.join(ALIGNMENT_STATE_DIR, "agents");
-const WORKSPACE_MAIN = path.join(ALIGNMENT_STATE_DIR, "workspace-main");
+// Prefer workspace-main (existing installs), fall back to workspace (new/public installs)
+const WORKSPACE_MAIN = fs.existsSync(path.join(ALIGNMENT_STATE_DIR, "workspace-main"))
+  ? path.join(ALIGNMENT_STATE_DIR, "workspace-main")
+  : path.join(ALIGNMENT_STATE_DIR, "workspace");
 const ALIGNMENT_BACKUP_DIR = path.join(ALIGNMENT_STATE_DIR, "backups");
 
 // Known alignment doc filenames

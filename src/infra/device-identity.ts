@@ -17,7 +17,12 @@ type StoredIdentity = {
   createdAtMs: number;
 };
 
-const DEFAULT_DIR = path.join(os.homedir(), ".argent", "identity");
+// Prefer .argentos (canonical), fall back to .argent (legacy) for migration reads
+const DEFAULT_DIR = fs.existsSync(path.join(os.homedir(), ".argentos", "identity"))
+  ? path.join(os.homedir(), ".argentos", "identity")
+  : fs.existsSync(path.join(os.homedir(), ".argent", "identity"))
+    ? path.join(os.homedir(), ".argent", "identity")
+    : path.join(os.homedir(), ".argentos", "identity");
 const DEFAULT_FILE = path.join(DEFAULT_DIR, "device.json");
 
 function ensureDir(filePath: string) {
