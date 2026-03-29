@@ -241,6 +241,8 @@ describe("buildServiceEnvironment", () => {
     }
     expect(env.ARGENT_GATEWAY_PORT).toBe("18789");
     expect(env.ARGENT_GATEWAY_TOKEN).toBe("secret");
+    expect(env.ARGENT_STATE_DIR).toBe(path.join("/home/user", ".argentos"));
+    expect(env.ARGENT_CONFIG_PATH).toBe(path.join("/home/user", ".argentos", "argent.json"));
     expect(env.ARGENT_SERVICE_MARKER).toBe("argent");
     expect(env.ARGENT_SERVICE_KIND).toBe("gateway");
     expect(typeof env.ARGENT_SERVICE_VERSION).toBe("string");
@@ -268,5 +270,7 @@ describe("buildNodeServiceEnvironment", () => {
       env: { HOME: "/home/user" },
     });
     expect(env.HOME).toBe("/home/user");
+    expect(env.ARGENT_STATE_DIR).toBe(path.join("/home/user", ".argentos"));
+    expect(env.ARGENT_CONFIG_PATH).toBe(path.join("/home/user", ".argentos", "argent.json"));
   });
 });

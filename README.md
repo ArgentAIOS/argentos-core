@@ -28,6 +28,8 @@ ArgentOS is a personal AI operating system that runs on your hardware, speaks th
 
 ## Install
 
+**Prerequisite:** [Homebrew](https://brew.sh) (macOS) — the installer uses it for PostgreSQL, Redis, and system services.
+
 ```bash
 curl -fsSL https://argentos.ai/install.sh | bash
 ```

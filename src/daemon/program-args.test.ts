@@ -198,4 +198,38 @@ describe("resolveGatewayProgramArguments", () => {
       "18789",
     ]);
   });
+
+  it("prefers the current source checkout over an installed runtime snapshot", async () => {
+    const repoDist = path.resolve("/Users/dev/argentos/dist/index.js");
+    const installedCli = path.resolve("/Users/test/.argentos/lib/node_modules/argentos/argent.mjs");
+    const installedDist = path.resolve(
+      "/Users/test/.argentos/lib/node_modules/argentos/dist/index.js",
+    );
+    const repoGitDir = path.resolve("/Users/dev/argentos/.git");
+    process.argv = ["node", repoDist];
+    process.env.HOME = "/Users/test";
+    delete process.env.ARGENT_STATE_DIR;
+    fsMocks.realpath.mockImplementation(async (target: string) => target);
+    fsMocks.access.mockImplementation(async (target: string) => {
+      if (
+        target === installedCli ||
+        target === installedDist ||
+        target === repoDist ||
+        target === repoGitDir
+      ) {
+        return;
+      }
+      throw new Error(`missing: ${target}`);
+    });
+
+    const result = await resolveGatewayProgramArguments({ port: 18789 });
+
+    expect(result.programArguments).toEqual([
+      process.execPath,
+      repoDist,
+      "gateway",
+      "--port",
+      "18789",
+    ]);
+  });
 });
