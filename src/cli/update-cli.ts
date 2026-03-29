@@ -722,12 +722,17 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     return;
   }
 
-  const root =
-    (await resolveArgentPackageRoot({
-      moduleUrl: import.meta.url,
-      argv1: process.argv[1],
-      cwd: process.cwd(),
-    })) ?? process.cwd();
+  // For hosted git installs: ARGENT_GIT_DIR points to the real source checkout.
+  // Without this, the update resolves root to the runtime snapshot (~/.argentos/lib/...)
+  // which has no .git, causing installKind to be misclassified as "package".
+  const gitDirOverride = process.env.ARGENT_GIT_DIR?.trim();
+  const root = gitDirOverride
+    ? path.resolve(gitDirOverride)
+    : ((await resolveArgentPackageRoot({
+        moduleUrl: import.meta.url,
+        argv1: process.argv[1],
+        cwd: process.cwd(),
+      })) ?? process.cwd());
 
   const updateStatus = await checkUpdateStatus({
     root,
@@ -1169,12 +1174,15 @@ export async function updateWizardCommand(opts: UpdateWizardOptions = {}): Promi
     return;
   }
 
-  const root =
-    (await resolveArgentPackageRoot({
-      moduleUrl: import.meta.url,
-      argv1: process.argv[1],
-      cwd: process.cwd(),
-    })) ?? process.cwd();
+  // For hosted git installs: prefer ARGENT_GIT_DIR over snapshot root
+  const gitDirOverride2 = process.env.ARGENT_GIT_DIR?.trim();
+  const root = gitDirOverride2
+    ? path.resolve(gitDirOverride2)
+    : ((await resolveArgentPackageRoot({
+        moduleUrl: import.meta.url,
+        argv1: process.argv[1],
+        cwd: process.cwd(),
+      })) ?? process.cwd());
 
   const [updateStatus, configSnapshot] = await Promise.all([
     checkUpdateStatus({
