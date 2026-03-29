@@ -37,9 +37,7 @@ describe("resolveGatewayStateDir", () => {
 describe("resolveGatewayConfigPath", () => {
   it("derives the config path from the resolved state dir", () => {
     const env = { HOME: "/Users/test" };
-    expect(resolveGatewayConfigPath(env)).toBe(
-      path.join("/Users/test", ".argentos", "argent.json"),
-    );
+    expect(resolveGatewayConfigPath(env)).toBe(path.join("/Users/test", ".argentos", "argent.json"));
   });
 
   it("respects explicit config path overrides", () => {

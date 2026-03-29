@@ -211,12 +211,7 @@ describe("resolveGatewayProgramArguments", () => {
     delete process.env.ARGENT_STATE_DIR;
     fsMocks.realpath.mockImplementation(async (target: string) => target);
     fsMocks.access.mockImplementation(async (target: string) => {
-      if (
-        target === installedCli ||
-        target === installedDist ||
-        target === repoDist ||
-        target === repoGitDir
-      ) {
+      if (target === installedCli || target === installedDist || target === repoDist || target === repoGitDir) {
         return;
       }
       throw new Error(`missing: ${target}`);

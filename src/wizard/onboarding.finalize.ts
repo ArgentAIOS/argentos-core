@@ -484,33 +484,15 @@ export async function finalizeOnboardingWizard(
     // Case 2: Profile has completion but no cache - auto-fix silently
     await ensureCompletionCacheExists(cliName);
   } else if (!completionStatus.profileInstalled) {
-    // Case 3: No completion at all - prompt to install
-    const installShellCompletion = await prompter.confirm({
-      message: `Enable ${completionStatus.shell} shell completion for ${cliName}?`,
-      initialValue: true,
-    });
-    if (installShellCompletion) {
-      // Generate cache first (required for fast shell startup)
-      const cacheGenerated = await ensureCompletionCacheExists(cliName);
-      if (cacheGenerated) {
-        // Install to shell profile
-        await installCompletion(completionStatus.shell, true, cliName);
-        const profileHint =
-          completionStatus.shell === "zsh"
-            ? "~/.zshrc"
-            : completionStatus.shell === "bash"
-              ? "~/.bashrc"
-              : "~/.config/fish/config.fish";
-        await prompter.note(
-          `Shell completion installed. Restart your shell or run: source ${profileHint}`,
-          "CLI ergonomics",
-        );
-      } else {
-        await prompter.note(
-          `Failed to generate completion cache. Run \`${cliName} completion --install\` later.`,
-          "CLI ergonomics",
-        );
-      }
+    // Case 3: No completion — auto-install without prompting (prompter.confirm blocks in installer)
+    const cacheGenerated = await ensureCompletionCacheExists(cliName);
+    if (cacheGenerated) {
+      await installCompletion(completionStatus.shell, true, cliName);
+      console.log(
+        `  Shell completion: installed for ${completionStatus.shell}. Restart your shell to activate.`,
+      );
+    } else {
+      console.log(`  Shell completion: run \`${cliName} completion --install\` later.`);
     }
   }
   // Case 4: Both profile and cache exist (using cached version) - all good, nothing to do
@@ -539,18 +521,21 @@ export async function finalizeOnboardingWizard(
       });
     }
 
-    await prompter.note(
-      [
-        `Dashboard link (with token): ${authedUrl}`,
-        controlUiOpened
-          ? "Opened in your browser. Keep that tab open as Argent's control surface."
-          : "Open this URL in a browser on this machine to reach Argent's control surface.",
-        controlUiOpenHint,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      "Dashboard ready",
-    );
+    console.log(`  Dashboard: ${authedUrl}`);
+    if (false)
+      await prompter.note(
+        // disabled — blocks installer
+        [
+          `Dashboard link (with token): ${authedUrl}`,
+          controlUiOpened
+            ? "Opened in your browser. Keep that tab open as Argent's control surface."
+            : "Open this URL in a browser on this machine to reach Argent's control surface.",
+          controlUiOpenHint,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        "Dashboard ready",
+      );
   }
 
   const webSearchKey = (nextConfig.tools?.web?.search?.apiKey ?? "").trim();

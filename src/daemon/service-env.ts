@@ -1,5 +1,6 @@
 import path from "node:path";
 import { VERSION } from "../version.js";
+import { resolveGatewayConfigPath, resolveGatewayStateDir } from "./paths.js";
 import {
   GATEWAY_SERVICE_KIND,
   GATEWAY_SERVICE_MARKER,
@@ -12,7 +13,6 @@ import {
   resolveNodeSystemdServiceName,
   resolveNodeWindowsTaskName,
 } from "./constants.js";
-import { resolveGatewayConfigPath, resolveGatewayStateDir } from "./paths.js";
 
 export type MinimalServicePathOptions = {
   platform?: NodeJS.Platform;
