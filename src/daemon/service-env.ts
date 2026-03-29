@@ -1,5 +1,6 @@
 import path from "node:path";
 import { VERSION } from "../version.js";
+import { resolveGatewayConfigPath, resolveGatewayStateDir } from "./paths.js";
 import {
   GATEWAY_SERVICE_KIND,
   GATEWAY_SERVICE_MARKER,
@@ -163,8 +164,8 @@ export function buildServiceEnvironment(params: {
     launchdLabel ||
     (process.platform === "darwin" ? resolveGatewayLaunchAgentLabel(profile) : undefined);
   const systemdUnit = `${resolveGatewaySystemdServiceName(profile)}.service`;
-  const stateDir = env.ARGENT_STATE_DIR;
-  const configPath = env.ARGENT_CONFIG_PATH;
+  const stateDir = resolveGatewayStateDir(env);
+  const configPath = resolveGatewayConfigPath(env);
   return {
     HOME: env.HOME,
     PATH: buildMinimalServicePath({ env }),
@@ -186,8 +187,8 @@ export function buildNodeServiceEnvironment(params: {
   env: Record<string, string | undefined>;
 }): Record<string, string | undefined> {
   const { env } = params;
-  const stateDir = env.ARGENT_STATE_DIR;
-  const configPath = env.ARGENT_CONFIG_PATH;
+  const stateDir = resolveGatewayStateDir(env);
+  const configPath = resolveGatewayConfigPath(env);
   return {
     HOME: env.HOME,
     PATH: buildMinimalServicePath({ env }),

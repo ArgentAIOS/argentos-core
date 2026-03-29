@@ -87,7 +87,7 @@ const PUBLIC_CORE_BLOCKED_API_PATTERNS = [
 ];
 
 function getDashboardSurfaceProfile(config) {
-  return config?.distribution?.surfaceProfile === "full" ? "full" : "public-core";
+  return config?.distribution?.surfaceProfile === "public-core" ? "public-core" : "full";
 }
 
 function normalizeSurfaceApiPath(req) {
