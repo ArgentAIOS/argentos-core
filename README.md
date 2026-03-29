@@ -1,71 +1,95 @@
-# ArgentOS Core
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ArgentAIOS/.github/main/profile/banner.png" alt="ArgentOS" width="100%" />
+</p>
+
+<h1 align="center">ArgentOS Core</h1>
 
 <p align="center">
-  <strong>Self-hosted personal AI operating system surface</strong>
+  <strong>The Operating System for Personal AI</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/ArgentAIOS/argentos-core/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ArgentAIOS/argentos-core/ci.yml?style=for-the-badge" alt="CI status"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
+  <a href="https://github.com/ArgentAIOS/argentos-core/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ArgentAIOS/argentos-core/ci.yml?style=for-the-badge" alt="CI" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT" /></a>
+  <a href="https://github.com/ArgentAIOS/argentos-core/stargazers"><img src="https://img.shields.io/github/stars/ArgentAIOS/argentos-core?style=for-the-badge" alt="Stars" /></a>
+  <a href="https://discord.gg/argentos"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" /></a>
 </p>
 
-**ArgentOS Core** is the self-hosted Core surface of ArgentOS: persistent chat, memory, tasks, docs/canvas, browser-assisted work, model routing, and companion apps, without the business-only operator layers.
+<p align="center">
+  <a href="https://argentos.ai">Website</a> &middot;
+  <a href="https://docs.argent.ai">Docs</a> &middot;
+  <a href="https://marketplace.argentos.ai">Marketplace</a> &middot;
+  <a href="https://discord.gg/argentos">Discord</a>
+</p>
 
-This repo is intended to hold the public Core product boundary. Business and enterprise surfaces are intentionally excluded.
+---
 
-## What Core Includes
+ArgentOS is a personal AI operating system that runs on your hardware, speaks through your channels, remembers your context, and works autonomously on your behalf. Core is the free, open-source foundation.
 
-- persistent chat and session flow
-- memory recall and timeline
-- tasks and projects
-- doc panel / canvas interaction
-- browser and web research tools
-- local and hosted model routing
-- basic knowledge/library access
-- macOS, iOS, and Android app surfaces
-
-## What Core Does Not Include
-
-- workforce / worker-admin surfaces
-- org licensing and business gating
-- enterprise-only onboarding / workforce setup layers
-- mixed admin controls that have not been cleanly separated yet
-
-## Current Install Status
-
-The currently validated install path in this repo is:
-
-- **macOS from a built checkout**
-
-That path is exercised by:
+## Install
 
 ```bash
-pnpm test:install:local:smoke
+curl -fsSL https://argentos.ai/install.sh | bash
 ```
 
-Hosted one-liner installers and update distribution are separate release rails and are still being hardened alongside this repo.
+macOS first. The installer handles Node, pnpm, PostgreSQL, Redis, Argent.app, and onboarding automatically.
 
-## Install From Source (macOS)
-
-Runtime requirement:
-
-- Node 22+
+**Or from source:**
 
 ```bash
 git clone https://github.com/ArgentAIOS/argentos-core.git
 cd argentos-core
-
-pnpm install
-pnpm build
+pnpm install && pnpm build
 bash install.sh
 ```
 
-That installer sets up:
+## What's in Core
 
-- state in `~/.argentos`
-- workspace in `~/argent`
-- CLI wrappers in `~/bin`
-- gateway + dashboard LaunchAgents
+| System                | What It Does                                                                   |
+| --------------------- | ------------------------------------------------------------------------------ |
+| **Memory**            | SQLite + pgvector hybrid search, auto-capture, entity tracking, embeddings     |
+| **Heartbeat**         | Periodic accountability, contract/promise system, scoring                      |
+| **Contemplation**     | Always-on thinking loop, local models via Ollama/LM Studio, episode journaling |
+| **Channels**          | Telegram, Discord, Slack, WhatsApp, Signal, iMessage, and more                 |
+| **Workflows**         | Visual multi-agent pipeline builder with 62 connector integrations             |
+| **Dashboard**         | React + WebGL avatar, chat, task board, alignment docs editor                  |
+| **62 Connectors**     | Stripe, HubSpot, GitHub, Notion, Salesforce, Jira, Twilio, and dozens more     |
+| **Intent System**     | Three-tier hierarchical policy engine for safe agent behavior                  |
+| **Model Router**      | Complexity scoring with local/fast/balanced/powerful tier routing              |
+| **SIS**               | Self-improving system — lesson extraction from experience                      |
+| **Knowledge Library** | RAG with agent-level ACL, PDF/DOCX/XLSX ingestion                              |
+| **Encrypted Secrets** | AES-256-GCM credential storage with OS keychain integration                    |
+| **Tasks & Projects**  | Full CRUD with priorities, dependencies, FTS                                   |
+| **Alignment Docs**    | SOUL.md, IDENTITY.md, USER.md — define who your agent is                       |
+| **Backup**            | SQLite backup with local/S3/R2 upload, compression, restore                    |
+
+## Marketplace
+
+The [ArgentOS Marketplace](https://marketplace.argentos.ai) has 116+ packages:
+
+```bash
+argent marketplace install <package>
+```
+
+Browse connectors, skills, plugins, and workflow templates. Every package is scanned with VirusTotal.
+
+## Architecture
+
+```
+src/
+├── memory/           # Memo + MemU — hybrid search, embeddings, entity tracking
+├── infra/            # Contemplation, heartbeat, SIS, workflows, backup
+├── agents/           # Agent runtime, tools, intent system, model router
+├── channels/         # Telegram, Discord, Slack, WhatsApp, and more
+├── data/             # Storage adapters (SQLite, PostgreSQL, Redis)
+├── gateway/          # WebSocket control plane, server methods
+├── models/           # Model router, provider registry
+└── cli/              # CLI commands
+
+dashboard/            # React dashboard (36K+ LOC)
+tools/aos/            # 62 connector harnesses
+apps/                 # macOS, iOS, Android apps
+```
 
 ## Development
 
@@ -75,25 +99,44 @@ pnpm build
 pnpm test
 ```
 
-Useful checks:
+## Contributing
 
-```bash
-pnpm test:install:local:smoke
-pnpm test:install:smoke
-```
+We want Core to be community-driven:
 
-## Public-Core Boundary
+1. **Star this repo** — it helps more than you think
+2. **Join [Discord](https://discord.gg/argentos)** — this is where the community lives
+3. **File issues** — bugs, feature requests, questions
+4. **Submit PRs** — we review everything and good contributions ship fast
+5. **Build connectors** — the pattern is documented, each one helps the whole ecosystem
 
-This repo is exported from the private source repo using a packaging boundary contract.
+TypeScript (ESM), strict typing, Oxlint + Oxfmt. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
-The source-of-truth boundary artifacts live in the private repo and drive export into this repo:
+## Business & Enterprise
 
-- `docs/argent/public-core-denylist.json`
-- `docs/argent/public-core-surface-contract.json`
-- `scripts/export-public-core.ts`
+Core is the free foundation. [ArgentOS Business](https://argentos.ai/business) adds:
 
-The Core README is also generated from that boundary workflow so it can stay product-correct across exports.
+- Multi-agent workforce management
+- Execution worker with approval workflows
+- Job orchestrator for team scheduling
+- Industry-specific intent packs (legal, healthcare, MSP, finance)
+- Operations dashboard (Workflow Map, Org Chart, Workloads)
+
+## Links
+
+|                 |                                                            |
+| --------------- | ---------------------------------------------------------- |
+| **Website**     | [argentos.ai](https://argentos.ai)                         |
+| **Docs**        | [docs.argent.ai](https://docs.argent.ai)                   |
+| **Marketplace** | [marketplace.argentos.ai](https://marketplace.argentos.ai) |
+| **Discord**     | [discord.gg/argentos](https://discord.gg/argentos)         |
+| **X**           | [@ArgentAIOS](https://x.com/ArgentAIOS)                    |
 
 ## License
 
-MIT
+MIT License. See [LICENSE](LICENSE) for details.
+
+---
+
+<p align="center">
+  <sub>Built in Texas. Runs on your hardware. Answers to you.</sub>
+</p>

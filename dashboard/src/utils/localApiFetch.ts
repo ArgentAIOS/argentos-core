@@ -7,7 +7,9 @@ function isNativeShell(): boolean {
 
 function dashboardApiTokenFromUrl(): string | null {
   if (typeof window === "undefined") return null;
-  const token = new URLSearchParams(window.location.search).get("api_token")?.trim();
+  const params = new URLSearchParams(window.location.search);
+  // Accept both api_token (explicit) and token (gateway token — used for both WS and API)
+  const token = (params.get("api_token") ?? params.get("token"))?.trim();
   return token ? token : null;
 }
 
@@ -90,8 +92,10 @@ export async function fetchLocalApi(
       }
     }
   }
+  // Always include auth headers — api-server may require DASHBOARD_API_TOKEN
+  const authedInit = withDashboardApiAuth(init);
   try {
-    return await fetchWithTimeout(path, init, timeoutMs);
+    return await fetchWithTimeout(path, authedInit, timeoutMs);
   } catch (primaryErr) {
     if (direct) {
       try {

@@ -587,14 +587,10 @@ export async function finalizeOnboardingWizard(
     "Web search (optional)",
   );
 
-  await prompter.note(
-    'Next: https://argent.ai/showcase ("What People Are Building").',
-    "Next steps",
-  );
-
-  // Use note instead of outro — outro blocks waiting for input,
-  // which prevents the installer from continuing to the app launch step.
-  await prompter.note("Argent is online. Finishing setup...", "Ready");
+  // Use console.log instead of prompter.note/outro — clack prompts block
+  // the terminal when piped through /dev/tty, preventing the installer from
+  // continuing to the Argent.app download and launch steps.
+  console.log("\n  ✓ Argent is online. Finishing setup...\n");
 
   return { launchedTui };
 }
