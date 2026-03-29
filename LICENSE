@@ -1,6 +1,7 @@
 MIT License
 
-Copyright (c) 2025-2026 Jason Brashear / ArgentOS
+Copyright (c) 2025-2026 AOS — An ArgentOS Project
+Created by Jason Brashear
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +20,18 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+Acknowledgments
+
+ArgentOS is built on the shoulders of excellent open-source work:
+
+- pi-mono (https://github.com/badlogic/pi-mono) by Mario Zechner (@badlogic)
+  The agent runtime core that ArgentOS builds upon. pi-mono provides the
+  foundational agent loop, session management, and tool execution framework.
+
+- OpenClaw by Peter Steinberger
+  The original fork point that gave ArgentOS its launching pad. OpenClaw's
+  architecture informed early design decisions for the gateway, plugin system,
+  and channel infrastructure.
