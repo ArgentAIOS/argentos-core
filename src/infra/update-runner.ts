@@ -817,9 +817,10 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       // No dashboard dir — skip
     }
 
-    // Push Drizzle schema to create any new PG tables added in this release.
-    // Non-fatal: skip if drizzle-kit isn't available or PG isn't configured.
-    await runCommand(["npx", "--yes", "drizzle-kit", "push", "--force"], {
+    // Create any missing PG tables (safe — uses CREATE TABLE IF NOT EXISTS only).
+    // Non-fatal: skip if psql isn't available or PG isn't configured.
+    const ensureTablesScript = path.join(gitRoot, "scripts", "ensure-pg-tables.sh");
+    await runCommand(["bash", ensureTablesScript], {
       cwd: gitRoot,
       timeoutMs,
     }).catch(() => null);

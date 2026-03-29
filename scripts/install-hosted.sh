@@ -907,11 +907,11 @@ install_git() {
 
   provision_core_storage_stack
 
-  # Push Drizzle schema to create all PG tables (knowledge, memory, tasks, etc.)
-  # Must run AFTER PG is provisioned and pnpm install has made drizzle-kit available.
+  # Create all PG tables (knowledge, memory, tasks, etc.) using safe CREATE IF NOT EXISTS.
+  # Must run AFTER PG is provisioned.
   info "Creating PostgreSQL schema tables..."
-  PATH="$(dirname "$NODE_BIN"):$PATH" run_pnpm "$GIT_DIR" exec drizzle-kit push --force 2>/dev/null \
-    || warn "Schema push failed — run manually: cd ~/argentos && npx drizzle-kit push --force"
+  bash "$GIT_DIR/scripts/ensure-pg-tables.sh" 2>/dev/null \
+    || warn "Table creation failed — run manually: bash ~/argentos/scripts/ensure-pg-tables.sh"
 
   # macOS: Download Argent.app from R2 BEFORE onboarding (runs during service setup)
   if [[ "$(uname -s)" == "Darwin" ]]; then
