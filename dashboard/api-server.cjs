@@ -74,8 +74,6 @@ const PUBLIC_CORE_BLOCKED_API_PATTERNS = [
   "/api/settings/auth",
   "/api/settings/cors-allowlist/**",
   "/api/settings/filesystem-allowlist/**",
-  "/api/settings/gateway/**",
-  "/api/settings/database/**",
   "/api/settings/pairing",
   "/api/settings/load-profile",
   "/api/settings/memory-v3/**",

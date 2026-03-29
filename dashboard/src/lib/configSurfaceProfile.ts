@@ -6,12 +6,9 @@ export const PUBLIC_CORE_BLOCKED_CONFIG_TABS = new Set<string>([
   "capabilities",
   "intent",
   "security",
-  "gateway",
-  "database",
   "devices",
   "observability",
   "license",
-  "logs",
 ]);
 
 export function parseDashboardSurfaceProfile(
