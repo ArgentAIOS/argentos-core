@@ -10029,10 +10029,10 @@ function readNudges() {
   } catch (err) {
     console.error("[Nudges] Failed to read:", err.message);
   }
-  // Auto-seed defaults on first load
+  // Auto-seed defaults on first load — nudges ship disabled by default
   const defaults = {
     version: 1,
-    globalEnabled: true,
+    globalEnabled: false,
     nudges: DEFAULT_NUDGES.map((n) => ({ ...n, createdAt: Date.now() })),
   };
   writeNudges(defaults);

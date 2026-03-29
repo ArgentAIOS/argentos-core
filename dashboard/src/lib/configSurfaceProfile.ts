@@ -10,7 +10,6 @@ export const PUBLIC_CORE_BLOCKED_CONFIG_TABS = new Set<string>([
   "database",
   "devices",
   "observability",
-  "marketplace",
   "license",
   "logs",
 ]);
