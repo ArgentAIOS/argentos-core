@@ -93,7 +93,6 @@ import {
   isDashboardModeAllowed,
   isWorkforceSurfaceAllowed,
   parseDashboardMode,
-  parseDashboardSurfaceProfile,
   type DashboardMode,
   type DashboardSurfaceProfile,
 } from "./lib/configSurfaceProfile";
@@ -1283,18 +1282,41 @@ function App() {
     let cancelled = false;
     const loadSurfaceProfile = async () => {
       try {
-        const response = await fetchLocalApi("/api/settings/agent/raw-config", {}, 0);
-        const payload = (await response.json()) as { raw?: string };
+        // Use the lightweight /api/surface-profile endpoint first — it's never
+        // blocked, even in public-core mode. Only fall back to raw-config for
+        // full-surface installs that also need dashboardMode from config.
+        const spResponse = await fetchLocalApi("/api/surface-profile", {}, 5000);
+        const spData = (await spResponse.json()) as { surfaceProfile?: string };
+        const detectedProfile: DashboardSurfaceProfile =
+          spData?.surfaceProfile === "public-core" ? "public-core" : "full";
+
         if (!cancelled) {
-          const nextSurfaceProfile = parseDashboardSurfaceProfile(payload?.raw);
-          const configDashboardMode = parseDashboardMode(payload?.raw, nextSurfaceProfile);
-          const storedDashboardMode = readStoredDashboardMode();
-          const nextDashboardMode =
-            storedDashboardMode && isDashboardModeAllowed(storedDashboardMode, nextSurfaceProfile)
-              ? storedDashboardMode
-              : configDashboardMode;
-          setSurfaceProfile(nextSurfaceProfile);
-          setDashboardMode(nextDashboardMode);
+          setSurfaceProfile(detectedProfile);
+          if (detectedProfile === "public-core") {
+            // Public Core: personal mode only, skip raw-config call (it's blocked)
+            setDashboardMode("personal");
+          } else {
+            // Full surface: load raw config for dashboardMode
+            try {
+              const response = await fetchLocalApi("/api/settings/agent/raw-config", {}, 0);
+              const payload = (await response.json()) as { raw?: string };
+              if (!cancelled) {
+                const configDashboardMode = parseDashboardMode(payload?.raw, detectedProfile);
+                const storedDashboardMode = readStoredDashboardMode();
+                const nextDashboardMode =
+                  storedDashboardMode &&
+                  isDashboardModeAllowed(storedDashboardMode, detectedProfile)
+                    ? storedDashboardMode
+                    : configDashboardMode;
+                setDashboardMode(nextDashboardMode);
+              }
+            } catch {
+              if (!cancelled) {
+                const storedDashboardMode = readStoredDashboardMode();
+                setDashboardMode(storedDashboardMode === "operations" ? "operations" : "personal");
+              }
+            }
+          }
         }
       } catch {
         if (!cancelled) {
@@ -2378,6 +2400,8 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     const loadRuntimeProfile = async () => {
+      // load-profile is blocked in public-core mode
+      if (surfaceProfile === "public-core") return;
       try {
         const response = await fetchLocalApi("/api/settings/load-profile");
         if (!response.ok) {
@@ -2403,7 +2427,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [surfaceProfile]);
 
   // Connect to the Gateway (must be before hooks that depend on it)
   const gateway = useGateway({

@@ -131,6 +131,14 @@ function isBlockedInPublicCore(routePath) {
   );
 }
 
+// Lightweight surface profile endpoint — always allowed, even in public-core mode.
+// Dashboard uses this to detect its mode before calling any blocked routes.
+app.get("/api/surface-profile", (_req, res) => {
+  const config = readArgentConfig();
+  const surfaceProfile = getDashboardSurfaceProfile(config);
+  res.json({ surfaceProfile });
+});
+
 app.use("/api", (req, res, next) => {
   if (req.method === "OPTIONS") return next();
   const surfaceProfile = getDashboardSurfaceProfile(readArgentConfig());
