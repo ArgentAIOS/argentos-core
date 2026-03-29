@@ -21,13 +21,13 @@ export function createGatewayCloseHandler(params: {
   canvasHostServer: CanvasHostServer | null;
   stopChannel: (name: ChannelId, accountId?: string) => Promise<void>;
   pluginServices: PluginServicesHandle | null;
-  cron?: { stop?: () => void } | null;
-  heartbeatRunner?: HeartbeatRunner | null;
-  contemplationRunner?: ContemplationRunner | null;
-  executionWorkerRunner?: ExecutionWorkerRunner | null;
-  jobOrchestratorRunner?: JobOrchestratorRunner | null;
-  sisRunner?: SisRunner | null;
-  consciousnessKernelRunner?: ConsciousnessKernelRunner | null;
+  cron: { stop: () => void };
+  heartbeatRunner: HeartbeatRunner;
+  contemplationRunner: ContemplationRunner;
+  executionWorkerRunner: ExecutionWorkerRunner;
+  jobOrchestratorRunner: JobOrchestratorRunner;
+  sisRunner: SisRunner;
+  consciousnessKernelRunner: ConsciousnessKernelRunner;
   healthCheckInterval?: ReturnType<typeof setInterval>;
   nodePresenceTimers: Map<string, ReturnType<typeof setInterval>>;
   broadcast: (event: string, payload: unknown, opts?: { dropIfSlow?: boolean }) => void;
@@ -44,14 +44,6 @@ export function createGatewayCloseHandler(params: {
   httpServer: HttpServer;
   httpServers?: HttpServer[];
 }) {
-  const stopSyncHandle = (handle: { stop?: () => void } | null | undefined) => {
-    try {
-      handle?.stop?.();
-    } catch {
-      /* ignore */
-    }
-  };
-
   return async (opts?: { reason?: string; restartExpectedMs?: number | null }) => {
     const reasonRaw = typeof opts?.reason === "string" ? opts.reason.trim() : "";
     const reason = reasonRaw || "gateway stopping";
@@ -91,13 +83,13 @@ export function createGatewayCloseHandler(params: {
     }
     await stopGmailWatcher();
     stopDashboardApiServer();
-    stopSyncHandle(params.cron);
-    stopSyncHandle(params.heartbeatRunner);
-    stopSyncHandle(params.contemplationRunner);
-    stopSyncHandle(params.executionWorkerRunner);
-    stopSyncHandle(params.jobOrchestratorRunner);
-    stopSyncHandle(params.sisRunner);
-    stopSyncHandle(params.consciousnessKernelRunner);
+    params.cron.stop();
+    params.heartbeatRunner.stop();
+    params.contemplationRunner.stop();
+    params.executionWorkerRunner.stop();
+    params.jobOrchestratorRunner.stop();
+    params.sisRunner.stop();
+    params.consciousnessKernelRunner.stop();
     // Close Redis connection (if initialized)
     try {
       const { closeRedisClient } = await import("../data/redis-client.js");

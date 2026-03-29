@@ -1,4 +1,5 @@
 import path from "node:path";
+import { resolveConfigPath, resolveStateDir } from "../config/paths.js";
 import { resolveGatewayProfileSuffix } from "./constants.js";
 
 const windowsAbsolutePath = /^[a-zA-Z]:[\\/]/;
@@ -36,7 +37,20 @@ export function resolveGatewayStateDir(env: Record<string, string | undefined>):
     const home = override.startsWith("~") ? resolveHomeDir(env) : undefined;
     return resolveUserPathWithHome(override, home);
   }
-  const home = resolveHomeDir(env);
+  const homedir = () => resolveHomeDir(env);
   const suffix = resolveGatewayProfileSuffix(env.ARGENT_PROFILE);
-  return path.join(home, `.argent${suffix}`);
+  if (suffix) {
+    return path.join(homedir(), `.argentos${suffix}`);
+  }
+  return resolveStateDir(env as NodeJS.ProcessEnv, homedir);
+}
+
+export function resolveGatewayConfigPath(env: Record<string, string | undefined>): string {
+  const override = env.ARGENT_CONFIG_PATH?.trim();
+  if (override) {
+    const home = override.startsWith("~") ? resolveHomeDir(env) : undefined;
+    return resolveUserPathWithHome(override, home);
+  }
+  const homedir = () => resolveHomeDir(env);
+  return resolveConfigPath(env as NodeJS.ProcessEnv, resolveGatewayStateDir(env), homedir);
 }

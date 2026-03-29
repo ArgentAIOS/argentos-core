@@ -392,7 +392,6 @@ export const ArgentSchema = z
     distribution: z
       .object({
         surfaceProfile: z.union([z.literal("full"), z.literal("public-core")]).optional(),
-        dashboardMode: z.union([z.literal("personal"), z.literal("operations")]).optional(),
         publicCore: z
           .object({
             includePowerUserTools: z.boolean().optional(),

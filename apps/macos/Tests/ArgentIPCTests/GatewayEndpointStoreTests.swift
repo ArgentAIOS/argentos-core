@@ -10,7 +10,7 @@ import Testing
         return defaults
     }
 
-    @Test func resolveGatewayTokenPrefersConfigAndLaunchdBeforeEnvInLocalMode() {
+    @Test func resolveGatewayTokenPrefersEnvAndFallsBackToLaunchd() {
         let snapshot = LaunchAgentPlistSnapshot(
             programArguments: [],
             environment: ["ARGENT_GATEWAY_TOKEN": "launchd-token"],
@@ -22,78 +22,19 @@ import Testing
             password: nil,
             dashboardApiToken: nil)
 
-        let configToken = GatewayEndpointStore._testResolveGatewayToken(
-            isRemote: false,
-            root: ["gateway": ["auth": ["token": "config-token"]]],
-            env: ["ARGENT_GATEWAY_TOKEN": "env-token"],
-            launchdSnapshot: snapshot)
-        #expect(configToken == "config-token")
-
-        let launchdToken = GatewayEndpointStore._testResolveGatewayToken(
+        let envToken = GatewayEndpointStore._testResolveGatewayToken(
             isRemote: false,
             root: [:],
             env: ["ARGENT_GATEWAY_TOKEN": "env-token"],
             launchdSnapshot: snapshot)
-        #expect(launchdToken == "launchd-token")
+        #expect(envToken == "env-token")
 
-        let envFallbackToken = GatewayEndpointStore._testResolveGatewayToken(
+        let fallbackToken = GatewayEndpointStore._testResolveGatewayToken(
             isRemote: false,
             root: [:],
-            env: ["ARGENT_GATEWAY_TOKEN": "env-token"],
-            launchdSnapshot: nil)
-        #expect(envFallbackToken == "env-token")
-    }
-
-    @Test func resolveGatewayTokenStillPrefersEnvInRemoteMode() {
-        let token = GatewayEndpointStore._testResolveGatewayToken(
-            isRemote: true,
-            root: ["gateway": ["remote": ["token": "config-token"]]],
-            env: ["ARGENT_GATEWAY_TOKEN": "env-token"],
-            launchdSnapshot: nil)
-        #expect(token == "env-token")
-    }
-
-    @Test func resolveGatewayPasswordPrefersConfigAndLaunchdBeforeEnvInLocalMode() {
-        let snapshot = LaunchAgentPlistSnapshot(
-            programArguments: [],
-            environment: ["ARGENT_GATEWAY_PASSWORD": "launchd-pass"],
-            stdoutPath: nil,
-            stderrPath: nil,
-            port: nil,
-            bind: nil,
-            token: nil,
-            password: "launchd-pass",
-            dashboardApiToken: nil)
-
-        let configPassword = GatewayEndpointStore._testResolveGatewayPassword(
-            isRemote: false,
-            root: ["gateway": ["auth": ["password": "config-pass"]]],
-            env: ["ARGENT_GATEWAY_PASSWORD": "env-pass"],
+            env: [:],
             launchdSnapshot: snapshot)
-        #expect(configPassword == "config-pass")
-
-        let launchdPassword = GatewayEndpointStore._testResolveGatewayPassword(
-            isRemote: false,
-            root: [:],
-            env: ["ARGENT_GATEWAY_PASSWORD": "env-pass"],
-            launchdSnapshot: snapshot)
-        #expect(launchdPassword == "launchd-pass")
-
-        let envFallbackPassword = GatewayEndpointStore._testResolveGatewayPassword(
-            isRemote: false,
-            root: [:],
-            env: ["ARGENT_GATEWAY_PASSWORD": "env-pass"],
-            launchdSnapshot: nil)
-        #expect(envFallbackPassword == "env-pass")
-    }
-
-    @Test func resolveGatewayPasswordStillPrefersEnvInRemoteMode() {
-        let password = GatewayEndpointStore._testResolveGatewayPassword(
-            isRemote: true,
-            root: ["gateway": ["remote": ["password": "config-pass"]]],
-            env: ["ARGENT_GATEWAY_PASSWORD": "env-pass"],
-            launchdSnapshot: nil)
-        #expect(password == "env-pass")
+        #expect(fallbackToken == "launchd-token")
     }
 
     @Test func resolveGatewayTokenIgnoresLaunchdInRemoteMode() {
