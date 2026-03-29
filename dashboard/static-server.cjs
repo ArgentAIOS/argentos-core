@@ -10,6 +10,20 @@ const API_PORT = Number(process.env.API_PORT || 9242);
 const DIST_DIR = path.join(__dirname, "dist");
 const INDEX_PATH = path.join(DIST_DIR, "index.html");
 
+// Read the gateway auth token so the proxy can inject it into API requests.
+// This means dashboard JS doesn't need to send auth headers — the proxy handles it.
+const GATEWAY_AUTH_TOKEN = (() => {
+  try {
+    const configPath =
+      process.env.ARGENT_CONFIG_PATH ||
+      path.join(process.env.HOME || "", ".argentos", "argent.json");
+    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    return config?.gateway?.auth?.token || null;
+  } catch {
+    return null;
+  }
+})();
+
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
   ".gif": "image/gif",
@@ -35,19 +49,26 @@ function sendError(res, status, message) {
 }
 
 function proxyRequest(req, res) {
+  // Build proxy headers — inject gateway auth token if the client didn't send one.
+  // This lets raw fetch() calls from the dashboard work without explicit auth headers.
+  const proxyHeaders = {
+    ...req.headers,
+    host: `127.0.0.1:${API_PORT}`,
+    "x-forwarded-for": req.socket.remoteAddress || "127.0.0.1",
+    "x-forwarded-host": req.headers.host || `${HOST}:${PORT}`,
+    "x-forwarded-proto": "http",
+  };
+  if (GATEWAY_AUTH_TOKEN && !proxyHeaders.authorization) {
+    proxyHeaders.authorization = `Bearer ${GATEWAY_AUTH_TOKEN}`;
+  }
+
   const upstream = http.request(
     {
       hostname: "127.0.0.1",
       port: API_PORT,
       path: req.url,
       method: req.method,
-      headers: {
-        ...req.headers,
-        host: `127.0.0.1:${API_PORT}`,
-        "x-forwarded-for": req.socket.remoteAddress || "127.0.0.1",
-        "x-forwarded-host": req.headers.host || `${HOST}:${PORT}`,
-        "x-forwarded-proto": "http",
-      },
+      headers: proxyHeaders,
     },
     (upstreamRes) => {
       res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
