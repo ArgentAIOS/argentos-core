@@ -152,9 +152,20 @@ app.use("/api", (req, res, next) => {
   });
 });
 
-// Optional bearer token auth — if DASHBOARD_API_TOKEN is set, enforce it
+// Dashboard API auth — accepts DASHBOARD_API_TOKEN env var OR the gateway auth
+// token from config. This unifies auth so the browser ?token= (gateway token)
+// works for both WebSocket and REST API calls.
 const DASHBOARD_API_TOKEN = process.env.DASHBOARD_API_TOKEN || null;
-if (DASHBOARD_API_TOKEN) {
+const GATEWAY_CONFIG_TOKEN = (() => {
+  try {
+    const config = readArgentConfig();
+    return config?.gateway?.auth?.token || null;
+  } catch {
+    return null;
+  }
+})();
+const ACCEPTED_TOKENS = [DASHBOARD_API_TOKEN, GATEWAY_CONFIG_TOKEN].filter(Boolean);
+if (ACCEPTED_TOKENS.length > 0) {
   app.use("/api/", (req, res, next) => {
     // Allow preflight and health check (no auth needed)
     if (req.method === "OPTIONS") return next();
@@ -175,8 +186,11 @@ if (DASHBOARD_API_TOKEN) {
     }
     try {
       const a = Buffer.from(token);
-      const b = Buffer.from(DASHBOARD_API_TOKEN);
-      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      const matched = ACCEPTED_TOKENS.some((accepted) => {
+        const b = Buffer.from(accepted);
+        return a.length === b.length && crypto.timingSafeEqual(a, b);
+      });
+      if (!matched) {
         return res.status(401).json({ error: "Invalid token" });
       }
     } catch {
