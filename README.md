@@ -136,7 +136,7 @@ Core is the free foundation. [ArgentOS Business](https://argentos.ai/business) a
 ArgentOS stands on the work of others:
 
 - **[pi-mono](https://github.com/badlogic/pi-mono)** by Mario Zechner ([@badlogic](https://github.com/badlogic)) — the agent runtime core that ArgentOS builds upon. pi-mono provides the foundational agent loop, session management, and tool execution framework.
-- **OpenClaw** by Peter Steinberger — the original fork that gave ArgentOS its launching pad. OpenClaw's architecture informed early design decisions for the gateway, plugin system, and channel infrastructure.
+- **[OpenClaw](https://openclaw.ai/)** by [Peter Steinberger](https://steipete.me/) — the original fork that gave ArgentOS its launching pad. OpenClaw's architecture informed early design decisions for the gateway, plugin system, and channel infrastructure.
 
 ## License
 
