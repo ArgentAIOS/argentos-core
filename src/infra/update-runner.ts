@@ -812,6 +812,25 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       timeoutMs,
     }).catch(() => null);
 
+    // Hosted git installs run from a snapshot at ~/.argentos/lib/node_modules/argentos/.
+    // After rebuilding the git checkout, re-snapshot so the gateway picks up the new code.
+    const snapshotDir = path.join(os.homedir(), ".argentos", "lib", "node_modules", "argentos");
+    try {
+      const snapshotStat = await fs.stat(snapshotDir);
+      if (snapshotStat.isDirectory()) {
+        const snapshotStep = await runStep(
+          step(
+            "snapshot runtime",
+            ["rsync", "-a", "--delete", "--exclude", ".git", `${gitRoot}/`, `${snapshotDir}/`],
+            gitRoot,
+          ),
+        );
+        steps.push(snapshotStep);
+      }
+    } catch {
+      // No snapshot dir — not a hosted git install, skip
+    }
+
     const doctorStep = await runStep(
       step(
         "argent doctor",
