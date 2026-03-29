@@ -855,7 +855,9 @@ function resolveWorkspaceFallback(
   if (!allowWorkforceSurface && currentWorkspace === "operations") {
     return "home";
   }
-  return tabs.some((tab) => tab.id === currentWorkspace) ? currentWorkspace : tabs[0]?.id ?? "home";
+  return tabs.some((tab) => tab.id === currentWorkspace)
+    ? currentWorkspace
+    : (tabs[0]?.id ?? "home");
 }
 
 function readStoredGatewayToken(): string {
@@ -1353,7 +1355,8 @@ function App() {
           setSurfaceProfile("public-core");
           const storedDashboardMode = readStoredDashboardMode();
           setDashboardMode(
-            storedDashboardMode === "operations" && isDashboardModeAllowed("operations", "public-core")
+            storedDashboardMode === "operations" &&
+              isDashboardModeAllowed("operations", "public-core")
               ? "operations"
               : "personal",
           );
