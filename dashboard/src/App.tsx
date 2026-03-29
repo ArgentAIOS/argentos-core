@@ -1106,7 +1106,7 @@ function MemoryStatsCards() {
 function App() {
   const [avatarState, setAvatarState] = useState<AvatarState>("idle");
   const [avatarMood, setAvatarMood] = useState<MoodName | undefined>(undefined);
-  const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("full");
+  const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("loading");
   const [dashboardMode, setDashboardMode] = useState<DashboardMode>("personal");
 
   // Workspace tabs
@@ -1742,7 +1742,7 @@ function App() {
 
   const [logs, setLogs] = useState<LogEntry[]>(initialLogs);
   const [operatorDisplayName, setOperatorDisplayName] = useState<string | null>(null);
-  const [workforceBadgeAvailable, setWorkforceBadgeAvailable] = useState(true);
+  const [workforceBadgeAvailable, setWorkforceBadgeAvailable] = useState(surfaceProfile === "full");
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     const key = localStorage.getItem("argent-session-key") || DEFAULT_MAIN_SESSION_KEY;
     return loadStoredMessages(key);
@@ -2400,8 +2400,8 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     const loadRuntimeProfile = async () => {
-      // load-profile is blocked in public-core mode
-      if (surfaceProfile === "public-core") return;
+      // load-profile is blocked in public-core mode; also skip during loading
+      if (surfaceProfile !== "full") return;
       try {
         const response = await fetchLocalApi("/api/settings/load-profile");
         if (!response.ok) {
