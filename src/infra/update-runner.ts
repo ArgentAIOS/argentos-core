@@ -835,6 +835,7 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
     // Hosted git installs run from a snapshot at ~/.argentos/lib/node_modules/argentos/.
     // After rebuilding the git checkout, re-snapshot so the gateway picks up the new code.
     const snapshotDir = path.join(os.homedir(), ".argentos", "lib", "node_modules", "argentos");
+    let didSnapshot = false;
     try {
       const snapshotStat = await fs.stat(snapshotDir);
       if (snapshotStat.isDirectory()) {
@@ -846,9 +847,34 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
           ),
         );
         steps.push(snapshotStep);
+        didSnapshot = snapshotStep.exitCode === 0;
       }
     } catch {
       // No snapshot dir — not a hosted git install, skip
+    }
+
+    // Restart the dashboard static server if it's running (serves from snapshot).
+    // Kill the old process so it picks up the newly built dashboard + api-server.
+    if (didSnapshot) {
+      await runCommand(["bash", "-c", "kill $(lsof -ti :8080) 2>/dev/null || true"], {
+        cwd: gitRoot,
+        timeoutMs: 5000,
+      }).catch(() => null);
+      // Restart static server from snapshot in background
+      const staticServer = path.join(snapshotDir, "dashboard", "static-server.cjs");
+      try {
+        await fs.stat(staticServer);
+        await runCommand(
+          [
+            "bash",
+            "-c",
+            `cd "${path.join(snapshotDir, "dashboard")}" && nohup node static-server.cjs > /dev/null 2>&1 &`,
+          ],
+          { cwd: path.join(snapshotDir, "dashboard"), timeoutMs: 5000 },
+        ).catch(() => null);
+      } catch {
+        // No static server — skip
+      }
     }
 
     const doctorStep = await runStep(
