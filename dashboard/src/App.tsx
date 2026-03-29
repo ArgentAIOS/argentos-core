@@ -39,8 +39,7 @@ import { StatusBar } from "./components/StatusBar";
 import { TaskList, type Task } from "./components/TaskList";
 import { WeatherModal } from "./components/WeatherModal";
 import { CustomWidget } from "./components/widgets/CustomWidget";
-import { JobsBoardWidget } from "./components/widgets/JobsBoardWidget";
-import { OrgChartWidget } from "./components/widgets/OrgChartWidget";
+import { EmptyWidget } from "./components/widgets/EmptyWidget";
 import { ScheduleWidget } from "./components/widgets/ScheduleWidget";
 import { SilverPriceWidget } from "./components/widgets/SilverPriceWidget";
 import { TaskManagerWidget } from "./components/widgets/TaskManagerWidget";
@@ -4961,7 +4960,7 @@ function App() {
             </div>
           ) : opsView === "jobs" ? (
             <div className="flex-1 min-h-0 overflow-auto p-4">
-              <JobsBoardWidget />
+              <EmptyWidget />
             </div>
           ) : opsView === "tasks" ? (
             <div className="flex-1 min-h-0 overflow-auto p-4">
@@ -4969,7 +4968,7 @@ function App() {
             </div>
           ) : opsView === "org" ? (
             <div className="flex-1 min-h-0 overflow-auto p-4">
-              <OrgChartWidget />
+              <EmptyWidget />
             </div>
           ) : opsView === "schedule" ? (
             <div className="flex-1 min-h-0 overflow-auto p-4">

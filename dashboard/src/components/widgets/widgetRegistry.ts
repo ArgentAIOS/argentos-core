@@ -7,8 +7,6 @@ import { CostBurnWidget } from "./CostBurnWidget";
 import { EmptyWidget } from "./EmptyWidget";
 import { ErrorsWidget } from "./ErrorsWidget";
 import { FleetKillWidget } from "./FleetKillWidget";
-import { JobsBoardWidget } from "./JobsBoardWidget";
-import { OrgChartWidget } from "./OrgChartWidget";
 import { QueueWidget } from "./QueueWidget";
 import { ScheduleWidget } from "./ScheduleWidget";
 import { SilverPriceWidget } from "./SilverPriceWidget";
@@ -184,7 +182,7 @@ export const widgetRegistry: Record<BuiltinWidgetType, WidgetDefinition> = {
     id: "jobs-board",
     name: "Jobs Board",
     description: "Per-agent Kanban board — Scheduled, Running, Completed, Failed",
-    component: JobsBoardWidget,
+    component: EmptyWidget,
     icon: "📋",
     tier: "core",
   },
@@ -200,7 +198,7 @@ export const widgetRegistry: Record<BuiltinWidgetType, WidgetDefinition> = {
     id: "org-chart",
     name: "Org Chart",
     description: "Hierarchical agent tree with department grouping and status badges",
-    component: OrgChartWidget,
+    component: EmptyWidget,
     icon: "🏢",
     tier: "core",
   },
