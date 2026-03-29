@@ -115,12 +115,14 @@ CONFIG_FILE="$STATE_DIR/argent.json"
 if [[ -f "$CONFIG_FILE" ]]; then
   ok "Config already exists: $CONFIG_FILE"
 else
-  cat > "$CONFIG_FILE" << 'CONFIGJSON'
+  # Generate a random 64-char hex token for gateway auth
+  GW_TOKEN="$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | xxd -p -c 64 2>/dev/null || cat /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | head -c 64)"
+  cat > "$CONFIG_FILE" << CONFIGJSON
 {
   "gateway": {
     "mode": "local",
     "port": 18789,
-    "auth": { "mode": "token" }
+    "auth": { "mode": "token", "token": "${GW_TOKEN}" }
   }
 }
 CONFIGJSON
@@ -749,7 +751,27 @@ else
 fi
 
 # ============================================================================
-# Step 7: Done
+# Gateway health verification
+# ============================================================================
+if ! is_truthy "$SKIP_LAUNCH_AGENTS" && ! is_truthy "$SKIP_SERVICE_START"; then
+  info "Verifying gateway health..."
+  GW_HEALTHY=false
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    if nc -z 127.0.0.1 18789 2>/dev/null; then
+      GW_HEALTHY=true
+      break
+    fi
+    sleep 2
+  done
+  if $GW_HEALTHY; then
+    ok "Gateway is healthy"
+  else
+    warn "Gateway did not become healthy within 20s — check 'argent gateway status'"
+  fi
+fi
+
+# ============================================================================
+# Done
 # ============================================================================
 printf "\n${BOLD}  ✓ All steps complete${RESET}\n"
 

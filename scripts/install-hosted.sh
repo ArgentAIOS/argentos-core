@@ -18,6 +18,7 @@ VERSION="${ARGENT_INSTALL_VERSION:-}"
 GIT_DIR="${ARGENTOS_GIT_DIR:-$HOME/argentos}"
 GIT_UPDATE=1
 NO_ONBOARD="${ARGENT_NO_ONBOARD:-0}"
+FORCE_CLI_ONBOARD="${ARGENT_FORCE_CLI_ONBOARD:-0}"
 NO_PROMPT="${ARGENTOS_NO_PROMPT:-0}"
 DRY_RUN="${ARGENTOS_DRY_RUN:-0}"
 PACKAGE_SPEC_OVERRIDE="${ARGENT_INSTALL_PACKAGE_SPEC:-}"
@@ -63,6 +64,7 @@ Environment equivalents:
   ARGENTOS_DRY_RUN
   ARGENTOS_NO_PROMPT
   ARGENT_NO_ONBOARD
+  ARGENT_FORCE_CLI_ONBOARD
   ARGENT_INSTALL_PACKAGE_SPEC
   ARGENT_INSTALL_NPM_PREFIX
   ARGENT_INSTALL_BIN_DIR
@@ -393,7 +395,12 @@ resolve_effective_version() {
     return 0
   fi
   if [[ "$INSTALL_METHOD" == "git" ]]; then
-    printf 'main\n'
+    case "$CHANNEL" in
+      stable) printf 'latest stable GitHub release tag\n' ;;
+      beta) printf 'latest beta-or-stable GitHub release tag\n' ;;
+      dev) printf 'main\n' ;;
+      *) printf 'main\n' ;;
+    esac
     return 0
   fi
   case "$CHANNEL" in
@@ -451,17 +458,28 @@ run_onboard() {
   fi
 
   if (( ${#ONBOARD_NO_PROMPT[@]} )); then
-    "$argent_bin" "${onboard_args[@]}"
+    ARGENT_INSTALLER_ONBOARD=1 "$argent_bin" "${onboard_args[@]}"
     return 0
   fi
 
   if [[ -r /dev/tty && -w /dev/tty ]]; then
-    "$argent_bin" "${onboard_args[@]}" </dev/tty >/dev/tty 2>/dev/tty
+    ARGENT_INSTALLER_ONBOARD=1 "$argent_bin" "${onboard_args[@]}" </dev/tty >/dev/tty 2>/dev/tty
     return 0
   fi
 
   err "Interactive onboarding requires a terminal. Re-run in a terminal, or pass --no-prompt / --no-onboard."
   exit 1
+}
+
+should_run_cli_onboard() {
+  if is_truthy "$NO_ONBOARD"; then
+    return 1
+  fi
+  if [[ "$(uname -s)" == "Darwin" ]] && ! is_truthy "$FORCE_CLI_ONBOARD"; then
+    info "Skipping terminal onboarding on macOS; Argent.app will guide first run."
+    return 1
+  fi
+  return 0
 }
 
 write_git_wrapper() {
@@ -479,9 +497,12 @@ write_git_wrapper() {
   printf -v escaped_package_dir '%q' "$PACKAGE_DIR_OVERRIDE"
   printf -v escaped_node_bin '%q' "$WRAPPER_NODE_BIN"
   printf -v escaped_entry '%q' "$PACKAGE_DIR_OVERRIDE/argent.mjs"
+  local escaped_git_dir
+  printf -v escaped_git_dir '%q' "$GIT_DIR"
   cat > "$bin_dir/argent" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
+export ARGENT_GIT_DIR=${escaped_git_dir}
 ${PATH_LINE}
 cd ${escaped_package_dir}
 exec ${escaped_node_bin} ${escaped_entry} "\$@"
@@ -558,9 +579,257 @@ install_npm() {
     ok "Installed globally with npm"
   fi
 
-  if ! is_truthy "$NO_ONBOARD"; then
+  if should_run_cli_onboard; then
     run_onboard "$target_bin"
   fi
+}
+
+download_argent_app() {
+  info "═══ Downloading Argent.app ═══"
+
+  local manifest_url="https://argentos.ai/releases/macos/latest.json"
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+
+  # 1. Fetch release manifest
+  info "Checking for latest Argent.app release..."
+  local manifest
+  manifest="$(curl -fsSL "$manifest_url" 2>/dev/null)" || {
+    warn "Could not fetch release manifest from $manifest_url"
+    warn "Argent.app not installed — you can download it later from https://argentos.ai"
+    return 0
+  }
+
+  # 2. Parse manifest (portable JSON parsing with Node --input-type=module)
+  local zip_url zip_filename
+  zip_url="$(echo "$manifest" | "$NODE_BIN" --input-type=module -e "
+    import { readFileSync } from 'fs';
+    const m = JSON.parse(readFileSync(0, 'utf8'));
+    process.stdout.write(m.macos.artifacts.zip.url);
+  " 2>/dev/null)" || zip_url=""
+  zip_filename="$(echo "$manifest" | "$NODE_BIN" --input-type=module -e "
+    import { readFileSync } from 'fs';
+    const m = JSON.parse(readFileSync(0, 'utf8'));
+    process.stdout.write(m.macos.artifacts.zip.filename);
+  " 2>/dev/null)" || zip_filename=""
+
+  if [[ -z "$zip_url" || -z "$zip_filename" ]]; then
+    warn "Could not parse release manifest (url=${zip_url:-empty}, file=${zip_filename:-empty})"
+    warn "Argent.app not installed — you can download it later from https://argentos.ai"
+    return 0
+  fi
+
+  info "Found release: $zip_filename"
+
+  if is_truthy "$DRY_RUN"; then
+    printf 'DRY-RUN: curl -fsSL %q -o %q/%q\n' "$zip_url" "$tmp_dir" "$zip_filename"
+    printf 'DRY-RUN: unzip → /Applications/Argent.app\n'
+    printf 'DRY-RUN: open /Applications/Argent.app\n'
+    return 0
+  fi
+
+  # 3. Download
+  info "Downloading $zip_filename..."
+  curl -fsSL "$zip_url" -o "$tmp_dir/$zip_filename" || {
+    warn "Download failed: $zip_url"
+    warn "Argent.app not installed — you can download it later from https://argentos.ai"
+    rm -rf "$tmp_dir"
+    return 0
+  }
+  ok "Downloaded $zip_filename"
+
+  # 4. Install to /Applications
+  info "Installing Argent.app to /Applications..."
+  rm -rf /Applications/Argent.app 2>/dev/null || true
+  (cd "$tmp_dir" && unzip -qo "$zip_filename" 2>/dev/null)
+  if [[ -d "$tmp_dir/Argent.app" ]]; then
+    ditto "$tmp_dir/Argent.app" /Applications/Argent.app
+  elif [[ -d "$tmp_dir/Argent/Argent.app" ]]; then
+    ditto "$tmp_dir/Argent/Argent.app" /Applications/Argent.app
+  else
+    warn "Could not find Argent.app in downloaded archive"
+    rm -rf "$tmp_dir"
+    return 0
+  fi
+  rm -rf "$tmp_dir"
+  ok "Installed Argent.app to /Applications"
+}
+
+launch_argent_app() {
+  # Ensure we launch a fresh app process so first-run defaults are re-read.
+  killall Argent 2>/dev/null || true
+
+  # Read gateway token from config for authenticated dashboard URLs
+  local gw_token=""
+  if [[ -f "$HOME/.argentos/argent.json" ]]; then
+    gw_token="$("$NODE_BIN" -e "
+      try {
+        const c = JSON.parse(require('fs').readFileSync('$HOME/.argentos/argent.json','utf8'));
+        process.stdout.write(c.gateway?.auth?.token || '');
+      } catch {}
+    " 2>/dev/null)" || gw_token=""
+  fi
+  local dash_url="http://127.0.0.1:8080/"
+  [[ -n "$gw_token" ]] && dash_url="http://127.0.0.1:8080/?token=${gw_token}"
+
+  echo ""
+  echo "  ╔══════════════════════════════════════════════════╗"
+  echo "  ║         ArgentOS is ready!                       ║"
+  echo "  ╚══════════════════════════════════════════════════╝"
+  echo ""
+  echo "  How would you like to meet Argent?"
+  echo ""
+  echo "    1) Launch Argent.app (recommended)"
+  echo "       Full native macOS experience with dashboard"
+  echo ""
+  echo "    2) Open dashboard in browser"
+  echo "       ${dash_url}"
+  echo ""
+  echo "    3) Stay in the terminal"
+  echo "       Use: argent chat"
+  echo ""
+
+  if is_truthy "$NO_PROMPT" || [[ ! -r /dev/tty ]]; then
+    info "Launching Argent.app..."
+    open -n -a /Applications/Argent.app 2>/dev/null || true
+    return 0
+  fi
+
+  printf "  Select [1]: " >/dev/tty
+  local choice
+  IFS= read -r choice </dev/tty 2>/dev/null || choice="1"
+  choice="${choice:-1}"
+
+  case "$choice" in
+    1)
+      info "Launching Argent.app..."
+      open -n -a /Applications/Argent.app 2>/dev/null || true
+      ok "Argent.app launched"
+      ;;
+    2)
+      info "Opening dashboard in browser..."
+      open "$dash_url" 2>/dev/null || true
+      ok "Dashboard opened"
+      ;;
+    3)
+      ok "You're in control. Run: argent chat"
+      ;;
+    *)
+      info "Launching Argent.app..."
+      open -n -a /Applications/Argent.app 2>/dev/null || true
+      ok "Argent.app launched"
+      ;;
+  esac
+
+  echo ""
+  info "Argent.app is always available at: /Applications/Argent.app"
+  info "Dashboard: ${dash_url}"
+  info "CLI is always available with: argent chat"
+  echo ""
+}
+
+write_core_distribution_and_storage_defaults() {
+  local config_path="$HOME/.argentos/argent.json"
+  if is_truthy "$DRY_RUN"; then
+    info "Would write Core public-surface + PG/Redis defaults to $config_path"
+    return 0
+  fi
+
+  mkdir -p "$HOME/.argentos"
+  ARGENT_INSTALL_CONFIG_PATH="$config_path" ARGENT_INSTALL_CHANNEL="${CHANNEL:-stable}" "$NODE_BIN" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const configPath = process.env.ARGENT_INSTALL_CONFIG_PATH;
+const raw = (() => {
+  try {
+    return fs.readFileSync(configPath, "utf8");
+  } catch {
+    return "";
+  }
+})();
+
+let parsed = {};
+if (raw.trim()) {
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = {};
+  }
+}
+
+// Generate a random 64-char hex token for gateway auth if not already set
+const crypto = require("node:crypto");
+const existingToken = parsed.gateway?.auth?.token;
+const gwToken = existingToken || crypto.randomBytes(32).toString("hex");
+
+const installChannel = process.env.ARGENT_INSTALL_CHANNEL || "stable";
+
+const next = {
+  ...parsed,
+  update: {
+    ...(parsed.update || {}),
+    channel: parsed.update?.channel || installChannel,
+  },
+  gateway: {
+    ...(parsed.gateway || {}),
+    mode: parsed.gateway?.mode || "local",
+    port: parsed.gateway?.port || 18789,
+    auth: {
+      ...(parsed.gateway?.auth || {}),
+      mode: parsed.gateway?.auth?.mode || "token",
+      token: gwToken,
+    },
+  },
+  distribution: {
+    ...(parsed.distribution || {}),
+    surfaceProfile: "public-core",
+  },
+  storage: {
+    ...(parsed.storage || {}),
+    backend: "postgres",
+    readFrom: "postgres",
+    writeTo: ["postgres"],
+    postgres: {
+      ...((parsed.storage || {}).postgres || {}),
+      connectionString: "postgres://localhost:5433/argentos",
+    },
+    redis: {
+      host: "127.0.0.1",
+      port: 6380,
+      ...((parsed.storage || {}).redis || {}),
+    },
+  },
+};
+
+fs.mkdirSync(path.dirname(configPath), { recursive: true });
+fs.writeFileSync(configPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+NODE
+  ok "Configured Core defaults for public-core surface + PostgreSQL 17 + Redis"
+}
+
+provision_core_storage_stack() {
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    return 0
+  fi
+
+  local pg_script="$GIT_DIR/scripts/setup-postgres.sh"
+  local redis_script="$GIT_DIR/scripts/setup-redis.sh"
+
+  if [[ ! -f "$pg_script" ]]; then
+    err "Missing PostgreSQL setup script: $pg_script"
+    exit 1
+  fi
+  if [[ ! -f "$redis_script" ]]; then
+    err "Missing Redis setup script: $redis_script"
+    exit 1
+  fi
+
+  info "Provisioning PostgreSQL 17 for ArgentOS Core..."
+  run_cmd bash "$pg_script"
+  info "Provisioning Redis for ArgentOS Core..."
+  run_cmd bash "$redis_script"
+  write_core_distribution_and_storage_defaults
 }
 
 install_git() {
@@ -571,21 +840,59 @@ install_git() {
     run_cmd git -C "$GIT_DIR" fetch --tags --prune
   else
     info "Cloning source checkout to $GIT_DIR"
-    run_cmd git clone https://github.com/ArgentAIOS/argentos.git "$GIT_DIR"
+    run_cmd git clone https://github.com/ArgentAIOS/argentos-core.git "$GIT_DIR"
+  fi
+
+  # Resolve release-tag placeholders to actual git tags
+  if [[ "$VERSION" == "latest stable GitHub release tag" || "$VERSION" == "latest beta-or-stable GitHub release tag" ]]; then
+    local resolved_tag=""
+    local all_tags
+    all_tags="$(git -C "$GIT_DIR" tag --list 'v*' --sort=-v:refname 2>/dev/null)"
+    if [[ "$VERSION" == *"beta"* ]]; then
+      resolved_tag="$(echo "$all_tags" | head -n 1)"
+    else
+      while IFS= read -r t; do
+        local lower
+        lower="$(printf '%s' "$t" | tr '[:upper:]' '[:lower:]')"
+        if [[ -n "$t" && "$lower" != *"-beta"* ]]; then
+          resolved_tag="$t"
+          break
+        fi
+      done <<< "$all_tags"
+    fi
+    if [[ -z "$resolved_tag" ]]; then
+      err "No stable release tag found in $GIT_DIR"
+      exit 1
+    fi
+    info "Checking out stable release tag: $resolved_tag"
+    VERSION="$resolved_tag"
   fi
 
   if [[ -n "$VERSION" && "$VERSION" != "main" ]]; then
     info "Checking out git ref: $VERSION"
     run_cmd git -C "$GIT_DIR" checkout "$VERSION"
+    if is_truthy "$GIT_UPDATE"; then
+      if git -C "$GIT_DIR" show-ref --verify --quiet "refs/remotes/origin/$VERSION"; then
+        info "Updating git ref from origin/$VERSION"
+        run_cmd git -C "$GIT_DIR" reset --hard "origin/$VERSION"
+      fi
+    fi
   else
     info "Tracking source checkout on main"
     run_cmd git -C "$GIT_DIR" checkout main
     if is_truthy "$GIT_UPDATE"; then
-      run_cmd git -C "$GIT_DIR" pull --rebase origin main
+      # Reset lockfile that pnpm install may have modified — will be regenerated below
+      git -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
+      run_cmd git -C "$GIT_DIR" pull origin main
     fi
   fi
 
-  run_pnpm "$GIT_DIR" install
+  # Clean stale build artifacts and node_modules to prevent version mismatch
+  rm -rf "$GIT_DIR/dist" 2>/dev/null || true
+  rm -rf "$GIT_DIR/node_modules/.pnpm" 2>/dev/null || true
+  run_pnpm "$GIT_DIR" install --frozen-lockfile || run_pnpm "$GIT_DIR" install
+  # Restore lockfile if pnpm mutated it (keeps git checkout clean for argent update)
+  git -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
   run_pnpm "$GIT_DIR" build
   run_pnpm "$GIT_DIR" rebuild better-sqlite3
   snapshot_git_runtime "$GIT_DIR" "$PACKAGE_DIR_OVERRIDE"
@@ -594,8 +901,214 @@ install_git() {
   ok "Installed git wrapper: $BIN_DIR_OVERRIDE/argent"
   info "Add this to PATH if needed: $BIN_DIR_OVERRIDE"
 
-  if ! is_truthy "$NO_ONBOARD"; then
-    run_onboard "$BIN_DIR_OVERRIDE/argent"
+  provision_core_storage_stack
+
+  # macOS: Download Argent.app from R2 BEFORE onboarding (runs during service setup)
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    download_argent_app || true
+  fi
+
+  if should_run_cli_onboard; then
+    run_onboard "$BIN_DIR_OVERRIDE/argent" || true
+  fi
+
+  # Build and start the dashboard (React UI on port 8080)
+  info "Setting up dashboard..."
+  local dashboard_dir="$GIT_DIR/dashboard"
+  local node_dir
+  node_dir="$(dirname "$NODE_BIN")"
+
+  if [[ -d "$dashboard_dir" ]]; then
+    # Install dashboard deps
+    info "Installing dashboard dependencies..."
+    PATH="$node_dir:$PATH" run_pnpm "$dashboard_dir" install --frozen-lockfile 2>/dev/null \
+      || PATH="$node_dir:$PATH" run_pnpm "$dashboard_dir" install 2>/dev/null \
+      || warn "Dashboard deps failed"
+    # Restore root workspace lockfile if dashboard install mutated it
+    # (this repo uses a single root pnpm-lock.yaml, not dashboard/pnpm-lock.yaml)
+    git -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
+
+    # Build dashboard (skip tsc — use vite directly to avoid pre-existing TS strict errors)
+    info "Building dashboard..."
+    (cd "$dashboard_dir" && PATH="$node_dir:$PATH" "$node_dir/npx" --yes vite build 2>&1 | tail -3) \
+      || warn "Dashboard build failed — run later: cd ~/argentos/dashboard && npx vite build"
+
+    # Start dashboard UI via the bundled static server on port 8080
+    if [[ "$(uname -s)" == "Darwin" && -d "$dashboard_dir/dist" ]] && ! is_truthy "$DRY_RUN"; then
+      mkdir -p "$HOME/.argentos/logs"
+
+      # Kill anything on 8080 first
+      lsof -ti :8080 | xargs kill 2>/dev/null || true
+
+      local static_server="$dashboard_dir/static-server.cjs"
+      if [[ ! -f "$static_server" ]]; then
+        warn "Dashboard static server missing at $static_server"
+        return 0
+      fi
+
+      # Start dashboard UI in background
+      PORT=8080 API_PORT=9242 PATH="$node_dir:$PATH" nohup "$NODE_BIN" "$static_server" \
+        > "$HOME/.argentos/logs/dashboard-ui.log" 2>&1 &
+      local dash_pid=$!
+
+      # Create a LaunchAgent so it survives reboots
+      local ui_plist="$HOME/Library/LaunchAgents/ai.argent.dashboard-ui.plist"
+      cat > "$ui_plist" <<UIPLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.argent.dashboard-ui</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$NODE_BIN</string>
+    <string>$static_server</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>$dashboard_dir</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>$node_dir:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOST</key>
+    <string>127.0.0.1</string>
+    <key>PORT</key>
+    <string>8080</string>
+    <key>API_PORT</key>
+    <string>9242</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>$HOME/.argentos/logs/dashboard-ui.log</string>
+  <key>StandardErrorPath</key>
+  <string>$HOME/.argentos/logs/dashboard-ui.log</string>
+</dict>
+</plist>
+UIPLIST
+
+      sleep 2
+      if lsof -i :8080 >/dev/null 2>&1; then
+        ok "Dashboard running on http://127.0.0.1:8080/"
+      else
+        warn "Dashboard may not have started — check ~/.argentos/logs/dashboard-ui.log"
+      fi
+    elif [[ ! -d "$dashboard_dir/dist" ]]; then
+      warn "Dashboard build output missing — dashboard will not be available on port 8080"
+    fi
+  else
+    warn "dashboard/ directory not found"
+  fi
+
+  # ── Master Encryption Key Ceremony ──────────────────────────────────
+  # This key encrypts all API keys and secrets stored by ArgentOS.
+  # If lost, all encrypted secrets become unrecoverable.
+  # The operator MUST acknowledge this before we hand off.
+
+  local argent_bin="$BIN_DIR_OVERRIDE/argent"
+  local master_key_file="$HOME/.argentos/.master-key"
+  local master_key=""
+
+  # Generate key if it doesn't exist
+  if [[ ! -f "$master_key_file" ]]; then
+    info "Generating master encryption key..."
+    # Suppress config-validation noise — redirect stderr, capture only key output
+    PATH="$(dirname "$NODE_BIN"):$PATH" "$argent_bin" gateway install --force >/dev/null 2>&1 || true
+  fi
+
+  # Read the key
+  if [[ -f "$master_key_file" ]]; then
+    master_key="$(cat "$master_key_file" 2>/dev/null)" || master_key=""
+  fi
+
+  if [[ -z "$master_key" ]]; then
+    # Try backup-key as fallback (checks keychain too)
+    master_key="$(PATH="$(dirname "$NODE_BIN"):$PATH" "$argent_bin" secrets backup-key 2>/dev/null | grep -oE '[0-9a-f]{32,}')" || master_key=""
+  fi
+
+  if [[ -z "$master_key" ]]; then
+    echo ""
+    err "═══ MASTER KEY GENERATION FAILED ═══"
+    err "Could not generate or locate a master encryption key."
+    err "Run manually: argent gateway install --force"
+    err "Then verify:  argent secrets backup-key"
+    err "Do NOT enter any API keys until this is resolved."
+    echo ""
+    # Don't proceed to app launch — this is a hard blocker
+  else
+    # ── Full key ceremony ──────────────────────────────────────────
+    echo ""
+    echo "  ╔══════════════════════════════════════════════════════════════╗"
+    echo "  ║              MASTER ENCRYPTION KEY                          ║"
+    echo "  ║              Save this now.                                  ║"
+    echo "  ╚══════════════════════════════════════════════════════════════╝"
+    echo ""
+    echo "  This key encrypts all API keys and secrets stored by ArgentOS."
+    echo "  If you lose this key, all encrypted secrets become unrecoverable."
+    echo ""
+    echo "  Copy this key now and store it in a safe place."
+    echo ""
+    echo "  ┌──────────────────────────────────────────────────────────────┐"
+    echo "  │ Key: $master_key"
+    echo "  └──────────────────────────────────────────────────────────────┘"
+    echo ""
+    echo "  Stored at: $master_key_file"
+    echo ""
+    echo "  To restore on another machine:"
+    echo "    Dashboard: Settings → Encryption → Restore Key"
+    echo "    CLI:       argent secrets restore-key <paste-key-here>"
+    echo ""
+
+    if is_truthy "$NO_PROMPT" || [[ ! -r /dev/tty ]]; then
+      # Non-interactive — just print and continue
+      ok "Master encryption key generated. Back it up immediately."
+    else
+      # Interactive — require explicit acknowledgment
+      while true; do
+        printf "  Type YES once you have copied this key: " >/dev/tty
+        local ack=""
+        IFS= read -r ack </dev/tty 2>/dev/null || ack=""
+        ack="$(printf '%s' "$ack" | tr '[:lower:]' '[:upper:]')"
+        if [[ "$ack" == "YES" ]]; then
+          ok "Key acknowledged. Continuing setup."
+          break
+        fi
+        echo "  Please type YES to confirm you have saved the key."
+      done
+    fi
+    echo ""
+  fi
+
+  # ── Gateway health verification ───────────────────────────────────
+  # Deterministic: TCP probe on the gateway port. The gateway binds
+  # port 18789 only after full initialisation, so a successful connect
+  # means it is ready to accept WebSocket clients.
+  # Uses nc (netcat) — available on macOS and Linux by default.
+  # /dev/tcp is NOT available on macOS default bash (Apple disables it).
+  local gw_port=18789
+  local gw_healthy=false
+  info "Waiting for gateway on port ${gw_port}..."
+  for _attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    if nc -z 127.0.0.1 "${gw_port}" 2>/dev/null; then
+      gw_healthy=true
+      break
+    fi
+    sleep 2
+  done
+  if $gw_healthy; then
+    ok "Gateway is healthy (port ${gw_port} accepting connections)"
+  else
+    warn "Gateway did not become healthy within 30 s"
+    warn "Check logs: ~/.argentos/logs/gateway.log"
+    warn "Or run:     argent gateway status"
+  fi
+
+  # macOS: Launch Argent.app after onboarding completes
+  if [[ -n "$master_key" && "$(uname -s)" == "Darwin" && -d /Applications/Argent.app ]]; then
+    launch_argent_app || true
   fi
 }
 
@@ -653,6 +1166,26 @@ while [[ $# -gt 0 ]]; do
 done
 
 require_unix
+require_command curl
+require_command tar
+
+# macOS: check for Homebrew early — required for PostgreSQL, Redis, and system services
+if [[ "$(uname -s)" == "Darwin" ]] && ! command -v brew >/dev/null 2>&1; then
+  echo ""
+  err "Homebrew is required but not installed."
+  echo ""
+  info "ArgentOS uses Homebrew to install PostgreSQL, Redis, and other"
+  info "system services on macOS. Please install Homebrew first:"
+  echo ""
+  echo "  /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+  echo ""
+  info "Then re-run the ArgentOS installer:"
+  echo ""
+  echo "  curl -fsSL https://argentos.ai/install.sh | bash"
+  echo ""
+  exit 1
+fi
+
 validate_channel
 INSTALL_METHOD="$(resolve_effective_install_method)"
 VERSION="$(resolve_effective_version)"

@@ -678,13 +678,25 @@ function printResult(result: UpdateRunResult, opts: PrintResultOptions) {
     defaultRuntime.log(`  Reason: ${theme.muted(result.reason)}`);
   }
 
-  if (result.before?.version || result.before?.sha) {
-    const before = result.before.version ?? result.before.sha?.slice(0, 8) ?? "";
-    defaultRuntime.log(`  Before: ${theme.muted(before)}`);
+  const formatVersionInfo = (
+    info: { sha?: string | null; version?: string | null; tag?: string | null } | undefined,
+  ) => {
+    if (!info) return null;
+    const parts: string[] = [];
+    if (info.tag) parts.push(info.tag);
+    else if (info.version) parts.push(info.version);
+    if (info.sha) parts.push(info.sha.slice(0, 8));
+    return parts.length > 0 ? parts.join(" / ") : null;
+  };
+
+  const currentLabel = formatVersionInfo(result.before);
+  const targetLabel = formatVersionInfo(result.after);
+
+  if (currentLabel) {
+    defaultRuntime.log(`  Current: ${theme.muted(currentLabel)}`);
   }
-  if (result.after?.version || result.after?.sha) {
-    const after = result.after.version ?? result.after.sha?.slice(0, 8) ?? "";
-    defaultRuntime.log(`  After: ${theme.muted(after)}`);
+  if (targetLabel) {
+    defaultRuntime.log(`  Target:  ${theme.muted(targetLabel)}`);
   }
 
   if (!opts.hideSteps && result.steps.length > 0) {

@@ -125,8 +125,20 @@ function tryExtractPlistLabel(contents: string): string | null {
   return match[1]?.trim() || null;
 }
 
+/** Known first-party support services (non-gateway) that should not be flagged. */
+const KNOWN_FIRST_PARTY_LABELS = new Set([
+  "ai.argent.dashboard-ui",
+  "ai.argent.dashboard-api",
+  "ai.argent.redis",
+  "ai.argent.memory-worker",
+]);
+
+function isKnownFirstPartyLabel(label: string): boolean {
+  return KNOWN_FIRST_PARTY_LABELS.has(label);
+}
+
 function isIgnoredLaunchdLabel(label: string): boolean {
-  return label === resolveGatewayLaunchAgentLabel();
+  return label === resolveGatewayLaunchAgentLabel() || isKnownFirstPartyLabel(label);
 }
 
 function isIgnoredSystemdName(name: string): boolean {
