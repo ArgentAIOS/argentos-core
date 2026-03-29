@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Ensure CWD is valid — if the user ran `rm -rf ~/argentos` while standing in
+# that directory, the shell CWD becomes invalid and git/node will fail.
+cd "$HOME" 2>/dev/null || cd / 2>/dev/null || true
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -902,6 +906,12 @@ install_git() {
   info "Add this to PATH if needed: $BIN_DIR_OVERRIDE"
 
   provision_core_storage_stack
+
+  # Push Drizzle schema to create all PG tables (knowledge, memory, tasks, etc.)
+  # Must run AFTER PG is provisioned and pnpm install has made drizzle-kit available.
+  info "Creating PostgreSQL schema tables..."
+  PATH="$(dirname "$NODE_BIN"):$PATH" run_pnpm "$GIT_DIR" exec drizzle-kit push --force 2>/dev/null \
+    || warn "Schema push failed — run manually: cd ~/argentos && npx drizzle-kit push --force"
 
   # macOS: Download Argent.app from R2 BEFORE onboarding (runs during service setup)
   if [[ "$(uname -s)" == "Darwin" ]]; then

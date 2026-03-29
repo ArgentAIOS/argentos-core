@@ -817,6 +817,13 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       // No dashboard dir — skip
     }
 
+    // Push Drizzle schema to create any new PG tables added in this release.
+    // Non-fatal: skip if drizzle-kit isn't available or PG isn't configured.
+    await runCommand(["npx", "--yes", "drizzle-kit", "push", "--force"], {
+      cwd: gitRoot,
+      timeoutMs,
+    }).catch(() => null);
+
     // Restore dist/control-ui/ to committed state to prevent dirty repo after update
     // (ui:build regenerates assets with new hashes, which would block future updates).
     // Non-fatal: public Core repos may not have dist/control-ui/ at all.
