@@ -510,6 +510,21 @@ export function routeModel(params: {
     }
   }
 
+  // If no activeProfile is set but user-defined profiles exist, use the first one.
+  // This prevents falling through to hardcoded Anthropic defaults when the user
+  // has configured a custom profile but never explicitly set activeProfile.
+  if (!activeProfile && config.profiles) {
+    const profileNames = Object.keys(config.profiles);
+    if (profileNames.length > 0) {
+      const firstName = profileNames[0]!;
+      const firstProfile = config.profiles[firstName];
+      if (firstProfile) {
+        profileName = firstName;
+        activeProfile = firstProfile;
+      }
+    }
+  }
+
   // Check forceMaxTier (e.g., dashboard deep-think toggle)
   const tierModels = resolveTierModels({
     profileTiers: activeProfile?.tiers,
