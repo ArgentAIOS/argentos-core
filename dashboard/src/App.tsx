@@ -32,7 +32,6 @@ import {
 } from "./components/Live2DAvatar";
 import { LockScreen } from "./components/LockScreen";
 import { ProjectBoard } from "./components/ProjectBoard";
-import { ProjectKickoffModal } from "./components/ProjectKickoffModal";
 import { SessionDrawer, type SessionEntry } from "./components/SessionDrawer";
 import { SetupWizard } from "./components/SetupWizard";
 import { StatusBar } from "./components/StatusBar";
@@ -1107,7 +1106,7 @@ function MemoryStatsCards() {
 function App() {
   const [avatarState, setAvatarState] = useState<AvatarState>("idle");
   const [avatarMood, setAvatarMood] = useState<MoodName | undefined>(undefined);
-  const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("full");
+  const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("public-core");
   const [dashboardMode, setDashboardMode] = useState<DashboardMode>("personal");
 
   // Workspace tabs
@@ -1298,9 +1297,13 @@ function App() {
         }
       } catch {
         if (!cancelled) {
-          setSurfaceProfile("full");
+          setSurfaceProfile("public-core");
           const storedDashboardMode = readStoredDashboardMode();
-          setDashboardMode(storedDashboardMode === "operations" ? "operations" : "personal");
+          setDashboardMode(
+            storedDashboardMode === "operations" && isDashboardModeAllowed("operations", "public-core")
+              ? "operations"
+              : "personal",
+          );
         }
       }
     };
@@ -5074,7 +5077,7 @@ function App() {
                 onTaskExecute={executeTask}
                 onProjectDelete={deleteProject}
                 onProjectTaskAdd={addProjectTask}
-                onProjectKickoff={() => setShowProjectKickoffModal(true)}
+                onProjectKickoff={allowWorkforceSurface ? () => setShowProjectKickoffModal(true) : undefined}
                 onOpenBoard={() => {
                   setShowWorkforce(false);
                   setShowBoard(true);
@@ -6028,10 +6031,12 @@ function App() {
         credentials={lockScreen.credentials}
       />
 
-      <ProjectKickoffModal
-        isOpen={showProjectKickoffModal}
-        onClose={() => setShowProjectKickoffModal(false)}
-      />
+      {allowWorkforceSurface && (
+        <ProjectKickoffModal
+          isOpen={showProjectKickoffModal}
+          onClose={() => setShowProjectKickoffModal(false)}
+        />
+      )}
     </div>
   );
 }

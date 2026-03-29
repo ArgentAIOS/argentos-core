@@ -19,13 +19,13 @@ export function parseDashboardSurfaceProfile(
   rawConfigText: string | null | undefined,
 ): DashboardSurfaceProfile {
   if (!rawConfigText) {
-    return "full";
+    return "public-core";
   }
   try {
     const parsed = JSON.parse(rawConfigText);
-    return parsed?.distribution?.surfaceProfile === "public-core" ? "public-core" : "full";
+    return parsed?.distribution?.surfaceProfile === "full" ? "full" : "public-core";
   } catch {
-    return "full";
+    return "public-core";
   }
 }
 
