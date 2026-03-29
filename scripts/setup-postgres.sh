@@ -57,19 +57,20 @@ fi
 
 # 5. Create database and extensions
 PSQL="$(brew --prefix)/opt/postgresql@17/bin/psql"
+PSQL_ARGS=(-P pager=off -p "${ARGENT_PG_PORT}")
 
 echo "Creating database '${ARGENT_PG_DB}'..."
-"${PSQL}" -p "${ARGENT_PG_PORT}" -d postgres -c "CREATE DATABASE ${ARGENT_PG_DB};" 2>/dev/null || echo "Database already exists"
+"${PSQL}" "${PSQL_ARGS[@]}" -d postgres -c "CREATE DATABASE ${ARGENT_PG_DB};" 2>/dev/null || echo "Database already exists"
 
 echo "Enabling extensions..."
-"${PSQL}" -p "${ARGENT_PG_PORT}" -d "${ARGENT_PG_DB}" -c "CREATE EXTENSION IF NOT EXISTS vector;"
-"${PSQL}" -p "${ARGENT_PG_PORT}" -d "${ARGENT_PG_DB}" -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+"${PSQL}" "${PSQL_ARGS[@]}" -d "${ARGENT_PG_DB}" -c "CREATE EXTENSION IF NOT EXISTS vector;"
+"${PSQL}" "${PSQL_ARGS[@]}" -d "${ARGENT_PG_DB}" -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
 
 # 6. Verify
 echo ""
 echo "=== Verification ==="
-"${PSQL}" -p "${ARGENT_PG_PORT}" -d "${ARGENT_PG_DB}" -c "SELECT version();" -t
-"${PSQL}" -p "${ARGENT_PG_PORT}" -d "${ARGENT_PG_DB}" -c "SELECT '[1,2,3]'::vector;" -t && echo "pgvector: OK" || echo "pgvector: FAILED"
+"${PSQL}" "${PSQL_ARGS[@]}" -d "${ARGENT_PG_DB}" -c "SELECT version();" -t
+"${PSQL}" "${PSQL_ARGS[@]}" -d "${ARGENT_PG_DB}" -c "SELECT '[1,2,3]'::vector;" -t && echo "pgvector: OK" || echo "pgvector: FAILED"
 
 echo ""
 echo "=== Connection String ==="
