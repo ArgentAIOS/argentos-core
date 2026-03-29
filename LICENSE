@@ -35,3 +35,9 @@ ArgentOS is built on the shoulders of excellent open-source work:
   The original fork point that gave ArgentOS its launching pad. OpenClaw's
   architecture informed early design decisions for the gateway, plugin system,
   and channel infrastructure.
+
+- TOON (https://github.com/toon-format/toon) — Token-Oriented Object Notation
+  ArgentOS uses TOON throughout the system to encode structured data for LLM
+  prompts at 40-50% fewer tokens than JSON. Used in workflow pipeline context,
+  agent handoffs, memory recall, tool results, SpecForge task breakdowns,
+  team status, and knowledge library results.
