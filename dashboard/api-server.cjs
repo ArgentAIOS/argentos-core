@@ -158,11 +158,17 @@ app.use("/api", (req, res, next) => {
 const DASHBOARD_API_TOKEN = process.env.DASHBOARD_API_TOKEN || null;
 const GATEWAY_CONFIG_TOKEN = (() => {
   try {
-    const config = readArgentConfig();
-    return config?.gateway?.auth?.token || null;
+    const configPath =
+      process.env.ARGENT_CONFIG_PATH ||
+      path.join(process.env.HOME || "", ".argentos", "argent.json");
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      return config?.gateway?.auth?.token || null;
+    }
   } catch {
-    return null;
+    /* ignore */
   }
+  return null;
 })();
 const ACCEPTED_TOKENS = [DASHBOARD_API_TOKEN, GATEWAY_CONFIG_TOKEN].filter(Boolean);
 if (ACCEPTED_TOKENS.length > 0) {
