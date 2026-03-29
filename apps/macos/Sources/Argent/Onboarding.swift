@@ -5,6 +5,7 @@ import ArgentIPC
 import AVFoundation
 import Combine
 import Observation
+import OSLog
 import SwiftUI
 
 enum UIStrings {
@@ -15,6 +16,21 @@ enum UIStrings {
 final class OnboardingController {
     static let shared = OnboardingController()
     private var window: NSWindow?
+    private let logger = Logger(subsystem: "ai.argent", category: "onboarding.window")
+
+    var isVisible: Bool {
+        self.window?.isVisible == true
+    }
+
+    private func present(_ window: NSWindow) {
+        DockIconManager.shared.temporarilyShowDock()
+        window.level = .normal
+        window.collectionBehavior.insert(.moveToActiveSpace)
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+        NSRunningApplication.current.activate(options: [.activateAllWindows])
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
     func show() {
         if ProcessInfo.processInfo.isNixMode {
@@ -25,9 +41,7 @@ final class OnboardingController {
             return
         }
         if let window {
-            DockIconManager.shared.temporarilyShowDock()
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            self.present(window)
             return
         }
         let hosting = NSHostingController(rootView: OnboardingView())
@@ -39,10 +53,9 @@ final class OnboardingController {
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
         window.center()
-        DockIconManager.shared.temporarilyShowDock()
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
         self.window = window
+        self.present(window)
+        self.logger.info("Onboarding window presented")
     }
 
     func close() {

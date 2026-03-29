@@ -318,12 +318,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func scheduleFirstRunOnboardingIfNeeded() {
-        let seenVersion = UserDefaults.standard.integer(forKey: onboardingVersionKey)
-        let shouldShow = seenVersion < currentOnboardingVersion || !AppStateStore.shared.onboardingSeen
+        let shouldShow = self.shouldShowFirstRunOnboarding()
         guard shouldShow else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+        OnboardingController.shared.show()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            guard self.shouldShowFirstRunOnboarding() else { return }
+            guard !OnboardingController.shared.isVisible else { return }
             OnboardingController.shared.show()
         }
+    }
+
+    @MainActor
+    private func shouldShowFirstRunOnboarding() -> Bool {
+        let seenVersion = UserDefaults.standard.integer(forKey: onboardingVersionKey)
+        return seenVersion < currentOnboardingVersion || !AppStateStore.shared.onboardingSeen
     }
 
     private func isDuplicateInstance() -> Bool {
