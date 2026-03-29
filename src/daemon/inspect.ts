@@ -3,8 +3,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
+  DASHBOARD_API_LAUNCH_AGENT_LABEL,
+  DASHBOARD_UI_LAUNCH_AGENT_LABEL,
   GATEWAY_SERVICE_KIND,
   GATEWAY_SERVICE_MARKER,
+  NODE_LAUNCH_AGENT_LABEL,
   resolveGatewayLaunchAgentLabel,
   resolveGatewaySystemdServiceName,
   resolveGatewayWindowsTaskName,
@@ -24,6 +27,12 @@ export type FindExtraGatewayServicesOptions = {
 };
 
 const EXTRA_MARKERS = ["argent", "clawdbot", "moltbot"] as const;
+const IGNORED_FIRST_PARTY_LAUNCHD_LABELS = new Set([
+  DASHBOARD_UI_LAUNCH_AGENT_LABEL,
+  DASHBOARD_API_LAUNCH_AGENT_LABEL,
+  NODE_LAUNCH_AGENT_LABEL,
+  "ai.argent.redis",
+]);
 const execFileAsync = promisify(execFile);
 
 export function renderGatewayServiceCleanupHints(
@@ -126,7 +135,9 @@ function tryExtractPlistLabel(contents: string): string | null {
 }
 
 function isIgnoredLaunchdLabel(label: string): boolean {
-  return label === resolveGatewayLaunchAgentLabel();
+  return (
+    label === resolveGatewayLaunchAgentLabel() || IGNORED_FIRST_PARTY_LAUNCHD_LABELS.has(label)
+  );
 }
 
 function isIgnoredSystemdName(name: string): boolean {
