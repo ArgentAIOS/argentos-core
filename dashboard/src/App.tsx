@@ -32,6 +32,7 @@ import {
 } from "./components/Live2DAvatar";
 import { LockScreen } from "./components/LockScreen";
 import { ProjectBoard } from "./components/ProjectBoard";
+import { ProjectKickoffModal } from "./components/ProjectKickoffModal";
 import { SessionDrawer, type SessionEntry } from "./components/SessionDrawer";
 import { SetupWizard } from "./components/SetupWizard";
 import { StatusBar } from "./components/StatusBar";
@@ -830,6 +831,33 @@ const OPERATIONS_PRESENCE_LOCKED_OFFSET_X = -89;
 const OPERATIONS_PRESENCE_LOCKED_OFFSET_Y = 10;
 const OPERATIONS_PRESENCE_LOCKED_SCALE = 1.33;
 
+type WorkspaceTab = {
+  id: string;
+  name: string;
+  icon: string;
+};
+
+const DEFAULT_WORKSPACE_TABS: WorkspaceTab[] = [{ id: "home", name: "Home", icon: "🏠" }];
+
+function sanitizeWorkspaceTabs(
+  tabs: WorkspaceTab[],
+  allowWorkforceSurface: boolean,
+): WorkspaceTab[] {
+  const filtered = allowWorkforceSurface ? tabs : tabs.filter((tab) => tab.id !== "operations");
+  return filtered.length > 0 ? filtered : DEFAULT_WORKSPACE_TABS;
+}
+
+function resolveWorkspaceFallback(
+  currentWorkspace: string,
+  tabs: WorkspaceTab[],
+  allowWorkforceSurface: boolean,
+): string {
+  if (!allowWorkforceSurface && currentWorkspace === "operations") {
+    return "home";
+  }
+  return tabs.some((tab) => tab.id === currentWorkspace) ? currentWorkspace : tabs[0]?.id ?? "home";
+}
+
 function readStoredGatewayToken(): string {
   try {
     const raw = localStorage.getItem(CONTROL_SETTINGS_KEY);
@@ -1109,18 +1137,15 @@ function App() {
   const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("public-core");
   const [dashboardMode, setDashboardMode] = useState<DashboardMode>("personal");
 
-  // Workspace tabs
-  interface WorkspaceTab {
-    id: string;
-    name: string;
-    icon: string;
-  }
   const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>(() => {
     try {
       const stored = localStorage.getItem("argent-workspaces");
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        const parsed = JSON.parse(stored) as WorkspaceTab[];
+        return sanitizeWorkspaceTabs(parsed, false);
+      }
     } catch {}
-    return [{ id: "home", name: "Home", icon: "🏠" }];
+    return DEFAULT_WORKSPACE_TABS;
   });
   const [activeWorkspace, setActiveWorkspace] = useState("home");
 
@@ -1213,6 +1238,34 @@ function App() {
       setWorkspaceTabs((prev) => [...prev, { id: "operations", name: "Operations", icon: "⚙️" }]);
     }
   }, [allowWorkforceSurface, workspaceTabs]);
+
+  useEffect(() => {
+    const sanitizedTabs = sanitizeWorkspaceTabs(workspaceTabs, allowWorkforceSurface);
+    const nextWorkspace = resolveWorkspaceFallback(
+      activeWorkspace,
+      sanitizedTabs,
+      allowWorkforceSurface,
+    );
+
+    const tabsChanged =
+      sanitizedTabs.length !== workspaceTabs.length ||
+      sanitizedTabs.some((tab, index) => {
+        const current = workspaceTabs[index];
+        return current?.id !== tab.id || current?.name !== tab.name || current?.icon !== tab.icon;
+      });
+
+    if (tabsChanged) {
+      setWorkspaceTabs(sanitizedTabs);
+    }
+
+    if (nextWorkspace !== activeWorkspace) {
+      setActiveWorkspace(nextWorkspace);
+    }
+
+    if (!allowWorkforceSurface && dashboardMode === "operations") {
+      setDashboardMode("personal");
+    }
+  }, [activeWorkspace, allowWorkforceSurface, dashboardMode, workspaceTabs]);
 
   // Task management via backend API
   const {
@@ -5077,7 +5130,9 @@ function App() {
                 onTaskExecute={executeTask}
                 onProjectDelete={deleteProject}
                 onProjectTaskAdd={addProjectTask}
-                onProjectKickoff={allowWorkforceSurface ? () => setShowProjectKickoffModal(true) : undefined}
+                onProjectKickoff={
+                  allowWorkforceSurface ? () => setShowProjectKickoffModal(true) : undefined
+                }
                 onOpenBoard={() => {
                   setShowWorkforce(false);
                   setShowBoard(true);
