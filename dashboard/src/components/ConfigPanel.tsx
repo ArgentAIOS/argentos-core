@@ -2589,7 +2589,7 @@ export function ConfigPanel({
   gatewayRequest,
 }: ConfigPanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>("dictionary");
-  const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("full");
+  const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("loading");
   const [config, setConfig] = useState<ConfigData>(loadConfig);
   const [newTerm, setNewTerm] = useState("");
   const [newReplacement, setNewReplacement] = useState("");
@@ -2619,15 +2619,11 @@ export function ConfigPanel({
     let cancelled = false;
     const loadSurfaceProfile = async () => {
       try {
-        const payload = await fetchJsonWithRetry<{ raw?: string }>(
-          "/api/settings/agent/raw-config",
-          {
-            timeoutMs: 0,
-            retries: 1,
-          },
-        );
+        // Use /api/surface-profile (never blocked) instead of raw-config (blocked in public-core)
+        const spResponse = await fetch("/api/surface-profile");
+        const spData = await spResponse.json();
         if (!cancelled) {
-          setSurfaceProfile(parseDashboardSurfaceProfile(payload?.raw));
+          setSurfaceProfile(spData?.surfaceProfile === "public-core" ? "public-core" : "full");
         }
       } catch {
         if (!cancelled) {
