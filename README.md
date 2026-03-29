@@ -137,6 +137,7 @@ ArgentOS stands on the work of others:
 
 - **[pi-mono](https://github.com/badlogic/pi-mono)** by Mario Zechner ([@badlogic](https://github.com/badlogic)) — the agent runtime core that ArgentOS builds upon. pi-mono provides the foundational agent loop, session management, and tool execution framework.
 - **[OpenClaw](https://openclaw.ai/)** by [Peter Steinberger](https://steipete.me/) — the original fork that gave ArgentOS its launching pad. OpenClaw's architecture informed early design decisions for the gateway, plugin system, and channel infrastructure.
+- **[TOON](https://github.com/toon-format/toon)** — Token-Oriented Object Notation. ArgentOS uses TOON throughout the system to encode structured data for LLM prompts at 40-50% fewer tokens than JSON. Used in workflow pipeline context, agent handoffs, memory recall, tool results, task breakdowns, and team status.
 
 ## License
 
