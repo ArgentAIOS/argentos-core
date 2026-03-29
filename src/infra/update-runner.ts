@@ -804,6 +804,19 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
     );
     steps.push(uiBuildStep);
 
+    // Rebuild the dashboard (Vite app) if it exists.
+    // Uses npx vite build directly (skips tsc to avoid pre-existing strict errors).
+    const dashboardDir = path.join(gitRoot, "dashboard");
+    try {
+      await fs.stat(path.join(dashboardDir, "package.json"));
+      const dashBuildStep = await runStep(
+        step("dashboard build", ["npx", "--yes", "vite", "build"], dashboardDir),
+      );
+      steps.push(dashBuildStep);
+    } catch {
+      // No dashboard dir — skip
+    }
+
     // Restore dist/control-ui/ to committed state to prevent dirty repo after update
     // (ui:build regenerates assets with new hashes, which would block future updates).
     // Non-fatal: public Core repos may not have dist/control-ui/ at all.
