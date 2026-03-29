@@ -10,6 +10,7 @@ import { Settings, X, Shield, BookOpen, User, Palette } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useGateway } from "../hooks/useGateway";
 import { processTextForSpeech, defaultPatternHandlers } from "../utils/textToSpeech";
+import SafetyRulesPanel from "./SafetyRulesPanel";
 
 // ── Types (mirror the Business ConfigPanel exports) ────────────────────────
 
@@ -38,12 +39,7 @@ type CoreTabType = "agent" | "safety" | "appearance" | "dictionary";
 const STORAGE_KEY = "argent-config";
 
 const defaultConfig: ConfigData = {
-  dictionary: [
-    { id: "1", term: "COMEX", replacement: "Coe-Mex", enabled: true },
-    { id: "2", term: "oz", replacement: "ounces", enabled: true },
-    { id: "3", term: "SGE", replacement: "Shanghai Gold Exchange", enabled: true },
-    { id: "5", term: "API", replacement: "A P I", enabled: true },
-  ],
+  dictionary: [],
   patterns: defaultPatternHandlers.map((h) => ({ name: h.name, enabled: h.enabled })),
   apiKeys: {},
 };
@@ -123,29 +119,6 @@ function AgentTab({ gatewayRequest }: { gatewayRequest?: ConfigPanelProps["gatew
           className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white/50 cursor-not-allowed"
         />
         <p className="text-xs text-white/40 mt-1">Model selection is read-only in Core.</p>
-      </div>
-    </div>
-  );
-}
-
-function SafetyTab() {
-  return (
-    <div className="space-y-4">
-      <p className="text-sm text-white/60">
-        Safety rules constrain agent behavior through monotonic policy inheritance. The full Safety
-        Rules editor is available in ArgentOS Business.
-      </p>
-      <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3">
-        <h4 className="text-sm font-medium text-white/80 flex items-center gap-2">
-          <Shield className="w-4 h-4 text-yellow-400/80" />
-          Core Safety Defaults
-        </h4>
-        <ul className="text-sm text-white/50 space-y-1 list-disc list-inside">
-          <li>Agent cannot modify its own safety rules</li>
-          <li>Human approval required for destructive actions</li>
-          <li>Escalation on repeated failures</li>
-          <li>No access to secrets without explicit grant</li>
-        </ul>
       </div>
     </div>
   );
@@ -357,7 +330,7 @@ export function ConfigPanel({
           {/* Content */}
           <div className="flex-1 overflow-y-auto px-5 py-4">
             {activeTab === "agent" && <AgentTab gatewayRequest={gatewayRequest} />}
-            {activeTab === "safety" && <SafetyTab />}
+            {activeTab === "safety" && <SafetyRulesPanel />}
             {activeTab === "appearance" && <AppearanceTab />}
             {activeTab === "dictionary" && (
               <DictionaryTab config={config} onChange={handleConfigChange} />
