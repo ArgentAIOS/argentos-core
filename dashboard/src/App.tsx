@@ -831,6 +831,35 @@ const OPERATIONS_PRESENCE_LOCKED_OFFSET_X = -89;
 const OPERATIONS_PRESENCE_LOCKED_OFFSET_Y = 10;
 const OPERATIONS_PRESENCE_LOCKED_SCALE = 1.33;
 
+type WorkspaceTab = {
+  id: string;
+  name: string;
+  icon: string;
+};
+
+const DEFAULT_WORKSPACE_TABS: WorkspaceTab[] = [{ id: "home", name: "Home", icon: "🏠" }];
+
+function sanitizeWorkspaceTabs(
+  tabs: WorkspaceTab[],
+  allowWorkforceSurface: boolean,
+): WorkspaceTab[] {
+  const filtered = allowWorkforceSurface ? tabs : tabs.filter((tab) => tab.id !== "operations");
+  return filtered.length > 0 ? filtered : DEFAULT_WORKSPACE_TABS;
+}
+
+function resolveWorkspaceFallback(
+  currentWorkspace: string,
+  tabs: WorkspaceTab[],
+  allowWorkforceSurface: boolean,
+): string {
+  if (!allowWorkforceSurface && currentWorkspace === "operations") {
+    return "home";
+  }
+  return tabs.some((tab) => tab.id === currentWorkspace)
+    ? currentWorkspace
+    : (tabs[0]?.id ?? "home");
+}
+
 function readStoredGatewayToken(): string {
   try {
     const raw = localStorage.getItem(CONTROL_SETTINGS_KEY);
@@ -1107,21 +1136,18 @@ function MemoryStatsCards() {
 function App() {
   const [avatarState, setAvatarState] = useState<AvatarState>("idle");
   const [avatarMood, setAvatarMood] = useState<MoodName | undefined>(undefined);
-  const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("full");
+  const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("public-core");
   const [dashboardMode, setDashboardMode] = useState<DashboardMode>("personal");
 
-  // Workspace tabs
-  interface WorkspaceTab {
-    id: string;
-    name: string;
-    icon: string;
-  }
   const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>(() => {
     try {
       const stored = localStorage.getItem("argent-workspaces");
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        const parsed = JSON.parse(stored) as WorkspaceTab[];
+        return sanitizeWorkspaceTabs(parsed, false);
+      }
     } catch {}
-    return [{ id: "home", name: "Home", icon: "🏠" }];
+    return DEFAULT_WORKSPACE_TABS;
   });
   const [activeWorkspace, setActiveWorkspace] = useState("home");
 
@@ -1215,6 +1241,34 @@ function App() {
     }
   }, [allowWorkforceSurface, workspaceTabs]);
 
+  useEffect(() => {
+    const sanitizedTabs = sanitizeWorkspaceTabs(workspaceTabs, allowWorkforceSurface);
+    const nextWorkspace = resolveWorkspaceFallback(
+      activeWorkspace,
+      sanitizedTabs,
+      allowWorkforceSurface,
+    );
+
+    const tabsChanged =
+      sanitizedTabs.length !== workspaceTabs.length ||
+      sanitizedTabs.some((tab, index) => {
+        const current = workspaceTabs[index];
+        return current?.id !== tab.id || current?.name !== tab.name || current?.icon !== tab.icon;
+      });
+
+    if (tabsChanged) {
+      setWorkspaceTabs(sanitizedTabs);
+    }
+
+    if (nextWorkspace !== activeWorkspace) {
+      setActiveWorkspace(nextWorkspace);
+    }
+
+    if (!allowWorkforceSurface && dashboardMode === "operations") {
+      setDashboardMode("personal");
+    }
+  }, [activeWorkspace, allowWorkforceSurface, dashboardMode, workspaceTabs]);
+
   // Task management via backend API
   const {
     tasks,
@@ -1298,9 +1352,14 @@ function App() {
         }
       } catch {
         if (!cancelled) {
-          setSurfaceProfile("full");
+          setSurfaceProfile("public-core");
           const storedDashboardMode = readStoredDashboardMode();
-          setDashboardMode(storedDashboardMode === "operations" ? "operations" : "personal");
+          setDashboardMode(
+            storedDashboardMode === "operations" &&
+              isDashboardModeAllowed("operations", "public-core")
+              ? "operations"
+              : "personal",
+          );
         }
       }
     };
@@ -5074,7 +5133,9 @@ function App() {
                 onTaskExecute={executeTask}
                 onProjectDelete={deleteProject}
                 onProjectTaskAdd={addProjectTask}
-                onProjectKickoff={() => setShowProjectKickoffModal(true)}
+                onProjectKickoff={
+                  allowWorkforceSurface ? () => setShowProjectKickoffModal(true) : undefined
+                }
                 onOpenBoard={() => {
                   setShowWorkforce(false);
                   setShowBoard(true);
@@ -6028,10 +6089,12 @@ function App() {
         credentials={lockScreen.credentials}
       />
 
-      <ProjectKickoffModal
-        isOpen={showProjectKickoffModal}
-        onClose={() => setShowProjectKickoffModal(false)}
-      />
+      {allowWorkforceSurface && (
+        <ProjectKickoffModal
+          isOpen={showProjectKickoffModal}
+          onClose={() => setShowProjectKickoffModal(false)}
+        />
+      )}
     </div>
   );
 }
