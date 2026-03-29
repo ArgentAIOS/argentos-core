@@ -84,9 +84,8 @@ actor GatewayEndpointStore {
         env: [String: String],
         launchdSnapshot: LaunchAgentPlistSnapshot?) -> String?
     {
-        let raw = env["ARGENT_GATEWAY_PASSWORD"] ?? ""
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
+        let envPassword = self.trimmedEnvValue("ARGENT_GATEWAY_PASSWORD", env: env)
+        if let envPassword, isRemote {
             if let configPassword = self.resolveConfigPassword(isRemote: isRemote, root: root),
                !configPassword.isEmpty
             {
@@ -95,7 +94,7 @@ actor GatewayEndpointStore {
                     envVar: "ARGENT_GATEWAY_PASSWORD",
                     configKey: isRemote ? "gateway.remote.password" : "gateway.auth.password")
             }
-            return trimmed
+            return envPassword
         }
         if isRemote {
             if let gateway = root["gateway"] as? [String: Any],
@@ -123,7 +122,7 @@ actor GatewayEndpointStore {
         {
             return password
         }
-        return nil
+        return envPassword
     }
 
     private static func resolveConfigPassword(isRemote: Bool, root: [String: Any]) -> String? {
@@ -152,19 +151,18 @@ actor GatewayEndpointStore {
         env: [String: String],
         launchdSnapshot: LaunchAgentPlistSnapshot?) -> String?
     {
-        let raw = env["ARGENT_GATEWAY_TOKEN"] ?? ""
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
+        let envToken = self.trimmedEnvValue("ARGENT_GATEWAY_TOKEN", env: env)
+        if let envToken, isRemote {
             if let configToken = self.resolveConfigToken(isRemote: isRemote, root: root),
                !configToken.isEmpty,
-               configToken != trimmed
+               configToken != envToken
             {
                 self.warnEnvOverrideOnce(
                     kind: .token,
                     envVar: "ARGENT_GATEWAY_TOKEN",
                     configKey: isRemote ? "gateway.remote.token" : "gateway.auth.token")
             }
-            return trimmed
+            return envToken
         }
 
         if let configToken = self.resolveConfigToken(isRemote: isRemote, root: root),
@@ -183,7 +181,15 @@ actor GatewayEndpointStore {
             return token
         }
 
-        return nil
+        return envToken
+    }
+
+    private static func trimmedEnvValue(_ key: String, env: [String: String]) -> String? {
+        guard let raw = env[key] else {
+            return nil
+        }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private static func resolveConfigToken(isRemote: Bool, root: [String: Any]) -> String? {
