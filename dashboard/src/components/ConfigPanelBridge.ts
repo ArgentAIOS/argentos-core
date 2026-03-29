@@ -1,3 +1,3 @@
-// Core override: routes to ConfigPanelCore instead of the full Business ConfigPanel.
-export { ConfigPanel, useConfig } from "./ConfigPanelCore";
-export type { ConfigData, DictionaryEntry, PatternState } from "./ConfigPanelCore";
+// Core override: uses the full ConfigPanel (Business tabs are hidden at runtime
+// via configSurfaceProfile.ts when surfaceProfile === "public-core").
+export { ConfigPanel, useConfig } from "./ConfigPanel";
