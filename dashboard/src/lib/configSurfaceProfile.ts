@@ -7,8 +7,6 @@ export const PUBLIC_CORE_BLOCKED_CONFIG_TABS = new Set<string>([
   "capabilities",
   "intent",
   "security",
-  "gateway",
-  "database",
   "devices",
   "observability",
   "marketplace",
@@ -28,6 +26,7 @@ const OPERATIONS_WORKSPACE_TABS = [
 const PUBLIC_CORE_ALLOWED_OPERATIONS_TABS = new Set<OperationsWorkspaceTabId>([
   "map",
   "workflows",
+  "jobs",
   "tasks",
   "org",
   "schedule",

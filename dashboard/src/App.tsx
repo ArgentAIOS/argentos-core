@@ -4819,7 +4819,7 @@ function App() {
             key={ws.id}
             onClick={() => {
               setActiveWorkspace(ws.id);
-              if (ws.id === "operations" && allowWorkforceSurface) {
+              if (ws.id === "operations" && allowOperationsSurface) {
                 setDashboardMode("operations");
               } else {
                 setDashboardMode("personal");
