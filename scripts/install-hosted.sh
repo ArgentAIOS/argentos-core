@@ -908,7 +908,6 @@ install_git() {
   info "Creating PostgreSQL schema tables..."
   bash "$GIT_DIR/scripts/ensure-pg-tables.sh" 2>/dev/null \
     || warn "Table creation failed — run manually: bash ~/argentos/scripts/ensure-pg-tables.sh"
-
   # macOS: Download Argent.app from R2 BEFORE onboarding (runs during service setup)
   if [[ "$(uname -s)" == "Darwin" ]]; then
     download_argent_app || true

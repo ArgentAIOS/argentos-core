@@ -91,6 +91,7 @@ import {
 import { buildPresetConfig } from "./lib/avatarPresets";
 import {
   isDashboardModeAllowed,
+  isOperationsSurfaceAllowed,
   isWorkforceSurfaceAllowed,
   parseDashboardMode,
   parseDashboardSurfaceProfile,
@@ -1205,15 +1206,16 @@ function App() {
     allowManualOverrides: true,
   });
   const pollingMultiplier = Math.max(1, runtimeLoadProfile.pollingMultiplier || 1);
+  const allowOperationsSurface = isOperationsSurfaceAllowed(surfaceProfile);
   const allowWorkforceSurface = isWorkforceSurfaceAllowed(surfaceProfile);
   const isOperationsDashboard = allowWorkforceSurface && dashboardMode === "operations";
 
-  // Ensure Operations tab exists when workforce is allowed
+  // Ensure Operations tab exists when the surface allows operations.
   useEffect(() => {
-    if (allowWorkforceSurface && !workspaceTabs.some((t) => t.id === "operations")) {
+    if (allowOperationsSurface && !workspaceTabs.some((t) => t.id === "operations")) {
       setWorkspaceTabs((prev) => [...prev, { id: "operations", name: "Operations", icon: "⚙️" }]);
     }
-  }, [allowWorkforceSurface, workspaceTabs]);
+  }, [allowOperationsSurface, workspaceTabs]);
 
   // Task management via backend API
   const {

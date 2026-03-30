@@ -677,13 +677,25 @@ function printResult(result: UpdateRunResult, opts: PrintResultOptions) {
     defaultRuntime.log(`  Reason: ${theme.muted(result.reason)}`);
   }
 
-  if (result.before?.version || result.before?.sha) {
-    const before = result.before.version ?? result.before.sha?.slice(0, 8) ?? "";
-    defaultRuntime.log(`  Before: ${theme.muted(before)}`);
+  const formatVersionInfo = (
+    info: { sha?: string | null; version?: string | null; tag?: string | null } | undefined,
+  ) => {
+    if (!info) return null;
+    const parts: string[] = [];
+    if (info.tag) parts.push(info.tag);
+    else if (info.version) parts.push(info.version);
+    if (info.sha) parts.push(info.sha.slice(0, 8));
+    return parts.length > 0 ? parts.join(" / ") : null;
+  };
+
+  const currentLabel = formatVersionInfo(result.before);
+  const targetLabel = formatVersionInfo(result.after);
+
+  if (currentLabel) {
+    defaultRuntime.log(`  Current: ${theme.muted(currentLabel)}`);
   }
-  if (result.after?.version || result.after?.sha) {
-    const after = result.after.version ?? result.after.sha?.slice(0, 8) ?? "";
-    defaultRuntime.log(`  After: ${theme.muted(after)}`);
+  if (targetLabel) {
+    defaultRuntime.log(`  Target:  ${theme.muted(targetLabel)}`);
   }
 
   if (!opts.hideSteps && result.steps.length > 0) {
@@ -721,12 +733,17 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     return;
   }
 
-  const root =
-    (await resolveArgentPackageRoot({
-      moduleUrl: import.meta.url,
-      argv1: process.argv[1],
-      cwd: process.cwd(),
-    })) ?? process.cwd();
+  // For hosted git installs: ARGENT_GIT_DIR points to the real source checkout.
+  // Without this, the update resolves root to the runtime snapshot (~/.argentos/lib/...)
+  // which has no .git, causing installKind to be misclassified as "package".
+  const gitDirOverride = process.env.ARGENT_GIT_DIR?.trim();
+  const root = gitDirOverride
+    ? path.resolve(gitDirOverride)
+    : ((await resolveArgentPackageRoot({
+        moduleUrl: import.meta.url,
+        argv1: process.argv[1],
+        cwd: process.cwd(),
+      })) ?? process.cwd());
 
   const updateStatus = await checkUpdateStatus({
     root,
@@ -1174,12 +1191,15 @@ export async function updateWizardCommand(opts: UpdateWizardOptions = {}): Promi
     return;
   }
 
-  const root =
-    (await resolveArgentPackageRoot({
-      moduleUrl: import.meta.url,
-      argv1: process.argv[1],
-      cwd: process.cwd(),
-    })) ?? process.cwd();
+  // For hosted git installs: prefer ARGENT_GIT_DIR over snapshot root
+  const gitDirOverride2 = process.env.ARGENT_GIT_DIR?.trim();
+  const root = gitDirOverride2
+    ? path.resolve(gitDirOverride2)
+    : ((await resolveArgentPackageRoot({
+        moduleUrl: import.meta.url,
+        argv1: process.argv[1],
+        cwd: process.cwd(),
+      })) ?? process.cwd());
 
   const [updateStatus, configSnapshot] = await Promise.all([
     checkUpdateStatus({

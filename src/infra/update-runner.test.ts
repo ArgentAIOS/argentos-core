@@ -147,7 +147,7 @@ describe("runGatewayUpdate", () => {
         stdout: `${stableTag}\n${betaTag}\n`,
       },
       [`git -C ${tempDir} checkout --detach ${stableTag}`]: { stdout: "" },
-      "pnpm install": { stdout: "" },
+      "pnpm install --frozen-lockfile": { stdout: "" },
       "pnpm build": { stdout: "" },
       "pnpm ui:build": { stdout: "" },
       [`git -C ${tempDir} checkout -- dist/control-ui/`]: { stdout: "" },

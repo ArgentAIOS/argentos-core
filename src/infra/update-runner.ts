@@ -28,13 +28,19 @@ export type UpdateStepResult = {
   stderrTail?: string | null;
 };
 
+export type UpdateVersionInfo = {
+  sha?: string | null;
+  version?: string | null;
+  tag?: string | null;
+};
+
 export type UpdateRunResult = {
   status: "ok" | "error" | "skipped";
   mode: "git" | "pnpm" | "bun" | "npm" | "unknown";
   root?: string;
   reason?: string;
-  before?: { sha?: string | null; version?: string | null };
-  after?: { sha?: string | null; version?: string | null };
+  before?: UpdateVersionInfo;
+  after?: UpdateVersionInfo;
   steps: UpdateStepResult[];
   durationMs: number;
 };
@@ -336,14 +342,14 @@ function managerScriptArgs(manager: "pnpm" | "bun" | "npm", script: string, args
   return ["npm", "run", script];
 }
 
-function managerInstallArgs(manager: "pnpm" | "bun" | "npm") {
+function managerInstallArgs(manager: "pnpm" | "bun" | "npm", frozen = false) {
   if (manager === "pnpm") {
-    return ["pnpm", "install"];
+    return frozen ? ["pnpm", "install", "--frozen-lockfile"] : ["pnpm", "install"];
   }
   if (manager === "bun") {
-    return ["bun", "install"];
+    return frozen ? ["bun", "install", "--frozen-lockfile"] : ["bun", "install"];
   }
-  return ["npm", "install"];
+  return frozen ? ["npm", "ci"] : ["npm", "install"];
 }
 
 function normalizeTag(tag?: string) {
@@ -445,6 +451,20 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       };
     }
 
+    // Track resolved release tag for stable/beta channels (used in final result)
+    let resolvedTag: string | null = null;
+    // Resolve the tag the current HEAD points to (if any)
+    let beforeTag: string | null = null;
+    if (channel !== "dev" && beforeSha) {
+      const describeResult = await runCommand(
+        ["git", "-C", gitRoot, "describe", "--tags", "--exact-match", "HEAD"],
+        { cwd: gitRoot, timeoutMs },
+      );
+      if (describeResult.code === 0 && describeResult.stdout.trim()) {
+        beforeTag = describeResult.stdout.trim();
+      }
+    }
+
     if (channel === "dev") {
       if (needsCheckoutMain) {
         const checkoutStep = await runStep(
@@ -529,6 +549,7 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
           root: gitRoot,
           reason: "up-to-date",
           before: { sha: beforeSha, version: beforeVersion },
+          after: { sha: upstreamSha, version: beforeVersion },
           steps,
           durationMs: Date.now() - startedAt,
         };
@@ -711,6 +732,7 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       }
 
       const tag = await resolveChannelTag(runCommand, gitRoot, timeoutMs, channel);
+      resolvedTag = tag;
       if (!tag) {
         return {
           status: "error",
@@ -718,6 +740,26 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
           root: gitRoot,
           reason: "no-release-tag",
           before: { sha: beforeSha, version: beforeVersion },
+          steps,
+          durationMs: Date.now() - startedAt,
+        };
+      }
+
+      // Resolve the tag's SHA so we can check if we're already on it
+      const tagShaResult = await runCommand(
+        ["git", "-C", gitRoot, "rev-parse", `${tag}^{commit}`],
+        { cwd: gitRoot, timeoutMs },
+      );
+      const tagSha = tagShaResult.stdout.trim() || null;
+
+      if (beforeSha && tagSha && beforeSha === tagSha) {
+        return {
+          status: "skipped",
+          mode: "git",
+          root: gitRoot,
+          reason: "up-to-date",
+          before: { sha: beforeSha, version: beforeVersion, tag },
+          after: { sha: tagSha, version: beforeVersion, tag },
           steps,
           durationMs: Date.now() - startedAt,
         };
@@ -742,8 +784,17 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
 
     const manager = await detectPackageManager(gitRoot);
 
-    const depsStep = await runStep(step("deps install", managerInstallArgs(manager), gitRoot));
+    const depsStep = await runStep(
+      step("deps install", managerInstallArgs(manager, true), gitRoot),
+    );
     steps.push(depsStep);
+
+    // If frozen-lockfile failed and pnpm fell back to a mutable install, or if
+    // the lockfile was legitimately regenerated, restore it so the checkout stays clean.
+    await runCommand(["git", "-C", gitRoot, "checkout", "--", "pnpm-lock.yaml"], {
+      cwd: gitRoot,
+      timeoutMs,
+    }).catch(() => null);
 
     const buildStep = await runStep(step("build", managerScriptArgs(manager, "build"), gitRoot));
     steps.push(buildStep);
@@ -791,10 +842,11 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       mode: "git",
       root: gitRoot,
       reason: failedStep ? failedStep.name : undefined,
-      before: { sha: beforeSha, version: beforeVersion },
+      before: { sha: beforeSha, version: beforeVersion, tag: beforeTag },
       after: {
         sha: afterShaStep.stdoutTail?.trim() ?? null,
         version: afterVersion,
+        tag: resolvedTag,
       },
       steps,
       durationMs: Date.now() - startedAt,

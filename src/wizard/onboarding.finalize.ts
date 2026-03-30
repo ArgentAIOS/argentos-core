@@ -463,18 +463,12 @@ export async function finalizeOnboardingWizard(
     await prompter.note("Skipping Control UI/TUI prompts.", "Control UI");
   }
 
-  await prompter.note(
-    [
-      "Back up the Argent workspace once you like the initial state.",
-      "Docs: https://docs.argent.ai/concepts/agent-workspace",
-    ].join("\n"),
-    "Workspace safety",
+  // Use console.log for remaining notes — prompter.note() blocks the terminal
+  // when piped through /dev/tty, preventing the installer from continuing.
+  console.log(
+    "\n  Workspace: back up once you like the initial state — https://docs.argent.ai/concepts/agent-workspace",
   );
-
-  await prompter.note(
-    "Running Argent on your own machine is still high-trust software. Harden the setup: https://docs.argent.ai/security",
-    "Security posture",
-  );
+  console.log("  Security: harden the setup — https://docs.argent.ai/security");
 
   // Shell completion setup
   const cliName = resolveCliName();
@@ -490,33 +484,15 @@ export async function finalizeOnboardingWizard(
     // Case 2: Profile has completion but no cache - auto-fix silently
     await ensureCompletionCacheExists(cliName);
   } else if (!completionStatus.profileInstalled) {
-    // Case 3: No completion at all - prompt to install
-    const installShellCompletion = await prompter.confirm({
-      message: `Enable ${completionStatus.shell} shell completion for ${cliName}?`,
-      initialValue: true,
-    });
-    if (installShellCompletion) {
-      // Generate cache first (required for fast shell startup)
-      const cacheGenerated = await ensureCompletionCacheExists(cliName);
-      if (cacheGenerated) {
-        // Install to shell profile
-        await installCompletion(completionStatus.shell, true, cliName);
-        const profileHint =
-          completionStatus.shell === "zsh"
-            ? "~/.zshrc"
-            : completionStatus.shell === "bash"
-              ? "~/.bashrc"
-              : "~/.config/fish/config.fish";
-        await prompter.note(
-          `Shell completion installed. Restart your shell or run: source ${profileHint}`,
-          "CLI ergonomics",
-        );
-      } else {
-        await prompter.note(
-          `Failed to generate completion cache. Run \`${cliName} completion --install\` later.`,
-          "CLI ergonomics",
-        );
-      }
+    // Case 3: No completion — auto-install without prompting (prompter.confirm blocks in installer)
+    const cacheGenerated = await ensureCompletionCacheExists(cliName);
+    if (cacheGenerated) {
+      await installCompletion(completionStatus.shell, true, cliName);
+      console.log(
+        `  Shell completion: installed for ${completionStatus.shell}. Restart your shell to activate.`,
+      );
+    } else {
+      console.log(`  Shell completion: run \`${cliName} completion --install\` later.`);
     }
   }
   // Case 4: Both profile and cache exist (using cached version) - all good, nothing to do
@@ -545,47 +521,33 @@ export async function finalizeOnboardingWizard(
       });
     }
 
-    await prompter.note(
-      [
-        `Dashboard link (with token): ${authedUrl}`,
-        controlUiOpened
-          ? "Opened in your browser. Keep that tab open as Argent's control surface."
-          : "Open this URL in a browser on this machine to reach Argent's control surface.",
-        controlUiOpenHint,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      "Dashboard ready",
-    );
+    console.log(`  Dashboard: ${authedUrl}`);
+    if (false)
+      await prompter.note(
+        // disabled — blocks installer
+        [
+          `Dashboard link (with token): ${authedUrl}`,
+          controlUiOpened
+            ? "Opened in your browser. Keep that tab open as Argent's control surface."
+            : "Open this URL in a browser on this machine to reach Argent's control surface.",
+          controlUiOpenHint,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        "Dashboard ready",
+      );
   }
 
   const webSearchKey = (nextConfig.tools?.web?.search?.apiKey ?? "").trim();
   const webSearchEnv = (process.env.BRAVE_API_KEY ?? "").trim();
   const hasWebSearchKey = Boolean(webSearchKey || webSearchEnv);
-  await prompter.note(
-    hasWebSearchKey
-      ? [
-          "Web search is enabled, so Argent can look things up online when needed.",
-          "",
-          webSearchKey
-            ? "API key: stored in config (tools.web.search.apiKey)."
-            : "API key: provided via BRAVE_API_KEY env var (Gateway environment).",
-          "Docs: https://docs.argent.ai/tools/web",
-        ].join("\n")
-      : [
-          "If you want Argent to search the web, you will need an API key.",
-          "",
-          "Argent uses Brave Search for the `web_search` tool. Without a Brave Search API key, web search will stay unavailable.",
-          "",
-          "Set it up interactively:",
-          `- Run: ${formatCliCommand("argent configure --section web")}`,
-          "- Enable web_search and paste your Brave Search API key",
-          "",
-          "Alternative: set BRAVE_API_KEY in the Gateway environment (no config changes).",
-          "Docs: https://docs.argent.ai/tools/web",
-        ].join("\n"),
-    "Web search (optional)",
-  );
+  if (hasWebSearchKey) {
+    console.log("  Web search: enabled — https://docs.argent.ai/tools/web");
+  } else {
+    console.log(
+      "  Web search: not configured — set BRAVE_API_KEY or run: argent configure --section web",
+    );
+  }
 
   // Use console.log instead of prompter.note/outro — clack prompts block
   // the terminal when piped through /dev/tty, preventing the installer from
