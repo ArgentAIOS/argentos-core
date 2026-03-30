@@ -1,10 +1,5 @@
 const DEFAULT_TIMEOUT_MS = 10_000;
 
-function isNativeShell(): boolean {
-  if (typeof window === "undefined") return false;
-  return Boolean(window.webkit?.messageHandlers);
-}
-
 function dashboardApiTokenFromUrl(): string | null {
   if (typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.search);
@@ -74,26 +69,8 @@ export async function fetchLocalApi(
 ): Promise<Response> {
   const direct = directDashboardApiUrl(path);
   const alt = alternateLoopbackUrl(path);
-  const directInit = withDashboardApiAuth(init);
-  const preferDirect = isNativeShell() && direct;
-  if (preferDirect) {
-    try {
-      return await fetchWithTimeout(direct, directInit, timeoutMs);
-    } catch (directErr) {
-      try {
-        return await fetchWithTimeout(path, init, timeoutMs);
-      } catch {
-        if (!alt) throw directErr;
-        try {
-          return await fetchWithTimeout(alt, init, timeoutMs);
-        } catch {
-          throw directErr;
-        }
-      }
-    }
-  }
-  // Always include auth headers — api-server may require DASHBOARD_API_TOKEN
   const authedInit = withDashboardApiAuth(init);
+  const directInit = authedInit;
   try {
     return await fetchWithTimeout(path, authedInit, timeoutMs);
   } catch (primaryErr) {
@@ -106,7 +83,7 @@ export async function fetchLocalApi(
     }
     if (!alt) throw primaryErr;
     try {
-      return await fetchWithTimeout(alt, init, timeoutMs);
+      return await fetchWithTimeout(alt, authedInit, timeoutMs);
     } catch {
       throw primaryErr;
     }
