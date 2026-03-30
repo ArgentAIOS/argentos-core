@@ -4,7 +4,7 @@
   "description": "ArgentOS Copilot Proxy provider plugin",
   "type": "module",
   "devDependencies": {
-    "argentos": "workspace:*"
+    "argentos": "link:../.."
   },
   "argent": {
     "extensions": [

@@ -10,7 +10,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "argentos": "workspace:*"
+    "argentos": "link:../.."
   },
   "argent": {
     "extensions": [
