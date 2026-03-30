@@ -4,7 +4,7 @@
   "description": "ArgentOS JSON-only LLM task plugin",
   "type": "module",
   "devDependencies": {
-    "argentos": "link:../.."
+    "argentos": "workspace:*"
   },
   "argent": {
     "extensions": [

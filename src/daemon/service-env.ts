@@ -171,6 +171,7 @@ export function buildServiceEnvironment(params: {
     ARGENT_PROFILE: profile,
     ARGENT_STATE_DIR: stateDir,
     ARGENT_CONFIG_PATH: configPath,
+    ARGENT_SKIP_DASHBOARD_API: env.ARGENT_SKIP_DASHBOARD_API,
     ARGENT_GATEWAY_PORT: String(port),
     ARGENT_GATEWAY_TOKEN: token,
     DASHBOARD_API_TOKEN: dashboardApiToken,
