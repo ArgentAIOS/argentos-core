@@ -753,6 +753,147 @@ launch_argent_app() {
   echo ""
 }
 
+read_dashboard_api_token() {
+  if [[ -f "$HOME/.argentos/.env" ]]; then
+    "$NODE_BIN" -e "
+      try {
+        const raw = require('fs').readFileSync('$HOME/.argentos/.env','utf8');
+        const match = raw.match(/^DASHBOARD_API_TOKEN=(.+)$/m);
+        process.stdout.write(match?.[1]?.trim() || '');
+      } catch {}
+    " 2>/dev/null || true
+  fi
+}
+
+start_dashboard_api_service() {
+  local dashboard_dir="$1"
+  local node_dir="$2"
+  local api_server="$dashboard_dir/api-server.cjs"
+  local api_log="$HOME/.argentos/logs/dashboard-api.log"
+  local api_plist="$HOME/Library/LaunchAgents/ai.argent.dashboard-api.plist"
+  local dashboard_api_token=""
+  dashboard_api_token="$(read_dashboard_api_token)"
+
+  if [[ ! -f "$api_server" ]]; then
+    warn "Dashboard API server missing at $api_server"
+    return 1
+  fi
+
+  mkdir -p "$HOME/.argentos/logs" "$HOME/Library/LaunchAgents"
+
+  lsof -ti :9242 | xargs kill 2>/dev/null || true
+
+  cat > "$api_plist" <<APIPLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.argent.dashboard-api</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$NODE_BIN</string>
+    <string>$api_server</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>$dashboard_dir</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>$node_dir:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>$HOME</string>
+    <key>HOST</key>
+    <string>127.0.0.1</string>
+    <key>API_PORT</key>
+    <string>9242</string>
+    <key>ARGENT_STATE_DIR</key>
+    <string>$HOME/.argentos</string>
+    <key>ARGENT_CONFIG_PATH</key>
+    <string>$HOME/.argentos/argent.json</string>
+    <key>DASHBOARD_API_TOKEN</key>
+    <string>$dashboard_api_token</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>$api_log</string>
+  <key>StandardErrorPath</key>
+  <string>$api_log</string>
+</dict>
+</plist>
+APIPLIST
+
+  local launchd_domain="gui/$(id -u)"
+  if /bin/launchctl bootout "$launchd_domain" "$api_plist" >/dev/null 2>&1; then
+    :
+  fi
+  if /bin/launchctl bootstrap "$launchd_domain" "$api_plist" >/dev/null 2>&1; then
+    /bin/launchctl kickstart -k "$launchd_domain/ai.argent.dashboard-api" >/dev/null 2>&1 || true
+  else
+    HOST=127.0.0.1 \
+    API_PORT=9242 \
+    ARGENT_STATE_DIR="$HOME/.argentos" \
+    ARGENT_CONFIG_PATH="$HOME/.argentos/argent.json" \
+    DASHBOARD_API_TOKEN="$dashboard_api_token" \
+    PATH="$node_dir:$PATH" \
+    nohup "$NODE_BIN" "$api_server" > "$api_log" 2>&1 &
+  fi
+
+  for _attempt in 1 2 3 4 5 6 7 8 9 10; do
+    if lsof -i :9242 >/dev/null 2>&1; then
+      ok "Dashboard API running on http://127.0.0.1:9242/"
+      return 0
+    fi
+    sleep 1
+  done
+
+  warn "Dashboard API may not have started — check ~/.argentos/logs/dashboard-api.log"
+  return 1
+}
+
+verify_dashboard_api_contract() {
+  local dashboard_api_token=""
+  dashboard_api_token="$(read_dashboard_api_token)"
+  local -a curl_args=()
+  if [[ -n "$dashboard_api_token" ]]; then
+    curl_args+=(-H "Authorization: Bearer ${dashboard_api_token}")
+  fi
+
+  local -a required_routes=(
+    "/api/health"
+    "/api/settings/dashboard/surface-profile"
+    "/api/settings/load-profile"
+    "/api/settings/auth-profiles"
+  )
+
+  for route in "${required_routes[@]}"; do
+    local ok_route=false
+    for _attempt in 1 2 3 4 5 6 7 8 9 10; do
+      local status
+      status="$(
+        curl -sS -o /dev/null -w "%{http_code}" "${curl_args[@]}" "http://127.0.0.1:9242${route}" \
+          2>/dev/null || true
+      )"
+      if [[ "$status" == "200" ]]; then
+        ok_route=true
+        break
+      fi
+      sleep 1
+    done
+    if [[ "$ok_route" != true ]]; then
+      err "Dashboard API route failed health check: ${route}"
+      err "Check: ~/.argentos/logs/dashboard-api.log"
+      return 1
+    fi
+  done
+
+  ok "Dashboard API route contract verified"
+  return 0
+}
+
 write_core_distribution_and_storage_defaults() {
   local config_path="$HOME/.argentos/argent.json"
   if is_truthy "$DRY_RUN"; then
@@ -964,6 +1105,11 @@ install_git() {
     (cd "$dashboard_dir" && PATH="$node_dir:$PATH" "$node_dir/npx" --yes vite build 2>&1 | tail -3) \
       || warn "Dashboard build failed — run later: cd ~/argentos/dashboard && npx vite build"
 
+    if [[ "$(uname -s)" == "Darwin" ]] && ! is_truthy "$DRY_RUN"; then
+      start_dashboard_api_service "$dashboard_dir" "$node_dir" || true
+      verify_dashboard_api_contract || exit 1
+    fi
+
     # Start dashboard UI via the bundled static server on port 8080
     if [[ "$(uname -s)" == "Darwin" && -d "$dashboard_dir/dist" ]] && ! is_truthy "$DRY_RUN"; then
       mkdir -p "$HOME/.argentos/logs"
@@ -1051,7 +1197,7 @@ UIPLIST
     # Use the daemon install path directly here. Fresh installs can already have the
     # gateway service loaded by this point, and this command path reliably regenerates
     # the installer-facing master key when it is missing.
-    PATH="$(dirname "$NODE_BIN"):$PATH" "$argent_bin" daemon install --force \
+    ARGENT_SKIP_DASHBOARD_API=1 PATH="$(dirname "$NODE_BIN"):$PATH" "$argent_bin" daemon install --force \
       >"$master_key_bootstrap_log" 2>&1 || true
   fi
 

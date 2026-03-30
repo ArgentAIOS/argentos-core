@@ -7,12 +7,12 @@
     "@microsoft/agents-hosting": "^1.2.3",
     "@microsoft/agents-hosting-express": "^1.2.3",
     "@microsoft/agents-hosting-extensions-teams": "^1.2.3",
-    "argentos": "link:../..",
+    "argentos": "workspace:*",
     "express": "^5.2.1",
     "proper-lockfile": "^4.1.2"
   },
   "devDependencies": {
-    "argentos": "link:../.."
+    "argentos": "workspace:*"
   },
   "argent": {
     "extensions": [
