@@ -90,11 +90,10 @@ import {
 } from "./lib/avatarConfig";
 import { buildPresetConfig } from "./lib/avatarPresets";
 import {
+  getOperationsWorkspaceTabs,
   isDashboardModeAllowed,
   isOperationsSurfaceAllowed,
   isWorkforceSurfaceAllowed,
-  parseDashboardMode,
-  parseDashboardSurfaceProfile,
   type DashboardMode,
   type DashboardSurfaceProfile,
 } from "./lib/configSurfaceProfile";
@@ -1209,6 +1208,8 @@ function App() {
   const allowOperationsSurface = isOperationsSurfaceAllowed(surfaceProfile);
   const allowWorkforceSurface = isWorkforceSurfaceAllowed(surfaceProfile);
   const isOperationsDashboard = allowWorkforceSurface && dashboardMode === "operations";
+  const showOperationsWorkspace = allowOperationsSurface && activeWorkspace === "operations";
+  const operationsWorkspaceTabs = getOperationsWorkspaceTabs(surfaceProfile);
 
   // Ensure Operations tab exists when the surface allows operations.
   useEffect(() => {
@@ -1285,11 +1286,16 @@ function App() {
     let cancelled = false;
     const loadSurfaceProfile = async () => {
       try {
-        const response = await fetchLocalApi("/api/settings/agent/raw-config", {}, 0);
-        const payload = (await response.json()) as { raw?: string };
+        const response = await fetchLocalApi("/api/settings/dashboard/surface-profile", {}, 0);
+        const payload = (await response.json()) as {
+          surfaceProfile?: DashboardSurfaceProfile;
+          dashboardMode?: DashboardMode;
+        };
         if (!cancelled) {
-          const nextSurfaceProfile = parseDashboardSurfaceProfile(payload?.raw);
-          const configDashboardMode = parseDashboardMode(payload?.raw, nextSurfaceProfile);
+          const nextSurfaceProfile =
+            payload?.surfaceProfile === "public-core" ? "public-core" : "full";
+          const configDashboardMode =
+            payload?.dashboardMode === "operations" ? "operations" : "personal";
           const storedDashboardMode = readStoredDashboardMode();
           const nextDashboardMode =
             storedDashboardMode && isDashboardModeAllowed(storedDashboardMode, nextSurfaceProfile)
@@ -1300,9 +1306,8 @@ function App() {
         }
       } catch {
         if (!cancelled) {
-          setSurfaceProfile("full");
-          const storedDashboardMode = readStoredDashboardMode();
-          setDashboardMode(storedDashboardMode === "operations" ? "operations" : "personal");
+          setSurfaceProfile("public-core");
+          setDashboardMode("personal");
         }
       }
     };
@@ -1320,6 +1325,12 @@ function App() {
     }
     persistDashboardMode(dashboardMode);
   }, [dashboardMode, surfaceProfile]);
+
+  useEffect(() => {
+    if (!operationsWorkspaceTabs.some((tab) => tab.id === opsView)) {
+      setOpsView(operationsWorkspaceTabs[0]?.id ?? "map");
+    }
+  }, [operationsWorkspaceTabs, opsView]);
 
   // Reset operations panels when switching away from operations mode.
   // IMPORTANT: showBoard and showWorkforce are NOT in the dependency array —
@@ -4808,8 +4819,11 @@ function App() {
             key={ws.id}
             onClick={() => {
               setActiveWorkspace(ws.id);
-              if (ws.id === "operations") setDashboardMode("operations");
-              else setDashboardMode("personal");
+              if (ws.id === "operations" && allowWorkforceSurface) {
+                setDashboardMode("operations");
+              } else {
+                setDashboardMode("personal");
+              }
             }}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               activeWorkspace === ws.id
@@ -4843,7 +4857,7 @@ function App() {
       </div>
 
       {/* Main Content */}
-      {isOperationsDashboard && activeWorkspace === "operations" ? (
+      {showOperationsWorkspace ? (
         /* Operations workspace — sub-nav tabs */
         <div className="flex-1 min-h-0 flex flex-col">
           {/* Sub-nav */}
@@ -4857,16 +4871,7 @@ function App() {
                 org: <OrgChartIcon size={16} />,
                 schedule: <ScheduleIcon size={16} />,
               };
-              return (
-                [
-                  { id: "map", label: "Workflow Map" },
-                  { id: "workflows", label: "Workflows" },
-                  { id: "jobs", label: "Workloads" },
-                  { id: "tasks", label: "Task Manager" },
-                  { id: "org", label: "Org Chart" },
-                  { id: "schedule", label: "Schedule" },
-                ] as const
-              ).map((tab) => (
+              return operationsWorkspaceTabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setOpsView(tab.id)}

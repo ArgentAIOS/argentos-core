@@ -2619,19 +2619,19 @@ export function ConfigPanel({
     let cancelled = false;
     const loadSurfaceProfile = async () => {
       try {
-        const payload = await fetchJsonWithRetry<{ raw?: string }>(
-          "/api/settings/agent/raw-config",
+        const payload = await fetchJsonWithRetry<{ surfaceProfile?: DashboardSurfaceProfile }>(
+          "/api/settings/dashboard/surface-profile",
           {
             timeoutMs: 0,
             retries: 1,
           },
         );
         if (!cancelled) {
-          setSurfaceProfile(parseDashboardSurfaceProfile(payload?.raw));
+          setSurfaceProfile(payload?.surfaceProfile === "public-core" ? "public-core" : "full");
         }
       } catch {
         if (!cancelled) {
-          setSurfaceProfile("full");
+          setSurfaceProfile("public-core");
         }
       }
     };

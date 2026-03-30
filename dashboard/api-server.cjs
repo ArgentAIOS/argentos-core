@@ -12398,6 +12398,22 @@ app.post("/api/settings/aos-google/launch", (req, res) => {
   }
 });
 
+app.get("/api/settings/dashboard/surface-profile", (req, res) => {
+  try {
+    const config = readArgentConfig();
+    return res.json({
+      surfaceProfile: getDashboardSurfaceProfile(config),
+      dashboardMode:
+        config?.distribution?.dashboardMode === "operations" ? "operations" : "personal",
+    });
+  } catch (err) {
+    return res.status(500).json({
+      error: "Failed to read dashboard surface profile",
+      details: err?.message || String(err),
+    });
+  }
+});
+
 // GET /api/settings/agent/raw-config — return full argent.json for advanced editing
 app.get("/api/settings/agent/raw-config", (req, res) => {
   try {
@@ -12490,8 +12506,28 @@ function resolveAlignmentStateDir() {
 
 const ALIGNMENT_STATE_DIR = resolveAlignmentStateDir();
 const AGENTS_DIR = path.join(ALIGNMENT_STATE_DIR, "agents");
-const WORKSPACE_MAIN = path.join(ALIGNMENT_STATE_DIR, "workspace-main");
 const ALIGNMENT_BACKUP_DIR = path.join(ALIGNMENT_STATE_DIR, "backups");
+
+function resolveMainAlignmentWorkspaceDir() {
+  const config = readArgentConfig();
+  const configured =
+    typeof config?.agents?.defaults?.workspace === "string"
+      ? config.agents.defaults.workspace.trim()
+      : "";
+  if (configured) {
+    const expanded = process.env.HOME
+      ? configured.replace(/^~(?=$|[\\/])/, process.env.HOME)
+      : configured;
+    return path.resolve(expanded);
+  }
+  const currentWorkspace = path.join(ALIGNMENT_STATE_DIR, "workspace");
+  if (fs.existsSync(currentWorkspace)) {
+    return currentWorkspace;
+  }
+  return path.join(ALIGNMENT_STATE_DIR, "workspace-main");
+}
+
+const WORKSPACE_MAIN = resolveMainAlignmentWorkspaceDir();
 
 // Known alignment doc filenames
 const ALIGNMENT_DOCS = [

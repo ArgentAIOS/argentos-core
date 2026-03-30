@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  getOperationsWorkspaceTabs,
   isConfigTabAllowed,
   isRawConfigEditorAllowed,
+  isOperationsWorkspaceTabAllowed,
   isWorkforceSurfaceAllowed,
   parseDashboardSurfaceProfile,
 } from "../dashboard/src/lib/configSurfaceProfile.js";
@@ -29,5 +31,17 @@ describe("dashboard surface profile", () => {
     expect(isRawConfigEditorAllowed("public-core")).toBe(false);
     expect(isWorkforceSurfaceAllowed("public-core")).toBe(false);
     expect(isWorkforceSurfaceAllowed("full")).toBe(true);
+  });
+
+  it("removes workload lanes from public-core operations", () => {
+    expect(isOperationsWorkspaceTabAllowed("jobs", "public-core")).toBe(false);
+    expect(isOperationsWorkspaceTabAllowed("org", "public-core")).toBe(true);
+    expect(getOperationsWorkspaceTabs("public-core").map((tab) => tab.id)).toEqual([
+      "map",
+      "workflows",
+      "tasks",
+      "org",
+      "schedule",
+    ]);
   });
 });
