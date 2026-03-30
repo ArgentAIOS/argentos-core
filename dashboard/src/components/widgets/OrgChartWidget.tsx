@@ -29,7 +29,7 @@ interface TeamGroup {
 
 // ── Agent Filtering ────────────────────────────────────────────────
 
-const EXCLUDED_IDS = new Set(["main", "dumbo", "argent"]);
+const EXCLUDED_IDS = new Set(["dumbo", "argent"]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
 
 function isOperational(a: { id: string; role?: string }): boolean {
@@ -45,7 +45,8 @@ function isOperational(a: { id: string; role?: string }): boolean {
 
 function normalizeTeam(team: string): string {
   const t = team.toLowerCase().trim();
-  if (t === "unassigned" || t === "think-tank" || t === "") return "__skip__";
+  if (t === "think-tank") return "__skip__";
+  if (t === "unassigned" || t === "") return "core";
   if (t.includes("support") || t === "msp team" || t === "msp-team") return "support";
   if (t.includes("office")) return "office";
   if (t === "dev-team" || t === "development") return "development";
@@ -54,6 +55,7 @@ function normalizeTeam(team: string): string {
 }
 
 const TEAM_DISPLAY: Record<string, { name: string; color: string }> = {
+  core: { name: "Core", color: "#60a5fa" },
   development: { name: "Development", color: "#00FFD1" },
   marketing: { name: "Marketing", color: "#84cc16" },
   support: { name: "Support", color: "#f97316" },
@@ -91,7 +93,7 @@ function buildTeamGroups(members: FamilyMember[]): TeamGroup[] {
   }
 
   // Sort teams by display order, then alphabetically
-  const order = ["development", "marketing", "support", "office"];
+  const order = ["core", "development", "marketing", "support", "office"];
 
   return Object.entries(grouped)
     .sort(([a], [b]) => {
