@@ -9,7 +9,7 @@
     "openai": "^6.17.0"
   },
   "devDependencies": {
-    "argentos": "link:/../.."
+    "argentos": "link:../.."
   },
   "argent": {
     "extensions": [

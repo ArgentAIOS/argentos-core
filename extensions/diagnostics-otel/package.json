@@ -17,7 +17,7 @@
     "@opentelemetry/semantic-conventions": "^1.39.0"
   },
   "devDependencies": {
-    "argentos": "link:/../.."
+    "argentos": "link:../.."
   },
   "argent": {
     "extensions": [
