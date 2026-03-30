@@ -4,7 +4,7 @@
   "description": "ArgentOS Slack channel plugin",
   "type": "module",
   "devDependencies": {
-    "argentos": "workspace:*"
+    "argentos": "link:../.."
   },
   "argent": {
     "extensions": [

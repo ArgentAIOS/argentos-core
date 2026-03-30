@@ -11,6 +11,6 @@
     "./cli-entry": "./bin/moltbot.js"
   },
   "dependencies": {
-    "argentos": "workspace:*"
+    "argentos": "link:../.."
   }
 }
