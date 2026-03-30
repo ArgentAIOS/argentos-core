@@ -13,7 +13,9 @@ export type NormalizedPluginsConfig = {
   entries: Record<string, { enabled?: boolean; config?: unknown }>;
 };
 
-export const BUNDLED_ENABLED_BY_DEFAULT = new Set<string>();
+export const BUNDLED_ENABLED_BY_DEFAULT = new Set<string>([
+  "aos-lcm", // Lossless Context Management — DAG-based context compression, ships with Core
+]);
 
 const normalizeList = (value: unknown): string[] => {
   if (!Array.isArray(value)) {
