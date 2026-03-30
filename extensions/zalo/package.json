@@ -4,11 +4,11 @@
   "description": "ArgentOS Zalo channel plugin",
   "type": "module",
   "dependencies": {
-    "argentos": "link:../..",
+    "argentos": "link:/../..",
     "undici": "7.20.0"
   },
   "devDependencies": {
-    "argentos": "link:../.."
+    "argentos": "link:/../.."
   },
   "argent": {
     "extensions": [
