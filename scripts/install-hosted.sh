@@ -844,8 +844,7 @@ install_git() {
   # Create all PG tables (knowledge, memory, tasks, etc.) using safe CREATE IF NOT EXISTS.
   # Must run AFTER PG is provisioned.
   info "Creating PostgreSQL schema tables..."
-  bash "$GIT_DIR/scripts/ensure-pg-tables.sh" 2>/dev/null \
-    || warn "Table creation failed — run manually: bash ~/argentos/scripts/ensure-pg-tables.sh"
+  PATH="$(dirname "$NODE_BIN"):$PATH" run_cmd bash "$GIT_DIR/scripts/ensure-pg-tables.sh"
   if should_run_cli_onboard; then
     run_onboard "$BIN_DIR_OVERRIDE/argent" || true
   fi
@@ -948,13 +947,18 @@ UIPLIST
 
   local argent_bin="$BIN_DIR_OVERRIDE/argent"
   local master_key_file="$HOME/.argentos/.master-key"
+  local master_key_bootstrap_log="$HOME/.argentos/logs/master-key-bootstrap.log"
   local master_key=""
 
   # Generate key if it doesn't exist
   if [[ ! -f "$master_key_file" ]]; then
     info "Generating master encryption key..."
-    # Suppress config-validation noise — redirect stderr, capture only key output
-    PATH="$(dirname "$NODE_BIN"):$PATH" "$argent_bin" gateway install --force >/dev/null 2>&1 || true
+    mkdir -p "$HOME/.argentos/logs"
+    # Use the daemon install path directly here. Fresh installs can already have the
+    # gateway service loaded by this point, and this command path reliably regenerates
+    # the installer-facing master key when it is missing.
+    PATH="$(dirname "$NODE_BIN"):$PATH" "$argent_bin" daemon install --force \
+      >"$master_key_bootstrap_log" 2>&1 || true
   fi
 
   # Read the key
@@ -971,11 +975,14 @@ UIPLIST
     echo ""
     err "═══ MASTER KEY GENERATION FAILED ═══"
     err "Could not generate or locate a master encryption key."
-    err "Run manually: argent gateway install --force"
+    err "Run manually: argent daemon install --force"
     err "Then verify:  argent secrets backup-key"
+    if [[ -f "$master_key_bootstrap_log" ]]; then
+      err "Bootstrap log: $master_key_bootstrap_log"
+    fi
     err "Do NOT enter any API keys until this is resolved."
     echo ""
-    # Don't proceed to app launch — this is a hard blocker
+    exit 1
   else
     # ── Full key ceremony ──────────────────────────────────────────
     echo ""
