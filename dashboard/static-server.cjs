@@ -34,20 +34,56 @@ function sendError(res, status, message) {
   res.end(message);
 }
 
+function dashboardApiTokenFromRequest(req) {
+  try {
+    const selfUrl = new URL(req.url || "/", `http://${req.headers.host || `${HOST}:${PORT}`}`);
+    const fromPath = (
+      selfUrl.searchParams.get("api_token") ?? selfUrl.searchParams.get("token")
+    )?.trim();
+    if (fromPath) return fromPath;
+  } catch {
+    // ignore malformed URL
+  }
+
+  const referer = req.headers.referer;
+  if (typeof referer === "string" && referer.trim()) {
+    try {
+      const refererUrl = new URL(referer);
+      const fromReferer = (
+        refererUrl.searchParams.get("api_token") ?? refererUrl.searchParams.get("token")
+      )?.trim();
+      if (fromReferer) return fromReferer;
+    } catch {
+      // ignore malformed referer
+    }
+  }
+
+  return null;
+}
+
 function proxyRequest(req, res) {
+  const headers = {
+    ...req.headers,
+    host: `127.0.0.1:${API_PORT}`,
+    "x-forwarded-for": req.socket.remoteAddress || "127.0.0.1",
+    "x-forwarded-host": req.headers.host || `${HOST}:${PORT}`,
+    "x-forwarded-proto": "http",
+  };
+
+  if (!headers.authorization) {
+    const token = dashboardApiTokenFromRequest(req);
+    if (token) {
+      headers.authorization = `Bearer ${token}`;
+    }
+  }
+
   const upstream = http.request(
     {
       hostname: "127.0.0.1",
       port: API_PORT,
       path: req.url,
       method: req.method,
-      headers: {
-        ...req.headers,
-        host: `127.0.0.1:${API_PORT}`,
-        "x-forwarded-for": req.socket.remoteAddress || "127.0.0.1",
-        "x-forwarded-host": req.headers.host || `${HOST}:${PORT}`,
-        "x-forwarded-proto": "http",
-      },
+      headers,
     },
     (upstreamRes) => {
       res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);

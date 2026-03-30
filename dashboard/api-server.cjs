@@ -15686,6 +15686,7 @@ app.post("/api/settings/gateway/regenerate-token", (req, res) => {
     const newToken = crypto.randomBytes(24).toString("hex");
     if (!config.gateway.auth) config.gateway.auth = {};
     config.gateway.auth.mode = "token";
+    config.gateway.auth.token = newToken;
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     const cliEntrypoint = path.join(__dirname, "..", "dist", "index.js");
     execFileSync(

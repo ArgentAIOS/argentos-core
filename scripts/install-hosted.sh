@@ -655,8 +655,9 @@ launch_argent_app() {
   # Ensure we launch a fresh app process so first-run defaults are re-read.
   killall Argent 2>/dev/null || true
 
-  # Read gateway token from config for authenticated dashboard URLs
+  # Read gateway + dashboard API tokens for authenticated dashboard URLs
   local gw_token=""
+  local dash_api_token=""
   if [[ -f "$HOME/.argentos/argent.json" ]]; then
     gw_token="$("$NODE_BIN" -e "
       try {
@@ -665,8 +666,24 @@ launch_argent_app() {
       } catch {}
     " 2>/dev/null)" || gw_token=""
   fi
+  if [[ -f "$HOME/.argentos/.env" ]]; then
+    dash_api_token="$("$NODE_BIN" -e "
+      try {
+        const raw = require('fs').readFileSync('$HOME/.argentos/.env','utf8');
+        const match = raw.match(/^DASHBOARD_API_TOKEN=(.+)$/m);
+        process.stdout.write(match?.[1]?.trim() || '');
+      } catch {}
+    " 2>/dev/null)" || dash_api_token=""
+  fi
   local dash_url="http://127.0.0.1:8080/"
-  [[ -n "$gw_token" ]] && dash_url="http://127.0.0.1:8080/?token=${gw_token}"
+  if [[ -n "$gw_token" || -n "$dash_api_token" ]]; then
+    dash_url="http://127.0.0.1:8080/?"
+    [[ -n "$gw_token" ]] && dash_url="${dash_url}token=${gw_token}"
+    if [[ -n "$dash_api_token" ]]; then
+      [[ "$dash_url" != *\? ]] && dash_url="${dash_url}&"
+      dash_url="${dash_url}api_token=${dash_api_token}"
+    fi
+  fi
 
   echo ""
   echo "  ╔══════════════════════════════════════════════════╗"
