@@ -40,10 +40,18 @@ describe("dashboard surface profile", () => {
     ).toBe("public-core");
   });
 
-  it("blocks admin config tabs in public-core", () => {
+  it("keeps the core config surface available in public-core", () => {
     expect(isConfigTabAllowed("gateway", "public-core")).toBe(true);
     expect(isConfigTabAllowed("database", "public-core")).toBe(true);
-    expect(isConfigTabAllowed("systems", "public-core")).toBe(false);
+    expect(isConfigTabAllowed("systems", "public-core")).toBe(true);
+    expect(isConfigTabAllowed("intent", "public-core")).toBe(true);
+    expect(isConfigTabAllowed("security", "public-core")).toBe(true);
+    expect(isConfigTabAllowed("devices", "public-core")).toBe(true);
+    expect(isConfigTabAllowed("observability", "public-core")).toBe(true);
+    expect(isConfigTabAllowed("marketplace", "public-core")).toBe(true);
+    expect(isConfigTabAllowed("license", "public-core")).toBe(true);
+    expect(isConfigTabAllowed("logs", "public-core")).toBe(true);
+    expect(isConfigTabAllowed("capabilities", "public-core")).toBe(false);
     expect(isConfigTabAllowed("appearance", "public-core")).toBe(true);
   });
 
@@ -75,9 +83,13 @@ describe("dashboard surface profile", () => {
   });
 
   it("locks public-core api route gating around the approved core surfaces", () => {
+    expect(BLOCKED_API_PATTERNS_SECTION).not.toContain('"/api/license/**"');
     expect(BLOCKED_API_PATTERNS_SECTION).not.toContain('"/api/settings/gateway/**"');
     expect(BLOCKED_API_PATTERNS_SECTION).not.toContain('"/api/settings/database/**"');
+    expect(BLOCKED_API_PATTERNS_SECTION).not.toContain('"/api/settings/intent/**"');
     expect(BLOCKED_API_PATTERNS_SECTION).not.toContain('"/api/settings/load-profile"');
+    expect(BLOCKED_API_PATTERNS_SECTION).not.toContain('"/api/logs/tail"');
+    expect(BLOCKED_API_PATTERNS_SECTION).not.toContain('"/api/devices/**"');
     expect(BLOCKED_API_PATTERNS_SECTION).toContain('"/api/settings/agent/raw-config"');
     expect(BLOCKED_API_PATTERNS_SECTION).toContain('"/api/lockscreen/emergency-unlock"');
   });
@@ -97,5 +109,15 @@ describe("dashboard surface profile", () => {
     );
     expect(WORKFLOW_MAP_SOURCE).toContain('if (t === "unassigned" || t === "") return "core";');
     expect(WORKFLOW_MAP_SOURCE).toContain('core: "Core"');
+  });
+
+  it("dedupes main alignment docs and uses dynamic operator naming in org chart", () => {
+    expect(API_SERVER_SOURCE).toContain("const hasWorkspaceMain = fs.existsSync(WORKSPACE_MAIN);");
+    expect(API_SERVER_SOURCE).toContain('if (hasWorkspaceMain && name === "main") return false;');
+    expect(ORG_CHART_SOURCE).not.toContain(">Jason<");
+    expect(ORG_CHART_SOURCE).toContain('const operatorLabel = operatorName?.trim() || "Operator";');
+    expect(APP_SOURCE).toContain(
+      "<OrgChartWidget operatorName={operatorDisplayName ?? undefined} />",
+    );
   });
 });

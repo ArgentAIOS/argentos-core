@@ -57,9 +57,7 @@ app.use(
 );
 
 const PUBLIC_CORE_BLOCKED_API_PATTERNS = [
-  "/api/license/**",
   "/api/org/**",
-  "/api/settings/intent/**",
   "/api/settings/knowledge/collections/grant",
   "/api/settings/service-keys/policy",
   "/api/settings/service-keys/grant",
@@ -67,10 +65,8 @@ const PUBLIC_CORE_BLOCKED_API_PATTERNS = [
   "/api/settings/service-keys/audit",
   "/api/system/open",
   "/api/lockscreen/emergency-unlock",
-  "/api/logs/tail",
   "/api/proxy/cors",
   "/api/security/filesystem-permissions/decision",
-  "/api/devices/**",
   "/api/settings/auth",
   "/api/settings/cors-allowlist/**",
   "/api/settings/filesystem-allowlist/**",
@@ -12557,9 +12553,10 @@ function resolveAgentDocsDir(agentName) {
 app.get("/api/settings/alignment", (req, res) => {
   try {
     const agents = [];
+    const hasWorkspaceMain = fs.existsSync(WORKSPACE_MAIN);
 
     // Always include the main agent if workspace-main exists
-    if (fs.existsSync(WORKSPACE_MAIN)) {
+    if (hasWorkspaceMain) {
       agents.push({ id: "__main__", label: "Argent ★ (main)" });
     }
 
@@ -12567,6 +12564,7 @@ app.get("/api/settings/alignment", (req, res) => {
     if (fs.existsSync(AGENTS_DIR)) {
       const namedAgents = fs.readdirSync(AGENTS_DIR).filter((name) => {
         if (name.startsWith("agent-main-subagent-")) return false;
+        if (hasWorkspaceMain && name === "main") return false;
         const agentDir = path.join(AGENTS_DIR, name, "agent");
         return fs.existsSync(agentDir) && fs.statSync(agentDir).isDirectory();
       });

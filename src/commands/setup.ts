@@ -1,6 +1,7 @@
 import JSON5 from "json5";
 import fs from "node:fs/promises";
 import type { RuntimeEnv } from "../runtime.js";
+import { seedBuiltInFamilyAgents } from "../agents/family-seed.js";
 import { DEFAULT_AGENT_WORKSPACE_DIR, ensureAgentWorkspace } from "../agents/workspace.js";
 import { type ArgentConfig, createConfigIO, writeConfigFile } from "../config/config.js";
 import { formatConfigPath, logConfigUpdated } from "../config/logging.js";
@@ -72,4 +73,9 @@ export async function setupCommand(
   const sessionsDir = resolveSessionTranscriptsDir();
   await fs.mkdir(sessionsDir, { recursive: true });
   runtime.log(`Sessions OK: ${shortenHomePath(sessionsDir)}`);
+
+  const familySeed = await seedBuiltInFamilyAgents();
+  runtime.log(
+    `Family OK: ${familySeed.seededIds.length} seeded, ${familySeed.registeredIds.length} registered`,
+  );
 }

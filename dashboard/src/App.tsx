@@ -4917,7 +4917,7 @@ function App() {
             </div>
           ) : opsView === "org" ? (
             <div className="flex-1 min-h-0 overflow-auto p-4">
-              <OrgChartWidget />
+              <OrgChartWidget operatorName={operatorDisplayName ?? undefined} />
             </div>
           ) : opsView === "schedule" ? (
             <div className="flex-1 min-h-0 overflow-auto p-4">

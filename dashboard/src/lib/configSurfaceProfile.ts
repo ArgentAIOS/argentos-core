@@ -2,17 +2,7 @@ export type DashboardSurfaceProfile = "full" | "public-core";
 export type DashboardMode = "personal" | "operations";
 export type OperationsWorkspaceTabId = "map" | "workflows" | "jobs" | "tasks" | "org" | "schedule";
 
-export const PUBLIC_CORE_BLOCKED_CONFIG_TABS = new Set<string>([
-  "systems",
-  "capabilities",
-  "intent",
-  "security",
-  "devices",
-  "observability",
-  "marketplace",
-  "license",
-  "logs",
-]);
+export const PUBLIC_CORE_BLOCKED_CONFIG_TABS = new Set<string>(["capabilities"]);
 
 const OPERATIONS_WORKSPACE_TABS = [
   { id: "map", label: "Workflow Map" },
