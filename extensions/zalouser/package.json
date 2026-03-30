@@ -5,10 +5,10 @@
   "type": "module",
   "dependencies": {
     "@sinclair/typebox": "0.34.48",
-    "argentos": "link:/../.."
+    "argentos": "link:../.."
   },
   "devDependencies": {
-    "argentos": "link:/../.."
+    "argentos": "link:../.."
   },
   "argent": {
     "extensions": [
