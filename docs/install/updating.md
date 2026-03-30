@@ -1,5 +1,5 @@
 ---
-summary: "Updating ArgentOS safely (global install or source), plus rollback strategy"
+summary: "Updating ArgentOS safely on the git rail, plus rollback strategy"
 read_when:
   - Updating ArgentOS
   - Something breaks after an update
@@ -12,11 +12,27 @@ ArgentOS is moving fast (pre “1.0”). Treat updates like shipping infra: upda
 
 Partner/operator handoff checklist: [Partner RC Runbook](/install/partner-release-rc)
 
-## Recommended: re-run the website installer (upgrade in place)
+## Recommended: `argent update` on the hosted git rail
 
-The **preferred** update path is to re-run the installer from the website. It
-detects existing installs, upgrades in place, and runs `argent doctor` when
-needed.
+The public website installer defaults to the **git rail**, so the normal update
+path for those installs is:
+
+```bash
+argent update
+```
+
+Notes:
+
+- On the hosted git rail, `stable` means the latest GitHub release tag.
+- `beta` lands on the newest beta-or-stable release tag.
+- `dev` tracks `main`.
+- `argent update` keeps git installs on the git rail. It does not switch stable users to npm.
+- Legacy note: `argent` remains available as a compatibility shim.
+
+## Repair / reinstall in place
+
+Re-run the website installer if you need to repair an install, recreate wrappers,
+or bootstrap a fresh machine with the standard hosted rail:
 
 ```bash
 curl -fsSL https://argentos.ai/install.sh | bash
@@ -25,67 +41,21 @@ curl -fsSL https://argentos.ai/install.sh | bash
 Notes:
 
 - Add `--no-onboard` if you don’t want the onboarding wizard to run again.
-- For **source installs**, use:
-  ```bash
-  curl -fsSL https://argentos.ai/install.sh | bash -s -- --install-method git --no-onboard
-  ```
-  The installer will `git pull --rebase` **only** if the repo is clean.
-- For **global installs**, the script uses `npm install -g argentos@latest` under the hood.
-- Legacy note: `argent` remains available as a compatibility shim.
+- The hosted installer defaults to `--install-method git --channel stable`.
+- Existing git checkouts only `git pull --rebase` when the worktree is clean.
 
 ## Before you update
 
-- Know how you installed: **global** (npm/pnpm) vs **from source** (git clone).
+- Know how you installed: **hosted git rail** vs **from source** (git clone).
 - Know how your Gateway is running: **foreground terminal** vs **supervised service** (launchd/systemd).
 - Snapshot your tailoring:
   - Config: `~/.argentos/argent.json`
   - Credentials: `~/.argentos/credentials/`
   - Workspace: `~/.argentos/workspace`
 
-## Update (global install)
-
-Global install (pick one):
-
-```bash
-npm i -g argentos@latest
-```
-
-```bash
-pnpm add -g argentos@latest
-```
-
-We do **not** recommend Bun for the Gateway runtime (WhatsApp/Telegram bugs).
-
-To switch update channels (git + npm installs):
-
-```bash
-argent update --channel beta
-argent update --channel dev
-argent update --channel stable
-```
-
-Use `--tag <dist-tag|version>` for a one-off install tag/version.
-
-See [Development channels](/install/development-channels) for channel semantics and release notes.
-
-Note: on npm installs, the gateway logs an update hint on startup (checks the current channel tag). Disable via `update.checkOnStart: false`.
-
-Then:
-
-```bash
-argent doctor
-argent gateway restart
-argent health
-```
-
-Notes:
-
-- If your Gateway runs as a service, `argent gateway restart` is preferred over killing PIDs.
-- If you’re pinned to a specific version, see “Rollback / pinning” below.
-
 ## Update (`argent update`)
 
-For **source installs** (git checkout), prefer:
+For **hosted/source installs** (git checkout), prefer:
 
 ```bash
 argent update
@@ -94,12 +64,12 @@ argent update
 It runs a safe-ish update flow:
 
 - Requires a clean worktree.
-- Switches to the selected channel (tag or branch).
+- Switches to the selected channel:
+  - `stable`/`beta`: latest matching GitHub release tag
+  - `dev`: `main`
 - Fetches + rebases against the configured upstream (dev channel).
 - Installs deps, builds, builds the Control UI, and runs `argent doctor`.
 - Restarts the gateway by default (use `--no-restart` to skip).
-
-If you installed via **npm/pnpm** (no git metadata), `argent update` will try to update via your package manager. If it can’t detect the install, use “Update (global install)” instead.
 
 ## Update (Control UI / RPC)
 
@@ -138,9 +108,9 @@ argent health
 Notes:
 
 - `pnpm build` matters when you run the packaged `argent` binary ([`argent.mjs`](https://github.com/ArgentAIOS/argentos/blob/main/argent.mjs)) or use Node to run `dist/`.
-- If you run from a repo checkout without a global install, use `pnpm argent ...` for CLI commands.
+- If you run from a repo checkout without `argent` on PATH, use `pnpm argent ...` for CLI commands.
 - If you run directly from TypeScript (`pnpm argent ...`), a rebuild is usually unnecessary, but **config migrations still apply** → run doctor.
-- Switching between global and git installs is easy: install the other flavor, then run `argent doctor` so the gateway service entrypoint is rewritten to the current install.
+- If you are repairing an older legacy package install, re-run the hosted installer to move back onto the supported git rail.
 
 ## Always Run: `argent doctor`
 
@@ -181,30 +151,16 @@ Runbook + exact service labels: [Gateway runbook](/gateway)
 
 ## Rollback / pinning (when something breaks)
 
-### Pin (global install)
+### Pin (git rail) to a release tag or date
 
-Install a known-good version (replace `<version>` with the last working one):
-
-```bash
-npm i -g argentos@<version>
-```
+Preferred for the hosted/public rail: check out a known-good GitHub release tag:
 
 ```bash
-pnpm add -g argentos@<version>
+git fetch --tags origin
+git checkout --detach <release-tag>
 ```
 
-Tip: to see the current published version, run `npm view argentos version`.
-
-Then restart + re-run doctor:
-
-```bash
-argent doctor
-argent gateway restart
-```
-
-### Pin (source) by date
-
-Pick a commit from a date (example: “state of main as of 2026-01-01”):
+Or pick a commit from a date (example: “state of main as of 2026-01-01”):
 
 ```bash
 git fetch origin

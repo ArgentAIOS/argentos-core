@@ -53,8 +53,8 @@ Quick answers plus deeper troubleshooting for real-world setups (local dev, VPS,
   - [Can multiple people use one WhatsApp number with different ArgentOS instances?](#can-multiple-people-use-one-whatsapp-number-with-different-argent-instances)
   - [Can I run a "fast chat" agent and an "Opus for coding" agent?](#can-i-run-a-fast-chat-agent-and-an-opus-for-coding-agent)
   - [Does Homebrew work on Linux?](#does-homebrew-work-on-linux)
-  - [What's the difference between the hackable (git) install and npm install?](#whats-the-difference-between-the-hackable-git-install-and-npm-install)
-  - [Can I switch between npm and git installs later?](#can-i-switch-between-npm-and-git-installs-later)
+- [What's the difference between the hosted install and a source checkout?](#whats-the-difference-between-the-hosted-install-and-a-source-checkout)
+- [Can I switch from a legacy package install to the git rail later?](#can-i-switch-from-a-legacy-package-install-to-the-git-rail-later)
   - [Should I run the Gateway on my laptop or a VPS?](#should-i-run-the-gateway-on-my-laptop-or-a-vps)
   - [How important is it to run ArgentOS on a dedicated machine?](#how-important-is-it-to-run-argent-on-a-dedicated-machine)
   - [What are the minimum VPS requirements and recommended OS?](#what-are-the-minimum-vps-requirements-and-recommended-os)
@@ -330,7 +330,7 @@ pnpm ui:build # auto-installs UI deps on first run
 argent onboard
 ```
 
-If you don't have a global install yet, run it via `pnpm argent onboard`.
+If you don't have `argent` on PATH yet, run it via `pnpm argent onboard`.
 
 ### How do I open the dashboard after onboarding
 
@@ -450,22 +450,21 @@ https://github.com/ArgentAIOS/argentos/tree/main/docs
 
 ### What's the difference between stable and beta
 
-**Stable** and **beta** are **npm dist-tags**, not separate code lines:
+**Stable** and **beta** are release channels on the git rail, not separate products:
 
-- `latest` = stable
-- `beta` = early build for testing
+- `stable` = latest non-beta GitHub release tag
+- `beta` = latest beta-or-stable GitHub release tag
 
-We ship builds to **beta**, test them, and once a build is solid we **promote
-that same version to `latest`**. That's why beta and stable can point at the
-**same version**.
+We ship builds to **beta**, test them, and then cut the next stable tag once the
+release is ready. In some cycles, beta and stable can point at the same commit.
 
 See what changed:
 https://github.com/ArgentAIOS/argentos/blob/main/CHANGELOG.md
 
 ### How do I install the beta version and whats the difference between beta and dev
 
-**Beta** is the npm dist-tag `beta` (may match `latest`).
-**Dev** is the moving head of `main` (git); when published, it uses the npm dist-tag `dev`.
+**Beta** is the newest beta-or-stable release tag.
+**Dev** is the moving head of `main`.
 
 One-liners (macOS/Linux):
 
@@ -819,36 +818,23 @@ brew install <formula>
 If you run ArgentOS via systemd, ensure the service PATH includes `/home/linuxbrew/.linuxbrew/bin` (or your brew prefix) so `brew`-installed tools resolve in non-login shells.
 Recent builds also prepend common user bin dirs on Linux systemd services (for example `~/.local/bin`, `~/.npm-global/bin`, `~/.local/share/pnpm`, `~/.bun/bin`) and honor `PNPM_HOME`, `NPM_CONFIG_PREFIX`, `BUN_INSTALL`, `VOLTA_HOME`, `ASDF_DATA_DIR`, `NVM_DIR`, and `FNM_DIR` when set.
 
-### What's the difference between the hackable git install and npm install
+### What's the difference between the hosted install and a source checkout
 
-- **Hackable (git) install:** full source checkout, editable, best for contributors.
-  You run builds locally and can patch code/docs.
-- **npm install:** global CLI install, no repo, best for "just run it."
-  Updates come from npm dist-tags.
+- **Hosted install:** the public supported path. It creates a local git checkout plus wrapper scripts so `argent update` can move between release tags safely.
+- **Source checkout:** full repo clone for contributors. You build locally, edit code/docs directly, and can run `pnpm argent ...` during development.
 
 Docs: [Getting started](/start/getting-started), [Updating](/install/updating).
 
-### Can I switch between npm and git installs later
+### Can I switch from a legacy package install to the git rail later
 
-Yes. Install the other flavor, then run Doctor so the gateway service points at the new entrypoint.
+Yes. Re-run the hosted installer, then run Doctor so the gateway service points at the supported git checkout entrypoint.
 This **does not delete your data** - it only changes the ArgentOS code install. Your state
 (`~/.argentos`) and workspace (`~/.argentos/workspace`) stay untouched.
 
-From npm → git:
+From a legacy package install → hosted git rail:
 
 ```bash
-git clone https://github.com/ArgentAIOS/argentos.git
-cd argentos
-pnpm install
-pnpm build
-argent doctor
-argent gateway restart
-```
-
-From git → npm:
-
-```bash
-npm install -g argentos@latest
+curl -fsSL https://argentos.ai/install.sh | bash
 argent doctor
 argent gateway restart
 ```

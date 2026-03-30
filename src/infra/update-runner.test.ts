@@ -151,6 +151,7 @@ describe("runGatewayUpdate", () => {
       "pnpm build": { stdout: "" },
       "pnpm ui:build": { stdout: "" },
       [`git -C ${tempDir} checkout -- dist/control-ui/`]: { stdout: "" },
+      "pnpm argent setup": { stdout: "" },
       "pnpm argent doctor --non-interactive": { stdout: "" },
     });
 
@@ -164,6 +165,10 @@ describe("runGatewayUpdate", () => {
     expect(result.status).toBe("ok");
     expect(calls).toContain(`git -C ${tempDir} checkout --detach ${stableTag}`);
     expect(calls).not.toContain(`git -C ${tempDir} checkout --detach ${betaTag}`);
+    expect(calls).toContain("pnpm argent setup");
+    expect(calls.indexOf("pnpm argent setup")).toBeLessThan(
+      calls.indexOf("pnpm argent doctor --non-interactive"),
+    );
   });
 
   it("skips update when no git root", async () => {

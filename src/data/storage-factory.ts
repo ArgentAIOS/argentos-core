@@ -31,6 +31,23 @@ function shouldFailClosedStorage(config: StorageConfig): boolean {
   return config.backend === "dual" && config.readFrom === "postgres";
 }
 
+type PgAdapterModule = {
+  PgAdapter: new (config: NonNullable<StorageConfig["postgres"]>) => StorageAdapter;
+};
+
+async function loadPgAdapterModule(): Promise<PgAdapterModule> {
+  const importer = new Function("specifier", "return import(specifier);") as (
+    specifier: string,
+  ) => Promise<unknown>;
+
+  try {
+    return (await importer("./pg-adapter.js")) as PgAdapterModule;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`PostgreSQL adapter unavailable: ${reason}`);
+  }
+}
+
 /**
  * Get or create the global StorageAdapter singleton.
  *
@@ -199,18 +216,7 @@ async function createPgAdapter(config: StorageConfig): Promise<StorageAdapter> {
   if (!config.postgres) {
     throw new Error("StorageConfig: postgres config is required for PG adapter");
   }
-  let PgAdapter: new (postgres: NonNullable<StorageConfig["postgres"]>) => StorageAdapter;
-  try {
-    const dynamicImport = new Function("specifier", "return import(specifier)") as (
-      specifier: string,
-    ) => Promise<{
-      PgAdapter: new (postgres: NonNullable<StorageConfig["postgres"]>) => StorageAdapter;
-    }>;
-    ({ PgAdapter } = await dynamicImport("./pg-adapter.js"));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`PostgreSQL adapter unavailable: ${message}`);
-  }
+  const { PgAdapter } = await loadPgAdapterModule();
   try {
     const adapter = new PgAdapter(config.postgres);
     await adapter.init();

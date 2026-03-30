@@ -533,21 +533,17 @@ argent gateway restart
 
 Why: pnpm is the configured package manager for this repo.
 
-### How do I switch between git installs and npm installs?
+### How do I move a legacy package install back to the git rail?
 
-Use the **website installer** and select the install method with a flag. It
-upgrades in place and rewrites the gateway service to point at the new install.
+Use the **website installer**. It upgrades in place and rewrites the gateway
+service to point at the supported git checkout.
 
-Switch **to git install**:
+Repair onto the git rail:
 
 ```bash
 curl -fsSL https://argentos.ai/install.sh | bash -s -- --install-method git --no-onboard
-```
-
-Switch **to npm global**:
-
-```bash
-curl -fsSL https://argentos.ai/install.sh | bash
+argent doctor
+argent gateway restart
 ```
 
 Notes:

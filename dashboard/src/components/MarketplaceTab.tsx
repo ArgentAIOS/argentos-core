@@ -131,47 +131,38 @@ export function MarketplaceTab() {
   // Check if license is valid
   const hasValidLicense = licenseStatus?.hasLicense && licenseStatus?.status === "active";
 
-  // Fetch catalog — always load public catalog; licensed users also get org-private packages
+  // Fetch catalog when license is valid
+  // Uses /catalog/licensed to get org-scoped results (public + private org packages)
   useEffect(() => {
-    // Wait until license status has loaded (or failed) before fetching catalog
-    if (loading) return;
+    if (!hasValidLicense) return;
 
     setCatalogLoading(true);
     setCatalogError(null);
 
-    const fetchCatalog = async () => {
-      try {
-        let url = `${MARKETPLACE_API}/catalog?limit=50`;
-
-        // If licensed, try the licensed endpoint for org-private packages too
-        if (hasValidLicense) {
-          try {
-            const keyRes = await fetch(`${API_BASE}/api/license/key`);
-            if (keyRes.ok) {
-              const keyData = await keyRes.json();
-              if (keyData?.key) {
-                url = `${MARKETPLACE_API}/catalog/licensed?key=${encodeURIComponent(keyData.key)}&limit=50`;
-              }
-            }
-          } catch {
-            // Fall through to public catalog
-          }
-        }
-
-        const res = await fetch(url);
+    // Read license key from local file via api-server
+    fetch(`${API_BASE}/api/license/key`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((keyData) => {
+        const licenseKey = keyData?.key;
+        // Use licensed endpoint if we have a key (includes org-private packages), fall back to public
+        const url = licenseKey
+          ? `${MARKETPLACE_API}/catalog/licensed?key=${encodeURIComponent(licenseKey)}&limit=50`
+          : `${MARKETPLACE_API}/catalog?limit=50`;
+        return fetch(url);
+      })
+      .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        return res.json();
+      })
+      .then((data) => {
         setCatalog(data.items || []);
-      } catch (err) {
+      })
+      .catch((err) => {
         console.error("[Marketplace] Failed to fetch catalog:", err);
         setCatalogError("Failed to load marketplace catalog");
-      } finally {
-        setCatalogLoading(false);
-      }
-    };
-
-    void fetchCatalog();
-  }, [loading, hasValidLicense]);
+      })
+      .finally(() => setCatalogLoading(false));
+  }, [hasValidLicense]);
 
   // Filter items
   const filteredItems = catalog.filter((item) => {
@@ -204,7 +195,50 @@ export function MarketplaceTab() {
     );
   }
 
-  // Show marketplace content — public catalog is always visible, org-private requires license
+  // Show license gate if no valid license
+  if (!hasValidLicense) {
+    return (
+      <div className="space-y-4">
+        <p className="text-white/50 text-sm">
+          Browse and install skills, extensions, and plugins from the ArgentOS Marketplace.
+        </p>
+
+        {/* License Gate */}
+        <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-6 text-center space-y-4">
+          <Lock className="w-12 h-12 text-orange-400 mx-auto" />
+          <div>
+            <h4 className="text-white font-medium mb-2">License Required</h4>
+            <p className="text-white/70 text-sm mb-4">
+              Marketplace access requires an active ArgentOS license.
+            </p>
+            <div className="flex flex-col gap-3 items-center">
+              <a
+                href="#license"
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.dispatchEvent(new CustomEvent("navigate-to-license"));
+                }}
+                className="inline-flex items-center gap-2 bg-purple-500 hover:bg-purple-600 text-white px-6 py-2 rounded-lg text-sm font-medium transition-all"
+              >
+                <Award className="w-4 h-4" />
+                Activate License
+              </a>
+              <a
+                href="https://argentos.ai/pricing"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-purple-400 hover:text-purple-300 text-sm underline"
+              >
+                Get a License
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show marketplace content for licensed users
   return (
     <div className="space-y-4">
       {/* Header with license badge */}

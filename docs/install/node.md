@@ -1,17 +1,16 @@
 ---
-title: "Node.js + npm (PATH sanity)"
-summary: "Node.js + npm install sanity: versions, PATH, and global installs"
+title: "Node.js + PATH sanity"
+summary: "Node.js runtime sanity for hosted installs and source checkouts"
 read_when:
   - "You installed ArgentOS but `argent` is “command not found”"
-  - "You’re setting up Node.js/npm on a new machine"
-  - "npm install -g ... fails with permissions or PATH issues"
+  - "You’re setting up Node.js on a new machine"
 ---
 
-# Node.js + npm (PATH sanity)
+# Node.js + PATH sanity
 
 ArgentOS’s runtime baseline is **Node 22+**.
 
-If you can run `npm install -g argentos@latest` but later see `argent: command not found`, it’s almost always a **PATH** issue: the directory where npm puts global binaries isn’t on your shell’s PATH.
+If you ran the hosted installer and later see `argent: command not found`, it’s almost always a **PATH** issue: the installer’s wrapper directory is not on your shell’s PATH.
 
 ## Quick diagnosis
 
@@ -19,55 +18,40 @@ Run:
 
 ```bash
 node -v
-npm -v
-npm prefix -g
+printf '%s\n' "$HOME/bin"
 echo "$PATH"
 ```
 
-If `$(npm prefix -g)/bin` (macOS/Linux) or `$(npm prefix -g)` (Windows) is **not** present inside `echo "$PATH"`, your shell can’t find global npm binaries (including `argent`).
+If `$HOME/bin` is **not** present inside `echo "$PATH"`, your shell can’t find the hosted installer’s `argent` wrapper.
 
-## Fix: put npm’s global bin dir on PATH
+## Fix: put the hosted installer bin dir on PATH
 
-1. Find your global npm prefix:
+1. Use the default wrapper location:
 
 ```bash
-npm prefix -g
+printf '%s\n' "$HOME/bin"
 ```
 
-2. Add the global npm bin directory to your shell startup file:
+2. Add that directory to your shell startup file:
 
 - zsh: `~/.zshrc`
 - bash: `~/.bashrc`
 
-Example (replace the path with your `npm prefix -g` output):
+Example:
 
 ```bash
 # macOS / Linux
-export PATH="/path/from/npm/prefix/bin:$PATH"
+export PATH="$HOME/bin:$PATH"
 ```
 
 Then open a **new terminal** (or run `rehash` in zsh / `hash -r` in bash).
 
-On Windows, add the output of `npm prefix -g` to your PATH.
-
-## Fix: avoid `sudo npm install -g` / permission errors (Linux)
-
-If `npm install -g ...` fails with `EACCES`, switch npm’s global prefix to a user-writable directory:
-
-```bash
-mkdir -p "$HOME/.npm-global"
-npm config set prefix "$HOME/.npm-global"
-export PATH="$HOME/.npm-global/bin:$PATH"
-```
-
-Persist the `export PATH=...` line in your shell startup file.
-
 ## Recommended Node install options
 
-You’ll have the fewest surprises if Node/npm are installed in a way that:
+You’ll have the fewest surprises if Node is installed in a way that:
 
 - keeps Node updated (22+)
-- makes the global npm bin dir stable and on PATH in new shells
+- keeps your shell PATH stable in new terminals
 
 Common choices:
 

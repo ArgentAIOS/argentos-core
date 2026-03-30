@@ -114,10 +114,10 @@ If you used a profile, delete the matching task name and `~\.argent-<profile>\ga
 
 ## Normal install vs source checkout
 
-### Normal install (install.sh / npm / pnpm / bun)
+### Normal install (install.sh / install.ps1)
 
-If you used `https://argentos.ai/install.sh` or `install.ps1`, the CLI was installed with `npm install -g argentos@latest`.
-Remove it with `npm rm -g argent` (or `pnpm remove -g` / `bun remove -g` if you installed that way).
+If you used `https://argentos.ai/install.sh` or `install.ps1`, the supported layout is a git checkout plus local wrappers.
+Remove the git checkout (default `~/argentos`), the wrapper directory (default `~/bin/argent`), and your state directory as described above.
 
 ### Source checkout (git clone)
 

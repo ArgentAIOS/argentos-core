@@ -50,10 +50,10 @@ Usage:
   bash install-hosted.sh [options]
 
 Options:
-  --install-method <git|npm>  Install from a git checkout or globally via npm
+  --install-method <git>      Public Core installs are git-only
   --channel <stable|beta|dev> Select release channel (default: stable)
   --beta                      Alias for --channel beta
-  --version <version>         Package version/tag/git ref (default: channel-dependent)
+  --version <version>         Git tag/branch/ref (default: channel-dependent)
   --git-dir <path>            Source checkout path for git installs
   --no-git-update             Do not pull when an existing git checkout is present
   --no-onboard                Skip onboarding after install
@@ -69,8 +69,6 @@ Environment equivalents:
   ARGENTOS_NO_PROMPT
   ARGENT_NO_ONBOARD
   ARGENT_FORCE_CLI_ONBOARD
-  ARGENT_INSTALL_PACKAGE_SPEC
-  ARGENT_INSTALL_NPM_PREFIX
   ARGENT_INSTALL_BIN_DIR
   ARGENT_NODE_VERSION
   ARGENT_NODE_BIN
@@ -387,8 +385,11 @@ validate_channel() {
 
 resolve_effective_install_method() {
   if [[ -n "$INSTALL_METHOD" ]]; then
-    printf '%s\n' "$INSTALL_METHOD"
-    return 0
+    if [[ "$INSTALL_METHOD" != "git" ]]; then
+      err "Unsupported install method: $INSTALL_METHOD"
+      err "Public Core installs are git-only. Re-run without --install-method or use --install-method git."
+      exit 1
+    fi
   fi
   printf 'git\n'
 }
@@ -398,19 +399,10 @@ resolve_effective_version() {
     printf '%s\n' "$VERSION"
     return 0
   fi
-  if [[ "$INSTALL_METHOD" == "git" ]]; then
-    case "$CHANNEL" in
-      stable) printf 'latest stable GitHub release tag\n' ;;
-      beta) printf 'latest beta-or-stable GitHub release tag\n' ;;
-      dev) printf 'main\n' ;;
-      *) printf 'main\n' ;;
-    esac
-    return 0
-  fi
   case "$CHANNEL" in
-    stable) printf 'latest\n' ;;
-    beta) printf 'beta\n' ;;
-    dev) printf 'dev\n' ;;
+    stable) printf 'latest stable GitHub release tag\n' ;;
+    beta) printf 'latest beta-or-stable GitHub release tag\n' ;;
+    dev) printf 'main\n' ;;
     *)
       err "Unsupported channel: $CHANNEL"
       exit 1
@@ -907,6 +899,10 @@ install_git() {
 
   provision_core_storage_stack
 
+  info "Seeding agent workspace..."
+  PATH="$(dirname "$NODE_BIN"):$PATH" run_cmd "$BIN_DIR_OVERRIDE/argent" setup
+  ok "Seeded agent workspace"
+
   # Create all PG tables (knowledge, memory, tasks, etc.) using safe CREATE IF NOT EXISTS.
   # Must run AFTER PG is provisioned.
   info "Creating PostgreSQL schema tables..."
@@ -1205,15 +1201,4 @@ info "Install rail: $INSTALL_METHOD"
 info "Channel: $CHANNEL"
 info "Version/ref: $VERSION"
 
-case "$INSTALL_METHOD" in
-  npm)
-    install_npm
-    ;;
-  git)
-    install_git
-    ;;
-  *)
-    err "Unsupported install method: $INSTALL_METHOD"
-    exit 1
-    ;;
-esac
+install_git

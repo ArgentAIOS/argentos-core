@@ -12,7 +12,6 @@ import {
   resolveNodeSystemdServiceName,
   resolveNodeWindowsTaskName,
 } from "./constants.js";
-import { resolveGatewayConfigPath, resolveGatewayStateDir } from "./paths.js";
 
 export type MinimalServicePathOptions = {
   platform?: NodeJS.Platform;
@@ -164,8 +163,8 @@ export function buildServiceEnvironment(params: {
     launchdLabel ||
     (process.platform === "darwin" ? resolveGatewayLaunchAgentLabel(profile) : undefined);
   const systemdUnit = `${resolveGatewaySystemdServiceName(profile)}.service`;
-  const stateDir = resolveGatewayStateDir(env);
-  const configPath = resolveGatewayConfigPath(env);
+  const stateDir = env.ARGENT_STATE_DIR;
+  const configPath = env.ARGENT_CONFIG_PATH;
   return {
     HOME: env.HOME,
     PATH: buildMinimalServicePath({ env }),
@@ -187,8 +186,8 @@ export function buildNodeServiceEnvironment(params: {
   env: Record<string, string | undefined>;
 }): Record<string, string | undefined> {
   const { env } = params;
-  const stateDir = resolveGatewayStateDir(env);
-  const configPath = resolveGatewayConfigPath(env);
+  const stateDir = env.ARGENT_STATE_DIR;
+  const configPath = env.ARGENT_CONFIG_PATH;
   return {
     HOME: env.HOME,
     PATH: buildMinimalServicePath({ env }),

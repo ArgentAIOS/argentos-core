@@ -27,12 +27,11 @@ Start conservative:
 ## Prerequisites
 
 - Node **22+**
-- ArgentOS available on PATH (recommended: global install)
+- ArgentOS available on PATH (recommended: hosted installer)
 - A second phone number (SIM/eSIM/prepaid) for the assistant
 
 ```bash
-npm install -g argentos@latest
-# or: pnpm add -g argentos@latest
+curl -fsSL https://argentos.ai/install.sh | bash
 ```
 
 From source (development):
@@ -43,7 +42,7 @@ cd argentos
 pnpm install
 pnpm ui:build # auto-installs UI deps on first run
 pnpm build
-pnpm link --global
+pnpm argent onboard --install-daemon
 ```
 
 ## The two-phone setup (recommended)

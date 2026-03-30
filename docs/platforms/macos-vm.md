@@ -137,7 +137,7 @@ Replace `youruser` with the account you created, and the IP with your VM's IP.
 Inside the VM:
 
 ```bash
-npm install -g argentos@latest
+curl -fsSL https://argentos.ai/install.sh | bash
 argent onboard --install-daemon
 ```
 

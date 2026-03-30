@@ -116,12 +116,6 @@ async function resolveInstalledCliEntrypointPathForService(): Promise<string | n
   if (currentArgv1) {
     const currentRoot = resolveProjectRootFromEntrypoint(currentArgv1);
     const installedRoot = resolveProjectRootFromEntrypoint(resolvedInstalledCliPath);
-    try {
-      await fs.access(path.join(currentRoot, ".git"));
-      return null;
-    } catch {
-      // Not a source checkout; keep considering installed runtime snapshots.
-    }
     if (
       isSameOrNestedPath(resolvedInstalledCliPath, currentRoot) ||
       isSameOrNestedPath(installedRoot, currentRoot)

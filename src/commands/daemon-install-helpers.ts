@@ -133,10 +133,7 @@ export async function buildGatewayInstallPlan(params: {
       params.warn?.(warning, "Gateway runtime");
     }
   }
-  // Unify dashboard API auth with gateway auth: use the same token for both
-  // so ?token= in the URL works for WebSocket AND REST API calls.
-  // Fall back to a separate generated token only if no gateway token exists.
-  const dashboardApiToken = params.token || resolveDashboardApiToken(params.env);
+  const dashboardApiToken = resolveDashboardApiToken(params.env);
   const serviceEnvironment = buildServiceEnvironment({
     env: params.env,
     port: params.port,

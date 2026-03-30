@@ -30,9 +30,9 @@ When the operator says “release”, immediately do this preflight (no extra qu
 
 - [ ] If A2UI inputs changed, run `pnpm canvas:a2ui:bundle` and commit any updated [`src/canvas-host/a2ui/a2ui.bundle.js`](https://github.com/ArgentAIOS/argentos/blob/main/src/canvas-host/a2ui/a2ui.bundle.js).
 - [ ] `pnpm run build` (regenerates `dist/`).
-- [ ] Verify npm package `files` includes all required `dist/*` folders (notably `dist/node-host/**` and `dist/acp/**` for headless node + ACP CLI).
-- [ ] Confirm `dist/build-info.json` exists and includes the expected `commit` hash (CLI banner uses this for npm installs).
-- [ ] Optional: `npm pack --pack-destination /tmp` after the build; inspect the tarball contents and keep it handy for the GitHub release (do **not** commit it).
+- [ ] Verify the release bundle includes all required `dist/*` folders (notably `dist/node-host/**` and `dist/acp/**` for headless node + ACP CLI).
+- [ ] Confirm `dist/build-info.json` exists and includes the expected `commit` hash (CLI banner and release diagnostics use this).
+- [ ] Optional: `pnpm release:check` after the build to inspect publishable release contents before tagging.
 
 3. **Changelog & docs**
 
@@ -49,7 +49,7 @@ When the operator says “release”, immediately do this preflight (no extra qu
 - [ ] `pnpm test:install:hosted:local:smoke` (hosted shell installer smoke; required whenever `scripts/install-hosted.sh` changes)
 - [ ] `pnpm test:install:cli:local:smoke` (repo-local hosted CLI installer smoke; required whenever `install-cli.sh` changes)
 - [ ] `ARGENTOS_INSTALL_SMOKE_SKIP_NONROOT=1 pnpm test:install:smoke` (Docker install smoke test, fast path; required before release)
-  - If the immediate previous npm release is known broken, set `ARGENTOS_INSTALL_SMOKE_PREVIOUS=<last-good-version>` or `ARGENTOS_INSTALL_SMOKE_SKIP_PREVIOUS=1` for the preinstall step.
+  - If the immediate previous release is known broken, set `ARGENTOS_INSTALL_SMOKE_PREVIOUS=<last-good-version>` or `ARGENTOS_INSTALL_SMOKE_SKIP_PREVIOUS=1` for the preinstall step.
 - [ ] (Optional) Full installer smoke (adds non-root + CLI coverage): `pnpm test:install:smoke`
 - [ ] (Optional) Installer E2E (Docker, runs `curl -fsSL https://argentos.ai/install.sh | bash`, onboards, then runs real tool calls):
   - `pnpm test:install:e2e:openai` (requires `OPENAI_API_KEY`)
@@ -66,27 +66,22 @@ When the operator says “release”, immediately do this preflight (no extra qu
   - `APP_BUILD` must be numeric + monotonic (no `-beta`) so Sparkle compares versions correctly.
   - If notarizing, use the `argent-notary` keychain profile created from App Store Connect API env vars (see [macOS release](/platforms/mac/release)).
 
-6. **Publish (npm)**
+6. **Publish (git tag + hosted installers)**
 
 - [ ] Confirm git status is clean; commit and push as needed.
-- [ ] `npm login` (verify 2FA) if needed.
-- [ ] `npm publish --access public` (use `--tag beta` for pre-releases).
-- [ ] Verify the registry: `npm view argentos version`, `npm view argentos dist-tags`, and `npx -y argentos@X.Y.Z --version` (or `--help`).
+- [ ] Create a new immutable release tag; do **not** reuse or move old tags.
+- [ ] Push the tag to GitHub and draft the GitHub release if needed.
 - [ ] Export hosted installer payload: `pnpm export:hosted-installers`
 - [ ] Publish the exported files from `dist/hosted-installers/` to the `argentos.ai` host:
   - `install.sh`
   - `install-cli.sh`
   - `install.ps1`
 
-### Troubleshooting (notes from 2.0.0-beta2 release)
+### Troubleshooting
 
-- **npm pack/publish hangs or produces huge tarball**: the macOS app bundle in `dist/ArgentOS.app` (and release zips) get swept into the package. Fix by whitelisting publish contents via `package.json` `files` (include dist subdirs, docs, skills; exclude app bundles). Confirm with `npm pack --dry-run` that `dist/ArgentOS.app` is not listed.
-- **npm auth web loop for dist-tags**: use legacy auth to get an OTP prompt:
-  - `NPM_CONFIG_AUTH_TYPE=legacy npm dist-tag add argentos@X.Y.Z latest`
-- **`npx` verification fails with `ECOMPROMISED: Lock compromised`**: retry with a fresh cache:
-  - `NPM_CONFIG_CACHE=/tmp/npm-cache-$(date +%s) npx -y argentos@X.Y.Z --version`
-- **Tag needs repointing after a late fix**: force-update and push the tag, then ensure the GitHub release assets still match:
-  - `git tag -f vX.Y.Z && git push -f origin vX.Y.Z`
+- **Release bundle includes macOS app artifacts you did not intend to ship**: make sure your release packaging/export step whitelists the intended `dist/` contents and excludes local app bundles/zips.
+- **Hosted installer smoke references a known-bad previous release**: set `ARGENTOS_INSTALL_SMOKE_PREVIOUS=<last-good-version>` or `ARGENTOS_INSTALL_SMOKE_SKIP_PREVIOUS=1`.
+- **Late fix after tagging**: do not repoint the tag. Cut a new tag and publish a new release instead.
 
 7. **GitHub release + appcast**
 

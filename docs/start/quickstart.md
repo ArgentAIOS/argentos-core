@@ -21,22 +21,11 @@ The app is the preferred macOS operator surface. It manages the local gateway an
 
 ### CLI (cross-platform)
 
-<Tabs>
-  <Tab title="npm">
-    ```bash
-    npm install -g argentos@latest
-    ```
-  </Tab>
-  <Tab title="pnpm">
-    ```bash
-    pnpm add -g argentos@latest
-    ```
-  </Tab>
-</Tabs>
+```bash
+curl -fsSL https://argentos.ai/install.sh | bash
+```
 
-Official package install: `npm install -g argentos@latest`
-
-The executable is `argent`. The official npm package is `argentos` because the unscoped npm package name `argent` is already taken.
+The executable is `argent`. The hosted installer sets up the wrapper plus the supported git checkout used by `argent update`.
 
 ## Onboard and run the Gateway
 
@@ -76,7 +65,7 @@ pnpm build
 argent onboard --install-daemon
 ```
 
-If you do not have a global install yet, run onboarding via `pnpm argent ...` from the repo.
+If you do not have `argent` on PATH yet, run onboarding via `pnpm argent ...` from the repo.
 
 ## Multi instance quickstart (optional)
 

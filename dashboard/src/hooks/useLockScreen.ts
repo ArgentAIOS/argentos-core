@@ -123,10 +123,7 @@ export function useLockScreen() {
     const port = new URLSearchParams(window.location.search).get("port") || window.location.port;
     const base = `${window.location.protocol}//${window.location.hostname}:${port}`;
     fetch(`${base}/api/lockscreen/emergency-unlock`, { method: "POST" })
-      .then((r) => {
-        if (!r.ok) return { unlocked: false };
-        return r.json();
-      })
+      .then((r) => r.json())
       .then((data) => {
         if (data.unlocked) {
           markSessionUnlocked();

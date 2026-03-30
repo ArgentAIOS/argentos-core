@@ -67,15 +67,7 @@ Windows (PowerShell):
 iwr -useb https://argentos.ai/install.ps1 | iex
 ```
 
-Alternative (global install):
-
-```bash
-npm install -g argentos@latest
-```
-
-```bash
-pnpm add -g argentos@latest
-```
+The hosted installer is the supported public path. It creates the local wrapper and supported git checkout for updates.
 
 ## 2) Run the onboarding wizard (and install the service)
 
@@ -178,7 +170,7 @@ pnpm build
 argent onboard --install-daemon
 ```
 
-If you don’t have a global install yet, run the onboarding step via `pnpm argent ...` from the repo.
+If you don’t have `argent` on PATH yet, run the onboarding step via `pnpm argent ...` from the repo.
 `pnpm build` also bundles A2UI assets; if you need to run just that step, use `pnpm canvas:a2ui:bundle`.
 
 Gateway (from this repo):

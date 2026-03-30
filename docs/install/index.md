@@ -1,5 +1,5 @@
 ---
-summary: "Install ArgentOS (recommended installer, global install, or from source)"
+summary: "Install ArgentOS from the hosted git rail or from source"
 read_when:
   - Installing ArgentOS
   - You want to install from GitHub
@@ -61,38 +61,7 @@ Non-interactive (skip onboarding):
 curl -fsSL https://argentos.ai/install.sh | bash -s -- --no-onboard
 ```
 
-### 2) Global install (manual)
-
-If you already have Node:
-
-```bash
-npm install -g argentos@latest
-```
-
-If you have libvips installed globally (common on macOS via Homebrew) and `sharp` fails to install, force prebuilt binaries:
-
-```bash
-SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm install -g argentos@latest
-```
-
-If you see `sharp: Please add node-gyp to your dependencies`, either install build tooling (macOS: Xcode CLT + `npm install -g node-gyp`) or use the `SHARP_IGNORE_GLOBAL_LIBVIPS=1` workaround above to skip the native build.
-
-Or with pnpm:
-
-```bash
-pnpm add -g argentos@latest
-pnpm approve-builds -g                # approve argent, node-llama-cpp, sharp, etc.
-```
-
-pnpm requires explicit approval for packages with build scripts. After the first install shows the "Ignored build scripts" warning, run `pnpm approve-builds -g` and select the listed packages.
-
-Then:
-
-```bash
-argent onboard --install-daemon
-```
-
-### 3) From source (contributors/dev)
+### 2) From source (contributors/dev)
 
 ```bash
 git clone https://github.com/ArgentAIOS/argentos.git
@@ -103,9 +72,9 @@ pnpm build
 argent onboard --install-daemon
 ```
 
-Tip: if you don’t have a global install yet, run repo commands via `pnpm argent ...`.
+Tip: if you don’t have `argent` on PATH yet, run repo commands via `pnpm argent ...`.
 
-### 4) Other install options
+### 3) Other install options
 
 - Docker: [Docker](/install/docker)
 - Nix: [Nix](/install/nix)
@@ -119,26 +88,25 @@ Tip: if you don’t have a global install yet, run repo commands via `pnpm argen
 - Check gateway health: `argent status` + `argent health`
 - Open the dashboard: `argent dashboard`
 
-## Install method: npm vs git (installer)
+## Install method: hosted git rail
 
-The installer supports two methods:
+Hosted install channel semantics:
 
-- `git` (default): clone/build from GitHub and run from a source checkout
-- `npm`: `npm install -g argentos@latest`
+- `stable` (default): install from the latest GitHub release tag
+- `beta`: install from the latest beta/stable GitHub release tag
+- `dev`: track `main`
 
 ### CLI flags
 
 ```bash
 # Default hosted rail
 curl -fsSL https://argentos.ai/install.sh | bash -s -- --install-method git
-
-# Explicit npm
-curl -fsSL https://argentos.ai/install.sh | bash -s -- --install-method npm
 ```
 
 Common flags:
 
-- `--install-method npm|git`
+- `--install-method git`
+- `--channel stable|beta|dev` (`stable` is the default public rail)
 - `--git-dir <path>` (default: `~/argentos`)
 - `--no-git-update` (skip `git pull` when using an existing checkout)
 - `--no-prompt` (disable prompts; required in CI/automation)
@@ -149,7 +117,8 @@ Common flags:
 
 Equivalent env vars (useful for automation):
 
-- `ARGENTOS_INSTALL_METHOD=git|npm`
+- `ARGENTOS_INSTALL_METHOD=git`
+- `ARGENTOS_INSTALL_CHANNEL=stable|beta|dev`
 - `ARGENTOS_GIT_DIR=...`
 - `ARGENTOS_GIT_UPDATE=0|1`
 - `ARGENTOS_NO_PROMPT=1`
@@ -163,12 +132,11 @@ Quick diagnosis:
 
 ```bash
 node -v
-npm -v
-npm prefix -g
+printf '%s\n' "$HOME/bin"
 echo "$PATH"
 ```
 
-If `$(npm prefix -g)/bin` (macOS/Linux) or `$(npm prefix -g)` (Windows) is **not** present inside `echo "$PATH"`, your shell can’t find global npm binaries (including `argent`).
+If `$HOME/bin` is **not** present inside `echo "$PATH"`, your shell can’t find the hosted installer’s `argent` wrapper.
 
 Fix: add it to your shell startup file (zsh: `~/.zshrc`, bash: `~/.bashrc`):
 

@@ -74,6 +74,8 @@ const PUBLIC_CORE_BLOCKED_API_PATTERNS = [
   "/api/settings/auth",
   "/api/settings/cors-allowlist/**",
   "/api/settings/filesystem-allowlist/**",
+  "/api/settings/gateway/**",
+  "/api/settings/database/**",
   "/api/settings/pairing",
   "/api/settings/load-profile",
   "/api/settings/memory-v3/**",
@@ -129,14 +131,6 @@ function isBlockedInPublicCore(routePath) {
   );
 }
 
-// Lightweight surface profile endpoint — always allowed, even in public-core mode.
-// Dashboard uses this to detect its mode before calling any blocked routes.
-app.get("/api/surface-profile", (_req, res) => {
-  const config = readArgentConfig();
-  const surfaceProfile = getDashboardSurfaceProfile(config);
-  res.json({ surfaceProfile });
-});
-
 app.use("/api", (req, res, next) => {
   if (req.method === "OPTIONS") return next();
   const surfaceProfile = getDashboardSurfaceProfile(readArgentConfig());
@@ -150,26 +144,9 @@ app.use("/api", (req, res, next) => {
   });
 });
 
-// Dashboard API auth — accepts DASHBOARD_API_TOKEN env var OR the gateway auth
-// token from config. This unifies auth so the browser ?token= (gateway token)
-// works for both WebSocket and REST API calls.
+// Optional bearer token auth — if DASHBOARD_API_TOKEN is set, enforce it
 const DASHBOARD_API_TOKEN = process.env.DASHBOARD_API_TOKEN || null;
-const GATEWAY_CONFIG_TOKEN = (() => {
-  try {
-    const configPath =
-      process.env.ARGENT_CONFIG_PATH ||
-      path.join(process.env.HOME || "", ".argentos", "argent.json");
-    if (fs.existsSync(configPath)) {
-      const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-      return config?.gateway?.auth?.token || null;
-    }
-  } catch {
-    /* ignore */
-  }
-  return null;
-})();
-const ACCEPTED_TOKENS = [DASHBOARD_API_TOKEN, GATEWAY_CONFIG_TOKEN].filter(Boolean);
-if (ACCEPTED_TOKENS.length > 0) {
+if (DASHBOARD_API_TOKEN) {
   app.use("/api/", (req, res, next) => {
     // Allow preflight and health check (no auth needed)
     if (req.method === "OPTIONS") return next();
@@ -190,11 +167,8 @@ if (ACCEPTED_TOKENS.length > 0) {
     }
     try {
       const a = Buffer.from(token);
-      const matched = ACCEPTED_TOKENS.some((accepted) => {
-        const b = Buffer.from(accepted);
-        return a.length === b.length && crypto.timingSafeEqual(a, b);
-      });
-      if (!matched) {
+      const b = Buffer.from(DASHBOARD_API_TOKEN);
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
         return res.status(401).json({ error: "Invalid token" });
       }
     } catch {
@@ -10027,10 +10001,10 @@ function readNudges() {
   } catch (err) {
     console.error("[Nudges] Failed to read:", err.message);
   }
-  // Auto-seed defaults on first load — nudges ship disabled by default
+  // Auto-seed defaults on first load
   const defaults = {
     version: 1,
-    globalEnabled: false,
+    globalEnabled: true,
     nudges: DEFAULT_NUDGES.map((n) => ({ ...n, createdAt: Date.now() })),
   };
   writeNudges(defaults);
@@ -10229,9 +10203,7 @@ async function buildKnowledgeAgentOptions(config, defaultAgentId) {
   const familyOptions = [];
   const stateDir = resolveAlignmentStateDir();
   const agentsDir = path.join(stateDir, "agents");
-  const workspaceMain = fs.existsSync(path.join(stateDir, "workspace-main"))
-    ? path.join(stateDir, "workspace-main")
-    : path.join(stateDir, "workspace");
+  const workspaceMain = path.join(stateDir, "workspace-main");
   try {
     if (fs.existsSync(workspaceMain)) {
       fsOptions.push({ id: "main", label: "main" });
@@ -12518,10 +12490,7 @@ function resolveAlignmentStateDir() {
 
 const ALIGNMENT_STATE_DIR = resolveAlignmentStateDir();
 const AGENTS_DIR = path.join(ALIGNMENT_STATE_DIR, "agents");
-// Prefer workspace-main (existing installs), fall back to workspace (new/public installs)
-const WORKSPACE_MAIN = fs.existsSync(path.join(ALIGNMENT_STATE_DIR, "workspace-main"))
-  ? path.join(ALIGNMENT_STATE_DIR, "workspace-main")
-  : path.join(ALIGNMENT_STATE_DIR, "workspace");
+const WORKSPACE_MAIN = path.join(ALIGNMENT_STATE_DIR, "workspace-main");
 const ALIGNMENT_BACKUP_DIR = path.join(ALIGNMENT_STATE_DIR, "backups");
 
 // Known alignment doc filenames

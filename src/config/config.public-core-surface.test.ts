@@ -6,6 +6,7 @@ describe("public core surface config schema", () => {
     const result = ArgentSchema.safeParse({
       distribution: {
         surfaceProfile: "public-core",
+        dashboardMode: "personal",
         publicCore: {
           includePowerUserTools: true,
           alsoAllowTools: ["service_keys"],

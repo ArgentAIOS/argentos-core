@@ -214,10 +214,53 @@ describe("update-cli", () => {
     expect(parsed.channel.value).toBe("stable");
   });
 
-  it("defaults to dev channel for git installs when unset", async () => {
+  it("defaults to stable channel for release-tag git installs when unset", async () => {
     const { runGatewayUpdate } = await import("../infra/update-runner.js");
     const { updateCommand } = await import("./update-cli.js");
 
+    vi.mocked(runGatewayUpdate).mockResolvedValue({
+      status: "ok",
+      mode: "git",
+      steps: [],
+      durationMs: 100,
+    });
+
+    await updateCommand({});
+
+    const call = vi.mocked(runGatewayUpdate).mock.calls[0]?.[0];
+    expect(call?.channel).toBe("stable");
+  });
+
+  it("defaults to dev channel for branch-based git installs when unset", async () => {
+    const { checkUpdateStatus } = await import("../infra/update-check.js");
+    const { runGatewayUpdate } = await import("../infra/update-runner.js");
+    const { updateCommand } = await import("./update-cli.js");
+
+    vi.mocked(checkUpdateStatus).mockResolvedValue({
+      root: "/test/path",
+      installKind: "git",
+      packageManager: "pnpm",
+      git: {
+        root: "/test/path",
+        sha: "abcdef1234567890",
+        tag: null,
+        branch: "main",
+        upstream: "origin/main",
+        dirty: false,
+        ahead: 0,
+        behind: 0,
+        fetchOk: true,
+      },
+      deps: {
+        manager: "pnpm",
+        status: "ok",
+        lockfilePath: "/test/path/pnpm-lock.yaml",
+        markerPath: "/test/path/node_modules",
+      },
+      registry: {
+        latestVersion: "1.2.3",
+      },
+    });
     vi.mocked(runGatewayUpdate).mockResolvedValue({
       status: "ok",
       mode: "git",
@@ -242,6 +285,7 @@ describe("update-cli", () => {
 
       const { resolveArgentPackageRoot } = await import("../infra/argent-root.js");
       const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { runCommandWithTimeout } = await import("../process/exec.js");
       const { checkUpdateStatus } = await import("../infra/update-check.js");
       const { updateCommand } = await import("./update-cli.js");
 
@@ -266,9 +310,11 @@ describe("update-cli", () => {
 
       await updateCommand({ yes: true });
 
-      const call = vi.mocked(runGatewayUpdate).mock.calls[0]?.[0];
-      expect(call?.channel).toBe("stable");
-      expect(call?.tag).toBe("latest");
+      expect(runGatewayUpdate).not.toHaveBeenCalled();
+      const commands = vi
+        .mocked(runCommandWithTimeout)
+        .mock.calls.map(([argv]) => (Array.isArray(argv) ? argv.join(" ") : String(argv)));
+      expect(commands.some((command) => command.includes("argentos@latest"))).toBe(true);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
@@ -296,6 +342,23 @@ describe("update-cli", () => {
     expect(call?.channel).toBe("beta");
   });
 
+  it("keeps git installs on the git rail when switching to stable", async () => {
+    const { runGatewayUpdate } = await import("../infra/update-runner.js");
+    const { updateCommand } = await import("./update-cli.js");
+
+    vi.mocked(runGatewayUpdate).mockResolvedValue({
+      status: "ok",
+      mode: "git",
+      steps: [],
+      durationMs: 100,
+    });
+
+    await updateCommand({ channel: "stable" });
+
+    const call = vi.mocked(runGatewayUpdate).mock.calls[0]?.[0];
+    expect(call?.channel).toBe("stable");
+  });
+
   it("falls back to latest when beta tag is older than release", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-"));
     try {
@@ -309,6 +372,7 @@ describe("update-cli", () => {
       const { readConfigFileSnapshot } = await import("../config/config.js");
       const { resolveNpmChannelTag } = await import("../infra/update-check.js");
       const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { runCommandWithTimeout } = await import("../process/exec.js");
       const { updateCommand } = await import("./update-cli.js");
       const { checkUpdateStatus } = await import("../infra/update-check.js");
 
@@ -341,9 +405,11 @@ describe("update-cli", () => {
 
       await updateCommand({});
 
-      const call = vi.mocked(runGatewayUpdate).mock.calls[0]?.[0];
-      expect(call?.channel).toBe("beta");
-      expect(call?.tag).toBe("latest");
+      expect(runGatewayUpdate).not.toHaveBeenCalled();
+      const commands = vi
+        .mocked(runCommandWithTimeout)
+        .mock.calls.map(([argv]) => (Array.isArray(argv) ? argv.join(" ") : String(argv)));
+      expect(commands.some((command) => command.includes("argentos@latest"))).toBe(true);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
@@ -561,6 +627,7 @@ describe("update-cli", () => {
       const { resolveArgentPackageRoot } = await import("../infra/argent-root.js");
       const { resolveNpmChannelTag } = await import("../infra/update-check.js");
       const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { runCommandWithTimeout } = await import("../process/exec.js");
       const { defaultRuntime } = await import("../runtime.js");
       const { updateCommand } = await import("./update-cli.js");
       const { checkUpdateStatus } = await import("../infra/update-check.js");
@@ -614,6 +681,7 @@ describe("update-cli", () => {
       const { resolveArgentPackageRoot } = await import("../infra/argent-root.js");
       const { resolveNpmChannelTag } = await import("../infra/update-check.js");
       const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { runCommandWithTimeout } = await import("../process/exec.js");
       const { defaultRuntime } = await import("../runtime.js");
       const { updateCommand } = await import("./update-cli.js");
       const { checkUpdateStatus } = await import("../infra/update-check.js");
@@ -648,7 +716,8 @@ describe("update-cli", () => {
       expect(defaultRuntime.error).not.toHaveBeenCalledWith(
         expect.stringContaining("Downgrade confirmation required."),
       );
-      expect(runGatewayUpdate).toHaveBeenCalled();
+      expect(runGatewayUpdate).not.toHaveBeenCalled();
+      expect(vi.mocked(runCommandWithTimeout).mock.calls.length).toBeGreaterThan(0);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
@@ -672,10 +741,12 @@ describe("update-cli", () => {
 
   it("updateWizardCommand offers dev checkout and forwards selections", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-wizard-"));
-    const previousGitDir = process.env.ARGENT_GIT_DIR;
+    const previousArgentosGitDir = process.env.ARGENTOS_GIT_DIR;
+    const previousLegacyGitDir = process.env.ARGENT_GIT_DIR;
     try {
       setTty(true);
-      process.env.ARGENT_GIT_DIR = tempDir;
+      process.env.ARGENTOS_GIT_DIR = tempDir;
+      delete process.env.ARGENT_GIT_DIR;
 
       const { checkUpdateStatus } = await import("../infra/update-check.js");
       const { runGatewayUpdate } = await import("../infra/update-runner.js");
@@ -706,7 +777,16 @@ describe("update-cli", () => {
       const call = vi.mocked(runGatewayUpdate).mock.calls[0]?.[0];
       expect(call?.channel).toBe("dev");
     } finally {
-      process.env.ARGENT_GIT_DIR = previousGitDir;
+      if (previousArgentosGitDir) {
+        process.env.ARGENTOS_GIT_DIR = previousArgentosGitDir;
+      } else {
+        delete process.env.ARGENTOS_GIT_DIR;
+      }
+      if (previousLegacyGitDir) {
+        process.env.ARGENT_GIT_DIR = previousLegacyGitDir;
+      } else {
+        delete process.env.ARGENT_GIT_DIR;
+      }
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });

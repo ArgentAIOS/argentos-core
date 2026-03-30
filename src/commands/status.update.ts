@@ -1,11 +1,6 @@
 import { formatCliCommand } from "../cli/command-format.js";
 import { resolveArgentPackageRoot } from "../infra/argent-root.js";
-import {
-  checkUpdateStatus,
-  compareSemverStrings,
-  type UpdateCheckResult,
-} from "../infra/update-check.js";
-import { VERSION } from "../version.js";
+import { checkUpdateStatus, type UpdateCheckResult } from "../infra/update-check.js";
 
 export async function getUpdateCheckResult(params: {
   timeoutMs: number;
@@ -34,9 +29,6 @@ export type UpdateAvailability = {
 };
 
 export function resolveUpdateAvailability(update: UpdateCheckResult): UpdateAvailability {
-  const latestVersion = update.registry?.latestVersion ?? null;
-  const registryCmp = latestVersion ? compareSemverStrings(VERSION, latestVersion) : null;
-  const hasRegistryUpdate = registryCmp != null && registryCmp < 0;
   const gitBehind =
     update.installKind === "git" && typeof update.git?.behind === "number"
       ? update.git.behind
@@ -44,10 +36,10 @@ export function resolveUpdateAvailability(update: UpdateCheckResult): UpdateAvai
   const hasGitUpdate = gitBehind != null && gitBehind > 0;
 
   return {
-    available: hasGitUpdate || hasRegistryUpdate,
+    available: hasGitUpdate,
     hasGitUpdate,
-    hasRegistryUpdate,
-    latestVersion: hasRegistryUpdate ? latestVersion : null,
+    hasRegistryUpdate: false,
+    latestVersion: null,
     gitBehind,
   };
 }
@@ -61,9 +53,6 @@ export function formatUpdateAvailableHint(update: UpdateCheckResult): string | n
   const details: string[] = [];
   if (availability.hasGitUpdate && availability.gitBehind != null) {
     details.push(`git behind ${availability.gitBehind}`);
-  }
-  if (availability.hasRegistryUpdate && availability.latestVersion) {
-    details.push(`npm ${availability.latestVersion}`);
   }
   const suffix = details.length > 0 ? ` (${details.join(" · ")})` : "";
   return `Update available${suffix}. Run: ${formatCliCommand("argent update")}`;
@@ -94,33 +83,8 @@ export function formatUpdateOneLiner(update: UpdateCheckResult): string {
     if (update.git.fetchOk === false) {
       parts.push("fetch failed");
     }
-
-    if (update.registry?.latestVersion) {
-      const cmp = compareSemverStrings(VERSION, update.registry.latestVersion);
-      if (cmp === 0) {
-        parts.push(`npm latest ${update.registry.latestVersion}`);
-      } else if (cmp != null && cmp < 0) {
-        parts.push(`npm update ${update.registry.latestVersion}`);
-      } else {
-        parts.push(`npm latest ${update.registry.latestVersion} (local newer)`);
-      }
-    } else if (update.registry?.error) {
-      parts.push("npm latest unknown");
-    }
   } else {
-    parts.push(update.packageManager !== "unknown" ? update.packageManager : "pkg");
-    if (update.registry?.latestVersion) {
-      const cmp = compareSemverStrings(VERSION, update.registry.latestVersion);
-      if (cmp === 0) {
-        parts.push(`npm latest ${update.registry.latestVersion}`);
-      } else if (cmp != null && cmp < 0) {
-        parts.push(`npm update ${update.registry.latestVersion}`);
-      } else {
-        parts.push(`npm latest ${update.registry.latestVersion} (local newer)`);
-      }
-    } else if (update.registry?.error) {
-      parts.push("npm latest unknown");
-    }
+    parts.push("legacy package install");
   }
 
   if (update.deps) {

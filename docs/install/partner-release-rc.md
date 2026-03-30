@@ -23,6 +23,7 @@ Expected:
 
 - `argent --version` prints a semantic version.
 - Onboarding completes without fatal errors.
+- `argent update status --json` should normally report `installKind: "git"` for the standard hosted rail.
 
 ## 2) First-run verification
 
@@ -35,7 +36,7 @@ argent gateway status --json
 Expected:
 
 - Health returns `"ok": true`.
-- Update status returns `update.installKind` of `git` or `package` (not `unknown`).
+- Update status returns `update.installKind` of `git` for the standard hosted rail (`package` only if you intentionally used the manual npm path).
 - Update status returns `update.source.ready: true`.
 - Gateway status reports running or installable with clear instructions.
 
@@ -64,7 +65,17 @@ Expected:
 
 ## 4) Rollback
 
-If RC behavior regresses, pin to last known-good release:
+If RC behavior regresses on the standard hosted rail, pin to the last known-good release tag:
+
+```bash
+git fetch --tags origin
+git checkout --detach <known-good-release-tag>
+argent doctor --non-interactive
+argent gateway restart
+argent health --json
+```
+
+If you intentionally used the manual npm path instead:
 
 ```bash
 npm i -g argentos@<known-good-version>

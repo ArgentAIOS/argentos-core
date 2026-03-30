@@ -10,8 +10,6 @@ title: "update"
 
 Safely update ArgentOS and switch between stable/beta/dev channels.
 
-If you installed via **npm/pnpm** (global install, no git metadata), updates happen via the package manager flow in [Updating](/install/updating).
-
 ## Usage
 
 ```bash
@@ -20,7 +18,6 @@ argent update status
 argent update wizard
 argent update --channel beta
 argent update --channel dev
-argent update --tag beta
 argent update --no-restart
 argent update --json
 argent --update
@@ -29,8 +26,8 @@ argent --update
 ## Options
 
 - `--no-restart`: skip restarting the Gateway service after a successful update.
-- `--channel <stable|beta|dev>`: set the update channel (git + npm; persisted in config).
-- `--tag <dist-tag|version>`: override the npm dist-tag or version for this update only.
+- `--channel <stable|beta|dev>`: set the git update channel (persisted in config).
+- `--tag <dist-tag|version>`: legacy package-install override; ignored on supported public git installs.
 - `--json`: print machine-readable `UpdateRunResult` JSON.
 - `--timeout <seconds>`: per-step timeout (default is 1200s).
 
@@ -59,19 +56,17 @@ offers to create one.
 
 ## What it does
 
-When you switch channels explicitly (`--channel ...`), ArgentOS also keeps the
-install method aligned:
+When you switch channels explicitly (`--channel ...`), ArgentOS stays on the supported git rail:
 
-- `dev` → ensures a git checkout (default: `~/argentos`, override with `ARGENTOS_GIT_DIR`),
-  updates it, and installs the global CLI from that checkout.
-- `stable`/`beta` → installs from npm using the matching dist-tag.
+- `stable`/`beta` move between release tags.
+- `dev` switches to `main` and keeps following upstream.
 
 ## Git checkout flow
 
 Channels:
 
 - `stable`: checkout the latest non-beta tag, then build + doctor.
-- `beta`: checkout the latest `-beta` tag, then build + doctor.
+- `beta`: checkout the latest beta-or-stable tag, then build + doctor.
 - `dev`: checkout `main`, then fetch + rebase.
 
 High-level:
@@ -84,7 +79,7 @@ High-level:
 6. Installs deps (pnpm preferred; npm fallback).
 7. Builds + builds the Control UI.
 8. Runs `argent doctor` as the final “safe update” check.
-9. Syncs plugins to the active channel (dev uses bundled extensions; stable/beta uses npm) and updates npm-installed plugins.
+9. Syncs plugins to the active channel.
 
 ## `--update` shorthand
 

@@ -10,18 +10,18 @@ title: "Development Channels"
 
 Last updated: 2026-01-21
 
-ArgentOS ships three update channels:
+ArgentOS ships three update channels on the supported git rail:
 
-- **stable**: npm dist-tag `latest`.
-- **beta**: npm dist-tag `beta` (builds under test).
-- **dev**: moving head of `main` (git). npm dist-tag: `dev` (when published).
+- **stable**: latest non-beta GitHub release tag.
+- **beta**: latest beta-or-stable GitHub release tag.
+- **dev**: moving head of `main`.
 
-We ship builds to **beta**, test them, then **promote a vetted build to `latest`**
-without changing the version number — dist-tags are the source of truth for npm installs.
+The public website installer defaults to the **git rail**. GitHub branches and
+release tags are the source of truth for customer-facing installs and updates.
 
 ## Switching channels
 
-Git checkout:
+Hosted/default git checkout:
 
 ```bash
 argent update --channel stable
@@ -29,25 +29,13 @@ argent update --channel beta
 argent update --channel dev
 ```
 
-- `stable`/`beta` check out the latest matching tag (often the same tag).
+- `stable`/`beta` check out the latest matching GitHub release tag.
 - `dev` switches to `main` and rebases on the upstream.
 
-npm/pnpm global install:
+When you **explicitly** switch channels with `--channel`, ArgentOS stays on the git rail:
 
-```bash
-argent update --channel stable
-argent update --channel beta
-argent update --channel dev
-```
-
-This updates via the corresponding npm dist-tag (`latest`, `beta`, `dev`).
-
-When you **explicitly** switch channels with `--channel`, ArgentOS also aligns
-the install method:
-
-- `dev` ensures a git checkout (default `~/argentos`, override with `ARGENTOS_GIT_DIR`),
-  updates it, and installs the global CLI from that checkout.
-- `stable`/`beta` installs from npm using the matching dist-tag.
+- `stable`/`beta` move between release tags.
+- `dev` switches to `main` and keeps following upstream.
 
 Tip: if you want stable + dev in parallel, keep two clones and point your gateway at the stable one.
 
@@ -56,20 +44,17 @@ Tip: if you want stable + dev in parallel, keep two clones and point your gatewa
 When you switch channels with `argent update`, ArgentOS also syncs plugin sources:
 
 - `dev` prefers bundled plugins from the git checkout.
-- `stable` and `beta` restore npm-installed plugin packages.
+- `stable` and `beta` restore the bundled release-compatible plugin state.
 
 ## Tagging best practices
 
 - Tag releases you want git checkouts to land on (`vYYYY.M.D` or `vYYYY.M.D-<patch>`).
 - Keep tags immutable: never move or reuse a tag.
-- npm dist-tags remain the source of truth for npm installs:
-  - `latest` → stable
-  - `beta` → candidate build
-  - `dev` → main snapshot (optional)
+- Publish a new tag for each release candidate instead of mutating an old one.
 
 ## macOS app availability
 
 Beta and dev builds may **not** include a macOS app release. That’s OK:
 
-- The git tag and npm dist-tag can still be published.
+- The git tag can still be published.
 - Call out “no macOS build for this beta” in release notes or changelog.

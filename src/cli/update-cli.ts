@@ -19,8 +19,6 @@ import { trimLogTail } from "../infra/restart-sentinel.js";
 import { parseSemver } from "../infra/runtime-guard.js";
 import {
   channelToNpmTag,
-  DEFAULT_GIT_CHANNEL,
-  DEFAULT_PACKAGE_CHANNEL,
   formatUpdateChannelLabel,
   normalizeUpdateChannel,
   resolveEffectiveUpdateChannel,
@@ -87,10 +85,11 @@ const STEP_LABELS: Record<string, string> = {
   "deps install": "Installing dependencies",
   build: "Building",
   "ui:build": "Building UI",
+  "workspace setup": "Seeding workspace bootstrap",
   "argent doctor": "Running doctor checks",
   "git rev-parse HEAD (after)": "Verifying update",
-  "global update": "Updating via package manager",
-  "global install": "Installing global package",
+  "global update": "Updating legacy package install",
+  "global install": "Installing legacy package build",
 };
 
 const UPDATE_QUIPS = [
@@ -104,7 +103,7 @@ const UPDATE_QUIPS = [
   "Patched, polished, and ready to pinch. Let's go.",
   "The lobster has molted. Harder shell, sharper claws.",
   "Update done! Check the changelog or just trust me, it's good.",
-  "Reborn from the boiling waters of npm. Stronger now.",
+  "Reborn from the boiling waters. Stronger now.",
   "I went away and came back smarter. You should try it sometime.",
   "Update complete. The bugs feared me, so they left.",
   "New version installed. Old version sends its regards.",
@@ -120,8 +119,8 @@ const MAX_LOG_CHARS = 8000;
 const DEFAULT_PACKAGE_NAME = "argent";
 const CORE_PACKAGE_NAMES = new Set([DEFAULT_PACKAGE_NAME]);
 const CLI_NAME = resolveCliName();
-const ARGENT_REPO_URL = "https://github.com/argent/argent.git";
-const DEFAULT_GIT_DIR = path.join(os.homedir(), ".argent");
+const ARGENT_REPO_URL = "https://github.com/ArgentAIOS/argentos.git";
+const DEFAULT_GIT_DIR = path.join(os.homedir(), "argentos");
 
 function normalizeTag(value?: string | null): string | null {
   if (!value) {
@@ -300,7 +299,7 @@ async function isEmptyDir(targetPath: string): Promise<boolean> {
 }
 
 function resolveGitInstallDir(): string {
-  const override = process.env.ARGENT_GIT_DIR?.trim();
+  const override = process.env.ARGENTOS_GIT_DIR?.trim() || process.env.ARGENT_GIT_DIR?.trim();
   if (override) {
     return path.resolve(override);
   }
@@ -379,7 +378,7 @@ async function ensureGitCheckout(params: {
     const empty = await isEmptyDir(params.dir);
     if (!empty) {
       throw new Error(
-        `ARGENT_GIT_DIR points at a non-git directory: ${params.dir}. Set ARGENT_GIT_DIR to an empty folder or an argent checkout.`,
+        `ARGENTOS_GIT_DIR points at a non-git directory: ${params.dir}. Set ARGENTOS_GIT_DIR to an empty folder or an ArgentOS checkout.`,
       );
     }
     return await runUpdateStep({
@@ -392,7 +391,7 @@ async function ensureGitCheckout(params: {
   }
 
   if (!(await isCorePackage(params.dir))) {
-    throw new Error(`ARGENT_GIT_DIR does not look like a core checkout: ${params.dir}.`);
+    throw new Error(`ARGENTOS_GIT_DIR does not look like an ArgentOS checkout: ${params.dir}.`);
   }
 
   return null;
@@ -446,7 +445,7 @@ function formatSourceStatusLine(update: Awaited<ReturnType<typeof checkUpdateSta
     source.kind === "git"
       ? "git checkout"
       : source.kind === "package"
-        ? "package install"
+        ? "legacy package install"
         : "unknown source";
   if (source.ready) {
     return `${base} · ready`;
@@ -678,25 +677,13 @@ function printResult(result: UpdateRunResult, opts: PrintResultOptions) {
     defaultRuntime.log(`  Reason: ${theme.muted(result.reason)}`);
   }
 
-  const formatVersionInfo = (
-    info: { sha?: string | null; version?: string | null; tag?: string | null } | undefined,
-  ) => {
-    if (!info) return null;
-    const parts: string[] = [];
-    if (info.tag) parts.push(info.tag);
-    else if (info.version) parts.push(info.version);
-    if (info.sha) parts.push(info.sha.slice(0, 8));
-    return parts.length > 0 ? parts.join(" / ") : null;
-  };
-
-  const currentLabel = formatVersionInfo(result.before);
-  const targetLabel = formatVersionInfo(result.after);
-
-  if (currentLabel) {
-    defaultRuntime.log(`  Current: ${theme.muted(currentLabel)}`);
+  if (result.before?.version || result.before?.sha) {
+    const before = result.before.version ?? result.before.sha?.slice(0, 8) ?? "";
+    defaultRuntime.log(`  Before: ${theme.muted(before)}`);
   }
-  if (targetLabel) {
-    defaultRuntime.log(`  Target:  ${theme.muted(targetLabel)}`);
+  if (result.after?.version || result.after?.sha) {
+    const after = result.after.version ?? result.after.sha?.slice(0, 8) ?? "";
+    defaultRuntime.log(`  After: ${theme.muted(after)}`);
   }
 
   if (!opts.hideSteps && result.steps.length > 0) {
@@ -734,17 +721,12 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     return;
   }
 
-  // For hosted git installs: ARGENT_GIT_DIR points to the real source checkout.
-  // Without this, the update resolves root to the runtime snapshot (~/.argentos/lib/...)
-  // which has no .git, causing installKind to be misclassified as "package".
-  const gitDirOverride = process.env.ARGENT_GIT_DIR?.trim();
-  const root = gitDirOverride
-    ? path.resolve(gitDirOverride)
-    : ((await resolveArgentPackageRoot({
-        moduleUrl: import.meta.url,
-        argv1: process.argv[1],
-        cwd: process.cwd(),
-      })) ?? process.cwd());
+  const root =
+    (await resolveArgentPackageRoot({
+      moduleUrl: import.meta.url,
+      argv1: process.argv[1],
+      cwd: process.cwd(),
+    })) ?? process.cwd();
 
   const updateStatus = await checkUpdateStatus({
     root,
@@ -758,6 +740,13 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
   const storedChannel = configSnapshot.valid
     ? normalizeUpdateChannel(configSnapshot.config.update?.channel)
     : null;
+  const currentChannelInfo = resolveEffectiveUpdateChannel({
+    configChannel: storedChannel,
+    installKind: updateStatus.installKind,
+    git: updateStatus.git
+      ? { tag: updateStatus.git.tag, branch: updateStatus.git.branch }
+      : undefined,
+  });
 
   const requestedChannel = normalizeUpdateChannel(opts.channel);
   if (opts.channel && !requestedChannel) {
@@ -774,16 +763,13 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
 
   const installKind = updateStatus.installKind;
   const switchToGit = requestedChannel === "dev" && installKind !== "git";
-  const switchToPackage =
-    requestedChannel !== null && requestedChannel !== "dev" && installKind === "git";
-  const updateInstallKind = switchToGit ? "git" : switchToPackage ? "package" : installKind;
-  const defaultChannel =
-    updateInstallKind === "git" ? DEFAULT_GIT_CHANNEL : DEFAULT_PACKAGE_CHANNEL;
+  const updateInstallKind = switchToGit ? "git" : installKind;
+  const defaultChannel = switchToGit ? "dev" : currentChannelInfo.channel;
   const channel = requestedChannel ?? storedChannel ?? defaultChannel;
   const explicitTag = normalizeTag(opts.tag);
   let tag = explicitTag ?? channelToNpmTag(channel);
-  if (updateInstallKind !== "git") {
-    const currentVersion = switchToPackage ? null : await readPackageVersion(root);
+  if (updateInstallKind === "package") {
+    const currentVersion = installKind === "package" ? await readPackageVersion(root) : null;
     let fallbackToLatest = false;
     const targetVersion = explicitTag
       ? await resolveTargetVersion(tag, timeoutMs)
@@ -827,7 +813,9 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     }
   } else if (opts.tag && !opts.json) {
     defaultRuntime.log(
-      theme.muted("Note: --tag applies to npm installs only; git updates ignore it."),
+      theme.muted(
+        "Note: --tag is a legacy package-install override; public git installs ignore it.",
+      ),
     );
   }
 
@@ -858,7 +846,7 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
   const startedAt = Date.now();
   let result: UpdateRunResult;
 
-  if (switchToPackage) {
+  if (updateInstallKind === "package") {
     const manager = await resolveGlobalManager({
       root,
       installKind,
@@ -1003,12 +991,12 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     if (result.reason === "not-git-install") {
       defaultRuntime.log(
         theme.warn(
-          `Skipped: this ArgentOS install isn't a git checkout, and the package manager couldn't be detected. Update via your package manager, then run \`${replaceCliName(formatCliCommand("argent doctor"), CLI_NAME)}\` and \`${replaceCliName(formatCliCommand("argent gateway restart"), CLI_NAME)}\`.`,
+          `Skipped: this ArgentOS install isn't a git checkout, and no supported legacy updater was detected. Re-run the hosted installer to move back onto the git rail, then run \`${replaceCliName(formatCliCommand("argent doctor"), CLI_NAME)}\` and \`${replaceCliName(formatCliCommand("argent gateway restart"), CLI_NAME)}\`.`,
         ),
       );
       defaultRuntime.log(
         theme.muted(
-          `Examples: \`${replaceCliName("npm i -g argentos@latest", CLI_NAME)}\` or \`${replaceCliName("pnpm add -g argentos@latest", CLI_NAME)}\``,
+          `Example: \`${replaceCliName("curl -fsSL https://argentos.ai/install.sh | bash", CLI_NAME)}\``,
         ),
       );
     }
@@ -1186,15 +1174,12 @@ export async function updateWizardCommand(opts: UpdateWizardOptions = {}): Promi
     return;
   }
 
-  // For hosted git installs: prefer ARGENT_GIT_DIR over snapshot root
-  const gitDirOverride2 = process.env.ARGENT_GIT_DIR?.trim();
-  const root = gitDirOverride2
-    ? path.resolve(gitDirOverride2)
-    : ((await resolveArgentPackageRoot({
-        moduleUrl: import.meta.url,
-        argv1: process.argv[1],
-        cwd: process.cwd(),
-      })) ?? process.cwd());
+  const root =
+    (await resolveArgentPackageRoot({
+      moduleUrl: import.meta.url,
+      argv1: process.argv[1],
+      cwd: process.cwd(),
+    })) ?? process.cwd();
 
   const [updateStatus, configSnapshot] = await Promise.all([
     checkUpdateStatus({
@@ -1234,12 +1219,12 @@ export async function updateWizardCommand(opts: UpdateWizardOptions = {}): Promi
       {
         value: "stable",
         label: "Stable",
-        hint: "Tagged releases (npm latest)",
+        hint: "Latest stable GitHub release tag",
       },
       {
         value: "beta",
         label: "Beta",
-        hint: "Prereleases (npm beta)",
+        hint: "Latest beta-or-stable GitHub release tag",
       },
       {
         value: "dev",
@@ -1267,7 +1252,7 @@ export async function updateWizardCommand(opts: UpdateWizardOptions = {}): Promi
         const empty = await isEmptyDir(gitDir);
         if (!empty) {
           defaultRuntime.error(
-            `ARGENT_GIT_DIR points at a non-git directory: ${gitDir}. Set ARGENT_GIT_DIR to an empty folder or an argent checkout.`,
+            `ARGENTOS_GIT_DIR points at a non-git directory: ${gitDir}. Set ARGENTOS_GIT_DIR to an empty folder or an ArgentOS checkout.`,
           );
           defaultRuntime.exit(1);
           return;
@@ -1275,7 +1260,7 @@ export async function updateWizardCommand(opts: UpdateWizardOptions = {}): Promi
       }
       const ok = await confirm({
         message: stylePromptMessage(
-          `Create a git checkout at ${gitDir}? (override via ARGENT_GIT_DIR)`,
+          `Create a git checkout at ${gitDir}? (override via ARGENTOS_GIT_DIR)`,
         ),
         initialValue: true,
       });
@@ -1315,16 +1300,16 @@ export function registerUpdateCli(program: Command) {
     .description("Update Argent to the latest version")
     .option("--json", "Output result as JSON", false)
     .option("--no-restart", "Skip restarting the gateway service after a successful update")
-    .option("--channel <stable|beta|dev>", "Persist update channel (git + npm)")
-    .option("--tag <dist-tag|version>", "Override npm dist-tag or version for this update")
+    .option("--channel <stable|beta|dev>", "Persist update channel for git updates")
+    .option("--tag <dist-tag|version>", "Legacy package-install override for this update")
     .option("--timeout <seconds>", "Timeout for each update step in seconds (default: 1200)")
     .option("--yes", "Skip confirmation prompts (non-interactive)", false)
     .addHelpText("after", () => {
       const examples = [
         ["argent update", "Update a source checkout (git)"],
-        ["argent update --channel beta", "Switch to beta channel (git + npm)"],
-        ["argent update --channel dev", "Switch to dev channel (git + npm)"],
-        ["argent update --tag beta", "One-off update to a dist-tag or version"],
+        ["argent update --channel beta", "Switch to the beta release channel"],
+        ["argent update --channel dev", "Switch to the dev channel (tracks main)"],
+        ["argent update --tag beta", "Legacy one-off override for package installs"],
         ["argent update --no-restart", "Update without restarting the service"],
         ["argent update --json", "Output result as JSON"],
         ["argent update --yes", "Non-interactive (accept downgrade prompts)"],
@@ -1336,13 +1321,13 @@ export function registerUpdateCli(program: Command) {
         .join("\n");
       return `
 ${theme.heading("What this does:")}
-  - Git checkouts: fetches, rebases, installs deps, builds, and runs doctor
-  - npm installs: updates via detected package manager
+  - Public/Core installs: fetches the configured git channel, installs deps, builds, and runs doctor
+  - Restarts the gateway by default after a successful update
 
 ${theme.heading("Switch channels:")}
   - Use --channel stable|beta|dev to persist the update channel in config
   - Run argent update status to see the active channel and source
-  - Use --tag <dist-tag|version> for a one-off npm update without persisting
+  - Use --tag <dist-tag|version> only for legacy package-install overrides
 
 ${theme.heading("Non-interactive:")}
   - Use --yes to accept downgrade prompts
@@ -1353,7 +1338,7 @@ ${fmtExamples}
 
 ${theme.heading("Notes:")}
   - Switch channels with --channel stable|beta|dev
-  - For global installs: auto-updates via detected package manager when possible (see docs/install/updating.md)
+  - Public Core is distributed as a git checkout; installer + updater stay on the git rail
   - Downgrades require confirmation (can break configuration)
   - Skips update if the working directory has uncommitted changes
 

@@ -85,7 +85,7 @@ The Gateway is the single source of truth for sessions, routing, and channel con
 <Steps>
   <Step title="Install ArgentOS">
     ```bash
-    npm install -g argentos@latest
+    curl -fsSL https://argentos.ai/install.sh | bash
     ```
   </Step>
   <Step title="Onboard and install the service">
