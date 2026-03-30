@@ -276,13 +276,17 @@ resolve_pnpm_runner() {
   PNPM_EXEC=""
   PNPM_SUBCOMMAND=""
 
-  # 1. Try corepack (ships with Node 22+, needs enabling)
+  # 1. Try corepack (ships with Node 22+, but some private runtimes expose a
+  # broken corepack shim that exists on disk yet cannot actually serve pnpm).
   if [[ -x "$node_dir/corepack" ]]; then
-    # Enable corepack if not already (idempotent)
-    "$node_dir/corepack" enable 2>/dev/null || true
-    PNPM_EXEC="$node_dir/corepack"
-    PNPM_SUBCOMMAND="pnpm"
-    return 0
+    # Enable corepack if not already (idempotent). Suppress both streams because
+    # some broken shims print internal errors to stdout before we can fall back.
+    "$node_dir/corepack" enable >/dev/null 2>&1 || true
+    if "$node_dir/corepack" pnpm --version >/dev/null 2>&1; then
+      PNPM_EXEC="$node_dir/corepack"
+      PNPM_SUBCOMMAND="pnpm"
+      return 0
+    fi
   fi
 
   # 2. Try system pnpm (PATH)
@@ -472,7 +476,7 @@ should_run_cli_onboard() {
     return 1
   fi
   if [[ "$(uname -s)" == "Darwin" ]] && ! is_truthy "$FORCE_CLI_ONBOARD"; then
-    info "Skipping terminal onboarding on macOS; Argent.app will guide first run."
+    info "Skipping terminal onboarding on macOS; dashboard/browser handoff will guide first run."
     return 1
   fi
   return 0
@@ -580,81 +584,7 @@ install_npm() {
   fi
 }
 
-download_argent_app() {
-  info "═══ Downloading Argent.app ═══"
-
-  local manifest_url="https://argentos.ai/releases/macos/latest.json"
-  local tmp_dir
-  tmp_dir="$(mktemp -d)"
-
-  # 1. Fetch release manifest
-  info "Checking for latest Argent.app release..."
-  local manifest
-  manifest="$(curl -fsSL "$manifest_url" 2>/dev/null)" || {
-    warn "Could not fetch release manifest from $manifest_url"
-    warn "Argent.app not installed — you can download it later from https://argentos.ai"
-    return 0
-  }
-
-  # 2. Parse manifest (portable JSON parsing with Node --input-type=module)
-  local zip_url zip_filename
-  zip_url="$(echo "$manifest" | "$NODE_BIN" --input-type=module -e "
-    import { readFileSync } from 'fs';
-    const m = JSON.parse(readFileSync(0, 'utf8'));
-    process.stdout.write(m.macos.artifacts.zip.url);
-  " 2>/dev/null)" || zip_url=""
-  zip_filename="$(echo "$manifest" | "$NODE_BIN" --input-type=module -e "
-    import { readFileSync } from 'fs';
-    const m = JSON.parse(readFileSync(0, 'utf8'));
-    process.stdout.write(m.macos.artifacts.zip.filename);
-  " 2>/dev/null)" || zip_filename=""
-
-  if [[ -z "$zip_url" || -z "$zip_filename" ]]; then
-    warn "Could not parse release manifest (url=${zip_url:-empty}, file=${zip_filename:-empty})"
-    warn "Argent.app not installed — you can download it later from https://argentos.ai"
-    return 0
-  fi
-
-  info "Found release: $zip_filename"
-
-  if is_truthy "$DRY_RUN"; then
-    printf 'DRY-RUN: curl -fsSL %q -o %q/%q\n' "$zip_url" "$tmp_dir" "$zip_filename"
-    printf 'DRY-RUN: unzip → /Applications/Argent.app\n'
-    printf 'DRY-RUN: open /Applications/Argent.app\n'
-    return 0
-  fi
-
-  # 3. Download
-  info "Downloading $zip_filename..."
-  curl -fsSL "$zip_url" -o "$tmp_dir/$zip_filename" || {
-    warn "Download failed: $zip_url"
-    warn "Argent.app not installed — you can download it later from https://argentos.ai"
-    rm -rf "$tmp_dir"
-    return 0
-  }
-  ok "Downloaded $zip_filename"
-
-  # 4. Install to /Applications
-  info "Installing Argent.app to /Applications..."
-  rm -rf /Applications/Argent.app 2>/dev/null || true
-  (cd "$tmp_dir" && unzip -qo "$zip_filename" 2>/dev/null)
-  if [[ -d "$tmp_dir/Argent.app" ]]; then
-    ditto "$tmp_dir/Argent.app" /Applications/Argent.app
-  elif [[ -d "$tmp_dir/Argent/Argent.app" ]]; then
-    ditto "$tmp_dir/Argent/Argent.app" /Applications/Argent.app
-  else
-    warn "Could not find Argent.app in downloaded archive"
-    rm -rf "$tmp_dir"
-    return 0
-  fi
-  rm -rf "$tmp_dir"
-  ok "Installed Argent.app to /Applications"
-}
-
-launch_argent_app() {
-  # Ensure we launch a fresh app process so first-run defaults are re-read.
-  killall Argent 2>/dev/null || true
-
+launch_dashboard_handoff() {
   # Read gateway + dashboard API tokens for authenticated dashboard URLs
   local gw_token=""
   local dash_api_token=""
@@ -692,19 +622,16 @@ launch_argent_app() {
   echo ""
   echo "  How would you like to meet Argent?"
   echo ""
-  echo "    1) Launch Argent.app (recommended)"
-  echo "       Full native macOS experience with dashboard"
-  echo ""
-  echo "    2) Open dashboard in browser"
+  echo "    1) Open dashboard in browser (recommended)"
   echo "       ${dash_url}"
   echo ""
-  echo "    3) Stay in the terminal"
+  echo "    2) Stay in the terminal"
   echo "       Use: argent chat"
   echo ""
 
   if is_truthy "$NO_PROMPT" || [[ ! -r /dev/tty ]]; then
-    info "Launching Argent.app..."
-    open -n -a /Applications/Argent.app 2>/dev/null || true
+    info "Opening dashboard in browser..."
+    open "$dash_url" 2>/dev/null || true
     return 0
   fi
 
@@ -715,27 +642,21 @@ launch_argent_app() {
 
   case "$choice" in
     1)
-      info "Launching Argent.app..."
-      open -n -a /Applications/Argent.app 2>/dev/null || true
-      ok "Argent.app launched"
-      ;;
-    2)
       info "Opening dashboard in browser..."
       open "$dash_url" 2>/dev/null || true
       ok "Dashboard opened"
       ;;
-    3)
+    2)
       ok "You're in control. Run: argent chat"
       ;;
     *)
-      info "Launching Argent.app..."
-      open -n -a /Applications/Argent.app 2>/dev/null || true
-      ok "Argent.app launched"
+      info "Opening dashboard in browser..."
+      open "$dash_url" 2>/dev/null || true
+      ok "Dashboard opened"
       ;;
   esac
 
   echo ""
-  info "Argent.app is always available at: /Applications/Argent.app"
   info "Dashboard: ${dash_url}"
   info "CLI is always available with: argent chat"
   echo ""
@@ -925,11 +846,6 @@ install_git() {
   info "Creating PostgreSQL schema tables..."
   bash "$GIT_DIR/scripts/ensure-pg-tables.sh" 2>/dev/null \
     || warn "Table creation failed — run manually: bash ~/argentos/scripts/ensure-pg-tables.sh"
-  # macOS: Download Argent.app from R2 BEFORE onboarding (runs during service setup)
-  if [[ "$(uname -s)" == "Darwin" ]]; then
-    download_argent_app || true
-  fi
-
   if should_run_cli_onboard; then
     run_onboard "$BIN_DIR_OVERRIDE/argent" || true
   fi
@@ -1128,9 +1044,9 @@ UIPLIST
     warn "Or run:     argent gateway status"
   fi
 
-  # macOS: Launch Argent.app after onboarding completes
-  if [[ -n "$master_key" && "$(uname -s)" == "Darwin" && -d /Applications/Argent.app ]]; then
-    launch_argent_app || true
+  # macOS: open the local dashboard/browser handoff after onboarding completes
+  if [[ -n "$master_key" && "$(uname -s)" == "Darwin" ]]; then
+    launch_dashboard_handoff || true
   fi
 }
 

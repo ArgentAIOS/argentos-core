@@ -7,7 +7,7 @@
     "googleapis": "^144.0.0"
   },
   "devDependencies": {
-    "argentos": "link:../.."
+    "argentos": "link:/../.."
   },
   "argent": {
     "core": true,
