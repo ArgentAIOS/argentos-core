@@ -14856,350 +14856,335 @@ export function ConfigPanel({
                   <div className="space-y-4">
                     <SafetyRulesPanel />
 
-                    <div className="border-t border-white/10 pt-4 mt-6">
-                      <details className="group">
-                        <summary className="cursor-pointer text-white/40 text-sm hover:text-white/60 transition-colors flex items-center gap-2">
-                          <span className="text-purple-400">▶</span>
-                          Advanced Governance Console (Business)
-                        </summary>
-                        <div className="mt-4 space-y-4">
-                          <OperatorGuide title="Operator Guide">
-                            Intent is the behavioral constitution: what the system optimizes for,
-                            what it must never do, and when it must escalate. Use this tab for
-                            policy and role boundaries, not for choosing models or tools. Stricter
-                            intent reduces drift but can also block actions if the rules are too
-                            narrow.
-                          </OperatorGuide>
+                    {isPublicCoreSurface && (
+                      <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-100/80">
+                        Public Core uses the simplified intent surface here: operator safety rules,
+                        approval thresholds, and baseline behavioral guardrails. Department policy,
+                        simulation gates, hierarchy editing, and the business governance console
+                        stay in full ArgentOS.
+                      </div>
+                    )}
 
-                          <p className="text-white/50 text-sm">
-                            Configure intent hierarchy policy, runtime enforcement, and simulation
-                            gate controls. {intentLoading && "Loading..."}
-                          </p>
+                    {!isPublicCoreSurface && (
+                      <div className="border-t border-white/10 pt-4 mt-6">
+                        <details className="group">
+                          <summary className="cursor-pointer text-white/40 text-sm hover:text-white/60 transition-colors flex items-center gap-2">
+                            <span className="text-purple-400">▶</span>
+                            Advanced Governance Console (Business)
+                          </summary>
+                          <div className="mt-4 space-y-4">
+                            <OperatorGuide title="Operator Guide">
+                              Intent is the behavioral constitution: what the system optimizes for,
+                              what it must never do, and when it must escalate. Use this tab for
+                              policy and role boundaries, not for choosing models or tools. Stricter
+                              intent reduces drift but can also block actions if the rules are too
+                              narrow.
+                            </OperatorGuide>
 
-                          {intentMessage && (
-                            <div
-                              className={`rounded-lg border px-3 py-2 text-sm ${
-                                intentMessage.type === "success"
-                                  ? "border-green-500/30 bg-green-500/10 text-green-300"
-                                  : "border-red-500/30 bg-red-500/10 text-red-300"
-                              }`}
-                            >
-                              {intentMessage.text}
-                            </div>
-                          )}
+                            <p className="text-white/50 text-sm">
+                              Configure intent hierarchy policy, runtime enforcement, and simulation
+                              gate controls. {intentLoading && "Loading..."}
+                            </p>
 
-                          <div className="bg-white/5 rounded-xl p-4 space-y-3">
-                            <div className="flex items-center justify-between gap-3 flex-wrap">
-                              <div>
-                                <div className="text-white/80 text-sm font-medium">
-                                  Intent Target Agent
-                                </div>
-                                <div className="text-white/40 text-xs">
-                                  Preview and simulation run against this agent context only.
-                                </div>
-                              </div>
-                              <select
-                                value={intentTargetAgentId}
-                                onChange={(e) => setIntentTargetAgentId(e.target.value)}
-                                className="bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer min-w-[220px]"
-                              >
-                                {(agentOptions.length > 0
-                                  ? agentOptions
-                                  : [
-                                      {
-                                        id: AGENT_SETTINGS_DEFAULT_TARGET,
-                                        label: "Defaults",
-                                      },
-                                      { id: defaultAgentId, label: defaultAgentId },
-                                    ]
-                                ).map((row) => (
-                                  <option key={row.id} value={row.id}>
-                                    {row.id === AGENT_SETTINGS_DEFAULT_TARGET
-                                      ? `Default Agent (${defaultAgentId})`
-                                      : row.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            <div className="text-white/35 text-xs">
-                              Active simulation target:{" "}
-                              <span className="font-mono text-white/70">
-                                {runtimeIntentTargetAgentId}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="bg-white/5 rounded-xl p-4 space-y-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="text-white/90 font-medium">
-                                  Guided Intent Builder
-                                </div>
-                                <div className="text-white/40 text-xs mt-1">
-                                  Plain-language setup that generates a valid baseline policy for
-                                  main agent second-brain behavior and optional support profile.
-                                </div>
-                              </div>
-                              <div className="text-[11px] px-2 py-1 rounded border border-cyan-500/30 bg-cyan-500/10 text-cyan-200">
-                                Guided Mode
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                              <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-                                <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                  Profile
-                                </label>
-                                <select
-                                  value={intentGuidedDraft.profile}
-                                  onChange={(e) =>
-                                    setIntentGuidedDraft((prev) => ({
-                                      ...prev,
-                                      profile: e.target.value as IntentGuidedProfile,
-                                    }))
-                                  }
-                                  className="w-full mt-1 bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer"
-                                >
-                                  <option value="operator-second-brain">
-                                    Operator Second Brain (main agent)
-                                  </option>
-                                  <option value="support">Customer Support + Empathy</option>
-                                </select>
-                              </div>
-                              <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-                                <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                  Strictness
-                                </label>
-                                <select
-                                  value={intentGuidedDraft.strictness}
-                                  onChange={(e) =>
-                                    setIntentGuidedDraft((prev) => ({
-                                      ...prev,
-                                      strictness: e.target.value as "advisory" | "strict",
-                                    }))
-                                  }
-                                  className="w-full mt-1 bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer"
-                                >
-                                  <option value="advisory">Advisory (warn/advisory)</option>
-                                  <option value="strict">Strict (enforce/enforce)</option>
-                                </select>
-                              </div>
-                              <div className="bg-gray-800/50 rounded-lg px-3 py-2 xl:col-span-2">
-                                <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                  Goal
-                                </label>
-                                <textarea
-                                  rows={2}
-                                  value={intentGuidedDraft.goal}
-                                  onChange={(e) =>
-                                    setIntentGuidedDraft((prev) => ({
-                                      ...prev,
-                                      goal: e.target.value,
-                                    }))
-                                  }
-                                  className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none resize-y"
-                                />
-                              </div>
-                              <div className="bg-gray-800/50 rounded-lg px-3 py-2 xl:col-span-2">
-                                <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                  Current Problems To Solve
-                                </label>
-                                <textarea
-                                  rows={2}
-                                  value={intentGuidedDraft.problems}
-                                  onChange={(e) =>
-                                    setIntentGuidedDraft((prev) => ({
-                                      ...prev,
-                                      problems: e.target.value,
-                                    }))
-                                  }
-                                  className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none resize-y"
-                                />
-                              </div>
-                              <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-                                <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                  Never Do (one per line)
-                                </label>
-                                <textarea
-                                  rows={4}
-                                  value={intentGuidedDraft.neverDo}
-                                  onChange={(e) =>
-                                    setIntentGuidedDraft((prev) => ({
-                                      ...prev,
-                                      neverDo: e.target.value,
-                                    }))
-                                  }
-                                  className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y"
-                                />
-                              </div>
-                              <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-                                <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                  Requires Approval (one per line)
-                                </label>
-                                <textarea
-                                  rows={4}
-                                  value={intentGuidedDraft.requiresApproval}
-                                  onChange={(e) =>
-                                    setIntentGuidedDraft((prev) => ({
-                                      ...prev,
-                                      requiresApproval: e.target.value,
-                                    }))
-                                  }
-                                  className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y"
-                                />
-                              </div>
-                              <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-                                <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                  Tone Style
-                                </label>
-                                <select
-                                  value={intentGuidedDraft.tone}
-                                  onChange={(e) =>
-                                    setIntentGuidedDraft((prev) => ({
-                                      ...prev,
-                                      tone: e.target.value as
-                                        | "compassionate"
-                                        | "balanced"
-                                        | "direct",
-                                    }))
-                                  }
-                                  className="w-full mt-1 bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer"
-                                >
-                                  <option value="compassionate">Compassionate</option>
-                                  <option value="balanced">Balanced</option>
-                                  <option value="direct">Direct but respectful</option>
-                                </select>
-                              </div>
-                              <div className="grid grid-cols-2 gap-2">
-                                <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                    Max Attempts
-                                  </label>
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    step={1}
-                                    value={intentGuidedDraft.maxAttemptsBeforeEscalation}
-                                    onChange={(e) =>
-                                      setIntentGuidedDraft((prev) => ({
-                                        ...prev,
-                                        maxAttemptsBeforeEscalation: Math.max(
-                                          1,
-                                          Number.parseInt(e.target.value || "1", 10) || 1,
-                                        ),
-                                      }))
-                                    }
-                                    className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                  />
-                                </div>
-                                <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                    Max Minutes
-                                  </label>
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    step={1}
-                                    value={intentGuidedDraft.maxMinutesBeforeEscalation}
-                                    onChange={(e) =>
-                                      setIntentGuidedDraft((prev) => ({
-                                        ...prev,
-                                        maxMinutesBeforeEscalation: Math.max(
-                                          1,
-                                          Number.parseInt(e.target.value || "1", 10) || 1,
-                                        ),
-                                      }))
-                                    }
-                                    className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-end">
-                              <button
-                                onClick={applyGuidedIntentBlueprint}
-                                className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 rounded-lg transition-all text-sm font-medium"
-                              >
-                                Apply Guided Blueprint
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="bg-white/5 rounded-xl p-4 space-y-3">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <div className="text-white/90 font-medium">
-                                  {showKnowledgeAclWriteControls
-                                    ? "Knowledge Collections Access"
-                                    : "Visible Knowledge Collections"}
-                                </div>
-                                <div className="text-white/40 text-xs mt-1">
-                                  {showKnowledgeAclWriteControls
-                                    ? "Control which agents can read or write each RAG collection."
-                                    : "Review which RAG collections are visible from this Core-safe view."}
-                                </div>
-                              </div>
+                            {intentMessage && (
                               <div
-                                className={`text-[11px] px-2 py-1 rounded border ${
-                                  knowledgeAclEnforced
-                                    ? "border-green-500/30 bg-green-500/10 text-green-300"
-                                    : "border-amber-500/30 bg-amber-500/10 text-amber-200"
-                                }`}
-                              >
-                                {knowledgeAclEnforced ? "ACL enforced" : "ACL fail-open"}
-                              </div>
-                            </div>
-
-                            {knowledgeMessage && (
-                              <div
-                                className={`rounded-lg border px-3 py-2 text-xs ${
-                                  knowledgeMessage.type === "success"
+                                className={`rounded-lg border px-3 py-2 text-sm ${
+                                  intentMessage.type === "success"
                                     ? "border-green-500/30 bg-green-500/10 text-green-300"
                                     : "border-red-500/30 bg-red-500/10 text-red-300"
                                 }`}
                               >
-                                {knowledgeMessage.text}
+                                {intentMessage.text}
                               </div>
                             )}
 
-                            <div className="grid grid-cols-1 xl:grid-cols-4 gap-2">
-                              <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-                                <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                  Viewing Agent
-                                </label>
+                            <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                              <div className="flex items-center justify-between gap-3 flex-wrap">
+                                <div>
+                                  <div className="text-white/80 text-sm font-medium">
+                                    Intent Target Agent
+                                  </div>
+                                  <div className="text-white/40 text-xs">
+                                    Preview and simulation run against this agent context only.
+                                  </div>
+                                </div>
                                 <select
-                                  value={knowledgeTargetAgentId || knowledgeDefaultAgentId}
-                                  onChange={(e) => {
-                                    const nextAgentId = e.target.value;
-                                    setKnowledgeTargetAgentId(nextAgentId);
-                                    void loadKnowledgeCollections(nextAgentId);
-                                  }}
-                                  className="w-full mt-1 bg-gray-700 text-white/80 text-xs rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer"
+                                  value={intentTargetAgentId}
+                                  onChange={(e) => setIntentTargetAgentId(e.target.value)}
+                                  className="bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer min-w-[220px]"
                                 >
-                                  {(knowledgeAgentOptions.length > 0
-                                    ? knowledgeAgentOptions
+                                  {(agentOptions.length > 0
+                                    ? agentOptions
                                     : [
                                         {
-                                          id: knowledgeDefaultAgentId,
-                                          label: knowledgeDefaultAgentId,
+                                          id: AGENT_SETTINGS_DEFAULT_TARGET,
+                                          label: "Defaults",
                                         },
+                                        { id: defaultAgentId, label: defaultAgentId },
                                       ]
-                                  ).map((option) => (
-                                    <option key={option.id} value={option.id}>
-                                      {option.label}
+                                  ).map((row) => (
+                                    <option key={row.id} value={row.id}>
+                                      {row.id === AGENT_SETTINGS_DEFAULT_TARGET
+                                        ? `Default Agent (${defaultAgentId})`
+                                        : row.label}
                                     </option>
                                   ))}
                                 </select>
                               </div>
-                              {showKnowledgeAclWriteControls && (
+                              <div className="text-white/35 text-xs">
+                                Active simulation target:{" "}
+                                <span className="font-mono text-white/70">
+                                  {runtimeIntentTargetAgentId}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-white/90 font-medium">
+                                    Guided Intent Builder
+                                  </div>
+                                  <div className="text-white/40 text-xs mt-1">
+                                    Plain-language setup that generates a valid baseline policy for
+                                    main agent second-brain behavior and optional support profile.
+                                  </div>
+                                </div>
+                                <div className="text-[11px] px-2 py-1 rounded border border-cyan-500/30 bg-cyan-500/10 text-cyan-200">
+                                  Guided Mode
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
                                 <div className="bg-gray-800/50 rounded-lg px-3 py-2">
                                   <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                    Grant As (Owner Agent)
+                                    Profile
                                   </label>
                                   <select
-                                    value={knowledgeActorAgentId || knowledgeDefaultAgentId}
-                                    onChange={(e) => setKnowledgeActorAgentId(e.target.value)}
+                                    value={intentGuidedDraft.profile}
+                                    onChange={(e) =>
+                                      setIntentGuidedDraft((prev) => ({
+                                        ...prev,
+                                        profile: e.target.value as IntentGuidedProfile,
+                                      }))
+                                    }
+                                    className="w-full mt-1 bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer"
+                                  >
+                                    <option value="operator-second-brain">
+                                      Operator Second Brain (main agent)
+                                    </option>
+                                    <option value="support">Customer Support + Empathy</option>
+                                  </select>
+                                </div>
+                                <div className="bg-gray-800/50 rounded-lg px-3 py-2">
+                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                    Strictness
+                                  </label>
+                                  <select
+                                    value={intentGuidedDraft.strictness}
+                                    onChange={(e) =>
+                                      setIntentGuidedDraft((prev) => ({
+                                        ...prev,
+                                        strictness: e.target.value as "advisory" | "strict",
+                                      }))
+                                    }
+                                    className="w-full mt-1 bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer"
+                                  >
+                                    <option value="advisory">Advisory (warn/advisory)</option>
+                                    <option value="strict">Strict (enforce/enforce)</option>
+                                  </select>
+                                </div>
+                                <div className="bg-gray-800/50 rounded-lg px-3 py-2 xl:col-span-2">
+                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                    Goal
+                                  </label>
+                                  <textarea
+                                    rows={2}
+                                    value={intentGuidedDraft.goal}
+                                    onChange={(e) =>
+                                      setIntentGuidedDraft((prev) => ({
+                                        ...prev,
+                                        goal: e.target.value,
+                                      }))
+                                    }
+                                    className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none resize-y"
+                                  />
+                                </div>
+                                <div className="bg-gray-800/50 rounded-lg px-3 py-2 xl:col-span-2">
+                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                    Current Problems To Solve
+                                  </label>
+                                  <textarea
+                                    rows={2}
+                                    value={intentGuidedDraft.problems}
+                                    onChange={(e) =>
+                                      setIntentGuidedDraft((prev) => ({
+                                        ...prev,
+                                        problems: e.target.value,
+                                      }))
+                                    }
+                                    className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none resize-y"
+                                  />
+                                </div>
+                                <div className="bg-gray-800/50 rounded-lg px-3 py-2">
+                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                    Never Do (one per line)
+                                  </label>
+                                  <textarea
+                                    rows={4}
+                                    value={intentGuidedDraft.neverDo}
+                                    onChange={(e) =>
+                                      setIntentGuidedDraft((prev) => ({
+                                        ...prev,
+                                        neverDo: e.target.value,
+                                      }))
+                                    }
+                                    className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y"
+                                  />
+                                </div>
+                                <div className="bg-gray-800/50 rounded-lg px-3 py-2">
+                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                    Requires Approval (one per line)
+                                  </label>
+                                  <textarea
+                                    rows={4}
+                                    value={intentGuidedDraft.requiresApproval}
+                                    onChange={(e) =>
+                                      setIntentGuidedDraft((prev) => ({
+                                        ...prev,
+                                        requiresApproval: e.target.value,
+                                      }))
+                                    }
+                                    className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y"
+                                  />
+                                </div>
+                                <div className="bg-gray-800/50 rounded-lg px-3 py-2">
+                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                    Tone Style
+                                  </label>
+                                  <select
+                                    value={intentGuidedDraft.tone}
+                                    onChange={(e) =>
+                                      setIntentGuidedDraft((prev) => ({
+                                        ...prev,
+                                        tone: e.target.value as
+                                          | "compassionate"
+                                          | "balanced"
+                                          | "direct",
+                                      }))
+                                    }
+                                    className="w-full mt-1 bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer"
+                                  >
+                                    <option value="compassionate">Compassionate</option>
+                                    <option value="balanced">Balanced</option>
+                                    <option value="direct">Direct but respectful</option>
+                                  </select>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2">
+                                    <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                      Max Attempts
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      step={1}
+                                      value={intentGuidedDraft.maxAttemptsBeforeEscalation}
+                                      onChange={(e) =>
+                                        setIntentGuidedDraft((prev) => ({
+                                          ...prev,
+                                          maxAttemptsBeforeEscalation: Math.max(
+                                            1,
+                                            Number.parseInt(e.target.value || "1", 10) || 1,
+                                          ),
+                                        }))
+                                      }
+                                      className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                    />
+                                  </div>
+                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2">
+                                    <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                      Max Minutes
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      step={1}
+                                      value={intentGuidedDraft.maxMinutesBeforeEscalation}
+                                      onChange={(e) =>
+                                        setIntentGuidedDraft((prev) => ({
+                                          ...prev,
+                                          maxMinutesBeforeEscalation: Math.max(
+                                            1,
+                                            Number.parseInt(e.target.value || "1", 10) || 1,
+                                          ),
+                                        }))
+                                      }
+                                      className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-end">
+                                <button
+                                  onClick={applyGuidedIntentBlueprint}
+                                  className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 rounded-lg transition-all text-sm font-medium"
+                                >
+                                  Apply Guided Blueprint
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-white/90 font-medium">
+                                    {showKnowledgeAclWriteControls
+                                      ? "Knowledge Collections Access"
+                                      : "Visible Knowledge Collections"}
+                                  </div>
+                                  <div className="text-white/40 text-xs mt-1">
+                                    {showKnowledgeAclWriteControls
+                                      ? "Control which agents can read or write each RAG collection."
+                                      : "Review which RAG collections are visible from this Core-safe view."}
+                                  </div>
+                                </div>
+                                <div
+                                  className={`text-[11px] px-2 py-1 rounded border ${
+                                    knowledgeAclEnforced
+                                      ? "border-green-500/30 bg-green-500/10 text-green-300"
+                                      : "border-amber-500/30 bg-amber-500/10 text-amber-200"
+                                  }`}
+                                >
+                                  {knowledgeAclEnforced ? "ACL enforced" : "ACL fail-open"}
+                                </div>
+                              </div>
+
+                              {knowledgeMessage && (
+                                <div
+                                  className={`rounded-lg border px-3 py-2 text-xs ${
+                                    knowledgeMessage.type === "success"
+                                      ? "border-green-500/30 bg-green-500/10 text-green-300"
+                                      : "border-red-500/30 bg-red-500/10 text-red-300"
+                                  }`}
+                                >
+                                  {knowledgeMessage.text}
+                                </div>
+                              )}
+
+                              <div className="grid grid-cols-1 xl:grid-cols-4 gap-2">
+                                <div className="bg-gray-800/50 rounded-lg px-3 py-2">
+                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                    Viewing Agent
+                                  </label>
+                                  <select
+                                    value={knowledgeTargetAgentId || knowledgeDefaultAgentId}
+                                    onChange={(e) => {
+                                      const nextAgentId = e.target.value;
+                                      setKnowledgeTargetAgentId(nextAgentId);
+                                      void loadKnowledgeCollections(nextAgentId);
+                                    }}
                                     className="w-full mt-1 bg-gray-700 text-white/80 text-xs rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer"
                                   >
                                     {(knowledgeAgentOptions.length > 0
@@ -15217,120 +15202,15 @@ export function ConfigPanel({
                                     ))}
                                   </select>
                                 </div>
-                              )}
-                              <div
-                                className={`bg-gray-800/50 rounded-lg px-3 py-2 flex items-end justify-end ${
-                                  showKnowledgeAclWriteControls ? "xl:col-span-2" : "xl:col-span-3"
-                                }`}
-                              >
-                                <button
-                                  onClick={() =>
-                                    void loadKnowledgeCollections(knowledgeTargetAgentId)
-                                  }
-                                  disabled={knowledgeAclLoading}
-                                  className="px-3 py-2 bg-white/5 hover:bg-white/10 text-white/70 rounded-lg transition-all text-xs disabled:opacity-50"
-                                >
-                                  {knowledgeAclLoading ? "Loading..." : "Refresh Collections"}
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="rounded-lg border border-white/10 bg-gray-900/30 max-h-48 overflow-auto">
-                              {knowledgeAclLoading ? (
-                                <div className="px-3 py-3 text-xs text-white/50">
-                                  Loading collections...
-                                </div>
-                              ) : knowledgeCollections.length === 0 ? (
-                                <div className="px-3 py-3 text-xs text-white/50">
-                                  No collections visible for this agent yet.
-                                </div>
-                              ) : (
-                                <div className="divide-y divide-white/5">
-                                  {knowledgeCollections.map((entry) => (
-                                    <div
-                                      key={`${entry.collectionTag}-${entry.collectionId || "unknown"}`}
-                                      className="px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs"
-                                    >
-                                      <div className="min-w-0">
-                                        <div className="text-white/85 font-medium truncate">
-                                          {entry.collection}
-                                        </div>
-                                        <div className="text-white/40 font-mono truncate">
-                                          {entry.collectionTag}
-                                          {entry.ownerAgentId
-                                            ? ` · owner: ${entry.ownerAgentId}`
-                                            : ""}
-                                        </div>
-                                      </div>
-                                      <div className="flex items-center gap-1.5">
-                                        <span
-                                          className={`px-2 py-0.5 rounded border ${
-                                            entry.canRead
-                                              ? "border-green-500/30 bg-green-500/10 text-green-300"
-                                              : "border-white/10 bg-white/5 text-white/40"
-                                          }`}
-                                        >
-                                          read
-                                        </span>
-                                        <span
-                                          className={`px-2 py-0.5 rounded border ${
-                                            entry.canWrite
-                                              ? "border-blue-500/30 bg-blue-500/10 text-blue-200"
-                                              : "border-white/10 bg-white/5 text-white/40"
-                                          }`}
-                                        >
-                                          write
-                                        </span>
-                                        <span
-                                          className={`px-2 py-0.5 rounded border ${
-                                            entry.isOwner
-                                              ? "border-purple-500/30 bg-purple-500/10 text-purple-200"
-                                              : "border-white/10 bg-white/5 text-white/40"
-                                          }`}
-                                        >
-                                          owner
-                                        </span>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-
-                            {showKnowledgeAclWriteControls && (
-                              <div className="bg-gray-800/40 rounded-lg p-3 space-y-2">
-                                <div className="text-white/70 text-xs uppercase tracking-wider">
-                                  Grant / Update Access
-                                </div>
-                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
-                                  <div>
+                                {showKnowledgeAclWriteControls && (
+                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2">
                                     <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                      Collection
-                                    </label>
-                                    <input
-                                      value={knowledgeGrantCollection}
-                                      onChange={(e) => setKnowledgeGrantCollection(e.target.value)}
-                                      list="knowledge-collection-options"
-                                      placeholder="e.g. titanium-msp-kb"
-                                      className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                    />
-                                    <datalist id="knowledge-collection-options">
-                                      {knowledgeCollections.map((entry) => (
-                                        <option
-                                          key={entry.collectionTag}
-                                          value={entry.collection}
-                                        />
-                                      ))}
-                                    </datalist>
-                                  </div>
-                                  <div>
-                                    <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                      Target Agent
+                                      Grant As (Owner Agent)
                                     </label>
                                     <select
-                                      value={knowledgeGrantAgentId || knowledgeTargetAgentId}
-                                      onChange={(e) => setKnowledgeGrantAgentId(e.target.value)}
-                                      className="w-full mt-1 bg-gray-700 text-white/80 text-xs rounded-lg px-2.5 py-2 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer"
+                                      value={knowledgeActorAgentId || knowledgeDefaultAgentId}
+                                      onChange={(e) => setKnowledgeActorAgentId(e.target.value)}
+                                      className="w-full mt-1 bg-gray-700 text-white/80 text-xs rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer"
                                     >
                                       {(knowledgeAgentOptions.length > 0
                                         ? knowledgeAgentOptions
@@ -15347,540 +15227,268 @@ export function ConfigPanel({
                                       ))}
                                     </select>
                                   </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
-                                  <label className="flex items-center gap-2 text-xs text-white/75 bg-gray-700/40 border border-white/10 rounded-lg px-3 py-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={knowledgeGrantCanRead || knowledgeGrantIsOwner}
-                                      onChange={(e) => setKnowledgeGrantCanRead(e.target.checked)}
-                                      disabled={knowledgeGrantIsOwner}
-                                      className="accent-purple-500"
-                                    />
-                                    Can read
-                                  </label>
-                                  <label className="flex items-center gap-2 text-xs text-white/75 bg-gray-700/40 border border-white/10 rounded-lg px-3 py-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={knowledgeGrantCanWrite || knowledgeGrantIsOwner}
-                                      onChange={(e) => {
-                                        const checked = e.target.checked;
-                                        setKnowledgeGrantCanWrite(checked);
-                                        if (checked) setKnowledgeGrantCanRead(true);
-                                      }}
-                                      disabled={knowledgeGrantIsOwner}
-                                      className="accent-purple-500"
-                                    />
-                                    Can write
-                                  </label>
-                                  <label className="flex items-center gap-2 text-xs text-white/75 bg-gray-700/40 border border-white/10 rounded-lg px-3 py-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={knowledgeGrantIsOwner}
-                                      onChange={(e) => {
-                                        const checked = e.target.checked;
-                                        setKnowledgeGrantIsOwner(checked);
-                                        if (checked) {
-                                          setKnowledgeGrantCanRead(true);
-                                          setKnowledgeGrantCanWrite(true);
-                                        }
-                                      }}
-                                      className="accent-purple-500"
-                                    />
-                                    Owner grant
-                                  </label>
-                                </div>
-
-                                <div className="flex justify-end">
-                                  <button
-                                    onClick={() => void grantKnowledgeCollectionAccess()}
-                                    disabled={knowledgeAclSaving || knowledgeAclLoading}
-                                    className="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded-lg transition-all text-xs font-medium disabled:opacity-50"
-                                  >
-                                    {knowledgeAclSaving ? "Saving..." : "Grant Access"}
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="bg-white/5 rounded-xl p-4 space-y-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="text-white/90 font-medium">
-                                  Starter Configuration
-                                </div>
-                                <div className="text-white/40 text-xs mt-1">
-                                  Seeds global intent policy and per-agent hierarchy for main plus
-                                  detected family agents.
-                                </div>
-                              </div>
-                              <div className="text-white/40 text-xs">
-                                Agents detected:{" "}
-                                {Math.max(
-                                  1,
-                                  uniqueNonEmptyStrings([
-                                    ...agentOptions
-                                      .map((row) => row.id)
-                                      .filter((id) => id !== AGENT_SETTINGS_DEFAULT_TARGET),
-                                    ...Object.keys(intentDraft?.agents || {}),
-                                    defaultAgentId,
-                                    "main",
-                                  ]).length,
                                 )}
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
-                              {(
-                                Object.entries(INTENT_STARTER_PRESETS) as Array<
-                                  [
-                                    IntentStarterPresetId,
-                                    (typeof INTENT_STARTER_PRESETS)[IntentStarterPresetId],
-                                  ]
+                                <div
+                                  className={`bg-gray-800/50 rounded-lg px-3 py-2 flex items-end justify-end ${
+                                    showKnowledgeAclWriteControls
+                                      ? "xl:col-span-2"
+                                      : "xl:col-span-3"
+                                  }`}
                                 >
-                              ).map(([presetId, preset]) => (
-                                <button
-                                  key={presetId}
-                                  onClick={() => applyIntentStarterPreset(presetId)}
-                                  className="text-left bg-gray-800/50 hover:bg-gray-800/70 border border-white/10 rounded-lg px-3 py-2 transition-all"
-                                >
-                                  <div className="text-white/85 text-sm font-medium">
-                                    {preset.label}
-                                  </div>
-                                  <div className="text-white/40 text-[11px] mt-1 leading-relaxed">
-                                    {preset.description}
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          {!intentLoading && intentDraft && (
-                            <>
-                              <div className="bg-white/5 rounded-xl p-4 grid grid-cols-1 xl:grid-cols-3 gap-3">
-                                <div className="bg-gray-800/50 rounded-lg px-3 py-2 flex items-center justify-between">
-                                  <div>
-                                    <div className="text-white/70 text-sm">Intent Layer</div>
-                                    <div className="text-white/40 text-xs">
-                                      Master feature toggle
-                                    </div>
-                                  </div>
                                   <button
                                     onClick={() =>
-                                      setIntentDraft((prev) =>
-                                        prev ? { ...prev, enabled: !prev.enabled } : prev,
-                                      )
+                                      void loadKnowledgeCollections(knowledgeTargetAgentId)
                                     }
-                                    className="text-white/50 hover:text-white/80"
+                                    disabled={knowledgeAclLoading}
+                                    className="px-3 py-2 bg-white/5 hover:bg-white/10 text-white/70 rounded-lg transition-all text-xs disabled:opacity-50"
                                   >
-                                    {intentDraft.enabled ? (
-                                      <ToggleRight className="w-5 h-5 text-green-400" />
-                                    ) : (
-                                      <ToggleLeft className="w-5 h-5 text-white/30" />
-                                    )}
+                                    {knowledgeAclLoading ? "Loading..." : "Refresh Collections"}
                                   </button>
                                 </div>
-                                <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                    Validation Mode
-                                  </label>
-                                  <select
-                                    value={intentDraft.validationMode}
-                                    onChange={(e) =>
-                                      setIntentDraft((prev) =>
-                                        prev
-                                          ? {
-                                              ...prev,
-                                              validationMode: e.target.value as
-                                                | "off"
-                                                | "warn"
-                                                | "enforce",
-                                            }
-                                          : prev,
-                                      )
-                                    }
-                                    className="w-full mt-1 bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer"
-                                  >
-                                    <option value="off">off</option>
-                                    <option value="warn">warn</option>
-                                    <option value="enforce">enforce</option>
-                                  </select>
-                                </div>
-                                <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                    Runtime Mode
-                                  </label>
-                                  <select
-                                    value={intentDraft.runtimeMode}
-                                    onChange={(e) =>
-                                      setIntentDraft((prev) =>
-                                        prev
-                                          ? {
-                                              ...prev,
-                                              runtimeMode: e.target.value as
-                                                | "off"
-                                                | "advisory"
-                                                | "enforce",
-                                            }
-                                          : prev,
-                                      )
-                                    }
-                                    className="w-full mt-1 bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer"
-                                  >
-                                    <option value="off">off</option>
-                                    <option value="advisory">advisory</option>
-                                    <option value="enforce">enforce</option>
-                                  </select>
-                                </div>
                               </div>
 
-                              <div className="bg-white/5 rounded-xl p-4 space-y-3">
-                                <div className="text-white/90 font-medium">
-                                  Global Intent Policy
-                                </div>
-                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-                                    <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                      Version
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={intentDraft.global.version ?? ""}
-                                      onChange={(e) =>
-                                        setIntentDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                global: { ...prev.global, version: e.target.value },
-                                              }
-                                            : prev,
-                                        )
-                                      }
-                                      className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                    />
+                              <div className="rounded-lg border border-white/10 bg-gray-900/30 max-h-48 overflow-auto">
+                                {knowledgeAclLoading ? (
+                                  <div className="px-3 py-3 text-xs text-white/50">
+                                    Loading collections...
                                   </div>
-                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-                                    <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                      Owner
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={intentDraft.global.owner ?? ""}
-                                      onChange={(e) =>
-                                        setIntentDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                global: { ...prev.global, owner: e.target.value },
-                                              }
-                                            : prev,
-                                        )
-                                      }
-                                      className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
-                                    />
+                                ) : knowledgeCollections.length === 0 ? (
+                                  <div className="px-3 py-3 text-xs text-white/50">
+                                    No collections visible for this agent yet.
                                   </div>
-                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2 xl:col-span-2">
-                                    <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                      Objective
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={intentDraft.global.objective}
-                                      onChange={(e) =>
-                                        setIntentDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                global: {
-                                                  ...prev.global,
-                                                  objective: e.target.value,
-                                                },
-                                              }
-                                            : prev,
-                                        )
-                                      }
-                                      className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-sm border border-white/10 focus:border-purple-500/50 outline-none"
-                                    />
-                                  </div>
-                                  {[
-                                    {
-                                      label: "Core Values",
-                                      value: intentDraft.global.coreValues,
-                                      update: (rows: string[]) =>
-                                        setIntentDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                global: { ...prev.global, coreValues: rows },
-                                              }
-                                            : prev,
-                                        ),
-                                    },
-                                    {
-                                      label: "Tradeoff Hierarchy",
-                                      value: intentDraft.global.tradeoffHierarchy,
-                                      update: (rows: string[]) =>
-                                        setIntentDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                global: { ...prev.global, tradeoffHierarchy: rows },
-                                              }
-                                            : prev,
-                                        ),
-                                    },
-                                    {
-                                      label: "Never Do",
-                                      value: intentDraft.global.neverDo,
-                                      update: (rows: string[]) =>
-                                        setIntentDraft((prev) =>
-                                          prev
-                                            ? { ...prev, global: { ...prev.global, neverDo: rows } }
-                                            : prev,
-                                        ),
-                                    },
-                                    {
-                                      label: "Allowed Actions",
-                                      value: intentDraft.global.allowedActions,
-                                      update: (rows: string[]) =>
-                                        setIntentDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                global: { ...prev.global, allowedActions: rows },
-                                              }
-                                            : prev,
-                                        ),
-                                    },
-                                    {
-                                      label: "Requires Human Approval",
-                                      value: intentDraft.global.requiresHumanApproval,
-                                      update: (rows: string[]) =>
-                                        setIntentDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                global: {
-                                                  ...prev.global,
-                                                  requiresHumanApproval: rows,
-                                                },
-                                              }
-                                            : prev,
-                                        ),
-                                    },
-                                    {
-                                      label: "Always Escalate Tiers",
-                                      value:
-                                        intentDraft.global.escalation.customerTiersAlwaysEscalate,
-                                      update: (rows: string[]) =>
-                                        setIntentDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                global: {
-                                                  ...prev.global,
-                                                  escalation: {
-                                                    ...prev.global.escalation,
-                                                    customerTiersAlwaysEscalate: rows,
-                                                  },
-                                                },
-                                              }
-                                            : prev,
-                                        ),
-                                    },
-                                  ].map((field) => (
-                                    <div
-                                      key={field.label}
-                                      className="bg-gray-800/50 rounded-lg px-3 py-2 xl:col-span-1"
-                                    >
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        {field.label}
-                                      </label>
-                                      <textarea
-                                        rows={4}
-                                        value={formatMultilineList(field.value)}
-                                        onChange={(e) =>
-                                          field.update(parseMultilineList(e.target.value))
-                                        }
-                                        className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y"
-                                      />
-                                    </div>
-                                  ))}
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-                                    <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                      Sentiment Threshold
-                                    </label>
-                                    <input
-                                      type="number"
-                                      min={-1}
-                                      max={1}
-                                      step={0.05}
-                                      value={intentDraft.global.escalation.sentimentThreshold}
-                                      onChange={(e) => {
-                                        const next = Number(e.target.value);
-                                        if (!Number.isFinite(next)) return;
-                                        setIntentDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                global: {
-                                                  ...prev.global,
-                                                  escalation: {
-                                                    ...prev.global.escalation,
-                                                    sentimentThreshold: next,
-                                                  },
-                                                },
-                                              }
-                                            : prev,
-                                        );
-                                      }}
-                                      className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                    />
-                                  </div>
-                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-                                    <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                      Max Attempts
-                                    </label>
-                                    <input
-                                      type="number"
-                                      min={1}
-                                      step={1}
-                                      value={
-                                        intentDraft.global.escalation.maxAttemptsBeforeEscalation
-                                      }
-                                      onChange={(e) => {
-                                        const next = Number(e.target.value);
-                                        if (!Number.isFinite(next)) return;
-                                        setIntentDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                global: {
-                                                  ...prev.global,
-                                                  escalation: {
-                                                    ...prev.global.escalation,
-                                                    maxAttemptsBeforeEscalation: next,
-                                                  },
-                                                },
-                                              }
-                                            : prev,
-                                        );
-                                      }}
-                                      className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                    />
-                                  </div>
-                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-                                    <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                      Max Minutes
-                                    </label>
-                                    <input
-                                      type="number"
-                                      min={1}
-                                      step={1}
-                                      value={
-                                        intentDraft.global.escalation.timeInConversationMinutes
-                                      }
-                                      onChange={(e) => {
-                                        const next = Number(e.target.value);
-                                        if (!Number.isFinite(next)) return;
-                                        setIntentDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                global: {
-                                                  ...prev.global,
-                                                  escalation: {
-                                                    ...prev.global.escalation,
-                                                    timeInConversationMinutes: next,
-                                                  },
-                                                },
-                                              }
-                                            : prev,
-                                        );
-                                      }}
-                                      className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                    />
-                                  </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                  {[
-                                    {
-                                      key: "requireAcknowledgmentBeforeClose" as const,
-                                      label: "Require Ack Before Close",
-                                    },
-                                    {
-                                      key: "usePersistentHistory" as const,
-                                      label: "Use Persistent History",
-                                    },
-                                    {
-                                      key: "weightPreviousEscalations" as const,
-                                      label: "Weight Previous Escalations",
-                                    },
-                                  ].map((row) => (
-                                    <div
-                                      key={row.key}
-                                      className="bg-gray-800/50 rounded-lg px-3 py-2 flex items-center justify-between"
-                                    >
-                                      <span className="text-white/70 text-sm">{row.label}</span>
-                                      <button
-                                        onClick={() =>
-                                          setIntentDraft((prev) =>
-                                            prev
-                                              ? {
-                                                  ...prev,
-                                                  global: {
-                                                    ...prev.global,
-                                                    [row.key]: !prev.global[row.key],
-                                                  },
-                                                }
-                                              : prev,
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
+                                ) : (
+                                  <div className="divide-y divide-white/5">
+                                    {knowledgeCollections.map((entry) => (
+                                      <div
+                                        key={`${entry.collectionTag}-${entry.collectionId || "unknown"}`}
+                                        className="px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs"
                                       >
-                                        {intentDraft.global[row.key] ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
+                                        <div className="min-w-0">
+                                          <div className="text-white/85 font-medium truncate">
+                                            {entry.collection}
+                                          </div>
+                                          <div className="text-white/40 font-mono truncate">
+                                            {entry.collectionTag}
+                                            {entry.ownerAgentId
+                                              ? ` · owner: ${entry.ownerAgentId}`
+                                              : ""}
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                          <span
+                                            className={`px-2 py-0.5 rounded border ${
+                                              entry.canRead
+                                                ? "border-green-500/30 bg-green-500/10 text-green-300"
+                                                : "border-white/10 bg-white/5 text-white/40"
+                                            }`}
+                                          >
+                                            read
+                                          </span>
+                                          <span
+                                            className={`px-2 py-0.5 rounded border ${
+                                              entry.canWrite
+                                                ? "border-blue-500/30 bg-blue-500/10 text-blue-200"
+                                                : "border-white/10 bg-white/5 text-white/40"
+                                            }`}
+                                          >
+                                            write
+                                          </span>
+                                          <span
+                                            className={`px-2 py-0.5 rounded border ${
+                                              entry.isOwner
+                                                ? "border-purple-500/30 bg-purple-500/10 text-purple-200"
+                                                : "border-white/10 bg-white/5 text-white/40"
+                                            }`}
+                                          >
+                                            owner
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
 
-                              <div className="bg-white/5 rounded-xl p-4 space-y-3">
-                                <div className="text-white/90 font-medium">Simulation Gate</div>
-                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                              {showKnowledgeAclWriteControls && (
+                                <div className="bg-gray-800/40 rounded-lg p-3 space-y-2">
+                                  <div className="text-white/70 text-xs uppercase tracking-wider">
+                                    Grant / Update Access
+                                  </div>
+                                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+                                    <div>
+                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                        Collection
+                                      </label>
+                                      <input
+                                        value={knowledgeGrantCollection}
+                                        onChange={(e) =>
+                                          setKnowledgeGrantCollection(e.target.value)
+                                        }
+                                        list="knowledge-collection-options"
+                                        placeholder="e.g. titanium-msp-kb"
+                                        className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                      />
+                                      <datalist id="knowledge-collection-options">
+                                        {knowledgeCollections.map((entry) => (
+                                          <option
+                                            key={entry.collectionTag}
+                                            value={entry.collection}
+                                          />
+                                        ))}
+                                      </datalist>
+                                    </div>
+                                    <div>
+                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                        Target Agent
+                                      </label>
+                                      <select
+                                        value={knowledgeGrantAgentId || knowledgeTargetAgentId}
+                                        onChange={(e) => setKnowledgeGrantAgentId(e.target.value)}
+                                        className="w-full mt-1 bg-gray-700 text-white/80 text-xs rounded-lg px-2.5 py-2 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer"
+                                      >
+                                        {(knowledgeAgentOptions.length > 0
+                                          ? knowledgeAgentOptions
+                                          : [
+                                              {
+                                                id: knowledgeDefaultAgentId,
+                                                label: knowledgeDefaultAgentId,
+                                              },
+                                            ]
+                                        ).map((option) => (
+                                          <option key={option.id} value={option.id}>
+                                            {option.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
+                                    <label className="flex items-center gap-2 text-xs text-white/75 bg-gray-700/40 border border-white/10 rounded-lg px-3 py-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={knowledgeGrantCanRead || knowledgeGrantIsOwner}
+                                        onChange={(e) => setKnowledgeGrantCanRead(e.target.checked)}
+                                        disabled={knowledgeGrantIsOwner}
+                                        className="accent-purple-500"
+                                      />
+                                      Can read
+                                    </label>
+                                    <label className="flex items-center gap-2 text-xs text-white/75 bg-gray-700/40 border border-white/10 rounded-lg px-3 py-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={knowledgeGrantCanWrite || knowledgeGrantIsOwner}
+                                        onChange={(e) => {
+                                          const checked = e.target.checked;
+                                          setKnowledgeGrantCanWrite(checked);
+                                          if (checked) setKnowledgeGrantCanRead(true);
+                                        }}
+                                        disabled={knowledgeGrantIsOwner}
+                                        className="accent-purple-500"
+                                      />
+                                      Can write
+                                    </label>
+                                    <label className="flex items-center gap-2 text-xs text-white/75 bg-gray-700/40 border border-white/10 rounded-lg px-3 py-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={knowledgeGrantIsOwner}
+                                        onChange={(e) => {
+                                          const checked = e.target.checked;
+                                          setKnowledgeGrantIsOwner(checked);
+                                          if (checked) {
+                                            setKnowledgeGrantCanRead(true);
+                                            setKnowledgeGrantCanWrite(true);
+                                          }
+                                        }}
+                                        className="accent-purple-500"
+                                      />
+                                      Owner grant
+                                    </label>
+                                  </div>
+
+                                  <div className="flex justify-end">
+                                    <button
+                                      onClick={() => void grantKnowledgeCollectionAccess()}
+                                      disabled={knowledgeAclSaving || knowledgeAclLoading}
+                                      className="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded-lg transition-all text-xs font-medium disabled:opacity-50"
+                                    >
+                                      {knowledgeAclSaving ? "Saving..." : "Grant Access"}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-white/90 font-medium">
+                                    Starter Configuration
+                                  </div>
+                                  <div className="text-white/40 text-xs mt-1">
+                                    Seeds global intent policy and per-agent hierarchy for main plus
+                                    detected family agents.
+                                  </div>
+                                </div>
+                                <div className="text-white/40 text-xs">
+                                  Agents detected:{" "}
+                                  {Math.max(
+                                    1,
+                                    uniqueNonEmptyStrings([
+                                      ...agentOptions
+                                        .map((row) => row.id)
+                                        .filter((id) => id !== AGENT_SETTINGS_DEFAULT_TARGET),
+                                      ...Object.keys(intentDraft?.agents || {}),
+                                      defaultAgentId,
+                                      "main",
+                                    ]).length,
+                                  )}
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
+                                {(
+                                  Object.entries(INTENT_STARTER_PRESETS) as Array<
+                                    [
+                                      IntentStarterPresetId,
+                                      (typeof INTENT_STARTER_PRESETS)[IntentStarterPresetId],
+                                    ]
+                                  >
+                                ).map(([presetId, preset]) => (
+                                  <button
+                                    key={presetId}
+                                    onClick={() => applyIntentStarterPreset(presetId)}
+                                    className="text-left bg-gray-800/50 hover:bg-gray-800/70 border border-white/10 rounded-lg px-3 py-2 transition-all"
+                                  >
+                                    <div className="text-white/85 text-sm font-medium">
+                                      {preset.label}
+                                    </div>
+                                    <div className="text-white/40 text-[11px] mt-1 leading-relaxed">
+                                      {preset.description}
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {!intentLoading && intentDraft && (
+                              <>
+                                <div className="bg-white/5 rounded-xl p-4 grid grid-cols-1 xl:grid-cols-3 gap-3">
                                   <div className="bg-gray-800/50 rounded-lg px-3 py-2 flex items-center justify-between">
                                     <div>
-                                      <div className="text-white/70 text-sm">Enabled</div>
+                                      <div className="text-white/70 text-sm">Intent Layer</div>
                                       <div className="text-white/40 text-xs">
-                                        Require simulation evidence before execution
+                                        Master feature toggle
                                       </div>
                                     </div>
                                     <button
                                       onClick={() =>
                                         setIntentDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                simulationGate: {
-                                                  ...prev.simulationGate,
-                                                  enabled: !prev.simulationGate.enabled,
-                                                },
-                                              }
-                                            : prev,
+                                          prev ? { ...prev, enabled: !prev.enabled } : prev,
                                         )
                                       }
                                       className="text-white/50 hover:text-white/80"
                                     >
-                                      {intentDraft.simulationGate.enabled ? (
+                                      {intentDraft.enabled ? (
                                         <ToggleRight className="w-5 h-5 text-green-400" />
                                       ) : (
                                         <ToggleLeft className="w-5 h-5 text-white/30" />
@@ -15889,667 +15497,729 @@ export function ConfigPanel({
                                   </div>
                                   <div className="bg-gray-800/50 rounded-lg px-3 py-2">
                                     <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                      Mode
+                                      Validation Mode
                                     </label>
                                     <select
-                                      value={intentDraft.simulationGate.mode}
-                                      onChange={(e) => {
-                                        const next = e.target.value as "warn" | "enforce";
-                                        if (
-                                          next === "enforce" &&
-                                          intentSimReportStatus &&
-                                          !intentSimReportStatus.readyForEnforce
-                                        ) {
-                                          setIntentMessage({
-                                            type: "error",
-                                            text: "Cannot switch to enforce: simulation report is missing or suites are not passing. Run in warn mode first to generate reports.",
-                                          });
-                                          return;
-                                        }
+                                      value={intentDraft.validationMode}
+                                      onChange={(e) =>
                                         setIntentDraft((prev) =>
                                           prev
                                             ? {
                                                 ...prev,
-                                                simulationGate: {
-                                                  ...prev.simulationGate,
-                                                  mode: next,
-                                                },
+                                                validationMode: e.target.value as
+                                                  | "off"
+                                                  | "warn"
+                                                  | "enforce",
                                               }
                                             : prev,
-                                        );
-                                      }}
+                                        )
+                                      }
                                       className="w-full mt-1 bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer"
                                     >
+                                      <option value="off">off</option>
                                       <option value="warn">warn</option>
-                                      <option
-                                        value="enforce"
-                                        disabled={
-                                          intentSimReportStatus != null &&
-                                          !intentSimReportStatus.readyForEnforce
-                                        }
-                                      >
-                                        enforce
-                                        {intentSimReportStatus &&
-                                        !intentSimReportStatus.readyForEnforce
-                                          ? " (report not ready)"
-                                          : ""}
-                                      </option>
+                                      <option value="enforce">enforce</option>
                                     </select>
                                   </div>
                                   <div className="bg-gray-800/50 rounded-lg px-3 py-2">
                                     <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                      Minimum Pass Rate
+                                      Runtime Mode
                                     </label>
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      max={1}
-                                      step={0.01}
-                                      value={intentDraft.simulationGate.minPassRate}
-                                      onChange={(e) => {
-                                        const next = Number(e.target.value);
-                                        if (!Number.isFinite(next)) return;
-                                        setIntentDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                simulationGate: {
-                                                  ...prev.simulationGate,
-                                                  minPassRate: next,
-                                                },
-                                              }
-                                            : prev,
-                                        );
-                                      }}
-                                      className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                    />
-                                  </div>
-                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-                                    <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                      Report Path
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={intentDraft.simulationGate.reportPath}
+                                    <select
+                                      value={intentDraft.runtimeMode}
                                       onChange={(e) =>
                                         setIntentDraft((prev) =>
                                           prev
                                             ? {
                                                 ...prev,
-                                                simulationGate: {
-                                                  ...prev.simulationGate,
-                                                  reportPath: e.target.value,
-                                                },
+                                                runtimeMode: e.target.value as
+                                                  | "off"
+                                                  | "advisory"
+                                                  | "enforce",
                                               }
                                             : prev,
                                         )
                                       }
-                                      className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                    />
-                                  </div>
-                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2 xl:col-span-2">
-                                    <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                      Required Suites
-                                    </label>
-                                    <textarea
-                                      rows={3}
-                                      value={formatMultilineList(intentDraft.simulationGate.suites)}
-                                      onChange={(e) =>
-                                        setIntentDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                simulationGate: {
-                                                  ...prev.simulationGate,
-                                                  suites: parseMultilineList(e.target.value),
-                                                },
-                                              }
-                                            : prev,
-                                        )
-                                      }
-                                      className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y"
-                                    />
+                                      className="w-full mt-1 bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer"
+                                    >
+                                      <option value="off">off</option>
+                                      <option value="advisory">advisory</option>
+                                      <option value="enforce">enforce</option>
+                                    </select>
                                   </div>
                                 </div>
-                                {/* Simulation Report Status */}
-                                {intentDraft.simulationGate.enabled && (
-                                  <div className="mt-3 bg-gray-800/60 rounded-lg p-3 space-y-2">
-                                    <div className="text-white/60 text-[10px] uppercase tracking-wider font-medium">
-                                      Report Status
+
+                                <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                                  <div className="text-white/90 font-medium">
+                                    Global Intent Policy
+                                  </div>
+                                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2">
+                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                        Version
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={intentDraft.global.version ?? ""}
+                                        onChange={(e) =>
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  global: {
+                                                    ...prev.global,
+                                                    version: e.target.value,
+                                                  },
+                                                }
+                                              : prev,
+                                          )
+                                        }
+                                        className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                      />
                                     </div>
-                                    {!intentSimReportStatus ? (
-                                      <div className="text-white/40 text-xs">
-                                        Loading report status...
+                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2">
+                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                        Owner
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={intentDraft.global.owner ?? ""}
+                                        onChange={(e) =>
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  global: { ...prev.global, owner: e.target.value },
+                                                }
+                                              : prev,
+                                          )
+                                        }
+                                        className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                                      />
+                                    </div>
+                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2 xl:col-span-2">
+                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                        Objective
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={intentDraft.global.objective}
+                                        onChange={(e) =>
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  global: {
+                                                    ...prev.global,
+                                                    objective: e.target.value,
+                                                  },
+                                                }
+                                              : prev,
+                                          )
+                                        }
+                                        className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-sm border border-white/10 focus:border-purple-500/50 outline-none"
+                                      />
+                                    </div>
+                                    {[
+                                      {
+                                        label: "Core Values",
+                                        value: intentDraft.global.coreValues,
+                                        update: (rows: string[]) =>
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  global: { ...prev.global, coreValues: rows },
+                                                }
+                                              : prev,
+                                          ),
+                                      },
+                                      {
+                                        label: "Tradeoff Hierarchy",
+                                        value: intentDraft.global.tradeoffHierarchy,
+                                        update: (rows: string[]) =>
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  global: {
+                                                    ...prev.global,
+                                                    tradeoffHierarchy: rows,
+                                                  },
+                                                }
+                                              : prev,
+                                          ),
+                                      },
+                                      {
+                                        label: "Never Do",
+                                        value: intentDraft.global.neverDo,
+                                        update: (rows: string[]) =>
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  global: { ...prev.global, neverDo: rows },
+                                                }
+                                              : prev,
+                                          ),
+                                      },
+                                      {
+                                        label: "Allowed Actions",
+                                        value: intentDraft.global.allowedActions,
+                                        update: (rows: string[]) =>
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  global: { ...prev.global, allowedActions: rows },
+                                                }
+                                              : prev,
+                                          ),
+                                      },
+                                      {
+                                        label: "Requires Human Approval",
+                                        value: intentDraft.global.requiresHumanApproval,
+                                        update: (rows: string[]) =>
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  global: {
+                                                    ...prev.global,
+                                                    requiresHumanApproval: rows,
+                                                  },
+                                                }
+                                              : prev,
+                                          ),
+                                      },
+                                      {
+                                        label: "Always Escalate Tiers",
+                                        value:
+                                          intentDraft.global.escalation.customerTiersAlwaysEscalate,
+                                        update: (rows: string[]) =>
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  global: {
+                                                    ...prev.global,
+                                                    escalation: {
+                                                      ...prev.global.escalation,
+                                                      customerTiersAlwaysEscalate: rows,
+                                                    },
+                                                  },
+                                                }
+                                              : prev,
+                                          ),
+                                      },
+                                    ].map((field) => (
+                                      <div
+                                        key={field.label}
+                                        className="bg-gray-800/50 rounded-lg px-3 py-2 xl:col-span-1"
+                                      >
+                                        <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                          {field.label}
+                                        </label>
+                                        <textarea
+                                          rows={4}
+                                          value={formatMultilineList(field.value)}
+                                          onChange={(e) =>
+                                            field.update(parseMultilineList(e.target.value))
+                                          }
+                                          className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y"
+                                        />
                                       </div>
-                                    ) : !intentSimReportStatus.exists ? (
-                                      <div className="flex items-center gap-2 text-xs">
-                                        <span className="w-2 h-2 rounded-full bg-red-400 inline-block" />
-                                        <span className="text-red-300">
-                                          Report file does not exist. Run simulation suites in warn
-                                          mode to generate it.
-                                        </span>
+                                    ))}
+                                  </div>
+
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2">
+                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                        Sentiment Threshold
+                                      </label>
+                                      <input
+                                        type="number"
+                                        min={-1}
+                                        max={1}
+                                        step={0.05}
+                                        value={intentDraft.global.escalation.sentimentThreshold}
+                                        onChange={(e) => {
+                                          const next = Number(e.target.value);
+                                          if (!Number.isFinite(next)) return;
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  global: {
+                                                    ...prev.global,
+                                                    escalation: {
+                                                      ...prev.global.escalation,
+                                                      sentimentThreshold: next,
+                                                    },
+                                                  },
+                                                }
+                                              : prev,
+                                          );
+                                        }}
+                                        className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                      />
+                                    </div>
+                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2">
+                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                        Max Attempts
+                                      </label>
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        step={1}
+                                        value={
+                                          intentDraft.global.escalation.maxAttemptsBeforeEscalation
+                                        }
+                                        onChange={(e) => {
+                                          const next = Number(e.target.value);
+                                          if (!Number.isFinite(next)) return;
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  global: {
+                                                    ...prev.global,
+                                                    escalation: {
+                                                      ...prev.global.escalation,
+                                                      maxAttemptsBeforeEscalation: next,
+                                                    },
+                                                  },
+                                                }
+                                              : prev,
+                                          );
+                                        }}
+                                        className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                      />
+                                    </div>
+                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2">
+                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                        Max Minutes
+                                      </label>
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        step={1}
+                                        value={
+                                          intentDraft.global.escalation.timeInConversationMinutes
+                                        }
+                                        onChange={(e) => {
+                                          const next = Number(e.target.value);
+                                          if (!Number.isFinite(next)) return;
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  global: {
+                                                    ...prev.global,
+                                                    escalation: {
+                                                      ...prev.global.escalation,
+                                                      timeInConversationMinutes: next,
+                                                    },
+                                                  },
+                                                }
+                                              : prev,
+                                          );
+                                        }}
+                                        className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    {[
+                                      {
+                                        key: "requireAcknowledgmentBeforeClose" as const,
+                                        label: "Require Ack Before Close",
+                                      },
+                                      {
+                                        key: "usePersistentHistory" as const,
+                                        label: "Use Persistent History",
+                                      },
+                                      {
+                                        key: "weightPreviousEscalations" as const,
+                                        label: "Weight Previous Escalations",
+                                      },
+                                    ].map((row) => (
+                                      <div
+                                        key={row.key}
+                                        className="bg-gray-800/50 rounded-lg px-3 py-2 flex items-center justify-between"
+                                      >
+                                        <span className="text-white/70 text-sm">{row.label}</span>
+                                        <button
+                                          onClick={() =>
+                                            setIntentDraft((prev) =>
+                                              prev
+                                                ? {
+                                                    ...prev,
+                                                    global: {
+                                                      ...prev.global,
+                                                      [row.key]: !prev.global[row.key],
+                                                    },
+                                                  }
+                                                : prev,
+                                            )
+                                          }
+                                          className="text-white/50 hover:text-white/80"
+                                        >
+                                          {intentDraft.global[row.key] ? (
+                                            <ToggleRight className="w-5 h-5 text-green-400" />
+                                          ) : (
+                                            <ToggleLeft className="w-5 h-5 text-white/30" />
+                                          )}
+                                        </button>
                                       </div>
-                                    ) : (
-                                      <>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                                  <div className="text-white/90 font-medium">Simulation Gate</div>
+                                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2 flex items-center justify-between">
+                                      <div>
+                                        <div className="text-white/70 text-sm">Enabled</div>
+                                        <div className="text-white/40 text-xs">
+                                          Require simulation evidence before execution
+                                        </div>
+                                      </div>
+                                      <button
+                                        onClick={() =>
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  simulationGate: {
+                                                    ...prev.simulationGate,
+                                                    enabled: !prev.simulationGate.enabled,
+                                                  },
+                                                }
+                                              : prev,
+                                          )
+                                        }
+                                        className="text-white/50 hover:text-white/80"
+                                      >
+                                        {intentDraft.simulationGate.enabled ? (
+                                          <ToggleRight className="w-5 h-5 text-green-400" />
+                                        ) : (
+                                          <ToggleLeft className="w-5 h-5 text-white/30" />
+                                        )}
+                                      </button>
+                                    </div>
+                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2">
+                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                        Mode
+                                      </label>
+                                      <select
+                                        value={intentDraft.simulationGate.mode}
+                                        onChange={(e) => {
+                                          const next = e.target.value as "warn" | "enforce";
+                                          if (
+                                            next === "enforce" &&
+                                            intentSimReportStatus &&
+                                            !intentSimReportStatus.readyForEnforce
+                                          ) {
+                                            setIntentMessage({
+                                              type: "error",
+                                              text: "Cannot switch to enforce: simulation report is missing or suites are not passing. Run in warn mode first to generate reports.",
+                                            });
+                                            return;
+                                          }
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  simulationGate: {
+                                                    ...prev.simulationGate,
+                                                    mode: next,
+                                                  },
+                                                }
+                                              : prev,
+                                          );
+                                        }}
+                                        className="w-full mt-1 bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer"
+                                      >
+                                        <option value="warn">warn</option>
+                                        <option
+                                          value="enforce"
+                                          disabled={
+                                            intentSimReportStatus != null &&
+                                            !intentSimReportStatus.readyForEnforce
+                                          }
+                                        >
+                                          enforce
+                                          {intentSimReportStatus &&
+                                          !intentSimReportStatus.readyForEnforce
+                                            ? " (report not ready)"
+                                            : ""}
+                                        </option>
+                                      </select>
+                                    </div>
+                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2">
+                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                        Minimum Pass Rate
+                                      </label>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        max={1}
+                                        step={0.01}
+                                        value={intentDraft.simulationGate.minPassRate}
+                                        onChange={(e) => {
+                                          const next = Number(e.target.value);
+                                          if (!Number.isFinite(next)) return;
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  simulationGate: {
+                                                    ...prev.simulationGate,
+                                                    minPassRate: next,
+                                                  },
+                                                }
+                                              : prev,
+                                          );
+                                        }}
+                                        className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                      />
+                                    </div>
+                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2">
+                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                        Report Path
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={intentDraft.simulationGate.reportPath}
+                                        onChange={(e) =>
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  simulationGate: {
+                                                    ...prev.simulationGate,
+                                                    reportPath: e.target.value,
+                                                  },
+                                                }
+                                              : prev,
+                                          )
+                                        }
+                                        className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                      />
+                                    </div>
+                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2 xl:col-span-2">
+                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                        Required Suites
+                                      </label>
+                                      <textarea
+                                        rows={3}
+                                        value={formatMultilineList(
+                                          intentDraft.simulationGate.suites,
+                                        )}
+                                        onChange={(e) =>
+                                          setIntentDraft((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  simulationGate: {
+                                                    ...prev.simulationGate,
+                                                    suites: parseMultilineList(e.target.value),
+                                                  },
+                                                }
+                                              : prev,
+                                          )
+                                        }
+                                        className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y"
+                                      />
+                                    </div>
+                                  </div>
+                                  {/* Simulation Report Status */}
+                                  {intentDraft.simulationGate.enabled && (
+                                    <div className="mt-3 bg-gray-800/60 rounded-lg p-3 space-y-2">
+                                      <div className="text-white/60 text-[10px] uppercase tracking-wider font-medium">
+                                        Report Status
+                                      </div>
+                                      {!intentSimReportStatus ? (
+                                        <div className="text-white/40 text-xs">
+                                          Loading report status...
+                                        </div>
+                                      ) : !intentSimReportStatus.exists ? (
                                         <div className="flex items-center gap-2 text-xs">
-                                          <span
-                                            className={`w-2 h-2 rounded-full inline-block ${intentSimReportStatus.readyForEnforce ? "bg-green-400" : "bg-yellow-400"}`}
-                                          />
-                                          <span
-                                            className={
-                                              intentSimReportStatus.readyForEnforce
-                                                ? "text-green-300"
-                                                : "text-yellow-300"
-                                            }
-                                          >
-                                            {intentSimReportStatus.readyForEnforce
-                                              ? "Report ready — all required suites passing"
-                                              : "Report exists but not all suites passing"}
+                                          <span className="w-2 h-2 rounded-full bg-red-400 inline-block" />
+                                          <span className="text-red-300">
+                                            Report file does not exist. Run simulation suites in
+                                            warn mode to generate it.
                                           </span>
                                         </div>
-                                        {intentSimReportStatus.suites.length > 0 && (
-                                          <div className="space-y-1 mt-1">
-                                            {intentSimReportStatus.suites.map((suite) => (
-                                              <div
-                                                key={suite.suiteId}
-                                                className="flex items-center justify-between text-xs bg-gray-700/50 rounded px-2 py-1"
-                                              >
-                                                <span className="text-white/70 font-mono">
-                                                  {suite.suiteId}
-                                                </span>
-                                                <span
-                                                  className={
-                                                    suite.passRate >=
-                                                    (intentDraft.simulationGate.minPassRate || 0.8)
-                                                      ? "text-green-400"
-                                                      : "text-red-400"
-                                                  }
-                                                >
-                                                  {(suite.passRate * 100).toFixed(0)}% pass rate
-                                                </span>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                        {intentSimReportStatus.warnings.length > 0 && (
-                                          <div className="space-y-1 mt-1">
-                                            {intentSimReportStatus.warnings.map((w, i) => (
-                                              <div
-                                                key={i}
-                                                className="text-yellow-400/70 text-[11px]"
-                                              >
-                                                {w}
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="bg-white/5 rounded-xl p-4 space-y-4">
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <div className="text-white/90 font-medium">
-                                      Department + Agent Hierarchy
-                                    </div>
-                                    <div className="text-white/40 text-xs">
-                                      Structured editor for practical boilerplate. Use raw JSON only
-                                      for advanced fields.
-                                    </div>
-                                  </div>
-                                  <div className="text-white/40 text-xs">
-                                    Departments: {Object.keys(parsedIntentDepartments.value).length}{" "}
-                                    · Agents: {Object.keys(parsedIntentAgents.value).length}
-                                  </div>
-                                </div>
-
-                                {parsedIntentDepartments.error && (
-                                  <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 px-3 py-2 text-xs">
-                                    Departments JSON parse error: {parsedIntentDepartments.error}
-                                  </div>
-                                )}
-                                {parsedIntentAgents.error && (
-                                  <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 px-3 py-2 text-xs">
-                                    Agents JSON parse error: {parsedIntentAgents.error}
-                                  </div>
-                                )}
-
-                                <div className="bg-gray-800/40 rounded-lg p-3 space-y-2">
-                                  <div className="text-white/70 text-sm font-medium">
-                                    Department Templates
-                                  </div>
-                                  <div className="text-white/45 text-xs">
-                                    Industry Packs: add multi-department baselines tuned for
-                                    specific client verticals.
-                                  </div>
-                                  <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
-                                    {INTENT_INDUSTRY_PACKS.map((pack) => (
-                                      <button
-                                        key={pack.id}
-                                        onClick={() => applyIntentIndustryPack(pack.id)}
-                                        className="text-left bg-gray-900/70 hover:bg-gray-900/90 border border-white/10 rounded-lg px-3 py-2 transition-all"
-                                      >
-                                        <div className="text-white/85 text-sm font-medium">
-                                          {pack.label}
-                                        </div>
-                                        <div className="text-white/40 text-[11px] mt-1">
-                                          {pack.description}
-                                        </div>
-                                        <div className="text-white/30 text-[10px] mt-1">
-                                          {pack.departments.length} department templates
-                                        </div>
-                                      </button>
-                                    ))}
-                                  </div>
-                                  <div className="border-t border-white/10 pt-2 mt-1 text-white/45 text-xs">
-                                    Core Department Templates: add single reusable departments.
-                                  </div>
-                                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
-                                    {INTENT_DEPARTMENT_TEMPLATES.map((template) => (
-                                      <button
-                                        key={template.id}
-                                        onClick={() =>
-                                          updateIntentDepartmentsMap((current) => {
-                                            const next = { ...current };
-                                            const key = nextAvailableIntentMapKey(
-                                              next,
-                                              template.id,
-                                            );
-                                            next[key] = { ...template.policy };
-                                            return next;
-                                          })
-                                        }
-                                        className="text-left bg-gray-900/60 hover:bg-gray-900/80 border border-white/10 rounded-lg px-3 py-2 transition-all"
-                                      >
-                                        <div className="text-white/80 text-sm font-medium">
-                                          {template.label}
-                                        </div>
-                                        <div className="text-white/40 text-[11px] mt-1">
-                                          {template.description}
-                                        </div>
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-
-                                <div className="space-y-3">
-                                  {Object.entries(parsedIntentDepartments.value).map(
-                                    ([departmentId, rawPolicy]) => {
-                                      const policy = normalizeIntentPolicyEditorDraft(rawPolicy);
-                                      return (
-                                        <div
-                                          key={departmentId}
-                                          className="bg-gray-800/40 rounded-lg p-3 space-y-3"
-                                        >
-                                          <div className="flex items-center justify-between">
-                                            <div className="text-white/80 text-sm font-medium">
-                                              Department: {departmentId}
-                                            </div>
-                                            <button
-                                              onClick={() =>
-                                                updateIntentDepartmentsMap((current) => {
-                                                  const next = { ...current };
-                                                  delete next[departmentId];
-                                                  return next;
-                                                })
+                                      ) : (
+                                        <>
+                                          <div className="flex items-center gap-2 text-xs">
+                                            <span
+                                              className={`w-2 h-2 rounded-full inline-block ${intentSimReportStatus.readyForEnforce ? "bg-green-400" : "bg-yellow-400"}`}
+                                            />
+                                            <span
+                                              className={
+                                                intentSimReportStatus.readyForEnforce
+                                                  ? "text-green-300"
+                                                  : "text-yellow-300"
                                               }
-                                              className="text-red-300/80 hover:text-red-200 text-xs px-2 py-1 bg-red-500/10 rounded border border-red-500/20"
                                             >
-                                              Remove
-                                            </button>
+                                              {intentSimReportStatus.readyForEnforce
+                                                ? "Report ready — all required suites passing"
+                                                : "Report exists but not all suites passing"}
+                                            </span>
                                           </div>
-                                          <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
-                                            <input
-                                              type="text"
-                                              value={policy.objective}
-                                              onChange={(e) =>
-                                                updateIntentDepartmentsMap((current) => {
-                                                  const draft = normalizeIntentPolicyEditorDraft(
-                                                    current[departmentId],
-                                                  );
-                                                  draft.objective = e.target.value;
-                                                  return {
-                                                    ...current,
-                                                    [departmentId]:
-                                                      intentPolicyEditorDraftToRecord(draft),
-                                                  };
-                                                })
-                                              }
-                                              placeholder="Department objective"
-                                              className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
-                                            />
-                                            <input
-                                              type="text"
-                                              value={policy.owner}
-                                              onChange={(e) =>
-                                                updateIntentDepartmentsMap((current) => {
-                                                  const draft = normalizeIntentPolicyEditorDraft(
-                                                    current[departmentId],
-                                                  );
-                                                  draft.owner = e.target.value;
-                                                  return {
-                                                    ...current,
-                                                    [departmentId]:
-                                                      intentPolicyEditorDraftToRecord(draft),
-                                                  };
-                                                })
-                                              }
-                                              placeholder="Department owner"
-                                              className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
-                                            />
-                                            <textarea
-                                              rows={3}
-                                              value={formatMultilineList(policy.tradeoffHierarchy)}
-                                              onChange={(e) =>
-                                                updateIntentDepartmentsMap((current) => {
-                                                  const draft = normalizeIntentPolicyEditorDraft(
-                                                    current[departmentId],
-                                                  );
-                                                  draft.tradeoffHierarchy = parseMultilineList(
-                                                    e.target.value,
-                                                  );
-                                                  return {
-                                                    ...current,
-                                                    [departmentId]:
-                                                      intentPolicyEditorDraftToRecord(draft),
-                                                  };
-                                                })
-                                              }
-                                              placeholder="Tradeoff hierarchy (one per line)"
-                                              className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y"
-                                            />
-                                            <textarea
-                                              rows={3}
-                                              value={formatMultilineList(policy.allowedActions)}
-                                              onChange={(e) =>
-                                                updateIntentDepartmentsMap((current) => {
-                                                  const draft = normalizeIntentPolicyEditorDraft(
-                                                    current[departmentId],
-                                                  );
-                                                  draft.allowedActions = parseMultilineList(
-                                                    e.target.value,
-                                                  );
-                                                  return {
-                                                    ...current,
-                                                    [departmentId]:
-                                                      intentPolicyEditorDraftToRecord(draft),
-                                                  };
-                                                })
-                                              }
-                                              placeholder="Allowed actions (one per line)"
-                                              className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y"
-                                            />
-                                          </div>
-                                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                                            <input
-                                              type="number"
-                                              min={-1}
-                                              max={1}
-                                              step={0.05}
-                                              value={policy.escalation.sentimentThreshold}
-                                              onChange={(e) =>
-                                                updateIntentDepartmentsMap((current) => {
-                                                  const draft = normalizeIntentPolicyEditorDraft(
-                                                    current[departmentId],
-                                                  );
-                                                  const next = Number(e.target.value);
-                                                  if (Number.isFinite(next)) {
-                                                    draft.escalation.sentimentThreshold = next;
-                                                  }
-                                                  return {
-                                                    ...current,
-                                                    [departmentId]:
-                                                      intentPolicyEditorDraftToRecord(draft),
-                                                  };
-                                                })
-                                              }
-                                              className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                            />
-                                            <input
-                                              type="number"
-                                              min={1}
-                                              step={1}
-                                              value={policy.escalation.maxAttemptsBeforeEscalation}
-                                              onChange={(e) =>
-                                                updateIntentDepartmentsMap((current) => {
-                                                  const draft = normalizeIntentPolicyEditorDraft(
-                                                    current[departmentId],
-                                                  );
-                                                  const next = Number(e.target.value);
-                                                  if (Number.isFinite(next)) {
-                                                    draft.escalation.maxAttemptsBeforeEscalation =
-                                                      next;
-                                                  }
-                                                  return {
-                                                    ...current,
-                                                    [departmentId]:
-                                                      intentPolicyEditorDraftToRecord(draft),
-                                                  };
-                                                })
-                                              }
-                                              className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                            />
-                                            <input
-                                              type="number"
-                                              min={1}
-                                              step={1}
-                                              value={policy.escalation.timeInConversationMinutes}
-                                              onChange={(e) =>
-                                                updateIntentDepartmentsMap((current) => {
-                                                  const draft = normalizeIntentPolicyEditorDraft(
-                                                    current[departmentId],
-                                                  );
-                                                  const next = Number(e.target.value);
-                                                  if (Number.isFinite(next)) {
-                                                    draft.escalation.timeInConversationMinutes =
-                                                      next;
-                                                  }
-                                                  return {
-                                                    ...current,
-                                                    [departmentId]:
-                                                      intentPolicyEditorDraftToRecord(draft),
-                                                  };
-                                                })
-                                              }
-                                              className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                            />
-                                          </div>
-                                        </div>
-                                      );
-                                    },
+                                          {intentSimReportStatus.suites.length > 0 && (
+                                            <div className="space-y-1 mt-1">
+                                              {intentSimReportStatus.suites.map((suite) => (
+                                                <div
+                                                  key={suite.suiteId}
+                                                  className="flex items-center justify-between text-xs bg-gray-700/50 rounded px-2 py-1"
+                                                >
+                                                  <span className="text-white/70 font-mono">
+                                                    {suite.suiteId}
+                                                  </span>
+                                                  <span
+                                                    className={
+                                                      suite.passRate >=
+                                                      (intentDraft.simulationGate.minPassRate ||
+                                                        0.8)
+                                                        ? "text-green-400"
+                                                        : "text-red-400"
+                                                    }
+                                                  >
+                                                    {(suite.passRate * 100).toFixed(0)}% pass rate
+                                                  </span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                          {intentSimReportStatus.warnings.length > 0 && (
+                                            <div className="space-y-1 mt-1">
+                                              {intentSimReportStatus.warnings.map((w, i) => (
+                                                <div
+                                                  key={i}
+                                                  className="text-yellow-400/70 text-[11px]"
+                                                >
+                                                  {w}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
 
-                                {/* Agent Governance — quick mapping table */}
-                                <div className="bg-gray-800/40 rounded-lg p-3 space-y-2">
-                                  <div className="text-white/70 text-sm font-medium">
-                                    Agent Governance
-                                  </div>
-                                  <p className="text-white/40 text-xs">
-                                    Map each discovered agent to a department. Unmapped agents
-                                    inherit only global policy.
-                                  </p>
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full text-xs">
-                                      <thead>
-                                        <tr className="text-white/50 border-b border-white/10">
-                                          <th className="text-left py-1 pr-2 font-medium">Agent</th>
-                                          <th className="text-left py-1 pr-2 font-medium">
-                                            Department
-                                          </th>
-                                          <th className="text-left py-1 font-medium">
-                                            Effective Chain
-                                          </th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {(() => {
-                                          const allAgentIds = uniqueNonEmptyStrings([
-                                            ...Object.keys(parsedIntentAgents.value),
-                                            ...agentOptions
-                                              .map((row) => row.id)
-                                              .filter(
-                                                (id) => id && id !== AGENT_SETTINGS_DEFAULT_TARGET,
-                                              ),
-                                            defaultAgentId,
-                                            "main",
-                                          ]);
-                                          return allAgentIds.map((agentId) => {
-                                            const agentPolicy = parsedIntentAgents.value[agentId] as
-                                              | Record<string, unknown>
-                                              | undefined;
-                                            const currentDept =
-                                              (agentPolicy?.departmentId as string) || "";
-                                            const isConfigured = Object.hasOwn(
-                                              parsedIntentAgents.value,
-                                              agentId,
-                                            );
-                                            const chainParts = ["Global"];
-                                            if (
-                                              currentDept &&
-                                              (Object.hasOwn(
-                                                parsedIntentDepartments.value,
-                                                currentDept,
-                                              ) ||
-                                                intentDepartmentIds.includes(currentDept))
-                                            ) {
-                                              chainParts.push(currentDept);
-                                            }
-                                            chainParts.push(agentId);
-                                            return (
-                                              <tr
-                                                key={agentId}
-                                                className="border-b border-white/5 hover:bg-white/5"
-                                              >
-                                                <td className="py-1.5 pr-2">
-                                                  <span className="text-white/80 font-mono">
-                                                    {agentId}
-                                                  </span>
-                                                  {!isConfigured && (
-                                                    <span className="ml-1.5 text-amber-400/70 text-[10px]">
-                                                      unmapped
-                                                    </span>
-                                                  )}
-                                                </td>
-                                                <td className="py-1.5 pr-2">
-                                                  <select
-                                                    value={currentDept}
-                                                    onChange={(e) => {
-                                                      const dept = e.target.value || undefined;
-                                                      updateIntentAgentsMap((current) => {
-                                                        if (Object.hasOwn(current, agentId)) {
-                                                          const draft =
-                                                            normalizeIntentPolicyEditorDraft(
-                                                              current[agentId],
-                                                            );
-                                                          draft.departmentId = dept;
-                                                          return {
-                                                            ...current,
-                                                            [agentId]:
-                                                              intentPolicyEditorDraftToRecord(
-                                                                draft,
-                                                                {
-                                                                  includeAgentFields: true,
-                                                                },
-                                                              ),
-                                                          };
-                                                        }
-                                                        return {
-                                                          ...current,
-                                                          [agentId]:
-                                                            intentPolicyEditorDraftToRecord(
-                                                              normalizeIntentPolicyEditorDraft({
-                                                                departmentId: dept,
-                                                              }),
-                                                              { includeAgentFields: true },
-                                                            ),
-                                                        };
-                                                      });
-                                                    }}
-                                                    className="bg-gray-700 text-white/80 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none w-full max-w-[180px]"
-                                                  >
-                                                    <option value="">— none —</option>
-                                                    {intentDepartmentIds.map((deptId) => (
-                                                      <option key={deptId} value={deptId}>
-                                                        {deptId}
-                                                      </option>
-                                                    ))}
-                                                  </select>
-                                                </td>
-                                                <td className="py-1.5">
-                                                  <span className="text-white/40">
-                                                    {chainParts.join(" → ")}
-                                                  </span>
-                                                </td>
-                                              </tr>
-                                            );
-                                          });
-                                        })()}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </div>
-
-                                <div className="bg-gray-800/40 rounded-lg p-3 space-y-2">
+                                <div className="bg-white/5 rounded-xl p-4 space-y-4">
                                   <div className="flex items-center justify-between">
-                                    <div className="text-white/70 text-sm font-medium">
-                                      Agent Hierarchy
+                                    <div>
+                                      <div className="text-white/90 font-medium">
+                                        Department + Agent Hierarchy
+                                      </div>
+                                      <div className="text-white/40 text-xs">
+                                        Structured editor for practical boilerplate. Use raw JSON
+                                        only for advanced fields.
+                                      </div>
                                     </div>
-                                    <button
-                                      onClick={() =>
-                                        updateIntentAgentsMap((current) => {
-                                          const next = { ...current };
-                                          const detected = uniqueNonEmptyStrings([
-                                            ...agentOptions
-                                              .map((row) => row.id)
-                                              .filter(
-                                                (id) => id && id !== AGENT_SETTINGS_DEFAULT_TARGET,
-                                              ),
-                                            defaultAgentId,
-                                            "main",
-                                          ]);
-                                          for (const agentId of detected) {
-                                            if (Object.hasOwn(next, agentId)) continue;
-                                            next[agentId] = intentPolicyEditorDraftToRecord(
-                                              normalizeIntentPolicyEditorDraft({
-                                                departmentId: inferIntentDepartmentId(agentId),
-                                                role: inferIntentRole(agentId),
-                                                usePersistentHistory: true,
-                                                weightPreviousEscalations: true,
-                                                requireAcknowledgmentBeforeClose: true,
-                                              }),
-                                              { includeAgentFields: true },
-                                            );
-                                          }
-                                          return next;
-                                        })
-                                      }
-                                      className="px-2 py-1 bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 rounded border border-purple-500/30 text-xs"
-                                    >
-                                      Add Detected Agents
-                                    </button>
+                                    <div className="text-white/40 text-xs">
+                                      Departments:{" "}
+                                      {Object.keys(parsedIntentDepartments.value).length} · Agents:{" "}
+                                      {Object.keys(parsedIntentAgents.value).length}
+                                    </div>
                                   </div>
+
+                                  {parsedIntentDepartments.error && (
+                                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 px-3 py-2 text-xs">
+                                      Departments JSON parse error: {parsedIntentDepartments.error}
+                                    </div>
+                                  )}
+                                  {parsedIntentAgents.error && (
+                                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 px-3 py-2 text-xs">
+                                      Agents JSON parse error: {parsedIntentAgents.error}
+                                    </div>
+                                  )}
+
+                                  <div className="bg-gray-800/40 rounded-lg p-3 space-y-2">
+                                    <div className="text-white/70 text-sm font-medium">
+                                      Department Templates
+                                    </div>
+                                    <div className="text-white/45 text-xs">
+                                      Industry Packs: add multi-department baselines tuned for
+                                      specific client verticals.
+                                    </div>
+                                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
+                                      {INTENT_INDUSTRY_PACKS.map((pack) => (
+                                        <button
+                                          key={pack.id}
+                                          onClick={() => applyIntentIndustryPack(pack.id)}
+                                          className="text-left bg-gray-900/70 hover:bg-gray-900/90 border border-white/10 rounded-lg px-3 py-2 transition-all"
+                                        >
+                                          <div className="text-white/85 text-sm font-medium">
+                                            {pack.label}
+                                          </div>
+                                          <div className="text-white/40 text-[11px] mt-1">
+                                            {pack.description}
+                                          </div>
+                                          <div className="text-white/30 text-[10px] mt-1">
+                                            {pack.departments.length} department templates
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                    <div className="border-t border-white/10 pt-2 mt-1 text-white/45 text-xs">
+                                      Core Department Templates: add single reusable departments.
+                                    </div>
+                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+                                      {INTENT_DEPARTMENT_TEMPLATES.map((template) => (
+                                        <button
+                                          key={template.id}
+                                          onClick={() =>
+                                            updateIntentDepartmentsMap((current) => {
+                                              const next = { ...current };
+                                              const key = nextAvailableIntentMapKey(
+                                                next,
+                                                template.id,
+                                              );
+                                              next[key] = { ...template.policy };
+                                              return next;
+                                            })
+                                          }
+                                          className="text-left bg-gray-900/60 hover:bg-gray-900/80 border border-white/10 rounded-lg px-3 py-2 transition-all"
+                                        >
+                                          <div className="text-white/80 text-sm font-medium">
+                                            {template.label}
+                                          </div>
+                                          <div className="text-white/40 text-[11px] mt-1">
+                                            {template.description}
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+
                                   <div className="space-y-3">
-                                    {Object.entries(parsedIntentAgents.value).map(
-                                      ([agentId, rawPolicy]) => {
+                                    {Object.entries(parsedIntentDepartments.value).map(
+                                      ([departmentId, rawPolicy]) => {
                                         const policy = normalizeIntentPolicyEditorDraft(rawPolicy);
                                         return (
                                           <div
-                                            key={agentId}
-                                            className="bg-gray-900/60 rounded-lg p-3 space-y-2"
+                                            key={departmentId}
+                                            className="bg-gray-800/40 rounded-lg p-3 space-y-3"
                                           >
                                             <div className="flex items-center justify-between">
                                               <div className="text-white/80 text-sm font-medium">
-                                                Agent: {agentId}
+                                                Department: {departmentId}
                                               </div>
                                               <button
                                                 onClick={() =>
-                                                  updateIntentAgentsMap((current) => {
+                                                  updateIntentDepartmentsMap((current) => {
                                                     const next = { ...current };
-                                                    delete next[agentId];
+                                                    delete next[departmentId];
                                                     return next;
                                                   })
                                                 }
@@ -16558,439 +16228,809 @@ export function ConfigPanel({
                                                 Remove
                                               </button>
                                             </div>
-                                            <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
-                                              <select
-                                                value={policy.departmentId || ""}
-                                                onChange={(e) =>
-                                                  updateIntentAgentsMap((current) => {
-                                                    const draft = normalizeIntentPolicyEditorDraft(
-                                                      current[agentId],
-                                                    );
-                                                    draft.departmentId =
-                                                      e.target.value || undefined;
-                                                    return {
-                                                      ...current,
-                                                      [agentId]: intentPolicyEditorDraftToRecord(
-                                                        draft,
-                                                        {
-                                                          includeAgentFields: true,
-                                                        },
-                                                      ),
-                                                    };
-                                                  })
-                                                }
-                                                className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
-                                              >
-                                                <option value="">Select department</option>
-                                                {intentDepartmentIds.map((departmentId) => (
-                                                  <option key={departmentId} value={departmentId}>
-                                                    {departmentId}
-                                                  </option>
-                                                ))}
-                                              </select>
-                                              <input
-                                                type="text"
-                                                value={policy.role || ""}
-                                                onChange={(e) =>
-                                                  updateIntentAgentsMap((current) => {
-                                                    const draft = normalizeIntentPolicyEditorDraft(
-                                                      current[agentId],
-                                                    );
-                                                    draft.role = e.target.value || undefined;
-                                                    return {
-                                                      ...current,
-                                                      [agentId]: intentPolicyEditorDraftToRecord(
-                                                        draft,
-                                                        {
-                                                          includeAgentFields: true,
-                                                        },
-                                                      ),
-                                                    };
-                                                  })
-                                                }
-                                                placeholder="Role"
-                                                className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
-                                              />
+                                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
                                               <input
                                                 type="text"
                                                 value={policy.objective}
                                                 onChange={(e) =>
-                                                  updateIntentAgentsMap((current) => {
+                                                  updateIntentDepartmentsMap((current) => {
                                                     const draft = normalizeIntentPolicyEditorDraft(
-                                                      current[agentId],
+                                                      current[departmentId],
                                                     );
                                                     draft.objective = e.target.value;
                                                     return {
                                                       ...current,
-                                                      [agentId]: intentPolicyEditorDraftToRecord(
-                                                        draft,
-                                                        {
-                                                          includeAgentFields: true,
-                                                        },
-                                                      ),
+                                                      [departmentId]:
+                                                        intentPolicyEditorDraftToRecord(draft),
                                                     };
                                                   })
                                                 }
-                                                placeholder="Agent objective"
+                                                placeholder="Department objective"
+                                                className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                                              />
+                                              <input
+                                                type="text"
+                                                value={policy.owner}
+                                                onChange={(e) =>
+                                                  updateIntentDepartmentsMap((current) => {
+                                                    const draft = normalizeIntentPolicyEditorDraft(
+                                                      current[departmentId],
+                                                    );
+                                                    draft.owner = e.target.value;
+                                                    return {
+                                                      ...current,
+                                                      [departmentId]:
+                                                        intentPolicyEditorDraftToRecord(draft),
+                                                    };
+                                                  })
+                                                }
+                                                placeholder="Department owner"
                                                 className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
                                               />
                                               <textarea
-                                                rows={2}
+                                                rows={3}
+                                                value={formatMultilineList(
+                                                  policy.tradeoffHierarchy,
+                                                )}
+                                                onChange={(e) =>
+                                                  updateIntentDepartmentsMap((current) => {
+                                                    const draft = normalizeIntentPolicyEditorDraft(
+                                                      current[departmentId],
+                                                    );
+                                                    draft.tradeoffHierarchy = parseMultilineList(
+                                                      e.target.value,
+                                                    );
+                                                    return {
+                                                      ...current,
+                                                      [departmentId]:
+                                                        intentPolicyEditorDraftToRecord(draft),
+                                                    };
+                                                  })
+                                                }
+                                                placeholder="Tradeoff hierarchy (one per line)"
+                                                className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y"
+                                              />
+                                              <textarea
+                                                rows={3}
                                                 value={formatMultilineList(policy.allowedActions)}
                                                 onChange={(e) =>
-                                                  updateIntentAgentsMap((current) => {
+                                                  updateIntentDepartmentsMap((current) => {
                                                     const draft = normalizeIntentPolicyEditorDraft(
-                                                      current[agentId],
+                                                      current[departmentId],
                                                     );
                                                     draft.allowedActions = parseMultilineList(
                                                       e.target.value,
                                                     );
                                                     return {
                                                       ...current,
-                                                      [agentId]: intentPolicyEditorDraftToRecord(
-                                                        draft,
-                                                        {
-                                                          includeAgentFields: true,
-                                                        },
-                                                      ),
+                                                      [departmentId]:
+                                                        intentPolicyEditorDraftToRecord(draft),
                                                     };
                                                   })
                                                 }
-                                                placeholder="Allowed actions"
-                                                className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y xl:col-span-2"
+                                                placeholder="Allowed actions (one per line)"
+                                                className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y"
                                               />
-                                              <div className="grid grid-cols-3 gap-2 xl:col-span-1">
-                                                <input
-                                                  type="number"
-                                                  min={-1}
-                                                  max={1}
-                                                  step={0.05}
-                                                  value={policy.escalation.sentimentThreshold}
-                                                  onChange={(e) =>
-                                                    updateIntentAgentsMap((current) => {
-                                                      const draft =
-                                                        normalizeIntentPolicyEditorDraft(
-                                                          current[agentId],
-                                                        );
-                                                      const next = Number(e.target.value);
-                                                      if (Number.isFinite(next)) {
-                                                        draft.escalation.sentimentThreshold = next;
-                                                      }
-                                                      return {
-                                                        ...current,
-                                                        [agentId]: intentPolicyEditorDraftToRecord(
-                                                          draft,
-                                                          {
-                                                            includeAgentFields: true,
-                                                          },
-                                                        ),
-                                                      };
-                                                    })
-                                                  }
-                                                  className="bg-gray-700 text-white/80 rounded-lg px-2 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                                />
-                                                <input
-                                                  type="number"
-                                                  min={1}
-                                                  step={1}
-                                                  value={
-                                                    policy.escalation.maxAttemptsBeforeEscalation
-                                                  }
-                                                  onChange={(e) =>
-                                                    updateIntentAgentsMap((current) => {
-                                                      const draft =
-                                                        normalizeIntentPolicyEditorDraft(
-                                                          current[agentId],
-                                                        );
-                                                      const next = Number(e.target.value);
-                                                      if (Number.isFinite(next)) {
-                                                        draft.escalation.maxAttemptsBeforeEscalation =
-                                                          next;
-                                                      }
-                                                      return {
-                                                        ...current,
-                                                        [agentId]: intentPolicyEditorDraftToRecord(
-                                                          draft,
-                                                          {
-                                                            includeAgentFields: true,
-                                                          },
-                                                        ),
-                                                      };
-                                                    })
-                                                  }
-                                                  className="bg-gray-700 text-white/80 rounded-lg px-2 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                                />
-                                                <input
-                                                  type="number"
-                                                  min={1}
-                                                  step={1}
-                                                  value={
-                                                    policy.escalation.timeInConversationMinutes
-                                                  }
-                                                  onChange={(e) =>
-                                                    updateIntentAgentsMap((current) => {
-                                                      const draft =
-                                                        normalizeIntentPolicyEditorDraft(
-                                                          current[agentId],
-                                                        );
-                                                      const next = Number(e.target.value);
-                                                      if (Number.isFinite(next)) {
-                                                        draft.escalation.timeInConversationMinutes =
-                                                          next;
-                                                      }
-                                                      return {
-                                                        ...current,
-                                                        [agentId]: intentPolicyEditorDraftToRecord(
-                                                          draft,
-                                                          {
-                                                            includeAgentFields: true,
-                                                          },
-                                                        ),
-                                                      };
-                                                    })
-                                                  }
-                                                  className="bg-gray-700 text-white/80 rounded-lg px-2 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
-                                                />
-                                              </div>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                              <input
+                                                type="number"
+                                                min={-1}
+                                                max={1}
+                                                step={0.05}
+                                                value={policy.escalation.sentimentThreshold}
+                                                onChange={(e) =>
+                                                  updateIntentDepartmentsMap((current) => {
+                                                    const draft = normalizeIntentPolicyEditorDraft(
+                                                      current[departmentId],
+                                                    );
+                                                    const next = Number(e.target.value);
+                                                    if (Number.isFinite(next)) {
+                                                      draft.escalation.sentimentThreshold = next;
+                                                    }
+                                                    return {
+                                                      ...current,
+                                                      [departmentId]:
+                                                        intentPolicyEditorDraftToRecord(draft),
+                                                    };
+                                                  })
+                                                }
+                                                className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                              />
+                                              <input
+                                                type="number"
+                                                min={1}
+                                                step={1}
+                                                value={
+                                                  policy.escalation.maxAttemptsBeforeEscalation
+                                                }
+                                                onChange={(e) =>
+                                                  updateIntentDepartmentsMap((current) => {
+                                                    const draft = normalizeIntentPolicyEditorDraft(
+                                                      current[departmentId],
+                                                    );
+                                                    const next = Number(e.target.value);
+                                                    if (Number.isFinite(next)) {
+                                                      draft.escalation.maxAttemptsBeforeEscalation =
+                                                        next;
+                                                    }
+                                                    return {
+                                                      ...current,
+                                                      [departmentId]:
+                                                        intentPolicyEditorDraftToRecord(draft),
+                                                    };
+                                                  })
+                                                }
+                                                className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                              />
+                                              <input
+                                                type="number"
+                                                min={1}
+                                                step={1}
+                                                value={policy.escalation.timeInConversationMinutes}
+                                                onChange={(e) =>
+                                                  updateIntentDepartmentsMap((current) => {
+                                                    const draft = normalizeIntentPolicyEditorDraft(
+                                                      current[departmentId],
+                                                    );
+                                                    const next = Number(e.target.value);
+                                                    if (Number.isFinite(next)) {
+                                                      draft.escalation.timeInConversationMinutes =
+                                                        next;
+                                                    }
+                                                    return {
+                                                      ...current,
+                                                      [departmentId]:
+                                                        intentPolicyEditorDraftToRecord(draft),
+                                                    };
+                                                  })
+                                                }
+                                                className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                              />
                                             </div>
                                           </div>
                                         );
                                       },
                                     )}
                                   </div>
-                                </div>
 
-                                <details className="bg-gray-800/30 rounded-lg p-3 border border-white/10">
-                                  <summary className="text-white/70 text-sm cursor-pointer select-none">
-                                    Advanced Raw JSON (optional)
-                                  </summary>
-                                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 mt-3">
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Departments
-                                      </label>
-                                      <textarea
-                                        rows={10}
-                                        value={intentDepartmentsJson}
-                                        onChange={(e) => setIntentDepartmentsJson(e.target.value)}
-                                        className="w-full mt-1 bg-gray-800/60 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y"
-                                      />
+                                  {/* Agent Governance — quick mapping table */}
+                                  <div className="bg-gray-800/40 rounded-lg p-3 space-y-2">
+                                    <div className="text-white/70 text-sm font-medium">
+                                      Agent Governance
                                     </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Agents
-                                      </label>
-                                      <textarea
-                                        rows={10}
-                                        value={intentAgentsJson}
-                                        onChange={(e) => setIntentAgentsJson(e.target.value)}
-                                        className="w-full mt-1 bg-gray-800/60 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y"
-                                      />
+                                    <p className="text-white/40 text-xs">
+                                      Map each discovered agent to a department. Unmapped agents
+                                      inherit only global policy.
+                                    </p>
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full text-xs">
+                                        <thead>
+                                          <tr className="text-white/50 border-b border-white/10">
+                                            <th className="text-left py-1 pr-2 font-medium">
+                                              Agent
+                                            </th>
+                                            <th className="text-left py-1 pr-2 font-medium">
+                                              Department
+                                            </th>
+                                            <th className="text-left py-1 font-medium">
+                                              Effective Chain
+                                            </th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {(() => {
+                                            const allAgentIds = uniqueNonEmptyStrings([
+                                              ...Object.keys(parsedIntentAgents.value),
+                                              ...agentOptions
+                                                .map((row) => row.id)
+                                                .filter(
+                                                  (id) =>
+                                                    id && id !== AGENT_SETTINGS_DEFAULT_TARGET,
+                                                ),
+                                              defaultAgentId,
+                                              "main",
+                                            ]);
+                                            return allAgentIds.map((agentId) => {
+                                              const agentPolicy = parsedIntentAgents.value[
+                                                agentId
+                                              ] as Record<string, unknown> | undefined;
+                                              const currentDept =
+                                                (agentPolicy?.departmentId as string) || "";
+                                              const isConfigured = Object.hasOwn(
+                                                parsedIntentAgents.value,
+                                                agentId,
+                                              );
+                                              const chainParts = ["Global"];
+                                              if (
+                                                currentDept &&
+                                                (Object.hasOwn(
+                                                  parsedIntentDepartments.value,
+                                                  currentDept,
+                                                ) ||
+                                                  intentDepartmentIds.includes(currentDept))
+                                              ) {
+                                                chainParts.push(currentDept);
+                                              }
+                                              chainParts.push(agentId);
+                                              return (
+                                                <tr
+                                                  key={agentId}
+                                                  className="border-b border-white/5 hover:bg-white/5"
+                                                >
+                                                  <td className="py-1.5 pr-2">
+                                                    <span className="text-white/80 font-mono">
+                                                      {agentId}
+                                                    </span>
+                                                    {!isConfigured && (
+                                                      <span className="ml-1.5 text-amber-400/70 text-[10px]">
+                                                        unmapped
+                                                      </span>
+                                                    )}
+                                                  </td>
+                                                  <td className="py-1.5 pr-2">
+                                                    <select
+                                                      value={currentDept}
+                                                      onChange={(e) => {
+                                                        const dept = e.target.value || undefined;
+                                                        updateIntentAgentsMap((current) => {
+                                                          if (Object.hasOwn(current, agentId)) {
+                                                            const draft =
+                                                              normalizeIntentPolicyEditorDraft(
+                                                                current[agentId],
+                                                              );
+                                                            draft.departmentId = dept;
+                                                            return {
+                                                              ...current,
+                                                              [agentId]:
+                                                                intentPolicyEditorDraftToRecord(
+                                                                  draft,
+                                                                  {
+                                                                    includeAgentFields: true,
+                                                                  },
+                                                                ),
+                                                            };
+                                                          }
+                                                          return {
+                                                            ...current,
+                                                            [agentId]:
+                                                              intentPolicyEditorDraftToRecord(
+                                                                normalizeIntentPolicyEditorDraft({
+                                                                  departmentId: dept,
+                                                                }),
+                                                                { includeAgentFields: true },
+                                                              ),
+                                                          };
+                                                        });
+                                                      }}
+                                                      className="bg-gray-700 text-white/80 rounded px-2 py-1 text-xs border border-white/10 focus:border-purple-500/50 outline-none w-full max-w-[180px]"
+                                                    >
+                                                      <option value="">— none —</option>
+                                                      {intentDepartmentIds.map((deptId) => (
+                                                        <option key={deptId} value={deptId}>
+                                                          {deptId}
+                                                        </option>
+                                                      ))}
+                                                    </select>
+                                                  </td>
+                                                  <td className="py-1.5">
+                                                    <span className="text-white/40">
+                                                      {chainParts.join(" → ")}
+                                                    </span>
+                                                  </td>
+                                                </tr>
+                                              );
+                                            });
+                                          })()}
+                                        </tbody>
+                                      </table>
                                     </div>
                                   </div>
-                                </details>
 
-                                <div className="bg-white/5 rounded-xl p-4 space-y-3 border border-white/10">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                      <div className="text-white/90 font-medium">
-                                        Preview & Simulate (Required)
+                                  <div className="bg-gray-800/40 rounded-lg p-3 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <div className="text-white/70 text-sm font-medium">
+                                        Agent Hierarchy
                                       </div>
-                                      <div className="text-white/40 text-xs mt-1">
-                                        Validate hierarchy and evaluate simulation-gate impact
-                                        before save.
-                                      </div>
-                                    </div>
-                                    <div
-                                      className={`text-[11px] px-2 py-1 rounded border ${
-                                        intentPreviewCurrent
-                                          ? "border-green-500/30 bg-green-500/10 text-green-300"
-                                          : "border-amber-500/30 bg-amber-500/10 text-amber-200"
-                                      }`}
-                                    >
-                                      {intentPreviewCurrent
-                                        ? "Preview current"
-                                        : "Preview required"}
-                                    </div>
-                                  </div>
-
-                                  <div className="flex items-center justify-between">
-                                    <div className="text-xs text-indigo-300">
-                                      {intentSimulating
-                                        ? "Simulation running..."
-                                        : intentSimulationMessage?.text || ""}
-                                    </div>
-                                    <div className="flex gap-2">
                                       <button
-                                        onClick={() => void previewIntentSettings()}
-                                        disabled={intentPreviewing || intentSimulating}
-                                        className="px-3 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-200 rounded-lg transition-all text-sm font-medium disabled:opacity-50"
+                                        onClick={() =>
+                                          updateIntentAgentsMap((current) => {
+                                            const next = { ...current };
+                                            const detected = uniqueNonEmptyStrings([
+                                              ...agentOptions
+                                                .map((row) => row.id)
+                                                .filter(
+                                                  (id) =>
+                                                    id && id !== AGENT_SETTINGS_DEFAULT_TARGET,
+                                                ),
+                                              defaultAgentId,
+                                              "main",
+                                            ]);
+                                            for (const agentId of detected) {
+                                              if (Object.hasOwn(next, agentId)) continue;
+                                              next[agentId] = intentPolicyEditorDraftToRecord(
+                                                normalizeIntentPolicyEditorDraft({
+                                                  departmentId: inferIntentDepartmentId(agentId),
+                                                  role: inferIntentRole(agentId),
+                                                  usePersistentHistory: true,
+                                                  weightPreviousEscalations: true,
+                                                  requireAcknowledgmentBeforeClose: true,
+                                                }),
+                                                { includeAgentFields: true },
+                                              );
+                                            }
+                                            return next;
+                                          })
+                                        }
+                                        className="px-2 py-1 bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 rounded border border-purple-500/30 text-xs"
                                       >
-                                        {intentPreviewing ? "Previewing..." : "Preview & Simulate"}
-                                      </button>
-                                      <button
-                                        onClick={() => void runIntentSimulation()}
-                                        disabled={intentSimulating || intentPreviewing}
-                                        className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 rounded-lg transition-all text-sm font-medium disabled:opacity-50"
-                                      >
-                                        {intentSimulating ? "Running..." : "Run Simulation Suite"}
+                                        Add Detected Agents
                                       </button>
                                     </div>
-                                  </div>
-
-                                  {intentPreview && (
-                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                                      <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
-                                        <div className="text-white/80 text-xs uppercase tracking-wider">
-                                          Validation
-                                        </div>
-                                        <div className="text-white/60 text-xs">
-                                          Mode:{" "}
-                                          <span className="font-mono">
-                                            {intentPreview.validation.mode}
-                                          </span>{" "}
-                                          · Issues:{" "}
-                                          <span className="font-mono">
-                                            {intentPreview.validation.issueCount}
-                                          </span>
-                                        </div>
-                                        <div
-                                          className={`text-xs ${
-                                            intentPreview.validation.blocking
-                                              ? "text-red-300"
-                                              : "text-green-300"
-                                          }`}
-                                        >
-                                          {intentPreview.validation.blocking
-                                            ? "Blocking under current validation mode."
-                                            : "No validation blocking conditions."}
-                                        </div>
-                                        {intentPreview.validation.issues.length > 0 && (
-                                          <div className="max-h-36 overflow-auto rounded border border-white/10 bg-black/20 p-2 space-y-1">
-                                            {intentPreview.validation.issues.map((issue, idx) => (
-                                              <div
-                                                key={`${issue.path}-${idx}`}
-                                                className="text-[11px]"
-                                              >
-                                                <span className="text-amber-200 font-mono">
-                                                  {issue.path}
-                                                </span>
-                                                <span className="text-white/60">
-                                                  {" "}
-                                                  — {issue.message}
-                                                </span>
+                                    <div className="space-y-3">
+                                      {Object.entries(parsedIntentAgents.value).map(
+                                        ([agentId, rawPolicy]) => {
+                                          const policy =
+                                            normalizeIntentPolicyEditorDraft(rawPolicy);
+                                          return (
+                                            <div
+                                              key={agentId}
+                                              className="bg-gray-900/60 rounded-lg p-3 space-y-2"
+                                            >
+                                              <div className="flex items-center justify-between">
+                                                <div className="text-white/80 text-sm font-medium">
+                                                  Agent: {agentId}
+                                                </div>
+                                                <button
+                                                  onClick={() =>
+                                                    updateIntentAgentsMap((current) => {
+                                                      const next = { ...current };
+                                                      delete next[agentId];
+                                                      return next;
+                                                    })
+                                                  }
+                                                  className="text-red-300/80 hover:text-red-200 text-xs px-2 py-1 bg-red-500/10 rounded border border-red-500/20"
+                                                >
+                                                  Remove
+                                                </button>
                                               </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </div>
+                                              <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
+                                                <select
+                                                  value={policy.departmentId || ""}
+                                                  onChange={(e) =>
+                                                    updateIntentAgentsMap((current) => {
+                                                      const draft =
+                                                        normalizeIntentPolicyEditorDraft(
+                                                          current[agentId],
+                                                        );
+                                                      draft.departmentId =
+                                                        e.target.value || undefined;
+                                                      return {
+                                                        ...current,
+                                                        [agentId]: intentPolicyEditorDraftToRecord(
+                                                          draft,
+                                                          {
+                                                            includeAgentFields: true,
+                                                          },
+                                                        ),
+                                                      };
+                                                    })
+                                                  }
+                                                  className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                                                >
+                                                  <option value="">Select department</option>
+                                                  {intentDepartmentIds.map((departmentId) => (
+                                                    <option key={departmentId} value={departmentId}>
+                                                      {departmentId}
+                                                    </option>
+                                                  ))}
+                                                </select>
+                                                <input
+                                                  type="text"
+                                                  value={policy.role || ""}
+                                                  onChange={(e) =>
+                                                    updateIntentAgentsMap((current) => {
+                                                      const draft =
+                                                        normalizeIntentPolicyEditorDraft(
+                                                          current[agentId],
+                                                        );
+                                                      draft.role = e.target.value || undefined;
+                                                      return {
+                                                        ...current,
+                                                        [agentId]: intentPolicyEditorDraftToRecord(
+                                                          draft,
+                                                          {
+                                                            includeAgentFields: true,
+                                                          },
+                                                        ),
+                                                      };
+                                                    })
+                                                  }
+                                                  placeholder="Role"
+                                                  className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                                                />
+                                                <input
+                                                  type="text"
+                                                  value={policy.objective}
+                                                  onChange={(e) =>
+                                                    updateIntentAgentsMap((current) => {
+                                                      const draft =
+                                                        normalizeIntentPolicyEditorDraft(
+                                                          current[agentId],
+                                                        );
+                                                      draft.objective = e.target.value;
+                                                      return {
+                                                        ...current,
+                                                        [agentId]: intentPolicyEditorDraftToRecord(
+                                                          draft,
+                                                          {
+                                                            includeAgentFields: true,
+                                                          },
+                                                        ),
+                                                      };
+                                                    })
+                                                  }
+                                                  placeholder="Agent objective"
+                                                  className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                                                />
+                                                <textarea
+                                                  rows={2}
+                                                  value={formatMultilineList(policy.allowedActions)}
+                                                  onChange={(e) =>
+                                                    updateIntentAgentsMap((current) => {
+                                                      const draft =
+                                                        normalizeIntentPolicyEditorDraft(
+                                                          current[agentId],
+                                                        );
+                                                      draft.allowedActions = parseMultilineList(
+                                                        e.target.value,
+                                                      );
+                                                      return {
+                                                        ...current,
+                                                        [agentId]: intentPolicyEditorDraftToRecord(
+                                                          draft,
+                                                          {
+                                                            includeAgentFields: true,
+                                                          },
+                                                        ),
+                                                      };
+                                                    })
+                                                  }
+                                                  placeholder="Allowed actions"
+                                                  className="bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y xl:col-span-2"
+                                                />
+                                                <div className="grid grid-cols-3 gap-2 xl:col-span-1">
+                                                  <input
+                                                    type="number"
+                                                    min={-1}
+                                                    max={1}
+                                                    step={0.05}
+                                                    value={policy.escalation.sentimentThreshold}
+                                                    onChange={(e) =>
+                                                      updateIntentAgentsMap((current) => {
+                                                        const draft =
+                                                          normalizeIntentPolicyEditorDraft(
+                                                            current[agentId],
+                                                          );
+                                                        const next = Number(e.target.value);
+                                                        if (Number.isFinite(next)) {
+                                                          draft.escalation.sentimentThreshold =
+                                                            next;
+                                                        }
+                                                        return {
+                                                          ...current,
+                                                          [agentId]:
+                                                            intentPolicyEditorDraftToRecord(draft, {
+                                                              includeAgentFields: true,
+                                                            }),
+                                                        };
+                                                      })
+                                                    }
+                                                    className="bg-gray-700 text-white/80 rounded-lg px-2 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                                  />
+                                                  <input
+                                                    type="number"
+                                                    min={1}
+                                                    step={1}
+                                                    value={
+                                                      policy.escalation.maxAttemptsBeforeEscalation
+                                                    }
+                                                    onChange={(e) =>
+                                                      updateIntentAgentsMap((current) => {
+                                                        const draft =
+                                                          normalizeIntentPolicyEditorDraft(
+                                                            current[agentId],
+                                                          );
+                                                        const next = Number(e.target.value);
+                                                        if (Number.isFinite(next)) {
+                                                          draft.escalation.maxAttemptsBeforeEscalation =
+                                                            next;
+                                                        }
+                                                        return {
+                                                          ...current,
+                                                          [agentId]:
+                                                            intentPolicyEditorDraftToRecord(draft, {
+                                                              includeAgentFields: true,
+                                                            }),
+                                                        };
+                                                      })
+                                                    }
+                                                    className="bg-gray-700 text-white/80 rounded-lg px-2 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                                  />
+                                                  <input
+                                                    type="number"
+                                                    min={1}
+                                                    step={1}
+                                                    value={
+                                                      policy.escalation.timeInConversationMinutes
+                                                    }
+                                                    onChange={(e) =>
+                                                      updateIntentAgentsMap((current) => {
+                                                        const draft =
+                                                          normalizeIntentPolicyEditorDraft(
+                                                            current[agentId],
+                                                          );
+                                                        const next = Number(e.target.value);
+                                                        if (Number.isFinite(next)) {
+                                                          draft.escalation.timeInConversationMinutes =
+                                                            next;
+                                                        }
+                                                        return {
+                                                          ...current,
+                                                          [agentId]:
+                                                            intentPolicyEditorDraftToRecord(draft, {
+                                                              includeAgentFields: true,
+                                                            }),
+                                                        };
+                                                      })
+                                                    }
+                                                    className="bg-gray-700 text-white/80 rounded-lg px-2 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                                                  />
+                                                </div>
+                                              </div>
+                                            </div>
+                                          );
+                                        },
+                                      )}
+                                    </div>
+                                  </div>
 
-                                      <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
-                                        <div className="text-white/80 text-xs uppercase tracking-wider">
-                                          Simulation Gate
+                                  <details className="bg-gray-800/30 rounded-lg p-3 border border-white/10">
+                                    <summary className="text-white/70 text-sm cursor-pointer select-none">
+                                      Advanced Raw JSON (optional)
+                                    </summary>
+                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 mt-3">
+                                      <div>
+                                        <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                          Departments
+                                        </label>
+                                        <textarea
+                                          rows={10}
+                                          value={intentDepartmentsJson}
+                                          onChange={(e) => setIntentDepartmentsJson(e.target.value)}
+                                          className="w-full mt-1 bg-gray-800/60 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                          Agents
+                                        </label>
+                                        <textarea
+                                          rows={10}
+                                          value={intentAgentsJson}
+                                          onChange={(e) => setIntentAgentsJson(e.target.value)}
+                                          className="w-full mt-1 bg-gray-800/60 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono resize-y"
+                                        />
+                                      </div>
+                                    </div>
+                                  </details>
+
+                                  <div className="bg-white/5 rounded-xl p-4 space-y-3 border border-white/10">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <div className="text-white/90 font-medium">
+                                          Preview & Simulate (Required)
                                         </div>
-                                        <div className="text-white/60 text-xs">
-                                          {intentPreview.simulation.enabled ||
-                                          intentPreview.simulation.suitesSeen > 0 ? (
-                                            <>
-                                              Mode:{" "}
-                                              <span className="font-mono">
-                                                {intentPreview.simulation.mode}
-                                              </span>{" "}
-                                              · Suites:{" "}
-                                              <span className="font-mono">
-                                                {intentPreview.simulation.suitesSeen}
-                                              </span>
-                                              {intentPreview.simulation.overallPassRate != null && (
-                                                <>
-                                                  {" "}
-                                                  · Pass:{" "}
-                                                  <span className="font-mono">
-                                                    {(
-                                                      intentPreview.simulation.overallPassRate * 100
-                                                    ).toFixed(1)}
-                                                    %
+                                        <div className="text-white/40 text-xs mt-1">
+                                          Validate hierarchy and evaluate simulation-gate impact
+                                          before save.
+                                        </div>
+                                      </div>
+                                      <div
+                                        className={`text-[11px] px-2 py-1 rounded border ${
+                                          intentPreviewCurrent
+                                            ? "border-green-500/30 bg-green-500/10 text-green-300"
+                                            : "border-amber-500/30 bg-amber-500/10 text-amber-200"
+                                        }`}
+                                      >
+                                        {intentPreviewCurrent
+                                          ? "Preview current"
+                                          : "Preview required"}
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                      <div className="text-xs text-indigo-300">
+                                        {intentSimulating
+                                          ? "Simulation running..."
+                                          : intentSimulationMessage?.text || ""}
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <button
+                                          onClick={() => void previewIntentSettings()}
+                                          disabled={intentPreviewing || intentSimulating}
+                                          className="px-3 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-200 rounded-lg transition-all text-sm font-medium disabled:opacity-50"
+                                        >
+                                          {intentPreviewing
+                                            ? "Previewing..."
+                                            : "Preview & Simulate"}
+                                        </button>
+                                        <button
+                                          onClick={() => void runIntentSimulation()}
+                                          disabled={intentSimulating || intentPreviewing}
+                                          className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 rounded-lg transition-all text-sm font-medium disabled:opacity-50"
+                                        >
+                                          {intentSimulating ? "Running..." : "Run Simulation Suite"}
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {intentPreview && (
+                                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                                        <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
+                                          <div className="text-white/80 text-xs uppercase tracking-wider">
+                                            Validation
+                                          </div>
+                                          <div className="text-white/60 text-xs">
+                                            Mode:{" "}
+                                            <span className="font-mono">
+                                              {intentPreview.validation.mode}
+                                            </span>{" "}
+                                            · Issues:{" "}
+                                            <span className="font-mono">
+                                              {intentPreview.validation.issueCount}
+                                            </span>
+                                          </div>
+                                          <div
+                                            className={`text-xs ${
+                                              intentPreview.validation.blocking
+                                                ? "text-red-300"
+                                                : "text-green-300"
+                                            }`}
+                                          >
+                                            {intentPreview.validation.blocking
+                                              ? "Blocking under current validation mode."
+                                              : "No validation blocking conditions."}
+                                          </div>
+                                          {intentPreview.validation.issues.length > 0 && (
+                                            <div className="max-h-36 overflow-auto rounded border border-white/10 bg-black/20 p-2 space-y-1">
+                                              {intentPreview.validation.issues.map((issue, idx) => (
+                                                <div
+                                                  key={`${issue.path}-${idx}`}
+                                                  className="text-[11px]"
+                                                >
+                                                  <span className="text-amber-200 font-mono">
+                                                    {issue.path}
                                                   </span>
-                                                </>
-                                              )}
-                                              {!intentPreview.simulation.enabled && (
-                                                <span className="ml-2 text-amber-500/80">
-                                                  (Disabled in config)
-                                                </span>
-                                              )}
-                                            </>
-                                          ) : (
-                                            "Simulation gate disabled."
+                                                  <span className="text-white/60">
+                                                    {" "}
+                                                    — {issue.message}
+                                                  </span>
+                                                </div>
+                                              ))}
+                                            </div>
                                           )}
                                         </div>
-                                        <div
-                                          className={`text-xs ${
-                                            intentPreview.simulation.blocking
-                                              ? "text-red-300"
-                                              : "text-green-300"
-                                          }`}
-                                        >
-                                          {intentPreview.simulation.blocking
-                                            ? "Simulation gate blocks this configuration."
-                                            : "No simulation-gate blocking conditions."}
-                                        </div>
-                                        {[
-                                          ...intentPreview.simulation.reasons,
-                                          ...intentPreview.simulation.warnings,
-                                        ].length > 0 && (
-                                          <div className="max-h-36 overflow-auto rounded border border-white/10 bg-black/20 p-2 space-y-1">
-                                            {[
-                                              ...intentPreview.simulation.reasons,
-                                              ...intentPreview.simulation.warnings,
-                                            ].map((reason, idx) => (
-                                              <div
-                                                key={`${reason}-${idx}`}
-                                                className="text-[11px] text-white/70"
-                                              >
-                                                {reason}
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
 
-                              <div className="flex items-center justify-end gap-2">
-                                <button
-                                  onClick={() => {
-                                    if (!intentSettings) return;
-                                    const reset = coerceIntentSettings(intentSettings);
-                                    setIntentDraft(reset);
-                                    setIntentDepartmentsJson(
-                                      JSON.stringify(reset.departments || {}, null, 2),
-                                    );
-                                    setIntentAgentsJson(
-                                      JSON.stringify(reset.agents || {}, null, 2),
-                                    );
-                                    setIntentPreview(null);
-                                    setIntentPreviewFingerprint(null);
-                                    setIntentMessage(null);
-                                  }}
-                                  className="px-3 py-2 bg-white/5 hover:bg-white/10 text-white/70 rounded-lg transition-all text-sm"
-                                >
-                                  Reset Changes
-                                </button>
-                                <button
-                                  onClick={() => void saveIntentSettings()}
-                                  disabled={intentSaving || !intentPreviewCurrent}
-                                  className="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded-lg transition-all text-sm font-medium disabled:opacity-50"
-                                >
-                                  {intentSaving ? "Saving..." : "Save Intent Settings"}
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </details>
-                    </div>
+                                        <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
+                                          <div className="text-white/80 text-xs uppercase tracking-wider">
+                                            Simulation Gate
+                                          </div>
+                                          <div className="text-white/60 text-xs">
+                                            {intentPreview.simulation.enabled ||
+                                            intentPreview.simulation.suitesSeen > 0 ? (
+                                              <>
+                                                Mode:{" "}
+                                                <span className="font-mono">
+                                                  {intentPreview.simulation.mode}
+                                                </span>{" "}
+                                                · Suites:{" "}
+                                                <span className="font-mono">
+                                                  {intentPreview.simulation.suitesSeen}
+                                                </span>
+                                                {intentPreview.simulation.overallPassRate !=
+                                                  null && (
+                                                  <>
+                                                    {" "}
+                                                    · Pass:{" "}
+                                                    <span className="font-mono">
+                                                      {(
+                                                        intentPreview.simulation.overallPassRate *
+                                                        100
+                                                      ).toFixed(1)}
+                                                      %
+                                                    </span>
+                                                  </>
+                                                )}
+                                                {!intentPreview.simulation.enabled && (
+                                                  <span className="ml-2 text-amber-500/80">
+                                                    (Disabled in config)
+                                                  </span>
+                                                )}
+                                              </>
+                                            ) : (
+                                              "Simulation gate disabled."
+                                            )}
+                                          </div>
+                                          <div
+                                            className={`text-xs ${
+                                              intentPreview.simulation.blocking
+                                                ? "text-red-300"
+                                                : "text-green-300"
+                                            }`}
+                                          >
+                                            {intentPreview.simulation.blocking
+                                              ? "Simulation gate blocks this configuration."
+                                              : "No simulation-gate blocking conditions."}
+                                          </div>
+                                          {[
+                                            ...intentPreview.simulation.reasons,
+                                            ...intentPreview.simulation.warnings,
+                                          ].length > 0 && (
+                                            <div className="max-h-36 overflow-auto rounded border border-white/10 bg-black/20 p-2 space-y-1">
+                                              {[
+                                                ...intentPreview.simulation.reasons,
+                                                ...intentPreview.simulation.warnings,
+                                              ].map((reason, idx) => (
+                                                <div
+                                                  key={`${reason}-${idx}`}
+                                                  className="text-[11px] text-white/70"
+                                                >
+                                                  {reason}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    onClick={() => {
+                                      if (!intentSettings) return;
+                                      const reset = coerceIntentSettings(intentSettings);
+                                      setIntentDraft(reset);
+                                      setIntentDepartmentsJson(
+                                        JSON.stringify(reset.departments || {}, null, 2),
+                                      );
+                                      setIntentAgentsJson(
+                                        JSON.stringify(reset.agents || {}, null, 2),
+                                      );
+                                      setIntentPreview(null);
+                                      setIntentPreviewFingerprint(null);
+                                      setIntentMessage(null);
+                                    }}
+                                    className="px-3 py-2 bg-white/5 hover:bg-white/10 text-white/70 rounded-lg transition-all text-sm"
+                                  >
+                                    Reset Changes
+                                  </button>
+                                  <button
+                                    onClick={() => void saveIntentSettings()}
+                                    disabled={intentSaving || !intentPreviewCurrent}
+                                    className="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded-lg transition-all text-sm font-medium disabled:opacity-50"
+                                  >
+                                    {intentSaving ? "Saving..." : "Save Intent Settings"}
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </details>
+                      </div>
+                    )}
                   </div>
                 )}
 

@@ -16,6 +16,10 @@ const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DASHBOARD_ROOT = path.resolve(TEST_DIR, "../dashboard");
 const API_SERVER_SOURCE = fs.readFileSync(path.join(DASHBOARD_ROOT, "api-server.cjs"), "utf8");
 const APP_SOURCE = fs.readFileSync(path.join(DASHBOARD_ROOT, "src/App.tsx"), "utf8");
+const CONFIG_PANEL_SOURCE = fs.readFileSync(
+  path.join(DASHBOARD_ROOT, "src/components/ConfigPanel.tsx"),
+  "utf8",
+);
 const ORG_CHART_SOURCE = fs.readFileSync(
   path.join(DASHBOARD_ROOT, "src/components/widgets/OrgChartWidget.tsx"),
   "utf8",
@@ -119,5 +123,11 @@ describe("dashboard surface profile", () => {
     expect(APP_SOURCE).toContain(
       "<OrgChartWidget operatorName={operatorDisplayName ?? undefined} />",
     );
+  });
+
+  it("keeps the public-core intent tab on the simplified safety-rules surface", () => {
+    expect(CONFIG_PANEL_SOURCE).toContain("Public Core uses the simplified intent surface here");
+    expect(CONFIG_PANEL_SOURCE).toContain("{!isPublicCoreSurface && (");
+    expect(CONFIG_PANEL_SOURCE).toContain("Advanced Governance Console (Business)");
   });
 });
