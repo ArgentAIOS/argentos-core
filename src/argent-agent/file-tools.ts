@@ -19,6 +19,8 @@ import { readFile, writeFile, access, mkdir, stat } from "fs/promises";
 import { resolve, dirname, extname, relative } from "path";
 import type { TextContent, ImageContent } from "../argent-ai/types.js";
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "./pi-types.js";
+import { detectDangerousCommand } from "../agents/tools/command-safety.js";
+import { redactSensitiveText } from "../utils/redact.js";
 
 // ============================================================================
 // Shared Utilities
@@ -538,6 +540,17 @@ export function createBashTool(
     ): Promise<AgentToolResult<unknown>> => {
       try {
         const command = prefix ? `${prefix}\n${params.command}` : params.command;
+
+        // Dangerous command detection — block before execution
+        const danger = detectDangerousCommand(params.command);
+        if (danger) {
+          return errorResult(
+            `Command blocked: ${danger.description}.\n` +
+              `Pattern: ${danger.pattern}\n` +
+              `If this is intentional, ask the operator to run it manually.`,
+          );
+        }
+
         const chunks: Buffer[] = [];
         let totalBytes = 0;
 
@@ -579,6 +592,9 @@ export function createBashTool(
             kept.join("\n");
           truncated = true;
         }
+
+        // Redact secrets from tool output before it reaches memory/chat
+        output = redactSensitiveText(output);
 
         const exitStr = exitCode === 0 ? "" : `\nExit code: ${exitCode}`;
         return textResult(`${output}${exitStr}`, { exitCode, bytes: totalBytes, truncated });
