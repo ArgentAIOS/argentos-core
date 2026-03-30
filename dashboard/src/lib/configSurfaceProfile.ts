@@ -39,7 +39,7 @@ export function parseDashboardMode(
   try {
     const parsed = JSON.parse(rawConfigText);
     const rawMode = parsed?.distribution?.dashboardMode;
-    if (rawMode === "operations" && surfaceProfile !== "public-core") {
+    if (rawMode === "operations") {
       return "operations";
     }
     return "personal";
@@ -75,7 +75,7 @@ export function isRawConfigEditorAllowed(surfaceProfile: DashboardSurfaceProfile
 }
 
 export function isWorkforceSurfaceAllowed(surfaceProfile: DashboardSurfaceProfile): boolean {
-  return surfaceProfile !== "public-core";
+  return surfaceProfile === "full" || surfaceProfile === "public-core";
 }
 
 export function isDashboardModeAllowed(
@@ -83,7 +83,7 @@ export function isDashboardModeAllowed(
   surfaceProfile: DashboardSurfaceProfile,
 ): boolean {
   if (mode === "operations") {
-    return surfaceProfile !== "public-core";
+    return surfaceProfile === "full" || surfaceProfile === "public-core";
   }
   return true;
 }
