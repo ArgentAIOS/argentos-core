@@ -16,6 +16,21 @@ export function normalizeUpdateChannel(value?: string | null): UpdateChannel | n
   return null;
 }
 
+export function normalizeUpdateBranch(value?: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.trim();
+  if (!normalized || normalized === "HEAD" || /\s/.test(normalized)) {
+    return null;
+  }
+  return normalized;
+}
+
+export function resolveDevBranch(value?: string | null): string {
+  return normalizeUpdateBranch(value) ?? DEV_BRANCH;
+}
+
 export function channelToNpmTag(channel: UpdateChannel): string {
   if (channel === "beta") {
     return "beta";

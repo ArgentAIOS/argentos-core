@@ -31,6 +31,7 @@ import {
   resolveHookChannel,
   resolveHookDeliver,
 } from "./hooks.js";
+import { handleMcpHttpRequest, type McpHttpOptions } from "./mcp-http.js";
 import { handleOpenAiHttpRequest } from "./openai-http.js";
 import { handleOpenResponsesHttpRequest } from "./openresponses-http.js";
 import { handleSisFeedbackRequest } from "./sis-feedback-http.js";
@@ -273,6 +274,19 @@ export function createGatewayHttpServer(opts: {
 
       const configSnapshot = loadConfig();
       const trustedProxies = configSnapshot.gateway?.trustedProxies ?? [];
+
+      // MCP server endpoint — expose agent tools to external MCP clients
+      const mcpEnabled = configSnapshot.gateway?.mcp?.enabled !== false;
+      if (
+        await handleMcpHttpRequest(req, res, {
+          auth: resolvedAuth,
+          trustedProxies,
+          enabled: mcpEnabled,
+        })
+      ) {
+        return;
+      }
+
       if (await handleSisFeedbackRequest(req, res)) {
         return;
       }

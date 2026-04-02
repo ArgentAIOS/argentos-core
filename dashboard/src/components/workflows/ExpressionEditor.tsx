@@ -498,13 +498,6 @@ export function ExpressionEditor({
 
   // ── Syntax-highlighted overlay (for display in the textarea region) ─
 
-  const highlightedHtml = useMemo(() => {
-    if (mode !== "expression") return "";
-    const raw = toEditable(value);
-    // Highlight {{ ... }} tokens in green
-    return raw.replace(/(\{\{.*?\}\})/g, '<span style="color:#34d399;font-weight:600">$1</span>');
-  }, [value, mode]);
-
   // ── Render ──────────────────────────────────────────────────────────
 
   if (!expressionEnabled) {

@@ -13,6 +13,14 @@ export type NormalizedPluginsConfig = {
   entries: Record<string, { enabled?: boolean; config?: unknown }>;
 };
 
+/**
+ * Bundled plugins that are enabled by default on fresh installs.
+ *
+ * CRITICAL: Adding or removing entries here changes what ships as "on by default"
+ * in Core. This is a product/business decision that requires explicit sign-off
+ * from Jason (the operator). Do not modify without approval.
+ * See: ops/rules/never-do.md → "Core / Business Boundary"
+ */
 export const BUNDLED_ENABLED_BY_DEFAULT = new Set<string>([
   "aos-lcm", // Lossless Context Management — DAG-based context compression, ships with Core
 ]);

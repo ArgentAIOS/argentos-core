@@ -85,6 +85,7 @@ Defaults:
 - Requires Speech + Microphone permissions.
 - Uses `chat.send` against session key `main`.
 - TTS uses ElevenLabs streaming API with `ELEVENLABS_API_KEY` and incremental playback on macOS/iOS/Android for lower latency.
+- macOS keeps a dedicated speech-recognition mode for assistant-playback interruption. Reuse that active interruption pipeline instead of restarting recognition for every spoken chunk or dashboard voice event; repeated tap reinstall attempts can abort inside `AVAudioNode.installTap(onBus:...)`.
 - `stability` for `eleven_v3` is validated to `0.0`, `0.5`, or `1.0`; other models accept `0..1`.
 - `latency_tier` is validated to `0..4` when set.
 - Android supports `pcm_16000`, `pcm_22050`, `pcm_24000`, and `pcm_44100` output formats for low-latency AudioTrack streaming.

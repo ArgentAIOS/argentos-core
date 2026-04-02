@@ -1,6 +1,6 @@
 {
   "name": "argentos",
-  "version": "2026.3.30.4",
+  "version": "2026.3.29.32",
   "description": "The Operating System for Personal AI",
   "keywords": [
     "agent",
@@ -144,6 +144,7 @@
     "@mariozechner/pi-ai": "0.57.1",
     "@mariozechner/pi-coding-agent": "0.57.1",
     "@mariozechner/pi-tui": "0.57.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@mozilla/readability": "^0.6.0",
     "@sentry/node": "^10.38.0",
     "@sinclair/typebox": "0.34.48",

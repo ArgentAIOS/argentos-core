@@ -109,6 +109,7 @@ const FIELD_LABELS: Record<string, string> = {
   "meta.lastTouchedVersion": "Config Last Touched Version",
   "meta.lastTouchedAt": "Config Last Touched At",
   "update.channel": "Update Channel",
+  "update.branch": "Update Branch Override",
   "update.checkOnStart": "Update Check on Start",
   "diagnostics.enabled": "Diagnostics Enabled",
   "diagnostics.flags": "Diagnostics Flags",
@@ -504,6 +505,7 @@ const FIELD_HELP: Record<string, string> = {
   "meta.lastTouchedVersion": "Auto-set when Argent writes the config.",
   "meta.lastTouchedAt": "ISO timestamp of the last config write (auto-set).",
   "update.channel": 'Update channel for git + npm installs ("stable", "beta", or "dev").',
+  "update.branch": "Optional git branch override for dev-lane source installs.",
   "update.checkOnStart": "Check for npm updates when the gateway starts (default: true).",
   "gateway.remote.url": "Remote Gateway WebSocket URL (ws:// or wss://).",
   "gateway.remote.tlsFingerprint":

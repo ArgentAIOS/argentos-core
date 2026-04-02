@@ -6,7 +6,7 @@ import { trimLogTail } from "./restart-sentinel.js";
 import {
   channelToNpmTag,
   DEFAULT_PACKAGE_CHANNEL,
-  DEV_BRANCH,
+  resolveDevBranch,
   isBetaTag,
   isStableTag,
   type UpdateChannel,
@@ -73,6 +73,7 @@ type UpdateRunnerOptions = {
   argv1?: string;
   tag?: string;
   channel?: UpdateChannel;
+  branch?: string;
   timeoutMs?: number;
   runCommand?: CommandRunner;
   progress?: UpdateStepProgress;
@@ -366,21 +367,6 @@ function normalizeTag(tag?: string) {
   return trimmed;
 }
 
-async function hasTrackedControlUi(
-  runCommand: CommandRunner,
-  root: string,
-  timeoutMs: number,
-): Promise<boolean> {
-  const result = await runCommand(
-    ["git", "-C", root, "rev-parse", "--verify", "HEAD:dist/control-ui"],
-    {
-      cwd: root,
-      timeoutMs,
-    },
-  ).catch(() => null);
-  return !!result && result.code === 0;
-}
-
 export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<UpdateRunResult> {
   const startedAt = Date.now();
   const runCommand =
@@ -437,12 +423,14 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       cwd: gitRoot,
       timeoutMs,
     });
-    const beforeSha = beforeShaResult.stdout.trim() || null;
+    let beforeSha = beforeShaResult.stdout.trim() || null;
     const beforeVersion = await readPackageVersion(gitRoot);
     const channel: UpdateChannel = opts.channel ?? "dev";
-    const branch = channel === "dev" ? await readBranchName(runCommand, gitRoot, timeoutMs) : null;
-    const needsCheckoutMain = channel === "dev" && branch !== DEV_BRANCH;
-    gitTotalSteps = channel === "dev" ? (needsCheckoutMain ? 12 : 11) : 10;
+    const currentBranch =
+      channel === "dev" ? await readBranchName(runCommand, gitRoot, timeoutMs) : null;
+    const devBranch = channel === "dev" ? resolveDevBranch(opts.branch) : null;
+    const needsCheckoutBranch = channel === "dev" && currentBranch !== devBranch;
+    gitTotalSteps = channel === "dev" ? (needsCheckoutBranch ? 12 : 11) : 10;
 
     const statusCheck = await runStep(
       step(
@@ -481,13 +469,9 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
     }
 
     if (channel === "dev") {
-      if (needsCheckoutMain) {
+      if (needsCheckoutBranch && devBranch) {
         const checkoutStep = await runStep(
-          step(
-            `git checkout ${DEV_BRANCH}`,
-            ["git", "-C", gitRoot, "checkout", DEV_BRANCH],
-            gitRoot,
-          ),
+          step(`git checkout ${devBranch}`, ["git", "-C", gitRoot, "checkout", devBranch], gitRoot),
         );
         steps.push(checkoutStep);
         if (checkoutStep.exitCode !== 0) {
@@ -500,6 +484,17 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
             steps,
             durationMs: Date.now() - startedAt,
           };
+        }
+
+        const postCheckoutSha =
+          devBranch == null
+            ? null
+            : await runCommand(["git", "-C", gitRoot, "rev-parse", devBranch], {
+                cwd: gitRoot,
+                timeoutMs,
+              }).catch(() => null);
+        if (postCheckoutSha?.code === 0) {
+          beforeSha = postCheckoutSha.stdout.trim() || beforeSha;
         }
       }
 
@@ -821,24 +816,13 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
 
     // Restore dist/control-ui/ to committed state to prevent dirty repo after update
     // (ui:build regenerates assets with new hashes, which would block future updates)
-    const hasControlUi = await hasTrackedControlUi(runCommand, gitRoot, timeoutMs);
-    const restoreUiStep = hasControlUi
-      ? await runStep(
-          step(
-            "restore control-ui",
-            ["git", "-C", gitRoot, "checkout", "--", "dist/control-ui/"],
-            gitRoot,
-          ),
-        )
-      : {
-          name: "restore control-ui",
-          command: "git checkout -- dist/control-ui/ (skipped: path not tracked)",
-          cwd: gitRoot,
-          durationMs: 0,
-          exitCode: 0,
-          stdoutTail: "skipped: dist/control-ui/ not tracked in this repo",
-          stderrTail: null,
-        };
+    const restoreUiStep = await runStep(
+      step(
+        "restore control-ui",
+        ["git", "-C", gitRoot, "checkout", "--", "dist/control-ui/"],
+        gitRoot,
+      ),
+    );
     steps.push(restoreUiStep);
 
     const setupStep = await runStep(

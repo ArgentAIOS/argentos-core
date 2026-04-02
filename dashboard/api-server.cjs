@@ -13760,7 +13760,7 @@ app.get("/api/settings/provider-models", async (req, res) => {
         "gpt-5.1-codex-mini",
       ],
       "kimi-coding": ["k2p5"],
-      zai: ["glm-5", "glm-4.7", "glm-4.6"],
+      zai: ["glm-5.1", "glm-5", "glm-4.7", "glm-4.6"],
       qianfan: ["ernie-4.0-8k"],
     };
 
@@ -16147,6 +16147,45 @@ echo "[$(date)] Backup complete: $FILENAME" >> "${logPath}"
 // ============================================
 // TTS / VOICE SETTINGS API
 // ============================================
+
+app.get("/api/settings/search", (req, res) => {
+  try {
+    const cfg = readArgentConfig();
+    const search = cfg.tools?.web?.search || {};
+    res.json({
+      enabled: search.enabled !== false,
+      provider: search.provider || "brave",
+    });
+  } catch (err) {
+    console.error("[Search] Error reading settings:", err);
+    res.status(500).json({ error: "Failed to read search settings" });
+  }
+});
+
+app.post("/api/settings/search", (req, res) => {
+  try {
+    const cfg = readArgentConfig();
+    if (!cfg.tools) cfg.tools = {};
+    if (!cfg.tools.web) cfg.tools.web = {};
+    if (!cfg.tools.web.search) cfg.tools.web.search = {};
+
+    const provider = typeof req.body?.provider === "string" ? req.body.provider.trim() : "";
+    const enabled = typeof req.body?.enabled === "boolean" ? req.body.enabled : undefined;
+
+    if (provider) {
+      cfg.tools.web.search.provider = provider;
+    }
+    if (enabled !== undefined) {
+      cfg.tools.web.search.enabled = enabled;
+    }
+
+    writeArgentConfig(cfg);
+    res.json({ ok: true, search: cfg.tools.web.search });
+  } catch (err) {
+    console.error("[Search] Error saving settings:", err);
+    res.status(500).json({ error: "Failed to save search settings" });
+  }
+});
 
 app.get("/api/settings/tts", (req, res) => {
   try {

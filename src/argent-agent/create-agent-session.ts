@@ -31,6 +31,7 @@ import type { AgentMessage, AgentTool } from "./pi-types.js";
 import type { BranchSummaryEntry } from "./session-manager.js";
 import { modelSupportsImages } from "../agents/pi-embedded-runner/run/images.js";
 import { applyVisionFallbackToMessages } from "../agents/pi-embedded-runner/run/vision-fallback.js";
+import { sanitizeToolResultForModel } from "../security/tool-safety.js";
 import { ArgentSessionManager } from "./session-manager.js";
 import { ArgentSettingsManager, type ThinkingLevel } from "./settings-manager.js";
 
@@ -369,11 +370,12 @@ class ArgentAgentSessionImpl implements AgentSession {
                     } as unknown as AgentSessionEvent);
                   },
                 );
+                result = sanitizeToolResultForModel(result);
               } catch (e) {
-                result = {
+                result = sanitizeToolResultForModel({
                   content: [{ type: "text", text: e instanceof Error ? e.message : String(e) }],
                   details: {},
-                };
+                });
                 isError = true;
               }
 

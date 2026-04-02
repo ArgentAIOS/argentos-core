@@ -138,7 +138,8 @@ function resolveTierModels(params: {
 }): Record<ModelTier, TierModelMapping> {
   const merged = {
     ...DEFAULT_TIER_MODELS,
-    ...(params.profileTiers || params.configTiers),
+    ...(params.profileTiers ?? {}),
+    ...(params.configTiers ?? {}),
   };
   return {
     local: normalizeTierMapping(merged.local, DEFAULT_TIER_MODELS.local),

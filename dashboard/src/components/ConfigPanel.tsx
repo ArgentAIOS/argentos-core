@@ -52,6 +52,7 @@ import {
   BookOpen,
   Wrench,
   Mic,
+  RotateCcw,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
@@ -2212,6 +2213,7 @@ interface LockScreenApi {
 interface ConfigPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  onRelaunchOnboarding?: () => void;
   requestedTab?: TabType | null;
   onRequestedTabHandled?: () => void;
   onConfigChange?: (config: ConfigData) => void;
@@ -2570,6 +2572,7 @@ function LockScreenSettings({ lockScreen }: { lockScreen: LockScreenApi }) {
 export function ConfigPanel({
   isOpen,
   onClose,
+  onRelaunchOnboarding,
   requestedTab,
   onRequestedTabHandled,
   onConfigChange,
@@ -4471,7 +4474,7 @@ export function ConfigPanel({
     models: Array<{ id: string; ref: string; label: string }>;
   }> => {
     if (!Array.isArray(runtimes)) return [];
-    return runtimes
+    const normalized = runtimes
       .map((runtime: unknown) => {
         if (!runtime || typeof runtime !== "object") return null;
         const provider =
@@ -4535,6 +4538,13 @@ export function ConfigPanel({
           models: Array<{ id: string; ref: string; label: string }>;
         } => runtime !== null,
       );
+    return normalized as Array<{
+      provider: string;
+      label: string;
+      running: boolean;
+      baseUrl?: string;
+      models: Array<{ id: string; ref: string; label: string }>;
+    }>;
   };
 
   const patchAgentSetting = async (
@@ -8504,7 +8514,38 @@ export function ConfigPanel({
                               </div>
                               {modelConfig?.model?.fallbacks?.length > 0 && (
                                 <>
-                                  <div className="text-white/40 text-xs mt-2">Fallbacks</div>
+                                  <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-100/85">
+                                    Runtime still walks this fallback chain if the primary model
+                                    fails. If you want the visible interactive/router defaults to be
+                                    the whole truth, clear stale fallback providers here.
+                                  </div>
+                                  <div className="flex items-center justify-between gap-3 mt-2">
+                                    <div className="text-white/40 text-xs">Fallbacks</div>
+                                    <button
+                                      onClick={async () => {
+                                        const existingModel = modelConfig?.model;
+                                        if (!existingModel || typeof existingModel !== "object") {
+                                          return;
+                                        }
+                                        const nextModel = {
+                                          ...existingModel,
+                                          fallbacks: [] as string[],
+                                        };
+                                        await fetch("/api/settings/models", {
+                                          method: "PATCH",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ model: nextModel }),
+                                        });
+                                        setModelConfig((prev: any) => ({
+                                          ...(prev || {}),
+                                          model: nextModel,
+                                        }));
+                                      }}
+                                      className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-white/70 text-[11px] transition-colors"
+                                    >
+                                      Clear fallback chain
+                                    </button>
+                                  </div>
                                   {modelConfig.model.fallbacks.map((fb: string, i: number) => (
                                     <div
                                       key={i}
@@ -8754,9 +8795,13 @@ export function ConfigPanel({
                                     </div>
                                     <div className="text-white/40 text-[11px] space-y-0.5">
                                       <div>
-                                        <span className="text-white/60 font-mono">glm-4.7</span> —
-                                        Capable BALANCED tier. Good at structured extraction,
-                                        affordable.
+                                        <span className="text-white/60 font-mono">glm-5.1</span> —
+                                        Current flagship GLM tier. Best choice when you want the
+                                        newest Z.AI reasoning path.
+                                      </div>
+                                      <div>
+                                        <span className="text-white/60 font-mono">glm-5</span> —
+                                        Strong BALANCED fallback with broad GLM support.
                                       </div>
                                     </div>
                                   </div>
@@ -12557,8 +12602,8 @@ export function ConfigPanel({
                                     </div>
                                     <div>
                                       <span className="text-cyan-400">3rd:</span>{" "}
-                                      <span className="font-mono text-white/60">glm/glm-4.7</span> —
-                                      Good quality, very affordable
+                                      <span className="font-mono text-white/60">zai/glm-5.1</span> —
+                                      Strong structured extraction with the current GLM family
                                     </div>
                                     <div>
                                       <span className="text-yellow-400/70">Avoid:</span>{" "}
@@ -19665,12 +19710,33 @@ export function ConfigPanel({
                 {activeTab === "memory" && <MemoryConsole />}
 
                 {activeTab === "systems" && (
-                  <SystemsRegistryPanel
-                    defaultAgentId={defaultAgentId}
-                    gatewayRequest={gatewayRequest}
-                    surfaceProfile={surfaceProfile}
-                    onOpenTab={(tabId) => setActiveTab(tabId)}
-                  />
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <div className="text-white font-medium">Relaunch guided onboarding</div>
+                          <p className="text-white/50 text-sm mt-1 max-w-2xl">
+                            Re-open the provider-aware setup flow to change your chat, voice, and
+                            search stack without digging through JSON recovery paths.
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => onRelaunchOnboarding?.()}
+                          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-600/20 border border-amber-500/30 text-amber-200 hover:bg-amber-600/30 transition-colors"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          Relaunch onboarding
+                        </button>
+                      </div>
+                    </div>
+
+                    <SystemsRegistryPanel
+                      defaultAgentId={defaultAgentId}
+                      gatewayRequest={gatewayRequest}
+                      surfaceProfile={surfaceProfile}
+                      onOpenTab={(tabId) => setActiveTab(tabId)}
+                    />
+                  </div>
                 )}
 
                 {activeTab === "logs" && <LogViewer />}
