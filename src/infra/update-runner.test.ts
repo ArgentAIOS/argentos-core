@@ -129,6 +129,75 @@ describe("runGatewayUpdate", () => {
     expect(calls.some((call) => call.includes("rev-list"))).toBe(false);
   });
 
+  it("accepts upstream when preflight is no worse than the current installed commit", async () => {
+    await fs.mkdir(path.join(tempDir, ".git"));
+    await fs.writeFile(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ name: "argentos", version: "1.0.0", packageManager: "pnpm@10.0.0" }),
+      "utf-8",
+    );
+    const preflightRoot = path.join(os.tmpdir(), "argent-update-preflight-mock");
+    const worktreeDir = path.join(preflightRoot, "worktree");
+    const { runner, calls } = createRunner({
+      [`git -C ${tempDir} rev-parse --show-toplevel`]: { stdout: tempDir },
+      [`git -C ${tempDir} rev-parse --abbrev-ref HEAD`]: { stdout: "develop" },
+      [`git -C ${tempDir} status --porcelain -- :!dist/control-ui/`]: { stdout: "" },
+      [`git -C ${tempDir} rev-parse --abbrev-ref --symbolic-full-name @{upstream}`]: {
+        stdout: "origin/develop",
+      },
+      [`git -C ${tempDir} fetch --all --prune --tags`]: { stdout: "" },
+      [`git -C ${tempDir} rev-parse @{upstream}`]: { stdout: "upstream456" },
+      [`git -C ${tempDir} rev-list --max-count=10 upstream456`]: {
+        stdout: "upstream456\ncurrent123\n",
+      },
+      [`git -C ${tempDir} worktree add --detach ${worktreeDir} upstream456`]: { stdout: "" },
+      [`git -C ${worktreeDir} checkout --detach upstream456`]: { stdout: "" },
+      [`git -C ${worktreeDir} checkout --detach current123`]: { stdout: "" },
+      "pnpm install": { stdout: "" },
+      [`git -C ${worktreeDir} checkout -- pnpm-lock.yaml`]: { stdout: "" },
+      "pnpm lint": { code: 1, stderr: "repo-wide lint backlog" },
+      [`git -C ${tempDir} worktree remove --force ${worktreeDir}`]: { stdout: "" },
+      [`git -C ${tempDir} worktree prune`]: { stdout: "" },
+      [`git -C ${tempDir} rebase upstream456`]: { stdout: "" },
+      "pnpm install --frozen-lockfile": { stdout: "" },
+      [`git -C ${tempDir} checkout -- pnpm-lock.yaml`]: { stdout: "" },
+      "pnpm build": { stdout: "" },
+      "pnpm ui:build": { stdout: "" },
+      [`git -C ${tempDir} checkout -- dist/control-ui/`]: { stdout: "" },
+      "pnpm argent setup": { stdout: "" },
+      "pnpm argent doctor --non-interactive": { stdout: "" },
+    });
+    let headReads = 0;
+    const mkdtempSpy = vi.spyOn(fs, "mkdtemp").mockResolvedValue(preflightRoot);
+    try {
+      const result = await runGatewayUpdate({
+        cwd: tempDir,
+        runCommand: async (argv, _options) => {
+          const key = argv.join(" ");
+          if (key === `git -C ${tempDir} rev-parse HEAD`) {
+            headReads += 1;
+            calls.push(key);
+            return {
+              stdout: headReads === 1 ? "current123" : "upstream456",
+              stderr: "",
+              code: 0,
+            };
+          }
+          return runner(argv);
+        },
+        timeoutMs: 5000,
+        branch: "develop",
+      });
+
+      expect(result.status).toBe("ok");
+      expect(result.reason).toBeUndefined();
+      expect(calls).toContain(`git -C ${tempDir} rebase upstream456`);
+      expect(mkdtempSpy).toHaveBeenCalled();
+    } finally {
+      mkdtempSpy.mockRestore();
+    }
+  });
+
   it("uses configured dev branch override instead of the default branch", async () => {
     await fs.mkdir(path.join(tempDir, ".git"));
     await fs.writeFile(
