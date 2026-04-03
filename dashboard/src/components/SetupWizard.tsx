@@ -550,59 +550,22 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
       voiceProvider,
       searchProvider,
     });
-    const rawConfigResponse = await fetchJson<{ raw?: string }>("/api/settings/agent/raw-config");
-    const raw = String(rawConfigResponse?.raw || "").trim();
-    if (!raw) {
-      throw new Error("Failed to load Argent config for provider-aware onboarding.");
-    }
 
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(raw) as Record<string, unknown>;
-    } catch (err) {
-      throw new Error(
-        err instanceof Error
-          ? `Failed to parse Argent config during onboarding: ${err.message}`
-          : "Failed to parse Argent config during onboarding.",
-      );
-    }
-
-    if (!parsed.messages || typeof parsed.messages !== "object" || Array.isArray(parsed.messages)) {
-      parsed.messages = {};
-    }
-    const messages = parsed.messages as Record<string, unknown>;
-    if (!messages.tts || typeof messages.tts !== "object" || Array.isArray(messages.tts)) {
-      messages.tts = {};
-    }
-    const tts = messages.tts as Record<string, unknown>;
-    tts.provider = voiceProvider;
-
-    if (!parsed.tools || typeof parsed.tools !== "object" || Array.isArray(parsed.tools)) {
-      parsed.tools = {};
-    }
-    const tools = parsed.tools as Record<string, unknown>;
-    if (!tools.web || typeof tools.web !== "object" || Array.isArray(tools.web)) {
-      tools.web = {};
-    }
-    const web = tools.web as Record<string, unknown>;
-    if (!web.search || typeof web.search !== "object" || Array.isArray(web.search)) {
-      web.search = {};
-    }
-    const search = web.search as Record<string, unknown>;
-    search.provider = searchProvider;
-    search.enabled = true;
-
-    await fetchJson("/api/settings/agent/raw-config", {
-      method: "PATCH",
+    console.info("[SetupWizard] saveStep:tts:start", { voiceProvider });
+    await fetchJson("/api/settings/tts", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        raw: JSON.stringify(parsed, null, 2),
-      }),
+      body: JSON.stringify({ provider: voiceProvider }),
     });
-    console.info("[SetupWizard] persistProviderSelections:done", {
-      voiceProvider,
-      searchProvider,
+    console.info("[SetupWizard] saveStep:tts:done", { voiceProvider });
+
+    console.info("[SetupWizard] persistSearchProvider:start", { searchProvider });
+    await fetchJson("/api/settings/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: searchProvider, enabled: true }),
     });
+    console.info("[SetupWizard] persistSearchProvider:done", { searchProvider });
   }
 
   async function saveProviderAwareRouterProfile(): Promise<string> {
