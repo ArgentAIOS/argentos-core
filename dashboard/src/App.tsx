@@ -38,11 +38,18 @@ import { SetupWizard } from "./components/SetupWizard";
 import { StatusBar } from "./components/StatusBar";
 import { TaskList, type Task } from "./components/TaskList";
 import { WeatherModal } from "./components/WeatherModal";
+import { CustomWidget } from "./components/widgets/CustomWidget";
 import { JobsBoardWidget } from "./components/widgets/JobsBoardWidget";
 import { OrgChartWidget } from "./components/widgets/OrgChartWidget";
 import { ScheduleWidget } from "./components/widgets/ScheduleWidget";
+import { SilverPriceWidget } from "./components/widgets/SilverPriceWidget";
 import { TaskManagerWidget } from "./components/widgets/TaskManagerWidget";
+import { WidgetGrid, createGridItem } from "./components/widgets/WidgetGrid";
 import { WidgetPicker } from "./components/widgets/WidgetPicker";
+import {
+  getWidget as getWidgetComponent,
+  getCustomWidgetId,
+} from "./components/widgets/widgetRegistry";
 import { WorkflowMapCanvas } from "./components/widgets/WorkflowMapCanvas";
 import { WorkflowsWidget } from "./components/widgets/WorkflowsWidget";
 import { WorkerFlowModal } from "./components/WorkerFlowModalBridge";
@@ -93,8 +100,8 @@ import {
 import { setCorsApprovalCallback } from "./lib/corsFetch";
 import { parseInlineTtsDirectives, stripInlineTtsDirectives } from "./lib/inlineTtsDirectives";
 import { applyMoodContinuity } from "./lib/moodContinuity";
-import { evaluateOnboardingStatus } from "./lib/onboardingStack";
 import { type MoodName, parseMoodName } from "./lib/moodSystem";
+import { evaluateOnboardingStatus } from "./lib/onboardingStack";
 import { resolvePrimaryChatAgentId } from "./lib/sessionVisibility";
 import { mergeVisibleChatAgentOptions } from "./lib/sessionVisibility";
 import { fetchLocalApi } from "./utils/localApiFetch";
@@ -926,7 +933,7 @@ function readStoredOperationsPresenceSize(): { width: number; height: number } |
 
 const GATEWAY_TOKEN = resolveGatewayToken();
 
-type AvatarState = "idle" | "thinking" | "working" | "speaking" | "success" | "error";
+type AvatarState = "idle" | "thinking" | "working" | "success" | "error";
 
 // Chat history persistence (per-session)
 const STORAGE_PREFIX = "argent-chat-";
@@ -1845,8 +1852,6 @@ function App() {
   }, []);
 
   const effectiveIsSpeaking = isSpeaking || nativeSpeaking;
-  const live2dAvatarState =
-    avatarState === "speaking" ? ("idle" as const) : avatarState;
 
   const [selectedVoice, setSelectedVoice] = useState<Voice>("jessica");
 
@@ -1859,7 +1864,7 @@ function App() {
   const [customNudges, setCustomNudges] = useState<any[]>([]);
   const [nudgesGlobalEnabled, setNudgesGlobalEnabled] = useState(true);
   const [showSetup, setShowSetup] = useState(false);
-  const [, setAvatarMode] = useState<"full" | "bubble">("full");
+  const [avatarMode, setAvatarMode] = useState<"full" | "bubble">("full");
   const [avatarRenderer, setAvatarRenderer] = useState<"live2d" | "aevp">(() => {
     try {
       const saved = localStorage.getItem(AEVP_RENDERER_STORAGE_KEY);
@@ -1972,17 +1977,39 @@ function App() {
 
   // Check for first-run setup wizard
   useEffect(() => {
+    const completed = localStorage.getItem("argent-setup-complete") === "1";
+    if (completed) {
+      return;
+    }
     Promise.all([
       fetchLocalApi("/api/settings/auth-profiles").then((res) => res.json()),
       fetchLocalApi("/api/settings/models").then((res) => res.json()),
     ])
       .then(([authData, modelData]) => {
+        const authProfiles = Array.isArray(authData?.profiles) ? authData.profiles : [];
         const status = evaluateOnboardingStatus({
-          authProfiles: Array.isArray(authData?.profiles) ? authData.profiles : [],
+          authProfiles,
           modelConfig: modelData,
         });
-        const completed = localStorage.getItem("argent-setup-complete") === "1";
-        if (!completed || !status.valid) {
+
+        const modelEntry = modelData?.model;
+        const hasExistingPrimaryModel =
+          typeof modelEntry === "string"
+            ? modelEntry.trim().length > 0
+            : Boolean(
+                modelEntry &&
+                typeof modelEntry === "object" &&
+                typeof (modelEntry as { primary?: unknown }).primary === "string" &&
+                String((modelEntry as { primary?: string }).primary).trim().length > 0,
+              );
+        const hasExistingRouter =
+          Boolean(modelData?.modelRouter) &&
+          typeof modelData.modelRouter === "object" &&
+          Object.keys(modelData.modelRouter as Record<string, unknown>).length > 0;
+        const looksLikeExistingInstall =
+          authProfiles.length > 0 || hasExistingPrimaryModel || hasExistingRouter;
+
+        if (!status.valid && !looksLikeExistingInstall) {
           setShowSetup(true);
         }
       })
@@ -1998,18 +2025,119 @@ function App() {
   const [canvasTop, setCanvasTop] = useState(0); // rem - full height
 
   // Avatar debug (disabled - bubble position locked)
-  // Zoom preset debug data retained for tuned positions.
-  const [debugZoomPresets] = useState({
+  const [avatarDebug, setAvatarDebug] = useState(false);
+
+  // Bubble debug panel dragging
+  const [bubbleDebugPos, setBubbleDebugPos] = useState({ x: 400, y: 400 });
+  const [isDraggingBubbleDebug, setIsDraggingBubbleDebug] = useState(false);
+  const [bubbleDragOffset, setBubbleDragOffset] = useState({ x: 0, y: 0 });
+
+  const handleBubbleDebugMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (
+        (e.target as HTMLElement).tagName === "INPUT" ||
+        (e.target as HTMLElement).tagName === "BUTTON"
+      ) {
+        return;
+      }
+      setIsDraggingBubbleDebug(true);
+      setBubbleDragOffset({
+        x: e.clientX - bubbleDebugPos.x,
+        y: e.clientY - bubbleDebugPos.y,
+      });
+    },
+    [bubbleDebugPos],
+  );
+
+  const handleBubbleDebugMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (isDraggingBubbleDebug) {
+        setBubbleDebugPos({
+          x: e.clientX - bubbleDragOffset.x,
+          y: e.clientY - bubbleDragOffset.y,
+        });
+      }
+    },
+    [isDraggingBubbleDebug, bubbleDragOffset],
+  );
+
+  const handleBubbleDebugMouseUp = useCallback(() => {
+    setIsDraggingBubbleDebug(false);
+  }, []);
+
+  useEffect(() => {
+    if (isDraggingBubbleDebug) {
+      window.addEventListener("mousemove", handleBubbleDebugMouseMove);
+      window.addEventListener("mouseup", handleBubbleDebugMouseUp);
+      return () => {
+        window.removeEventListener("mousemove", handleBubbleDebugMouseMove);
+        window.removeEventListener("mouseup", handleBubbleDebugMouseUp);
+      };
+    }
+  }, [isDraggingBubbleDebug, handleBubbleDebugMouseMove, handleBubbleDebugMouseUp]);
+
+  // Zoom preset debug (enable to tune positions)
+  const [zoomDebug, setZoomDebug] = useState(false); // Set to true when tuning positions
+  const [debugZoomPresets, setDebugZoomPresets] = useState({
     full: { scale: 0.092, x: 211, y: 379 },
     portrait: { scale: 0.144, x: 213, y: 546 },
     face: { scale: 0.22, x: 211, y: 800 },
   });
 
+  // Debug panel dragging
+  const [debugPanelPos, setDebugPanelPos] = useState({ x: 8, y: 8 });
+  const [isDraggingDebug, setIsDraggingDebug] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  const handleDebugMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (
+        (e.target as HTMLElement).tagName === "INPUT" ||
+        (e.target as HTMLElement).tagName === "BUTTON"
+      ) {
+        return; // Don't start drag on interactive elements
+      }
+      setIsDraggingDebug(true);
+      setDragOffset({
+        x: e.clientX - debugPanelPos.x,
+        y: e.clientY - debugPanelPos.y,
+      });
+    },
+    [debugPanelPos],
+  );
+
+  const handleDebugMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (isDraggingDebug) {
+        setDebugPanelPos({
+          x: e.clientX - dragOffset.x,
+          y: e.clientY - dragOffset.y,
+        });
+      }
+    },
+    [isDraggingDebug, dragOffset],
+  );
+
+  const handleDebugMouseUp = useCallback(() => {
+    setIsDraggingDebug(false);
+  }, []);
+
+  useEffect(() => {
+    if (isDraggingDebug) {
+      window.addEventListener("mousemove", handleDebugMouseMove);
+      window.addEventListener("mouseup", handleDebugMouseUp);
+      return () => {
+        window.removeEventListener("mousemove", handleDebugMouseMove);
+        window.removeEventListener("mouseup", handleDebugMouseUp);
+      };
+    }
+  }, [isDraggingDebug, handleDebugMouseMove, handleDebugMouseUp]);
+
   // Bubble position and scale — loads saved preference
   const [bubbleConfig] = useState(() => loadBubbleConfig());
-  const [, setBubbleOffsetX] = useState(bubbleConfig.offsetX);
-  const [, setBubbleOffsetY] = useState(bubbleConfig.offsetY);
-  const [, setBubbleScale] = useState(bubbleConfig.scale);
+  const [bubbleOffsetX, setBubbleOffsetX] = useState(bubbleConfig.offsetX);
+  const [bubbleOffsetY, setBubbleOffsetY] = useState(bubbleConfig.offsetY);
+  const [bubbleScale, setBubbleScale] = useState(bubbleConfig.scale);
 
   // Avatar zoom state — loads saved default preference
   const [avatarZoom, setAvatarZoom] = useState<"face" | "portrait" | "full" | "custom">(() =>
@@ -5066,7 +5194,7 @@ function App() {
                       />
                     ) : (
                       <Live2DAvatar
-                        state={live2dAvatarState}
+                        state={avatarState}
                         mood={avatarMood}
                         width={450}
                         height={750}
@@ -5113,9 +5241,8 @@ function App() {
                     },
                     {
                       value:
-                        tasks.filter(
-                          (t) => t.status === "in_progress" || t.status === "in-progress",
-                        ).length || (gateway.connected ? 1 : 0),
+                        tasks.filter((t) => t.status === "in_progress" || t.status === "active")
+                          .length || (gateway.connected ? 1 : 0),
                       label: "Active",
                       color: "text-[hsl(var(--primary))]",
                       urgent: false,
@@ -5123,6 +5250,7 @@ function App() {
                     {
                       value: tasks.filter(
                         (t) =>
+                          t.status === "overdue" ||
                           (t.dueDate &&
                             new Date(t.dueDate) < new Date() &&
                             t.status !== "completed"),
@@ -5160,7 +5288,7 @@ function App() {
                 <div className="flex gap-2 z-30 relative">
                   <button
                     onClick={() => {
-                      setConfigPanelRequestedTab("systems");
+                      setConfigPanelRequestedTab("safety");
                       setConfigPanelOpen(true);
                     }}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[hsl(var(--card))] border border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/30 transition-colors"
@@ -5482,7 +5610,7 @@ function App() {
                       />
                     ) : (
                       <Live2DAvatar
-                        state={live2dAvatarState}
+                        state={avatarState}
                         mood={avatarMood}
                         width={(operationsPresenceSize.width - 2) * OPERATIONS_PRESENCE_STAGE_SCALE}
                         height={
@@ -5675,7 +5803,7 @@ function App() {
       <WidgetPicker
         isOpen={widgetPickerOpen}
         onClose={() => setWidgetPickerOpen(false)}
-        onAdd={() => {
+        onAdd={(type) => {
           // Widget added — grid handles persistence internally
           setWidgetPickerOpen(false);
         }}
@@ -5751,7 +5879,7 @@ function App() {
         runtimeLoadProfile={runtimeLoadProfile}
         onRuntimeLoadProfileChange={setRuntimeLoadProfile}
         onAvatarPreviewChange={setAvatarPreviewActive}
-        avatarState={live2dAvatarState}
+        avatarState={avatarState}
         avatarMood={avatarMood}
         avatarRenderer={avatarRenderer}
         onRendererChange={setAvatarRenderer}

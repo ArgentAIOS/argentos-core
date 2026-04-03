@@ -176,6 +176,7 @@ export function useTTS(options: UseTTSOptions = {}) {
       try {
         onStart?.();
         const ttsStart = performance.now();
+        const requestTimeoutMs = Math.min(45_000, Math.max(15_000, ttsText.length * 180));
 
         let response: Response | null = null;
         let responseEndpoint = "";
@@ -185,7 +186,7 @@ export function useTTS(options: UseTTSOptions = {}) {
 
         const directApiEndpoint = `http://${window.location.hostname}:9242/api/proxy/tts/${provider}`;
         const endpointPath = `/api/proxy/tts/${provider}`;
-        const endpoints = import.meta.env.DEV ? [directApiEndpoint, endpointPath] : [endpointPath];
+        const endpoints = [...new Set([directApiEndpoint, endpointPath])];
 
         if (provider === "fish") {
           for (const endpoint of endpoints) {
@@ -206,7 +207,7 @@ export function useTTS(options: UseTTSOptions = {}) {
                     format: profile?.outputFormat || "mp3",
                   }),
                 },
-                15000,
+                requestTimeoutMs,
                 abortControllerRef.current.signal,
               );
 
@@ -270,7 +271,7 @@ export function useTTS(options: UseTTSOptions = {}) {
                       },
                     }),
                   },
-                  15000,
+                  requestTimeoutMs,
                   abortControllerRef.current.signal,
                 );
 
@@ -338,10 +339,11 @@ export function useTTS(options: UseTTSOptions = {}) {
           throw Object.assign(new Error(`TTS returned non-audio: ${contentType}`), { status: 502 });
         }
 
-        // Stream audio using MediaSource API for lowest time-to-audio.
-        // Falls back to full-blob buffering if MediaSource doesn't support audio/mpeg.
-        const useMediaSource =
-          typeof MediaSource !== "undefined" && MediaSource.isTypeSupported("audio/mpeg");
+        // Browser MSE playback has been flaky for localhost TTS in real use:
+        // requests succeed, but some sessions never emit audible output. Prefer
+        // the simpler blob path until we have explicit evidence the streaming
+        // path is stable again.
+        const useMediaSource = false;
 
         if (useMediaSource && response.body) {
           console.log("[TTS] Using MediaSource streaming playback");
@@ -349,6 +351,9 @@ export function useTTS(options: UseTTSOptions = {}) {
           const blobUrl = URL.createObjectURL(mediaSource);
           const audio = new Audio(blobUrl);
           audioRef.current = audio;
+          audio.preload = "auto";
+          audio.volume = 1;
+          audio.muted = false;
 
           // Set output device
           if (outputDeviceId && "setSinkId" in audio) {
@@ -486,6 +491,9 @@ export function useTTS(options: UseTTSOptions = {}) {
           const blobUrl = URL.createObjectURL(audioBlob);
           const audio = new Audio(blobUrl);
           audioRef.current = audio;
+          audio.preload = "auto";
+          audio.volume = 1;
+          audio.muted = false;
 
           if (outputDeviceId && "setSinkId" in audio) {
             try {

@@ -5,6 +5,7 @@
 
 export type HostedLlmProviderId = "anthropic" | "openai" | "minimax" | "zai";
 export type LlmProviderId = HostedLlmProviderId | "local";
+export type LocalRuntimeProviderId = "ollama" | "lmstudio";
 export type VoiceProviderId = "edge" | "openai" | "elevenlabs";
 export type SearchProviderId = "brave" | "perplexity";
 
@@ -56,9 +57,17 @@ export type ProviderModelChoice = {
   description: string;
 };
 
+type RouterTierSelection = {
+  fast: string;
+  balanced: string;
+  powerful: string;
+};
+
 const LOCAL_MODEL_PROVIDER = "ollama";
 const LOCAL_MODEL_ID = "qwen3:30b-a3b-instruct-2507-q4_K_M";
 const LOCAL_MODEL_REF = `${LOCAL_MODEL_PROVIDER}/${LOCAL_MODEL_ID}`;
+const LMSTUDIO_LOCAL_MODEL_ID = "qwen/qwen3.5-35b-a3b";
+const LMSTUDIO_LOCAL_MODEL_REF = `lmstudio/${LMSTUDIO_LOCAL_MODEL_ID}`;
 
 const KEYLESS_PROVIDERS = new Set(["ollama", "lmstudio", "edge"]);
 const ANTHROPIC_HARD_DEFAULT = "anthropic";
@@ -213,7 +222,8 @@ const MODEL_FALLBACKS: Record<LlmProviderId, ProviderModelChoice[]> = {
       id: "zai/glm-5",
       name: "GLM-5",
       badge: "Recommended",
-      description: "Newest GLM generation. Best default when you want the latest Z.AI hosted stack.",
+      description:
+        "Newest GLM generation. Best default when you want the latest Z.AI hosted stack.",
     },
     {
       id: "zai/glm-4.7",
@@ -238,8 +248,66 @@ const MODEL_FALLBACKS: Record<LlmProviderId, ProviderModelChoice[]> = {
   ],
 };
 
-export function getProviderFallbackModels(provider: LlmProviderId): ProviderModelChoice[] {
-  return MODEL_FALLBACKS[provider];
+const LOCAL_RUNTIME_FALLBACKS: Record<LocalRuntimeProviderId, ProviderModelChoice[]> = {
+  ollama: MODEL_FALLBACKS.local,
+  lmstudio: [
+    {
+      id: LMSTUDIO_LOCAL_MODEL_REF,
+      name: "Qwen 3.5 35B (LM Studio)",
+      badge: "Local",
+      description: "Default local-only chat model through LM Studio.",
+    },
+  ],
+};
+
+const ROUTER_TIER_PREFERENCES: Record<HostedLlmProviderId, { fast: string[]; powerful: string[] }> =
+  {
+    anthropic: {
+      fast: ["anthropic/claude-haiku-4-5", "anthropic/claude-sonnet-4-6"],
+      powerful: ["anthropic/claude-opus-4-6", "anthropic/claude-sonnet-4-6"],
+    },
+    openai: {
+      fast: ["openai/gpt-5.4-mini", "openai/gpt-5.2", "openai/gpt-5.4"],
+      powerful: ["openai/gpt-5.4", "openai/gpt-5.2", "openai/gpt-5.4-mini"],
+    },
+    minimax: {
+      fast: ["minimax/MiniMax-M2", "minimax/MiniMax-M2.1", "minimax/MiniMax-M2.5"],
+      powerful: ["minimax/MiniMax-M2.5", "minimax/MiniMax-M2.1", "minimax/MiniMax-M2"],
+    },
+    zai: {
+      fast: ["zai/glm-4.6", "zai/glm-4.7", "zai/glm-5", "zai/glm-5.1"],
+      powerful: ["zai/glm-5.1", "zai/glm-5", "zai/glm-4.7", "zai/glm-4.6"],
+    },
+  };
+
+export function getProviderFallbackModels(
+  provider: LlmProviderId,
+  localRuntime: LocalRuntimeProviderId = "ollama",
+): ProviderModelChoice[] {
+  if (provider === "local") {
+    return LOCAL_RUNTIME_FALLBACKS[localRuntime] ?? LOCAL_RUNTIME_FALLBACKS.ollama;
+  }
+  return MODEL_FALLBACKS[provider] ?? [];
+}
+
+export function chooseInitialModelForProvider(
+  provider: LlmProviderId,
+  currentModel: string | null | undefined,
+  options: ProviderModelChoice[] | null | undefined,
+  localRuntime: LocalRuntimeProviderId = "ollama",
+): string {
+  const normalizedOptions = Array.isArray(options) ? options : [];
+  const normalizedCurrent = String(currentModel || "").trim();
+  if (normalizedCurrent) {
+    const currentProvider = inferProviderFromModelRef(normalizedCurrent);
+    if (
+      (provider === "local" ? currentProvider === localRuntime : currentProvider === provider) &&
+      normalizedOptions.some((entry) => entry.id === normalizedCurrent)
+    ) {
+      return normalizedCurrent;
+    }
+  }
+  return normalizedOptions[0]?.id || "";
 }
 
 export function inferProviderFromModelRef(ref: string | null | undefined): string | null {
@@ -261,10 +329,16 @@ export function stripProviderFromModelRef(ref: string | null | undefined): strin
 }
 
 function isLocalProvider(provider: string | null | undefined): boolean {
-  return KEYLESS_PROVIDERS.has(String(provider || "").trim().toLowerCase());
+  return KEYLESS_PROVIDERS.has(
+    String(provider || "")
+      .trim()
+      .toLowerCase(),
+  );
 }
 
-function collectRouterProviders(modelRouter: Record<string, unknown> | null | undefined): Set<string> {
+function collectRouterProviders(
+  modelRouter: Record<string, unknown> | null | undefined,
+): Set<string> {
   const providers = new Set<string>();
   const collectTiers = (tiers: unknown) => {
     if (!tiers || typeof tiers !== "object") {
@@ -290,7 +364,9 @@ function collectRouterProviders(modelRouter: Record<string, unknown> | null | un
 
   collectTiers((modelRouter as { tiers?: unknown }).tiers);
 
-  const activeProfile = String((modelRouter as { activeProfile?: string }).activeProfile || "").trim();
+  const activeProfile = String(
+    (modelRouter as { activeProfile?: string }).activeProfile || "",
+  ).trim();
   const profiles = (modelRouter as { profiles?: Record<string, unknown> }).profiles;
   if (profiles && typeof profiles === "object") {
     if (activeProfile && profiles[activeProfile] && typeof profiles[activeProfile] === "object") {
@@ -313,12 +389,17 @@ function collectRouterProviders(modelRouter: Record<string, unknown> | null | un
 }
 
 export function evaluateOnboardingStatus(params: {
-  authProfiles: AuthProfileSummary[];
+  authProfiles: AuthProfileSummary[] | null | undefined;
   modelConfig: ModelConfigSummary | null | undefined;
 }): OnboardingValidation {
+  const authProfiles = Array.isArray(params.authProfiles) ? params.authProfiles : [];
   const authProviders = new Set(
-    (params.authProfiles || [])
-      .map((profile) => String(profile.provider || "").trim().toLowerCase())
+    authProfiles
+      .map((profile) =>
+        String(profile.provider || "")
+          .trim()
+          .toLowerCase(),
+      )
       .filter(Boolean),
   );
 
@@ -345,7 +426,9 @@ export function evaluateOnboardingStatus(params: {
     }
   }
 
-  const missingProviders = [...requiredProviders].filter((provider) => !authProviders.has(provider));
+  const missingProviders = [...requiredProviders].filter(
+    (provider) => !authProviders.has(provider),
+  );
   const reasons: string[] = [];
 
   if (!primaryProvider) {
@@ -372,25 +455,38 @@ export function evaluateOnboardingStatus(params: {
 export function deriveProviderAwareModelConfig(params: {
   llmProvider: LlmProviderId;
   selectedModel: string;
+  availableModels?: ProviderModelChoice[];
+  localRuntime?: LocalRuntimeProviderId;
 }) {
   const provider = params.llmProvider;
+  const localRuntime = params.localRuntime ?? "ollama";
   if (provider === "local") {
+    const fallbackRef =
+      getProviderFallbackModels("local", localRuntime)[0]?.id ||
+      (localRuntime === "lmstudio" ? LMSTUDIO_LOCAL_MODEL_REF : LOCAL_MODEL_REF);
+    const parsedLocalProvider = inferProviderFromModelRef(fallbackRef) || localRuntime;
+    const parsedLocalModel = stripProviderFromModelRef(fallbackRef) || fallbackRef;
     return {
-      model: { primary: LOCAL_MODEL_REF },
-      subagentModel: LOCAL_MODEL_REF,
+      model: { primary: fallbackRef },
+      subagentModel: fallbackRef,
       modelRouter: {
         enabled: true,
         tiers: {
-          local: { provider: LOCAL_MODEL_PROVIDER, model: LOCAL_MODEL_ID },
-          fast: { provider: LOCAL_MODEL_PROVIDER, model: LOCAL_MODEL_ID },
-          balanced: { provider: LOCAL_MODEL_PROVIDER, model: LOCAL_MODEL_ID },
-          powerful: { provider: LOCAL_MODEL_PROVIDER, model: LOCAL_MODEL_ID },
+          local: { provider: parsedLocalProvider, model: parsedLocalModel },
+          fast: { provider: parsedLocalProvider, model: parsedLocalModel },
+          balanced: { provider: parsedLocalProvider, model: parsedLocalModel },
+          powerful: { provider: parsedLocalProvider, model: parsedLocalModel },
         },
       },
     };
   }
 
   const selectedModelId = stripProviderFromModelRef(params.selectedModel) || params.selectedModel;
+  const tiers = deriveHostedRouterTierSelection({
+    provider,
+    selectedModel: params.selectedModel,
+    availableModels: params.availableModels,
+  });
   return {
     model: { primary: `${provider}/${selectedModelId}` },
     subagentModel: `${provider}/${selectedModelId}`,
@@ -398,9 +494,9 @@ export function deriveProviderAwareModelConfig(params: {
       enabled: true,
       tiers: {
         local: { provider: LOCAL_MODEL_PROVIDER, model: LOCAL_MODEL_ID },
-        fast: { provider, model: selectedModelId },
-        balanced: { provider, model: selectedModelId },
-        powerful: { provider, model: selectedModelId },
+        fast: { provider, model: tiers.fast },
+        balanced: { provider, model: tiers.balanced },
+        powerful: { provider, model: tiers.powerful },
       },
       routingPolicy: {
         likelyToolUseMinTier: "balanced",
@@ -411,10 +507,27 @@ export function deriveProviderAwareModelConfig(params: {
 
 export function buildModelChoicesFromApi(
   provider: LlmProviderId,
-  rows: Array<{ id?: string; model?: string; alias?: string | null; verified?: boolean }> | null | undefined,
+  rows:
+    | Array<{ id?: string; model?: string; alias?: string | null; verified?: boolean }>
+    | null
+    | undefined,
+  localRuntime: LocalRuntimeProviderId = "ollama",
 ): ProviderModelChoice[] {
   if (provider === "local") {
-    return MODEL_FALLBACKS.local;
+    const fallback = getProviderFallbackModels("local", localRuntime);
+    const mergedLocal = (rows || [])
+      .map((row) => {
+        const rawId = String(row?.id || "").trim();
+        if (!rawId) return null;
+        return {
+          id: rawId,
+          name: String(row?.alias || row?.model || rawId).trim() || rawId,
+          badge: row?.verified ? "Verified" : "Local",
+          description: `Available ${localRuntime === "lmstudio" ? "LM Studio" : "Ollama"} model.`,
+        } satisfies ProviderModelChoice;
+      })
+      .filter((entry): entry is ProviderModelChoice => entry !== null);
+    return mergedLocal.length > 0 ? mergedLocal : fallback;
   }
 
   const fallback = MODEL_FALLBACKS[provider] ?? [];
@@ -458,4 +571,167 @@ export function buildModelChoicesFromApi(
   });
 
   return merged.length > 0 ? merged : fallback;
+}
+
+function parseProviderModelRef(ref: string | null | undefined): {
+  provider: string;
+  model: string;
+} {
+  const normalized = String(ref || "").trim();
+  const provider = inferProviderFromModelRef(normalized) || "";
+  const model = stripProviderFromModelRef(normalized) || normalized;
+  return { provider, model };
+}
+
+function deriveEmbeddingLaneSelection(params: {
+  llmProvider: LlmProviderId;
+  localRuntime: LocalRuntimeProviderId;
+}): { provider: string; model: string; fallback: string } {
+  if (params.llmProvider === "local") {
+    if (params.localRuntime === "lmstudio") {
+      return {
+        provider: "lmstudio",
+        model: "text-embedding-nomic-embed-text-v1.5",
+        fallback: "",
+      };
+    }
+    return {
+      provider: "ollama",
+      model: "nomic-embed-text",
+      fallback: "",
+    };
+  }
+
+  if (params.llmProvider === "openai") {
+    return {
+      provider: "openai",
+      model: "text-embedding-nomic-embed-text-v1.5",
+      fallback: "",
+    };
+  }
+
+  if (params.llmProvider === "zai") {
+    return {
+      provider: "zai",
+      model: "embedding-3",
+      fallback: "",
+    };
+  }
+
+  if (params.llmProvider === "minimax") {
+    return {
+      provider: "minimax",
+      model: "text-embedding",
+      fallback: "",
+    };
+  }
+
+  return {
+    provider: "openai",
+    model: "text-embedding-nomic-embed-text-v1.5",
+    fallback: "",
+  };
+}
+
+export function deriveProviderAwareAgentSettingsPatch(params: {
+  llmProvider: LlmProviderId;
+  selectedModel: string;
+  availableModels?: ProviderModelChoice[];
+  localRuntime?: LocalRuntimeProviderId;
+}) {
+  const localRuntime = params.localRuntime ?? "ollama";
+  const derived = deriveProviderAwareModelConfig({
+    llmProvider: params.llmProvider,
+    selectedModel: params.selectedModel,
+    availableModels: params.availableModels,
+    localRuntime,
+  });
+  const primaryRef = String((derived.model as { primary?: string } | null)?.primary || "");
+  const balanced = parseProviderModelRef(primaryRef);
+  const routerTiers =
+    (derived.modelRouter as { tiers?: Record<string, { provider?: string; model?: string }> })
+      ?.tiers || {};
+  const fast = {
+    provider: String(routerTiers.fast?.provider || balanced.provider).trim(),
+    model: String(routerTiers.fast?.model || balanced.model).trim(),
+  };
+  const powerful = {
+    provider: String(routerTiers.powerful?.provider || balanced.provider).trim(),
+    model: String(routerTiers.powerful?.model || balanced.model).trim(),
+  };
+  const embedding = deriveEmbeddingLaneSelection({
+    llmProvider: params.llmProvider,
+    localRuntime,
+  });
+
+  return {
+    backgroundModels: {
+      kernel: {
+        provider: balanced.provider,
+        model: balanced.model,
+      },
+      contemplation: {
+        provider: powerful.provider,
+        model: powerful.model,
+      },
+      sis: {
+        provider: balanced.provider,
+        model: balanced.model,
+      },
+      heartbeat: {
+        provider: fast.provider,
+        model: fast.model,
+      },
+      executionWorker: {
+        provider: balanced.provider,
+        model: balanced.model,
+      },
+      embeddings: {
+        provider: embedding.provider,
+        model: `${embedding.provider}/${embedding.model}`,
+        fallback: embedding.fallback,
+      },
+    },
+    memory: {
+      memu: {
+        llm: {
+          provider: balanced.provider,
+          model: balanced.model,
+          thinkLevel: "off",
+          timeoutMs: 15000,
+        },
+      },
+    },
+  };
+}
+
+function deriveHostedRouterTierSelection(params: {
+  provider: HostedLlmProviderId;
+  selectedModel: string;
+  availableModels?: ProviderModelChoice[];
+}): RouterTierSelection {
+  const selectedId = String(params.selectedModel || "").trim();
+  const selectedModel = stripProviderFromModelRef(selectedId) || selectedId;
+  const availableModels = Array.isArray(params.availableModels) ? params.availableModels : [];
+  const availableIds = new Set(
+    (availableModels.length > 0 ? availableModels : MODEL_FALLBACKS[params.provider]).map(
+      (entry) => entry.id,
+    ),
+  );
+  const preferences = ROUTER_TIER_PREFERENCES[params.provider];
+
+  const pick = (candidates: string[], fallbackId: string) => {
+    for (const candidate of candidates) {
+      if (availableIds.has(candidate)) {
+        return stripProviderFromModelRef(candidate) || fallbackId;
+      }
+    }
+    return fallbackId;
+  };
+
+  return {
+    fast: pick(preferences.fast, selectedModel),
+    balanced: selectedModel,
+    powerful: pick(preferences.powerful, selectedModel),
+  };
 }
