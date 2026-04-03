@@ -898,6 +898,13 @@ const next = {
       mode: parsed.gateway?.auth?.mode || "token",
       token: gwToken,
     },
+    remote: {
+      ...(parsed.gateway?.remote || {}),
+      token:
+        typeof parsed.gateway?.remote?.token === "string" && parsed.gateway.remote.token.trim()
+          ? parsed.gateway.remote.token
+          : gwToken,
+    },
   },
   distribution: {
     ...(parsed.distribution || {}),
