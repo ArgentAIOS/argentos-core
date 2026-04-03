@@ -404,14 +404,7 @@ resolve_install_git_repo_url() {
     return 0
   fi
 
-  case "$CHANNEL" in
-    dev)
-      printf 'https://github.com/ArgentAIOS/argentos.git\n'
-      ;;
-    *)
-      printf 'https://github.com/ArgentAIOS/argentos-core.git\n'
-      ;;
-  esac
+  printf 'https://github.com/ArgentAIOS/argentos-core.git\n'
 }
 
 resolve_effective_version() {
@@ -422,7 +415,7 @@ resolve_effective_version() {
   case "$CHANNEL" in
     stable) printf 'latest stable GitHub release tag\n' ;;
     beta) printf 'latest beta-or-stable GitHub release tag\n' ;;
-    dev) printf 'main\n' ;;
+    dev) printf 'develop\n' ;;
     *)
       err "Unsupported channel: $CHANNEL"
       exit 1
@@ -460,7 +453,7 @@ resolve_effective_update_branch() {
       ;;
   esac
 
-  printf 'main\n'
+  printf 'develop\n'
 }
 
 resolve_argent_app_manifest_urls() {

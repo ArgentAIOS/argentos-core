@@ -7,7 +7,7 @@
     "googleapis": "^144.0.0"
   },
   "devDependencies": {
-    "argentos": "workspace:*"
+    "argentos": "link:../.."
   },
   "argent": {
     "core": true,

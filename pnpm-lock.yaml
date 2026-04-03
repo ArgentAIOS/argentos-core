@@ -67,7 +67,7 @@ importers:
         specifier: 0.57.1
         version: 0.57.1
       '@modelcontextprotocol/sdk':
-        specifier: ^1.28.0
+        specifier: ^1.29.0
         version: 1.29.0(zod@4.3.6)
       '@mozilla/readability':
         specifier: ^0.6.0
@@ -438,7 +438,7 @@ importers:
   extensions/bluebubbles:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/canvas-docs-enforcer: {}
@@ -446,7 +446,7 @@ importers:
   extensions/copilot-proxy:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/dashboard-canvas-bridge: {}
@@ -488,31 +488,31 @@ importers:
         version: 1.40.0
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/discord:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/feishu:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/google-antigravity-auth:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/google-gemini-cli-auth:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/google-workspace:
@@ -522,7 +522,7 @@ importers:
         version: 144.0.0
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/googlechat:
@@ -532,31 +532,31 @@ importers:
         version: 10.6.2
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/imessage:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/line:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/llm-task:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/lobster:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/matrix:
@@ -578,13 +578,13 @@ importers:
         version: 4.3.6
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/mattermost:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/memory-lancedb:
@@ -600,13 +600,13 @@ importers:
         version: 6.32.0(ws@8.20.0)(zod@4.3.6)
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/minimax-portal-auth:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/msteams:
@@ -621,7 +621,7 @@ importers:
         specifier: ^1.2.3
         version: 1.4.1
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
       express:
         specifier: ^5.2.1
@@ -633,13 +633,13 @@ importers:
   extensions/nextcloud-talk:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/nostr:
     dependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
       nostr-tools:
         specifier: ^2.23.0
@@ -651,7 +651,7 @@ importers:
   extensions/open-prose:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/response-validator: {}
@@ -659,13 +659,13 @@ importers:
   extensions/signal:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/slack:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/summarize-tts-enforcer: {}
@@ -675,7 +675,7 @@ importers:
   extensions/telegram:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/tlon:
@@ -688,7 +688,7 @@ importers:
         version: 3.0.0
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/twitch:
@@ -707,7 +707,7 @@ importers:
         version: 4.3.6
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/voice-call:
@@ -723,19 +723,19 @@ importers:
         version: 4.3.6
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/whatsapp:
     devDependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   extensions/zalo:
     dependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
       undici:
         specifier: 7.20.0
@@ -747,19 +747,19 @@ importers:
         specifier: 0.34.47
         version: 0.34.47
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   packages/clawdbot:
     dependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   packages/moltbot:
     dependencies:
       argentos:
-        specifier: workspace:*
+        specifier: link:../..
         version: link:../..
 
   ui:

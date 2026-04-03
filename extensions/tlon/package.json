@@ -8,7 +8,7 @@
     "@urbit/http-api": "^3.0.0"
   },
   "devDependencies": {
-    "argentos": "workspace:*"
+    "argentos": "link:../.."
   },
   "argent": {
     "extensions": [
