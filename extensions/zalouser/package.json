@@ -1,6 +1,6 @@
 {
   "name": "@argentos/zalouser",
-  "version": "2026.3.2",
+  "version": "2026.4.11.1",
   "description": "ArgentOS Zalo Personal Account plugin via zca-cli",
   "type": "module",
   "dependencies": {

@@ -2,6 +2,20 @@
 
 Docs: https://docs.argentos.ai
 
+## 2026.4.11.1
+
+### Changes
+
+- Public Core install docs now describe the real Linux hosted shell-install flow, including user `systemd`, dedicated `5433` / `6380` services, and the practical caveat for hosts that already run PostgreSQL or Redis.
+- Public Core README now documents Linux shell installation alongside the macOS path instead of implying a macOS-first-only experience.
+- Public dashboard intent presets no longer ship company-specific Titanium Computing or holace.io packs in Core.
+
+### Fixes
+
+- Cron: isolated `agentTurn` jobs with `delivery.mode=\"announce\"` and no explicit recipient no longer fail with `cron delivery target is missing`; they now behave as summary-only runs.
+- Linux hosted install validation now supports a dedicated PostgreSQL 17 cluster on `5433` and Redis on `6380` without repurposing an existing system PostgreSQL cluster on `5432`.
+- macOS dev-install validation now restores native app-to-gateway attachment after stale App Support device-auth cleanup.
+
 ## 2026.2.4
 
 ### Changes

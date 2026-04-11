@@ -1,6 +1,6 @@
 {
   "name": "@argentos/msteams",
-  "version": "2026.3.2",
+  "version": "2026.4.11.1",
   "description": "Argent Microsoft Teams channel plugin",
   "type": "module",
   "dependencies": {

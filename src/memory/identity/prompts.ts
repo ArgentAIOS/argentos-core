@@ -15,7 +15,7 @@ Examples:
 ENTITY: Maggie | TYPE: person | ROLE: Jason's mother
 ENTITY: Leo | TYPE: pet | ROLE: Jason's dog
 ENTITY: Richard | TYPE: person | ROLE: business partner
-ENTITY: Titanium Computing | TYPE: organization | ROLE: Jason's MSP business
+ENTITY: Northwind Ops | TYPE: organization | ROLE: managed services business
 
 Rules:
 - Only extract entities that are clearly named (not "the client" or "someone")

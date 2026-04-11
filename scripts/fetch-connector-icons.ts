@@ -112,12 +112,10 @@ const MANUAL_SOURCING: Record<string, { name: string; reason: string }> = {
   nanob: { name: "NanoB", reason: "Not on Simple Icons" },
   "google-places": { name: "Google Places", reason: "Use Google Maps icon or Google icon variant" },
 
-  // Jason's products — need original logos
-  callscrub: { name: "CallScrub", reason: "Jason's product — needs original logo" },
-  paypunch: { name: "PayPunch", reason: "Jason's product — needs original logo" },
-  holace: { name: "Holace", reason: "Jason's product — needs original logo" },
-  "lion-report": { name: "LION Report", reason: "Jason's product — needs original logo" },
-  clientsync: { name: "ClientSync", reason: "Jason's product — needs original logo" },
+  // Connectors without Simple Icons entries — source manually if they ship.
+  paypunch: { name: "PayPunch", reason: "Not on Simple Icons" },
+  "lion-report": { name: "LION Report", reason: "Not on Simple Icons" },
+  clientsync: { name: "ClientSync", reason: "Not on Simple Icons" },
 };
 
 async function fetchIcon(slug: string): Promise<string | null> {

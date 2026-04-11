@@ -1,6 +1,6 @@
 {
   "name": "@argentos/google-gemini-cli-auth",
-  "version": "2026.3.2",
+  "version": "2026.4.11.1",
   "description": "ArgentOS Gemini CLI OAuth provider plugin",
   "type": "module",
   "devDependencies": {
