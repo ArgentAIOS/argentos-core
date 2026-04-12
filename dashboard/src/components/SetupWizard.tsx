@@ -357,13 +357,12 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
                 className={`w-5 h-5 ${authType === "setup-token" ? "text-amber-400" : "text-white/40"}`}
               />
               <div>
-                <div className="text-white font-medium">Claude Setup Token</div>
+                <div className="text-white font-medium">Claude API Key</div>
                 <div className="text-white/40 text-xs mt-0.5">
-                  From Anthropic Max subscription. Run{" "}
+                  From{" "}
                   <code className="text-amber-400/70 bg-white/5 px-1 rounded">
-                    claude setup-token
-                  </code>{" "}
-                  in terminal.
+                    console.anthropic.com/settings/keys
+                  </code>
                 </div>
               </div>
             </div>
@@ -488,7 +487,7 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
             <div>
               <label className="text-white/60 text-xs font-medium block mb-1">
                 {authType === "setup-token"
-                  ? "Setup Token"
+                  ? "Claude API Key"
                   : authType === "minimax-key"
                     ? "MiniMax API Key"
                     : authType === "glm-key"
@@ -502,7 +501,7 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
                   onChange={(e) => setToken(e.target.value)}
                   placeholder={
                     authType === "setup-token"
-                      ? "sk-ant-oat01-..."
+                      ? "sk-ant-api03-..."
                       : authType === "minimax-key"
                         ? "sk-cp-... or eyJ..."
                         : authType === "glm-key"
@@ -667,7 +666,7 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
       authType === "skip"
         ? "Skipped (configure in Settings)"
         : authType === "setup-token"
-          ? `Setup token saved as ${profileName}`
+          ? `Claude API key saved as ${profileName}`
           : `API key saved as ${profileName}`;
 
     const modelName =

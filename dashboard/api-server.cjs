@@ -41,6 +41,33 @@ const ALLOWED_ORIGINS = [
   "http://localhost:18789", // Gateway (Swift wrapper loads dashboard here)
   "http://127.0.0.1:18789", // Gateway (alternate)
 ];
+
+// Argent Lite: on a Pi the operator may access via hostname or LAN IP.
+// Dynamically add the system hostname and all non-loopback IPs so CORS
+// doesn't block saves from the same machine via a different address.
+try {
+  const os = require("os");
+  const hostname = os.hostname();
+  const ifaces = os.networkInterfaces();
+  const extraHosts = new Set([hostname]);
+  for (const name of Object.keys(ifaces)) {
+    for (const iface of ifaces[name] || []) {
+      if (!iface.internal && iface.family === "IPv4") {
+        extraHosts.add(iface.address);
+      }
+    }
+  }
+  for (const host of extraHosts) {
+    for (const port of [8080, 5173]) {
+      const origin = `http://${host}:${port}`;
+      if (!ALLOWED_ORIGINS.includes(origin)) {
+        ALLOWED_ORIGINS.push(origin);
+      }
+    }
+  }
+} catch {
+  /* best-effort — loopback origins always work */
+}
 app.use(
   cors({
     origin: (origin, callback) => {
