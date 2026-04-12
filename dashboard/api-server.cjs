@@ -8364,12 +8364,6 @@ const KNOWN_API_VARIABLES = [
     description: "Ngrok tunnel API key",
   },
   {
-    variable: "MAILGUN_TITANIUM_API_KEY",
-    service: "Mailgun",
-    category: "Email",
-    description: "Mailgun email API",
-  },
-  {
     variable: "MAILGUN_API_KEY",
     service: "Mailgun",
     category: "Email",

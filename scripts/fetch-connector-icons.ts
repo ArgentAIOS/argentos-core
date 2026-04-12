@@ -113,9 +113,6 @@ const MANUAL_SOURCING: Record<string, { name: string; reason: string }> = {
   "google-places": { name: "Google Places", reason: "Use Google Maps icon or Google icon variant" },
 
   // Connectors without Simple Icons entries — source manually if they ship.
-  paypunch: { name: "PayPunch", reason: "Not on Simple Icons" },
-  "lion-report": { name: "LION Report", reason: "Not on Simple Icons" },
-  clientsync: { name: "ClientSync", reason: "Not on Simple Icons" },
 };
 
 async function fetchIcon(slug: string): Promise<string | null> {

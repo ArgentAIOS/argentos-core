@@ -14,6 +14,7 @@
     "node_modules/",
     "patches/",
     "pnpm-lock.yaml/",
+    "src/canvas-host/a2ui/a2ui.bundle.js",
     "Swabble/",
     "vendor/",
   ],
