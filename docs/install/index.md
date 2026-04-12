@@ -16,6 +16,13 @@ Use the installer unless you have a reason not to. It sets up the CLI and runs o
 curl -fsSL https://argentos.ai/install.sh | bash
 ```
 
+Ubuntu uses the same installer entrypoint. There is no separate `install-linux.sh` rail for the MVP.
+For headless Linux servers, set a gateway password up front:
+
+```bash
+ARGENT_GATEWAY_PASSWORD='<strong-password>' curl -fsSL https://argentos.ai/install.sh | bash
+```
+
 Windows (PowerShell):
 
 ```powershell
@@ -33,6 +40,7 @@ argent onboard --install-daemon
 - **Node >=22**
 - macOS, Linux, or Windows via WSL2
 - `pnpm` only if you build from source
+- Ubuntu is the supported Linux MVP for the hosted installer path
 
 ## Choose your install path
 
@@ -87,6 +95,7 @@ Tip: if you don’t have `argent` on PATH yet, run repo commands via `pnpm argen
 - Quick check: `argent doctor`
 - Check gateway health: `argent status` + `argent health`
 - Open the dashboard: `argent dashboard`
+- On Ubuntu MVP installs, the supported browser UI is the gateway/dashboard URL printed by the installer and protected by gateway auth
 
 ## Install method: hosted git rail
 
@@ -124,6 +133,11 @@ Equivalent env vars (useful for automation):
 - `ARGENTOS_NO_PROMPT=1`
 - `ARGENTOS_DRY_RUN=1`
 - `ARGENTOS_NO_ONBOARD=1`
+- `ARGENT_GATEWAY_BIND=lan|loopback|auto|custom|tailnet`
+- `ARGENT_GATEWAY_AUTH=password|token`
+- `ARGENT_GATEWAY_PASSWORD=...`
+- `ARGENT_GATEWAY_TOKEN=...`
+- `ARGENT_GATEWAY_PUBLIC_HOST=server.example.com`
 - `SHARP_IGNORE_GLOBAL_LIBVIPS=0|1` (default: `1`; avoids `sharp` building against system libvips)
 
 ## Troubleshooting: `argent` not found (PATH)

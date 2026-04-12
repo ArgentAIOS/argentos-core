@@ -62,6 +62,8 @@ export type ArgentConfig = {
   update?: {
     /** Update channel for git + npm installs ("stable", "beta", or "dev"). */
     channel?: "stable" | "beta" | "dev";
+    /** Optional git branch override used by dev-lane source installs. */
+    branch?: string;
     /** Check for updates on gateway start (npm installs only). */
     checkOnStart?: boolean;
   };

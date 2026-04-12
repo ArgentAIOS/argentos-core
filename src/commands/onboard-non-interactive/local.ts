@@ -153,9 +153,12 @@ export async function runNonInteractiveOnboardingLocal(params: {
       customBindHost: nextConfig.gateway?.customBindHost,
       basePath: undefined,
     });
+    const gatewayPassword =
+      gatewayResult.authMode === "password" ? opts.gatewayPassword?.trim() || undefined : undefined;
     await waitForGatewayReachable({
       url: links.wsUrl,
       token: gatewayResult.gatewayToken,
+      password: gatewayPassword,
       deadlineMs: 15_000,
     });
     await healthCommand({ json: false, timeoutMs: 10_000 }, runtime);

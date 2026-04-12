@@ -11,6 +11,6 @@
     "./cli-entry": "./bin/clawdbot.js"
   },
   "dependencies": {
-    "argentos": "workspace:*"
+    "argentos": "link:../.."
   }
 }

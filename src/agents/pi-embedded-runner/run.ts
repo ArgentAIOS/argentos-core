@@ -40,7 +40,11 @@ import {
   resolveAuthProfileOrder,
   type ResolvedProviderAuth,
 } from "../model-auth.js";
-import { normalizeProviderId, selectionDiffersFromConfiguredPrimary } from "../model-selection.js";
+import {
+  normalizeProviderId,
+  resolveDefaultModelForAgent,
+  selectionDiffersFromConfiguredPrimary,
+} from "../model-selection.js";
 import { ensureArgentModelsJson } from "../models-config.js";
 import {
   classifyFailoverReason,
@@ -362,9 +366,20 @@ export async function runEmbeddedPiAgent(
       const started = Date.now();
       const resolvedWorkspace = resolveUserPath(params.workspaceDir);
       const prevCwd = process.cwd();
+      const sessionAgentIds = resolveSessionAgentIds({
+        sessionKey: params.sessionKey,
+        config: params.config,
+      });
+      const configuredDefaultModel = resolveDefaultModelForAgent({
+        cfg: params.config ?? {},
+        agentId: sessionAgentIds.sessionAgentId,
+      });
 
-      const rawProvider = (params.provider ?? DEFAULT_PROVIDER).trim() || DEFAULT_PROVIDER;
-      const rawModelId = (params.model ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;
+      const rawProvider =
+        (params.provider ?? configuredDefaultModel.provider ?? DEFAULT_PROVIDER).trim() ||
+        DEFAULT_PROVIDER;
+      const rawModelId =
+        (params.model ?? configuredDefaultModel.model ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;
       clearExpiredOverloadedModelQuarantines();
       const agentDir = params.agentDir ?? resolveArgentAgentDir();
       const fallbackConfigured =

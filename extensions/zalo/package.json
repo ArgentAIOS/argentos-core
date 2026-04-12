@@ -1,14 +1,14 @@
 {
   "name": "@argentos/zalo",
-  "version": "2026.3.2",
+  "version": "2026.4.11.1",
   "description": "ArgentOS Zalo channel plugin",
   "type": "module",
   "dependencies": {
-    "argentos": "workspace:*",
+    "argentos": "link:../..",
     "undici": "7.20.0"
   },
   "devDependencies": {
-    "argentos": "workspace:*"
+    "argentos": "link:../.."
   },
   "argent": {
     "extensions": [

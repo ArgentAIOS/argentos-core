@@ -1,18 +1,18 @@
 {
   "name": "@argentos/msteams",
-  "version": "2026.3.2",
+  "version": "2026.4.11.1",
   "description": "Argent Microsoft Teams channel plugin",
   "type": "module",
   "dependencies": {
     "@microsoft/agents-hosting": "^1.2.3",
     "@microsoft/agents-hosting-express": "^1.2.3",
     "@microsoft/agents-hosting-extensions-teams": "^1.2.3",
-    "argentos": "workspace:*",
+    "argentos": "link:../..",
     "express": "^5.2.1",
     "proper-lockfile": "^4.1.2"
   },
   "devDependencies": {
-    "argentos": "workspace:*"
+    "argentos": "link:../.."
   },
   "argent": {
     "extensions": [

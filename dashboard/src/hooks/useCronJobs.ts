@@ -15,12 +15,20 @@ export interface CronJob {
   id: string;
   name: string;
   enabled: boolean;
+  agentId?: string;
+  sessionTarget?: string;
+  wakeMode?: string;
+  delivery?: {
+    channel?: string;
+    mode?: string;
+  };
   executionMode?: CronExecutionMode;
   schedule: CronSchedule;
   payload: {
     kind: string;
     text?: string;
     message?: string;
+    title?: string;
   };
   state?: {
     nextRunAtMs?: number;

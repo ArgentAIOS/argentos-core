@@ -222,6 +222,13 @@ export type GatewayRelayConfig = {
   maxReconnectIntervalMs?: number;
 };
 
+export type GatewayMcpConfig = {
+  /** Enable MCP server exposure on /mcp (default: true). */
+  enabled?: boolean;
+  /** Restrict which tools the MCP server exposes. If omitted, all tools are available. */
+  allowedTools?: string[];
+};
+
 export type GatewayConfig = {
   /** Single multiplexed port for Gateway WS + HTTP (default: 18789). */
   port?: number;
@@ -258,4 +265,6 @@ export type GatewayConfig = {
    * `x-real-ip`) to determine the client IP for local pairing and HTTP checks.
    */
   trustedProxies?: string[];
+  /** MCP server exposure — lets external MCP clients call agent tools. */
+  mcp?: GatewayMcpConfig;
 };

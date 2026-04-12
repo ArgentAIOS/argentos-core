@@ -101,6 +101,7 @@ import { setCorsApprovalCallback } from "./lib/corsFetch";
 import { parseInlineTtsDirectives, stripInlineTtsDirectives } from "./lib/inlineTtsDirectives";
 import { applyMoodContinuity } from "./lib/moodContinuity";
 import { type MoodName, parseMoodName } from "./lib/moodSystem";
+import { evaluateOnboardingStatus } from "./lib/onboardingStack";
 import { resolvePrimaryChatAgentId } from "./lib/sessionVisibility";
 import { mergeVisibleChatAgentOptions } from "./lib/sessionVisibility";
 import { fetchLocalApi } from "./utils/localApiFetch";
@@ -1976,12 +1977,39 @@ function App() {
 
   // Check for first-run setup wizard
   useEffect(() => {
-    if (localStorage.getItem("argent-setup-complete")) return;
-    fetchLocalApi("/api/settings/auth-profiles")
-      .then((res) => res.json())
-      .then((data) => {
-        const profiles = data.profiles ? Object.keys(data.profiles) : [];
-        if (profiles.length === 0) {
+    const completed = localStorage.getItem("argent-setup-complete") === "1";
+    if (completed) {
+      return;
+    }
+    Promise.all([
+      fetchLocalApi("/api/settings/auth-profiles").then((res) => res.json()),
+      fetchLocalApi("/api/settings/models").then((res) => res.json()),
+    ])
+      .then(([authData, modelData]) => {
+        const authProfiles = Array.isArray(authData?.profiles) ? authData.profiles : [];
+        const status = evaluateOnboardingStatus({
+          authProfiles,
+          modelConfig: modelData,
+        });
+
+        const modelEntry = modelData?.model;
+        const hasExistingPrimaryModel =
+          typeof modelEntry === "string"
+            ? modelEntry.trim().length > 0
+            : Boolean(
+                modelEntry &&
+                typeof modelEntry === "object" &&
+                typeof (modelEntry as { primary?: unknown }).primary === "string" &&
+                String((modelEntry as { primary?: string }).primary).trim().length > 0,
+              );
+        const hasExistingRouter =
+          Boolean(modelData?.modelRouter) &&
+          typeof modelData.modelRouter === "object" &&
+          Object.keys(modelData.modelRouter as Record<string, unknown>).length > 0;
+        const looksLikeExistingInstall =
+          authProfiles.length > 0 || hasExistingPrimaryModel || hasExistingRouter;
+
+        if (!status.valid && !looksLikeExistingInstall) {
           setShowSetup(true);
         }
       })
@@ -5840,6 +5868,11 @@ function App() {
         onClose={() => {
           setConfigPanelOpen(false);
           setConfigPanelRequestedTab(null);
+        }}
+        onRelaunchOnboarding={() => {
+          setConfigPanelOpen(false);
+          setConfigPanelRequestedTab(null);
+          setShowSetup(true);
         }}
         requestedTab={configPanelRequestedTab}
         onRequestedTabHandled={() => setConfigPanelRequestedTab(null)}

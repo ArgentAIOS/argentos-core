@@ -1,15 +1,15 @@
 {
   "name": "@argentos/nostr",
-  "version": "2026.3.2",
+  "version": "2026.4.11.1",
   "description": "ArgentOS Nostr channel plugin for NIP-04 encrypted DMs",
   "type": "module",
   "dependencies": {
-    "argentos": "workspace:*",
+    "argentos": "link:../..",
     "nostr-tools": "^2.23.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "argentos": "workspace:*"
+    "argentos": "link:../.."
   },
   "argent": {
     "extensions": [

@@ -40,6 +40,10 @@ vi.mock("../gateway/client.js", () => ({
   },
 }));
 
+vi.mock("./health.js", () => ({
+  healthCommand: vi.fn(async () => undefined),
+}));
+
 async function getFreePort(): Promise<number> {
   try {
     return await new Promise((resolve, reject) => {
@@ -288,6 +292,63 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
     expect(resNoToken.ok).toBe(false);
     const resToken = await authorizeGatewayConnect({ auth, connectAuth: { token } });
     expect(resToken.ok).toBe(true);
+
+    await fs.rm(stateDir, { recursive: true, force: true });
+  }, 60_000);
+
+  it("uses gateway password auth when waiting for a LAN-bound gateway", async () => {
+    const stateDir = await initStateDir("state-password-");
+    process.env.ARGENT_STATE_DIR = stateDir;
+    process.env.ARGENT_CONFIG_PATH = path.join(stateDir, "argent.json");
+
+    const port = await getFreeGatewayPort();
+    const workspace = path.join(stateDir, "argent");
+    const password = "linux-admin-password";
+
+    vi.resetModules();
+    vi.doMock("../config/config.js", async () => {
+      return await vi.importActual("../config/config.js");
+    });
+    vi.doMock("./health.js", () => ({
+      healthCommand: vi.fn(async () => undefined),
+    }));
+
+    gatewayClientCalls.length = 0;
+    const { runNonInteractiveOnboarding } = await import("./onboard-non-interactive.js");
+    await runNonInteractiveOnboarding(
+      {
+        nonInteractive: true,
+        acceptRisk: true,
+        mode: "local",
+        workspace,
+        authChoice: "skip",
+        skipSkills: true,
+        installDaemon: false,
+        gatewayPort: port,
+        gatewayBind: "lan",
+        gatewayAuth: "password",
+        gatewayPassword: password,
+      },
+      runtime,
+    );
+
+    const { resolveConfigPath } = await import("../config/paths.js");
+    const configPath = resolveConfigPath(process.env, stateDir);
+    const cfg = JSON.parse(await fs.readFile(configPath, "utf8")) as {
+      gateway?: {
+        bind?: string;
+        port?: number;
+        auth?: { mode?: string; password?: string };
+      };
+    };
+
+    expect(cfg.gateway?.bind).toBe("lan");
+    expect(cfg.gateway?.port).toBe(port);
+    expect(cfg.gateway?.auth?.mode).toBe("password");
+    expect(cfg.gateway?.auth?.password).toBe(password);
+
+    const lastCall = gatewayClientCalls[gatewayClientCalls.length - 1];
+    expect(lastCall?.password).toBe(password);
 
     await fs.rm(stateDir, { recursive: true, force: true });
   }, 60_000);

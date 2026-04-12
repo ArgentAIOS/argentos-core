@@ -490,16 +490,12 @@ export async function runCronIsolatedAgentTurn(params: {
       return { status: "ok", summary, outputText };
     }
     if (!resolvedDelivery.to) {
-      const message = "cron delivery target is missing";
-      if (!deliveryBestEffort) {
-        return {
-          status: "error",
-          error: message,
-          summary,
-          outputText,
-        };
-      }
-      logWarn(`[cron:${params.job.id}] ${message}`);
+      // "announce" without an explicit outbound recipient is valid for
+      // summary-only cron jobs. The timer layer still posts the short summary
+      // back to the main session; we only skip the outbound delivery step here.
+      logWarn(
+        `[cron:${params.job.id}] announce delivery requested without explicit target; skipping outbound delivery`,
+      );
       return { status: "ok", summary, outputText };
     }
     try {

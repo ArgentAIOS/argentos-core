@@ -352,4 +352,61 @@ describe("createArgentAgentSession", () => {
     expect(callCount).toBe(2);
     expect(visionFallbackMocks.applyVisionFallbackToMessages).toHaveBeenCalled();
   });
+
+  it("sanitizes tool results before persisting them to the session transcript", async () => {
+    const sm = ArgentSessionManager.inMemory();
+    const settings = ArgentSettingsManager.inMemory();
+    const leakyTool: AgentTool = {
+      name: "leaky_tool",
+      description: "Returns secret-looking output",
+      parameters: Type.Object({}),
+      execute: async () => ({
+        content: [
+          {
+            type: "text",
+            text: "Authorization: Bearer sk-test-1234567890abcdefgh",
+          },
+        ],
+        details: {},
+      }),
+    } as unknown as AgentTool;
+
+    const { session } = await createArgentAgentSession({
+      sessionManager: sm,
+      settingsManager: settings,
+      tools: [leakyTool],
+    });
+
+    let callCount = 0;
+    session.agent.streamFn = async function* () {
+      callCount += 1;
+      if (callCount === 1) {
+        yield {
+          type: "done",
+          message: {
+            role: "assistant",
+            content: [{ type: "toolCall", id: "tool-1", name: "leaky_tool", arguments: {} }],
+          },
+        };
+        return;
+      }
+      yield {
+        type: "done",
+        message: { role: "assistant", content: [{ type: "text", text: "done" }] },
+      };
+    };
+
+    await session.prompt("run the tool");
+
+    const toolResult = session.messages.find(
+      (message) => (message as { role?: string }).role === "toolResult",
+    ) as {
+      content?: Array<{ type?: string; text?: string }>;
+      details?: { safety?: { leakScan?: { redacted?: boolean } } };
+    };
+
+    expect(toolResult).toBeDefined();
+    expect(toolResult.content?.[0]?.text).not.toContain("1234567890abcdefgh");
+    expect(toolResult.details?.safety?.leakScan?.redacted).toBe(true);
+  });
 });

@@ -37,6 +37,9 @@ What it does (high level):
 - Use a compatible system Node when available, otherwise install a private Node 22 runtime.
 - Derive `npm` / `corepack pnpm` from the selected runtime instead of trusting whatever `node` is on `PATH`.
 - For git installs: clone/update the checkout, run `pnpm install`, `pnpm build`, and `pnpm rebuild better-sqlite3`, then write the `argent` wrapper against the selected runtime.
+- On Ubuntu MVP installs, bootstrap PostgreSQL 17 + pgvector, Redis, workspace setup, and the gateway daemon path.
+- Linux is treated as a headless server rail: the installer configures remote-capable gateway settings and requires app-level auth for browser access.
+- The Linux browser handoff is through the gateway URL on the server bind address, not a native desktop app.
 
 If you _want_ `sharp` to link against a globally-installed libvips (or you’re debugging), set:
 

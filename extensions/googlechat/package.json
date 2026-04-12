@@ -1,13 +1,13 @@
 {
   "name": "@argentos/googlechat",
-  "version": "2026.3.2",
+  "version": "2026.4.11.1",
   "description": "ArgentOS Google Chat channel plugin",
   "type": "module",
   "dependencies": {
     "google-auth-library": "^10.5.0"
   },
   "devDependencies": {
-    "argentos": "workspace:*"
+    "argentos": "link:../.."
   },
   "argent": {
     "extensions": [

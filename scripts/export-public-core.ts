@@ -1,3 +1,11 @@
+/**
+ * Export pipeline: private argentos repo → public argentos-core repo.
+ *
+ * CRITICAL: The Core/Business boundary is a business decision. Do NOT modify
+ * the denylist, manifest, include/exclude rules, or this script to add or
+ * remove features from Core without explicit sign-off from Jason.
+ * See: ops/rules/never-do.md → "Core / Business Boundary"
+ */
 import { execFile as execFileCallback } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";

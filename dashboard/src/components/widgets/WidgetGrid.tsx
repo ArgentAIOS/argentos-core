@@ -6,7 +6,7 @@
  */
 
 import { GripVertical, X, Plus } from "lucide-react";
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import ReactGridLayout, { useContainerWidth } from "react-grid-layout";
 // CSS imports handled inline — react-grid-layout and react-resizable styles
 // are minimal and we override everything with our own glassmorphic styling
@@ -63,7 +63,7 @@ interface WidgetGridProps {
   customWidgets?: Array<{ id: string; name: string; icon: string }>;
 }
 
-export function WidgetGrid({ onPickerOpen, customWidgets }: WidgetGridProps) {
+export function WidgetGrid({ onPickerOpen }: WidgetGridProps) {
   const { width, containerRef, mounted } = useContainerWidth();
   const [items, setItems] = useState<GridItem[]>(loadGridItems);
 
@@ -83,7 +83,7 @@ export function WidgetGrid({ onPickerOpen, customWidgets }: WidgetGridProps) {
   }));
 
   const handleLayoutChange = useCallback(
-    (newLayout: Array<{ i: string; x: number; y: number; w: number; h: number }>) => {
+    (newLayout: ReadonlyArray<{ i: string; x: number; y: number; w: number; h: number }>) => {
       setItems((prev) =>
         prev.map((item) => {
           const updated = newLayout.find((l) => l.i === item.i);

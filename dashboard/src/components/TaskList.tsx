@@ -33,6 +33,8 @@ export interface Task {
   title: string;
   details?: string; // Markdown-supported details/description
   status: TaskStatus;
+  dueDate?: string | Date;
+  startedAt?: string | Date;
   type: TaskType;
   createdAt: Date;
   completedAt?: Date;

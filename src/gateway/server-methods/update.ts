@@ -7,7 +7,7 @@ import {
   writeRestartSentinel,
 } from "../../infra/restart-sentinel.js";
 import { scheduleGatewaySigusr1Restart } from "../../infra/restart.js";
-import { normalizeUpdateChannel } from "../../infra/update-channels.js";
+import { normalizeUpdateBranch, normalizeUpdateChannel } from "../../infra/update-channels.js";
 import { runGatewayUpdate } from "../../infra/update-runner.js";
 import {
   ErrorCodes,
@@ -52,6 +52,7 @@ export const updateHandlers: GatewayRequestHandlers = {
     try {
       const config = loadConfig();
       const configChannel = normalizeUpdateChannel(config.update?.channel);
+      const configBranch = normalizeUpdateBranch(config.update?.branch);
       const root =
         (await resolveArgentPackageRoot({
           moduleUrl: import.meta.url,
@@ -63,6 +64,7 @@ export const updateHandlers: GatewayRequestHandlers = {
         cwd: root,
         argv1: process.argv[1],
         channel: configChannel ?? undefined,
+        branch: configBranch ?? undefined,
       });
     } catch (err) {
       result = {

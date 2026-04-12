@@ -11,7 +11,7 @@
 import type { ProviderRegistry, ProviderRegistryEntry } from "../config/types.models.js";
 
 // Current seed version. Bump this to force re-seed on next startup.
-export const SEED_VERSION = 8;
+export const SEED_VERSION = 9;
 
 // ---------------------------------------------------------------------------
 // Cost presets
@@ -181,6 +181,52 @@ const moonshot: ProviderRegistryEntry = {
       input: ["text"],
       cost: ZERO_COST,
       contextWindow: 256000,
+      maxTokens: 8192,
+    },
+  ],
+};
+
+const zai: ProviderRegistryEntry = {
+  name: "Z.AI",
+  baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+  api: "openai-completions",
+  authType: "api_key",
+  envKeyVar: "ZAI_API_KEY",
+  models: [
+    {
+      id: "glm-5.1",
+      name: "GLM-5.1",
+      reasoning: true,
+      input: ["text"],
+      cost: ZERO_COST,
+      contextWindow: 204800,
+      maxTokens: 8192,
+    },
+    {
+      id: "glm-5",
+      name: "GLM-5",
+      reasoning: true,
+      input: ["text"],
+      cost: ZERO_COST,
+      contextWindow: 204800,
+      maxTokens: 8192,
+    },
+    {
+      id: "glm-4.7",
+      name: "GLM-4.7",
+      reasoning: true,
+      input: ["text"],
+      cost: ZERO_COST,
+      contextWindow: 204800,
+      maxTokens: 8192,
+    },
+    {
+      id: "glm-4.6",
+      name: "GLM-4.6",
+      reasoning: true,
+      input: ["text"],
+      cost: ZERO_COST,
+      contextWindow: 204800,
       maxTokens: 8192,
     },
   ],
@@ -755,6 +801,7 @@ export function buildSeedRegistry(): ProviderRegistry {
     providers: {
       minimax,
       "minimax-portal": minimaxPortal,
+      zai,
       xiaomi,
       moonshot,
       "qwen-portal": qwenPortal,

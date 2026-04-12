@@ -6,7 +6,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
-import { widgetRegistry, type BuiltinWidgetType, type WidgetType } from "./widgetRegistry";
+import { widgetRegistry, type WidgetType } from "./widgetRegistry";
 
 interface WidgetPickerProps {
   isOpen: boolean;
