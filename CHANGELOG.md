@@ -6,21 +6,21 @@ Docs: https://docs.argentos.ai
 
 ### Changes
 
-- Public Core now ships with a documented and validated Linux hosted install path, not just a macOS-first shell installer story.
-- Linux public installs are now documented around the real service topology:
+- Linux is now a real first-class public Core install target, not an implied follow-up to the macOS shell flow.
+- Public Core install docs now describe the actual Linux hosted-install topology:
   - user `systemd`
   - Gateway on `18789`
   - Dashboard API on `9242`
   - PostgreSQL 17 on `5433`
   - Redis on `6380`
-- Public Core was validated on both an Apple M3 Ultra Mac Studio and an Ubuntu host running the full dedicated PG17 + Redis stack.
-- Public Core README and Mintlify install docs now describe Linux shell installation alongside the macOS path instead of implying a macOS-only experience.
+- Public Core was validated on real hardware across both an Apple M3 Ultra Mac Studio and an Ubuntu host running the full dedicated PG17 + Redis stack.
+- Public Core README and Mintlify install docs now present Linux alongside macOS as part of the supported hosted-install story.
 - Public dashboard intent presets no longer ship company-specific Titanium Computing or holace.io packs in Core.
 - Proprietary Holace, CallScrub, ClientSync, Lion Report, and PayPunch connector surfaces were removed from the public Core release candidate.
 
 ### Fixes
 
-- Cron: isolated `agentTurn` jobs with `delivery.mode=\"announce\"` and no explicit recipient no longer fail with `cron delivery target is missing`; they now behave as summary-only runs.
+- Cron: isolated `agentTurn` jobs with `delivery.mode=\"announce\"` and no explicit recipient no longer fail with `cron delivery target is missing`; they now behave as summary-only scheduled runs.
 - macOS dev-install validation now restores native app-to-gateway attachment after stale App Support device-auth cleanup.
 
 ## 2026.2.4
