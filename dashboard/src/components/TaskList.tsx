@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  Archive,
   CheckCircle,
   Circle,
   Loader,
@@ -24,6 +25,9 @@ import {
 import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import { type CronJob, type CronJobUpdatePatch } from "../hooks/useCronJobs";
+import { fetchLocalApi } from "../utils/localApiFetch";
+
+const API_BASE = "/api";
 
 export type TaskStatus = "pending" | "in-progress" | "in_progress" | "completed";
 export type TaskType = "one-time" | "scheduled" | "interval" | "project";
@@ -35,7 +39,9 @@ export interface Task {
   status: TaskStatus;
   type: TaskType;
   createdAt: Date;
+  startedAt?: Date;
   completedAt?: Date;
+  dueAt?: Date;
   parentTaskId?: string;
   // Ownership / origin fields (from backend)
   source?: string; // "user" | "agent" | "heartbeat" | "schedule"
@@ -52,6 +58,7 @@ export interface Task {
     lastRun?: Date;
     nextRun?: Date;
   };
+  metadata?: Record<string, unknown>;
 }
 
 export interface Project {
@@ -65,6 +72,7 @@ export interface Project {
   taskCount: number;
   completedCount: number;
   tags?: string[];
+  metadata?: Record<string, unknown>;
 }
 
 interface TaskListProps {
@@ -105,8 +113,12 @@ interface TaskListProps {
     title: string,
     details?: string,
   ) => Promise<Task | boolean | null | void> | Task | boolean | null | void;
+  onProjectArchive?: (
+    projectId: string,
+    archived: boolean,
+  ) => Promise<boolean | void> | boolean | void;
   onProjectKickoff?: () => void;
-  onOpenBoard?: () => void;
+  onOpenBoard?: (projectId?: string) => void;
   showBoard?: boolean;
   showWorkerLane?: boolean;
 }
@@ -153,6 +165,13 @@ function getTaskOwner(task: Task): TaskOwner {
   if (task.source === "user") return "operator";
   if (task.source === "heartbeat" || task.source === "schedule") return "system";
   return "agent";
+}
+
+function isArchivedProject(project: Project): boolean {
+  const metadata = project.metadata;
+  if (!metadata || typeof metadata !== "object") return false;
+  const archivedAt = (metadata as Record<string, unknown>).archivedAt;
+  return typeof archivedAt === "string" && archivedAt.trim().length > 0;
 }
 
 type TabType = "tasks" | "workers" | "schedule" | "projects";
@@ -248,6 +267,7 @@ export function TaskList({
   onTaskExecute,
   onProjectDelete,
   onProjectTaskAdd,
+  onProjectArchive,
   onProjectKickoff,
   onOpenBoard,
   showBoard,
@@ -334,7 +354,7 @@ export function TaskList({
 
   const refreshProjectTasks = useCallback(async (projectId: string) => {
     try {
-      const res = await fetch(`/api/projects/${projectId}`);
+      const res = await fetchLocalApi(`${API_BASE}/projects/${projectId}`);
       if (!res.ok) {
         throw new Error(`Project fetch failed: ${res.status}`);
       }
@@ -352,6 +372,10 @@ export function TaskList({
       }
     } catch (err) {
       console.error("[Projects] Failed to refresh tasks:", err);
+      setProjectChildTasks((prev) => ({
+        ...prev,
+        [projectId]: [],
+      }));
       setActionError("Could not load project tasks. Please retry.");
     }
   }, []);
@@ -400,6 +424,35 @@ export function TaskList({
       void refreshProjectTasks(projectId);
     }
   };
+
+  const handleProjectSelect = (projectId: string) => {
+    toggleProjectExpand(projectId);
+    onOpenBoard?.(projectId);
+  };
+
+  const handleProjectArchive = async (
+    project: Project,
+    archived: boolean,
+    e: React.MouseEvent<HTMLButtonElement>,
+  ) => {
+    e.stopPropagation();
+    if (!onProjectArchive) return;
+    setProjectBusy(project.id, true);
+    setActionError(null);
+    try {
+      const ok = await Promise.resolve(onProjectArchive(project.id, archived));
+      if (!ok) {
+        setActionError(archived ? "Could not archive project." : "Could not unarchive project.");
+      }
+    } catch (err) {
+      console.error("[Projects] Failed to update archive state:", err);
+      setActionError(archived ? "Could not archive project." : "Could not unarchive project.");
+    } finally {
+      setProjectBusy(project.id, false);
+    }
+  };
+
+  const visibleProjects = projects.filter((project) => !isArchivedProject(project));
 
   const dayLabels = ["Su", "M", "Tu", "W", "Th", "F", "Sa"];
 
@@ -1198,7 +1251,7 @@ export function TaskList({
         {activeTab === "projects" ? (
           /* Projects Tab */
           <div className="flex-1 overflow-y-auto space-y-2">
-            {projects.length === 0 && (
+            {visibleProjects.length === 0 && (
               <div className="flex flex-col items-center justify-center h-32 text-[hsl(var(--muted-foreground))]/60 text-sm">
                 <span className="text-2xl mb-2">📁</span>
                 <span>No projects yet</span>
@@ -1207,7 +1260,7 @@ export function TaskList({
             )}
 
             <AnimatePresence mode="popLayout">
-              {projects.map((project) => {
+              {visibleProjects.map((project) => {
                 const isExpanded = expandedProjects.has(project.id);
                 const progress =
                   project.taskCount > 0
@@ -1239,7 +1292,7 @@ export function TaskList({
                   >
                     <div
                       className="flex items-center gap-3 p-3 cursor-pointer"
-                      onClick={() => toggleProjectExpand(project.id)}
+                      onClick={() => handleProjectSelect(project.id)}
                     >
                       <button className="text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--muted-foreground))]/80 transition-colors">
                         {isExpanded ? (
@@ -1276,6 +1329,16 @@ export function TaskList({
                         >
                           <Plus className="w-3.5 h-3.5" />
                         </button>
+                        {onProjectArchive && (
+                          <button
+                            onClick={(e) => void handleProjectArchive(project, true, e)}
+                            className="p-1.5 rounded-md hover:bg-amber-500/20 text-amber-400 disabled:opacity-40"
+                            title="Archive project"
+                            disabled={busyProjectIds.has(project.id)}
+                          >
+                            <Archive className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
                           onClick={(e) => void handleProjectDelete(project, e)}
                           className="p-1.5 rounded-md hover:bg-red-500/20 text-red-400 disabled:opacity-40"

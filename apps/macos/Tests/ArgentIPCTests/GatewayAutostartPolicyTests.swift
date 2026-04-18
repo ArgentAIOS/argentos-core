@@ -21,4 +21,32 @@ struct GatewayAutostartPolicyTests {
             mode: .remote,
             paused: false))
     }
+
+    @Test func attachOnlyDisablesGatewayAutostartAndLaunchAgent() {
+        let args = ["Argent", "--attach-only"]
+        #expect(!GatewayAutostartPolicy.shouldStartGateway(
+            mode: .local,
+            paused: false,
+            args: args,
+            env: [:]))
+        #expect(!GatewayAutostartPolicy.shouldEnsureLaunchAgent(
+            mode: .local,
+            paused: false,
+            args: args,
+            env: [:]))
+    }
+
+    @Test func attachOnlyEnvDisablesGatewayAutostartAndLaunchAgent() {
+        let env = ["ARGENT_ATTACH_ONLY": "1"]
+        #expect(!GatewayAutostartPolicy.shouldStartGateway(
+            mode: .local,
+            paused: false,
+            args: ["Argent"],
+            env: env))
+        #expect(!GatewayAutostartPolicy.shouldEnsureLaunchAgent(
+            mode: .local,
+            paused: false,
+            args: ["Argent"],
+            env: env))
+    }
 }

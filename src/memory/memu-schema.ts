@@ -20,7 +20,7 @@
 import crypto from "node:crypto";
 import type { DatabaseSync } from "./sqlite.js";
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 11;
 
 /** Create all MemU tables, indexes, FTS5, and triggers. */
 export function ensureMemuSchema(db: DatabaseSync): { ftsAvailable: boolean } {
@@ -76,6 +76,27 @@ export function ensureMemuSchema(db: DatabaseSync): { ftsAvailable: boolean } {
   // ── v5 → v6 migration: live memory inbox ──
   if (currentVersion < 6) {
     migrateV5ToV6(db);
+  }
+
+  // ── v6 → v7 migration: personal skill candidates ──
+  if (currentVersion < 7) {
+    migrateV6ToV7(db);
+  }
+
+  // ── v7 → v8 migration: personal skill schema + lineage ──
+  if (currentVersion < 8) {
+    migrateV7ToV8(db);
+  }
+
+  // ── v8 → v9 migration: personal skill lifecycle ──
+  if (currentVersion < 9) {
+    migrateV8ToV9(db);
+  }
+  if (currentVersion < 10) {
+    migrateV9ToV10(db);
+  }
+  if (currentVersion < 11) {
+    migrateV10ToV11(db);
   }
 
   // ── FTS5 ──
@@ -424,6 +445,125 @@ function migrateV5ToV6(db: DatabaseSync): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+}
+
+function migrateV6ToV7(db: DatabaseSync): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS personal_skill_candidates (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL DEFAULT 'main',
+      operator_id TEXT,
+      profile_id TEXT,
+      title TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      trigger_patterns TEXT NOT NULL DEFAULT '[]',
+      procedure_outline TEXT,
+      related_tools TEXT NOT NULL DEFAULT '[]',
+      source_memory_ids TEXT NOT NULL DEFAULT '[]',
+      source_episode_ids TEXT NOT NULL DEFAULT '[]',
+      source_task_ids TEXT NOT NULL DEFAULT '[]',
+      source_lesson_ids TEXT NOT NULL DEFAULT '[]',
+      evidence_count INTEGER NOT NULL DEFAULT 0,
+      recurrence_count INTEGER NOT NULL DEFAULT 1,
+      confidence REAL NOT NULL DEFAULT 0.5,
+      state TEXT NOT NULL DEFAULT 'candidate',
+      last_reviewed_at TEXT,
+      last_used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_personal_skill_candidates_agent ON personal_skill_candidates(agent_id);`,
+  );
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_personal_skill_candidates_state ON personal_skill_candidates(state);`,
+  );
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_personal_skill_candidates_confidence ON personal_skill_candidates(confidence);`,
+  );
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_personal_skill_candidates_updated ON personal_skill_candidates(updated_at);`,
+  );
+}
+
+function migrateV7ToV8(db: DatabaseSync): void {
+  const alterStatements = [
+    `ALTER TABLE personal_skill_candidates ADD COLUMN scope TEXT NOT NULL DEFAULT 'operator'`,
+    `ALTER TABLE personal_skill_candidates ADD COLUMN preconditions TEXT NOT NULL DEFAULT '[]'`,
+    `ALTER TABLE personal_skill_candidates ADD COLUMN execution_steps TEXT NOT NULL DEFAULT '[]'`,
+    `ALTER TABLE personal_skill_candidates ADD COLUMN expected_outcomes TEXT NOT NULL DEFAULT '[]'`,
+    `ALTER TABLE personal_skill_candidates ADD COLUMN supersedes_candidate_ids TEXT NOT NULL DEFAULT '[]'`,
+    `ALTER TABLE personal_skill_candidates ADD COLUMN superseded_by_candidate_id TEXT`,
+  ];
+
+  for (const sql of alterStatements) {
+    try {
+      db.exec(sql);
+    } catch {
+      // Column may already exist if migration was partially applied
+    }
+  }
+
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_personal_skill_candidates_scope ON personal_skill_candidates(scope);`,
+  );
+}
+
+function migrateV8ToV9(db: DatabaseSync): void {
+  const alterStatements = [
+    `ALTER TABLE personal_skill_candidates ADD COLUMN conflicts_with_candidate_ids TEXT NOT NULL DEFAULT '[]'`,
+    `ALTER TABLE personal_skill_candidates ADD COLUMN contradiction_count INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE personal_skill_candidates ADD COLUMN strength REAL NOT NULL DEFAULT 0.5`,
+    `ALTER TABLE personal_skill_candidates ADD COLUMN usage_count INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE personal_skill_candidates ADD COLUMN success_count INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE personal_skill_candidates ADD COLUMN failure_count INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE personal_skill_candidates ADD COLUMN last_reinforced_at TEXT`,
+    `ALTER TABLE personal_skill_candidates ADD COLUMN last_contradicted_at TEXT`,
+  ];
+
+  for (const sql of alterStatements) {
+    try {
+      db.exec(sql);
+    } catch {
+      // Column may already exist if migration was partially applied
+    }
+  }
+}
+
+function migrateV9ToV10(db: DatabaseSync): void {
+  const alterStatements = [`ALTER TABLE personal_skill_candidates ADD COLUMN operator_notes TEXT`];
+
+  for (const sql of alterStatements) {
+    try {
+      db.exec(sql);
+    } catch {
+      // Column may already exist if migration was partially applied
+    }
+  }
+}
+
+function migrateV10ToV11(db: DatabaseSync): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS personal_skill_reviews (
+      id TEXT PRIMARY KEY,
+      candidate_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL DEFAULT 'main',
+      actor_type TEXT NOT NULL,
+      action TEXT NOT NULL,
+      reason TEXT,
+      details TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_personal_skill_reviews_candidate ON personal_skill_reviews(candidate_id, created_at DESC);`,
+  );
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_personal_skill_reviews_agent ON personal_skill_reviews(agent_id, created_at DESC);`,
+  );
 }
 
 // ── FTS5 Setup (shared by v1, v2, and v3) ──

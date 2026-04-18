@@ -7,6 +7,7 @@ import WebKit
 final class DashboardWindowController: NSWindowController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     private(set) var dashboardURL: URL
     private let webView: WKWebView
+    private let autosaveName = NSWindow.FrameAutosaveName("ArgentDashboardWindow")
 
     init(dashboardURL: URL) {
         self.dashboardURL = dashboardURL
@@ -25,10 +26,8 @@ final class DashboardWindowController: NSWindowController, WKNavigationDelegate,
         self.webView.setValue(true, forKey: "drawsBackground")
 
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let initialWidth = min(max(1260, visibleFrame.width * 0.86), visibleFrame.width)
-        let initialHeight = min(max(860, visibleFrame.height * 0.86), visibleFrame.height)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: initialWidth, height: initialHeight),
+            contentRect: WindowPlacement.fillVisibleFrame(in: visibleFrame),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false)
@@ -36,11 +35,8 @@ final class DashboardWindowController: NSWindowController, WKNavigationDelegate,
         window.minSize = NSSize(width: 960, height: 640)
         window.contentView = self.webView
         window.styleMask.insert(.resizable)
-        let autosaveName = NSWindow.FrameAutosaveName("ArgentDashboardWindow")
-        window.setFrameAutosaveName(autosaveName)
-        if !window.setFrameUsingName(autosaveName) {
-            window.center()
-        }
+        window.setFrameAutosaveName(self.autosaveName)
+        _ = window.setFrameUsingName(self.autosaveName)
 
         super.init(window: window)
         self.webView.navigationDelegate = self
@@ -60,8 +56,16 @@ final class DashboardWindowController: NSWindowController, WKNavigationDelegate,
 
     func show() {
         guard let window else { return }
+        self.fillVisibleScreen(window: window)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func fillVisibleScreen(window: NSWindow) {
+        let targetFrame = WindowPlacement.fillVisibleFrame(on: window.screen ?? NSScreen.main)
+        guard targetFrame != .zero else { return }
+        window.setFrame(targetFrame, display: true)
+        window.saveFrame(usingName: self.autosaveName)
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {

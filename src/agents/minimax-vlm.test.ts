@@ -5,10 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../infra/service-keys.js", () => ({
   resolveServiceKey: vi.fn(),
+  resolveServiceKeyAsync: vi.fn(),
 }));
 
-import { resolveServiceKey } from "../infra/service-keys.js";
-import { resolveMinimaxApiKey } from "./minimax-vlm.js";
+import { resolveServiceKey, resolveServiceKeyAsync } from "../infra/service-keys.js";
+import { resolveMinimaxApiKey, resolveMinimaxApiKeyAsync } from "./minimax-vlm.js";
 
 const ORIGINAL_ENV = {
   ARGENT_STATE_DIR: process.env.ARGENT_STATE_DIR,
@@ -98,5 +99,20 @@ describe("resolveMinimaxApiKey", () => {
 
     const resolved = resolveMinimaxApiKey();
     expect(resolved).toBe("sk-from-env-var-name");
+  });
+
+  it("prefers async service-key resolution when available", async () => {
+    vi.mocked(resolveServiceKeyAsync).mockImplementation(async (name: string) =>
+      name === "MINIMAX_CODE_PLAN_KEY" ? "sk-async-service-code" : undefined,
+    );
+
+    const resolved = await resolveMinimaxApiKeyAsync();
+
+    expect(resolved).toBe("sk-async-service-code");
+    expect(resolveServiceKeyAsync).toHaveBeenCalledWith(
+      "MINIMAX_CODE_PLAN_KEY",
+      undefined,
+      undefined,
+    );
   });
 });

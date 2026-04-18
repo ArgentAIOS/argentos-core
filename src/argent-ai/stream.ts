@@ -249,6 +249,9 @@ export class StreamAdapter implements AssistantMessageEventStream {
     for (const tc of resp.toolCalls) {
       content.push(tc);
     }
+    if (content.length === 0 && resp.stopReason === "error") {
+      content.push({ type: "text", text: resp.errorMessage?.trim() || "(error)" });
+    }
 
     return {
       role: "assistant",

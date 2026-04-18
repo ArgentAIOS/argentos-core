@@ -14,6 +14,41 @@ const {
 const app = express();
 const PORT = process.env.API_PORT || 9242;
 
+function readRuntimeBuildInfo(baseDir) {
+  const candidates = [
+    path.join(baseDir, "dist", "build-info.json"),
+    path.join(baseDir, "package.json"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (!fs.existsSync(candidate)) continue;
+      const parsed = JSON.parse(fs.readFileSync(candidate, "utf-8"));
+      if (typeof parsed?.version === "string" && parsed.version.trim()) {
+        return {
+          version: parsed.version.trim(),
+          commit:
+            typeof parsed?.commit === "string" && parsed.commit.trim()
+              ? parsed.commit.trim()
+              : null,
+          builtAt:
+            typeof parsed?.builtAt === "string" && parsed.builtAt.trim()
+              ? parsed.builtAt.trim()
+              : null,
+          source: path.basename(candidate),
+        };
+      }
+    } catch {
+      // ignore malformed or missing candidates
+    }
+  }
+  return {
+    version: null,
+    commit: null,
+    builtAt: null,
+    source: null,
+  };
+}
+
 // API responses should never rely on browser cache revalidation.
 // 304 + empty body breaks JSON fetch flows that expect a payload.
 app.disable("etag");
@@ -57,7 +92,9 @@ app.use(
 );
 
 const PUBLIC_CORE_BLOCKED_API_PATTERNS = [
+  "/api/license/**",
   "/api/org/**",
+  "/api/settings/intent/**",
   "/api/settings/knowledge/collections/grant",
   "/api/settings/service-keys/policy",
   "/api/settings/service-keys/grant",
@@ -65,12 +102,17 @@ const PUBLIC_CORE_BLOCKED_API_PATTERNS = [
   "/api/settings/service-keys/audit",
   "/api/system/open",
   "/api/lockscreen/emergency-unlock",
+  "/api/logs/tail",
   "/api/proxy/cors",
   "/api/security/filesystem-permissions/decision",
+  "/api/devices/**",
   "/api/settings/auth",
   "/api/settings/cors-allowlist/**",
   "/api/settings/filesystem-allowlist/**",
+  "/api/settings/gateway/**",
+  "/api/settings/database/**",
   "/api/settings/pairing",
+  "/api/settings/load-profile",
   "/api/settings/memory-v3/**",
   "/api/settings/aos-google/preflight",
   "/api/settings/aos-google/launch",
@@ -769,6 +811,11 @@ app.post("/api/system/open", (req, res) => {
   } catch (err) {
     res.status(500).json({ error: String(err.message || err) });
   }
+});
+
+app.get("/api/build-info", (_req, res) => {
+  const repoRoot = path.resolve(__dirname, "..");
+  res.json(readRuntimeBuildInfo(repoRoot));
 });
 
 // Emergency unlock — admin touches ~/.argentos/emergency-unlock, dashboard consumes it
@@ -2733,7 +2780,7 @@ function createPgTasksCompatDb() {
       return counts;
     },
     async listProjects() {
-      const rows = await this.listTasks({ limit: 5000 });
+      const rows = await this.listTasks({ limit: 5000, includeCompleted: true });
       const projects = rows.filter((task) => task?.type === "project");
       const childrenByParent = new Map();
       for (const row of rows) {
@@ -2754,7 +2801,7 @@ function createPgTasksCompatDb() {
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     },
     async getProjectTasks(projectId) {
-      const rows = await this.listTasks({ limit: 5000 });
+      const rows = await this.listTasks({ limit: 5000, includeCompleted: true });
       return rows
         .filter((task) => task.parentTaskId === projectId)
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
@@ -2940,6 +2987,17 @@ function mergeTaskMetadata(existing, updates) {
   return next;
 }
 
+function archivedAtFromMetadata(metadata) {
+  const normalized = normalizeMetadata(metadata);
+  const archivedAt = normalized.archivedAt;
+  return typeof archivedAt === "string" && archivedAt.trim() ? archivedAt.trim() : undefined;
+}
+
+function isArchivedProjectTask(task) {
+  if (!task || typeof task !== "object") return false;
+  return Boolean(archivedAtFromMetadata(task.metadata));
+}
+
 function isProjectTask(task) {
   const metadata = normalizeMetadata(task.metadata);
   return extractTaskType(metadata, task.parentTaskId) === "project";
@@ -3120,7 +3178,12 @@ async function getTaskCountsCompat(options = {}) {
 async function listProjectsCompat(options = {}) {
   const adapter = await getTaskStorageAdapter();
   if (!adapter) {
-    return filterOperatorLaneTasks(await getLegacyTasksDbOrThrow().listProjects(), options);
+    const legacyProjects = filterOperatorLaneTasks(
+      await getLegacyTasksDbOrThrow().listProjects(),
+      options,
+    );
+    if (options.includeArchived) return legacyProjects;
+    return legacyProjects.filter((project) => !isArchivedProjectTask(project));
   }
 
   const rows = filterOperatorLaneTasks(await adapter.tasks.list({ limit: 4000 }), options);
@@ -3144,14 +3207,20 @@ async function listProjectsCompat(options = {}) {
       completedCount: completed,
     };
   });
-  mapped.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  return mapped;
+  const visible = options.includeArchived
+    ? mapped
+    : mapped.filter((project) => !isArchivedProjectTask(project));
+  visible.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return visible;
 }
 
 async function getProjectTasksCompat(projectId, options = {}) {
   const adapter = await getTaskStorageAdapter();
   if (!adapter) {
-    return filterOperatorLaneTasks(getLegacyTasksDbOrThrow().getProjectTasks(projectId), options);
+    return filterOperatorLaneTasks(
+      await Promise.resolve(getLegacyTasksDbOrThrow().getProjectTasks(projectId)),
+      options,
+    );
   }
   const rows = filterOperatorLaneTasks(
     await adapter.tasks.list({ parentTaskId: projectId, limit: 2000 }),
@@ -3275,6 +3344,8 @@ app.patch("/api/tasks/:id", async (req, res) => {
       schedule: updates.schedule,
       priority: updates.priority,
       assignee: updates.assignee,
+      dueAt: updates.dueAt,
+      metadata: updates.metadata,
     });
 
     if (!task) {
@@ -3395,6 +3466,9 @@ app.get("/api/projects", async (req, res) => {
   console.log("Projects list endpoint hit");
   try {
     const projects = await listProjectsCompat({
+      includeArchived:
+        String(req.query.includeArchived).toLowerCase() === "true" ||
+        String(req.query.includeArchived) === "1",
       includeWorkerTasks:
         String(req.query.includeWorkerTasks).toLowerCase() === "true" ||
         String(req.query.includeWorkerTasks) === "1",
@@ -3410,6 +3484,45 @@ app.get("/api/projects", async (req, res) => {
       });
     }
     res.status(500).json({ error: "Failed to list projects" });
+  }
+});
+
+// POST /api/projects/:id/archive - Archive or unarchive a project
+app.post("/api/projects/:id/archive", async (req, res) => {
+  console.log("Project archive endpoint hit:", req.params.id, req.body);
+  const { id } = req.params;
+  const archived = req.body?.archived !== false;
+
+  try {
+    const project = await getTaskCompat(id);
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+    if (project.type !== "project") {
+      return res.status(400).json({ error: "Task is not a project" });
+    }
+
+    const metadata = normalizeMetadata(project.metadata);
+    if (archived) {
+      metadata.archivedAt = new Date().toISOString();
+    } else {
+      metadata.archivedAt = null;
+    }
+
+    const updated = await updateTaskCompat(id, { metadata });
+    if (!updated) {
+      return res.status(500).json({ error: "Failed to update project archive state" });
+    }
+
+    broadcastTasksEvent({
+      type: "task_updated",
+      task: { id: updated.id, title: updated.title },
+    });
+
+    return res.json({ project: updated });
+  } catch (err) {
+    console.error("Error archiving project:", err);
+    res.status(500).json({ error: "Failed to update project archive state" });
   }
 });
 
@@ -12391,22 +12504,6 @@ app.post("/api/settings/aos-google/launch", (req, res) => {
   }
 });
 
-app.get("/api/settings/dashboard/surface-profile", (req, res) => {
-  try {
-    const config = readArgentConfig();
-    return res.json({
-      surfaceProfile: getDashboardSurfaceProfile(config),
-      dashboardMode:
-        config?.distribution?.dashboardMode === "operations" ? "operations" : "personal",
-    });
-  } catch (err) {
-    return res.status(500).json({
-      error: "Failed to read dashboard surface profile",
-      details: err?.message || String(err),
-    });
-  }
-});
-
 // GET /api/settings/agent/raw-config — return full argent.json for advanced editing
 app.get("/api/settings/agent/raw-config", (req, res) => {
   try {
@@ -12499,28 +12596,8 @@ function resolveAlignmentStateDir() {
 
 const ALIGNMENT_STATE_DIR = resolveAlignmentStateDir();
 const AGENTS_DIR = path.join(ALIGNMENT_STATE_DIR, "agents");
+const WORKSPACE_MAIN = path.join(ALIGNMENT_STATE_DIR, "workspace-main");
 const ALIGNMENT_BACKUP_DIR = path.join(ALIGNMENT_STATE_DIR, "backups");
-
-function resolveMainAlignmentWorkspaceDir() {
-  const config = readArgentConfig();
-  const configured =
-    typeof config?.agents?.defaults?.workspace === "string"
-      ? config.agents.defaults.workspace.trim()
-      : "";
-  if (configured) {
-    const expanded = process.env.HOME
-      ? configured.replace(/^~(?=$|[\\/])/, process.env.HOME)
-      : configured;
-    return path.resolve(expanded);
-  }
-  const currentWorkspace = path.join(ALIGNMENT_STATE_DIR, "workspace");
-  if (fs.existsSync(currentWorkspace)) {
-    return currentWorkspace;
-  }
-  return path.join(ALIGNMENT_STATE_DIR, "workspace-main");
-}
-
-const WORKSPACE_MAIN = resolveMainAlignmentWorkspaceDir();
 
 // Known alignment doc filenames
 const ALIGNMENT_DOCS = [
@@ -12553,10 +12630,9 @@ function resolveAgentDocsDir(agentName) {
 app.get("/api/settings/alignment", (req, res) => {
   try {
     const agents = [];
-    const hasWorkspaceMain = fs.existsSync(WORKSPACE_MAIN);
 
     // Always include the main agent if workspace-main exists
-    if (hasWorkspaceMain) {
+    if (fs.existsSync(WORKSPACE_MAIN)) {
       agents.push({ id: "__main__", label: "Argent ★ (main)" });
     }
 
@@ -12564,7 +12640,6 @@ app.get("/api/settings/alignment", (req, res) => {
     if (fs.existsSync(AGENTS_DIR)) {
       const namedAgents = fs.readdirSync(AGENTS_DIR).filter((name) => {
         if (name.startsWith("agent-main-subagent-")) return false;
-        if (hasWorkspaceMain && name === "main") return false;
         const agentDir = path.join(AGENTS_DIR, name, "agent");
         return fs.existsSync(agentDir) && fs.statSync(agentDir).isDirectory();
       });
@@ -15555,10 +15630,11 @@ app.get("/api/settings/gateway", async (req, res) => {
   try {
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     const gw = config.gateway || {};
+    const buildInfo = readRuntimeBuildInfo(repoRoot);
 
     // Try to check gateway health
     let status = "unknown";
-    let version = null;
+    let version = buildInfo.version;
     let uptime = null;
     const gwPort = gw.port || 18789;
     try {
@@ -15654,6 +15730,8 @@ app.get("/api/settings/gateway", async (req, res) => {
     res.json({
       status,
       version,
+      commit: buildInfo.commit,
+      builtAt: buildInfo.builtAt,
       uptime,
       port: gw.port || 18789,
       mode: gw.mode || "local",

@@ -16,6 +16,8 @@ import type {
   CreateLessonInput,
   CreateLiveCandidateInput,
   CreateMemoryItemInput,
+  CreatePersonalSkillCandidateInput,
+  CreatePersonalSkillReviewEventInput,
   CreateReflectionInput,
   CreateResourceInput,
   Entity,
@@ -30,6 +32,10 @@ import type {
   MemoryItem,
   MemorySearchResult,
   MemoryType,
+  PersonalSkillCandidate,
+  PersonalSkillReviewEvent,
+  PersonalSkillCandidateState,
+  PersonalSkillScope,
   RecordModelFeedbackInput,
   Reflection,
   Resource,
@@ -172,6 +178,58 @@ export interface MemoryAdapter {
     mergedTags: string[],
   ): Promise<void>;
   deleteLesson(id: string): Promise<void>;
+
+  // Personal Skills
+  createPersonalSkillCandidate(
+    input: CreatePersonalSkillCandidateInput,
+  ): Promise<PersonalSkillCandidate>;
+  listPersonalSkillCandidates(filter?: {
+    state?: PersonalSkillCandidateState;
+    limit?: number;
+  }): Promise<PersonalSkillCandidate[]>;
+  updatePersonalSkillCandidate(
+    id: string,
+    fields: Partial<{
+      scope: PersonalSkillScope;
+      title: string;
+      summary: string;
+      triggerPatterns: string[];
+      procedureOutline: string | null;
+      preconditions: string[];
+      executionSteps: string[];
+      expectedOutcomes: string[];
+      relatedTools: string[];
+      sourceMemoryIds: string[];
+      sourceEpisodeIds: string[];
+      sourceTaskIds: string[];
+      sourceLessonIds: string[];
+      supersedesCandidateIds: string[];
+      supersededByCandidateId: string | null;
+      conflictsWithCandidateIds: string[];
+      contradictionCount: number;
+      evidenceCount: number;
+      recurrenceCount: number;
+      confidence: number;
+      strength: number;
+      usageCount: number;
+      successCount: number;
+      failureCount: number;
+      state: PersonalSkillCandidateState;
+      operatorNotes: string | null;
+      lastReviewedAt: string | null;
+      lastUsedAt: string | null;
+      lastReinforcedAt: string | null;
+      lastContradictedAt: string | null;
+    }>,
+  ): Promise<PersonalSkillCandidate | null>;
+  deletePersonalSkillCandidate(id: string): Promise<boolean>;
+  createPersonalSkillReviewEvent(
+    input: CreatePersonalSkillReviewEventInput,
+  ): Promise<PersonalSkillReviewEvent>;
+  listPersonalSkillReviewEvents(filter: {
+    candidateId: string;
+    limit?: number;
+  }): Promise<PersonalSkillReviewEvent[]>;
 
   // Knowledge observations
   getKnowledgeObservation(id: string): Promise<KnowledgeObservation | null>;

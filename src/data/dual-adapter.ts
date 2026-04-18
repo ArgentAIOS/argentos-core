@@ -20,6 +20,8 @@ import type {
   CreateLessonInput,
   CreateLiveCandidateInput,
   CreateMemoryItemInput,
+  CreatePersonalSkillCandidateInput,
+  CreatePersonalSkillReviewEventInput,
   CreateReflectionInput,
   CreateResourceInput,
   Entity,
@@ -32,6 +34,10 @@ import type {
   MemoryCategory,
   MemoryItem,
   MemorySearchResult,
+  PersonalSkillCandidate,
+  PersonalSkillReviewEvent,
+  PersonalSkillCandidateState,
+  PersonalSkillScope,
   EntityType,
   RecordModelFeedbackInput,
   Reflection,
@@ -626,6 +632,138 @@ class DualMemoryAdapter implements MemoryAdapter {
         this.pg.markLiveCandidatePromoted!(id, promotedToItemId, reason),
       );
     }
+  }
+
+  async createPersonalSkillCandidate(
+    input: CreatePersonalSkillCandidateInput,
+  ): Promise<PersonalSkillCandidate> {
+    const writeSqlite = shouldWriteTo(this.config, "sqlite");
+    const writePg = shouldWriteTo(this.config, "postgres");
+
+    if (writeSqlite && writePg) {
+      const result = await this.sqlite.createPersonalSkillCandidate(input);
+      await secondaryWrite("createPersonalSkillCandidate", () =>
+        this.pg.createPersonalSkillCandidate(input),
+      );
+      return result;
+    }
+
+    return writePg
+      ? this.pg.createPersonalSkillCandidate(input)
+      : this.sqlite.createPersonalSkillCandidate(input);
+  }
+
+  async listPersonalSkillCandidates(filter?: {
+    state?: PersonalSkillCandidateState;
+    limit?: number;
+  }): Promise<PersonalSkillCandidate[]> {
+    return this.reader().listPersonalSkillCandidates(filter);
+  }
+
+  async updatePersonalSkillCandidate(
+    id: string,
+    fields: Partial<{
+      scope: PersonalSkillScope;
+      title: string;
+      summary: string;
+      triggerPatterns: string[];
+      procedureOutline: string | null;
+      preconditions: string[];
+      executionSteps: string[];
+      expectedOutcomes: string[];
+      relatedTools: string[];
+      sourceMemoryIds: string[];
+      sourceEpisodeIds: string[];
+      sourceTaskIds: string[];
+      sourceLessonIds: string[];
+      supersedesCandidateIds: string[];
+      supersededByCandidateId: string | null;
+      conflictsWithCandidateIds: string[];
+      contradictionCount: number;
+      evidenceCount: number;
+      recurrenceCount: number;
+      confidence: number;
+      strength: number;
+      usageCount: number;
+      successCount: number;
+      failureCount: number;
+      state: PersonalSkillCandidateState;
+      operatorNotes: string | null;
+      lastReviewedAt: string | null;
+      lastUsedAt: string | null;
+      lastReinforcedAt: string | null;
+      lastContradictedAt: string | null;
+    }>,
+  ): Promise<PersonalSkillCandidate | null> {
+    const readFrom = shouldReadFrom(this.config, "postgres") ? "postgres" : "sqlite";
+    let updated: PersonalSkillCandidate | null;
+
+    if (readFrom === "postgres") {
+      updated = await this.pg.updatePersonalSkillCandidate(id, fields);
+      if (shouldWriteTo(this.config, "sqlite")) {
+        await secondaryWrite("updatePersonalSkillCandidate", () =>
+          this.sqlite.updatePersonalSkillCandidate(id, fields),
+        );
+      }
+    } else {
+      updated = await this.sqlite.updatePersonalSkillCandidate(id, fields);
+      if (shouldWriteTo(this.config, "postgres")) {
+        await secondaryWrite("updatePersonalSkillCandidate", () =>
+          this.pg.updatePersonalSkillCandidate(id, fields),
+        );
+      }
+    }
+
+    return updated;
+  }
+
+  async deletePersonalSkillCandidate(id: string): Promise<boolean> {
+    const readFrom = shouldReadFrom(this.config, "postgres") ? "postgres" : "sqlite";
+    let deleted = false;
+
+    if (readFrom === "postgres") {
+      deleted = await this.pg.deletePersonalSkillCandidate(id);
+      if (shouldWriteTo(this.config, "sqlite")) {
+        await secondaryWrite("deletePersonalSkillCandidate", () =>
+          this.sqlite.deletePersonalSkillCandidate(id),
+        );
+      }
+    } else {
+      deleted = await this.sqlite.deletePersonalSkillCandidate(id);
+      if (shouldWriteTo(this.config, "postgres")) {
+        await secondaryWrite("deletePersonalSkillCandidate", () =>
+          this.pg.deletePersonalSkillCandidate(id),
+        );
+      }
+    }
+
+    return deleted;
+  }
+
+  async createPersonalSkillReviewEvent(
+    input: CreatePersonalSkillReviewEventInput,
+  ): Promise<PersonalSkillReviewEvent> {
+    const writeSqlite = shouldWriteTo(this.config, "sqlite");
+    const writePg = shouldWriteTo(this.config, "postgres");
+
+    if (writeSqlite && writePg) {
+      const result = await this.sqlite.createPersonalSkillReviewEvent(input);
+      await secondaryWrite("createPersonalSkillReviewEvent", () =>
+        this.pg.createPersonalSkillReviewEvent(input),
+      );
+      return result;
+    }
+
+    return writePg
+      ? this.pg.createPersonalSkillReviewEvent(input)
+      : this.sqlite.createPersonalSkillReviewEvent(input);
+  }
+
+  async listPersonalSkillReviewEvents(filter: {
+    candidateId: string;
+    limit?: number;
+  }): Promise<PersonalSkillReviewEvent[]> {
+    return this.reader().listPersonalSkillReviewEvents(filter);
   }
 }
 

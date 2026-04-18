@@ -385,11 +385,13 @@ class ArgentAgentSessionImpl implements AgentSession {
                 isError,
               } as unknown as AgentSessionEvent);
 
+              const normalizedContent = Array.isArray(result?.content) ? result.content : [];
+
               const toolResultMessage = {
                 role: "toolResult",
                 toolCallId: toolCall.id,
                 toolName: toolCall.name,
-                content: result.content,
+                content: normalizedContent,
                 details: result.details,
                 isError,
                 timestamp: Date.now(),

@@ -200,6 +200,16 @@ export async function buildContextReply(params: HandleCommandsParams): Promise<R
   }
 
   const report = await resolveContextReport(params);
+  const injectedWorkspaceFiles = Array.isArray(report.injectedWorkspaceFiles)
+    ? report.injectedWorkspaceFiles
+    : [];
+  const skillEntries = Array.isArray(report.skills?.entries) ? report.skills.entries : [];
+  const toolEntries = Array.isArray(report.tools?.entries) ? report.tools.entries : [];
+  const toolSchemaChars =
+    typeof report.tools?.schemaChars === "number" ? report.tools.schemaChars : 0;
+  const toolListChars = typeof report.tools?.listChars === "number" ? report.tools.listChars : 0;
+  const skillPromptChars =
+    typeof report.skills?.promptChars === "number" ? report.skills.promptChars : 0;
   const session = {
     totalTokens: params.sessionEntry?.totalTokens ?? null,
     inputTokens: params.sessionEntry?.inputTokens ?? null,
@@ -220,7 +230,7 @@ export async function buildContextReply(params: HandleCommandsParams): Promise<R
     };
   }
 
-  const fileLines = report.injectedWorkspaceFiles.map((f) => {
+  const fileLines = injectedWorkspaceFiles.map((f) => {
     const status = f.missing ? "MISSING" : f.truncated ? "TRUNCATED" : "OK";
     const raw = f.missing ? "0" : formatCharsAndTokens(f.rawChars);
     const injected = f.missing ? "0" : formatCharsAndTokens(f.injectedChars);
@@ -228,19 +238,41 @@ export async function buildContextReply(params: HandleCommandsParams): Promise<R
   });
 
   const sandboxLine = `Sandbox: mode=${report.sandbox?.mode ?? "unknown"} sandboxed=${report.sandbox?.sandboxed ?? false}`;
-  const toolSchemaLine = `Tool schemas (JSON): ${formatCharsAndTokens(report.tools.schemaChars)} (counts toward context; not shown as text)`;
-  const toolListLine = `Tool list (system prompt text): ${formatCharsAndTokens(report.tools.listChars)}`;
-  const skillNameSet = new Set(report.skills.entries.map((s) => s.name));
+  const toolSchemaLine = `Tool schemas (JSON): ${formatCharsAndTokens(toolSchemaChars)} (counts toward context; not shown as text)`;
+  const toolListLine = `Tool list (system prompt text): ${formatCharsAndTokens(toolListChars)}`;
+  const skillNameSet = new Set(skillEntries.map((s) => s.name));
   const skillNames = Array.from(skillNameSet);
-  const toolNames = report.tools.entries.map((t) => t.name);
+  const toolNames = toolEntries.map((t) => t.name);
   const formatNameList = (names: string[], cap: number) =>
     names.length <= cap
       ? names.join(", ")
       : `${names.slice(0, cap).join(", ")}, … (+${names.length - cap} more)`;
-  const skillsLine = `Skills list (system prompt text): ${formatCharsAndTokens(report.skills.promptChars)} (${skillNameSet.size} skills)`;
+  const skillsLine = `Skills list (system prompt text): ${formatCharsAndTokens(skillPromptChars)} (${skillNameSet.size} skills)`;
+  const matchedSkills = Array.isArray(report.skills?.matchedCandidates)
+    ? report.skills.matchedCandidates
+    : [];
+  const matchedPersonalSkills = matchedSkills.filter((entry) => entry.kind === "personal");
+  const matchedGenericSkills = matchedSkills.filter((entry) => entry.kind !== "personal");
   const skillsNamesLine = skillNameSet.size
     ? `Skills: ${formatNameList(skillNames, 20)}`
     : "Skills: (none)";
+  const matchedSkillsLine =
+    matchedSkills.length > 0
+      ? [
+          matchedPersonalSkills.length > 0
+            ? `Matched Personal Skills: ${matchedPersonalSkills
+                .map((entry) => `${entry.name} (${entry.score})`)
+                .join(", ")}`
+            : null,
+          matchedGenericSkills.length > 0
+            ? `Matched generic skills: ${matchedGenericSkills
+                .map((entry) => `${entry.name} [${entry.source}] (${entry.score})`)
+                .join(", ")}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" | ")
+      : "Matched skill candidates: (none)";
   const toolsNamesLine = toolNames.length
     ? `Tools: ${formatNameList(toolNames, 30)}`
     : "Tools: (none)";
@@ -258,18 +290,18 @@ export async function buildContextReply(params: HandleCommandsParams): Promise<R
 
   if (sub === "detail" || sub === "deep") {
     const perSkill = formatListTop(
-      report.skills.entries.map((s) => ({ name: s.name, value: s.blockChars })),
+      skillEntries.map((s) => ({ name: s.name, value: s.blockChars })),
       30,
     );
     const perToolSchema = formatListTop(
-      report.tools.entries.map((t) => ({ name: t.name, value: t.schemaChars })),
+      toolEntries.map((t) => ({ name: t.name, value: t.schemaChars })),
       30,
     );
     const perToolSummary = formatListTop(
-      report.tools.entries.map((t) => ({ name: t.name, value: t.summaryChars })),
+      toolEntries.map((t) => ({ name: t.name, value: t.summaryChars })),
       30,
     );
-    const toolPropsLines = report.tools.entries
+    const toolPropsLines = toolEntries
       .filter((t) => t.propertiesCount != null)
       .toSorted((a, b) => (b.propertiesCount ?? 0) - (a.propertiesCount ?? 0))
       .slice(0, 30)
@@ -288,6 +320,7 @@ export async function buildContextReply(params: HandleCommandsParams): Promise<R
         "",
         skillsLine,
         skillsNamesLine,
+        matchedSkillsLine,
         ...(perSkill.lines.length ? ["Top skills (prompt entry size):", ...perSkill.lines] : []),
         ...(perSkill.omitted ? [`… (+${perSkill.omitted} more skills)`] : []),
         "",

@@ -35,6 +35,8 @@ function buildSkillsSection(params: {
   return [
     "## Skills (mandatory)",
     "Before replying: scan <available_skills> <description> entries.",
+    "- Treat workspace skills as general references. They are not the same as operator-specific Personal Skills / procedures learned from real work.",
+    "- If the runtime injects an Active Personal Skills or Personal Skill Procedure Mode block, that operator procedure outranks a generic workspace skill when both seem applicable.",
     `- If exactly one skill clearly applies: read its SKILL.md at <location> with \`${params.readToolName}\`, then follow it.`,
     "- If multiple could apply: choose the most specific one, then read/follow it.",
     "- If none clearly apply: do not read any SKILL.md.",
@@ -102,6 +104,40 @@ function buildMemuSection(params: { isMinimal: boolean; availableTools: Set<stri
     "",
   ];
   return lines;
+}
+
+function buildPersonalSkillSection(params: { isMinimal: boolean; availableTools: Set<string> }) {
+  if (params.isMinimal) {
+    return [];
+  }
+  if (!params.availableTools.has("personal_skill")) {
+    return [];
+  }
+  return [
+    "## Personal Skill Authoring",
+    "Use `personal_skill` when you are intentionally creating or patching an operator-specific procedure.",
+    "Create a Personal Skill when the user teaches you a durable procedure, when you discover a reusable operator-specific workflow, or when a complex run reveals a repeatable process worth keeping.",
+    "Patch a Personal Skill when a learned procedure is incomplete, stale, or wrong.",
+    "Do not use `personal_skill` for one-off facts or generic workspace skills.",
+    "Default new Personal Skills to incubating; do not silently self-promote them.",
+    "",
+  ];
+}
+
+function buildRuntimeServicesSection(params: { isMinimal: boolean; availableTools: Set<string> }) {
+  if (params.isMinimal) {
+    return [];
+  }
+  if (!params.availableTools.has("runtime_services")) {
+    return [];
+  }
+  return [
+    "## Runtime Service Identity",
+    "Before verifying whether a service is healthy, use `runtime_services` to resolve the canonical service identity, port, and health surface.",
+    "Do not assume that similarly named local services are interchangeable.",
+    "Example: gateway and dashboard-api are different services and may use different ports and health checks.",
+    "",
+  ];
 }
 
 const PROMPT_SIS_LESSONS_CACHE_TTL_MS = 30_000;
@@ -427,6 +463,13 @@ export async function buildAgentSystemPrompt(params: {
 
   const normalizedTools = canonicalToolNames.map((tool) => tool.toLowerCase());
   const availableTools = new Set(normalizedTools);
+  const hasAteraTool = normalizedTools.some(
+    (tool) =>
+      tool.startsWith("atera_") ||
+      tool.includes("__atera_") ||
+      tool.includes("atera__") ||
+      tool === "atera",
+  );
   const externalToolSummaries = new Map<string, string>();
   for (const [key, value] of Object.entries(params.toolSummaries ?? {})) {
     const normalized = key.trim().toLowerCase();
@@ -516,6 +559,14 @@ export async function buildAgentSystemPrompt(params: {
     isMinimal: stripMemory,
     availableTools,
   });
+  const personalSkillSection = buildPersonalSkillSection({
+    isMinimal,
+    availableTools,
+  });
+  const runtimeServicesSection = buildRuntimeServicesSection({
+    isMinimal,
+    availableTools,
+  });
   const sisLessonsSection = await buildSisLessonsSection({
     isMinimal: stripMemory,
     availableTools: canonicalToolNames,
@@ -560,6 +611,9 @@ export async function buildAgentSystemPrompt(params: {
           '- session_status: show usage/time/model state and answer "what model are we using?"',
         ].join("\n"),
     "TOOLS.md does not control tool availability; it is user guidance for how to use external tools.",
+    hasAteraTool
+      ? "If Atera is mentioned in workspace notes, use only the exact callable Atera tools listed above. Never invent legacy names like `atera_list_tickets` or imply broader Atera access than the listed tools provide."
+      : "If Atera is mentioned in workspace notes or memory, do not imply live Atera access in this session. No callable Atera tool is available unless an actual `atera_*` tool is listed above.",
     "If a task is more complex or takes longer, spawn a sub-agent. It will do the work for you and ping you when it's done. You can always check up on it.",
     "",
     "## Response Format (MANDATORY)",
@@ -630,6 +684,8 @@ export async function buildAgentSystemPrompt(params: {
     ...skillsSection,
     ...memorySection,
     ...memuSection,
+    ...personalSkillSection,
+    ...runtimeServicesSection,
     ...sisLessonsSection,
     // Skip self-update for subagent/none modes
     hasGateway && !isMinimal ? "## Argent Self-Update" : "",

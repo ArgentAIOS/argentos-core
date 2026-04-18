@@ -90,10 +90,11 @@ import {
 } from "./lib/avatarConfig";
 import { buildPresetConfig } from "./lib/avatarPresets";
 import {
-  getOperationsWorkspaceTabs,
   isDashboardModeAllowed,
   isOperationsSurfaceAllowed,
   isWorkforceSurfaceAllowed,
+  parseDashboardMode,
+  parseDashboardSurfaceProfile,
   type DashboardMode,
   type DashboardSurfaceProfile,
 } from "./lib/configSurfaceProfile";
@@ -103,6 +104,7 @@ import { applyMoodContinuity } from "./lib/moodContinuity";
 import { type MoodName, parseMoodName } from "./lib/moodSystem";
 import { resolvePrimaryChatAgentId } from "./lib/sessionVisibility";
 import { mergeVisibleChatAgentOptions } from "./lib/sessionVisibility";
+import { coerceVisibleOperatorSessionKey } from "./lib/sessionVisibility";
 import { fetchLocalApi } from "./utils/localApiFetch";
 
 // ============================================================================
@@ -386,7 +388,7 @@ function toCanonicalSessionKey(
     mainSessionKey,
     defaults?.defaultAgentId || DEFAULT_AGENT_ID,
   );
-  const raw = (sessionKey ?? "").trim();
+  const raw = coerceVisibleOperatorSessionKey({ sessionKey, mainSessionKey }).trim();
   if (!raw) return mainSessionKey;
   const lowered = raw.toLowerCase();
   if (lowered === "global") return "global";
@@ -409,6 +411,14 @@ function toCanonicalSessionKey(
     return raw;
   }
   return `agent:${primaryAgentId}:${raw}`;
+}
+
+function getInitialVisibleSessionKey(): string {
+  try {
+    return toCanonicalSessionKey(localStorage.getItem("argent-session-key"));
+  } catch {
+    return DEFAULT_MAIN_SESSION_KEY;
+  }
 }
 
 function resolveSessionAgentId(
@@ -1208,8 +1218,6 @@ function App() {
   const allowOperationsSurface = isOperationsSurfaceAllowed(surfaceProfile);
   const allowWorkforceSurface = isWorkforceSurfaceAllowed(surfaceProfile);
   const isOperationsDashboard = allowWorkforceSurface && dashboardMode === "operations";
-  const showOperationsWorkspace = allowOperationsSurface && activeWorkspace === "operations";
-  const operationsWorkspaceTabs = getOperationsWorkspaceTabs(surfaceProfile);
 
   // Ensure Operations tab exists when the surface allows operations.
   useEffect(() => {
@@ -1227,6 +1235,7 @@ function App() {
     updateTask,
     deleteTask,
     deleteProject,
+    archiveProject,
     startTask,
     completeTask,
     startTaskByTitle,
@@ -1242,6 +1251,9 @@ function App() {
 
   // Board view state
   const [showBoard, setShowBoard] = useState(false);
+  const [selectedBoardProjectId, setSelectedBoardProjectId] = useState<string | undefined>(
+    undefined,
+  );
   const [showWorkforce, setShowWorkforce] = useState(false);
   const [widgetPickerOpen, setWidgetPickerOpen] = useState(false);
   const [opsView, setOpsView] = useState<
@@ -1286,16 +1298,11 @@ function App() {
     let cancelled = false;
     const loadSurfaceProfile = async () => {
       try {
-        const response = await fetchLocalApi("/api/settings/dashboard/surface-profile", {}, 0);
-        const payload = (await response.json()) as {
-          surfaceProfile?: DashboardSurfaceProfile;
-          dashboardMode?: DashboardMode;
-        };
+        const response = await fetchLocalApi("/api/settings/agent/raw-config", {}, 0);
+        const payload = (await response.json()) as { raw?: string };
         if (!cancelled) {
-          const nextSurfaceProfile =
-            payload?.surfaceProfile === "public-core" ? "public-core" : "full";
-          const configDashboardMode =
-            payload?.dashboardMode === "operations" ? "operations" : "personal";
+          const nextSurfaceProfile = parseDashboardSurfaceProfile(payload?.raw);
+          const configDashboardMode = parseDashboardMode(payload?.raw, nextSurfaceProfile);
           const storedDashboardMode = readStoredDashboardMode();
           const nextDashboardMode =
             storedDashboardMode && isDashboardModeAllowed(storedDashboardMode, nextSurfaceProfile)
@@ -1306,8 +1313,9 @@ function App() {
         }
       } catch {
         if (!cancelled) {
-          setSurfaceProfile("public-core");
-          setDashboardMode("personal");
+          setSurfaceProfile("full");
+          const storedDashboardMode = readStoredDashboardMode();
+          setDashboardMode(storedDashboardMode === "operations" ? "operations" : "personal");
         }
       }
     };
@@ -1325,12 +1333,6 @@ function App() {
     }
     persistDashboardMode(dashboardMode);
   }, [dashboardMode, surfaceProfile]);
-
-  useEffect(() => {
-    if (!operationsWorkspaceTabs.some((tab) => tab.id === opsView)) {
-      setOpsView(operationsWorkspaceTabs[0]?.id ?? "map");
-    }
-  }, [operationsWorkspaceTabs, opsView]);
 
   // Reset operations panels when switching away from operations mode.
   // IMPORTANT: showBoard and showWorkforce are NOT in the dependency array —
@@ -1524,6 +1526,8 @@ function App() {
       if (task.status) updates.status = task.status;
       if (task.type) updates.type = task.type;
       if (task.schedule !== undefined) updates.schedule = task.schedule;
+      if (task.dueAt !== undefined) updates.dueAt = task.dueAt;
+      if (task.metadata !== undefined) updates.metadata = task.metadata;
       const updated = await updateTask(task.id, updates);
       return !!updated;
     },
@@ -1541,6 +1545,8 @@ function App() {
       };
       if ("assignee" in task) updates.assignee = task.assignee;
       if ("priority" in task) updates.priority = task.priority;
+      if ("dueAt" in task) updates.dueAt = task.dueAt;
+      if ("metadata" in task) updates.metadata = task.metadata;
       updateTask(task.id, updates);
     },
     [updateTask],
@@ -1734,10 +1740,9 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>(initialLogs);
   const [operatorDisplayName, setOperatorDisplayName] = useState<string | null>(null);
   const [workforceBadgeAvailable, setWorkforceBadgeAvailable] = useState(true);
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    const key = localStorage.getItem("argent-session-key") || DEFAULT_MAIN_SESSION_KEY;
-    return loadStoredMessages(key);
-  });
+  const [messages, setMessages] = useState<ChatMessage[]>(() =>
+    loadStoredMessages(getInitialVisibleSessionKey()),
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [activeModelInfo, setActiveModelInfo] = useState<{
@@ -1782,9 +1787,7 @@ function App() {
     }>
   >([]);
   // Session management — persist across refreshes
-  const [currentSessionKey, setCurrentSessionKey] = useState(() =>
-    toCanonicalSessionKey(localStorage.getItem("argent-session-key")),
-  );
+  const [currentSessionKey, setCurrentSessionKey] = useState(() => getInitialVisibleSessionKey());
   const [sessions, setSessions] = useState<SessionEntry[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
@@ -3806,7 +3809,17 @@ function App() {
             // Store model routing info on the assistant message for display
             setActiveModelInfo(modelInfo);
             setMessages((prev) =>
-              prev.map((msg) => (msg.id === assistantId ? { ...msg, modelInfo } : msg)),
+              prev.map((msg) =>
+                msg.id === assistantId
+                  ? {
+                      ...msg,
+                      modelInfo: {
+                        ...(msg.modelInfo ?? {}),
+                        ...modelInfo,
+                      },
+                    }
+                  : msg,
+              ),
             );
           },
           (toolName, phase) => {
@@ -4819,11 +4832,8 @@ function App() {
             key={ws.id}
             onClick={() => {
               setActiveWorkspace(ws.id);
-              if (ws.id === "operations" && allowOperationsSurface) {
-                setDashboardMode("operations");
-              } else {
-                setDashboardMode("personal");
-              }
+              if (ws.id === "operations") setDashboardMode("operations");
+              else setDashboardMode("personal");
             }}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               activeWorkspace === ws.id
@@ -4857,7 +4867,7 @@ function App() {
       </div>
 
       {/* Main Content */}
-      {showOperationsWorkspace ? (
+      {isOperationsDashboard && activeWorkspace === "operations" ? (
         /* Operations workspace — sub-nav tabs */
         <div className="flex-1 min-h-0 flex flex-col">
           {/* Sub-nav */}
@@ -4871,7 +4881,16 @@ function App() {
                 org: <OrgChartIcon size={16} />,
                 schedule: <ScheduleIcon size={16} />,
               };
-              return operationsWorkspaceTabs.map((tab) => (
+              return (
+                [
+                  { id: "map", label: "Workflow Map" },
+                  { id: "workflows", label: "Workflows" },
+                  { id: "jobs", label: "Workloads" },
+                  { id: "tasks", label: "Task Manager" },
+                  { id: "org", label: "Org Chart" },
+                  { id: "schedule", label: "Schedule" },
+                ] as const
+              ).map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setOpsView(tab.id)}
@@ -4917,7 +4936,7 @@ function App() {
             </div>
           ) : opsView === "org" ? (
             <div className="flex-1 min-h-0 overflow-auto p-4">
-              <OrgChartWidget operatorName={operatorDisplayName ?? undefined} />
+              <OrgChartWidget />
             </div>
           ) : opsView === "schedule" ? (
             <div className="flex-1 min-h-0 overflow-auto p-4">
@@ -4975,9 +4994,11 @@ function App() {
                   onTaskEdit={editTask}
                   onTaskExecute={executeTask}
                   onProjectDelete={deleteProject}
+                  onProjectArchive={archiveProject}
                   onProjectTaskAdd={addProjectTask}
                   onProjectKickoff={() => setShowProjectKickoffModal(true)}
-                  onOpenBoard={() => {
+                  onOpenBoard={(projectId) => {
+                    setSelectedBoardProjectId(projectId);
                     setShowWorkforce(false);
                     setShowBoard(true);
                   }}
@@ -4989,6 +5010,7 @@ function App() {
               <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                 <button
                   onClick={() => {
+                    setSelectedBoardProjectId(undefined);
                     setShowBoard(false);
                     setWorkforceFocus("all");
                     setShowWorkforce(true);
@@ -5003,6 +5025,7 @@ function App() {
                 </button>
                 <button
                   onClick={() => {
+                    setSelectedBoardProjectId(undefined);
                     setShowWorkforce(false);
                     setShowBoard(true);
                   }}
@@ -5030,12 +5053,17 @@ function App() {
                   <ProjectBoard
                     tasks={tasks}
                     projects={projects}
+                    selectedProjectId={selectedBoardProjectId}
                     onTaskUpdate={editTaskFull}
                     onTaskDelete={(id) => deleteTask(id)}
                     onTaskAdd={addTask}
                     onTaskStart={(id) => startTask(id)}
                     onTaskComplete={(id) => completeTask(id)}
-                    onClose={() => setShowBoard(false)}
+                    onProjectArchive={archiveProject}
+                    onClose={() => {
+                      setSelectedBoardProjectId(undefined);
+                      setShowBoard(false);
+                    }}
                   />
                 ) : (
                   <WorkforceBoard
@@ -5080,9 +5108,11 @@ function App() {
                 onTaskEdit={editTask}
                 onTaskExecute={executeTask}
                 onProjectDelete={deleteProject}
+                onProjectArchive={archiveProject}
                 onProjectTaskAdd={addProjectTask}
                 onProjectKickoff={() => setShowProjectKickoffModal(true)}
-                onOpenBoard={() => {
+                onOpenBoard={(projectId) => {
+                  setSelectedBoardProjectId(projectId);
                   setShowWorkforce(false);
                   setShowBoard(true);
                 }}
@@ -5098,6 +5128,9 @@ function App() {
               <button
                 onClick={() => {
                   setShowWorkforce(false);
+                  if (!showBoard) {
+                    setSelectedBoardProjectId(undefined);
+                  }
                   setShowBoard((prev) => !prev);
                 }}
                 className={`text-xs px-2.5 py-1.5 rounded-lg border transition-all ${
@@ -5128,12 +5161,17 @@ function App() {
               <ProjectBoard
                 tasks={tasks}
                 projects={projects}
+                selectedProjectId={selectedBoardProjectId}
                 onTaskUpdate={editTaskFull}
                 onTaskDelete={(id) => deleteTask(id)}
                 onTaskAdd={addTask}
                 onTaskStart={(id) => startTask(id)}
                 onTaskComplete={(id) => completeTask(id)}
-                onClose={() => setShowBoard(false)}
+                onProjectArchive={archiveProject}
+                onClose={() => {
+                  setSelectedBoardProjectId(undefined);
+                  setShowBoard(false);
+                }}
               />
             </div>
           ) : (

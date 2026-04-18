@@ -29,6 +29,22 @@ enum WindowPlacement {
         return NSRect(x: x, y: y, width: clampedWidth, height: clampedHeight)
     }
 
+    static func fillVisibleFrame(on screen: NSScreen? = NSScreen.main) -> NSRect {
+        let bounds = (screen?.visibleFrame ?? NSScreen.screens.first?.visibleFrame ?? .zero)
+        return self.fillVisibleFrame(in: bounds)
+    }
+
+    static func fillVisibleFrame(in bounds: NSRect) -> NSRect {
+        if bounds == .zero {
+            return .zero
+        }
+        return NSRect(
+            x: round(bounds.origin.x),
+            y: round(bounds.origin.y),
+            width: round(bounds.width),
+            height: round(bounds.height))
+    }
+
     static func topRightFrame(size: NSSize, padding: CGFloat, in bounds: NSRect) -> NSRect {
         if bounds == .zero {
             return NSRect(origin: .zero, size: size)

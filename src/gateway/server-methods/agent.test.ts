@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   registerAgentRunContext: vi.fn(),
   isEmbeddedPiRunActive: vi.fn(() => false),
   queueEmbeddedPiMessage: vi.fn(() => false),
+  captureAndPromote: vi.fn(),
   loadConfigReturn: {} as Record<string, unknown>,
 }));
 
@@ -33,9 +34,14 @@ vi.mock("../../commands/agent.js", () => ({
   agentCommand: mocks.agentCommand,
 }));
 
-vi.mock("../../config/config.js", () => ({
-  loadConfig: () => mocks.loadConfigReturn,
-}));
+vi.mock("../../config/config.js", async () => {
+  const actual =
+    await vi.importActual<typeof import("../../config/config.js")>("../../config/config.js");
+  return {
+    ...actual,
+    loadConfig: () => mocks.loadConfigReturn,
+  };
+});
 
 vi.mock("../../agents/agent-scope.js", () => ({
   listAgentIds: () => ["main"],
@@ -53,6 +59,10 @@ vi.mock("../../sessions/send-policy.js", () => ({
 vi.mock("../../agents/pi-embedded.js", () => ({
   isEmbeddedPiRunActive: mocks.isEmbeddedPiRunActive,
   queueEmbeddedPiMessage: mocks.queueEmbeddedPiMessage,
+}));
+
+vi.mock("../../memory/live-inbox/capture.js", () => ({
+  captureAndPromote: mocks.captureAndPromote,
 }));
 
 vi.mock("../../utils/delivery-context.js", async () => {
@@ -80,6 +90,7 @@ describe("gateway agent handler", () => {
     mocks.registerAgentRunContext.mockReset();
     mocks.isEmbeddedPiRunActive.mockReset().mockReturnValue(false);
     mocks.queueEmbeddedPiMessage.mockReset().mockReturnValue(false);
+    mocks.captureAndPromote.mockReset();
     mocks.loadConfigReturn = {};
   });
 
@@ -174,6 +185,47 @@ describe("gateway agent handler", () => {
     );
     expect(mocks.agentCommand).not.toHaveBeenCalled();
     expect(mocks.queueEmbeddedPiMessage).not.toHaveBeenCalled();
+  });
+
+  it("captures live-inbox candidates for direct agent turns", async () => {
+    mocks.loadSessionEntry.mockReturnValue({
+      cfg: {},
+      storePath: "/tmp/sessions.json",
+      store: {},
+      entry: {
+        sessionId: "existing-session-id",
+        updatedAt: Date.now(),
+      },
+      canonicalKey: "agent:main:main",
+    });
+    mocks.updateSessionStore.mockResolvedValue(undefined);
+    mocks.agentCommand.mockResolvedValue({
+      payloads: [{ text: "ok" }],
+      meta: { durationMs: 100 },
+    });
+
+    const respond = vi.fn();
+    await agentHandlers.agent({
+      params: {
+        message:
+          "Learn this as a Personal Skill: When I ask whether something is working, verify process state, endpoint health, and the newest logs before answering.",
+        agentId: "main",
+        sessionKey: "agent:main:main",
+        idempotencyKey: "test-live-inbox-capture",
+      },
+      respond,
+      context: makeContext(),
+      req: { type: "req", id: "agent-live-inbox", method: "agent" },
+      client: null,
+      isWebchatConnect: () => false,
+    });
+
+    expect(mocks.captureAndPromote).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: "agent:main:main",
+        role: "user",
+      }),
+    );
   });
 
   it("rejects image attachments when busyMode=steer", async () => {

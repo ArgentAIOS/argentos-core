@@ -276,17 +276,13 @@ resolve_pnpm_runner() {
   PNPM_EXEC=""
   PNPM_SUBCOMMAND=""
 
-  # 1. Try corepack (ships with Node 22+, but some private runtimes expose a
-  # broken corepack shim that exists on disk yet cannot actually serve pnpm).
+  # 1. Try corepack (ships with Node 22+, needs enabling)
   if [[ -x "$node_dir/corepack" ]]; then
-    # Enable corepack if not already (idempotent). Suppress both streams because
-    # some broken shims print internal errors to stdout before we can fall back.
-    "$node_dir/corepack" enable >/dev/null 2>&1 || true
-    if "$node_dir/corepack" pnpm --version >/dev/null 2>&1; then
-      PNPM_EXEC="$node_dir/corepack"
-      PNPM_SUBCOMMAND="pnpm"
-      return 0
-    fi
+    # Enable corepack if not already (idempotent)
+    "$node_dir/corepack" enable 2>/dev/null || true
+    PNPM_EXEC="$node_dir/corepack"
+    PNPM_SUBCOMMAND="pnpm"
+    return 0
   fi
 
   # 2. Try system pnpm (PATH)
@@ -471,12 +467,128 @@ run_onboard() {
   exit 1
 }
 
+resolve_configured_workspace_dir() {
+  local config_path="${HOME}/.argentos/argent.json"
+  local default_workspace="${HOME}/.argentos/workspace"
+
+  if [[ ! -f "$config_path" ]]; then
+    printf '%s\n' "$default_workspace"
+    return 0
+  fi
+
+  ARGENT_INSTALL_CONFIG_PATH="$config_path" ARGENT_INSTALL_DEFAULT_WORKSPACE="$default_workspace" "$NODE_BIN" <<'NODE'
+const fs = require("node:fs");
+
+const configPath = process.env.ARGENT_INSTALL_CONFIG_PATH;
+const fallback = process.env.ARGENT_INSTALL_DEFAULT_WORKSPACE;
+
+try {
+  const raw = fs.readFileSync(configPath, "utf8");
+  const parsed = JSON.parse(raw);
+  const workspace = parsed?.agents?.defaults?.workspace;
+  if (typeof workspace === "string" && workspace.trim()) {
+    process.stdout.write(workspace.trim());
+  } else {
+    process.stdout.write(fallback);
+  }
+} catch {
+  process.stdout.write(fallback);
+}
+NODE
+}
+
+verify_workspace_bootstrap_state() {
+  local workspace_dir="$1"
+  local config_path="${HOME}/.argentos/argent.json"
+  local expected_files=(
+    "AGENTS.md"
+    "SOUL.md"
+    "TOOLS.md"
+    "IDENTITY.md"
+    "USER.md"
+    "HEARTBEAT.md"
+    "CONTEMPLATION.md"
+    "BOOTSTRAP.md"
+    "WORKFLOWS.md"
+    "MEMORY.md"
+  )
+
+  if [[ ! -f "$config_path" ]]; then
+    warn "Workspace bootstrap verification failed: missing config at $config_path"
+    return 1
+  fi
+
+  local configured_workspace
+  configured_workspace="$(resolve_configured_workspace_dir)"
+  if [[ -z "$configured_workspace" ]]; then
+    warn "Workspace bootstrap verification failed: agents.defaults.workspace is unset"
+    return 1
+  fi
+
+  if [[ "$configured_workspace" != "$workspace_dir" ]]; then
+    warn "Workspace bootstrap verification failed: config workspace mismatch (${configured_workspace} != ${workspace_dir})"
+    return 1
+  fi
+
+  if [[ ! -d "$workspace_dir" ]]; then
+    warn "Workspace bootstrap verification failed: missing workspace dir $workspace_dir"
+    return 1
+  fi
+
+  local missing=()
+  local name
+  for name in "${expected_files[@]}"; do
+    if [[ ! -f "$workspace_dir/$name" ]]; then
+      missing+=("$name")
+    fi
+  done
+
+  if (( ${#missing[@]} > 0 )); then
+    warn "Workspace bootstrap verification failed: missing files: ${missing[*]}"
+    return 1
+  fi
+
+  return 0
+}
+
+ensure_workspace_bootstrap_state() {
+  local argent_bin="$1"
+  local default_workspace="${HOME}/.argentos/workspace"
+  local workspace_dir
+
+  info "Seeding agent workspace..."
+  PATH="$(dirname "$NODE_BIN"):$PATH" run_cmd "$argent_bin" setup
+
+  if is_truthy "$DRY_RUN"; then
+    ok "Seeded agent workspace (dry-run)"
+    return 0
+  fi
+
+  workspace_dir="$(resolve_configured_workspace_dir)"
+  if verify_workspace_bootstrap_state "$workspace_dir"; then
+    ok "Seeded agent workspace"
+    return 0
+  fi
+
+  warn "Workspace bootstrap incomplete after initial setup; retrying with explicit workspace path"
+  PATH="$(dirname "$NODE_BIN"):$PATH" "$argent_bin" setup --workspace "$default_workspace"
+
+  workspace_dir="$(resolve_configured_workspace_dir)"
+  if verify_workspace_bootstrap_state "$workspace_dir"; then
+    ok "Seeded agent workspace"
+    return 0
+  fi
+
+  err "Workspace bootstrap failed after retry. Run: $argent_bin setup --workspace $default_workspace"
+  exit 1
+}
+
 should_run_cli_onboard() {
   if is_truthy "$NO_ONBOARD"; then
     return 1
   fi
   if [[ "$(uname -s)" == "Darwin" ]] && ! is_truthy "$FORCE_CLI_ONBOARD"; then
-    info "Skipping terminal onboarding on macOS; dashboard/browser handoff will guide first run."
+    info "Skipping terminal onboarding on macOS; Argent.app will guide first run."
     return 1
   fi
   return 0
@@ -591,6 +703,7 @@ download_argent_app() {
   local tmp_dir
   tmp_dir="$(mktemp -d)"
 
+  # 1. Fetch release manifest
   info "Checking for latest Argent.app release..."
   local manifest
   manifest="$(curl -fsSL "$manifest_url" 2>/dev/null)" || {
@@ -599,6 +712,7 @@ download_argent_app() {
     return 0
   }
 
+  # 2. Parse manifest (portable JSON parsing with Node --input-type=module)
   local zip_url zip_filename
   zip_url="$(echo "$manifest" | "$NODE_BIN" --input-type=module -e "
     import { readFileSync } from 'fs';
@@ -621,11 +735,12 @@ download_argent_app() {
 
   if is_truthy "$DRY_RUN"; then
     printf 'DRY-RUN: curl -fsSL %q -o %q/%q\n' "$zip_url" "$tmp_dir" "$zip_filename"
-    printf 'DRY-RUN: unzip -> /Applications/Argent.app\n'
+    printf 'DRY-RUN: unzip → /Applications/Argent.app\n'
     printf 'DRY-RUN: open /Applications/Argent.app\n'
     return 0
   fi
 
+  # 3. Download
   info "Downloading $zip_filename..."
   curl -fsSL "$zip_url" -o "$tmp_dir/$zip_filename" || {
     warn "Download failed: $zip_url"
@@ -635,6 +750,7 @@ download_argent_app() {
   }
   ok "Downloaded $zip_filename"
 
+  # 4. Install to /Applications
   info "Installing Argent.app to /Applications..."
   rm -rf /Applications/Argent.app 2>/dev/null || true
   (cd "$tmp_dir" && unzip -qo "$zip_filename" 2>/dev/null)
@@ -652,6 +768,7 @@ download_argent_app() {
 }
 
 launch_argent_app() {
+  # Ensure we launch a fresh app process so first-run defaults are re-read.
   killall Argent 2>/dev/null || true
 
   # Read gateway + dashboard API tokens for authenticated dashboard URLs
@@ -698,15 +815,12 @@ launch_argent_app() {
   echo "       ${dash_url}"
   echo ""
   echo "    3) Stay in the terminal"
-  echo "       Use: argent chat"
+  echo "       Use: argent tui"
   echo ""
 
   if is_truthy "$NO_PROMPT" || [[ ! -r /dev/tty ]]; then
     info "Launching Argent.app..."
-    if ! open -n -a /Applications/Argent.app 2>/dev/null; then
-      warn "Argent.app launch failed — falling back to browser dashboard"
-      open "$dash_url" 2>/dev/null || true
-    fi
+    open -n -a /Applications/Argent.app 2>/dev/null || true
     return 0
   fi
 
@@ -718,13 +832,8 @@ launch_argent_app() {
   case "$choice" in
     1)
       info "Launching Argent.app..."
-      if open -n -a /Applications/Argent.app 2>/dev/null; then
-        ok "Argent.app launched"
-      else
-        warn "Argent.app launch failed — falling back to browser dashboard"
-        open "$dash_url" 2>/dev/null || true
-        ok "Dashboard opened"
-      fi
+      open -n -a /Applications/Argent.app 2>/dev/null || true
+      ok "Argent.app launched"
       ;;
     2)
       info "Opening dashboard in browser..."
@@ -732,166 +841,21 @@ launch_argent_app() {
       ok "Dashboard opened"
       ;;
     3)
-      ok "You're in control. Run: argent chat"
+      ok "You're in control. Run: argent tui"
       ;;
     *)
       info "Launching Argent.app..."
-      if open -n -a /Applications/Argent.app 2>/dev/null; then
-        ok "Argent.app launched"
-      else
-        warn "Argent.app launch failed — falling back to browser dashboard"
-        open "$dash_url" 2>/dev/null || true
-        ok "Dashboard opened"
-      fi
+      open -n -a /Applications/Argent.app 2>/dev/null || true
+      ok "Argent.app launched"
       ;;
   esac
 
   echo ""
   info "Argent.app is always available at: /Applications/Argent.app"
   info "Dashboard: ${dash_url}"
-  info "CLI is always available with: argent chat"
+  info "Terminal UI: argent tui"
+  info "Dashboard link anytime: argent dashboard --no-open"
   echo ""
-}
-
-read_dashboard_api_token() {
-  if [[ -f "$HOME/.argentos/.env" ]]; then
-    "$NODE_BIN" -e "
-      try {
-        const raw = require('fs').readFileSync('$HOME/.argentos/.env','utf8');
-        const match = raw.match(/^DASHBOARD_API_TOKEN=(.+)$/m);
-        process.stdout.write(match?.[1]?.trim() || '');
-      } catch {}
-    " 2>/dev/null || true
-  fi
-}
-
-start_dashboard_api_service() {
-  local dashboard_dir="$1"
-  local node_dir="$2"
-  local api_server="$dashboard_dir/api-server.cjs"
-  local api_log="$HOME/.argentos/logs/dashboard-api.log"
-  local api_plist="$HOME/Library/LaunchAgents/ai.argent.dashboard-api.plist"
-  local dashboard_api_token=""
-  dashboard_api_token="$(read_dashboard_api_token)"
-
-  if [[ ! -f "$api_server" ]]; then
-    warn "Dashboard API server missing at $api_server"
-    return 1
-  fi
-
-  mkdir -p "$HOME/.argentos/logs" "$HOME/Library/LaunchAgents"
-
-  lsof -ti :9242 | xargs kill 2>/dev/null || true
-
-  cat > "$api_plist" <<APIPLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>ai.argent.dashboard-api</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>$NODE_BIN</string>
-    <string>$api_server</string>
-  </array>
-  <key>WorkingDirectory</key>
-  <string>$dashboard_dir</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>PATH</key>
-    <string>$node_dir:/usr/bin:/bin:/usr/sbin:/sbin</string>
-    <key>HOME</key>
-    <string>$HOME</string>
-    <key>HOST</key>
-    <string>127.0.0.1</string>
-    <key>API_PORT</key>
-    <string>9242</string>
-    <key>ARGENT_STATE_DIR</key>
-    <string>$HOME/.argentos</string>
-    <key>ARGENT_CONFIG_PATH</key>
-    <string>$HOME/.argentos/argent.json</string>
-    <key>DASHBOARD_API_TOKEN</key>
-    <string>$dashboard_api_token</string>
-  </dict>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <true/>
-  <key>StandardOutPath</key>
-  <string>$api_log</string>
-  <key>StandardErrorPath</key>
-  <string>$api_log</string>
-</dict>
-</plist>
-APIPLIST
-
-  local launchd_domain="gui/$(id -u)"
-  if /bin/launchctl bootout "$launchd_domain" "$api_plist" >/dev/null 2>&1; then
-    :
-  fi
-  if /bin/launchctl bootstrap "$launchd_domain" "$api_plist" >/dev/null 2>&1; then
-    /bin/launchctl kickstart -k "$launchd_domain/ai.argent.dashboard-api" >/dev/null 2>&1 || true
-  else
-    HOST=127.0.0.1 \
-    API_PORT=9242 \
-    ARGENT_STATE_DIR="$HOME/.argentos" \
-    ARGENT_CONFIG_PATH="$HOME/.argentos/argent.json" \
-    DASHBOARD_API_TOKEN="$dashboard_api_token" \
-    PATH="$node_dir:$PATH" \
-    nohup "$NODE_BIN" "$api_server" > "$api_log" 2>&1 &
-  fi
-
-  for _attempt in 1 2 3 4 5 6 7 8 9 10; do
-    if lsof -i :9242 >/dev/null 2>&1; then
-      ok "Dashboard API running on http://127.0.0.1:9242/"
-      return 0
-    fi
-    sleep 1
-  done
-
-  warn "Dashboard API may not have started — check ~/.argentos/logs/dashboard-api.log"
-  return 1
-}
-
-verify_dashboard_api_contract() {
-  local dashboard_api_token=""
-  dashboard_api_token="$(read_dashboard_api_token)"
-  local -a curl_args=()
-  if [[ -n "$dashboard_api_token" ]]; then
-    curl_args+=(-H "Authorization: Bearer ${dashboard_api_token}")
-  fi
-
-  local -a required_routes=(
-    "/api/health"
-    "/api/settings/dashboard/surface-profile"
-    "/api/settings/load-profile"
-    "/api/settings/auth-profiles"
-  )
-
-  for route in "${required_routes[@]}"; do
-    local ok_route=false
-    for _attempt in 1 2 3 4 5 6 7 8 9 10; do
-      local status
-      status="$(
-        curl -sS -o /dev/null -w "%{http_code}" "${curl_args[@]}" "http://127.0.0.1:9242${route}" \
-          2>/dev/null || true
-      )"
-      if [[ "$status" == "200" ]]; then
-        ok_route=true
-        break
-      fi
-      sleep 1
-    done
-    if [[ "$ok_route" != true ]]; then
-      err "Dashboard API route failed health check: ${route}"
-      err "Check: ~/.argentos/logs/dashboard-api.log"
-      return 1
-    fi
-  done
-
-  ok "Dashboard API route contract verified"
-  return 0
 }
 
 write_core_distribution_and_storage_defaults() {
@@ -1069,17 +1033,18 @@ install_git() {
 
   provision_core_storage_stack
 
-  info "Seeding agent workspace..."
-  PATH="$(dirname "$NODE_BIN"):$PATH" run_cmd "$BIN_DIR_OVERRIDE/argent" setup
-  ok "Seeded agent workspace"
+  ensure_workspace_bootstrap_state "$BIN_DIR_OVERRIDE/argent"
 
   # Create all PG tables (knowledge, memory, tasks, etc.) using safe CREATE IF NOT EXISTS.
   # Must run AFTER PG is provisioned.
   info "Creating PostgreSQL schema tables..."
-  PATH="$(dirname "$NODE_BIN"):$PATH" run_cmd bash "$GIT_DIR/scripts/ensure-pg-tables.sh"
+  bash "$GIT_DIR/scripts/ensure-pg-tables.sh" 2>/dev/null \
+    || warn "Table creation failed — run manually: bash ~/argentos/scripts/ensure-pg-tables.sh"
+  # macOS: Download Argent.app from R2 BEFORE onboarding (runs during service setup)
   if [[ "$(uname -s)" == "Darwin" ]]; then
     download_argent_app || true
   fi
+
   if should_run_cli_onboard; then
     run_onboard "$BIN_DIR_OVERRIDE/argent" || true
   fi
@@ -1104,11 +1069,6 @@ install_git() {
     info "Building dashboard..."
     (cd "$dashboard_dir" && PATH="$node_dir:$PATH" "$node_dir/npx" --yes vite build 2>&1 | tail -3) \
       || warn "Dashboard build failed — run later: cd ~/argentos/dashboard && npx vite build"
-
-    if [[ "$(uname -s)" == "Darwin" ]] && ! is_truthy "$DRY_RUN"; then
-      start_dashboard_api_service "$dashboard_dir" "$node_dir" || true
-      verify_dashboard_api_contract || exit 1
-    fi
 
     # Start dashboard UI via the bundled static server on port 8080
     if [[ "$(uname -s)" == "Darwin" && -d "$dashboard_dir/dist" ]] && ! is_truthy "$DRY_RUN"; then
@@ -1187,18 +1147,13 @@ UIPLIST
 
   local argent_bin="$BIN_DIR_OVERRIDE/argent"
   local master_key_file="$HOME/.argentos/.master-key"
-  local master_key_bootstrap_log="$HOME/.argentos/logs/master-key-bootstrap.log"
   local master_key=""
 
   # Generate key if it doesn't exist
   if [[ ! -f "$master_key_file" ]]; then
     info "Generating master encryption key..."
-    mkdir -p "$HOME/.argentos/logs"
-    # Use the daemon install path directly here. Fresh installs can already have the
-    # gateway service loaded by this point, and this command path reliably regenerates
-    # the installer-facing master key when it is missing.
-    ARGENT_SKIP_DASHBOARD_API=1 PATH="$(dirname "$NODE_BIN"):$PATH" "$argent_bin" daemon install --force \
-      >"$master_key_bootstrap_log" 2>&1 || true
+    # Suppress config-validation noise — redirect stderr, capture only key output
+    PATH="$(dirname "$NODE_BIN"):$PATH" "$argent_bin" gateway install --force >/dev/null 2>&1 || true
   fi
 
   # Read the key
@@ -1215,14 +1170,11 @@ UIPLIST
     echo ""
     err "═══ MASTER KEY GENERATION FAILED ═══"
     err "Could not generate or locate a master encryption key."
-    err "Run manually: argent daemon install --force"
+    err "Run manually: argent gateway install --force"
     err "Then verify:  argent secrets backup-key"
-    if [[ -f "$master_key_bootstrap_log" ]]; then
-      err "Bootstrap log: $master_key_bootstrap_log"
-    fi
     err "Do NOT enter any API keys until this is resolved."
     echo ""
-    exit 1
+    # Don't proceed to app launch — this is a hard blocker
   else
     # ── Full key ceremony ──────────────────────────────────────────
     echo ""
@@ -1291,8 +1243,8 @@ UIPLIST
     warn "Or run:     argent gateway status"
   fi
 
-  # macOS: open the local dashboard/browser handoff after onboarding completes
-  if [[ -n "$master_key" && "$(uname -s)" == "Darwin" ]]; then
+  # macOS: Launch Argent.app after onboarding completes
+  if [[ -n "$master_key" && "$(uname -s)" == "Darwin" && -d /Applications/Argent.app ]]; then
     launch_argent_app || true
   fi
 }
@@ -1349,6 +1301,10 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if is_truthy "${ARGENT_INSTALL_SOURCE_ONLY:-0}"; then
+  return 0 2>/dev/null || exit 0
+fi
 
 require_unix
 require_command curl

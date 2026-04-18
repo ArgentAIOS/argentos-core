@@ -34,7 +34,7 @@ ArgentOS is a personal AI operating system that runs on your hardware, speaks th
 curl -fsSL https://argentos.ai/install.sh | bash
 ```
 
-macOS first. The installer handles Node, pnpm, PostgreSQL, Redis, the local dashboard runtime, and onboarding/browser handoff automatically.
+macOS first. The installer handles Node, pnpm, PostgreSQL, Redis, Argent.app, and onboarding automatically.
 
 **Or from source:**
 

@@ -28,4 +28,16 @@ describe("ensureSkillsWatcher", () => {
     expect(ignored.some((re) => re.test("/tmp/workspace/skills/.git/config"))).toBe(true);
     expect(ignored.some((re) => re.test("/tmp/.hidden/skills/index.md"))).toBe(false);
   });
+
+  it("does not create watchers for ephemeral subagent workspaces", async () => {
+    const mod = await import("./refresh.js");
+    watchMock.mockClear();
+
+    mod.ensureSkillsWatcher({
+      workspaceDir:
+        "/Users/sem/.argentos/workspace-agent-main-subagent-76cf55a6-8a4d-4af7-8c23-b98113e5f8d1",
+    });
+
+    expect(watchMock).not.toHaveBeenCalled();
+  });
 });

@@ -6,10 +6,11 @@ import type {
   StreamEvent,
 } from "../argent-ai/types.js";
 import type { AssistantMessage, Context, Model } from "./ai.js";
+import { createAssistantMessageEventStream } from "../argent-ai/utils/event-stream.js";
 
 type Provider = ProviderInterface;
 import { describe, expect, it } from "vitest";
-import { createArgentStreamSimple } from "./ai.js";
+import { createArgentStreamSimple, hardenStreamSimple } from "./ai.js";
 
 const mockModel: Model = {
   id: "mock-model",
@@ -225,5 +226,42 @@ describe("createArgentStreamSimple", () => {
     );
     expect(eventTypes).toContain("done");
     expect(textBlocks.map((block) => block.text).join("\n")).toContain("Recovered final answer");
+  });
+});
+
+describe("hardenStreamSimple", () => {
+  it("normalizes malformed assistant result content to an array", async () => {
+    const streamFn = () => {
+      const stream = createAssistantMessageEventStream();
+      void (async () => {
+        stream.push({
+          type: "error",
+          reason: "error",
+          error: {
+            ...makeBaseAssistant(),
+            // Simulate provider/runtime returning malformed content.
+            content: undefined as unknown as AssistantMessage["content"],
+            stopReason: "error",
+            errorMessage: "provider exploded",
+          },
+        });
+        stream.end({
+          ...makeBaseAssistant(),
+          content: undefined as unknown as AssistantMessage["content"],
+          stopReason: "error",
+          errorMessage: "provider exploded",
+        });
+      })();
+      return stream;
+    };
+
+    const stream = hardenStreamSimple(streamFn as any)(mockModel, mockContext);
+    for await (const _event of stream) {
+      // drain
+    }
+    const result = await stream.result();
+    expect(Array.isArray(result.content)).toBe(true);
+    expect(result.content).toEqual([{ type: "text", text: "provider exploded" }]);
+    expect(result.stopReason).toBe("error");
   });
 });

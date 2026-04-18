@@ -1,4 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { resolveStateDir } from "../config/paths.js";
 import { createSessionSlug as createSessionSlugId } from "./session-slug.js";
 
 const DEFAULT_JOB_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -71,8 +74,118 @@ const runningSessions = new Map<string, ProcessSession>();
 const finishedSessions = new Map<string, FinishedSession>();
 
 let sweeper: NodeJS.Timeout | null = null;
+let registryLoaded = false;
+
+type PersistedRegistry = {
+  running: Array<{
+    id: string;
+    command: string;
+    scopeKey?: string;
+    sessionKey?: string;
+    notifyOnExit?: boolean;
+    startedAt: number;
+    cwd?: string;
+    maxOutputChars: number;
+    pendingMaxOutputChars?: number;
+    totalOutputChars: number;
+    aggregated: string;
+    tail: string;
+    truncated: boolean;
+    backgrounded: boolean;
+  }>;
+  finished: FinishedSession[];
+};
+
+function resolveRegistryPath() {
+  return path.join(resolveStateDir(), "process", "bash-process-registry.json");
+}
+
+function ensureRegistryLoaded() {
+  if (registryLoaded) {
+    return;
+  }
+  registryLoaded = true;
+  const filePath = resolveRegistryPath();
+  try {
+    if (!fs.existsSync(filePath)) {
+      return;
+    }
+    const raw = fs.readFileSync(filePath, "utf-8");
+    if (!raw.trim()) {
+      return;
+    }
+    const parsed = JSON.parse(raw) as PersistedRegistry;
+    const now = Date.now();
+    for (const session of parsed.finished ?? []) {
+      finishedSessions.set(session.id, session);
+    }
+    for (const session of parsed.running ?? []) {
+      if (!session.backgrounded) {
+        continue;
+      }
+      const orphaned: FinishedSession = {
+        id: session.id,
+        command: session.command,
+        scopeKey: session.scopeKey,
+        startedAt: session.startedAt,
+        endedAt: now,
+        cwd: session.cwd,
+        status: "failed",
+        exitCode: null,
+        exitSignal: null,
+        aggregated: session.aggregated,
+        tail: session.tail,
+        truncated: session.truncated,
+        totalOutputChars: session.totalOutputChars,
+      };
+      if (!orphaned.aggregated.includes("background session was not restorable")) {
+        const note = "Note: background session was not restorable after registry reload.";
+        orphaned.aggregated = [orphaned.aggregated, note].filter(Boolean).join("\n\n");
+        orphaned.tail = tail(orphaned.aggregated, 2000);
+      }
+      finishedSessions.set(orphaned.id, orphaned);
+    }
+  } catch {
+    // Ignore unreadable registry snapshots; runtime will continue with empty in-memory state.
+  }
+}
+
+function persistRegistry() {
+  if (!registryLoaded) {
+    return;
+  }
+  const filePath = resolveRegistryPath();
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
+    const payload: PersistedRegistry = {
+      running: Array.from(runningSessions.values())
+        .filter((session) => session.backgrounded)
+        .map((session) => ({
+          id: session.id,
+          command: session.command,
+          scopeKey: session.scopeKey,
+          sessionKey: session.sessionKey,
+          notifyOnExit: session.notifyOnExit,
+          startedAt: session.startedAt,
+          cwd: session.cwd,
+          maxOutputChars: session.maxOutputChars,
+          pendingMaxOutputChars: session.pendingMaxOutputChars,
+          totalOutputChars: session.totalOutputChars,
+          aggregated: session.aggregated,
+          tail: session.tail,
+          truncated: session.truncated,
+          backgrounded: session.backgrounded,
+        })),
+      finished: listFinishedSessions(),
+    };
+    fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+  } catch {
+    // Non-fatal: background sessions still live in memory even if persistence fails.
+  }
+}
 
 function isSessionIdTaken(id: string) {
+  ensureRegistryLoaded();
   return runningSessions.has(id) || finishedSessions.has(id);
 }
 
@@ -81,21 +194,27 @@ export function createSessionSlug(): string {
 }
 
 export function addSession(session: ProcessSession) {
+  ensureRegistryLoaded();
   runningSessions.set(session.id, session);
+  persistRegistry();
   startSweeper();
 }
 
 export function getSession(id: string) {
+  ensureRegistryLoaded();
   return runningSessions.get(id);
 }
 
 export function getFinishedSession(id: string) {
+  ensureRegistryLoaded();
   return finishedSessions.get(id);
 }
 
 export function deleteSession(id: string) {
+  ensureRegistryLoaded();
   runningSessions.delete(id);
   finishedSessions.delete(id);
+  persistRegistry();
 }
 
 export function appendOutput(session: ProcessSession, stream: "stdout" | "stderr", chunk: string) {
@@ -144,6 +263,7 @@ export function markExited(
   exitSignal: NodeJS.Signals | number | null,
   status: ProcessStatus,
 ) {
+  ensureRegistryLoaded();
   session.exited = true;
   session.exitCode = exitCode;
   session.exitSignal = exitSignal;
@@ -152,7 +272,9 @@ export function markExited(
 }
 
 export function markBackgrounded(session: ProcessSession) {
+  ensureRegistryLoaded();
   session.backgrounded = true;
+  persistRegistry();
 }
 
 function moveToFinished(session: ProcessSession, status: ProcessStatus) {
@@ -175,6 +297,7 @@ function moveToFinished(session: ProcessSession, status: ProcessStatus) {
     truncated: session.truncated,
     totalOutputChars: session.totalOutputChars,
   });
+  persistRegistry();
 }
 
 export function tail(text: string, max = 2000) {
@@ -222,20 +345,38 @@ export function trimWithCap(text: string, max: number) {
 }
 
 export function listRunningSessions() {
+  ensureRegistryLoaded();
   return Array.from(runningSessions.values()).filter((s) => s.backgrounded);
 }
 
 export function listFinishedSessions() {
+  ensureRegistryLoaded();
   return Array.from(finishedSessions.values());
 }
 
 export function clearFinished() {
+  ensureRegistryLoaded();
   finishedSessions.clear();
+  persistRegistry();
 }
 
 export function resetProcessRegistryForTests() {
   runningSessions.clear();
   finishedSessions.clear();
+  registryLoaded = true;
+  stopSweeper();
+  const filePath = resolveRegistryPath();
+  try {
+    fs.rmSync(filePath, { force: true });
+  } catch {
+    // ignore
+  }
+}
+
+export function reloadProcessRegistryForTests() {
+  runningSessions.clear();
+  finishedSessions.clear();
+  registryLoaded = false;
   stopSweeper();
 }
 
@@ -249,12 +390,14 @@ export function setJobTtlMs(value?: number) {
 }
 
 function pruneFinishedSessions() {
+  ensureRegistryLoaded();
   const cutoff = Date.now() - jobTtlMs;
   for (const [id, session] of finishedSessions.entries()) {
     if (session.endedAt < cutoff) {
       finishedSessions.delete(id);
     }
   }
+  persistRegistry();
 }
 
 function startSweeper() {

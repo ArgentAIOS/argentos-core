@@ -157,5 +157,19 @@ describe("installUnhandledRejectionHandler - fatal detection", () => {
       expect(exitCalls).toEqual([]);
       expect(consoleWarnSpy).toHaveBeenCalled();
     });
+
+    it("does NOT exit on EMFILE watcher exhaustion", () => {
+      const emfileErr = Object.assign(new Error("EMFILE: too many open files, watch"), {
+        code: "EMFILE",
+      });
+
+      process.emit("unhandledRejection", emfileErr, Promise.resolve());
+
+      expect(exitCalls).toEqual([]);
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "[argent] Non-fatal watcher resource exhaustion (continuing):",
+        expect.stringContaining("EMFILE"),
+      );
+    });
   });
 });

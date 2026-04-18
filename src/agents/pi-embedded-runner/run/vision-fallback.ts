@@ -9,7 +9,7 @@
  * don't natively support multimodal input.
  */
 
-import { minimaxUnderstandImage, resolveMinimaxApiKey } from "../../minimax-vlm.js";
+import { minimaxUnderstandImage, resolveMinimaxApiKeyAsync } from "../../minimax-vlm.js";
 import { log } from "../logger.js";
 
 type ContentBlock = {
@@ -135,7 +135,7 @@ export async function applyVisionFallbackToMessages<T>(
     60_000,
   );
 
-  const apiKey = resolveMinimaxApiKey();
+  const apiKey = await resolveMinimaxApiKeyAsync();
 
   if (!apiKey) {
     // No MiniMax key — strip images silently to avoid API errors

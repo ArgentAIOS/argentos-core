@@ -86,10 +86,7 @@ function copyIfSourceExists(src: string, dest: string): void {
   }
 }
 
-export function ensureFamilyAgentIdentity(params: IdentityParams): {
-  agentDir: string;
-  rootDir: string;
-} {
+function bootstrapIdentity(params: IdentityParams): { agentDir: string; rootDir: string } {
   const rootDir = path.join(ARGENTOS_HOME, "agents", params.id);
   const agentDir = path.join(rootDir, "agent");
   const memoryDir = path.join(agentDir, "memory");
@@ -148,7 +145,7 @@ export async function provisionFamilyWorker(
   const family = await getAgentFamily();
   await family.registerAgent(params.id, params.name, params.role, config);
 
-  const { agentDir, rootDir } = ensureFamilyAgentIdentity({
+  const { agentDir, rootDir } = bootstrapIdentity({
     id: params.id,
     name: params.name,
     role: params.role,

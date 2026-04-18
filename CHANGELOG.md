@@ -2,6 +2,22 @@
 
 Docs: https://docs.argentos.ai
 
+## 2026.4.18.1
+
+### Changes
+
+- macOS: restore the packaged Argent.app release lane with the rebuilt Swift app bundle and current dashboard/runtime assets.
+- Dashboard: restore the Core-safe Intent surface so `public-core` shows the slimmed-down Safety Rules experience instead of the full governance pane.
+- Agents: make the system prompt explicitly distinguish between workspace notes and real callable tool availability, including Atera-specific guardrails for sessions that do not expose `atera_*` tools.
+
+### Fixes
+
+- macOS/Gateway auth: recover from stale packaged-app device tokens by clearing the rejected token and retrying with the shared gateway token.
+- macOS menu bar: fix left-click handling for the packaged menu bar app.
+- Gateway config reload: compare nested arrays/objects structurally so toggling the consciousness kernel no longer forces false-positive full gateway restarts.
+- Agents: harden sparse context-report handling and missing assistant-content history paths that previously produced `Cannot read properties of undefined (reading 'filter')` during normal conversation.
+- Runtime honesty: prevent the operator lane from implying legacy Atera ticket-query access when no callable Atera ticket tool is actually exposed.
+
 ## 2026.2.4
 
 ### Changes

@@ -48,10 +48,11 @@ final class OnboardingController {
         let window = NSWindow(contentViewController: hosting)
         window.title = UIStrings.welcomeTitle
         window.setContentSize(NSSize(width: OnboardingView.windowWidth, height: OnboardingView.windowHeight))
-        window.styleMask = [.titled, .closable, .fullSizeContentView]
+        window.styleMask = [.titled, .closable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
+        window.minSize = NSSize(width: OnboardingView.windowMinWidth, height: OnboardingView.windowMinHeight)
         window.center()
         self.window = window
         self.present(window)
@@ -116,11 +117,13 @@ struct OnboardingView: View {
     @Bindable var state: AppState
     var permissionMonitor: PermissionMonitor
 
-    static let windowWidth: CGFloat = 630
-    static let windowHeight: CGFloat = 752 // ~+10% to fit full onboarding content
+    static let windowMinWidth: CGFloat = 630
+    static let windowMinHeight: CGFloat = 752
+    static let windowWidth: CGFloat = 700
+    static let windowHeight: CGFloat = 860
 
     let pageWidth: CGFloat = Self.windowWidth
-    let contentHeight: CGFloat = 460
+    let contentMinHeight: CGFloat = 520
     let connectionPageIndex = 1
     let anthropicAuthPageIndex = 2
     let wizardPageIndex = 3

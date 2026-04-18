@@ -8,6 +8,7 @@ import {
   resolveApiKeyForProfile,
   resolveAuthProfileOrder,
 } from "../agents/auth-profiles.js";
+import { resolveMinimaxApiKeyAsync } from "../agents/minimax-vlm.js";
 import { getCustomProviderApiKey, resolveEnvApiKey } from "../agents/model-auth.js";
 import { normalizeProviderId } from "../agents/model-selection.js";
 import { loadConfig } from "../config/config.js";
@@ -77,7 +78,12 @@ function resolveZaiApiKey(): string | undefined {
   }
 }
 
-function resolveMinimaxApiKey(): string | undefined {
+async function resolveMinimaxApiKey(): Promise<string | undefined> {
+  const shared = await resolveMinimaxApiKeyAsync();
+  if (shared) {
+    return shared;
+  }
+
   const envDirect =
     process.env.MINIMAX_CODE_PLAN_KEY?.trim() || process.env.MINIMAX_API_KEY?.trim();
   if (envDirect) {
@@ -259,7 +265,7 @@ export async function resolveProviderAuths(params: {
       continue;
     }
     if (provider === "minimax") {
-      const apiKey = resolveMinimaxApiKey();
+      const apiKey = await resolveMinimaxApiKey();
       if (apiKey) {
         auths.push({ provider, token: apiKey });
       }

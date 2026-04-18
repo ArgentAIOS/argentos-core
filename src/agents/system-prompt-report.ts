@@ -1,6 +1,7 @@
 import type { AgentTool } from "../agent-core/core.js";
 import type { SessionSystemPromptReport } from "../config/sessions/types.js";
 import type { EmbeddedContextFile } from "./pi-embedded-helpers.js";
+import type { SkillMatchCandidate } from "./skills/types.js";
 import type { WorkspaceBootstrapFile } from "./workspace.js";
 
 function extractBetween(
@@ -112,6 +113,7 @@ export function buildSystemPromptReport(params: {
   bootstrapFiles: WorkspaceBootstrapFile[];
   injectedFiles: EmbeddedContextFile[];
   skillsPrompt: string;
+  matchedSkillCandidates?: SkillMatchCandidate[];
   tools: AgentTool[];
 }): SessionSystemPromptReport {
   const systemPrompt = params.systemPrompt.trim();
@@ -150,6 +152,7 @@ export function buildSystemPromptReport(params: {
     skills: {
       promptChars: params.skillsPrompt.length,
       entries: skillsEntries,
+      matchedCandidates: params.matchedSkillCandidates,
     },
     tools: {
       listChars: toolListChars,

@@ -88,6 +88,7 @@ import { LogViewer } from "./LogViewer";
 import { MarketplaceTab } from "./MarketplaceTab";
 import { MemoryConsole } from "./MemoryConsole";
 import { MemoryDocsPanel } from "./MemoryDocsPanel";
+import { PersonalSkillsPanel } from "./PersonalSkillsPanel";
 import SafetyRulesPanel from "./SafetyRulesPanel";
 import { SystemsRegistryPanel } from "./SystemsRegistryPanel";
 
@@ -2619,19 +2620,19 @@ export function ConfigPanel({
     let cancelled = false;
     const loadSurfaceProfile = async () => {
       try {
-        const payload = await fetchJsonWithRetry<{ surfaceProfile?: DashboardSurfaceProfile }>(
-          "/api/settings/dashboard/surface-profile",
+        const payload = await fetchJsonWithRetry<{ raw?: string }>(
+          "/api/settings/agent/raw-config",
           {
             timeoutMs: 0,
             retries: 1,
           },
         );
         if (!cancelled) {
-          setSurfaceProfile(payload?.surfaceProfile === "public-core" ? "public-core" : "full");
+          setSurfaceProfile(parseDashboardSurfaceProfile(payload?.raw));
         }
       } catch {
         if (!cancelled) {
-          setSurfaceProfile("public-core");
+          setSurfaceProfile("full");
         }
       }
     };
@@ -14854,33 +14855,29 @@ export function ConfigPanel({
 
                 {activeTab === "intent" && (
                   <div className="space-y-4">
-                    <SafetyRulesPanel />
+                    <SafetyRulesPanel showUpgradeHint={isPublicCoreSurface} />
 
-                    {isPublicCoreSurface && (
-                      <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-100/80">
-                        Public Core uses the simplified intent surface here: operator safety rules,
-                        approval thresholds, and baseline behavioral guardrails. Department policy,
-                        simulation gates, hierarchy editing, and the business governance console
-                        stay in full ArgentOS.
-                      </div>
-                    )}
+                    <div className="border-t border-white/10 pt-4 mt-6">
+                      <OperatorGuide title="Operator Guide">
+                        Intent is the behavioral constitution: what the system optimizes for, what
+                        it must never do, and when it must escalate. Use this tab for policy and
+                        role boundaries, not for choosing models or tools. Stricter intent reduces
+                        drift but can also block actions if the rules are too narrow.
+                      </OperatorGuide>
 
-                    {!isPublicCoreSurface && (
-                      <div className="border-t border-white/10 pt-4 mt-6">
-                        <details className="group">
+                      {isPublicCoreSurface ? (
+                        <div className="mt-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/55">
+                          Advanced governance stays on the full/business surface. Core exposes the
+                          simple Safety Rules panel above for personal boundaries and approval
+                          rules.
+                        </div>
+                      ) : (
+                        <details className="group mt-4">
                           <summary className="cursor-pointer text-white/40 text-sm hover:text-white/60 transition-colors flex items-center gap-2">
                             <span className="text-purple-400">▶</span>
                             Advanced Governance Console (Business)
                           </summary>
                           <div className="mt-4 space-y-4">
-                            <OperatorGuide title="Operator Guide">
-                              Intent is the behavioral constitution: what the system optimizes for,
-                              what it must never do, and when it must escalate. Use this tab for
-                              policy and role boundaries, not for choosing models or tools. Stricter
-                              intent reduces drift but can also block actions if the rules are too
-                              narrow.
-                            </OperatorGuide>
-
                             <p className="text-white/50 text-sm">
                               Configure intent hierarchy policy, runtime enforcement, and simulation
                               gate controls. {intentLoading && "Loading..."}
@@ -17029,8 +17026,8 @@ export function ConfigPanel({
                             )}
                           </div>
                         </details>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -17343,6 +17340,11 @@ export function ConfigPanel({
                                 Uptime: {gatewayConfig.uptime}
                               </span>
                             )}
+                            {gatewayConfig.version && (
+                              <span className="text-cyan-300/80 text-xs font-mono">
+                                v{gatewayConfig.version}
+                              </span>
+                            )}
                             <span className="ml-auto text-white/30 text-xs font-mono">
                               :{gatewayConfig.port}
                             </span>
@@ -17350,6 +17352,14 @@ export function ConfigPanel({
                           <div className="text-white/35 text-xs">
                             Status is read from the live launchd service and listener state.
                           </div>
+                          {(gatewayConfig.commit || gatewayConfig.builtAt) && (
+                            <div className="text-white/30 text-[11px] space-y-1">
+                              {gatewayConfig.commit && (
+                                <div>Commit: {String(gatewayConfig.commit).slice(0, 10)}</div>
+                              )}
+                              {gatewayConfig.builtAt && <div>Built: {gatewayConfig.builtAt}</div>}
+                            </div>
+                          )}
                         </div>
 
                         {/* Network */}
@@ -19665,12 +19675,15 @@ export function ConfigPanel({
                 {activeTab === "memory" && <MemoryConsole />}
 
                 {activeTab === "systems" && (
-                  <SystemsRegistryPanel
-                    defaultAgentId={defaultAgentId}
-                    gatewayRequest={gatewayRequest}
-                    surfaceProfile={surfaceProfile}
-                    onOpenTab={(tabId) => setActiveTab(tabId)}
-                  />
+                  <div className="space-y-4">
+                    <PersonalSkillsPanel gatewayRequest={gatewayRequest} />
+                    <SystemsRegistryPanel
+                      defaultAgentId={defaultAgentId}
+                      gatewayRequest={gatewayRequest}
+                      surfaceProfile={surfaceProfile}
+                      onOpenTab={(tabId) => setActiveTab(tabId)}
+                    />
+                  </div>
                 )}
 
                 {activeTab === "logs" && <LogViewer />}

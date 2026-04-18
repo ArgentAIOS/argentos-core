@@ -352,4 +352,59 @@ describe("createArgentAgentSession", () => {
     expect(callCount).toBe(2);
     expect(visionFallbackMocks.applyVisionFallbackToMessages).toHaveBeenCalled();
   });
+
+  it("normalizes malformed tool results with missing content before the next turn", async () => {
+    const sm = ArgentSessionManager.inMemory();
+    const settings = ArgentSettingsManager.inMemory();
+    const sparseExecTool: AgentTool = {
+      name: "exec",
+      description: "Returns a sparse running result",
+      parameters: Type.Object({}),
+      execute: async () =>
+        ({
+          details: {
+            status: "running",
+            sessionId: "clear-dune",
+          },
+        }) as any,
+    } as unknown as AgentTool;
+
+    const { session } = await createArgentAgentSession({
+      sessionManager: sm,
+      settingsManager: settings,
+      tools: [sparseExecTool],
+    });
+
+    let callCount = 0;
+    session.agent.streamFn = async function* (_model, context) {
+      callCount += 1;
+      const messages = (context as { messages?: AgentMessage[] }).messages ?? [];
+      if (callCount === 1) {
+        yield {
+          type: "done",
+          message: {
+            role: "assistant",
+            content: [{ type: "toolCall", id: "tool-1", name: "exec", arguments: {} }],
+          },
+        };
+        return;
+      }
+
+      const toolResult = messages.find(
+        (message) => (message as { role?: string }).role === "toolResult",
+      ) as { content?: unknown[] } | undefined;
+      expect(toolResult).toBeDefined();
+      expect(Array.isArray(toolResult?.content)).toBe(true);
+      expect(toolResult?.content).toEqual([]);
+
+      yield {
+        type: "done",
+        message: { role: "assistant", content: [{ type: "text", text: "done" }] },
+      };
+    };
+
+    await session.prompt("run the build in the background");
+
+    expect(callCount).toBe(2);
+  });
 });

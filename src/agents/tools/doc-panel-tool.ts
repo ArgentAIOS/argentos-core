@@ -57,7 +57,8 @@ WHEN TO USE THIS TOOL (mandatory):
 - Data tables, lists, or structured content
 - Anything longer than a few paragraphs
 
-DO NOT put long-form content in chat. Always use doc_panel.
+DO NOT put long-form user-facing content in chat. Use doc_panel for surfaced deliverables.
+Do NOT use doc_panel for repetitive autonomous scratch notes, low-signal background thinking, or near-duplicate reformulations when memory_store, tasks, or updating an existing doc is the better fit.
 Give a brief 1-2 sentence summary in chat after pushing.
 
 TYPES:

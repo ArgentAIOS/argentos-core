@@ -359,7 +359,7 @@ function drawBrackets(ctx: CanvasRenderingContext2D, x: number, y: number, size:
 
 // ── Agent filtering & team normalization ─────────────────────────
 
-const EXCLUDED_AGENT_IDS = new Set(["dumbo", "argent"]);
+const EXCLUDED_AGENT_IDS = new Set(["main", "dumbo", "argent"]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
 
 /** Filter out non-operational agents (think tank, test, system internals) */
@@ -375,8 +375,7 @@ function isOperationalAgent(a: { id: string; role?: string; name?: string }): bo
 /** Normalize team names — merge variants into clean clusters */
 function normalizeTeam(team: string): string {
   const t = team.toLowerCase().trim();
-  if (t === "think-tank") return "__skip__";
-  if (t === "unassigned" || t === "") return "core";
+  if (t === "unassigned" || t === "think-tank" || t === "") return "__skip__";
   if (t.includes("support") || t === "msp team" || t === "msp-team") return "support";
   if (t.includes("office")) return "office";
   if (t === "dev-team" || t === "development") return "dev-team";
@@ -385,7 +384,6 @@ function normalizeTeam(team: string): string {
 }
 
 const TEAM_DISPLAY_NAMES: Record<string, string> = {
-  core: "Core",
   "dev-team": "Development",
   marketing: "Marketing",
   support: "Support",

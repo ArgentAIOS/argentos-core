@@ -1,38 +1,21 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { telegramPlugin } from "../../extensions/telegram/src/channel.js";
-import { setActivePluginRegistry } from "../plugins/runtime.js";
-import { createTestRegistry } from "../test-utils/channel-plugins.js";
-import { extractMessagingToolSend } from "./pi-embedded-subscribe.tools.js";
+import { describe, expect, it } from "vitest";
+import { sanitizeToolResult } from "./pi-embedded-subscribe.tools.js";
 
-describe("extractMessagingToolSend", () => {
-  beforeEach(() => {
-    setActivePluginRegistry(
-      createTestRegistry([{ pluginId: "telegram", plugin: telegramPlugin, source: "test" }]),
-    );
+describe("sanitizeToolResult", () => {
+  it("synthesizes a text block when content is missing", () => {
+    const sanitized = sanitizeToolResult({
+      details: { status: "completed" },
+    }) as { content?: unknown[] };
+
+    expect(sanitized.content).toEqual([{ type: "text", text: "(no output)" }]);
   });
 
-  it("uses channel as provider for message tool", () => {
-    const result = extractMessagingToolSend("message", {
-      action: "send",
-      channel: "telegram",
-      to: "123",
-    });
+  it("synthesizes a text block when content is an empty array", () => {
+    const sanitized = sanitizeToolResult({
+      content: [],
+      details: { status: "completed" },
+    }) as { content?: unknown[] };
 
-    expect(result?.tool).toBe("message");
-    expect(result?.provider).toBe("telegram");
-    expect(result?.to).toBe("telegram:123");
-  });
-
-  it("prefers provider when both provider and channel are set", () => {
-    const result = extractMessagingToolSend("message", {
-      action: "send",
-      provider: "slack",
-      channel: "telegram",
-      to: "channel:C1",
-    });
-
-    expect(result?.tool).toBe("message");
-    expect(result?.provider).toBe("slack");
-    expect(result?.to).toBe("channel:c1");
+    expect(sanitized.content).toEqual([{ type: "text", text: "(no output)" }]);
   });
 });

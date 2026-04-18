@@ -94,7 +94,8 @@ function convertMessagesToInput(messages: Message[]): InputItem[] {
     } else if (msg.role === "assistant") {
       // Process assistant content blocks — replay reasoning + text + tool calls
       const assistantMsg = msg as AssistantMessage;
-      for (const block of assistantMsg.content) {
+      const assistantBlocks = Array.isArray(assistantMsg.content) ? assistantMsg.content : [];
+      for (const block of assistantBlocks) {
         if (block.type === "thinking" && block.thinkingSignature) {
           // Replay reasoning from thinkingSignature JSON
           try {
@@ -140,10 +141,11 @@ function convertMessagesToInput(messages: Message[]): InputItem[] {
       const toolResult = msg as {
         role: "toolResult";
         toolCallId: string;
-        content: Array<{ type: string; text?: string }>;
+        content?: Array<{ type: string; text?: string }>;
       };
       const [callId] = splitToolCallId(toolResult.toolCallId);
-      const outputText = toolResult.content
+      const outputBlocks = Array.isArray(toolResult.content) ? toolResult.content : [];
+      const outputText = outputBlocks
         .filter((b): b is { type: "text"; text: string } => b.type === "text" && "text" in b)
         .map((b) => b.text)
         .join("\n");

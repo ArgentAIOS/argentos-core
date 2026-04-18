@@ -24,6 +24,8 @@ import type {
   CreateKnowledgeObservationEvidenceInput,
   CreateKnowledgeObservationInput,
   CreateLessonInput,
+  CreatePersonalSkillCandidateInput,
+  CreatePersonalSkillReviewEventInput,
   CreateMemoryItemInput,
   CreateReflectionInput,
   CreateResourceInput,
@@ -36,6 +38,10 @@ import type {
   MemoryCategory,
   MemoryItem,
   MemorySearchResult,
+  PersonalSkillCandidate,
+  PersonalSkillReviewEvent,
+  PersonalSkillCandidateState,
+  PersonalSkillScope,
   EntityType,
   RecordModelFeedbackInput,
   Reflection,
@@ -85,390 +91,6 @@ import * as schema from "./pg/schema.js";
 
 const log = createSubsystemLogger("data/pg-adapter");
 const PGVECTOR_DIMENSIONS = 768;
-
-async function ensurePgBaseSchema(db: PostgresJsDatabase<typeof schema>): Promise<void> {
-  // Compatibility-first bootstrap for fresh or partially migrated public installs.
-  // This creates the core tables/columns the real PG adapter expects so memory,
-  // knowledge, tasks, and database surfaces do not depend on dashboard-side shims.
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS agents (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL DEFAULT '',
-      role TEXT NOT NULL DEFAULT 'generalist',
-      status TEXT NOT NULL DEFAULT 'active',
-      config JSONB,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-  await db.execute(sql`
-    ALTER TABLE agents
-      ADD COLUMN IF NOT EXISTS role TEXT,
-      ADD COLUMN IF NOT EXISTS status TEXT,
-      ADD COLUMN IF NOT EXISTS config JSONB,
-      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS resources (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      url TEXT NOT NULL DEFAULT '',
-      modality TEXT NOT NULL DEFAULT 'text',
-      local_path TEXT,
-      caption TEXT,
-      embedding TEXT,
-      visibility TEXT NOT NULL DEFAULT 'private',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-  await db.execute(sql`
-    ALTER TABLE resources
-      ADD COLUMN IF NOT EXISTS agent_id TEXT,
-      ADD COLUMN IF NOT EXISTS url TEXT,
-      ADD COLUMN IF NOT EXISTS modality TEXT,
-      ADD COLUMN IF NOT EXISTS local_path TEXT,
-      ADD COLUMN IF NOT EXISTS caption TEXT,
-      ADD COLUMN IF NOT EXISTS embedding TEXT,
-      ADD COLUMN IF NOT EXISTS visibility TEXT,
-      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS memory_items (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      resource_id TEXT,
-      memory_type TEXT NOT NULL DEFAULT 'knowledge',
-      summary TEXT NOT NULL DEFAULT '',
-      embedding TEXT,
-      happened_at TIMESTAMPTZ,
-      content_hash TEXT,
-      reinforcement_count INTEGER NOT NULL DEFAULT 1,
-      last_reinforced_at TIMESTAMPTZ,
-      extra JSONB NOT NULL DEFAULT '{}'::jsonb,
-      emotional_valence REAL NOT NULL DEFAULT 0,
-      emotional_arousal REAL NOT NULL DEFAULT 0,
-      mood_at_capture TEXT,
-      significance TEXT NOT NULL DEFAULT 'routine',
-      reflection TEXT,
-      lesson TEXT,
-      visibility TEXT NOT NULL DEFAULT 'private',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-  await db.execute(sql`
-    ALTER TABLE memory_items
-      ADD COLUMN IF NOT EXISTS agent_id TEXT,
-      ADD COLUMN IF NOT EXISTS resource_id TEXT,
-      ADD COLUMN IF NOT EXISTS memory_type TEXT,
-      ADD COLUMN IF NOT EXISTS summary TEXT,
-      ADD COLUMN IF NOT EXISTS embedding TEXT,
-      ADD COLUMN IF NOT EXISTS happened_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS content_hash TEXT,
-      ADD COLUMN IF NOT EXISTS reinforcement_count INTEGER,
-      ADD COLUMN IF NOT EXISTS last_reinforced_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS extra JSONB,
-      ADD COLUMN IF NOT EXISTS emotional_valence REAL,
-      ADD COLUMN IF NOT EXISTS emotional_arousal REAL,
-      ADD COLUMN IF NOT EXISTS mood_at_capture TEXT,
-      ADD COLUMN IF NOT EXISTS significance TEXT,
-      ADD COLUMN IF NOT EXISTS reflection TEXT,
-      ADD COLUMN IF NOT EXISTS lesson TEXT,
-      ADD COLUMN IF NOT EXISTS visibility TEXT,
-      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS idx_memory_items_agent_memory_type
-    ON memory_items (agent_id, memory_type);
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS memory_categories (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      description TEXT,
-      embedding TEXT,
-      summary TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-  await db.execute(sql`
-    ALTER TABLE memory_categories
-      ADD COLUMN IF NOT EXISTS agent_id TEXT,
-      ADD COLUMN IF NOT EXISTS name TEXT,
-      ADD COLUMN IF NOT EXISTS description TEXT,
-      ADD COLUMN IF NOT EXISTS embedding TEXT,
-      ADD COLUMN IF NOT EXISTS summary TEXT,
-      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS category_items (
-      item_id TEXT NOT NULL,
-      category_id TEXT NOT NULL,
-      PRIMARY KEY (item_id, category_id)
-    );
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS entities (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      entity_type TEXT NOT NULL DEFAULT 'person',
-      relationship TEXT,
-      bond_strength REAL NOT NULL DEFAULT 0.5,
-      emotional_texture TEXT,
-      profile_summary TEXT,
-      first_mentioned_at TIMESTAMPTZ,
-      last_mentioned_at TIMESTAMPTZ,
-      memory_count INTEGER NOT NULL DEFAULT 0,
-      embedding TEXT,
-      visibility TEXT NOT NULL DEFAULT 'private',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-  await db.execute(sql`
-    ALTER TABLE entities
-      ADD COLUMN IF NOT EXISTS agent_id TEXT,
-      ADD COLUMN IF NOT EXISTS name TEXT,
-      ADD COLUMN IF NOT EXISTS entity_type TEXT,
-      ADD COLUMN IF NOT EXISTS relationship TEXT,
-      ADD COLUMN IF NOT EXISTS bond_strength REAL,
-      ADD COLUMN IF NOT EXISTS emotional_texture TEXT,
-      ADD COLUMN IF NOT EXISTS profile_summary TEXT,
-      ADD COLUMN IF NOT EXISTS first_mentioned_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS last_mentioned_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS memory_count INTEGER,
-      ADD COLUMN IF NOT EXISTS embedding TEXT,
-      ADD COLUMN IF NOT EXISTS visibility TEXT,
-      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS item_entities (
-      item_id TEXT NOT NULL,
-      entity_id TEXT NOT NULL,
-      role TEXT DEFAULT 'mentioned',
-      PRIMARY KEY (item_id, entity_id)
-    );
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS reflections (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      trigger_type TEXT NOT NULL,
-      period_start TIMESTAMPTZ,
-      period_end TIMESTAMPTZ,
-      content TEXT NOT NULL,
-      lessons_extracted JSONB NOT NULL DEFAULT '[]'::jsonb,
-      entities_involved JSONB NOT NULL DEFAULT '[]'::jsonb,
-      self_insights JSONB NOT NULL DEFAULT '[]'::jsonb,
-      mood TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS lessons (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      type TEXT NOT NULL,
-      context TEXT NOT NULL,
-      action TEXT NOT NULL,
-      outcome TEXT NOT NULL,
-      lesson TEXT NOT NULL,
-      correction TEXT,
-      confidence REAL NOT NULL DEFAULT 0.5,
-      occurrences INTEGER NOT NULL DEFAULT 1,
-      last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      tags JSONB NOT NULL DEFAULT '[]'::jsonb,
-      related_tools JSONB NOT NULL DEFAULT '[]'::jsonb,
-      source_episode_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
-      embedding TEXT,
-      visibility TEXT NOT NULL DEFAULT 'private',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS model_feedback (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      provider TEXT NOT NULL,
-      model TEXT NOT NULL,
-      tier TEXT NOT NULL,
-      session_type TEXT NOT NULL,
-      complexity_score REAL NOT NULL DEFAULT 0,
-      duration_ms INTEGER NOT NULL DEFAULT 0,
-      success BOOLEAN NOT NULL DEFAULT TRUE,
-      error_type TEXT,
-      input_tokens INTEGER NOT NULL DEFAULT 0,
-      output_tokens INTEGER NOT NULL DEFAULT 0,
-      total_tokens INTEGER NOT NULL DEFAULT 0,
-      tool_call_count INTEGER NOT NULL DEFAULT 0,
-      user_feedback TEXT,
-      session_key TEXT,
-      profile TEXT,
-      self_eval_score REAL,
-      self_eval_reasoning TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS shared_knowledge (
-      id TEXT PRIMARY KEY,
-      source_agent_id TEXT NOT NULL,
-      source_item_id TEXT,
-      category TEXT NOT NULL,
-      title TEXT NOT NULL,
-      content TEXT NOT NULL,
-      embedding TEXT,
-      confidence REAL NOT NULL DEFAULT 0.5,
-      endorsements INTEGER NOT NULL DEFAULT 0,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS knowledge_collections (
-      id TEXT PRIMARY KEY,
-      collection_name TEXT NOT NULL,
-      collection_tag TEXT NOT NULL,
-      owner_agent_id TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_collections_tag
-    ON knowledge_collections (collection_tag);
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS knowledge_collection_grants (
-      id TEXT PRIMARY KEY,
-      collection_id TEXT NOT NULL,
-      agent_id TEXT NOT NULL,
-      can_read BOOLEAN NOT NULL DEFAULT TRUE,
-      can_write BOOLEAN NOT NULL DEFAULT FALSE,
-      is_owner BOOLEAN NOT NULL DEFAULT FALSE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_collection_grants_unique
-    ON knowledge_collection_grants (collection_id, agent_id);
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS tasks (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT,
-      title TEXT NOT NULL,
-      description TEXT,
-      status TEXT NOT NULL DEFAULT 'pending',
-      priority TEXT NOT NULL DEFAULT 'normal',
-      source TEXT NOT NULL DEFAULT 'user',
-      assignee TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      started_at TIMESTAMPTZ,
-      completed_at TIMESTAMPTZ,
-      due_at TIMESTAMPTZ,
-      session_id TEXT,
-      channel_id TEXT,
-      parent_task_id TEXT,
-      depends_on JSONB NOT NULL DEFAULT '[]'::jsonb,
-      team_id TEXT,
-      tags JSONB NOT NULL DEFAULT '[]'::jsonb,
-      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-      job_assignment_id TEXT,
-      job_template_id TEXT
-    );
-  `);
-  await db.execute(sql`
-    ALTER TABLE tasks
-      ADD COLUMN IF NOT EXISTS job_assignment_id TEXT,
-      ADD COLUMN IF NOT EXISTS job_template_id TEXT;
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS teams (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      lead_session_key TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'active',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      config JSONB
-    );
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS team_members (
-      team_id TEXT NOT NULL,
-      session_key TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'worker',
-      label TEXT,
-      status TEXT NOT NULL DEFAULT 'active',
-      joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      last_active_at TIMESTAMPTZ,
-      PRIMARY KEY (team_id, session_key)
-    );
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS sessions (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      session_key TEXT NOT NULL,
-      channel_id TEXT,
-      status TEXT NOT NULL DEFAULT 'active',
-      project_path TEXT,
-      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      last_activity_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      ended_at TIMESTAMPTZ,
-      message_count INTEGER NOT NULL DEFAULT 0,
-      token_count INTEGER NOT NULL DEFAULT 0,
-      summary TEXT,
-      metadata JSONB NOT NULL DEFAULT '{}'::jsonb
-    );
-  `);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS observations (
-      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-      session_id TEXT NOT NULL,
-      agent_id TEXT,
-      type TEXT NOT NULL DEFAULT 'tool_result',
-      tool_name TEXT,
-      input TEXT,
-      output TEXT,
-      summary TEXT,
-      channel_id TEXT,
-      importance INTEGER NOT NULL DEFAULT 5,
-      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-}
 
 function requireVectorDimensions(values: ReadonlyArray<number>, context: string): number[] {
   const sanitized: number[] = [];
@@ -1394,6 +1016,245 @@ class PgMemoryAdapter implements MemoryAdapter {
     await this.db.delete(schema.lessons).where(eq(schema.lessons.id, id));
   }
 
+  async createPersonalSkillCandidate(
+    input: CreatePersonalSkillCandidateInput,
+  ): Promise<PersonalSkillCandidate> {
+    const id = genId();
+    const now = new Date();
+    const agentId = input.agentId ?? this.agentId;
+    await this.ensureAgentExists(agentId);
+    const [row] = await this.db
+      .insert(schema.personalSkillCandidates)
+      .values({
+        id,
+        agentId,
+        operatorId: input.operatorId ?? null,
+        profileId: input.profileId ?? null,
+        scope: input.scope ?? "operator",
+        title: input.title,
+        summary: input.summary,
+        triggerPatterns: input.triggerPatterns ?? [],
+        procedureOutline: input.procedureOutline ?? null,
+        preconditions: input.preconditions ?? [],
+        executionSteps: input.executionSteps ?? [],
+        expectedOutcomes: input.expectedOutcomes ?? [],
+        relatedTools: input.relatedTools ?? [],
+        sourceMemoryIds: input.sourceMemoryIds ?? [],
+        sourceEpisodeIds: input.sourceEpisodeIds ?? [],
+        sourceTaskIds: input.sourceTaskIds ?? [],
+        sourceLessonIds: input.sourceLessonIds ?? [],
+        supersedesCandidateIds: input.supersedesCandidateIds ?? [],
+        supersededByCandidateId: input.supersededByCandidateId ?? null,
+        conflictsWithCandidateIds: input.conflictsWithCandidateIds ?? [],
+        contradictionCount: input.contradictionCount ?? 0,
+        evidenceCount: input.evidenceCount ?? 0,
+        recurrenceCount: input.recurrenceCount ?? 1,
+        confidence: input.confidence ?? 0.5,
+        strength: input.strength ?? 0.5,
+        usageCount: input.usageCount ?? 0,
+        successCount: input.successCount ?? 0,
+        failureCount: input.failureCount ?? 0,
+        state: input.state ?? "candidate",
+        operatorNotes: input.operatorNotes ?? null,
+        lastReinforcedAt: null,
+        lastContradictedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    return this.mapPersonalSkillCandidate(row);
+  }
+
+  async listPersonalSkillCandidates(filter?: {
+    state?: PersonalSkillCandidateState;
+    limit?: number;
+  }): Promise<PersonalSkillCandidate[]> {
+    const conditions = [eq(schema.personalSkillCandidates.agentId, this.agentId)];
+    if (filter?.state) {
+      conditions.push(eq(schema.personalSkillCandidates.state, filter.state as any));
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.personalSkillCandidates)
+      .where(and(...conditions))
+      .orderBy(
+        desc(schema.personalSkillCandidates.confidence),
+        desc(schema.personalSkillCandidates.updatedAt),
+      )
+      .limit(filter?.limit ?? 50);
+    return rows.map((row) => this.mapPersonalSkillCandidate(row));
+  }
+
+  async updatePersonalSkillCandidate(
+    id: string,
+    fields: Partial<{
+      scope: PersonalSkillScope;
+      title: string;
+      summary: string;
+      triggerPatterns: string[];
+      procedureOutline: string | null;
+      preconditions: string[];
+      executionSteps: string[];
+      expectedOutcomes: string[];
+      relatedTools: string[];
+      sourceMemoryIds: string[];
+      sourceEpisodeIds: string[];
+      sourceTaskIds: string[];
+      sourceLessonIds: string[];
+      supersedesCandidateIds: string[];
+      supersededByCandidateId: string | null;
+      conflictsWithCandidateIds: string[];
+      contradictionCount: number;
+      evidenceCount: number;
+      recurrenceCount: number;
+      confidence: number;
+      strength: number;
+      usageCount: number;
+      successCount: number;
+      failureCount: number;
+      state: PersonalSkillCandidateState;
+      operatorNotes: string | null;
+      lastReviewedAt: string | null;
+      lastUsedAt: string | null;
+      lastReinforcedAt: string | null;
+      lastContradictedAt: string | null;
+    }>,
+  ): Promise<PersonalSkillCandidate | null> {
+    const [row] = await this.db
+      .update(schema.personalSkillCandidates)
+      .set({
+        ...(fields.scope !== undefined ? { scope: fields.scope as any } : {}),
+        ...(fields.title !== undefined ? { title: fields.title } : {}),
+        ...(fields.summary !== undefined ? { summary: fields.summary } : {}),
+        ...(fields.triggerPatterns !== undefined
+          ? { triggerPatterns: fields.triggerPatterns }
+          : {}),
+        ...(fields.procedureOutline !== undefined
+          ? { procedureOutline: fields.procedureOutline }
+          : {}),
+        ...(fields.preconditions !== undefined ? { preconditions: fields.preconditions } : {}),
+        ...(fields.executionSteps !== undefined ? { executionSteps: fields.executionSteps } : {}),
+        ...(fields.expectedOutcomes !== undefined
+          ? { expectedOutcomes: fields.expectedOutcomes }
+          : {}),
+        ...(fields.relatedTools !== undefined ? { relatedTools: fields.relatedTools } : {}),
+        ...(fields.sourceMemoryIds !== undefined
+          ? { sourceMemoryIds: fields.sourceMemoryIds }
+          : {}),
+        ...(fields.sourceEpisodeIds !== undefined
+          ? { sourceEpisodeIds: fields.sourceEpisodeIds }
+          : {}),
+        ...(fields.sourceTaskIds !== undefined ? { sourceTaskIds: fields.sourceTaskIds } : {}),
+        ...(fields.sourceLessonIds !== undefined
+          ? { sourceLessonIds: fields.sourceLessonIds }
+          : {}),
+        ...(fields.supersedesCandidateIds !== undefined
+          ? { supersedesCandidateIds: fields.supersedesCandidateIds }
+          : {}),
+        ...(fields.supersededByCandidateId !== undefined
+          ? { supersededByCandidateId: fields.supersededByCandidateId }
+          : {}),
+        ...(fields.conflictsWithCandidateIds !== undefined
+          ? { conflictsWithCandidateIds: fields.conflictsWithCandidateIds }
+          : {}),
+        ...(fields.contradictionCount !== undefined
+          ? { contradictionCount: fields.contradictionCount }
+          : {}),
+        ...(fields.evidenceCount !== undefined ? { evidenceCount: fields.evidenceCount } : {}),
+        ...(fields.recurrenceCount !== undefined
+          ? { recurrenceCount: fields.recurrenceCount }
+          : {}),
+        ...(fields.confidence !== undefined ? { confidence: fields.confidence } : {}),
+        ...(fields.strength !== undefined ? { strength: fields.strength } : {}),
+        ...(fields.usageCount !== undefined ? { usageCount: fields.usageCount } : {}),
+        ...(fields.successCount !== undefined ? { successCount: fields.successCount } : {}),
+        ...(fields.failureCount !== undefined ? { failureCount: fields.failureCount } : {}),
+        ...(fields.state !== undefined ? { state: fields.state as any } : {}),
+        ...(fields.operatorNotes !== undefined ? { operatorNotes: fields.operatorNotes } : {}),
+        ...(fields.lastReviewedAt !== undefined
+          ? { lastReviewedAt: fields.lastReviewedAt ? new Date(fields.lastReviewedAt) : null }
+          : {}),
+        ...(fields.lastUsedAt !== undefined
+          ? { lastUsedAt: fields.lastUsedAt ? new Date(fields.lastUsedAt) : null }
+          : {}),
+        ...(fields.lastReinforcedAt !== undefined
+          ? {
+              lastReinforcedAt: fields.lastReinforcedAt ? new Date(fields.lastReinforcedAt) : null,
+            }
+          : {}),
+        ...(fields.lastContradictedAt !== undefined
+          ? {
+              lastContradictedAt: fields.lastContradictedAt
+                ? new Date(fields.lastContradictedAt)
+                : null,
+            }
+          : {}),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.personalSkillCandidates.id, id),
+          eq(schema.personalSkillCandidates.agentId, this.agentId),
+        ),
+      )
+      .returning();
+    return row ? this.mapPersonalSkillCandidate(row) : null;
+  }
+
+  async deletePersonalSkillCandidate(id: string): Promise<boolean> {
+    const rows = await this.db
+      .delete(schema.personalSkillCandidates)
+      .where(
+        and(
+          eq(schema.personalSkillCandidates.id, id),
+          eq(schema.personalSkillCandidates.agentId, this.agentId),
+        ),
+      )
+      .returning({ id: schema.personalSkillCandidates.id });
+    return rows.length > 0;
+  }
+
+  async createPersonalSkillReviewEvent(
+    input: CreatePersonalSkillReviewEventInput,
+  ): Promise<PersonalSkillReviewEvent> {
+    const id = genId();
+    const now = new Date();
+    const agentId = input.agentId ?? this.agentId;
+    await this.ensureAgentExists(agentId);
+    const [row] = await this.db
+      .insert(schema.personalSkillReviews)
+      .values({
+        id,
+        candidateId: input.candidateId,
+        agentId,
+        actorType: input.actorType,
+        action: input.action,
+        reason: input.reason ?? null,
+        details: input.details ?? {},
+        createdAt: now,
+      })
+      .returning();
+    return this.mapPersonalSkillReviewEvent(row);
+  }
+
+  async listPersonalSkillReviewEvents(filter: {
+    candidateId: string;
+    limit?: number;
+  }): Promise<PersonalSkillReviewEvent[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.personalSkillReviews)
+      .where(
+        and(
+          eq(schema.personalSkillReviews.candidateId, filter.candidateId),
+          eq(schema.personalSkillReviews.agentId, this.agentId),
+        ),
+      )
+      .orderBy(desc(schema.personalSkillReviews.createdAt))
+      .limit(filter.limit ?? 20);
+    return rows.map((row) => this.mapPersonalSkillReviewEvent(row));
+  }
+
   // --- Knowledge observations ---
 
   async getKnowledgeObservation(id: string): Promise<KnowledgeObservation | null> {
@@ -2156,6 +2017,77 @@ class PgMemoryAdapter implements MemoryAdapter {
           : (row.source_episode_ids ?? []),
       createdAt: row.created_at ?? "",
       updatedAt: row.updated_at ?? "",
+    };
+  }
+
+  private mapPersonalSkillCandidate(row: any): PersonalSkillCandidate {
+    return {
+      id: row.id,
+      agentId: row.agentId ?? row.agent_id,
+      operatorId: row.operatorId ?? row.operator_id ?? null,
+      profileId: row.profileId ?? row.profile_id ?? null,
+      scope: (row.scope ?? "operator") as PersonalSkillScope,
+      title: row.title,
+      summary: row.summary,
+      triggerPatterns: row.triggerPatterns ?? row.trigger_patterns ?? [],
+      procedureOutline: row.procedureOutline ?? row.procedure_outline ?? null,
+      preconditions:
+        typeof row.preconditions === "string"
+          ? JSON.parse(row.preconditions)
+          : (row.preconditions ?? []),
+      executionSteps:
+        typeof row.executionSteps === "string"
+          ? JSON.parse(row.executionSteps)
+          : (row.executionSteps ?? row.execution_steps ?? []),
+      expectedOutcomes:
+        typeof row.expectedOutcomes === "string"
+          ? JSON.parse(row.expectedOutcomes)
+          : (row.expectedOutcomes ?? row.expected_outcomes ?? []),
+      relatedTools: row.relatedTools ?? row.related_tools ?? [],
+      sourceMemoryIds: row.sourceMemoryIds ?? row.source_memory_ids ?? [],
+      sourceEpisodeIds: row.sourceEpisodeIds ?? row.source_episode_ids ?? [],
+      sourceTaskIds: row.sourceTaskIds ?? row.source_task_ids ?? [],
+      sourceLessonIds: row.sourceLessonIds ?? row.source_lesson_ids ?? [],
+      supersedesCandidateIds:
+        typeof row.supersedesCandidateIds === "string"
+          ? JSON.parse(row.supersedesCandidateIds)
+          : (row.supersedesCandidateIds ?? row.supersedes_candidate_ids ?? []),
+      supersededByCandidateId:
+        row.supersededByCandidateId ?? row.superseded_by_candidate_id ?? null,
+      conflictsWithCandidateIds:
+        typeof row.conflictsWithCandidateIds === "string"
+          ? JSON.parse(row.conflictsWithCandidateIds)
+          : (row.conflictsWithCandidateIds ?? row.conflicts_with_candidate_ids ?? []),
+      contradictionCount: row.contradictionCount ?? row.contradiction_count ?? 0,
+      evidenceCount: row.evidenceCount ?? row.evidence_count ?? 0,
+      recurrenceCount: row.recurrenceCount ?? row.recurrence_count ?? 1,
+      confidence: row.confidence ?? 0.5,
+      strength: row.strength ?? 0.5,
+      usageCount: row.usageCount ?? row.usage_count ?? 0,
+      successCount: row.successCount ?? row.success_count ?? 0,
+      failureCount: row.failureCount ?? row.failure_count ?? 0,
+      state: (row.state as PersonalSkillCandidateState) ?? "candidate",
+      operatorNotes: row.operatorNotes ?? row.operator_notes ?? null,
+      lastReviewedAt: row.lastReviewedAt?.toISOString?.() ?? row.last_reviewed_at ?? null,
+      lastUsedAt: row.lastUsedAt?.toISOString?.() ?? row.last_used_at ?? null,
+      lastReinforcedAt: row.lastReinforcedAt?.toISOString?.() ?? row.last_reinforced_at ?? null,
+      lastContradictedAt:
+        row.lastContradictedAt?.toISOString?.() ?? row.last_contradicted_at ?? null,
+      createdAt: row.createdAt?.toISOString?.() ?? row.created_at ?? "",
+      updatedAt: row.updatedAt?.toISOString?.() ?? row.updated_at ?? "",
+    };
+  }
+
+  private mapPersonalSkillReviewEvent(row: any): PersonalSkillReviewEvent {
+    return {
+      id: row.id,
+      candidateId: row.candidateId ?? row.candidate_id,
+      agentId: row.agentId ?? row.agent_id,
+      actorType: row.actorType ?? row.actor_type,
+      action: row.action,
+      reason: row.reason ?? null,
+      details: typeof row.details === "string" ? JSON.parse(row.details) : (row.details ?? {}),
+      createdAt: row.createdAt?.toISOString?.() ?? row.created_at ?? "",
     };
   }
 }
@@ -3453,7 +3385,6 @@ export class PgAdapter implements StorageAdapter {
   }
 
   async init(): Promise<void> {
-    await ensurePgBaseSchema(this.db);
     // Set RLS agent context for this connection
     await setAgentContext(this.sqlClient, this.agentId);
     await this.jobAdapter.init();

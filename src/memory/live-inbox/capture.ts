@@ -11,6 +11,7 @@
 import type { MemoryAdapter } from "../../data/adapter.js";
 import type {
   CandidateType,
+  CreatePersonalSkillCandidateInput,
   CreateLiveCandidateInput,
   LiveCandidate,
   MemoryType,
@@ -33,6 +34,16 @@ export interface CapturePattern {
 
 /** Hard triggers — immediate promotion (confidence ≥ 0.8) */
 const HARD_TRIGGER_PATTERNS: readonly CapturePattern[] = [
+  // Explicit operator-directed proceduralization: "Learn this as a Personal Skill", etc.
+  {
+    regex:
+      /\blearn\s+this\s+as\s+(?:a\s+)?(?:personal\s+skill|repeatable\s+procedure|operator\s+rule)\b/i,
+    type: "commitment",
+    confidence: 0.98,
+    isHard: true,
+    memoryTypeHint: "knowledge",
+    significanceHint: "important",
+  },
   // Directives: "remember this/that", "don't forget"
   {
     regex: /\b(?:remember\s+(?:this|that)|don'?t\s+forget)\b/i,
@@ -115,6 +126,8 @@ const DEFERRED_PATTERNS: readonly CapturePattern[] = [
 ] as const;
 
 const ALL_PATTERNS: readonly CapturePattern[] = [...HARD_TRIGGER_PATTERNS, ...DEFERRED_PATTERNS];
+const PROCEDURAL_CORRECTION_RE =
+  /\b(?:use|run|check|verify|update|create|write|build|deploy|search|look up|remember|avoid|never|always|do not|don't)\b/i;
 
 const WORK_OBJECT_RE =
   /\b(?:project|spec|prd|prp|brief|build|client|customer|domain|website|site|app|platform|landing\s+page|portfolio|resume|cv|lead(?:\s+capture|\s+collection|\s+generation)?|brand|marketing|osint|intelligence)\b/i;
@@ -137,6 +150,32 @@ export interface CandidateInput extends CreateLiveCandidateInput {
 export interface CaptureResult {
   candidates: CandidateInput[];
   hardTriggers: CandidateInput[];
+}
+
+export function buildPersonalSkillCandidateInputFromLiveInboxCandidate(params: {
+  candidate: CandidateInput;
+  promotedMemoryItemId: string;
+}): CreatePersonalSkillCandidateInput | null {
+  const { candidate, promotedMemoryItemId } = params;
+  if (candidate.role !== "user") return null;
+  if (candidate.candidateType !== "correction" && candidate.candidateType !== "commitment") {
+    return null;
+  }
+  if (!PROCEDURAL_CORRECTION_RE.test(candidate.factText)) return null;
+
+  const label = candidate.candidateType === "correction" ? "operator correction" : "operator rule";
+  return {
+    title: `${label}: ${candidate.factText}`.slice(0, 160),
+    summary: candidate.factText,
+    triggerPatterns: [candidate.candidateType, ...(candidate.triggerFlags ?? [])].slice(0, 8),
+    procedureOutline: `Operator guidance captured from conversation:\n${candidate.factText}`,
+    relatedTools: [],
+    sourceMemoryIds: [promotedMemoryItemId],
+    evidenceCount: 1,
+    recurrenceCount: 1,
+    confidence: Math.max(0.55, Math.min(0.8, candidate.confidence)),
+    state: "incubating",
+  };
 }
 
 // ── Entity Extraction (lightweight) ──
@@ -451,5 +490,21 @@ async function promoteCandidate(store: MemoryAdapter, candidate: CandidateInput)
   const match = candidateRows.find((c) => c.factHash === hash);
   if (match) {
     await store.markLiveCandidatePromoted?.(match.id, item.id, "hard-trigger");
+  }
+
+  const personalSkillCandidate = buildPersonalSkillCandidateInputFromLiveInboxCandidate({
+    candidate,
+    promotedMemoryItemId: item.id,
+  });
+  if (personalSkillCandidate) {
+    const existing = await store.listPersonalSkillCandidates?.({ limit: 500 });
+    const duplicate = (existing ?? []).some(
+      (entry) =>
+        entry.sourceMemoryIds.includes(item.id) ||
+        entry.title.trim().toLowerCase() === personalSkillCandidate.title.trim().toLowerCase(),
+    );
+    if (!duplicate) {
+      await store.createPersonalSkillCandidate?.(personalSkillCandidate);
+    }
   }
 }

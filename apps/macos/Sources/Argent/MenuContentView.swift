@@ -490,15 +490,22 @@ struct MenuContent: View {
 
     @MainActor
     private func openDashboard() async {
-        do {
-            let config = try await GatewayEndpointStore.shared.requireConfig()
+        func openDashboard(using config: GatewayConnection.Config) throws {
             let url = try GatewayEndpointStore.dashboardURL(for: config)
             DashboardManager.shared.show(url: url)
+        }
+        do {
+            let config = try await GatewayEndpointStore.shared.requireConfig()
+            try openDashboard(using: config)
         } catch {
-            let alert = NSAlert()
-            alert.messageText = "Dashboard unavailable"
-            alert.informativeText = error.localizedDescription
-            alert.runModal()
+            do {
+                try openDashboard(using: GatewayEndpointStore.localGatewayConfig())
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Dashboard unavailable"
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+            }
         }
     }
 
