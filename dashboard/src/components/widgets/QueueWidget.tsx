@@ -23,6 +23,7 @@ export function QueueWidget() {
     avgCompletionMin: 0,
     scaleHorizonHours: null,
   });
+  const [loading, setLoading] = useState(true);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -33,6 +34,8 @@ export function QueueWidget() {
       }
     } catch {
       // API not available — show zeros
+    } finally {
+      setLoading(false);
     }
   }, []);
 

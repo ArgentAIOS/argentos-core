@@ -102,7 +102,7 @@ const AUTH_CHOICE_GROUP_DEFS: {
   },
   {
     value: "zai",
-    label: "Z.AI (GLM 5 / 5.1)",
+    label: "Z.AI (GLM 4.7)",
     hint: "API key",
     choices: ["zai-api-key"],
   },
@@ -221,7 +221,7 @@ export function buildAuthChoiceOptions(params: {
     label: "Google Gemini CLI OAuth",
     hint: "Uses the bundled Gemini CLI auth plugin",
   });
-  options.push({ value: "zai-api-key", label: "Z.AI (GLM 5 / 5.1) API key" });
+  options.push({ value: "zai-api-key", label: "Z.AI (GLM 4.7) API key" });
   options.push({
     value: "xiaomi-api-key",
     label: "Xiaomi API key",

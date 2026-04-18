@@ -19,15 +19,21 @@ extension OnboardingView {
                 .animation(
                     .interactiveSpring(response: 0.5, dampingFraction: 0.86, blendDuration: 0.25),
                     value: self.currentPage)
-                .frame(height: self.contentHeight, alignment: .top)
+                .frame(maxHeight: .infinity, alignment: .top)
                 .clipped()
             }
-            .frame(height: self.contentHeight)
+            .frame(minHeight: self.contentMinHeight)
 
             Spacer(minLength: 0)
             self.navigationBar
         }
-        .frame(width: self.pageWidth, height: Self.windowHeight)
+        .frame(
+            minWidth: Self.windowMinWidth,
+            idealWidth: Self.windowWidth,
+            maxWidth: .infinity,
+            minHeight: Self.windowMinHeight,
+            idealHeight: Self.windowHeight,
+            maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))
         .onAppear {
             self.currentPage = 0
@@ -155,6 +161,7 @@ extension OnboardingView {
         .scrollIndicators(.automatic)
         .padding(.horizontal, 28)
         .frame(width: self.pageWidth, alignment: .top)
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     func onboardingCard(

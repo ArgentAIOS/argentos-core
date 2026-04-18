@@ -28,6 +28,10 @@ import {
 } from "../agents/agent-scope.js";
 import { ensureAuthProfileStore } from "../agents/auth-profiles.js";
 import { getActiveEmbeddedRunCount } from "../agents/pi-embedded-runner/runs.js";
+import {
+  buildPersonalSkillCandidateReviewPrompt,
+  reviewPersonalSkillCandidates,
+} from "../agents/skills.js";
 import { parseDurationMs } from "../cli/parse-duration.js";
 import { agentCommand } from "../commands/agent.js";
 import { loadConfig } from "../config/config.js";
@@ -137,6 +141,47 @@ After your natural-language response, append exactly one \`[EPISODE_JSON]...[/EP
 - Only include tools that actually executed in this cycle.
 - If the cycle stayed internal-only, be honest and record it as \`rest\` or \`contemplation\` instead of pretending productive tool use happened.
 `.trim();
+
+export function buildContemplationPublicationPolicyPrompt(): string {
+  return (
+    "Do not force an external artifact every cycle. Internal continuity is the default. " +
+    "Many good contemplation cycles should end as episode capture plus memory_store, task updates, or private internal state only. " +
+    "Use doc_panel only when the output is genuinely novel and operator-relevant: a durable handoff, decision brief, evidence pack, implementation spec, or high-signal summary the operator would likely want to read now. " +
+    "If you are extending an existing lane, update the existing document instead of creating a near-duplicate new one. " +
+    "Do not create more than one DocPanel artifact in a cycle unless there are clearly separate deliverables. " +
+    "Do not use DocPanel for repetitive reformulations, scratch notes, or low-signal background thinking. " +
+    "Never claim tool use unless the tool actually executed."
+  );
+}
+
+export function isAutonomousContemplationRelevantTask(
+  task: {
+    type?: string;
+    assignee?: string;
+  },
+  agentId: string,
+): boolean {
+  if (task.type === "project") {
+    return false;
+  }
+  const normalizedAssignee = String(task.assignee ?? "")
+    .trim()
+    .toLowerCase();
+  if (!normalizedAssignee) {
+    return false;
+  }
+  const normalizedAgentId = agentId.trim().toLowerCase();
+  const aliases = new Set<string>([normalizedAgentId, `agent:${normalizedAgentId}`]);
+  if (normalizedAgentId === "main") {
+    aliases.add("argent");
+    aliases.add("agent:argent");
+  }
+  if (normalizedAgentId === "argent") {
+    aliases.add("main");
+    aliases.add("agent:main");
+  }
+  return aliases.has(normalizedAssignee);
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -489,12 +534,8 @@ async function buildContemplationPrompt(
   try {
     const storage = await getStorageAdapter();
     const tasks = await storage.tasks.list({ limit: 500 });
-    const relevant = tasks.filter(
-      (task) =>
-        task.source !== "user" ||
-        task.assignee === "argent" ||
-        (typeof task.assignee === "string" && task.assignee.startsWith("agent:")) ||
-        Boolean(task.teamId),
+    const relevant = tasks.filter((task) =>
+      isAutonomousContemplationRelevantTask(task, resolvedAgentId),
     );
 
     pendingCount = relevant.filter((task) => task.status === "pending").length;
@@ -779,6 +820,20 @@ async function buildContemplationPrompt(
     /* non-fatal */
   }
 
+  // ── Personal Skills: inject candidates that still need review ──
+  try {
+    const memuStore = await getMemoryAdapter();
+    const scopedMemory = memuStore.withAgentId ? memuStore.withAgentId(resolvedAgentId) : memuStore;
+    await reviewPersonalSkillCandidates({ memory: scopedMemory });
+    const personalSkillCandidates = await scopedMemory.listPersonalSkillCandidates({ limit: 20 });
+    const personalSkillPrompt = buildPersonalSkillCandidateReviewPrompt(personalSkillCandidates);
+    if (personalSkillPrompt) {
+      prompt += `\n\n${personalSkillPrompt}`;
+    }
+  } catch {
+    /* non-fatal */
+  }
+
   return { prompt, pendingTaskCount: pendingCount };
 }
 
@@ -875,11 +930,7 @@ async function runContemplationOnce(
     // The signal matters: From:"contemplation" + isHeartbeat:true felt like a system check
     // she could ignore. agentCommand sends it as a real conversation — warm signal.
     const nudgeMessage = `[NUDGE] ${prompt}`;
-    const outputRuleSystemPrompt =
-      "Every contemplation cycle must produce at least one externally visible artifact. " +
-      "Internal-only work (memory recall, task checks, auth checks) is not enough. " +
-      "Use one of: web_search, web_fetch, doc_panel, or message. " +
-      "Never claim tool use unless the tool actually executed.";
+    const outputRuleSystemPrompt = buildContemplationPublicationPolicyPrompt();
     const episodeRuleSystemPrompt =
       "After your natural-language response, append exactly one [EPISODE_JSON]...[/EPISODE_JSON] block " +
       "with valid raw JSON only. Include at least: type, trigger, observations, actions_taken, tools_used, " +

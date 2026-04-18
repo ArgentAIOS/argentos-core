@@ -27,13 +27,9 @@ interface TeamGroup {
   aliveCount: number;
 }
 
-interface OrgChartWidgetProps {
-  operatorName?: string;
-}
-
 // ── Agent Filtering ────────────────────────────────────────────────
 
-const EXCLUDED_IDS = new Set(["dumbo", "argent"]);
+const EXCLUDED_IDS = new Set(["main", "dumbo", "argent"]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
 
 function isOperational(a: { id: string; role?: string }): boolean {
@@ -49,8 +45,7 @@ function isOperational(a: { id: string; role?: string }): boolean {
 
 function normalizeTeam(team: string): string {
   const t = team.toLowerCase().trim();
-  if (t === "think-tank") return "__skip__";
-  if (t === "unassigned" || t === "") return "core";
+  if (t === "unassigned" || t === "think-tank" || t === "") return "__skip__";
   if (t.includes("support") || t === "msp team" || t === "msp-team") return "support";
   if (t.includes("office")) return "office";
   if (t === "dev-team" || t === "development") return "development";
@@ -59,7 +54,6 @@ function normalizeTeam(team: string): string {
 }
 
 const TEAM_DISPLAY: Record<string, { name: string; color: string }> = {
-  core: { name: "Core", color: "#60a5fa" },
   development: { name: "Development", color: "#00FFD1" },
   marketing: { name: "Marketing", color: "#84cc16" },
   support: { name: "Support", color: "#f97316" },
@@ -97,7 +91,7 @@ function buildTeamGroups(members: FamilyMember[]): TeamGroup[] {
   }
 
   // Sort teams by display order, then alphabetically
-  const order = ["core", "development", "marketing", "support", "office"];
+  const order = ["development", "marketing", "support", "office"];
 
   return Object.entries(grouped)
     .sort(([a], [b]) => {
@@ -416,14 +410,13 @@ const styles = {
 
 type ViewMode = "list" | "tree";
 
-export function OrgChartWidget({ operatorName }: OrgChartWidgetProps) {
+export function OrgChartWidget() {
   const { request, connected } = useGateway();
   const [teams, setTeams] = useState<TeamGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [view, setView] = useState<ViewMode>("list");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const operatorLabel = operatorName?.trim() || "Operator";
 
   const fetchMembers = useCallback(async () => {
     if (!connected) return;
@@ -536,7 +529,7 @@ export function OrgChartWidget({ operatorName }: OrgChartWidgetProps) {
             <div style={styles.treeOwnerCard}>
               <div style={{ display: "flex", alignItems: "center" }}>
                 <span style={{ marginRight: "4px" }}>&#11088;</span>
-                <span style={styles.treeNodeName}>{operatorLabel}</span>
+                <span style={styles.treeNodeName}>Jason</span>
                 <span style={styles.treeBadge(true)}>OWNER</span>
               </div>
               <div style={styles.treeNodeSub}>Human Operator</div>

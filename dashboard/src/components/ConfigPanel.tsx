@@ -52,7 +52,6 @@ import {
   BookOpen,
   Wrench,
   Mic,
-  RotateCcw,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
@@ -89,6 +88,7 @@ import { LogViewer } from "./LogViewer";
 import { MarketplaceTab } from "./MarketplaceTab";
 import { MemoryConsole } from "./MemoryConsole";
 import { MemoryDocsPanel } from "./MemoryDocsPanel";
+import { PersonalSkillsPanel } from "./PersonalSkillsPanel";
 import SafetyRulesPanel from "./SafetyRulesPanel";
 import { SystemsRegistryPanel } from "./SystemsRegistryPanel";
 
@@ -617,7 +617,7 @@ const INTENT_INDUSTRY_PACKS: Array<{
   {
     id: "msp-saas-finops",
     label: "MSP + SaaS + FinOps",
-    description: "Core profile with support, ops, and financial operations rails.",
+    description: "Core Titanium profile with support, ops, and financial operations rails.",
     departments: [
       {
         id: "msp-support",
@@ -652,6 +652,187 @@ const INTENT_INDUSTRY_PACKS: Array<{
           ],
           requiresHumanApproval: ["journal_override", "cash_movement_commitment"],
           escalation: { maxAttemptsBeforeEscalation: 2, timeInConversationMinutes: 10 },
+        },
+      },
+    ],
+  },
+  {
+    id: "titanium-computing",
+    label: "Titanium Computing (Company Pack)",
+    description:
+      "Company-specific baseline for Titanium Computing: MSP operations, support execution, and finance/ops control loops.",
+    departments: [
+      {
+        id: "titanium-msp-support",
+        policy: {
+          version: "1.0.0",
+          owner: "Titanium Support Lead",
+          objective:
+            "Resolve client tickets with SLA discipline, clear evidence, and proactive escalation.",
+          tradeoffHierarchy: [
+            "sla_and_resolution_quality_over_speed",
+            "evidence_backed_progress_over_activity",
+            "escalation_before_sla_breach",
+          ],
+          allowedActions: ["triage_ticket", "run_safe_diagnostics", "prepare_escalation_handoff"],
+          requiresHumanApproval: [
+            "destructive_remote_change",
+            "security_policy_exception",
+            "client_contract_scope_exception",
+          ],
+          escalation: {
+            sentimentThreshold: -0.35,
+            maxAttemptsBeforeEscalation: 3,
+            timeInConversationMinutes: 12,
+            customerTiersAlwaysEscalate: ["managed-security", "vip", "enterprise"],
+          },
+        },
+      },
+      {
+        id: "titanium-ops-automation",
+        policy: {
+          version: "1.0.0",
+          owner: "Titanium Operations Lead",
+          objective:
+            "Keep autonomous loops productive by converting visibility into verified task movement.",
+          tradeoffHierarchy: [
+            "verified_task_progress_over_status_reporting",
+            "blocker_visibility_over_silent_waiting",
+            "escalation_on_no_progress",
+          ],
+          allowedActions: [
+            "advance_top_priority_tasks",
+            "attach_execution_artifacts",
+            "propose_next_execution_slice",
+          ],
+          requiresHumanApproval: ["priority_reordering_across_clients", "major_process_override"],
+          escalation: {
+            maxAttemptsBeforeEscalation: 2,
+            timeInConversationMinutes: 10,
+          },
+        },
+      },
+      {
+        id: "titanium-finops",
+        policy: {
+          version: "1.0.0",
+          owner: "Titanium FinOps Lead",
+          objective:
+            "Maintain bookkeeping/reporting integrity across clients with reconciled, auditable records.",
+          tradeoffHierarchy: [
+            "ledger_accuracy_over_reporting_speed",
+            "traceability_over_shortcuts",
+            "escalation_on_reconciliation_gap",
+          ],
+          allowedActions: [
+            "prepare_monthly_close_summary",
+            "flag_variance_anomalies",
+            "compile_reconciliation_evidence",
+          ],
+          requiresHumanApproval: [
+            "journal_override",
+            "cash_commitment_instruction",
+            "client_financial_exception",
+          ],
+          escalation: {
+            maxAttemptsBeforeEscalation: 2,
+            timeInConversationMinutes: 10,
+          },
+        },
+      },
+    ],
+  },
+  {
+    id: "holace-io",
+    label: "holace.io PI SaaS (Company Pack)",
+    description:
+      "Company-specific baseline for holace.io: personal-injury legal SaaS delivery, client success, and platform reliability.",
+    departments: [
+      {
+        id: "holace-pi-intake-workflows",
+        policy: {
+          version: "1.0.0",
+          owner: "holace Product Lead",
+          objective:
+            "Maximize PI intake quality and conversion by capturing complete, usable case context.",
+          tradeoffHierarchy: [
+            "intake_data_completeness_over_speed",
+            "conversion_quality_over_volume",
+            "escalation_on_liability_or_conflict_uncertainty",
+          ],
+          allowedActions: [
+            "validate_intake_fields",
+            "prepare_case_intake_summary",
+            "route_for_attorney_review",
+          ],
+          requiresHumanApproval: [
+            "legal_advice_output",
+            "conflict_exception",
+            "fee_or_settlement_commitment",
+          ],
+          escalation: {
+            sentimentThreshold: -0.3,
+            maxAttemptsBeforeEscalation: 2,
+            timeInConversationMinutes: 10,
+          },
+        },
+      },
+      {
+        id: "holace-law-firm-success",
+        policy: {
+          version: "1.0.0",
+          owner: "holace Client Success Lead",
+          objective:
+            "Increase law-firm retention by resolving onboarding and workflow blockers quickly.",
+          tradeoffHierarchy: [
+            "firm_retention_over_ticket_velocity",
+            "workflow_adoption_over_partial_fixes",
+            "escalation_on_repeat_blocker",
+          ],
+          allowedActions: [
+            "produce_firm_health_summary",
+            "prepare_enablement_packet",
+            "track_adoption_risks",
+          ],
+          requiresHumanApproval: [
+            "contract_or_pricing_change",
+            "firm_specific_policy_exception",
+            "public_case_reference",
+          ],
+          escalation: {
+            sentimentThreshold: -0.25,
+            maxAttemptsBeforeEscalation: 2,
+            timeInConversationMinutes: 12,
+            customerTiersAlwaysEscalate: ["enterprise", "strategic-firm"],
+          },
+        },
+      },
+      {
+        id: "holace-platform-reliability",
+        policy: {
+          version: "1.0.0",
+          owner: "holace Engineering Lead",
+          objective:
+            "Keep PI SaaS workflows reliable with fast incident triage and safe production changes.",
+          tradeoffHierarchy: [
+            "platform_reliability_over_feature_speed",
+            "root_cause_fix_over_workaround_only",
+            "escalation_on_data_or_availability_risk",
+          ],
+          allowedActions: [
+            "collect_runtime_diagnostics",
+            "prepare_incident_timeline",
+            "propose_safe_remediation_plan",
+          ],
+          requiresHumanApproval: [
+            "production_destructive_change",
+            "migration_with_data_risk",
+            "compliance_boundary_override",
+          ],
+          escalation: {
+            maxAttemptsBeforeEscalation: 2,
+            timeInConversationMinutes: 8,
+          },
         },
       },
     ],
@@ -2032,7 +2213,6 @@ interface LockScreenApi {
 interface ConfigPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  onRelaunchOnboarding?: () => void;
   requestedTab?: TabType | null;
   onRequestedTabHandled?: () => void;
   onConfigChange?: (config: ConfigData) => void;
@@ -2391,7 +2571,6 @@ function LockScreenSettings({ lockScreen }: { lockScreen: LockScreenApi }) {
 export function ConfigPanel({
   isOpen,
   onClose,
-  onRelaunchOnboarding,
   requestedTab,
   onRequestedTabHandled,
   onConfigChange,
@@ -2441,19 +2620,19 @@ export function ConfigPanel({
     let cancelled = false;
     const loadSurfaceProfile = async () => {
       try {
-        const payload = await fetchJsonWithRetry<{ surfaceProfile?: DashboardSurfaceProfile }>(
-          "/api/settings/dashboard/surface-profile",
+        const payload = await fetchJsonWithRetry<{ raw?: string }>(
+          "/api/settings/agent/raw-config",
           {
             timeoutMs: 0,
             retries: 1,
           },
         );
         if (!cancelled) {
-          setSurfaceProfile(payload?.surfaceProfile === "public-core" ? "public-core" : "full");
+          setSurfaceProfile(parseDashboardSurfaceProfile(payload?.raw));
         }
       } catch {
         if (!cancelled) {
-          setSurfaceProfile("public-core");
+          setSurfaceProfile("full");
         }
       }
     };
@@ -4293,7 +4472,7 @@ export function ConfigPanel({
     models: Array<{ id: string; ref: string; label: string }>;
   }> => {
     if (!Array.isArray(runtimes)) return [];
-    const normalized = runtimes
+    return runtimes
       .map((runtime: unknown) => {
         if (!runtime || typeof runtime !== "object") return null;
         const provider =
@@ -4357,13 +4536,6 @@ export function ConfigPanel({
           models: Array<{ id: string; ref: string; label: string }>;
         } => runtime !== null,
       );
-    return normalized as Array<{
-      provider: string;
-      label: string;
-      running: boolean;
-      baseUrl?: string;
-      models: Array<{ id: string; ref: string; label: string }>;
-    }>;
   };
 
   const patchAgentSetting = async (
@@ -8333,38 +8505,7 @@ export function ConfigPanel({
                               </div>
                               {modelConfig?.model?.fallbacks?.length > 0 && (
                                 <>
-                                  <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-100/85">
-                                    Runtime still walks this fallback chain if the primary model
-                                    fails. If you want the visible interactive/router defaults to be
-                                    the whole truth, clear stale fallback providers here.
-                                  </div>
-                                  <div className="flex items-center justify-between gap-3 mt-2">
-                                    <div className="text-white/40 text-xs">Fallbacks</div>
-                                    <button
-                                      onClick={async () => {
-                                        const existingModel = modelConfig?.model;
-                                        if (!existingModel || typeof existingModel !== "object") {
-                                          return;
-                                        }
-                                        const nextModel = {
-                                          ...existingModel,
-                                          fallbacks: [] as string[],
-                                        };
-                                        await fetch("/api/settings/models", {
-                                          method: "PATCH",
-                                          headers: { "Content-Type": "application/json" },
-                                          body: JSON.stringify({ model: nextModel }),
-                                        });
-                                        setModelConfig((prev: any) => ({
-                                          ...(prev || {}),
-                                          model: nextModel,
-                                        }));
-                                      }}
-                                      className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-white/70 text-[11px] transition-colors"
-                                    >
-                                      Clear fallback chain
-                                    </button>
-                                  </div>
+                                  <div className="text-white/40 text-xs mt-2">Fallbacks</div>
                                   {modelConfig.model.fallbacks.map((fb: string, i: number) => (
                                     <div
                                       key={i}
@@ -8614,13 +8755,9 @@ export function ConfigPanel({
                                     </div>
                                     <div className="text-white/40 text-[11px] space-y-0.5">
                                       <div>
-                                        <span className="text-white/60 font-mono">glm-5.1</span> —
-                                        Current flagship GLM tier. Best choice when you want the
-                                        newest Z.AI reasoning path.
-                                      </div>
-                                      <div>
-                                        <span className="text-white/60 font-mono">glm-5</span> —
-                                        Strong BALANCED fallback with broad GLM support.
+                                        <span className="text-white/60 font-mono">glm-4.7</span> —
+                                        Capable BALANCED tier. Good at structured extraction,
+                                        affordable.
                                       </div>
                                     </div>
                                   </div>
@@ -12421,8 +12558,8 @@ export function ConfigPanel({
                                     </div>
                                     <div>
                                       <span className="text-cyan-400">3rd:</span>{" "}
-                                      <span className="font-mono text-white/60">zai/glm-5.1</span> —
-                                      Strong structured extraction with the current GLM family
+                                      <span className="font-mono text-white/60">glm/glm-4.7</span> —
+                                      Good quality, very affordable
                                     </div>
                                     <div>
                                       <span className="text-yellow-400/70">Avoid:</span>{" "}
@@ -14718,33 +14855,29 @@ export function ConfigPanel({
 
                 {activeTab === "intent" && (
                   <div className="space-y-4">
-                    <SafetyRulesPanel />
+                    <SafetyRulesPanel showUpgradeHint={isPublicCoreSurface} />
 
-                    {isPublicCoreSurface && (
-                      <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-100/80">
-                        Public Core uses the simplified intent surface here: operator safety rules,
-                        approval thresholds, and baseline behavioral guardrails. Department policy,
-                        simulation gates, hierarchy editing, and the business governance console
-                        stay in full ArgentOS.
-                      </div>
-                    )}
+                    <div className="border-t border-white/10 pt-4 mt-6">
+                      <OperatorGuide title="Operator Guide">
+                        Intent is the behavioral constitution: what the system optimizes for, what
+                        it must never do, and when it must escalate. Use this tab for policy and
+                        role boundaries, not for choosing models or tools. Stricter intent reduces
+                        drift but can also block actions if the rules are too narrow.
+                      </OperatorGuide>
 
-                    {!isPublicCoreSurface && (
-                      <div className="border-t border-white/10 pt-4 mt-6">
-                        <details className="group">
+                      {isPublicCoreSurface ? (
+                        <div className="mt-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/55">
+                          Advanced governance stays on the full/business surface. Core exposes the
+                          simple Safety Rules panel above for personal boundaries and approval
+                          rules.
+                        </div>
+                      ) : (
+                        <details className="group mt-4">
                           <summary className="cursor-pointer text-white/40 text-sm hover:text-white/60 transition-colors flex items-center gap-2">
                             <span className="text-purple-400">▶</span>
                             Advanced Governance Console (Business)
                           </summary>
                           <div className="mt-4 space-y-4">
-                            <OperatorGuide title="Operator Guide">
-                              Intent is the behavioral constitution: what the system optimizes for,
-                              what it must never do, and when it must escalate. Use this tab for
-                              policy and role boundaries, not for choosing models or tools. Stricter
-                              intent reduces drift but can also block actions if the rules are too
-                              narrow.
-                            </OperatorGuide>
-
                             <p className="text-white/50 text-sm">
                               Configure intent hierarchy policy, runtime enforcement, and simulation
                               gate controls. {intentLoading && "Loading..."}
@@ -16893,8 +17026,8 @@ export function ConfigPanel({
                             )}
                           </div>
                         </details>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -17207,6 +17340,11 @@ export function ConfigPanel({
                                 Uptime: {gatewayConfig.uptime}
                               </span>
                             )}
+                            {gatewayConfig.version && (
+                              <span className="text-cyan-300/80 text-xs font-mono">
+                                v{gatewayConfig.version}
+                              </span>
+                            )}
                             <span className="ml-auto text-white/30 text-xs font-mono">
                               :{gatewayConfig.port}
                             </span>
@@ -17214,6 +17352,14 @@ export function ConfigPanel({
                           <div className="text-white/35 text-xs">
                             Status is read from the live launchd service and listener state.
                           </div>
+                          {(gatewayConfig.commit || gatewayConfig.builtAt) && (
+                            <div className="text-white/30 text-[11px] space-y-1">
+                              {gatewayConfig.commit && (
+                                <div>Commit: {String(gatewayConfig.commit).slice(0, 10)}</div>
+                              )}
+                              {gatewayConfig.builtAt && <div>Built: {gatewayConfig.builtAt}</div>}
+                            </div>
+                          )}
                         </div>
 
                         {/* Network */}
@@ -19530,25 +19676,7 @@ export function ConfigPanel({
 
                 {activeTab === "systems" && (
                   <div className="space-y-4">
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <div className="text-white font-medium">Relaunch guided onboarding</div>
-                          <p className="text-white/50 text-sm mt-1 max-w-2xl">
-                            Re-open the provider-aware setup flow to change your chat, voice, and
-                            search stack without digging through JSON recovery paths.
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => onRelaunchOnboarding?.()}
-                          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-600/20 border border-amber-500/30 text-amber-200 hover:bg-amber-600/30 transition-colors"
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                          Relaunch onboarding
-                        </button>
-                      </div>
-                    </div>
-
+                    <PersonalSkillsPanel gatewayRequest={gatewayRequest} />
                     <SystemsRegistryPanel
                       defaultAgentId={defaultAgentId}
                       gatewayRequest={gatewayRequest}

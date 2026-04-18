@@ -665,6 +665,18 @@ export function resolveTtsApiKey(
   return undefined;
 }
 
+export async function resolveTtsApiKeyAsync(
+  config: ResolvedTtsConfig,
+  provider: TtsProvider,
+  opts?: {
+    cfg?: ArgentConfig;
+    sessionKey?: string;
+    source?: string;
+  },
+): Promise<string | undefined> {
+  return resolveTtsApiKey(config, provider, opts);
+}
+
 export const TTS_PROVIDERS = ["elevenlabs", "openai", "minimax", "edge"] as const;
 
 export function resolveTtsProviderOrder(
@@ -1147,7 +1159,8 @@ async function summarizeText(params: {
         },
       );
 
-      const summary = res.content
+      const summaryContent = Array.isArray(res.content) ? res.content : [];
+      const summary = summaryContent
         .filter(isTextContentBlock)
         .map((block) => block.text.trim())
         .filter(Boolean)
@@ -1155,6 +1168,10 @@ async function summarizeText(params: {
         .trim();
 
       if (!summary) {
+        const errorMessage = res.errorMessage?.trim();
+        if (res.stopReason === "error" && errorMessage) {
+          throw new Error(errorMessage);
+        }
         throw new Error("No summary returned");
       }
 

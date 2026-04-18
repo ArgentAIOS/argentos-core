@@ -455,7 +455,8 @@ export async function finalizeOnboardingWizard(
         "",
         "You can also access Argent at:",
         "  Dashboard: http://127.0.0.1:8080/",
-        `  CLI: ${formatCliCommand("argent chat")}`,
+        `  Terminal UI: ${formatCliCommand("argent tui")}`,
+        `  Dashboard link: ${formatCliCommand("argent dashboard --no-open")}`,
       ].join("\n"),
       "Almost there",
     );

@@ -130,6 +130,17 @@ struct LowCoverageHelperTests {
             listeners: [(pid: 1, command: "node", fullCommand: "node", user: "me")])
         #expect(okReport.offenders.isEmpty)
 
+        let manualGatewayReport = PortGuardian._testBuildReport(
+            port: 18789,
+            mode: .local,
+            listeners: [(
+                pid: 3,
+                command: "node",
+                fullCommand: "node /Users/sem/code/argentos/argent.mjs gateway run --port 18789",
+                user: "me"
+            )])
+        #expect(manualGatewayReport.offenders.isEmpty)
+
         let badReport = PortGuardian._testBuildReport(
             port: 18789,
             mode: .local,

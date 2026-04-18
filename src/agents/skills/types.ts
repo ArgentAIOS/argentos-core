@@ -85,3 +85,15 @@ export type SkillSnapshot = {
   resolvedSkills?: Skill[];
   version?: number;
 };
+
+export type SkillMatchCandidate = {
+  id?: string;
+  name: string;
+  source: string;
+  kind: "generic" | "personal";
+  state?: string;
+  score: number;
+  confidence?: number;
+  provenanceCount?: number;
+  reasons: string[];
+};

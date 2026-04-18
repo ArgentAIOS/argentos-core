@@ -20,7 +20,6 @@ import { parseSemver } from "../infra/runtime-guard.js";
 import {
   channelToNpmTag,
   formatUpdateChannelLabel,
-  normalizeUpdateBranch,
   normalizeUpdateChannel,
   resolveEffectiveUpdateChannel,
 } from "../infra/update-channels.js";
@@ -758,9 +757,6 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
   const storedChannel = configSnapshot.valid
     ? normalizeUpdateChannel(configSnapshot.config.update?.channel)
     : null;
-  const storedBranch = configSnapshot.valid
-    ? normalizeUpdateBranch(configSnapshot.config.update?.branch)
-    : null;
   const currentChannelInfo = resolveEffectiveUpdateChannel({
     configChannel: storedChannel,
     installKind: updateStatus.installKind,
@@ -848,9 +844,6 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
         channel: requestedChannel,
       },
     };
-    if (requestedChannel !== "dev" && next.update) {
-      delete next.update.branch;
-    }
     await writeConfigFile(next);
     activeConfig = next;
     if (!opts.json) {
@@ -952,7 +945,6 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
       timeoutMs,
       progress,
       channel,
-      branch: channel === "dev" ? (storedBranch ?? undefined) : undefined,
       tag,
     });
     const steps = [...(cloneStep ? [cloneStep] : []), ...updateResult.steps];

@@ -25,6 +25,7 @@ interface UseTasksReturn {
   updateTask: (taskId: string, updates: Partial<Task>) => Promise<Task | null>;
   deleteTask: (taskId: string) => Promise<boolean>;
   deleteProject: (projectId: string) => Promise<boolean>;
+  archiveProject: (projectId: string, archived: boolean) => Promise<boolean>;
   startTask: (taskId: string) => Promise<Task | null>;
   completeTask: (taskId: string) => Promise<Task | null>;
   startTaskByTitle: (title: string) => Promise<Task | null>;
@@ -77,6 +78,7 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
         const activeSignal = signal ?? controller!.signal;
         timeout = setTimeout(() => controller?.abort(), 8_000);
         const params = new URLSearchParams();
+        params.set("includeArchived", "true");
         if (includeWorkerTasks) params.set("includeWorkerTasks", "true");
         const url = `${API_BASE}/projects${params.size > 0 ? `?${params.toString()}` : ""}`;
         const res = await fetchLocalApi(url, { signal: activeSignal }, 8_000);
@@ -118,6 +120,7 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
         createdAt: new Date(t.createdAt),
         completedAt: t.completedAt ? new Date(t.completedAt) : undefined,
         startedAt: t.startedAt ? new Date(t.startedAt) : undefined,
+        dueAt: t.dueAt ? new Date(t.dueAt) : undefined,
       }));
       setTasks(filterByLane(tasksWithDates));
       setError(null);
@@ -200,6 +203,7 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
         const newTask = {
           ...data.task,
           createdAt: new Date(data.task.createdAt),
+          dueAt: data.task.dueAt ? new Date(data.task.dueAt) : undefined,
         };
         if (!workerOnly || isWorkerLaneTask(newTask)) {
           setTasks((prev) => [newTask, ...prev]);
@@ -233,6 +237,7 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
         const newTask = {
           ...data.task,
           createdAt: new Date(data.task.createdAt),
+          dueAt: data.task.dueAt ? new Date(data.task.dueAt) : undefined,
         };
         if (!workerOnly || isWorkerLaneTask(newTask)) {
           setTasks((prev) => [newTask, ...prev]);
@@ -262,7 +267,9 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
         const updatedTask = {
           ...data.task,
           createdAt: new Date(data.task.createdAt),
+          startedAt: data.task.startedAt ? new Date(data.task.startedAt) : undefined,
           completedAt: data.task.completedAt ? new Date(data.task.completedAt) : undefined,
+          dueAt: data.task.dueAt ? new Date(data.task.dueAt) : undefined,
         };
         setTasks((prev) =>
           prev.flatMap((t) => {
@@ -314,6 +321,34 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
     }
   }, []);
 
+  const archiveProject = useCallback(
+    async (projectId: string, archived: boolean): Promise<boolean> => {
+      try {
+        const res = await fetchLocalApi(`${API_BASE}/projects/${projectId}/archive`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ archived }),
+        });
+        if (!res.ok) throw new Error("Failed to update project archive state");
+        const data = await res.json();
+        const updatedProject = data.project;
+        if (updatedProject) {
+          setProjects((prev) =>
+            prev.map((project) =>
+              project.id === projectId ? { ...project, ...updatedProject } : project,
+            ),
+          );
+        }
+        return true;
+      } catch (err) {
+        console.error("[useTasks] Error updating project archive state:", err);
+        setError(err instanceof Error ? err.message : "Failed to update project archive state");
+        return false;
+      }
+    },
+    [],
+  );
+
   // Start a task (set to in-progress)
   const startTask = useCallback(async (taskId: string): Promise<Task | null> => {
     try {
@@ -326,6 +361,7 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
         ...data.task,
         createdAt: new Date(data.task.createdAt),
         startedAt: data.task.startedAt ? new Date(data.task.startedAt) : undefined,
+        dueAt: data.task.dueAt ? new Date(data.task.dueAt) : undefined,
       };
       setTasks((prev) => prev.map((t) => (t.id === taskId ? updatedTask : t)));
       return updatedTask;
@@ -348,6 +384,7 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
         ...data.task,
         createdAt: new Date(data.task.createdAt),
         completedAt: data.task.completedAt ? new Date(data.task.completedAt) : undefined,
+        dueAt: data.task.dueAt ? new Date(data.task.dueAt) : undefined,
       };
       setTasks((prev) => prev.map((t) => (t.id === taskId ? updatedTask : t)));
       return updatedTask;
@@ -416,6 +453,7 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
     updateTask,
     deleteTask,
     deleteProject,
+    archiveProject,
     startTask,
     completeTask,
     startTaskByTitle,

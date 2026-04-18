@@ -31,7 +31,6 @@ import type { AgentMessage, AgentTool } from "./pi-types.js";
 import type { BranchSummaryEntry } from "./session-manager.js";
 import { modelSupportsImages } from "../agents/pi-embedded-runner/run/images.js";
 import { applyVisionFallbackToMessages } from "../agents/pi-embedded-runner/run/vision-fallback.js";
-import { sanitizeToolResultForModel } from "../security/tool-safety.js";
 import { ArgentSessionManager } from "./session-manager.js";
 import { ArgentSettingsManager, type ThinkingLevel } from "./settings-manager.js";
 
@@ -370,12 +369,11 @@ class ArgentAgentSessionImpl implements AgentSession {
                     } as unknown as AgentSessionEvent);
                   },
                 );
-                result = sanitizeToolResultForModel(result);
               } catch (e) {
-                result = sanitizeToolResultForModel({
+                result = {
                   content: [{ type: "text", text: e instanceof Error ? e.message : String(e) }],
                   details: {},
-                });
+                };
                 isError = true;
               }
 
@@ -387,11 +385,13 @@ class ArgentAgentSessionImpl implements AgentSession {
                 isError,
               } as unknown as AgentSessionEvent);
 
+              const normalizedContent = Array.isArray(result?.content) ? result.content : [];
+
               const toolResultMessage = {
                 role: "toolResult",
                 toolCallId: toolCall.id,
                 toolName: toolCall.name,
-                content: result.content,
+                content: normalizedContent,
                 details: result.details,
                 isError,
                 timestamp: Date.now(),

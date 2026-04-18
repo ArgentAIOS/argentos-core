@@ -257,7 +257,7 @@ function mergeConfig(
   const sync = {
     onSessionStart: overrides?.sync?.onSessionStart ?? defaults?.sync?.onSessionStart ?? true,
     onSearch: overrides?.sync?.onSearch ?? defaults?.sync?.onSearch ?? true,
-    watch: overrides?.sync?.watch ?? defaults?.sync?.watch ?? true,
+    watch: overrides?.sync?.watch ?? defaults?.sync?.watch ?? false,
     watchDebounceMs:
       overrides?.sync?.watchDebounceMs ??
       defaults?.sync?.watchDebounceMs ??

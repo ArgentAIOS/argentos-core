@@ -16,6 +16,8 @@ import type {
   CreateLessonInput,
   CreateLiveCandidateInput,
   CreateMemoryItemInput,
+  CreatePersonalSkillCandidateInput,
+  CreatePersonalSkillReviewEventInput,
   CreateReflectionInput,
   CreateResourceInput,
   Entity,
@@ -30,6 +32,9 @@ import type {
   MemoryItem,
   MemorySearchResult,
   MemoryType,
+  PersonalSkillCandidate,
+  PersonalSkillReviewEvent,
+  PersonalSkillCandidateState,
   PromotionAction,
   PromotionActor,
   PromotionEvent,
@@ -290,6 +295,60 @@ function mapLiveCandidate(row: Record<string, unknown>): LiveCandidate {
     promotionReason: (row.promotion_reason as string) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
+  };
+}
+
+function mapPersonalSkillCandidate(row: Record<string, unknown>): PersonalSkillCandidate {
+  return {
+    id: row.id as string,
+    agentId: (row.agent_id as string) ?? "main",
+    operatorId: (row.operator_id as string) ?? null,
+    profileId: (row.profile_id as string) ?? null,
+    scope: ((row.scope as string) ?? "operator") as PersonalSkillCandidate["scope"],
+    title: row.title as string,
+    summary: row.summary as string,
+    triggerPatterns: JSON.parse((row.trigger_patterns as string) || "[]"),
+    procedureOutline: (row.procedure_outline as string) ?? null,
+    preconditions: JSON.parse((row.preconditions as string) || "[]"),
+    executionSteps: JSON.parse((row.execution_steps as string) || "[]"),
+    expectedOutcomes: JSON.parse((row.expected_outcomes as string) || "[]"),
+    relatedTools: JSON.parse((row.related_tools as string) || "[]"),
+    sourceMemoryIds: JSON.parse((row.source_memory_ids as string) || "[]"),
+    sourceEpisodeIds: JSON.parse((row.source_episode_ids as string) || "[]"),
+    sourceTaskIds: JSON.parse((row.source_task_ids as string) || "[]"),
+    sourceLessonIds: JSON.parse((row.source_lesson_ids as string) || "[]"),
+    supersedesCandidateIds: JSON.parse((row.supersedes_candidate_ids as string) || "[]"),
+    supersededByCandidateId: (row.superseded_by_candidate_id as string) ?? null,
+    conflictsWithCandidateIds: JSON.parse((row.conflicts_with_candidate_ids as string) || "[]"),
+    contradictionCount: (row.contradiction_count as number) ?? 0,
+    evidenceCount: (row.evidence_count as number) ?? 0,
+    recurrenceCount: (row.recurrence_count as number) ?? 1,
+    confidence: (row.confidence as number) ?? 0.5,
+    strength: (row.strength as number) ?? 0.5,
+    usageCount: (row.usage_count as number) ?? 0,
+    successCount: (row.success_count as number) ?? 0,
+    failureCount: (row.failure_count as number) ?? 0,
+    state: (row.state as PersonalSkillCandidateState) ?? "candidate",
+    operatorNotes: (row.operator_notes as string) ?? null,
+    lastReviewedAt: (row.last_reviewed_at as string) ?? null,
+    lastUsedAt: (row.last_used_at as string) ?? null,
+    lastReinforcedAt: (row.last_reinforced_at as string) ?? null,
+    lastContradictedAt: (row.last_contradicted_at as string) ?? null,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+function mapPersonalSkillReviewEvent(row: Record<string, unknown>): PersonalSkillReviewEvent {
+  return {
+    id: row.id as string,
+    candidateId: row.candidate_id as string,
+    agentId: (row.agent_id as string) ?? "main",
+    actorType: ((row.actor_type as string) ?? "system") as PersonalSkillReviewEvent["actorType"],
+    action: row.action as PersonalSkillReviewEvent["action"],
+    reason: (row.reason as string) ?? null,
+    details: JSON.parse((row.details as string) || "{}"),
+    createdAt: row.created_at as string,
   };
 }
 
@@ -2061,6 +2120,264 @@ export class MemuStore {
     } catch {
       return { pending: 0, promoted: 0, merged: 0, discarded: 0, expired: 0 };
     }
+  }
+
+  createPersonalSkillCandidate(
+    input: CreatePersonalSkillCandidateInput,
+  ): PersonalSkillCandidate | null {
+    const id = uuid();
+    const ts = now();
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO personal_skill_candidates
+             (id, agent_id, operator_id, profile_id, scope, title, summary, trigger_patterns,
+              procedure_outline, preconditions, execution_steps, expected_outcomes, related_tools,
+              source_memory_ids, source_episode_ids, source_task_ids, source_lesson_ids,
+              supersedes_candidate_ids, superseded_by_candidate_id, conflicts_with_candidate_ids,
+              contradiction_count, evidence_count, recurrence_count, confidence, strength, usage_count,
+              success_count, failure_count, state, operator_notes, last_reviewed_at, last_used_at, last_reinforced_at,
+              last_contradicted_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          input.agentId ?? "main",
+          input.operatorId ?? null,
+          input.profileId ?? null,
+          input.scope ?? "operator",
+          input.title,
+          input.summary,
+          JSON.stringify(input.triggerPatterns ?? []),
+          input.procedureOutline ?? null,
+          JSON.stringify(input.preconditions ?? []),
+          JSON.stringify(input.executionSteps ?? []),
+          JSON.stringify(input.expectedOutcomes ?? []),
+          JSON.stringify(input.relatedTools ?? []),
+          JSON.stringify(input.sourceMemoryIds ?? []),
+          JSON.stringify(input.sourceEpisodeIds ?? []),
+          JSON.stringify(input.sourceTaskIds ?? []),
+          JSON.stringify(input.sourceLessonIds ?? []),
+          JSON.stringify(input.supersedesCandidateIds ?? []),
+          input.supersededByCandidateId ?? null,
+          JSON.stringify(input.conflictsWithCandidateIds ?? []),
+          input.contradictionCount ?? 0,
+          input.evidenceCount ?? 0,
+          input.recurrenceCount ?? 1,
+          input.confidence ?? 0.5,
+          input.strength ?? 0.5,
+          input.usageCount ?? 0,
+          input.successCount ?? 0,
+          input.failureCount ?? 0,
+          input.state ?? "candidate",
+          input.operatorNotes ?? null,
+          null,
+          null,
+          null,
+          null,
+          ts,
+          ts,
+        );
+      return this.getPersonalSkillCandidate(id);
+    } catch {
+      return null;
+    }
+  }
+
+  getPersonalSkillCandidate(id: string): PersonalSkillCandidate | null {
+    const row = this.db.prepare(`SELECT * FROM personal_skill_candidates WHERE id = ?`).get(id) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? mapPersonalSkillCandidate(row) : null;
+  }
+
+  listPersonalSkillCandidates(options?: {
+    state?: PersonalSkillCandidateState;
+    limit?: number;
+  }): PersonalSkillCandidate[] {
+    let sql = `SELECT * FROM personal_skill_candidates WHERE 1=1`;
+    const params: unknown[] = [];
+
+    if (options?.state) {
+      sql += ` AND state = ?`;
+      params.push(options.state);
+    }
+
+    sql += ` ORDER BY confidence DESC, updated_at DESC LIMIT ?`;
+    params.push(options?.limit ?? 50);
+
+    const rows = this.db.prepare(sql).all(...params) as Record<string, unknown>[];
+    return rows.map(mapPersonalSkillCandidate);
+  }
+
+  updatePersonalSkillCandidate(
+    id: string,
+    fields: Partial<{
+      scope: PersonalSkillCandidate["scope"];
+      title: string;
+      summary: string;
+      triggerPatterns: string[];
+      procedureOutline: string | null;
+      preconditions: string[];
+      executionSteps: string[];
+      expectedOutcomes: string[];
+      relatedTools: string[];
+      sourceMemoryIds: string[];
+      sourceEpisodeIds: string[];
+      sourceTaskIds: string[];
+      sourceLessonIds: string[];
+      supersedesCandidateIds: string[];
+      supersededByCandidateId: string | null;
+      conflictsWithCandidateIds: string[];
+      contradictionCount: number;
+      evidenceCount: number;
+      recurrenceCount: number;
+      confidence: number;
+      strength: number;
+      usageCount: number;
+      successCount: number;
+      failureCount: number;
+      state: PersonalSkillCandidateState;
+      operatorNotes: string | null;
+      lastReviewedAt: string | null;
+      lastUsedAt: string | null;
+      lastReinforcedAt: string | null;
+      lastContradictedAt: string | null;
+    }>,
+  ): PersonalSkillCandidate | null {
+    const existing = this.getPersonalSkillCandidate(id);
+    if (!existing) return null;
+    const next = {
+      ...existing,
+      ...fields,
+      scope: fields.scope ?? existing.scope,
+      triggerPatterns: fields.triggerPatterns ?? existing.triggerPatterns,
+      preconditions: fields.preconditions ?? existing.preconditions,
+      executionSteps: fields.executionSteps ?? existing.executionSteps,
+      expectedOutcomes: fields.expectedOutcomes ?? existing.expectedOutcomes,
+      relatedTools: fields.relatedTools ?? existing.relatedTools,
+      sourceMemoryIds: fields.sourceMemoryIds ?? existing.sourceMemoryIds,
+      sourceEpisodeIds: fields.sourceEpisodeIds ?? existing.sourceEpisodeIds,
+      sourceTaskIds: fields.sourceTaskIds ?? existing.sourceTaskIds,
+      sourceLessonIds: fields.sourceLessonIds ?? existing.sourceLessonIds,
+      supersedesCandidateIds: fields.supersedesCandidateIds ?? existing.supersedesCandidateIds,
+      supersededByCandidateId: fields.supersededByCandidateId ?? existing.supersededByCandidateId,
+      conflictsWithCandidateIds:
+        fields.conflictsWithCandidateIds ?? existing.conflictsWithCandidateIds,
+      contradictionCount: fields.contradictionCount ?? existing.contradictionCount,
+      strength: fields.strength ?? existing.strength,
+      usageCount: fields.usageCount ?? existing.usageCount,
+      successCount: fields.successCount ?? existing.successCount,
+      failureCount: fields.failureCount ?? existing.failureCount,
+      operatorNotes: fields.operatorNotes ?? existing.operatorNotes,
+      lastReinforcedAt: fields.lastReinforcedAt ?? existing.lastReinforcedAt,
+      lastContradictedAt: fields.lastContradictedAt ?? existing.lastContradictedAt,
+      updatedAt: now(),
+    };
+
+    this.db
+      .prepare(
+        `UPDATE personal_skill_candidates SET
+           scope = ?, title = ?, summary = ?, trigger_patterns = ?, procedure_outline = ?, preconditions = ?,
+           execution_steps = ?, expected_outcomes = ?, related_tools = ?, source_memory_ids = ?,
+           source_episode_ids = ?, source_task_ids = ?, source_lesson_ids = ?, supersedes_candidate_ids = ?,
+           superseded_by_candidate_id = ?, conflicts_with_candidate_ids = ?, contradiction_count = ?,
+           evidence_count = ?, recurrence_count = ?, confidence = ?, strength = ?, usage_count = ?,
+           success_count = ?, failure_count = ?, state = ?, operator_notes = ?, last_reviewed_at = ?, last_used_at = ?,
+           last_reinforced_at = ?, last_contradicted_at = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(
+        next.scope,
+        next.title,
+        next.summary,
+        JSON.stringify(next.triggerPatterns),
+        next.procedureOutline,
+        JSON.stringify(next.preconditions),
+        JSON.stringify(next.executionSteps),
+        JSON.stringify(next.expectedOutcomes),
+        JSON.stringify(next.relatedTools),
+        JSON.stringify(next.sourceMemoryIds),
+        JSON.stringify(next.sourceEpisodeIds),
+        JSON.stringify(next.sourceTaskIds),
+        JSON.stringify(next.sourceLessonIds),
+        JSON.stringify(next.supersedesCandidateIds),
+        next.supersededByCandidateId,
+        JSON.stringify(next.conflictsWithCandidateIds),
+        next.contradictionCount,
+        next.evidenceCount,
+        next.recurrenceCount,
+        next.confidence,
+        next.strength,
+        next.usageCount,
+        next.successCount,
+        next.failureCount,
+        next.state,
+        next.operatorNotes,
+        next.lastReviewedAt,
+        next.lastUsedAt,
+        next.lastReinforcedAt,
+        next.lastContradictedAt,
+        next.updatedAt,
+        id,
+      );
+
+    return this.getPersonalSkillCandidate(id);
+  }
+
+  deletePersonalSkillCandidate(id: string): boolean {
+    const result = this.db
+      .prepare(`DELETE FROM personal_skill_candidates WHERE id = ?`)
+      .run(id) as {
+      changes?: number;
+    };
+    return Number(result?.changes ?? 0) > 0;
+  }
+
+  createPersonalSkillReviewEvent(
+    input: CreatePersonalSkillReviewEventInput,
+  ): PersonalSkillReviewEvent | null {
+    const id = uuid();
+    const ts = now();
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO personal_skill_reviews
+             (id, candidate_id, agent_id, actor_type, action, reason, details, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          input.candidateId,
+          input.agentId ?? "main",
+          input.actorType,
+          input.action,
+          input.reason ?? null,
+          JSON.stringify(input.details ?? {}),
+          ts,
+        );
+      const row = this.db.prepare(`SELECT * FROM personal_skill_reviews WHERE id = ?`).get(id) as
+        | Record<string, unknown>
+        | undefined;
+      return row ? mapPersonalSkillReviewEvent(row) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  listPersonalSkillReviewEvents(options: {
+    candidateId: string;
+    limit?: number;
+  }): PersonalSkillReviewEvent[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM personal_skill_reviews
+         WHERE candidate_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`,
+      )
+      .all(options.candidateId, options.limit ?? 20) as Record<string, unknown>[];
+    return rows.map(mapPersonalSkillReviewEvent);
   }
 }
 

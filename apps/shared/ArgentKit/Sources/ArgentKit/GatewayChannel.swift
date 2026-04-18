@@ -259,7 +259,7 @@ public actor GatewayChannelActor {
         }
     }
 
-    private func sendConnect() async throws {
+    private func sendConnect(forceSharedToken: Bool = false) async throws {
         let platform = InstanceIdentity.platformString
         let primaryLocale = Locale.preferredLanguages.first ?? Locale.current.identifier
         let options = self.connectOptions ?? GatewayConnectOptions(
@@ -308,7 +308,9 @@ public actor GatewayChannelActor {
             params["permissions"] = ProtoAnyCodable(options.permissions)
         }
         let identity = DeviceIdentityStore.loadOrCreate()
-        let storedToken = DeviceAuthStore.loadToken(deviceId: identity.deviceId, role: role)?.token
+        let storedToken = forceSharedToken
+            ? nil
+            : DeviceAuthStore.loadToken(deviceId: identity.deviceId, role: role)?.token
         let authToken = storedToken ?? self.token
         let authSource: GatewayAuthSource
         if storedToken != nil {
@@ -370,11 +372,36 @@ public actor GatewayChannelActor {
             let response = try await self.waitForConnectResponse(reqId: reqId)
             try await self.handleConnectResponse(response, identity: identity, role: role)
         } catch {
+            if canFallbackToShared, Self.isGatewayAuthFailure(error) {
+                DeviceAuthStore.clearToken(deviceId: identity.deviceId, role: role)
+                self.logger.warning(
+                    "gateway connect rejected cached device token; retrying with shared token")
+                self.task?.cancel(with: .goingAway, reason: nil)
+                self.task = self.session.makeWebSocketTask(url: self.url)
+                self.task?.resume()
+                try await self.sendConnect(forceSharedToken: true)
+                return
+            }
             if canFallbackToShared {
                 DeviceAuthStore.clearToken(deviceId: identity.deviceId, role: role)
             }
             throw error
         }
+    }
+
+    private static func isGatewayAuthFailure(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        let lowered = nsError.localizedDescription.lowercased()
+        if nsError.domain == "Gateway", nsError.code == 1008 {
+            return true
+        }
+        if let urlError = error as? URLError, urlError.code == .dataNotAllowed {
+            return true
+        }
+        return lowered.contains("unauthorized") ||
+            lowered.contains("token mismatch") ||
+            lowered.contains("rejected token") ||
+            lowered.contains("auth")
     }
 
     private func handleConnectResponse(

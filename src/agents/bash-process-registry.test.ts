@@ -8,6 +8,7 @@ import {
   listFinishedSessions,
   markBackgrounded,
   markExited,
+  reloadProcessRegistryForTests,
   resetProcessRegistryForTests,
 } from "./bash-process-registry.js";
 
@@ -176,5 +177,39 @@ describe("bash process registry", () => {
     markBackgrounded(session);
     markExited(session, 0, null, "completed");
     expect(listFinishedSessions()).toHaveLength(1);
+  });
+
+  it("restores orphaned background sessions from persisted registry snapshot", async () => {
+    const session: ProcessSession = {
+      id: "persisted-sess",
+      command: "pnpm build",
+      child: { pid: 123 } as ChildProcessWithoutNullStreams,
+      startedAt: Date.now(),
+      cwd: "/tmp",
+      maxOutputChars: 100,
+      pendingMaxOutputChars: 30_000,
+      totalOutputChars: 0,
+      pendingStdout: [],
+      pendingStderr: [],
+      pendingStdoutChars: 0,
+      pendingStderrChars: 0,
+      aggregated: "build still running",
+      tail: "build still running",
+      exited: false,
+      exitCode: undefined,
+      exitSignal: undefined,
+      truncated: false,
+      backgrounded: true,
+    };
+
+    addSession(session);
+    markBackgrounded(session);
+    reloadProcessRegistryForTests();
+
+    const restored = listFinishedSessions();
+    expect(restored).toHaveLength(1);
+    expect(restored[0]?.id).toBe("persisted-sess");
+    expect(restored[0]?.status).toBe("failed");
+    expect(restored[0]?.aggregated).toContain("not restorable");
   });
 });

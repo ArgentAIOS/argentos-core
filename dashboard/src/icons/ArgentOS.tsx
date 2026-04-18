@@ -57,6 +57,7 @@ export const WorkflowMapIcon: React.FC<IconProps> = ({
 }) => {
   const mode = darkMode ? "dark" : "light";
   const color = getColor(mode, "primary");
+  const _glow = getColor(mode, "glow");
 
   return (
     <svg
@@ -1039,9 +1040,10 @@ export const SpeakerOffIcon: React.FC<IconProps> = ({ size = 24, darkMode = true
 // DEEP THINK — Radiating idea nucleus (replaces generic sun/lightbulb emoji)
 export const DeepThinkIcon: React.FC<IconProps> = ({
   size = 24,
-  darkMode: _darkMode = true,
+  darkMode = true,
   animated = false,
 }) => {
+  const _mode = darkMode ? "dark" : "light";
   const color = "#ffab00"; // warm gold always — this is the thinking warmth
 
   return (

@@ -168,6 +168,33 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   );
 }
 
+function deepEqualConfigValue(prev: unknown, next: unknown): boolean {
+  if (prev === next) {
+    return true;
+  }
+  if (Array.isArray(prev) && Array.isArray(next)) {
+    if (prev.length !== next.length) {
+      return false;
+    }
+    return prev.every((value, index) => deepEqualConfigValue(value, next[index]));
+  }
+  if (isPlainObject(prev) && isPlainObject(next)) {
+    const prevKeys = Object.keys(prev);
+    const nextKeys = Object.keys(next);
+    if (prevKeys.length !== nextKeys.length) {
+      return false;
+    }
+    const keySet = new Set([...prevKeys, ...nextKeys]);
+    for (const key of keySet) {
+      if (!deepEqualConfigValue(prev[key], next[key])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
 export function diffConfigPaths(prev: unknown, next: unknown, prefix = ""): string[] {
   if (prev === next) {
     return [];
@@ -190,7 +217,7 @@ export function diffConfigPaths(prev: unknown, next: unknown, prefix = ""): stri
     return paths;
   }
   if (Array.isArray(prev) && Array.isArray(next)) {
-    if (prev.length === next.length && prev.every((val, idx) => val === next[idx])) {
+    if (deepEqualConfigValue(prev, next)) {
       return [];
     }
   }

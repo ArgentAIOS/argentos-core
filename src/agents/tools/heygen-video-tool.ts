@@ -10,7 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { ArgentConfig } from "../../config/config.js";
-import { resolveServiceKey } from "../../infra/service-keys.js";
+import { resolveServiceKeyAsync } from "../../infra/service-keys.js";
 import { type AnyAgentTool, jsonResult, readNumberParam, readStringParam } from "./common.js";
 
 const HEYGEN_BASE_URL = "https://api.heygen.com";
@@ -594,14 +594,14 @@ Requires HEYGEN_API_KEY (or HEYGEN_TOKEN).`,
         const action = readStringParam(params, "action", { required: true });
 
         const apiKey =
-          resolveServiceKey("HEYGEN_API_KEY", options?.config, {
+          (await resolveServiceKeyAsync("HEYGEN_API_KEY", options?.config, {
             sessionKey: options?.agentSessionKey,
             source: "heygen_video",
-          }) ||
-          resolveServiceKey("HEYGEN_TOKEN", options?.config, {
+          })) ||
+          (await resolveServiceKeyAsync("HEYGEN_TOKEN", options?.config, {
             sessionKey: options?.agentSessionKey,
             source: "heygen_video",
-          });
+          }));
         if (!apiKey) {
           return {
             content: [
@@ -615,10 +615,10 @@ Requires HEYGEN_API_KEY (or HEYGEN_TOKEN).`,
 
         const defaultAvatarId =
           readStringParam(params, "default_avatar_id") ||
-          resolveServiceKey("HEYGEN_DEFAULT_AVATAR_ID", options?.config, {
+          (await resolveServiceKeyAsync("HEYGEN_DEFAULT_AVATAR_ID", options?.config, {
             sessionKey: options?.agentSessionKey,
             source: "heygen_video",
-          }) ||
+          })) ||
           process.env.HEYGEN_DEFAULT_AVATAR_ID ||
           undefined;
         const includeRaw = readOptionalBoolean(params, "include_raw") === true;

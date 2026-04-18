@@ -79,7 +79,8 @@ argent onboard --non-interactive \
 ### 3. Verify Setup
 
 ```bash
-argent chat --model venice/llama-3.3-70b "Hello, are you working?"
+argent models set venice/llama-3.3-70b
+argent tui --message "Hello, are you working?"
 ```
 
 ## Model Selection
@@ -195,19 +196,27 @@ Venice uses a credit-based system. Check [venice.ai/pricing](https://venice.ai/p
 
 ```bash
 # Use default private model
-argent chat --model venice/llama-3.3-70b
+argent models set venice/llama-3.3-70b
 
 # Use Claude via Venice (anonymized)
-argent chat --model venice/claude-opus-45
+argent models set venice/claude-opus-45
 
 # Use uncensored model
-argent chat --model venice/venice-uncensored
+argent models set venice/venice-uncensored
 
 # Use vision model with image
-argent chat --model venice/qwen3-vl-235b-a22b
+argent models set venice/qwen3-vl-235b-a22b
 
 # Use coding model
-argent chat --model venice/qwen3-coder-480b-a35b-instruct
+argent models set venice/qwen3-coder-480b-a35b-instruct
+```
+
+After setting the model, chat through either:
+
+```bash
+argent dashboard
+# or
+argent tui
 ```
 
 ## Troubleshooting

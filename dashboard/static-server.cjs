@@ -9,7 +9,6 @@ const PORT = Number(process.env.PORT || process.env.VITE_PORT || 8080);
 const API_PORT = Number(process.env.API_PORT || 9242);
 const DIST_DIR = path.join(__dirname, "dist");
 const INDEX_PATH = path.join(DIST_DIR, "index.html");
-const STATE_DIR = process.env.ARGENT_STATE_DIR || path.join(process.env.HOME || "", ".argentos");
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -34,23 +33,6 @@ function sendError(res, status, message) {
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.end(message);
 }
-
-function loadConfiguredDashboardApiToken() {
-  const envToken = process.env.DASHBOARD_API_TOKEN?.trim();
-  if (envToken) return envToken;
-
-  try {
-    const envPath = path.join(STATE_DIR, ".env");
-    const raw = fs.readFileSync(envPath, "utf8");
-    const match = raw.match(/^DASHBOARD_API_TOKEN=(.+)$/m);
-    const fileToken = match?.[1]?.trim();
-    return fileToken || null;
-  } catch {
-    return null;
-  }
-}
-
-const CONFIGURED_DASHBOARD_API_TOKEN = loadConfiguredDashboardApiToken();
 
 function dashboardApiTokenFromRequest(req) {
   try {
@@ -89,7 +71,7 @@ function proxyRequest(req, res) {
   };
 
   if (!headers.authorization) {
-    const token = CONFIGURED_DASHBOARD_API_TOKEN || dashboardApiTokenFromRequest(req);
+    const token = dashboardApiTokenFromRequest(req);
     if (token) {
       headers.authorization = `Bearer ${token}`;
     }

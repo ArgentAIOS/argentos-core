@@ -10,7 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AnyAgentTool } from "./common.js";
-import { resolveMinimaxApiKey } from "../../agents/minimax-vlm.js";
+import { resolveMinimaxApiKeyAsync } from "../../agents/minimax-vlm.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { readStringParam, readNumberParam } from "./common.js";
 
@@ -353,7 +353,7 @@ Note: Video generation takes 30-120 seconds. Returns a MEDIA: path.`,
       const totalTimeoutMs = resolveTotalTimeoutMs();
 
       // Auto-select provider based on available keys
-      const minimaxKey = resolveMinimaxApiKey();
+      const minimaxKey = await resolveMinimaxApiKeyAsync();
       const klingKey = process.env.PIAPI_KLING_API_KEY?.trim();
 
       let provider: "minimax" | "kling";

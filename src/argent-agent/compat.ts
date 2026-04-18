@@ -91,21 +91,23 @@ export function piContextToArgentRequest(context: Context): TurnRequest {
   for (const msg of context.messages) {
     if (msg.role === "user") {
       const userMsg = msg as UserMessage;
+      const userBlocks = Array.isArray(userMsg.content) ? userMsg.content : [];
       const text =
         typeof userMsg.content === "string"
           ? userMsg.content
-          : userMsg.content
+          : userBlocks
               .filter((b): b is TextContent => b.type === "text")
               .map((b) => b.text)
               .join("");
       messages.push({ role: "user", content: text });
     } else if (msg.role === "assistant") {
       const assistantMsg = msg as AssistantMessage;
-      const text = assistantMsg.content
+      const assistantBlocks = Array.isArray(assistantMsg.content) ? assistantMsg.content : [];
+      const text = assistantBlocks
         .filter((b): b is TextContent => b.type === "text")
         .map((b) => b.text)
         .join("");
-      const toolCalls = assistantMsg.content
+      const toolCalls = assistantBlocks
         .filter((b): b is PiToolCall => b.type === "toolCall")
         .map((tc) => ({
           type: "toolCall" as const,
@@ -128,7 +130,8 @@ export function piContextToArgentRequest(context: Context): TurnRequest {
       });
     } else if (msg.role === "toolResult") {
       const toolMsg = msg as ToolResultMessage;
-      const text = toolMsg.content
+      const toolBlocks = Array.isArray(toolMsg.content) ? toolMsg.content : [];
+      const text = toolBlocks
         .filter((b): b is TextContent => b.type === "text")
         .map((b) => b.text)
         .join("");
@@ -459,7 +462,7 @@ function buildProviderErrorMessage(model: Model, error: unknown): AssistantMessa
   };
   return {
     role: "assistant",
-    content: [{ type: "text", text: "" }],
+    content: [{ type: "text", text: message.trim() || "(error)" }],
     api: model.api,
     provider: model.provider,
     model: model.id,
@@ -479,17 +482,18 @@ function buildProviderErrorMessage(model: Model, error: unknown): AssistantMessa
  * Useful for round-trip testing and interop.
  */
 export function piMessageToArgentResponse(msg: AssistantMessage): TurnResponse {
-  const text = msg.content
+  const content = Array.isArray(msg.content) ? msg.content : [];
+  const text = content
     .filter((b): b is TextContent => b.type === "text")
     .map((b) => b.text)
     .join("");
 
-  const thinking = msg.content
+  const thinking = content
     .filter((b): b is ThinkingContent => b.type === "thinking")
     .map((b) => b.thinking)
     .join("");
 
-  const toolCalls = msg.content
+  const toolCalls = content
     .filter((b): b is PiToolCall => b.type === "toolCall")
     .map((tc) => ({
       type: "toolCall" as const,

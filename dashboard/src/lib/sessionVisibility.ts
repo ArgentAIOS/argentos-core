@@ -115,6 +115,17 @@ export function isBackgroundSessionKey(sessionKey: string): boolean {
   );
 }
 
+export function coerceVisibleOperatorSessionKey(params: {
+  sessionKey: string | null | undefined;
+  mainSessionKey: string;
+}): string {
+  const raw = params.sessionKey?.trim() ?? "";
+  if (!raw) {
+    return params.mainSessionKey;
+  }
+  return isBackgroundSessionKey(raw) ? params.mainSessionKey : raw;
+}
+
 export function isVisibleOperatorSession(params: {
   session: SessionVisibilityEntry;
   currentSessionKey: string;

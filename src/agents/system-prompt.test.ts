@@ -120,6 +120,28 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("sessions_send");
   });
 
+  it("explicitly warns that Atera is unavailable when no atera tool is exposed", async () => {
+    const prompt = await buildAgentSystemPrompt({
+      workspaceDir: "/tmp/argent",
+      toolNames: ["exec", "sessions_list"],
+    });
+
+    expect(prompt).toContain(
+      "If Atera is mentioned in workspace notes or memory, do not imply live Atera access in this session.",
+    );
+  });
+
+  it("tells the model to use only exact exposed Atera tool names when present", async () => {
+    const prompt = await buildAgentSystemPrompt({
+      workspaceDir: "/tmp/argent",
+      toolNames: ["exec", "atera_endpoint_diagnostics"],
+    });
+
+    expect(prompt).toContain(
+      "use only the exact callable Atera tools listed above. Never invent legacy names like `atera_list_tickets`",
+    );
+  });
+
   it("preserves tool casing in the prompt", async () => {
     const prompt = await buildAgentSystemPrompt({
       workspaceDir: "/tmp/argent",
@@ -266,8 +288,38 @@ describe("buildAgentSystemPrompt", () => {
 
     expect(prompt).toContain("## Skills");
     expect(prompt).toContain(
+      "They are not the same as operator-specific Personal Skills / procedures learned from real work.",
+    );
+    expect(prompt).toContain(
+      "that operator procedure outranks a generic workspace skill when both seem applicable.",
+    );
+    expect(prompt).toContain(
       "- If exactly one skill clearly applies: read its SKILL.md at <location> with `read`, then follow it.",
     );
+  });
+
+  it("includes personal skill authoring guidance when the tool is available", async () => {
+    const prompt = await buildAgentSystemPrompt({
+      workspaceDir: "/tmp/argent",
+      toolNames: ["personal_skill"],
+    });
+
+    expect(prompt).toContain("## Personal Skill Authoring");
+    expect(prompt).toContain(
+      "Use `personal_skill` when you are intentionally creating or patching",
+    );
+    expect(prompt).toContain("Default new Personal Skills to incubating");
+  });
+
+  it("includes runtime service identity guidance when the tool is available", async () => {
+    const prompt = await buildAgentSystemPrompt({
+      workspaceDir: "/tmp/argent",
+      toolNames: ["runtime_services"],
+    });
+
+    expect(prompt).toContain("## Runtime Service Identity");
+    expect(prompt).toContain("use `runtime_services` to resolve the canonical service identity");
+    expect(prompt).toContain("gateway and dashboard-api are different services");
   });
 
   it("appends available skills when provided", async () => {

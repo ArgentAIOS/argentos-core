@@ -586,37 +586,4 @@ describe("runEmbeddedPiAgent", () => {
     expect(modelRouterCall).toContain('reason="preselected model"');
     expect(modelRouterCall).not.toContain('reason="user override"');
   });
-
-  it("uses the configured default model when caller does not pass provider/model", async () => {
-    const sessionFile = nextSessionFile();
-    const cfg = {
-      ...makeOpenAiConfig(["mock-1"]),
-      agents: {
-        defaults: {
-          model: {
-            primary: "openai/mock-1",
-          },
-          modelRouter: {
-            enabled: false,
-          },
-        },
-      },
-    } satisfies ArgentConfig;
-    await ensureModels(cfg);
-
-    const result = await runEmbeddedPiAgent({
-      sessionId: "session:test",
-      sessionKey: testSessionKey,
-      sessionFile,
-      workspaceDir,
-      config: cfg,
-      prompt: "hello",
-      timeoutMs: 5_000,
-      agentDir,
-      enqueue: immediateEnqueue,
-    });
-
-    expect(result.meta.error).toBeUndefined();
-    expect(result.payloads?.length ?? 0).toBeGreaterThan(0);
-  });
 });

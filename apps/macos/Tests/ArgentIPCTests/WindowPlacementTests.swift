@@ -46,6 +46,22 @@ struct WindowPlacementTests {
     }
 
     @Test
+    func fillVisibleFrameFallsBackToZeroWhenBoundsMissing() {
+        let frame = WindowPlacement.fillVisibleFrame(in: .zero)
+        #expect(frame == .zero)
+    }
+
+    @Test
+    func fillVisibleFrameMatchesBounds() {
+        let bounds = NSRect(x: 10, y: 20, width: 300.4, height: 200.6)
+        let frame = WindowPlacement.fillVisibleFrame(in: bounds)
+        #expect(frame.origin.x == 10)
+        #expect(frame.origin.y == 20)
+        #expect(frame.width == 300)
+        #expect(frame.height == 201)
+    }
+
+    @Test
     func ensureOnScreenUsesFallbackWhenWindowOffscreen() {
         let window = NSWindow(
             contentRect: NSRect(x: 100_000, y: 100_000, width: 200, height: 120),

@@ -22,7 +22,6 @@
 
 import type { ToolCall } from "../argent-ai/types.js";
 import type { ToolHandler, ToolRegistry } from "./tools.js";
-import { sanitizeToolTextForModel } from "../security/tool-safety.js";
 
 // ============================================================================
 // TYPES
@@ -476,15 +475,6 @@ export class ToolExecutor {
         abortController,
       );
 
-      const sanitizedResult = sanitizeToolTextForModel(result.content);
-      result = {
-        ...result,
-        content: sanitizedResult.text,
-        metadata: {
-          ...(result.metadata ?? {}),
-          safety: sanitizedResult.safety,
-        },
-      };
       result.durationMs = Date.now() - startTime;
 
       // ── 7. Run post-execution hooks ──

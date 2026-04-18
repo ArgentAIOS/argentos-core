@@ -20,7 +20,7 @@ import { resolve, dirname, extname, relative } from "path";
 import type { TextContent, ImageContent } from "../argent-ai/types.js";
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "./pi-types.js";
 import { detectDangerousCommand } from "../agents/tools/command-safety.js";
-import { sanitizeToolTextForModel } from "../security/tool-safety.js";
+import { redactSensitiveText } from "../utils/redact.js";
 
 // ============================================================================
 // Shared Utilities
@@ -593,17 +593,11 @@ export function createBashTool(
           truncated = true;
         }
 
-        // Route command output through the canonical tool safety boundary before
-        // it reaches model-visible transcripts or persisted tool results.
-        const sanitizedOutput = sanitizeToolTextForModel(output);
+        // Redact secrets from tool output before it reaches memory/chat
+        output = redactSensitiveText(output);
 
         const exitStr = exitCode === 0 ? "" : `\nExit code: ${exitCode}`;
-        return textResult(`${sanitizedOutput.text}${exitStr}`, {
-          exitCode,
-          bytes: totalBytes,
-          truncated,
-          safety: sanitizedOutput.safety,
-        });
+        return textResult(`${output}${exitStr}`, { exitCode, bytes: totalBytes, truncated });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("ABORT") || msg.includes("abort")) {

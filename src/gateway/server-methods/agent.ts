@@ -16,6 +16,7 @@ import {
   resolveAgentDeliveryPlan,
   resolveAgentOutboundTarget,
 } from "../../infra/outbound/agent-delivery.js";
+import { captureAndPromote } from "../../memory/live-inbox/capture.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import { defaultRuntime } from "../../runtime.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
@@ -194,6 +195,18 @@ export const agentHandlers: GatewayRequestHandlers = {
     // stored session (e.g. "agent:main:webchat-123" not "agent:argent:webchat-123").
     if (requestedSessionKey && agentId && !requestedSessionKey.startsWith("agent:")) {
       requestedSessionKey = `agent:${agentId}:${requestedSessionKey}`;
+    }
+    if (message) {
+      try {
+        captureAndPromote({
+          sessionKey: requestedSessionKey,
+          text: message,
+          role: "user",
+          config: cfg.agents?.defaults?.liveInbox,
+        });
+      } catch {
+        // Non-fatal — live inbox capture must never block an operator turn.
+      }
     }
     let resolvedSessionId = request.sessionId?.trim() || undefined;
     let sessionEntry: SessionEntry | undefined;

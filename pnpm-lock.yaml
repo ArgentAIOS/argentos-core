@@ -56,19 +56,16 @@ importers:
         version: 1.2.0-beta.3
       '@mariozechner/pi-agent-core':
         specifier: 0.57.1
-        version: 0.57.1(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
+        version: 0.57.1(ws@8.20.0)(zod@4.3.6)
       '@mariozechner/pi-ai':
         specifier: 0.57.1
-        version: 0.57.1(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
+        version: 0.57.1(ws@8.20.0)(zod@4.3.6)
       '@mariozechner/pi-coding-agent':
         specifier: 0.57.1
-        version: 0.57.1(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
+        version: 0.57.1(ws@8.20.0)(zod@4.3.6)
       '@mariozechner/pi-tui':
         specifier: 0.57.1
         version: 0.57.1
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.29.0
-        version: 1.29.0(zod@4.3.6)
       '@mozilla/readability':
         specifier: ^0.6.0
         version: 0.6.0
@@ -438,7 +435,7 @@ importers:
   extensions/bluebubbles:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/canvas-docs-enforcer: {}
@@ -446,7 +443,7 @@ importers:
   extensions/copilot-proxy:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/dashboard-canvas-bridge: {}
@@ -488,31 +485,31 @@ importers:
         version: 1.40.0
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/discord:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/feishu:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/google-antigravity-auth:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/google-gemini-cli-auth:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/google-workspace:
@@ -522,7 +519,7 @@ importers:
         version: 144.0.0
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/googlechat:
@@ -532,31 +529,31 @@ importers:
         version: 10.6.2
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/imessage:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/line:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/llm-task:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/lobster:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/matrix:
@@ -578,13 +575,13 @@ importers:
         version: 4.3.6
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/mattermost:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/memory-lancedb:
@@ -600,13 +597,13 @@ importers:
         version: 6.32.0(ws@8.20.0)(zod@4.3.6)
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/minimax-portal-auth:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/msteams:
@@ -621,7 +618,7 @@ importers:
         specifier: ^1.2.3
         version: 1.4.1
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
       express:
         specifier: ^5.2.1
@@ -633,13 +630,13 @@ importers:
   extensions/nextcloud-talk:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/nostr:
     dependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
       nostr-tools:
         specifier: ^2.23.0
@@ -651,7 +648,7 @@ importers:
   extensions/open-prose:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/response-validator: {}
@@ -659,13 +656,13 @@ importers:
   extensions/signal:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/slack:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/summarize-tts-enforcer: {}
@@ -675,7 +672,7 @@ importers:
   extensions/telegram:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/tlon:
@@ -688,7 +685,7 @@ importers:
         version: 3.0.0
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/twitch:
@@ -707,7 +704,7 @@ importers:
         version: 4.3.6
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/voice-call:
@@ -723,19 +720,19 @@ importers:
         version: 4.3.6
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/whatsapp:
     devDependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   extensions/zalo:
     dependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
       undici:
         specifier: 7.20.0
@@ -747,19 +744,19 @@ importers:
         specifier: 0.34.47
         version: 0.34.47
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   packages/clawdbot:
     dependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   packages/moltbot:
     dependencies:
       argentos:
-        specifier: link:../..
+        specifier: workspace:*
         version: link:../..
 
   ui:
@@ -2165,16 +2162,6 @@ packages:
 
   '@mistralai/mistralai@1.14.1':
     resolution: {integrity: sha512-IiLmmZFCCTReQgPAT33r7KQ1nYo5JPdvGkrkZqA8qQ2qB1GHgs5LoP5K2ICyrjnpw2n8oSxMM/VP+liiKcGNlQ==}
-
-  '@modelcontextprotocol/sdk@1.29.0':
-    resolution: {integrity: sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@cfworker/json-schema': ^4.1.1
-      zod: ^3.25 || ^4.0
-    peerDependenciesMeta:
-      '@cfworker/json-schema':
-        optional: true
 
   '@monaco-editor/loader@1.7.0':
     resolution: {integrity: sha512-gIwR1HrJrrx+vfyOhYmCZ0/JcWqG5kbfG7+d3f/C1LXk2EvzAbHSg3MQ5lO2sMlo9izoAZ04shohfKLVT6crVA==}
@@ -5662,14 +5649,6 @@ packages:
   eventemitter3@5.0.4:
     resolution: {integrity: sha512-mlsTRyGaPBjPedk6Bvw+aqbsXDtoAyAzm5MO7JgU+yVRyMQ5O8bD4Kcci7BS85f93veegeCPkL8R4GLClnjLFw==}
 
-  eventsource-parser@3.0.6:
-    resolution: {integrity: sha512-Vo1ab+QXPzZ4tCa8SwIHJFaSzy4R6SHf7BY79rFBDf0idraZWAkYrDjDj8uWaSm3S2TK+hJ7/t1CEmZ7jXw+pg==}
-    engines: {node: '>=18.0.0'}
-
-  eventsource@3.0.7:
-    resolution: {integrity: sha512-CRT1WTyuQoD771GW56XEZFQ/ZoSfWid1alKGDYMmkt2yl8UXrVR4pspqWNEcqKvVIzg6PAltWjxcSSPrboA4iA==}
-    engines: {node: '>=18.0.0'}
-
   expand-template@2.0.3:
     resolution: {integrity: sha512-XYfuKMvj4O35f/pOXLObndIRvyQ+/+6AhODh+OKWj9S9498pHHn/IMszH+gt0fBCRWMNfk1ZSp5x3AifmnI2vg==}
     engines: {node: '>=6'}
@@ -5677,12 +5656,6 @@ packages:
   expect-type@1.3.0:
     resolution: {integrity: sha512-knvyeauYhqjOYvQ66MznSMs83wmHrCycNEN6Ao+2AeYEfxUIkuiVxdEa1qlGEPK+We3n0THiDciYSsCcgW/DoA==}
     engines: {node: '>=12.0.0'}
-
-  express-rate-limit@8.3.2:
-    resolution: {integrity: sha512-77VmFeJkO0/rvimEDuUC5H30oqUC4EyOhyGccfqoLebB0oiEYfM7nwPrsDsBL1gsTpwfzX8SFy2MT3TDyRq+bg==}
-    engines: {node: '>= 16'}
-    peerDependencies:
-      express: '>= 4.11'
 
   express@4.22.1:
     resolution: {integrity: sha512-F2X8g9P1X7uCPZMA3MVf9wcTqlyNp7IhH5qPCI0izhaOIYXaW9L535tGA3qmjRzpH+bZczqq7hVKxTR4NWnu+g==}
@@ -6358,9 +6331,6 @@ packages:
 
   json-schema-traverse@1.0.0:
     resolution: {integrity: sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==}
-
-  json-schema-typed@8.0.2:
-    resolution: {integrity: sha512-fQhoXdcvc3V28x7C7BMs4P5+kNlgUURe2jmUT1T//oBRMDrqy1QPelJimwZGo7Hg9VPV3EQV5Bnq4hbFy2vetA==}
 
   json-schema@0.4.0:
     resolution: {integrity: sha512-es94M3nTIfsEPisRafak+HDLfHXnKBhV3vU5eqPcS3flIWqcxJWgXHXiey3YrpaNsanY5ei1VoYEbOzijuq9BA==}
@@ -7354,10 +7324,6 @@ packages:
 
   pixi.js@6.5.10:
     resolution: {integrity: sha512-Z2mjeoISml2iuVwT1e/BQwERYM2yKoiR08ZdGrg8y5JjeuVptfTrve4DbPMRN/kEDodesgQZGV/pFv0fE9Q2SA==}
-
-  pkce-challenge@5.0.1:
-    resolution: {integrity: sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ==}
-    engines: {node: '>=16.20.0'}
 
   pkg-dir@4.2.0:
     resolution: {integrity: sha512-HRDzbaKjC+AOWVXxAU/x54COGeIv9eb+6CkDSQoNTt4XyWoIJvuPsXizxu/Fr23EiekbtZwmh1IcIG/l/a10GQ==}
@@ -9709,14 +9675,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@google/genai@1.46.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))':
+  '@google/genai@1.46.0':
     dependencies:
       google-auth-library: 10.6.2
       p-retry: 4.6.2
       protobufjs: 7.5.4
       ws: 8.20.0
-    optionalDependencies:
-      '@modelcontextprotocol/sdk': 1.29.0(zod@4.3.6)
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -9766,6 +9730,7 @@ snapshots:
   '@hono/node-server@1.19.9(hono@4.11.7)':
     dependencies:
       hono: 4.11.7
+    optional: true
 
   '@huggingface/jinja@0.5.6': {}
 
@@ -10074,9 +10039,9 @@ snapshots:
       std-env: 3.10.0
       yoctocolors: 2.1.2
 
-  '@mariozechner/pi-agent-core@0.57.1(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)':
+  '@mariozechner/pi-agent-core@0.57.1(ws@8.20.0)(zod@4.3.6)':
     dependencies:
-      '@mariozechner/pi-ai': 0.57.1(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
+      '@mariozechner/pi-ai': 0.57.1(ws@8.20.0)(zod@4.3.6)
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
       - aws-crt
@@ -10086,11 +10051,11 @@ snapshots:
       - ws
       - zod
 
-  '@mariozechner/pi-ai@0.57.1(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)':
+  '@mariozechner/pi-ai@0.57.1(ws@8.20.0)(zod@4.3.6)':
     dependencies:
       '@anthropic-ai/sdk': 0.73.0(zod@4.3.6)
       '@aws-sdk/client-bedrock-runtime': 3.1014.0
-      '@google/genai': 1.46.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))
+      '@google/genai': 1.46.0
       '@mistralai/mistralai': 1.14.1
       '@sinclair/typebox': 0.34.47
       ajv: 8.18.0
@@ -10110,11 +10075,11 @@ snapshots:
       - ws
       - zod
 
-  '@mariozechner/pi-coding-agent@0.57.1(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)':
+  '@mariozechner/pi-coding-agent@0.57.1(ws@8.20.0)(zod@4.3.6)':
     dependencies:
       '@mariozechner/jiti': 2.6.5
-      '@mariozechner/pi-agent-core': 0.57.1(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
-      '@mariozechner/pi-ai': 0.57.1(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
+      '@mariozechner/pi-agent-core': 0.57.1(ws@8.20.0)(zod@4.3.6)
+      '@mariozechner/pi-ai': 0.57.1(ws@8.20.0)(zod@4.3.6)
       '@mariozechner/pi-tui': 0.57.1
       '@silvia-odwyer/photon-node': 0.3.4
       chalk: 5.6.2
@@ -10211,28 +10176,6 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
-
-  '@modelcontextprotocol/sdk@1.29.0(zod@4.3.6)':
-    dependencies:
-      '@hono/node-server': 1.19.9(hono@4.11.7)
-      ajv: 8.18.0
-      ajv-formats: 3.0.1(ajv@8.18.0)
-      content-type: 1.0.5
-      cors: 2.8.6
-      cross-spawn: 7.0.6
-      eventsource: 3.0.7
-      eventsource-parser: 3.0.6
-      express: 5.2.1
-      express-rate-limit: 8.3.2(express@5.2.1)
-      hono: 4.11.7
-      jose: 6.2.2
-      json-schema-typed: 8.0.2
-      pkce-challenge: 5.0.1
-      raw-body: 3.0.2
-      zod: 4.3.6
-      zod-to-json-schema: 3.25.1(zod@4.3.6)
-    transitivePeerDependencies:
-      - supports-color
 
   '@monaco-editor/loader@1.7.0':
     dependencies:
@@ -13937,20 +13880,9 @@ snapshots:
 
   eventemitter3@5.0.4: {}
 
-  eventsource-parser@3.0.6: {}
-
-  eventsource@3.0.7:
-    dependencies:
-      eventsource-parser: 3.0.6
-
   expand-template@2.0.3: {}
 
   expect-type@1.3.0: {}
-
-  express-rate-limit@8.3.2(express@5.2.1):
-    dependencies:
-      express: 5.2.1
-      ip-address: 10.1.0
 
   express@4.22.1:
     dependencies:
@@ -14777,8 +14709,6 @@ snapshots:
   json-schema-traverse@0.4.1: {}
 
   json-schema-traverse@1.0.0: {}
-
-  json-schema-typed@8.0.2: {}
 
   json-schema@0.4.0: {}
 
@@ -16067,8 +15997,6 @@ snapshots:
       '@pixi/text-bitmap': 6.5.10(2762c56fca570b3535ae46c2cf711a82)
       '@pixi/ticker': 6.5.10(@pixi/extensions@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))
       '@pixi/utils': 6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))
-
-  pkce-challenge@5.0.1: {}
 
   pkg-dir@4.2.0:
     dependencies:

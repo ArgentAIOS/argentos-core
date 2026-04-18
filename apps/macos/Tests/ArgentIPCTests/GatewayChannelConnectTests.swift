@@ -8,6 +8,7 @@ import Testing
     private enum FakeResponse {
         case helloOk(delayMs: Int)
         case invalid(delayMs: Int)
+        case connectError(message: String, delayMs: Int)
     }
 
     private final class FakeWebSocketTask: WebSocketTasking, @unchecked Sendable {
@@ -64,6 +65,10 @@ import Testing
             case let .invalid(ms):
                 delayMs = ms
                 msg = .string("not json")
+            case let .connectError(message, ms):
+                delayMs = ms
+                let id = self.connectRequestID.withLock { $0 } ?? "connect"
+                msg = .data(Self.connectErrorData(id: id, message: message))
             }
             try await Task.sleep(nanoseconds: UInt64(delayMs) * 1_000_000)
             return msg
@@ -100,6 +105,20 @@ import Testing
             """
             return Data(json.utf8)
         }
+
+        private static func connectErrorData(id: String, message: String) -> Data {
+            let json = """
+            {
+              "type": "res",
+              "id": "\(id)",
+              "ok": false,
+              "error": {
+                "message": "\(message)"
+              }
+            }
+            """
+            return Data(json.utf8)
+        }
     }
 
     private final class FakeWebSocketSession: WebSocketSessioning, @unchecked Sendable {
@@ -117,6 +136,30 @@ import Testing
             self.makeCount.withLock { $0 += 1 }
             let task = FakeWebSocketTask(response: self.response)
             return WebSocketTaskBox(task: task)
+        }
+    }
+
+    private final class SequencedWebSocketSession: WebSocketSessioning, @unchecked Sendable {
+        private let responses: [FakeResponse]
+        private let makeCount = OSAllocatedUnfairLock(initialState: 0)
+
+        init(responses: [FakeResponse]) {
+            self.responses = responses
+        }
+
+        func snapshotMakeCount() -> Int { self.makeCount.withLock { $0 } }
+
+        func makeWebSocketTask(url: URL) -> WebSocketTaskBox {
+            _ = url
+            let index = self.makeCount.withLock { count -> Int in
+                let current = count
+                count += 1
+                return current
+            }
+            let response = index < self.responses.count
+                ? self.responses[index]
+                : (self.responses.last ?? .invalid(delayMs: 0))
+            return WebSocketTaskBox(task: FakeWebSocketTask(response: response))
         }
     }
 
@@ -156,5 +199,37 @@ import Testing
             if case .failure = r2 { true } else { false }
         }())
         #expect(session.snapshotMakeCount() == 1)
+    }
+
+    @Test func authMismatchClearsCachedDeviceTokenAndRetriesWithSharedToken() async throws {
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("gateway-channel-auth-retry-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        setenv("OPENCLAW_STATE_DIR", tempDir.path, 1)
+        defer {
+            unsetenv("OPENCLAW_STATE_DIR")
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let identity = DeviceIdentityStore.loadOrCreate()
+        _ = DeviceAuthStore.storeToken(
+            deviceId: identity.deviceId,
+            role: "operator",
+            token: "stale-device-token")
+
+        let session = SequencedWebSocketSession(responses: [
+            .connectError(message: "unauthorized: gateway token mismatch", delayMs: 0),
+            .helloOk(delayMs: 0),
+        ])
+        let channel = GatewayChannelActor(
+            url: URL(string: "ws://example.invalid")!,
+            token: "shared-token",
+            session: WebSocketSessionBox(session: session))
+
+        try await channel.connect()
+
+        #expect(session.snapshotMakeCount() == 2)
+        #expect(DeviceAuthStore.loadToken(deviceId: identity.deviceId, role: "operator") == nil)
+        #expect(await channel.authSource() == .sharedToken)
     }
 }

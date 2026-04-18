@@ -60,6 +60,13 @@ export type MemoryType =
   | "episode";
 export type Significance = "routine" | "noteworthy" | "important" | "core";
 export type LessonType = "discovery" | "error_correction" | "best_practice" | "anti_pattern";
+export type PersonalSkillCandidateState =
+  | "candidate"
+  | "incubating"
+  | "promoted"
+  | "rejected"
+  | "deprecated";
+export type PersonalSkillScope = "operator" | "family" | "agent";
 export type ReflectionTrigger =
   | "heartbeat"
   | "evening_cron"
@@ -338,6 +345,105 @@ export const lessons = pgTable(
     // FTS index — created via raw SQL in migration:
     //   CREATE INDEX idx_lessons_fts ON lessons
     //     USING gin (to_tsvector('english', context || ' ' || action || ' ' || outcome || ' ' || lesson));
+  ],
+);
+
+// ============================================================================
+// PERSONAL SKILL CANDIDATES
+// ============================================================================
+
+export const personalSkillCandidates = pgTable(
+  "personal_skill_candidates",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id),
+    operatorId: text("operator_id"),
+    profileId: text("profile_id"),
+    scope: text("scope").$type<PersonalSkillScope>().notNull().default("operator"),
+    title: text("title").notNull(),
+    summary: text("summary").notNull(),
+    triggerPatterns: jsonb("trigger_patterns")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    procedureOutline: text("procedure_outline"),
+    preconditions: jsonb("preconditions")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    executionSteps: jsonb("execution_steps")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    expectedOutcomes: jsonb("expected_outcomes")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    relatedTools: jsonb("related_tools")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    sourceMemoryIds: jsonb("source_memory_ids")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    sourceEpisodeIds: jsonb("source_episode_ids")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    sourceTaskIds: jsonb("source_task_ids")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    sourceLessonIds: jsonb("source_lesson_ids")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    supersedesCandidateIds: jsonb("supersedes_candidate_ids")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    supersededByCandidateId: text("superseded_by_candidate_id"),
+    conflictsWithCandidateIds: jsonb("conflicts_with_candidate_ids")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    contradictionCount: integer("contradiction_count").notNull().default(0),
+    evidenceCount: integer("evidence_count").notNull().default(0),
+    recurrenceCount: integer("recurrence_count").notNull().default(1),
+    confidence: real("confidence").notNull().default(0.5),
+    strength: real("strength").notNull().default(0.5),
+    usageCount: integer("usage_count").notNull().default(0),
+    successCount: integer("success_count").notNull().default(0),
+    failureCount: integer("failure_count").notNull().default(0),
+    state: text("state").$type<PersonalSkillCandidateState>().notNull().default("candidate"),
+    operatorNotes: text("operator_notes"),
+    lastReviewedAt: timestamp("last_reviewed_at", { withTimezone: true }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    lastReinforcedAt: timestamp("last_reinforced_at", { withTimezone: true }),
+    lastContradictedAt: timestamp("last_contradicted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_personal_skill_candidates_agent").on(t.agentId),
+    index("idx_personal_skill_candidates_state").on(t.state),
+    index("idx_personal_skill_candidates_scope").on(t.scope),
+    index("idx_personal_skill_candidates_confidence").on(t.confidence),
+    index("idx_personal_skill_candidates_updated").on(t.updatedAt),
+  ],
+);
+
+export const personalSkillReviews = pgTable(
+  "personal_skill_reviews",
+  {
+    id: text("id").primaryKey(),
+    candidateId: text("candidate_id").notNull(),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id),
+    actorType: text("actor_type").notNull(),
+    action: text("action").notNull(),
+    reason: text("reason"),
+    details: jsonb("details")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_personal_skill_reviews_candidate").on(t.candidateId, t.createdAt),
+    index("idx_personal_skill_reviews_agent").on(t.agentId, t.createdAt),
   ],
 );
 

@@ -8,11 +8,6 @@ import Speech
 actor TalkModeRuntime {
     static let shared = TalkModeRuntime()
 
-    enum RecognitionMode: String, Sendable {
-        case listening
-        case playbackInterruption
-    }
-
     private enum TalkModeError: LocalizedError {
         case dashboardSendFailed(String)
 
@@ -52,7 +47,6 @@ actor TalkModeRuntime {
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var recognitionGeneration: Int = 0
-    private var recognitionMode: RecognitionMode?
     private var rmsTask: Task<Void, Never>?
     private let rmsMeter = RMSMeter()
 
@@ -123,7 +117,7 @@ actor TalkModeRuntime {
         }
 
         if self.phase == .idle || self.phase == .listening {
-            await self.startRecognition(for: .listening)
+            await self.startRecognition()
             self.phase = .listening
             await MainActor.run { TalkModeController.shared.updatePhase(.listening) }
             self.startSilenceMonitor()
@@ -155,7 +149,7 @@ actor TalkModeRuntime {
             }
             return
         }
-        await self.startRecognition(for: .listening)
+        await self.startRecognition()
         guard self.isCurrent(gen) else { return }
         self.phase = .listening
         await MainActor.run { TalkModeController.shared.updatePhase(.listening) }
@@ -192,16 +186,7 @@ actor TalkModeRuntime {
         let generation: Int
     }
 
-    private func startRecognition(for mode: RecognitionMode) async {
-        if Self.shouldRestartRecognition(
-            currentMode: self.recognitionMode,
-            hasActiveRecognition: self.hasActiveRecognitionPipeline,
-            requestedMode: mode) == false
-        {
-            self.logger.debug("talk recognition reuse mode=\(mode.rawValue, privacy: .public)")
-            return
-        }
-
+    private func startRecognition() async {
         await self.stopRecognition()
         self.recognitionGeneration &+= 1
         let generation = self.recognitionGeneration
@@ -209,33 +194,21 @@ actor TalkModeRuntime {
         let locale = await MainActor.run { AppStateStore.shared.voiceWakeLocaleID }
         self.recognizer = SFSpeechRecognizer(locale: Locale(identifier: locale))
         guard let recognizer, recognizer.isAvailable else {
-            self.recognitionMode = nil
             self.logger.error("talk recognizer unavailable")
             return
         }
 
         self.recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
         self.recognitionRequest?.shouldReportPartialResults = true
-        guard let request = self.recognitionRequest else {
-            self.recognitionMode = nil
-            return
-        }
+        guard let request = self.recognitionRequest else { return }
 
         if self.audioEngine == nil {
             self.audioEngine = AVAudioEngine()
         }
-        guard let audioEngine = self.audioEngine else {
-            self.recognitionMode = nil
-            return
-        }
+        guard let audioEngine = self.audioEngine else { return }
 
         let input = audioEngine.inputNode
         let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0, format.channelCount > 0 else {
-            self.logger.error("talk invalid audio input format sampleRate=\(format.sampleRate, privacy: .public) channels=\(format.channelCount, privacy: .public)")
-            await self.stopRecognition()
-            return
-        }
         input.removeTap(onBus: 0)
         let meter = self.rmsMeter
         input.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak request, meter] buffer, _ in
@@ -250,11 +223,9 @@ actor TalkModeRuntime {
             try audioEngine.start()
         } catch {
             self.logger.error("talk audio engine start failed: \(error.localizedDescription, privacy: .public)")
-            await self.stopRecognition()
             return
         }
 
-        self.recognitionMode = mode
         self.startRMSTicker(meter: meter)
 
         self.recognitionTask = recognizer.recognitionTask(with: request) { [weak self, generation] result, error in
@@ -273,7 +244,6 @@ actor TalkModeRuntime {
 
     private func stopRecognition() async {
         self.recognitionGeneration &+= 1
-        self.recognitionMode = nil
         self.recognitionTask?.cancel()
         self.recognitionTask = nil
         self.recognitionRequest?.endAudio()
@@ -458,7 +428,7 @@ actor TalkModeRuntime {
                 self.logger.warning("talk assistant text missing after timeout")
                 if resumeAfter {
                     await self.startListening()
-                    await self.startRecognition(for: .listening)
+                    await self.startRecognition()
                 }
                 return
             }
@@ -594,7 +564,7 @@ actor TalkModeRuntime {
             return
         }
         await self.startListening()
-        await self.startRecognition(for: .listening)
+        await self.startRecognition()
     }
 
     private func buildPrompt(transcript: String) -> String {
@@ -1271,34 +1241,8 @@ actor TalkModeRuntime {
     }
 
     private func prepareForPlayback(generation: Int, allowDisabled: Bool = false) async -> Bool {
-        await self.startRecognition(for: .playbackInterruption)
+        await self.startRecognition()
         return self.isOperational(generation, allowDisabled: allowDisabled)
-    }
-
-    private var hasActiveRecognitionPipeline: Bool {
-        self.audioEngine != nil && self.recognitionRequest != nil && self.recognitionTask != nil
-    }
-
-    static func shouldRestartRecognition(
-        currentMode: RecognitionMode?,
-        hasActiveRecognition: Bool,
-        requestedMode: RecognitionMode) -> Bool
-    {
-        guard hasActiveRecognition else { return true }
-        return currentMode != requestedMode
-    }
-
-    static func _testShouldRestartRecognition(
-        currentMode: String?,
-        hasActiveRecognition: Bool,
-        requestedMode: String) -> Bool
-    {
-        let current = currentMode.flatMap(RecognitionMode.init(rawValue:))
-        guard let requested = RecognitionMode(rawValue: requestedMode) else { return true }
-        return self.shouldRestartRecognition(
-            currentMode: current,
-            hasActiveRecognition: hasActiveRecognition,
-            requestedMode: requested)
     }
 
     private func resolveVoiceId(preferred: String?, apiKey: String) async -> String? {

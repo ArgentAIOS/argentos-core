@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { captureFromMessage, type CaptureResult } from "./capture.js";
+import {
+  buildPersonalSkillCandidateInputFromLiveInboxCandidate,
+  captureFromMessage,
+  type CaptureResult,
+} from "./capture.js";
 
 describe("captureFromMessage", () => {
   const baseParams = { sessionKey: "test-session", role: "user" as const };
@@ -193,5 +197,105 @@ describe("captureFromMessage", () => {
       expect(commitment).toBeDefined();
       expect(commitment!.significanceHint).toBe("important");
     });
+
+    it("captures explicit personal skill directives as hard commitments", () => {
+      const result = captureFromMessage({
+        ...baseParams,
+        text: "Learn this as a Personal Skill: When I ask you to verify a claim, check the live source directly, separate fact from inference, and call out ambiguity.",
+      });
+      const commitment = result.hardTriggers.find(
+        (c) => c.candidateType === "commitment" && c.matchedPattern.includes("personal\\s+skill"),
+      );
+      expect(commitment).toBeDefined();
+      expect(commitment!.confidence).toBeGreaterThanOrEqual(0.95);
+      expect(commitment!.isHard).toBe(true);
+    });
+  });
+});
+
+describe("personal skill candidates from live inbox hard triggers", () => {
+  it("builds an incubating personal skill candidate from procedural user corrections", () => {
+    const input = buildPersonalSkillCandidateInputFromLiveInboxCandidate({
+      candidate: {
+        sessionKey: "s",
+        messageId: "m",
+        role: "user",
+        candidateType: "correction",
+        factText:
+          "No, that's wrong — always check memory_recall before you answer that kind of question.",
+        confidence: 0.9,
+        triggerFlags: ["correction"],
+        entities: [],
+        isHard: true,
+        matchedPattern: "correction",
+      },
+      promotedMemoryItemId: "mem-1",
+    });
+
+    expect(input).not.toBeNull();
+    expect(input?.state).toBe("incubating");
+    expect(input?.sourceMemoryIds).toEqual(["mem-1"]);
+    expect(input?.title.toLowerCase()).toContain("operator correction");
+  });
+
+  it("ignores non-procedural or non-user corrections", () => {
+    expect(
+      buildPersonalSkillCandidateInputFromLiveInboxCandidate({
+        candidate: {
+          sessionKey: "s",
+          messageId: "m",
+          role: "assistant",
+          candidateType: "correction",
+          factText: "No, that's wrong.",
+          confidence: 0.9,
+          triggerFlags: ["correction"],
+          entities: [],
+          isHard: true,
+          matchedPattern: "correction",
+        },
+        promotedMemoryItemId: "mem-2",
+      }),
+    ).toBeNull();
+
+    expect(
+      buildPersonalSkillCandidateInputFromLiveInboxCandidate({
+        candidate: {
+          sessionKey: "s",
+          messageId: "m",
+          role: "user",
+          candidateType: "correction",
+          factText: "No, that's wrong.",
+          confidence: 0.9,
+          triggerFlags: ["correction"],
+          entities: [],
+          isHard: true,
+          matchedPattern: "correction",
+        },
+        promotedMemoryItemId: "mem-3",
+      }),
+    ).toBeNull();
+  });
+
+  it("builds an incubating personal skill candidate from explicit personal skill directives", () => {
+    const input = buildPersonalSkillCandidateInputFromLiveInboxCandidate({
+      candidate: {
+        sessionKey: "s",
+        messageId: "m",
+        role: "user",
+        candidateType: "commitment",
+        factText:
+          "Learn this as a Personal Skill: When I ask whether something is working, verify process state, endpoint health, and the newest logs before answering.",
+        confidence: 0.98,
+        triggerFlags: ["commitment"],
+        entities: [],
+        isHard: true,
+        matchedPattern: "learn-this-as-personal-skill",
+      },
+      promotedMemoryItemId: "mem-4",
+    });
+
+    expect(input).not.toBeNull();
+    expect(input?.state).toBe("incubating");
+    expect(input?.summary).toContain("Learn this as a Personal Skill");
   });
 });

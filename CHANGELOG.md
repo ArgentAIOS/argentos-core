@@ -2,26 +2,21 @@
 
 Docs: https://docs.argentos.ai
 
-## 2026.4.11.1
+## 2026.4.18.1
 
 ### Changes
 
-- Public Core now ships with a documented and validated Linux hosted install path, not just a macOS-first shell installer story.
-- Linux public installs are now documented around the real service topology:
-  - user `systemd`
-  - Gateway on `18789`
-  - Dashboard API on `9242`
-  - PostgreSQL 17 on `5433`
-  - Redis on `6380`
-- Public Core was validated on both an Apple M3 Ultra Mac Studio and an Ubuntu host running the full dedicated PG17 + Redis stack.
-- Public Core README and Mintlify install docs now describe Linux shell installation alongside the macOS path instead of implying a macOS-only experience.
-- Public dashboard intent presets no longer ship company-specific Titanium Computing or holace.io packs in Core.
-- Proprietary Holace, CallScrub, ClientSync, Lion Report, and PayPunch connector surfaces were removed from the public Core release candidate.
+- macOS: restore the packaged Argent.app release lane with the rebuilt Swift app bundle and current dashboard/runtime assets.
+- Dashboard: restore the Core-safe Intent surface so `public-core` shows the slimmed-down Safety Rules experience instead of the full governance pane.
+- Agents: make the system prompt explicitly distinguish between workspace notes and real callable tool availability, including Atera-specific guardrails for sessions that do not expose `atera_*` tools.
 
 ### Fixes
 
-- Cron: isolated `agentTurn` jobs with `delivery.mode=\"announce\"` and no explicit recipient no longer fail with `cron delivery target is missing`; they now behave as summary-only runs.
-- macOS dev-install validation now restores native app-to-gateway attachment after stale App Support device-auth cleanup.
+- macOS/Gateway auth: recover from stale packaged-app device tokens by clearing the rejected token and retrying with the shared gateway token.
+- macOS menu bar: fix left-click handling for the packaged menu bar app.
+- Gateway config reload: compare nested arrays/objects structurally so toggling the consciousness kernel no longer forces false-positive full gateway restarts.
+- Agents: harden sparse context-report handling and missing assistant-content history paths that previously produced `Cannot read properties of undefined (reading 'filter')` during normal conversation.
+- Runtime honesty: prevent the operator lane from implying legacy Atera ticket-query access when no callable Atera ticket tool is actually exposed.
 
 ## 2026.2.4
 

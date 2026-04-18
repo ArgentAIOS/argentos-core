@@ -161,6 +161,17 @@ export function createArgentStreamSimple(provider: ArgentCompatProvider): Stream
     normalizeAssistantMessageEventStream(compat(model, context, options), model);
 }
 
+/**
+ * Harden an arbitrary Pi-compatible streamSimple function with the same
+ * assistant-message normalization and terminal-error capture used by the
+ * Argent compat bridge. Use this for raw Pi providers that can still emit
+ * malformed assistant messages under provider/runtime edge cases.
+ */
+export function hardenStreamSimple(streamFn: StreamSimpleFn): StreamSimpleFn {
+  return (model: Model<Api>, context: Context, options?: SimpleStreamOptions) =>
+    normalizeAssistantMessageEventStream(streamFn(model, context, options), model);
+}
+
 function normalizeAssistantMessageEventStream(
   stream: AssistantMessageEventStream,
   model: Model<Api>,
@@ -232,7 +243,8 @@ function normalizeEvent(event: AssistantMessageEvent): AssistantMessageEvent {
 }
 
 function normalizeMessage(message: AssistantMessage): AssistantMessage {
-  const normalizedContent = message.content.map((block) => {
+  const content = Array.isArray(message.content) ? message.content : [];
+  let normalizedContent = content.map((block) => {
     if (block.type !== "toolCall") {
       return block;
     }
@@ -242,7 +254,11 @@ function normalizeMessage(message: AssistantMessage): AssistantMessage {
     };
   });
 
-  if (normalizedContent === message.content) {
+  if (normalizedContent.length === 0 && message.stopReason === "error") {
+    normalizedContent = [buildAssistantErrorTextContent(message.errorMessage)];
+  }
+
+  if (Array.isArray(message.content) && normalizedContent === message.content) {
     return message;
   }
 
@@ -261,7 +277,19 @@ function normalizeToolCallArguments(
   return {};
 }
 
+function buildAssistantErrorTextContent(errorMessage?: string): { type: "text"; text: string } {
+  const text = errorMessage?.trim() || "(error)";
+  return { type: "text", text };
+}
+
 function buildStreamErrorMessage(model: Model<Api>, error: unknown): AssistantMessage {
+  const includeStack = process.env.ARGENT_DEBUG_ERROR_STACKS === "1";
+  const errorMessage =
+    error instanceof Error
+      ? includeStack && error.stack
+        ? `${error.message}\n${error.stack}`
+        : error.message
+      : String(error);
   const usage: Usage = {
     input: 0,
     output: 0,
@@ -272,13 +300,13 @@ function buildStreamErrorMessage(model: Model<Api>, error: unknown): AssistantMe
   };
   return {
     role: "assistant",
-    content: [],
+    content: [buildAssistantErrorTextContent(errorMessage)],
     api: model.api,
     provider: model.provider as Provider,
     model: model.id,
     usage,
     stopReason: "error",
-    errorMessage: error instanceof Error ? error.message : String(error),
+    errorMessage,
     timestamp: Date.now(),
   };
 }

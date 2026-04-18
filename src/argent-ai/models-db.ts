@@ -644,15 +644,6 @@ export const MODELS: Record<string, Record<string, ModelDef>> = {
   },
 
   zai: {
-    "glm-5.1": {
-      ...zaiBase,
-      id: "glm-5.1",
-      name: "GLM-5.1",
-      reasoning: true,
-      contextWindow: 204800,
-      maxTokens: 131072,
-      cost: { input: 1, output: 3.2, cacheRead: 0.25, cacheWrite: 1 },
-    },
     "glm-5": {
       ...zaiBase,
       id: "glm-5",

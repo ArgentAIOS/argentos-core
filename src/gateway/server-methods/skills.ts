@@ -1,4 +1,5 @@
 import type { ArgentConfig } from "../../config/config.js";
+import type { PersonalSkillCandidate } from "../../memory/memu-types.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import {
   listAgentIds,
@@ -9,6 +10,7 @@ import { installSkill } from "../../agents/skills-install.js";
 import { buildWorkspaceSkillStatus } from "../../agents/skills-status.js";
 import { loadWorkspaceSkillEntries, type SkillEntry } from "../../agents/skills.js";
 import { loadConfig, writeConfigFile } from "../../config/config.js";
+import { getMemoryAdapter } from "../../data/storage-factory.js";
 import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import {
@@ -64,6 +66,51 @@ function collectSkillBins(entries: SkillEntry[]): string[] {
     }
   }
   return [...bins].toSorted();
+}
+
+function resolveRequestedAgentId(cfg: ArgentConfig, agentIdRaw: string | undefined): string {
+  const trimmed = typeof agentIdRaw === "string" ? agentIdRaw.trim() : "";
+  const agentId = trimmed ? normalizeAgentId(trimmed) : resolveDefaultAgentId(cfg);
+  if (trimmed) {
+    const knownAgents = listAgentIds(cfg);
+    if (!knownAgents.includes(agentId)) {
+      throw new Error(`unknown agent id "${trimmed}"`);
+    }
+  }
+  return agentId;
+}
+
+function deriveDemotionRisk(candidate: PersonalSkillCandidate): "low" | "medium" | "high" {
+  if (
+    candidate.state === "promoted" &&
+    (candidate.failureCount >= candidate.successCount + 2 ||
+      candidate.strength < 0.35 ||
+      candidate.confidence < 0.58 ||
+      candidate.contradictionCount >= 2)
+  ) {
+    return "high";
+  }
+  if (
+    candidate.failureCount > 0 ||
+    candidate.contradictionCount > 0 ||
+    candidate.strength < 0.55 ||
+    candidate.state === "incubating"
+  ) {
+    return "medium";
+  }
+  return "low";
+}
+
+function isAllowedManualState(
+  value: string,
+): value is "candidate" | "incubating" | "promoted" | "rejected" | "deprecated" {
+  return (
+    value === "candidate" ||
+    value === "incubating" ||
+    value === "promoted" ||
+    value === "rejected" ||
+    value === "deprecated"
+  );
 }
 
 export const skillsHandlers: GatewayRequestHandlers = {
@@ -212,5 +259,271 @@ export const skillsHandlers: GatewayRequestHandlers = {
     };
     await writeConfigFile(nextConfig);
     respond(true, { ok: true, skillKey: p.skillKey, config: current }, undefined);
+  },
+  "skills.personal": async ({ params, respond }) => {
+    try {
+      const cfg = loadConfig();
+      const agentId = resolveRequestedAgentId(
+        cfg,
+        typeof params?.agentId === "string" ? params.agentId : undefined,
+      );
+      const memory = await getMemoryAdapter();
+      const scopedMemory = memory.withAgentId ? memory.withAgentId(agentId) : memory;
+      const candidates = await scopedMemory.listPersonalSkillCandidates({ limit: 200 });
+      const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+      const rows = candidates
+        .slice()
+        .sort((a, b) => {
+          const stateOrder = (state: string) =>
+            state === "promoted"
+              ? 0
+              : state === "incubating"
+                ? 1
+                : state === "candidate"
+                  ? 2
+                  : state === "deprecated"
+                    ? 3
+                    : 4;
+          return (
+            stateOrder(a.state) - stateOrder(b.state) ||
+            b.confidence - a.confidence ||
+            b.strength - a.strength ||
+            b.updatedAt.localeCompare(a.updatedAt)
+          );
+        })
+        .map((candidate) => ({
+          reviewHistory: [],
+          id: candidate.id,
+          title: candidate.title,
+          summary: candidate.summary,
+          scope: candidate.scope,
+          state: candidate.state,
+          confidence: candidate.confidence,
+          strength: candidate.strength,
+          usageCount: candidate.usageCount,
+          successCount: candidate.successCount,
+          failureCount: candidate.failureCount,
+          contradictionCount: candidate.contradictionCount,
+          createdAt: candidate.createdAt,
+          updatedAt: candidate.updatedAt,
+          operatorNotes: candidate.operatorNotes,
+          lastUsedAt: candidate.lastUsedAt,
+          lastReviewedAt: candidate.lastReviewedAt,
+          lastReinforcedAt: candidate.lastReinforcedAt,
+          lastContradictedAt: candidate.lastContradictedAt,
+          executionReady:
+            candidate.state === "promoted" &&
+            candidate.executionSteps.length > 0 &&
+            !candidate.supersededByCandidateId,
+          demotionRisk: deriveDemotionRisk(candidate),
+          preconditions: candidate.preconditions,
+          executionSteps: candidate.executionSteps,
+          expectedOutcomes: candidate.expectedOutcomes,
+          relatedTools: candidate.relatedTools,
+          supersedes: candidate.supersedesCandidateIds
+            .map((id) => byId.get(id)?.title ?? id)
+            .filter(Boolean),
+          supersedesEntries: candidate.supersedesCandidateIds
+            .map((id) => {
+              const peer = byId.get(id);
+              return peer
+                ? { id: peer.id, title: peer.title, state: peer.state }
+                : { id, title: id };
+            })
+            .filter(Boolean),
+          supersededBy: candidate.supersededByCandidateId
+            ? (byId.get(candidate.supersededByCandidateId)?.title ??
+              candidate.supersededByCandidateId)
+            : null,
+          supersededByEntry: candidate.supersededByCandidateId
+            ? (() => {
+                const peer = byId.get(candidate.supersededByCandidateId);
+                return peer
+                  ? { id: peer.id, title: peer.title, state: peer.state }
+                  : {
+                      id: candidate.supersededByCandidateId!,
+                      title: candidate.supersededByCandidateId!,
+                      state: "unknown",
+                    };
+              })()
+            : null,
+          conflicts: candidate.conflictsWithCandidateIds
+            .map((id) => byId.get(id)?.title ?? id)
+            .filter(Boolean),
+          conflictEntries: candidate.conflictsWithCandidateIds
+            .map((id) => {
+              const peer = byId.get(id);
+              return peer
+                ? { id: peer.id, title: peer.title, state: peer.state }
+                : { id, title: id, state: "unknown" };
+            })
+            .filter(Boolean),
+        }));
+      const rowsWithHistory = await Promise.all(
+        rows.map(async (row) => ({
+          ...row,
+          reviewHistory: await scopedMemory.listPersonalSkillReviewEvents({
+            candidateId: row.id,
+            limit: 12,
+          }),
+        })),
+      );
+      respond(
+        true,
+        {
+          agentId,
+          generatedAt: new Date().toISOString(),
+          rows: rowsWithHistory,
+        },
+        undefined,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, message));
+    }
+  },
+  "skills.personal.update": async ({ params, respond }) => {
+    try {
+      const cfg = loadConfig();
+      const id = typeof params?.id === "string" ? params.id.trim() : "";
+      const stateRaw = typeof params?.state === "string" ? params.state.trim().toLowerCase() : "";
+      const operatorNotes =
+        typeof params?.operatorNotes === "string" ? params.operatorNotes.trim() : undefined;
+      const agentId = resolveRequestedAgentId(
+        cfg,
+        typeof params?.agentId === "string" ? params.agentId : undefined,
+      );
+      if (!id) {
+        throw new Error("skills.personal.update requires id");
+      }
+      if (!isAllowedManualState(stateRaw)) {
+        throw new Error("skills.personal.update requires a valid state");
+      }
+      const memory = await getMemoryAdapter();
+      const scopedMemory = memory.withAgentId ? memory.withAgentId(agentId) : memory;
+      const updated = await scopedMemory.updatePersonalSkillCandidate(id, {
+        state: stateRaw,
+        ...(operatorNotes !== undefined ? { operatorNotes } : {}),
+        lastReviewedAt: new Date().toISOString(),
+      });
+      if (!updated) {
+        throw new Error(`personal skill "${id}" not found`);
+      }
+      await scopedMemory.createPersonalSkillReviewEvent({
+        candidateId: id,
+        actorType: "operator",
+        action:
+          operatorNotes !== undefined
+            ? "operator_note"
+            : stateRaw === "promoted"
+              ? "promoted"
+              : stateRaw === "deprecated"
+                ? "deprecated"
+                : "demoted",
+        reason:
+          operatorNotes !== undefined
+            ? "Operator updated review notes"
+            : `Operator set Personal Skill state to ${stateRaw}`,
+        details: {
+          state: updated.state,
+          operatorNotes: operatorNotes ?? undefined,
+        },
+      });
+      respond(true, { ok: true, id, state: updated.state }, undefined);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, message));
+    }
+  },
+  "skills.personal.resolveConflict": async ({ params, respond }) => {
+    try {
+      const cfg = loadConfig();
+      const winnerId = typeof params?.winnerId === "string" ? params.winnerId.trim() : "";
+      const loserId = typeof params?.loserId === "string" ? params.loserId.trim() : "";
+      const agentId = resolveRequestedAgentId(
+        cfg,
+        typeof params?.agentId === "string" ? params.agentId : undefined,
+      );
+      if (!winnerId || !loserId) {
+        throw new Error("skills.personal.resolveConflict requires winnerId and loserId");
+      }
+      if (winnerId === loserId) {
+        throw new Error("winnerId and loserId must differ");
+      }
+      const memory = await getMemoryAdapter();
+      const scopedMemory = memory.withAgentId ? memory.withAgentId(agentId) : memory;
+      const all = await scopedMemory.listPersonalSkillCandidates({ limit: 200 });
+      const winner = all.find((entry) => entry.id === winnerId);
+      const loser = all.find((entry) => entry.id === loserId);
+      if (!winner || !loser) {
+        throw new Error("winner or loser personal skill not found");
+      }
+      const now = new Date().toISOString();
+      await scopedMemory.updatePersonalSkillCandidate(winnerId, {
+        supersedesCandidateIds: [...new Set([...winner.supersedesCandidateIds, loserId])],
+        conflictsWithCandidateIds: winner.conflictsWithCandidateIds.filter((id) => id !== loserId),
+        lastReviewedAt: now,
+      });
+      await scopedMemory.updatePersonalSkillCandidate(loserId, {
+        state: "deprecated",
+        supersededByCandidateId: winnerId,
+        conflictsWithCandidateIds: loser.conflictsWithCandidateIds.filter((id) => id !== winnerId),
+        lastContradictedAt: now,
+        lastReviewedAt: now,
+      });
+      await scopedMemory.createPersonalSkillReviewEvent({
+        candidateId: winnerId,
+        actorType: "operator",
+        action: "conflict_resolved",
+        reason: `Operator selected ${winner.title} over ${loser.title}`,
+        details: {
+          winnerId,
+          loserId,
+        },
+      });
+      await scopedMemory.createPersonalSkillReviewEvent({
+        candidateId: loserId,
+        actorType: "operator",
+        action: "conflict_resolved",
+        reason: `Operator resolved conflict in favor of ${winner.title}`,
+        details: {
+          winnerId,
+          loserId,
+        },
+      });
+      respond(true, { ok: true, winnerId, loserId }, undefined);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, message));
+    }
+  },
+  "skills.personal.delete": async ({ params, respond }) => {
+    try {
+      const cfg = loadConfig();
+      const id = typeof params?.id === "string" ? params.id.trim() : "";
+      const agentId = resolveRequestedAgentId(
+        cfg,
+        typeof params?.agentId === "string" ? params.agentId : undefined,
+      );
+      if (!id) {
+        throw new Error("skills.personal.delete requires id");
+      }
+      const memory = await getMemoryAdapter();
+      const scopedMemory = memory.withAgentId ? memory.withAgentId(agentId) : memory;
+      await scopedMemory.createPersonalSkillReviewEvent({
+        candidateId: id,
+        actorType: "operator",
+        action: "deleted",
+        reason: "Operator deleted Personal Skill",
+      });
+      const deleted = await scopedMemory.deletePersonalSkillCandidate(id);
+      if (!deleted) {
+        throw new Error(`personal skill "${id}" not found`);
+      }
+      respond(true, { ok: true, id }, undefined);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, message));
+    }
   },
 };

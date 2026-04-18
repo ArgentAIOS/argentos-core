@@ -1,24 +1,5 @@
 export type DashboardSurfaceProfile = "full" | "public-core";
 export type DashboardMode = "personal" | "operations";
-export type OperationsWorkspaceTabId = "map" | "workflows" | "jobs" | "tasks" | "org" | "schedule";
-
-const OPERATIONS_WORKSPACE_TABS = [
-  { id: "map", label: "Workflow Map" },
-  { id: "workflows", label: "Workflows" },
-  { id: "jobs", label: "Workloads" },
-  { id: "tasks", label: "Task Manager" },
-  { id: "org", label: "Org Chart" },
-  { id: "schedule", label: "Schedule" },
-] as const satisfies ReadonlyArray<{ id: OperationsWorkspaceTabId; label: string }>;
-
-const PUBLIC_CORE_ALLOWED_OPERATIONS_TABS = new Set<OperationsWorkspaceTabId>([
-  "map",
-  "workflows",
-  "jobs",
-  "tasks",
-  "org",
-  "schedule",
-]);
 
 /**
  * Tabs HIDDEN at runtime when surfaceProfile === "public-core".
@@ -33,7 +14,6 @@ const PUBLIC_CORE_ALLOWED_OPERATIONS_TABS = new Set<OperationsWorkspaceTabId>([
 export const PUBLIC_CORE_BLOCKED_CONFIG_TABS = new Set<string>([
   "systems",
   "capabilities",
-  "intent",
   "security",
   "gateway",
   "database",
@@ -118,24 +98,6 @@ export function isOperationsSurfaceAllowed(surfaceProfile: DashboardSurfaceProfi
  */
 export function isWorkforceSurfaceAllowed(surfaceProfile: DashboardSurfaceProfile): boolean {
   return surfaceProfile === "full";
-}
-
-export function isOperationsWorkspaceTabAllowed(
-  tabId: OperationsWorkspaceTabId,
-  surfaceProfile: DashboardSurfaceProfile,
-): boolean {
-  if (surfaceProfile !== "public-core") {
-    return true;
-  }
-  return PUBLIC_CORE_ALLOWED_OPERATIONS_TABS.has(tabId);
-}
-
-export function getOperationsWorkspaceTabs(
-  surfaceProfile: DashboardSurfaceProfile,
-): Array<{ id: OperationsWorkspaceTabId; label: string }> {
-  return OPERATIONS_WORKSPACE_TABS.filter((tab) =>
-    isOperationsWorkspaceTabAllowed(tab.id, surfaceProfile),
-  ).map((tab) => ({ ...tab }));
 }
 
 export function isDashboardModeAllowed(

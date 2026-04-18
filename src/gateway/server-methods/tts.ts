@@ -8,7 +8,7 @@ import {
   isTtsEnabled,
   isTtsProviderConfigured,
   resolveTtsAutoMode,
-  resolveTtsApiKey,
+  resolveTtsApiKeyAsync,
   resolveTtsConfig,
   resolveTtsPrefsPath,
   resolveTtsProviderOrder,
@@ -37,8 +37,8 @@ export const ttsHandlers: GatewayRequestHandlers = {
         fallbackProvider: fallbackProviders[0] ?? null,
         fallbackProviders,
         prefsPath,
-        hasOpenAIKey: Boolean(resolveTtsApiKey(config, "openai")),
-        hasElevenLabsKey: Boolean(resolveTtsApiKey(config, "elevenlabs")),
+        hasOpenAIKey: Boolean(await resolveTtsApiKeyAsync(config, "openai")),
+        hasElevenLabsKey: Boolean(await resolveTtsApiKeyAsync(config, "elevenlabs")),
         edgeEnabled: isTtsProviderConfigured(config, "edge"),
       });
     } catch (err) {
@@ -146,14 +146,14 @@ export const ttsHandlers: GatewayRequestHandlers = {
           {
             id: "openai",
             name: "OpenAI",
-            configured: Boolean(resolveTtsApiKey(config, "openai")),
+            configured: Boolean(await resolveTtsApiKeyAsync(config, "openai")),
             models: [...OPENAI_TTS_MODELS],
             voices: [...OPENAI_TTS_VOICES],
           },
           {
             id: "elevenlabs",
             name: "ElevenLabs",
-            configured: Boolean(resolveTtsApiKey(config, "elevenlabs")),
+            configured: Boolean(await resolveTtsApiKeyAsync(config, "elevenlabs")),
             models: ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_monolingual_v1"],
           },
           {

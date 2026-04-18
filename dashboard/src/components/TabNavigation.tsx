@@ -3,7 +3,7 @@
  * Uses ArgentOS icon system for cohesive visual identity
  */
 
-import React from "react";
+import React, { useState } from "react";
 import {
   WorkflowMapIcon,
   WorkloadsIcon,
@@ -11,7 +11,7 @@ import {
   OrgChartIcon,
   ScheduleIcon,
   WorkersIcon,
-} from "../icons/ArgentOS";
+} from "@/icons/ArgentOS";
 
 export type TabName = "workflow" | "workloads" | "tasks" | "org" | "schedule" | "workers";
 
@@ -53,7 +53,7 @@ export const TabNavigation: React.FC<TabNavProps> = ({
         ))}
       </div>
 
-      <style>{`
+      <style jsx>{`
         .tab-navigation {
           display: flex;
           align-items: center;

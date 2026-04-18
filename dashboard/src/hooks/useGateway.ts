@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { resolvePrimaryChatAgentId } from "../lib/sessionVisibility";
+import {
+  coerceVisibleOperatorSessionKey,
+  resolvePrimaryChatAgentId,
+} from "../lib/sessionVisibility";
 
 /**
  * Format a provider error string into a human-readable chat message.
@@ -130,7 +133,7 @@ function toCanonicalSessionKey(sessionKey: string | undefined): string {
     mainSessionKey,
     globalDefaultAgentId || DEFAULT_AGENT_ID,
   );
-  const raw = (sessionKey ?? "").trim();
+  const raw = coerceVisibleOperatorSessionKey({ sessionKey, mainSessionKey }).trim();
   if (!raw) return mainSessionKey;
   const lowered = raw.toLowerCase();
   const normalizedMain = mainSessionKey.toLowerCase();
@@ -457,11 +460,18 @@ export function useGateway(config: GatewayConfig = {}) {
       message: string,
       onStream?: (content: string, done: boolean) => void,
       onModelInfo?: (info: {
-        provider: string;
-        model: string;
-        tier: string;
-        score: number;
-        routed: boolean;
+        provider?: string;
+        model?: string;
+        tier?: string;
+        score?: number;
+        routed?: boolean;
+        matchedSkills?: Array<{
+          name: string;
+          source: string;
+          state?: string;
+          score: number;
+          reasons?: string[];
+        }>;
       }) => void,
       onToolUse?: (toolName: string, phase: "start" | "end") => void,
       attachments?: Array<{ type: string; mimeType: string; fileName: string; content: string }>,
@@ -492,6 +502,32 @@ export function useGateway(config: GatewayConfig = {}) {
               tier?: string;
               score?: number;
               routed?: boolean;
+              matchedSkills?: Array<{
+                id?: string;
+                name?: string;
+                source?: string;
+                kind?: "generic" | "personal";
+                state?: string;
+                score?: number;
+                confidence?: number;
+                provenanceCount?: number;
+                reasons?: string[];
+              }>;
+              personalProcedure?: {
+                id?: string;
+                name?: string;
+                scope?: string;
+                steps?: Array<{
+                  index?: number;
+                  text?: string;
+                  expectedTools?: string[];
+                }>;
+                completedStepCount?: number;
+                totalStepCount?: number;
+                missingSteps?: string[];
+                executedTools?: string[];
+                succeeded?: boolean;
+              };
               name?: string;
               error?: string;
             };
@@ -519,6 +555,90 @@ export function useGateway(config: GatewayConfig = {}) {
               score: event.data.score ?? 0,
               routed: event.data.routed ?? false,
             });
+          }
+
+          if (event.stream === "lifecycle" && event.data?.phase === "skill_candidates") {
+            const matchedSkills = Array.isArray(event.data.matchedSkills)
+              ? event.data.matchedSkills
+                  .map((entry) => ({
+                    id: typeof entry?.id === "string" ? entry.id : undefined,
+                    name: String(entry?.name ?? "").trim(),
+                    source: String(entry?.source ?? "").trim(),
+                    kind: entry?.kind === "personal" ? "personal" : "generic",
+                    state: typeof entry?.state === "string" ? entry.state : undefined,
+                    score: Number(entry?.score ?? 0),
+                    confidence:
+                      typeof entry?.confidence === "number" ? entry.confidence : undefined,
+                    provenanceCount:
+                      typeof entry?.provenanceCount === "number"
+                        ? entry.provenanceCount
+                        : undefined,
+                    reasons: Array.isArray(entry?.reasons)
+                      ? entry.reasons.filter(
+                          (reason): reason is string => typeof reason === "string",
+                        )
+                      : undefined,
+                  }))
+                  .filter((entry) => entry.name.length > 0)
+              : [];
+            onModelInfo?.({
+              matchedSkills,
+            });
+          }
+
+          if (
+            event.stream === "lifecycle" &&
+            event.data?.phase === "personal_skill_execution_mode"
+          ) {
+            const skill = event.data.skill;
+            if (skill && typeof skill === "object") {
+              onModelInfo?.({
+                personalProcedure: {
+                  id: typeof skill.id === "string" ? skill.id : undefined,
+                  name: String(skill.name ?? "").trim() || undefined,
+                  scope: typeof skill.scope === "string" ? skill.scope : undefined,
+                  steps: Array.isArray(event.data.plan)
+                    ? event.data.plan.map((step) => ({
+                        index: typeof step?.index === "number" ? step.index : undefined,
+                        text: typeof step?.text === "string" ? step.text : undefined,
+                        expectedTools: Array.isArray(step?.expectedTools)
+                          ? step.expectedTools.filter(
+                              (tool): tool is string => typeof tool === "string",
+                            )
+                          : undefined,
+                      }))
+                    : undefined,
+                },
+              });
+            }
+          }
+
+          if (
+            event.stream === "lifecycle" &&
+            event.data?.phase === "personal_skill_execution_report"
+          ) {
+            const report = event.data.report;
+            if (report && typeof report === "object") {
+              onModelInfo?.({
+                personalProcedure: {
+                  completedStepCount:
+                    typeof report.completedStepCount === "number"
+                      ? report.completedStepCount
+                      : undefined,
+                  totalStepCount:
+                    typeof report.totalStepCount === "number" ? report.totalStepCount : undefined,
+                  missingSteps: Array.isArray(report.missingSteps)
+                    ? report.missingSteps.filter((step): step is string => typeof step === "string")
+                    : undefined,
+                  executedTools: Array.isArray(report.executedTools)
+                    ? report.executedTools.filter(
+                        (tool): tool is string => typeof tool === "string",
+                      )
+                    : undefined,
+                  succeeded: typeof report.succeeded === "boolean" ? report.succeeded : undefined,
+                },
+              });
+            }
           }
 
           // Handle tool events — capture tool name for badge display

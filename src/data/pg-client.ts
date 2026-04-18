@@ -13,58 +13,6 @@ const log = createSubsystemLogger("data/postgres");
 
 let _sql: ReturnType<typeof postgres> | null = null;
 
-type PostgresClientOptions = NonNullable<Parameters<typeof postgres>[1]>;
-
-function parseSocketConnectionString(connectionString: string): {
-  host: string;
-  port?: number;
-  database?: string;
-  username?: string;
-  password?: string;
-} | null {
-  try {
-    const url = new URL(connectionString);
-    const host = url.searchParams.get("host")?.trim();
-    if (!host || !host.startsWith("/")) return null;
-
-    const database = decodeURIComponent(url.pathname.replace(/^\/+/, "")) || undefined;
-    const username =
-      decodeURIComponent(url.username) || url.searchParams.get("user")?.trim() || undefined;
-    const password =
-      decodeURIComponent(url.password) || url.searchParams.get("password")?.trim() || undefined;
-    const portValue = url.searchParams.get("port")?.trim() || url.port || undefined;
-    const port = portValue ? Number.parseInt(portValue, 10) : undefined;
-
-    return {
-      host,
-      port: Number.isFinite(port) ? port : undefined,
-      database,
-      username,
-      password,
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function createPostgresClient(
-  connectionString: string,
-  options: PostgresClientOptions = {},
-): ReturnType<typeof postgres> {
-  const socket = parseSocketConnectionString(connectionString);
-  if (socket) {
-    return postgres({
-      ...options,
-      host: socket.host,
-      port: socket.port,
-      database: socket.database,
-      username: socket.username,
-      password: socket.password,
-    });
-  }
-  return postgres(connectionString, options);
-}
-
 /**
  * Get or create the PostgreSQL connection pool.
  * postgres.js handles connection pooling internally with lazy connections.
@@ -73,7 +21,7 @@ export function getPgClient(config: PostgresConfig): ReturnType<typeof postgres>
   if (_sql) return _sql;
 
   // ArgentOS uses port 5433 (not default 5432) to avoid conflicts
-  _sql = createPostgresClient(config.connectionString, {
+  _sql = postgres(config.connectionString, {
     max: config.maxConnections ?? 10,
     idle_timeout: 30,
     connect_timeout: 10,

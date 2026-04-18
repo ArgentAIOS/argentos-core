@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { resolveServiceKey } from "../infra/service-keys.js";
+import type { ArgentConfig } from "../config/config.js";
+import {
+  resolveServiceKey,
+  resolveServiceKeyAsync,
+  type ServiceKeyAccessContext,
+} from "../infra/service-keys.js";
 
 /**
  * Resolves the MiniMax API key from (in priority order):
@@ -37,6 +42,17 @@ export function resolveMinimaxApiKey(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+export async function resolveMinimaxApiKeyAsync(
+  cfg?: ArgentConfig,
+  context?: ServiceKeyAccessContext,
+): Promise<string | undefined> {
+  const configuredKey =
+    (await resolveServiceKeyAsync("MINIMAX_CODE_PLAN_KEY", cfg, context))?.trim() ||
+    (await resolveServiceKeyAsync("MINIMAX_API_KEY", cfg, context))?.trim();
+  if (configuredKey) return configuredKey;
+  return resolveMinimaxApiKey();
 }
 
 type MinimaxBaseResp = {

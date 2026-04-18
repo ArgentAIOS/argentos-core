@@ -6,6 +6,7 @@ import { type MessagingToolSend } from "./pi-embedded-messaging.js";
 
 const TOOL_RESULT_MAX_CHARS = 8000;
 const TOOL_ERROR_MAX_CHARS = 400;
+const TOOL_RESULT_EMPTY_TEXT = "(no output)";
 
 function truncateToolText(text: string): string {
   if (text.length <= TOOL_RESULT_MAX_CHARS) {
@@ -68,7 +69,10 @@ export function sanitizeToolResult(result: unknown): unknown {
   const record = result as Record<string, unknown>;
   const content = Array.isArray(record.content) ? record.content : null;
   if (!content) {
-    return record;
+    return {
+      ...record,
+      content: [{ type: "text", text: TOOL_RESULT_EMPTY_TEXT }],
+    };
   }
   const sanitized = content.map((item) => {
     if (!item || typeof item !== "object") {
@@ -88,6 +92,12 @@ export function sanitizeToolResult(result: unknown): unknown {
     }
     return entry;
   });
+  if (sanitized.length === 0) {
+    return {
+      ...record,
+      content: [{ type: "text", text: TOOL_RESULT_EMPTY_TEXT }],
+    };
+  }
   return { ...record, content: sanitized };
 }
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { init, parse } from "es-module-lexer";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -73,12 +74,37 @@ while (queue.length > 0) {
   }
 }
 
-const baseUrl = pathToFileURL(entrypoint).href;
+const runtimeRequire = createRequire(pathToFileURL(entrypoint));
+function resolvesFromRuntimeContext(spec) {
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `try { await import.meta.resolve(${JSON.stringify(spec)}); } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exit(1); }`,
+      ],
+      {
+        cwd: runtimeDir,
+        stdio: ["ignore", "ignore", "pipe"],
+      },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
 const missing = [];
 for (const spec of [...bareSpecs].sort()) {
+  const runtimeResolved = resolvesFromRuntimeContext(spec);
+  let requireResolved = false;
   try {
-    await import.meta.resolve(spec, baseUrl);
+    runtimeRequire.resolve(spec);
+    requireResolved = true;
   } catch {
+    requireResolved = false;
+  }
+  if (!runtimeResolved && !requireResolved) {
     missing.push(spec);
   }
 }

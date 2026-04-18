@@ -58,11 +58,13 @@ import { createMusicGenerationTool } from "./tools/music-generation-tool.js";
 import { createNamecheapDnsTool } from "./tools/namecheap-dns-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
 import { createOsDocsTool } from "./tools/os-docs-tool.js";
+import { createPersonalSkillTool } from "./tools/personal-skill-tool.js";
 import { createPluginBuilderTool } from "./tools/plugin-builder-tool.js";
 import { createPodcastGenerateTool } from "./tools/podcast-generate-tool.js";
 import { createPodcastPlanTool } from "./tools/podcast-plan-tool.js";
 import { createPodcastPublishPipelineTool } from "./tools/podcast-publish-pipeline-tool.js";
 import { createRailwayDeployTool } from "./tools/railway-deploy-tool.js";
+import { createRuntimeServicesTool } from "./tools/runtime-services-tool.js";
 import { createScheduledTasksTool } from "./tools/scheduled-tasks-tool.js";
 import { createSearchTool } from "./tools/search-tool.js";
 import { createSendPayloadTool } from "./tools/send-payload-tool.js";
@@ -230,6 +232,9 @@ export function createArgentTools(options?: {
         ]),
     createGatewayTool({
       agentSessionKey: options?.agentSessionKey,
+      config: options?.config,
+    }),
+    createRuntimeServicesTool({
       config: options?.config,
     }),
     createVisualPresenceTool({
@@ -470,6 +475,7 @@ export function createArgentTools(options?: {
     createMemoryReflectTool({ config: options?.config, agentId: memoryAgentId }),
     createMemoryTimelineTool({ config: options?.config, agentId: memoryAgentId }),
     createMemoryGraphTool({ config: options?.config, agentId: memoryAgentId }),
+    createPersonalSkillTool({ agentId: memoryAgentId }),
   ].filter((t): t is AnyAgentTool => t !== null);
   tools.push(...memuTools);
 
