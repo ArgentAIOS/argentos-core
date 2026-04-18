@@ -19,6 +19,7 @@ This app now ships Sparkle auto-updates. Release builds must be Developer ID–s
     - `APP_STORE_CONNECT_API_KEY_P8`, `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`
     - `echo "$APP_STORE_CONNECT_API_KEY_P8" | sed 's/\\n/\n/g' > /tmp/argent-notary.p8`
     - `xcrun notarytool store-credentials "argent-notary" --key /tmp/argent-notary.p8 --key-id "$APP_STORE_CONNECT_KEY_ID" --issuer "$APP_STORE_CONNECT_ISSUER_ID"`
+- If `notarytool` returns HTTP `403` with “A required agreement is missing or has expired”, stop and fix the Apple Developer / App Store Connect agreement state for team `F2DH8T4BVH` before retrying. Do not treat signed-only output as release-complete.
 - `pnpm` deps installed (`pnpm install --config.node-linker=hoisted`).
 - Sparkle tools are fetched automatically via SwiftPM at `apps/macos/.build/artifacts/sparkle/Sparkle/bin/` (`sign_update`, `generate_appcast`, etc.).
 

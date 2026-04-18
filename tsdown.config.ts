@@ -1,4 +1,5 @@
 import type { Plugin } from "rolldown";
+import fs from "node:fs";
 import { createRequire } from "node:module";
 import { defineConfig } from "tsdown";
 
@@ -101,14 +102,16 @@ export default defineConfig([
   // Dashboard api-server.cjs imports these modules by path.
   // They must be emitted as standalone entry points so the imports resolve.
   {
-    entry: {
-      "gateway/server-methods/knowledge": "src/gateway/server-methods/knowledge.ts",
-      "data/knowledge-acl": "src/data/knowledge-acl.ts",
-      "data/agent-family": "src/data/agent-family.ts",
-      "pg-adapter": "src/data/pg-adapter.ts",
-      "infra/execution-worker-runner": "src/infra/execution-worker-runner.ts",
-      "infra/exec-approval-forwarder": "src/infra/exec-approval-forwarder.ts",
-    },
+    entry: Object.fromEntries(
+      [
+        ["gateway/server-methods/knowledge", "src/gateway/server-methods/knowledge.ts"],
+        ["data/knowledge-acl", "src/data/knowledge-acl.ts"],
+        ["data/agent-family", "src/data/agent-family.ts"],
+        ["pg-adapter", "src/data/pg-adapter.ts"],
+        ["infra/execution-worker-runner", "src/infra/execution-worker-runner.ts"],
+        ["infra/exec-approval-forwarder", "src/infra/exec-approval-forwarder.ts"],
+      ].filter(([, file]) => fs.existsSync(file)),
+    ),
     env,
     define,
     fixedExtension: false,

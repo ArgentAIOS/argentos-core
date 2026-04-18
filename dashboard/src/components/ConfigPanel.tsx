@@ -83,7 +83,6 @@ import { processTextForSpeech, defaultPatternHandlers } from "../utils/textToSpe
 import { AlignmentDocs } from "./AlignmentDocs";
 import { AvatarCustomizer } from "./AvatarCustomizer";
 import { AvatarPreviewPane } from "./AvatarPreviewPane";
-import { LicensePanel } from "./LicensePanel";
 import { LogViewer } from "./LogViewer";
 import { MarketplaceTab } from "./MarketplaceTab";
 import { MemoryConsole } from "./MemoryConsole";
@@ -6944,10 +6943,7 @@ export function ConfigPanel({
     },
     {
       label: "",
-      items: [
-        { id: "marketplace" as TabType, label: "Marketplace", icon: Package },
-        { id: "license" as TabType, label: "License", icon: Award },
-      ],
+      items: [{ id: "marketplace" as TabType, label: "Marketplace", icon: Package }],
     },
   ];
 
@@ -19699,21 +19695,6 @@ export function ConfigPanel({
                       Add only what you intend to operate.
                     </OperatorGuide>
                     <MarketplaceTab />
-                  </div>
-                )}
-
-                {activeTab === "license" && (
-                  <div className="space-y-4">
-                    <OperatorGuide title="Operator Guide">
-                      License controls entitlement and subscription state, not runtime behavior. Use
-                      this tab when validating plan access, seat state, or commercial status. If a
-                      feature is broken, troubleshoot the feature first before assuming it is a
-                      license problem.
-                    </OperatorGuide>
-                    <p className="text-white/50 text-sm">
-                      Manage your ArgentOS license and view your subscription status.
-                    </p>
-                    <LicensePanel />
                   </div>
                 )}
 

@@ -5,9 +5,9 @@ import type { ConsciousnessKernelRunner } from "../infra/consciousness-kernel.js
 import type { ContemplationRunner } from "../infra/contemplation-runner.js";
 import type { ExecutionWorkerRunner } from "../infra/execution-worker-runner.js";
 import type { HeartbeatRunner } from "../infra/heartbeat-runner.js";
-import type { JobOrchestratorRunner } from "../infra/job-orchestrator-runner.js";
 import type { SisRunner } from "../infra/sis-runner.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
+import type { JobOrchestratorRunner } from "./job-orchestrator-bridge.js";
 import { type ChannelId, listChannelPlugins } from "../channels/plugins/index.js";
 import { closeStorageAdapter } from "../data/storage-factory.js";
 import { stopGmailWatcher } from "../hooks/gmail-watcher.js";

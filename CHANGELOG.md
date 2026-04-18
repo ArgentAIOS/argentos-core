@@ -2,6 +2,14 @@
 
 Docs: https://docs.argentos.ai
 
+## 2026.4.18.2
+
+### Fixes
+
+- Core boundary: remove Business-only license and workforce execution surfaces from the public Core export.
+- Dashboard: stop exposing the dead License tab in the Core settings surface.
+- Release process: document Threadmaster ownership, notarization blockers, and the website manifest publish rail in the release runbooks.
+
 ## 2026.4.18.1
 
 ### Changes
