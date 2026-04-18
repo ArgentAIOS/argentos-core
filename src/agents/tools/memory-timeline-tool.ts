@@ -94,8 +94,8 @@ function isStrongCanonicalEntityName(value: string): boolean {
   );
 }
 
-function extractTemporalEntitySubject(query: string | null | undefined): string | null {
-  const trimmed = query?.trim().replace(/[?!.\s]+$/g, "") ?? "";
+function extractTemporalEntitySubject(query: string): string | null {
+  const trimmed = query.trim().replace(/[?!.\s]+$/g, "");
   if (!trimmed) return null;
 
   const patterns = [

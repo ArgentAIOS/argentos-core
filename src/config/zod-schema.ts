@@ -337,7 +337,6 @@ export const ArgentSchema = z
     update: z
       .object({
         channel: z.union([z.literal("stable"), z.literal("beta"), z.literal("dev")]).optional(),
-        branch: z.string().optional(),
         checkOnStart: z.boolean().optional(),
       })
       .strict()

@@ -359,12 +359,30 @@ actor PortGuardian {
         case .local:
             // The gateway daemon may listen as `argent` or as its runtime (`node`, `bun`, etc).
             if full.contains("gateway-daemon") { return true }
+            if Self.isManualGatewayCommand(fullCommand: full) { return true }
+            let expectedCommands = ["node", "argent", "tsx", "pnpm", "bun"]
+            if expectedCommands.contains(where: { cmd.contains($0) }) { return true }
             // If args are unavailable, treat a CLI listener as expected.
             if cmd.contains("argent"), full == cmd { return true }
             return false
         case .unconfigured:
             return false
         }
+    }
+
+    private static func isManualGatewayCommand(fullCommand: String) -> Bool {
+        let normalized = fullCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return false }
+        let gatewayRunMarkers = [
+            " argent.mjs gateway run",
+            " dist/entry.js gateway run",
+            " dist/index.js gateway run",
+            " bin/argent.js gateway run",
+            " pnpm --silent argent gateway run",
+            " pnpm argent gateway run",
+            " bun argent.mjs gateway run",
+        ]
+        return gatewayRunMarkers.contains { normalized.contains($0) }
     }
 
     private func probeGatewayHealthIfNeeded(

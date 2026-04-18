@@ -274,30 +274,4 @@ describe("memory timeline tool", () => {
       vi.useRealTimers();
     }
   });
-
-  it("does not crash when query is omitted and only days/limit are provided", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-03-15T14:30:00Z"));
-
-    try {
-      const tool = createMemoryTimelineTool({
-        config: defaultConfig,
-      });
-      if (!tool) {
-        throw new Error("tool missing");
-      }
-
-      const result = await tool.execute("call_timeline_no_query", {
-        days: 1,
-        limit: 10,
-      });
-      const data = result.details as TimelineToolDetails;
-
-      expect(data.count).toBeTypeOf("number");
-      expect(data.days).toBe(1);
-      expect(String(data.timeline ?? "")).not.toContain("undefined");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
 });

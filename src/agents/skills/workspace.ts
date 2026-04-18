@@ -6,6 +6,7 @@ import type {
   SkillEligibilityContext,
   SkillCommandSpec,
   SkillEntry,
+  SkillMatchCandidate,
   SkillSnapshot,
 } from "./types.js";
 import { formatSkillsForPrompt, loadSkillsFromDir, type Skill } from "../../agent-core/coding.js";
@@ -24,6 +25,38 @@ import { serializeByKey } from "./serialize.js";
 const fsp = fs.promises;
 const skillsLogger = createSubsystemLogger("skills");
 const skillCommandDebugOnce = new Set<string>();
+const SKILL_MATCH_STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "be",
+  "for",
+  "from",
+  "how",
+  "i",
+  "in",
+  "is",
+  "it",
+  "me",
+  "my",
+  "of",
+  "on",
+  "or",
+  "our",
+  "that",
+  "the",
+  "this",
+  "to",
+  "use",
+  "we",
+  "what",
+  "when",
+  "where",
+  "with",
+  "you",
+  "your",
+]);
 
 function debugSkillCommandOnce(
   messageKey: string,
@@ -182,6 +215,86 @@ function loadSkillEntries(
     };
   });
   return skillEntries;
+}
+
+function tokenizeSkillMatchInput(input: string): string[] {
+  return input
+    .toLowerCase()
+    .split(/[^a-z0-9]+/g)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 3 && !SKILL_MATCH_STOPWORDS.has(part));
+}
+
+function toSkillSourceLabel(entry: { skill: { source?: string } }): string {
+  const raw = String(entry.skill.source ?? "")
+    .trim()
+    .toLowerCase();
+  if (!raw) return "generic";
+  if (raw.includes("workspace")) return "workspace";
+  if (raw.includes("managed")) return "managed";
+  if (raw.includes("bundled")) return "system";
+  return raw;
+}
+
+export function matchSkillCandidatesForPrompt(params: {
+  prompt: string;
+  entries?: SkillEntry[];
+  resolvedSkills?: Skill[];
+  limit?: number;
+}): SkillMatchCandidate[] {
+  const queryTerms = new Set(tokenizeSkillMatchInput(params.prompt));
+  if (queryTerms.size === 0) {
+    return [];
+  }
+
+  const entries =
+    params.entries ??
+    (params.resolvedSkills ?? []).map(
+      (skill): SkillEntry => ({
+        skill,
+        frontmatter: {},
+      }),
+    );
+
+  const candidates = entries
+    .map((entry) => {
+      const haystackTerms = new Set(
+        tokenizeSkillMatchInput(
+          [
+            entry.skill.name,
+            entry.skill.description ?? "",
+            entry.metadata?.primaryEnv ?? "",
+            entry.skill.filePath ?? "",
+          ]
+            .filter(Boolean)
+            .join(" "),
+        ),
+      );
+      const overlap = [...queryTerms].filter((term) => haystackTerms.has(term));
+      const exactName = tokenizeSkillMatchInput(entry.skill.name);
+      const nameOverlap = exactName.filter((term) => queryTerms.has(term));
+      const score = overlap.length * 1.5 + nameOverlap.length * 2.5;
+      if (score <= 0) return null;
+      const reasons: string[] = [];
+      if (nameOverlap.length > 0) {
+        reasons.push(`name:${nameOverlap.join(",")}`);
+      }
+      const descOverlap = overlap.filter((term) => !nameOverlap.includes(term));
+      if (descOverlap.length > 0) {
+        reasons.push(`context:${descOverlap.join(",")}`);
+      }
+      return {
+        name: entry.skill.name,
+        source: toSkillSourceLabel(entry),
+        kind: "generic",
+        score: Math.round(score * 100) / 100,
+        reasons,
+      } satisfies SkillMatchCandidate;
+    })
+    .filter((candidate): candidate is SkillMatchCandidate => Boolean(candidate))
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+
+  return candidates.slice(0, Math.max(1, params.limit ?? 5));
 }
 
 export function buildWorkspaceSkillSnapshot(

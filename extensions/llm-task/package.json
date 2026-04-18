@@ -1,10 +1,10 @@
 {
   "name": "@argentos/llm-task",
-  "version": "2026.4.11.1",
+  "version": "2026.3.2",
   "description": "ArgentOS JSON-only LLM task plugin",
   "type": "module",
   "devDependencies": {
-    "argentos": "link:../.."
+    "argentos": "workspace:*"
   },
   "argent": {
     "extensions": [

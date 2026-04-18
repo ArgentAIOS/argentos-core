@@ -15,7 +15,7 @@ import type { ToolOutcome } from "../agents/pi-embedded-subscribe.handlers.types
 import type { ReplyPayload } from "../auto-reply/types.js";
 import type { ArgentConfig } from "../config/config.js";
 import type { MemoryAdapter } from "../data/adapter.js";
-import type { Lesson } from "../memory/memu-types.js";
+import type { CreatePersonalSkillCandidateInput, Lesson } from "../memory/memu-types.js";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { getReplyFromConfig } from "../auto-reply/reply.js";
 import { loadConfig } from "../config/config.js";
@@ -559,6 +559,8 @@ export const __testing = {
   extractJsonCandidates,
   selectBestSisReplyPayload,
   buildSisConsolidationSignature,
+  buildPersonalSkillCandidateInputsFromLessons,
+  createPersonalSkillCandidatesFromLessons,
   shouldSkipSisConsolidationCheckpoint,
   resetSisConsolidationMetrics,
   getSisConsolidationMetricsSnapshot,
@@ -747,10 +749,11 @@ async function runConsolidationOnce(
     if (allExtracted.length > 0) {
       // Deduplicate against existing lessons
       const newLessons = await deduplicateAgainstExisting(allExtracted, memuStore);
+      const storedLessons: Lesson[] = [];
 
       // Store each new lesson
       for (const lesson of newLessons) {
-        await memuStore.createLesson({
+        const stored = await memuStore.createLesson({
           type: lesson.type,
           context: lesson.context,
           action: lesson.action,
@@ -761,16 +764,22 @@ async function runConsolidationOnce(
           tags: lesson.tags,
           relatedTools: lesson.relatedTools,
         });
+        storedLessons.push(stored);
       }
 
       totalLessonsStored = newLessons.length;
       const reinforced = allExtracted.length - newLessons.length;
+      const personalSkillCandidatesCreated = await createPersonalSkillCandidatesFromLessons(
+        memuStore,
+        storedLessons,
+      );
 
       log.info("sis: lessons extracted", {
         ruleBasedCandidates: allExtracted.length - modelLessons.length,
         modelExtracted: modelLessons.length,
         storedNew: totalLessonsStored,
         reinforcedExisting: reinforced,
+        personalSkillCandidatesCreated,
       });
     }
 
@@ -889,6 +898,74 @@ function groupByTools(lessons: Lesson[]): Map<string, Lesson[]> {
 /** Merge two JSON-serialized string arrays, deduplicated */
 function mergeTags(tagsA: string[], tagsB: string[]): string[] {
   return [...new Set([...tagsA, ...tagsB])];
+}
+
+function normalizePersonalSkillCandidateTitle(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function buildPersonalSkillCandidateTitle(lesson: Lesson): string {
+  const toolPrefix =
+    lesson.relatedTools.length > 0 ? `${lesson.relatedTools[0]} procedure` : "learned procedure";
+  const snippet = lesson.lesson.trim().replace(/[.?!]+$/g, "");
+  return `${toolPrefix}: ${snippet}`.slice(0, 160);
+}
+
+function buildPersonalSkillCandidateInputsFromLessons(
+  lessons: Lesson[],
+): CreatePersonalSkillCandidateInput[] {
+  return lessons
+    .filter((lesson) => lesson.confidence >= 0.75 && lesson.relatedTools.length > 0)
+    .map((lesson) => ({
+      title: buildPersonalSkillCandidateTitle(lesson),
+      summary: lesson.lesson,
+      triggerPatterns: mergeTags(lesson.relatedTools, lesson.tags).slice(0, 12),
+      procedureOutline: [
+        `Context: ${lesson.context}`,
+        `Action: ${lesson.action}`,
+        `Outcome: ${lesson.outcome}`,
+        lesson.correction ? `Correction: ${lesson.correction}` : null,
+      ]
+        .filter((line): line is string => Boolean(line))
+        .join("\n"),
+      relatedTools: lesson.relatedTools,
+      sourceLessonIds: [lesson.id],
+      evidenceCount: Math.max(1, lesson.occurrences),
+      recurrenceCount: Math.max(1, lesson.occurrences),
+      confidence: lesson.confidence,
+      state: "candidate",
+    }));
+}
+
+async function createPersonalSkillCandidatesFromLessons(
+  memory: MemoryAdapter,
+  lessons: Lesson[],
+): Promise<number> {
+  if (lessons.length === 0) return 0;
+  const existing = await memory.listPersonalSkillCandidates({ limit: 500 });
+  const existingTitles = new Set(
+    existing
+      .filter((candidate) => candidate.state !== "rejected" && candidate.state !== "deprecated")
+      .map((candidate) => normalizePersonalSkillCandidateTitle(candidate.title)),
+  );
+  const existingLessonIds = new Set(
+    existing.flatMap((candidate) => candidate.sourceLessonIds.map((id) => String(id))),
+  );
+
+  let created = 0;
+  for (const input of buildPersonalSkillCandidateInputsFromLessons(lessons)) {
+    const normalizedTitle = normalizePersonalSkillCandidateTitle(input.title);
+    const sourceLessonId = input.sourceLessonIds?.[0];
+    if (existingTitles.has(normalizedTitle)) continue;
+    if (sourceLessonId && existingLessonIds.has(sourceLessonId)) continue;
+
+    await memory.createPersonalSkillCandidate(input);
+    existingTitles.add(normalizedTitle);
+    if (sourceLessonId) existingLessonIds.add(sourceLessonId);
+    created += 1;
+  }
+
+  return created;
 }
 
 /**

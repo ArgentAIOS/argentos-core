@@ -6,7 +6,6 @@ import {
   DEFAULT_ARGENT_BROWSER_COLOR,
   DEFAULT_ARGENT_BROWSER_PROFILE_NAME,
 } from "../../browser/constants.js";
-import { fetchWithSsrFGuard } from "../../infra/net/fetch-guard.js";
 import { BROWSER_BRIDGES } from "./browser-bridges.js";
 import { DEFAULT_SANDBOX_BROWSER_IMAGE, SANDBOX_AGENT_WORKSPACE_MOUNT } from "./constants.js";
 import {
@@ -19,27 +18,20 @@ import { updateBrowserRegistry } from "./registry.js";
 import { slugifySessionKey } from "./shared.js";
 import { isToolAllowed } from "./tool-policy.js";
 
-const SANDBOX_LOOPBACK_ENDPOINT_POLICY = {
-  allowedHostnames: ["127.0.0.1", "localhost"],
-  hostnameAllowlist: ["127.0.0.1", "localhost"],
-} as const;
-
 async function waitForSandboxCdp(params: { cdpPort: number; timeoutMs: number }): Promise<boolean> {
   const deadline = Date.now() + Math.max(0, params.timeoutMs);
   const url = `http://127.0.0.1:${params.cdpPort}/json/version`;
   while (Date.now() < deadline) {
     try {
-      const { response, release } = await fetchWithSsrFGuard({
-        url,
-        timeoutMs: 1000,
-        policy: SANDBOX_LOOPBACK_ENDPOINT_POLICY,
-      });
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 1000);
       try {
-        if (response.ok) {
+        const res = await fetch(url, { signal: ctrl.signal });
+        if (res.ok) {
           return true;
         }
       } finally {
-        await release();
+        clearTimeout(t);
       }
     } catch {
       // ignore
@@ -181,8 +173,8 @@ export async function ensureSandboxBrowser(params: {
 
     const onEnsureAttachTarget = params.cfg.browser.autoStart
       ? async () => {
-          const containerState = await dockerContainerState(containerName);
-          if (containerState.exists && !containerState.running) {
+          const state = await dockerContainerState(containerName);
+          if (state.exists && !state.running) {
             await execDocker(["start", containerName]);
           }
           const ok = await waitForSandboxCdp({

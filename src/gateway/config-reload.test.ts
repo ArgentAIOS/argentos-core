@@ -23,6 +23,44 @@ describe("diffConfigPaths", () => {
     const paths = diffConfigPaths(prev, next);
     expect(paths).toContain("messages.groupChat.mentionPatterns");
   });
+
+  it("does not report unchanged arrays of objects as changed", () => {
+    const prev = {
+      plugins: {
+        entries: {
+          "vip-email-alert": {
+            config: {
+              vipSenders: [{ name: "Richard", email: "richard@example.com" }],
+              accounts: [{ label: "Default", gogAccount: "default" }],
+            },
+          },
+        },
+      },
+    };
+    const next = structuredClone(prev);
+    const paths = diffConfigPaths(prev, next);
+    expect(paths).toEqual([]);
+  });
+
+  it("isolates a kernel toggle without falsely dirtying unchanged plugin arrays", () => {
+    const prev = {
+      agents: { defaults: { kernel: { enabled: false } } },
+      plugins: {
+        entries: {
+          "vip-email-alert": {
+            config: {
+              vipSenders: [{ name: "Richard", email: "richard@example.com" }],
+              accounts: [{ label: "Default", gogAccount: "default" }],
+            },
+          },
+        },
+      },
+    };
+    const next = structuredClone(prev);
+    next.agents.defaults.kernel.enabled = true;
+    const paths = diffConfigPaths(prev, next);
+    expect(paths).toEqual(["agents.defaults.kernel.enabled"]);
+  });
 });
 
 describe("buildGatewayReloadPlan", () => {

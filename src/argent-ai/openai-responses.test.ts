@@ -239,6 +239,117 @@ describe("streamOpenAIResponses (Argent)", () => {
     expect(types.indexOf("function_call")).toBeLessThan(types.indexOf("function_call_output"));
   });
 
+  it("tolerates tool results with missing content blocks", async () => {
+    cap = installFailingFetchCapture();
+    const model = buildModel();
+
+    const assistantToolOnly: AssistantMessage = {
+      role: "assistant",
+      api: "openai-responses",
+      provider: "openai",
+      model: "gpt-5.2",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "toolUse",
+      timestamp: Date.now(),
+      content: [
+        {
+          type: "toolCall",
+          id: "call_sparse|fc_sparse",
+          name: "web_fetch",
+          arguments: { url: "https://example.com" },
+        },
+      ],
+    };
+
+    const sparseToolResult = {
+      role: "toolResult" as const,
+      toolCallId: "call_sparse|fc_sparse",
+      toolName: "web_fetch",
+      timestamp: Date.now(),
+    } as ToolResultMessage;
+
+    const stream = streamOpenAIResponses(
+      model,
+      {
+        systemPrompt: "system",
+        messages: [
+          { role: "user", content: "Fetch the page.", timestamp: Date.now() },
+          assistantToolOnly,
+          sparseToolResult,
+          { role: "user", content: "Now continue.", timestamp: Date.now() },
+        ],
+        tools: [
+          {
+            name: "web_fetch",
+            description: "fetch a page",
+            parameters: Type.Object({ url: Type.String() }, { additionalProperties: false }),
+          },
+        ],
+      },
+      { apiKey: "test" },
+    );
+
+    const result = await stream.result();
+    expect(result.stopReason).toBe("error");
+
+    const body = cap.getLastBody();
+    const input = body!.input as Array<Record<string, unknown>>;
+    const functionOutput = input.find((item) => item.type === "function_call_output");
+    expect(functionOutput).toBeDefined();
+    expect(functionOutput!.call_id).toBe("call_sparse");
+    expect(functionOutput!.output).toBe("");
+  });
+
+  it("tolerates assistant messages with missing content arrays", async () => {
+    cap = installFailingFetchCapture();
+    const model = buildModel();
+
+    const malformedAssistant = {
+      role: "assistant",
+      api: "openai-responses",
+      provider: "openai",
+      model: "gpt-5.2",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+      content: undefined,
+    } as unknown as AssistantMessage;
+
+    const stream = streamOpenAIResponses(
+      model,
+      {
+        systemPrompt: "system",
+        messages: [
+          { role: "user", content: "Question", timestamp: Date.now() },
+          malformedAssistant,
+          { role: "user", content: "Follow up", timestamp: Date.now() },
+        ],
+      },
+      { apiKey: "test" },
+    );
+
+    await stream.result();
+
+    const body = cap.getLastBody();
+    const input = body!.input as Array<Record<string, unknown>>;
+    expect(input.some((item) => item.role === "assistant")).toBe(false);
+    expect(input.some((item) => item.role === "user" && item.content === "Follow up")).toBe(true);
+  });
+
   it("splits pipe-delimited tool call IDs into call_id and fc_id", async () => {
     cap = installFailingFetchCapture();
     const model = buildModel();

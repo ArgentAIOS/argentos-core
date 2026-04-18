@@ -3,45 +3,16 @@ import { createMarketplaceTool } from "../agents/tools/marketplace-tool.js";
 import { defaultRuntime } from "../runtime.js";
 import { runCommandWithRuntime } from "./cli-utils.js";
 
-function marketplaceResultLines(result: unknown): string[] {
-  if (!result || typeof result !== "object") {
-    return [];
-  }
-
-  const typed = result as {
-    content?: Array<{ type?: string; text?: unknown }>;
-    details?: unknown;
-  };
-
-  const content = Array.isArray(typed.content) ? typed.content : [];
-  const lines = content
-    .filter((entry) => entry?.type === "text")
-    .map((entry) => (typeof entry.text === "string" ? entry.text : ""))
-    .filter(Boolean);
-  if (lines.length > 0) {
-    return lines;
-  }
-
-  if (typed.details === undefined) {
-    return [];
-  }
-  if (typeof typed.details === "string") {
-    return typed.details.trim() ? [typed.details] : [];
-  }
-  try {
-    return [JSON.stringify(typed.details, null, 2)];
-  } catch {
-    return [String(typed.details)];
-  }
-}
-
 async function runMarketplaceAction(
   action: "search" | "details" | "install",
   args: Record<string, unknown>,
 ) {
   const tool = createMarketplaceTool();
   const result = await tool.execute("cli", { action, ...args });
-  const lines = marketplaceResultLines(result);
+  const lines = result.content
+    .filter((entry) => entry.type === "text")
+    .map((entry) => entry.text)
+    .filter(Boolean);
   if (lines.length > 0) {
     defaultRuntime.log(lines.join("\n"));
   }

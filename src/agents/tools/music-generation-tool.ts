@@ -13,7 +13,7 @@ import path from "node:path";
 import type { ArgentConfig } from "../../config/config.js";
 import type { AnyAgentTool } from "./common.js";
 import { resolveMinimaxApiKey } from "../../agents/minimax-vlm.js";
-import { resolveServiceKeyAsync, resolveServiceKey } from "../../infra/service-keys.js";
+import { resolveServiceKeyAsync } from "../../infra/service-keys.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { readNumberParam, readStringParam } from "./common.js";
 
@@ -620,30 +620,13 @@ Returns a MEDIA: path. Copy the MEDIA line exactly into your response.`,
             sessionKey: options?.agentSessionKey,
             source: "music_generate",
           })
-        )?.trim() ||
-        resolveServiceKey("REPLICATE_API_KEY", options?.config, {
+        )?.trim();
+      const falKey = (
+        await resolveServiceKeyAsync("FAL_API_KEY", options?.config, {
           sessionKey: options?.agentSessionKey,
           source: "music_generate",
-        }) ||
-        resolveServiceKey("REPLICATE_AI_KEY", options?.config, {
-          sessionKey: options?.agentSessionKey,
-          source: "music_generate",
-        }) ||
-        resolveServiceKey("REPLICATE_API_TOKEN", options?.config, {
-          sessionKey: options?.agentSessionKey,
-          source: "music_generate",
-        });
-      const falKey =
-        (
-          await resolveServiceKeyAsync("FAL_API_KEY", options?.config, {
-            sessionKey: options?.agentSessionKey,
-            source: "music_generate",
-          })
-        )?.trim() ||
-        resolveServiceKey("FAL_API_KEY", options?.config, {
-          sessionKey: options?.agentSessionKey,
-          source: "music_generate",
-        });
+        })
+      )?.trim();
 
       const attemptErrors: string[] = [];
       const attemptTimeline: string[] = [];

@@ -11,6 +11,31 @@ struct GatewayConfig {
     var remotePassword: String?
 }
 
+private enum GatewayConfigPaths {
+    static func pathEnv(_ key: String) -> String? {
+        guard let raw = getenv(key) else { return nil }
+        let value = String(cString: raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
+    static func stateDirURL() -> URL {
+        if let override = self.pathEnv("ARGENT_STATE_DIR") {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return FileManager().homeDirectoryForCurrentUser
+            .appendingPathComponent(".argentos", isDirectory: true)
+    }
+
+    static func configURL() -> URL {
+        if let override = self.pathEnv("ARGENT_CONFIG_PATH") {
+            return URL(fileURLWithPath: override, isDirectory: false)
+        }
+        let stateDir = self.stateDirURL()
+        let candidate = stateDir.appendingPathComponent("argent.json", isDirectory: false)
+        return candidate
+    }
+}
+
 struct GatewayEndpoint {
     let url: URL
     let token: String?
@@ -19,11 +44,7 @@ struct GatewayEndpoint {
 }
 
 func loadGatewayConfig() -> GatewayConfig {
-    let home = FileManager().homeDirectoryForCurrentUser
-    let candidates = [
-        home.appendingPathComponent(".argentos/argent.json"),
-    ]
-    let url = candidates.first { FileManager().isReadableFile(atPath: $0.path) } ?? candidates[0]
+    let url = GatewayConfigPaths.configURL()
     guard let data = try? Data(contentsOf: url) else { return GatewayConfig() }
     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
         return GatewayConfig()

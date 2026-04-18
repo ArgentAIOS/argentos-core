@@ -35,6 +35,22 @@ const TRANSIENT_NETWORK_CODES = new Set([
   "UND_ERR_BODY_TIMEOUT",
 ]);
 
+function isWatcherResourceExhaustionError(err: unknown): boolean {
+  if (!err || typeof err !== "object") {
+    return false;
+  }
+  const code = extractErrorCodeWithCause(err);
+  if (code === "EMFILE" || code === "ENFILE") {
+    const message = "message" in err && typeof err.message === "string" ? err.message : "";
+    return /too many open files/i.test(message) || /\bwatch\b/i.test(message);
+  }
+  const cause = getErrorCause(err);
+  if (cause && cause !== err) {
+    return isWatcherResourceExhaustionError(cause);
+  }
+  return false;
+}
+
 function getErrorCause(err: unknown): unknown {
   if (!err || typeof err !== "object") {
     return undefined;
@@ -168,6 +184,14 @@ export function installUnhandledRejectionHandler(): void {
     if (isTransientNetworkError(reason)) {
       console.warn(
         "[argent] Non-fatal unhandled rejection (continuing):",
+        formatUncaughtError(reason),
+      );
+      return;
+    }
+
+    if (isWatcherResourceExhaustionError(reason)) {
+      console.warn(
+        "[argent] Non-fatal watcher resource exhaustion (continuing):",
         formatUncaughtError(reason),
       );
       return;

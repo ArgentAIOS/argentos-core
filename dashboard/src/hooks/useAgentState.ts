@@ -53,10 +53,10 @@ function calcResonance(links: IdentityLink[]): number {
 
 // ── AvatarState derivation ──────────────────────────────────────────────────
 
-type AvatarState = "idle" | "thinking" | "working" | "speaking" | "success" | "error";
+type AvatarState = "idle" | "thinking" | "working" | "success" | "error";
 
 function deriveAvatarState(activity: ActivityStateName, isSpeaking: boolean): AvatarState {
-  if (isSpeaking) return "speaking";
+  if (isSpeaking) return "idle"; // Live2D handles lip sync separately
   switch (activity) {
     case "thinking":
       return "thinking";
@@ -93,10 +93,6 @@ export interface AgentStateHook {
   currentToolCategory: string | undefined;
   /** Live2D-compatible avatar state */
   avatarState: AvatarState;
-  /** Lightweight dashboard summary stats when available */
-  pendingApprovals?: number;
-  overdueTasks?: number;
-  errorCount?: number;
   /** Live2D-compatible mood name (mapped from SIS mood) */
   moodName: MoodName;
   /** Whether SIS has provided at least one episode (vs. relying on text markers) */

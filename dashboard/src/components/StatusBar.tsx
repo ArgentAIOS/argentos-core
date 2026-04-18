@@ -88,6 +88,7 @@ export function StatusBar({
     verified: number;
     failed: number;
   } | null>(null);
+  const [releaseVersion, setReleaseVersion] = useState<string | null>(null);
   const scoreInFlightRef = useRef(false);
   const scoreAbortRef = useRef<AbortController | null>(null);
   const heartbeatStaleKeyRef = useRef<string | null>(null);
@@ -97,6 +98,28 @@ export function StatusBar({
   useEffect(() => {
     const interval = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const loadBuildInfo = async () => {
+      try {
+        const res = await fetch("/api/build-info", { signal: controller.signal });
+        if (!res.ok) return;
+        const data = (await res.json()) as { version?: unknown };
+        if (!cancelled && typeof data.version === "string" && data.version.trim()) {
+          setReleaseVersion(data.version.trim());
+        }
+      } catch {
+        // non-critical
+      }
+    };
+    void loadBuildInfo();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, []);
 
   // Fetch accountability score every 30s
@@ -472,6 +495,17 @@ export function StatusBar({
             <span className="text-sm text-pink-400 font-medium">{alertCount}</span>
           )}
         </motion.button>
+
+        {releaseVersion && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="px-3 py-1.5 rounded-lg bg-[hsl(var(--card))] border border-[hsl(var(--border))] text-[11px] font-mono text-[hsl(var(--muted-foreground))]"
+            title="Running release version"
+          >
+            v{releaseVersion}
+          </motion.div>
+        )}
 
         {/* App Forge */}
         <motion.button

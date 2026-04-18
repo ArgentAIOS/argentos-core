@@ -28,64 +28,13 @@ ArgentOS is a personal AI operating system that runs on your hardware, speaks th
 
 ## Install
 
+**Prerequisite:** [Homebrew](https://brew.sh) (macOS) — the installer uses it for PostgreSQL, Redis, and system services.
+
 ```bash
 curl -fsSL https://argentos.ai/install.sh | bash
 ```
 
-The hosted installer supports both macOS and Linux, but the shell script does different work on each platform.
-
-### macOS
-
-**Prerequisite:** [Homebrew](https://brew.sh)
-
-The installer uses Homebrew and LaunchAgents to provision:
-
-- private Node 22 runtime
-- `pnpm`
-- PostgreSQL 17 on port `5433`
-- Redis on port `6380`
-- local dashboard runtime
-- browser handoff and `Argent.app` install/launch
-
-### Linux
-
-**Supported target:** Ubuntu/Debian-style systems with `apt` and user `systemd`
-
-The installer uses shell tooling plus `apt`/user services to provision:
-
-- private Node 22 runtime
-- `pnpm`
-- local gateway as a user `systemd` service
-- dashboard API/runtime
-- PostgreSQL/Redis topology intended for:
-  - PostgreSQL on `5433`
-  - Redis on `6380`
-
-Key differences from macOS:
-
-- there is no `Argent.app` install step on Linux
-- Linux uses user `systemd` services instead of macOS LaunchAgents
-- the Linux flow assumes it can stand up dedicated local services for Argent on the non-default ports above
-
-Important caveat:
-
-- on Linux hosts that already have PostgreSQL or Redis running for other workloads, you may need to finish the dedicated `5433` / `6380` service topology manually after install instead of letting the script reuse the host defaults
-
-Recommended post-install checks on Linux:
-
-```bash
-argent health
-argent gateway status
-pg_lsclusters
-systemctl --user status argent-redis.service
-```
-
-Expected Linux ports:
-
-- gateway: `127.0.0.1:18789`
-- dashboard API: `:9242`
-- PostgreSQL: `127.0.0.1:5433`
-- Redis: `127.0.0.1:6380`
+macOS first. The installer handles Node, pnpm, PostgreSQL, Redis, Argent.app, and onboarding automatically.
 
 **Or from source:**
 

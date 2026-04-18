@@ -17,6 +17,8 @@ import type {
   CreateLessonInput,
   CreateLiveCandidateInput,
   CreateMemoryItemInput,
+  CreatePersonalSkillCandidateInput,
+  CreatePersonalSkillReviewEventInput,
   CreateReflectionInput,
   CreateResourceInput,
   Entity,
@@ -30,6 +32,10 @@ import type {
   MemoryCategory,
   MemoryItem,
   MemorySearchResult,
+  PersonalSkillCandidate,
+  PersonalSkillReviewEvent,
+  PersonalSkillCandidateState,
+  PersonalSkillScope,
   RecordModelFeedbackInput,
   Reflection,
   Resource,
@@ -314,6 +320,85 @@ class SQLiteMemoryAdapter implements MemoryAdapter {
 
   async deleteLesson(id: string): Promise<void> {
     this.store.deleteLesson(id);
+  }
+
+  async createPersonalSkillCandidate(
+    input: CreatePersonalSkillCandidateInput,
+  ): Promise<PersonalSkillCandidate> {
+    const created = this.store.createPersonalSkillCandidate(input);
+    if (!created) {
+      throw new Error("Failed to create personal skill candidate");
+    }
+    return created;
+  }
+
+  async listPersonalSkillCandidates(filter?: {
+    state?: PersonalSkillCandidateState;
+    limit?: number;
+  }): Promise<PersonalSkillCandidate[]> {
+    return this.store.listPersonalSkillCandidates({
+      state: filter?.state,
+      limit: filter?.limit,
+    });
+  }
+
+  async updatePersonalSkillCandidate(
+    id: string,
+    fields: Partial<{
+      scope: PersonalSkillScope;
+      title: string;
+      summary: string;
+      triggerPatterns: string[];
+      procedureOutline: string | null;
+      preconditions: string[];
+      executionSteps: string[];
+      expectedOutcomes: string[];
+      relatedTools: string[];
+      sourceMemoryIds: string[];
+      sourceEpisodeIds: string[];
+      sourceTaskIds: string[];
+      sourceLessonIds: string[];
+      supersedesCandidateIds: string[];
+      supersededByCandidateId: string | null;
+      conflictsWithCandidateIds: string[];
+      contradictionCount: number;
+      evidenceCount: number;
+      recurrenceCount: number;
+      confidence: number;
+      strength: number;
+      usageCount: number;
+      successCount: number;
+      failureCount: number;
+      state: PersonalSkillCandidateState;
+      operatorNotes: string | null;
+      lastReviewedAt: string | null;
+      lastUsedAt: string | null;
+      lastReinforcedAt: string | null;
+      lastContradictedAt: string | null;
+    }>,
+  ): Promise<PersonalSkillCandidate | null> {
+    return this.store.updatePersonalSkillCandidate(id, fields);
+  }
+
+  async deletePersonalSkillCandidate(id: string): Promise<boolean> {
+    return this.store.deletePersonalSkillCandidate(id);
+  }
+
+  async createPersonalSkillReviewEvent(
+    input: CreatePersonalSkillReviewEventInput,
+  ): Promise<PersonalSkillReviewEvent> {
+    const created = this.store.createPersonalSkillReviewEvent(input);
+    if (!created) {
+      throw new Error("Failed to create personal skill review event");
+    }
+    return created;
+  }
+
+  async listPersonalSkillReviewEvents(filter: {
+    candidateId: string;
+    limit?: number;
+  }): Promise<PersonalSkillReviewEvent[]> {
+    return this.store.listPersonalSkillReviewEvents(filter);
   }
 
   async getKnowledgeObservation(_id: string): Promise<KnowledgeObservation | null> {

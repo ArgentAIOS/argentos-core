@@ -31,6 +31,11 @@ export const DEFAULT_SKILLS_WATCH_IGNORED: RegExp[] = [
   /(^|[\\/])dist([\\/]|$)/,
 ];
 
+function isEphemeralSubagentWorkspace(workspaceDir: string): boolean {
+  const base = path.basename(workspaceDir.trim().toLowerCase());
+  return base.startsWith("workspace-agent-") && base.includes("-subagent-");
+}
+
 function bumpVersion(current: number): number {
   const now = Date.now();
   return now <= current ? current + 1 : now;
@@ -110,7 +115,19 @@ export function ensureSkillsWatcher(params: { workspaceDir: string; config?: Arg
       : 250;
 
   const existing = watchers.get(workspaceDir);
+  const shouldSkipEphemeral = isEphemeralSubagentWorkspace(workspaceDir);
   if (!watchEnabled) {
+    if (existing) {
+      watchers.delete(workspaceDir);
+      if (existing.timer) {
+        clearTimeout(existing.timer);
+      }
+      void existing.watcher.close().catch(() => {});
+    }
+    return;
+  }
+
+  if (shouldSkipEphemeral) {
     if (existing) {
       watchers.delete(workspaceDir);
       if (existing.timer) {

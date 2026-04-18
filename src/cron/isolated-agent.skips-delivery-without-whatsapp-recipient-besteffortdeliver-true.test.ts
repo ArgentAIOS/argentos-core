@@ -134,45 +134,6 @@ describe("runCronIsolatedAgentTurn", () => {
     });
   });
 
-  it("treats announce without an explicit target as summary-only", async () => {
-    await withTempHome(async (home) => {
-      const storePath = await writeSessionStore(home);
-      const deps: CliDeps = {
-        sendMessageWhatsApp: vi.fn(),
-        sendMessageTelegram: vi.fn(),
-        sendMessageDiscord: vi.fn(),
-        sendMessageSignal: vi.fn(),
-        sendMessageIMessage: vi.fn(),
-      };
-      vi.mocked(runEmbeddedPiAgent).mockResolvedValue({
-        payloads: [{ text: "hello from cron" }],
-        meta: {
-          durationMs: 5,
-          agentMeta: { sessionId: "s", provider: "p", model: "m" },
-        },
-      });
-
-      const res = await runCronIsolatedAgentTurn({
-        cfg: makeCfg(home, storePath, {}),
-        deps,
-        job: {
-          ...makeJob({ kind: "agentTurn", message: "do it" }),
-          delivery: { mode: "announce" },
-        },
-        message: "do it",
-        sessionKey: "cron:job-1",
-        lane: "cron",
-      });
-
-      expect(res.status).toBe("ok");
-      expect(deps.sendMessageWhatsApp).not.toHaveBeenCalled();
-      expect(deps.sendMessageTelegram).not.toHaveBeenCalled();
-      expect(deps.sendMessageDiscord).not.toHaveBeenCalled();
-      expect(deps.sendMessageSignal).not.toHaveBeenCalled();
-      expect(deps.sendMessageIMessage).not.toHaveBeenCalled();
-    });
-  });
-
   it("skips announce when messaging tool already sent to target", async () => {
     await withTempHome(async (home) => {
       const storePath = await writeSessionStore(home);

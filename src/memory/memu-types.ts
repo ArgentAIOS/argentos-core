@@ -610,3 +610,118 @@ export interface LiveCandidateStats {
   discarded: number;
   expired: number;
 }
+
+// ── Personal Skills ──
+
+export type PersonalSkillCandidateState =
+  | "candidate"
+  | "incubating"
+  | "promoted"
+  | "rejected"
+  | "deprecated";
+
+export type PersonalSkillScope = "operator" | "family" | "agent";
+export type PersonalSkillReviewAction =
+  | "authored"
+  | "patched"
+  | "promoted"
+  | "demoted"
+  | "deprecated"
+  | "conflict_detected"
+  | "conflict_resolved"
+  | "operator_note"
+  | "deleted"
+  | "usage_reinforced"
+  | "usage_decayed"
+  | "procedure_selected";
+
+export interface PersonalSkillCandidate {
+  id: string;
+  agentId: string;
+  operatorId: string | null;
+  profileId: string | null;
+  scope: PersonalSkillScope;
+  title: string;
+  summary: string;
+  triggerPatterns: string[];
+  procedureOutline: string | null;
+  preconditions: string[];
+  executionSteps: string[];
+  expectedOutcomes: string[];
+  relatedTools: string[];
+  sourceMemoryIds: string[];
+  sourceEpisodeIds: string[];
+  sourceTaskIds: string[];
+  sourceLessonIds: string[];
+  supersedesCandidateIds: string[];
+  supersededByCandidateId: string | null;
+  conflictsWithCandidateIds: string[];
+  contradictionCount: number;
+  evidenceCount: number;
+  recurrenceCount: number;
+  confidence: number;
+  strength: number;
+  usageCount: number;
+  successCount: number;
+  failureCount: number;
+  state: PersonalSkillCandidateState;
+  operatorNotes: string | null;
+  lastReviewedAt: string | null;
+  lastUsedAt: string | null;
+  lastReinforcedAt: string | null;
+  lastContradictedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PersonalSkillReviewEvent {
+  id: string;
+  candidateId: string;
+  agentId: string;
+  actorType: "system" | "operator";
+  action: PersonalSkillReviewAction;
+  reason: string | null;
+  details: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface CreatePersonalSkillCandidateInput {
+  scope?: PersonalSkillScope;
+  title: string;
+  summary: string;
+  triggerPatterns?: string[];
+  procedureOutline?: string;
+  preconditions?: string[];
+  executionSteps?: string[];
+  expectedOutcomes?: string[];
+  relatedTools?: string[];
+  sourceMemoryIds?: string[];
+  sourceEpisodeIds?: string[];
+  sourceTaskIds?: string[];
+  sourceLessonIds?: string[];
+  supersedesCandidateIds?: string[];
+  supersededByCandidateId?: string | null;
+  conflictsWithCandidateIds?: string[];
+  contradictionCount?: number;
+  evidenceCount?: number;
+  recurrenceCount?: number;
+  confidence?: number;
+  strength?: number;
+  usageCount?: number;
+  successCount?: number;
+  failureCount?: number;
+  state?: PersonalSkillCandidateState;
+  operatorNotes?: string | null;
+  operatorId?: string;
+  profileId?: string;
+  agentId?: string;
+}
+
+export interface CreatePersonalSkillReviewEventInput {
+  candidateId: string;
+  actorType: "system" | "operator";
+  action: PersonalSkillReviewAction;
+  reason?: string | null;
+  details?: Record<string, unknown>;
+  agentId?: string;
+}

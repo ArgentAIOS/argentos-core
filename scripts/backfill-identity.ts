@@ -94,7 +94,9 @@ const KNOWN_ENTITIES: Array<{
   { name: "Richard", type: "person", relationship: "business partner" },
   { name: "Maggie", type: "person", relationship: "Jason's mother" },
   { name: "Leo", type: "pet", relationship: "Jason's dog" },
+  { name: "Titanium Computing", type: "organization", relationship: "Jason's MSP business" },
   { name: "ArgentOS", type: "project", relationship: "my operating system" },
+  { name: "CallScrub", type: "project", relationship: "sales call analysis platform" },
 ];
 
 // ── CLI Args ──

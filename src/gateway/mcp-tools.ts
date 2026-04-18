@@ -9,13 +9,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { MemoryType } from "../memory/memu-types.js";
 import { loadConfig } from "../config/config.js";
-import { fetchWithSsrFGuard } from "../infra/net/fetch-guard.js";
 
 type TransportMap = Map<string, unknown>;
-const MCP_LOCAL_ENDPOINT_POLICY = {
-  allowedHostnames: ["127.0.0.1", "localhost"],
-  hostnameAllowlist: ["127.0.0.1", "localhost"],
-};
 
 /** Check if a tool should be registered based on the allowedTools config. */
 function ok(name: string, allowed?: string[]): boolean {
@@ -249,16 +244,11 @@ export function registerMcpTools(
         const localStatus: string[] = [];
         for (const ep of localEndpoints) {
           try {
-            const { response, release } = await fetchWithSsrFGuard({
-              url: ep.url,
-              timeoutMs: 2000,
-              policy: MCP_LOCAL_ENDPOINT_POLICY,
-            });
-            try {
-              localStatus.push(`${ep.name}: UP (${response.status})`);
-            } finally {
-              await release();
-            }
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 2000);
+            const res = await fetch(ep.url, { signal: controller.signal });
+            clearTimeout(timer);
+            localStatus.push(`${ep.name}: UP (${res.status})`);
           } catch {
             localStatus.push(`${ep.name}: DOWN`);
           }

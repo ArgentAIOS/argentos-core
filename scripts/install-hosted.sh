@@ -33,10 +33,6 @@ NODE_VERSION="${ARGENT_NODE_VERSION:-22.22.0}"
 NODE_DIST_URL_BASE="${ARGENT_NODE_DIST_URL_BASE:-https://nodejs.org/dist}"
 NODE_BIN_OVERRIDE="${ARGENT_NODE_BIN:-}"
 RUNTIME_DIR="${ARGENT_RUNTIME_DIR:-$HOME/.argentos/runtime}"
-APP_RELEASES_BASE_URL="${ARGENT_APP_RELEASES_BASE_URL:-https://argentos.ai/releases/macos}"
-APP_MANIFEST_URL_OVERRIDE="${ARGENT_APP_MANIFEST_URL:-}"
-INSTALL_UPDATE_BRANCH_OVERRIDE="${ARGENT_INSTALL_UPDATE_BRANCH:-}"
-GIT_REPO_URL_OVERRIDE="${ARGENT_INSTALL_GIT_REPO_URL:-}"
 
 NODE_BIN=""
 NPM_BIN=""
@@ -398,15 +394,6 @@ resolve_effective_install_method() {
   printf 'git\n'
 }
 
-resolve_install_git_repo_url() {
-  if [[ -n "$GIT_REPO_URL_OVERRIDE" ]]; then
-    printf '%s\n' "$GIT_REPO_URL_OVERRIDE"
-    return 0
-  fi
-
-  printf 'https://github.com/ArgentAIOS/argentos-core.git\n'
-}
-
 resolve_effective_version() {
   if [[ -n "$VERSION" ]]; then
     printf '%s\n' "$VERSION"
@@ -415,71 +402,12 @@ resolve_effective_version() {
   case "$CHANNEL" in
     stable) printf 'latest stable GitHub release tag\n' ;;
     beta) printf 'latest beta-or-stable GitHub release tag\n' ;;
-    dev) printf 'develop\n' ;;
+    dev) printf 'main\n' ;;
     *)
       err "Unsupported channel: $CHANNEL"
       exit 1
       ;;
   esac
-}
-
-is_release_tag_ref() {
-  [[ "${1:-}" =~ ^v[0-9] ]]
-}
-
-is_commit_sha_ref() {
-  [[ "${1:-}" =~ ^[0-9a-fA-F]{7,40}$ ]]
-}
-
-resolve_effective_update_branch() {
-  local override="${INSTALL_UPDATE_BRANCH_OVERRIDE:-}"
-  if [[ -n "$override" ]]; then
-    printf '%s\n' "$override"
-    return 0
-  fi
-
-  if [[ "$CHANNEL" != "dev" ]]; then
-    return 0
-  fi
-
-  case "${VERSION:-}" in
-    ""|"latest stable GitHub release tag"|"latest beta-or-stable GitHub release tag")
-      ;;
-    *)
-      if ! is_release_tag_ref "$VERSION" && ! is_commit_sha_ref "$VERSION"; then
-        printf '%s\n' "$VERSION"
-        return 0
-      fi
-      ;;
-  esac
-
-  printf 'develop\n'
-}
-
-resolve_argent_app_manifest_urls() {
-  if [[ -n "$APP_MANIFEST_URL_OVERRIDE" ]]; then
-    printf '%s\n' "$APP_MANIFEST_URL_OVERRIDE"
-    return 0
-  fi
-
-  local base="${APP_RELEASES_BASE_URL%/}"
-  local update_branch=""
-  if [[ "$CHANNEL" == "dev" ]]; then
-    update_branch="$(resolve_effective_update_branch)"
-    if [[ -n "$update_branch" ]]; then
-      printf '%s\n' "$base/$update_branch/latest.json"
-      printf '%s\n' "$base/dev/$update_branch/latest.json"
-    fi
-    printf '%s\n' "$base/dev/latest.json"
-    return 0
-  fi
-
-  if [[ "$CHANNEL" == "beta" ]]; then
-    printf '%s\n' "$base/beta/latest.json"
-    return 0
-  fi
-
-  printf '%s\n' "$base/latest.json"
 }
 
 require_unix() {
@@ -536,6 +464,122 @@ run_onboard() {
   fi
 
   err "Interactive onboarding requires a terminal. Re-run in a terminal, or pass --no-prompt / --no-onboard."
+  exit 1
+}
+
+resolve_configured_workspace_dir() {
+  local config_path="${HOME}/.argentos/argent.json"
+  local default_workspace="${HOME}/.argentos/workspace"
+
+  if [[ ! -f "$config_path" ]]; then
+    printf '%s\n' "$default_workspace"
+    return 0
+  fi
+
+  ARGENT_INSTALL_CONFIG_PATH="$config_path" ARGENT_INSTALL_DEFAULT_WORKSPACE="$default_workspace" "$NODE_BIN" <<'NODE'
+const fs = require("node:fs");
+
+const configPath = process.env.ARGENT_INSTALL_CONFIG_PATH;
+const fallback = process.env.ARGENT_INSTALL_DEFAULT_WORKSPACE;
+
+try {
+  const raw = fs.readFileSync(configPath, "utf8");
+  const parsed = JSON.parse(raw);
+  const workspace = parsed?.agents?.defaults?.workspace;
+  if (typeof workspace === "string" && workspace.trim()) {
+    process.stdout.write(workspace.trim());
+  } else {
+    process.stdout.write(fallback);
+  }
+} catch {
+  process.stdout.write(fallback);
+}
+NODE
+}
+
+verify_workspace_bootstrap_state() {
+  local workspace_dir="$1"
+  local config_path="${HOME}/.argentos/argent.json"
+  local expected_files=(
+    "AGENTS.md"
+    "SOUL.md"
+    "TOOLS.md"
+    "IDENTITY.md"
+    "USER.md"
+    "HEARTBEAT.md"
+    "CONTEMPLATION.md"
+    "BOOTSTRAP.md"
+    "WORKFLOWS.md"
+    "MEMORY.md"
+  )
+
+  if [[ ! -f "$config_path" ]]; then
+    warn "Workspace bootstrap verification failed: missing config at $config_path"
+    return 1
+  fi
+
+  local configured_workspace
+  configured_workspace="$(resolve_configured_workspace_dir)"
+  if [[ -z "$configured_workspace" ]]; then
+    warn "Workspace bootstrap verification failed: agents.defaults.workspace is unset"
+    return 1
+  fi
+
+  if [[ "$configured_workspace" != "$workspace_dir" ]]; then
+    warn "Workspace bootstrap verification failed: config workspace mismatch (${configured_workspace} != ${workspace_dir})"
+    return 1
+  fi
+
+  if [[ ! -d "$workspace_dir" ]]; then
+    warn "Workspace bootstrap verification failed: missing workspace dir $workspace_dir"
+    return 1
+  fi
+
+  local missing=()
+  local name
+  for name in "${expected_files[@]}"; do
+    if [[ ! -f "$workspace_dir/$name" ]]; then
+      missing+=("$name")
+    fi
+  done
+
+  if (( ${#missing[@]} > 0 )); then
+    warn "Workspace bootstrap verification failed: missing files: ${missing[*]}"
+    return 1
+  fi
+
+  return 0
+}
+
+ensure_workspace_bootstrap_state() {
+  local argent_bin="$1"
+  local default_workspace="${HOME}/.argentos/workspace"
+  local workspace_dir
+
+  info "Seeding agent workspace..."
+  PATH="$(dirname "$NODE_BIN"):$PATH" run_cmd "$argent_bin" setup
+
+  if is_truthy "$DRY_RUN"; then
+    ok "Seeded agent workspace (dry-run)"
+    return 0
+  fi
+
+  workspace_dir="$(resolve_configured_workspace_dir)"
+  if verify_workspace_bootstrap_state "$workspace_dir"; then
+    ok "Seeded agent workspace"
+    return 0
+  fi
+
+  warn "Workspace bootstrap incomplete after initial setup; retrying with explicit workspace path"
+  PATH="$(dirname "$NODE_BIN"):$PATH" "$argent_bin" setup --workspace "$default_workspace"
+
+  workspace_dir="$(resolve_configured_workspace_dir)"
+  if verify_workspace_bootstrap_state "$workspace_dir"; then
+    ok "Seeded agent workspace"
+    return 0
+  fi
+
+  err "Workspace bootstrap failed after retry. Run: $argent_bin setup --workspace $default_workspace"
   exit 1
 }
 
@@ -655,53 +699,18 @@ install_npm() {
 download_argent_app() {
   info "═══ Downloading Argent.app ═══"
 
-  local manifest_url=""
-  local resolved_manifest_url=""
-  local update_branch=""
-  local -a manifest_urls=()
+  local manifest_url="https://argentos.ai/releases/macos/latest.json"
   local tmp_dir
   tmp_dir="$(mktemp -d)"
 
-  while IFS= read -r manifest_url; do
-    [[ -n "$manifest_url" ]] && manifest_urls+=("$manifest_url")
-  done < <(resolve_argent_app_manifest_urls)
-  update_branch="$(resolve_effective_update_branch)"
-
-  if is_truthy "$DRY_RUN"; then
-    if [[ "$CHANNEL" == "dev" && -n "$update_branch" ]]; then
-      printf 'DRY-RUN: dev update branch %q\n' "$update_branch"
-    fi
-    for manifest_url in "${manifest_urls[@]}"; do
-      printf 'DRY-RUN: check Argent.app manifest %q\n' "$manifest_url"
-    done
-    printf 'DRY-RUN: skip network fetch for Argent.app manifest resolution\n'
-    return 0
-  fi
-
   # 1. Fetch release manifest
-  info "Checking for Argent.app release manifest for channel=$CHANNEL..."
-  local manifest=""
-  for manifest_url in "${manifest_urls[@]}"; do
-    info "Trying manifest: $manifest_url"
-    manifest="$(curl -fsSL "$manifest_url" 2>/dev/null)" || manifest=""
-    if [[ -n "$manifest" ]]; then
-      resolved_manifest_url="$manifest_url"
-      break
-    fi
-  done
-
-  if [[ -z "$resolved_manifest_url" ]]; then
-    if [[ "$CHANNEL" == "stable" ]]; then
-      warn "Could not fetch release manifest from ${manifest_urls[0]:-$APP_RELEASES_BASE_URL}"
-      warn "Argent.app not installed — you can download it later from https://argentos.ai"
-    else
-      warn "No ${CHANNEL}-lane Argent.app artifact manifest was found."
-      warn "Skipping Argent.app install to avoid mixing a ${CHANNEL} runtime lane with a stale stable app artifact."
-    fi
-    rm -rf "$tmp_dir"
+  info "Checking for latest Argent.app release..."
+  local manifest
+  manifest="$(curl -fsSL "$manifest_url" 2>/dev/null)" || {
+    warn "Could not fetch release manifest from $manifest_url"
+    warn "Argent.app not installed — you can download it later from https://argentos.ai"
     return 0
-  fi
-  info "Using Argent.app manifest: $resolved_manifest_url"
+  }
 
   # 2. Parse manifest (portable JSON parsing with Node --input-type=module)
   local zip_url zip_filename
@@ -723,6 +732,13 @@ download_argent_app() {
   fi
 
   info "Found release: $zip_filename"
+
+  if is_truthy "$DRY_RUN"; then
+    printf 'DRY-RUN: curl -fsSL %q -o %q/%q\n' "$zip_url" "$tmp_dir" "$zip_filename"
+    printf 'DRY-RUN: unzip → /Applications/Argent.app\n'
+    printf 'DRY-RUN: open /Applications/Argent.app\n'
+    return 0
+  fi
 
   # 3. Download
   info "Downloading $zip_filename..."
@@ -799,7 +815,7 @@ launch_argent_app() {
   echo "       ${dash_url}"
   echo ""
   echo "    3) Stay in the terminal"
-  echo "       Use: argent chat"
+  echo "       Use: argent tui"
   echo ""
 
   if is_truthy "$NO_PROMPT" || [[ ! -r /dev/tty ]]; then
@@ -825,7 +841,7 @@ launch_argent_app() {
       ok "Dashboard opened"
       ;;
     3)
-      ok "You're in control. Run: argent chat"
+      ok "You're in control. Run: argent tui"
       ;;
     *)
       info "Launching Argent.app..."
@@ -837,7 +853,8 @@ launch_argent_app() {
   echo ""
   info "Argent.app is always available at: /Applications/Argent.app"
   info "Dashboard: ${dash_url}"
-  info "CLI is always available with: argent chat"
+  info "Terminal UI: argent tui"
+  info "Dashboard link anytime: argent dashboard --no-open"
   echo ""
 }
 
@@ -849,10 +866,7 @@ write_core_distribution_and_storage_defaults() {
   fi
 
   mkdir -p "$HOME/.argentos"
-  ARGENT_INSTALL_CONFIG_PATH="$config_path" \
-  ARGENT_INSTALL_CHANNEL="${CHANNEL:-stable}" \
-  ARGENT_INSTALL_UPDATE_BRANCH="${INSTALL_UPDATE_BRANCH_OVERRIDE:-}" \
-  "$NODE_BIN" <<'NODE'
+  ARGENT_INSTALL_CONFIG_PATH="$config_path" ARGENT_INSTALL_CHANNEL="${CHANNEL:-stable}" "$NODE_BIN" <<'NODE'
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -880,14 +894,12 @@ const existingToken = parsed.gateway?.auth?.token;
 const gwToken = existingToken || crypto.randomBytes(32).toString("hex");
 
 const installChannel = process.env.ARGENT_INSTALL_CHANNEL || "stable";
-const installUpdateBranch = (process.env.ARGENT_INSTALL_UPDATE_BRANCH || "").trim();
 
 const next = {
   ...parsed,
   update: {
     ...(parsed.update || {}),
-    channel: installChannel,
-    ...(installUpdateBranch ? { branch: installUpdateBranch } : {}),
+    channel: parsed.update?.channel || installChannel,
   },
   gateway: {
     ...(parsed.gateway || {}),
@@ -897,13 +909,6 @@ const next = {
       ...(parsed.gateway?.auth || {}),
       mode: parsed.gateway?.auth?.mode || "token",
       token: gwToken,
-    },
-    remote: {
-      ...(parsed.gateway?.remote || {}),
-      token:
-        typeof parsed.gateway?.remote?.token === "string" && parsed.gateway.remote.token.trim()
-          ? parsed.gateway.remote.token
-          : gwToken,
     },
   },
   distribution: {
@@ -926,10 +931,6 @@ const next = {
     },
   },
 };
-
-if (!installUpdateBranch && next.update) {
-  delete next.update.branch;
-}
 
 fs.mkdirSync(path.dirname(configPath), { recursive: true });
 fs.writeFileSync(configPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
@@ -963,26 +964,13 @@ provision_core_storage_stack() {
 
 install_git() {
   require_command git
-  local git_repo_url current_origin
-  git_repo_url="$(resolve_install_git_repo_url)"
 
   if [[ -d "$GIT_DIR/.git" ]]; then
-    current_origin="$(git -C "$GIT_DIR" remote get-url origin 2>/dev/null || true)"
-    if [[ -n "$current_origin" && "$current_origin" != "$git_repo_url" ]]; then
-      warn "Existing checkout remote does not match requested lane"
-      warn "Expected: $git_repo_url"
-      warn "Found:    $current_origin"
-      info "Replacing checkout to avoid mixing installer lanes"
-      rm -rf "$GIT_DIR"
-      info "Cloning source checkout to $GIT_DIR"
-      run_cmd git clone "$git_repo_url" "$GIT_DIR"
-    else
-      info "Using existing checkout: $GIT_DIR"
-      run_cmd git -C "$GIT_DIR" fetch --tags --prune
-    fi
+    info "Using existing checkout: $GIT_DIR"
+    run_cmd git -C "$GIT_DIR" fetch --tags --prune
   else
     info "Cloning source checkout to $GIT_DIR"
-    run_cmd git clone "$git_repo_url" "$GIT_DIR"
+    run_cmd git clone https://github.com/ArgentAIOS/argentos-core.git "$GIT_DIR"
   fi
 
   # Resolve release-tag placeholders to actual git tags
@@ -1038,17 +1026,14 @@ install_git() {
   run_pnpm "$GIT_DIR" build
   run_pnpm "$GIT_DIR" rebuild better-sqlite3
   snapshot_git_runtime "$GIT_DIR" "$PACKAGE_DIR_OVERRIDE"
-  ok "Installed git runtime snapshot: $PACKAGE_DIR_OVERRIDE"
+  ok "Installed stable runtime snapshot: $PACKAGE_DIR_OVERRIDE"
   write_git_wrapper "$BIN_DIR_OVERRIDE"
   ok "Installed git wrapper: $BIN_DIR_OVERRIDE/argent"
   info "Add this to PATH if needed: $BIN_DIR_OVERRIDE"
 
-  INSTALL_UPDATE_BRANCH_OVERRIDE="$(resolve_effective_update_branch)"
   provision_core_storage_stack
 
-  info "Seeding agent workspace..."
-  PATH="$(dirname "$NODE_BIN"):$PATH" run_cmd "$BIN_DIR_OVERRIDE/argent" setup
-  ok "Seeded agent workspace"
+  ensure_workspace_bootstrap_state "$BIN_DIR_OVERRIDE/argent"
 
   # Create all PG tables (knowledge, memory, tasks, etc.) using safe CREATE IF NOT EXISTS.
   # Must run AFTER PG is provisioned.
@@ -1316,6 +1301,10 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if is_truthy "${ARGENT_INSTALL_SOURCE_ONLY:-0}"; then
+  return 0 2>/dev/null || exit 0
+fi
 
 require_unix
 require_command curl

@@ -8,7 +8,7 @@ import {
   isSummarizationEnabled,
   isTtsEnabled,
   isTtsProviderConfigured,
-  resolveTtsApiKey,
+  resolveTtsApiKeyAsync,
   resolveTtsConfig,
   resolveTtsPrefsPath,
   setLastTtsAttempt,
@@ -165,14 +165,14 @@ export const handleTtsCommands: CommandHandler = async (params, allowTextCommand
     });
     if (!args.trim()) {
       const hasOpenAI = Boolean(
-        resolveTtsApiKey(config, "openai", {
+        await resolveTtsApiKeyAsync(config, "openai", {
           cfg: params.cfg,
           sessionKey: params.sessionKey,
           source: "command:tts:provider",
         }),
       );
       const hasElevenLabs = Boolean(
-        resolveTtsApiKey(config, "elevenlabs", {
+        await resolveTtsApiKeyAsync(config, "elevenlabs", {
           cfg: params.cfg,
           sessionKey: params.sessionKey,
           source: "command:tts:provider",

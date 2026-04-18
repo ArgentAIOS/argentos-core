@@ -130,6 +130,27 @@ describe("exec tool backgrounding", () => {
     expect(sessions.some((s) => s.sessionId === sessionId)).toBe(true);
   });
 
+  it(
+    "backgrounds interactive long-running commands sooner by default",
+    async () => {
+      const tool = createExecTool({
+        allowBackground: true,
+        backgroundMs: 10_000,
+        sessionKey: "agent:main:main",
+      });
+
+      const result = await tool.execute("call-fast-bg", {
+        command: `${longDelayCmd} # pnpm build`,
+      });
+
+      expect(result.details.status).toBe("running");
+      const sessionId = (result.details as { sessionId: string }).sessionId;
+      const status = await waitForCompletion(sessionId);
+      expect(status).toBe("completed");
+    },
+    isWin ? 15_000 : 5_000,
+  );
+
   it("derives a session name from the command", async () => {
     const result = await execTool.execute("call1", {
       command: "echo hello",

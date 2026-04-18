@@ -111,7 +111,11 @@ Actions:
           }
 
           if (provider === "mailgun") {
-            const key = resolveKey("MAILGUN_API_KEY") || process.env.MAILGUN_API_KEY;
+            const key =
+              resolveKey("MAILGUN_API_KEY") ||
+              resolveKey("MAILGUN_TITANIUM_API_KEY") ||
+              process.env.MAILGUN_API_KEY ||
+              process.env.MAILGUN_TITANIUM_API_KEY;
             if (!key) throw new Error("No MAILGUN_API_KEY configured.");
             const auth = Buffer.from(`api:${key}`).toString("base64");
             const res = await fetch("https://api.mailgun.net/v3/domains", {
@@ -172,7 +176,11 @@ Actions:
         }
 
         if (action === "send_mailgun") {
-          const key = resolveKey("MAILGUN_API_KEY") || process.env.MAILGUN_API_KEY;
+          const key =
+            resolveKey("MAILGUN_API_KEY") ||
+            resolveKey("MAILGUN_TITANIUM_API_KEY") ||
+            process.env.MAILGUN_API_KEY ||
+            process.env.MAILGUN_TITANIUM_API_KEY;
           if (!key) throw new Error("No MAILGUN_API_KEY configured.");
 
           const domain =

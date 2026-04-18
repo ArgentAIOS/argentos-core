@@ -6,7 +6,7 @@ import { trimLogTail } from "./restart-sentinel.js";
 import {
   channelToNpmTag,
   DEFAULT_PACKAGE_CHANNEL,
-  resolveDevBranch,
+  DEV_BRANCH,
   isBetaTag,
   isStableTag,
   type UpdateChannel,
@@ -73,7 +73,6 @@ type UpdateRunnerOptions = {
   argv1?: string;
   tag?: string;
   channel?: UpdateChannel;
-  branch?: string;
   timeoutMs?: number;
   runCommand?: CommandRunner;
   progress?: UpdateStepProgress;
@@ -85,13 +84,6 @@ const PREFLIGHT_MAX_COMMITS = 10;
 const START_DIRS = ["cwd", "argv1", "process"];
 const DEFAULT_PACKAGE_NAME = "argentos";
 const CORE_PACKAGE_NAMES = new Set([DEFAULT_PACKAGE_NAME, "argent"]);
-
-type PreflightCheckpoint = "checkout" | "deps" | "lint" | "build";
-
-type PreflightCandidateState = {
-  sha: string;
-  lastPassed: PreflightCheckpoint | null;
-};
 
 function normalizeDir(value?: string | null) {
   if (!value) {
@@ -360,21 +352,6 @@ function managerInstallArgs(manager: "pnpm" | "bun" | "npm", frozen = false) {
   return frozen ? ["npm", "ci"] : ["npm", "install"];
 }
 
-function preflightScore(checkpoint: PreflightCheckpoint | null): number {
-  switch (checkpoint) {
-    case "checkout":
-      return 1;
-    case "deps":
-      return 2;
-    case "lint":
-      return 3;
-    case "build":
-      return 4;
-    default:
-      return 0;
-  }
-}
-
 function normalizeTag(tag?: string) {
   const trimmed = tag?.trim();
   if (!trimmed) {
@@ -404,7 +381,6 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
 
   let stepIndex = 0;
   let gitTotalSteps = 0;
-  let postPreflightStepStartIndex = 0;
 
   const step = (
     name: string,
@@ -446,14 +422,12 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       cwd: gitRoot,
       timeoutMs,
     });
-    let beforeSha = beforeShaResult.stdout.trim() || null;
+    const beforeSha = beforeShaResult.stdout.trim() || null;
     const beforeVersion = await readPackageVersion(gitRoot);
     const channel: UpdateChannel = opts.channel ?? "dev";
-    const currentBranch =
-      channel === "dev" ? await readBranchName(runCommand, gitRoot, timeoutMs) : null;
-    const devBranch = channel === "dev" ? resolveDevBranch(opts.branch) : null;
-    const needsCheckoutBranch = channel === "dev" && currentBranch !== devBranch;
-    gitTotalSteps = channel === "dev" ? (needsCheckoutBranch ? 12 : 11) : 10;
+    const branch = channel === "dev" ? await readBranchName(runCommand, gitRoot, timeoutMs) : null;
+    const needsCheckoutMain = channel === "dev" && branch !== DEV_BRANCH;
+    gitTotalSteps = channel === "dev" ? (needsCheckoutMain ? 12 : 11) : 10;
 
     const statusCheck = await runStep(
       step(
@@ -492,9 +466,13 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
     }
 
     if (channel === "dev") {
-      if (needsCheckoutBranch && devBranch) {
+      if (needsCheckoutMain) {
         const checkoutStep = await runStep(
-          step(`git checkout ${devBranch}`, ["git", "-C", gitRoot, "checkout", devBranch], gitRoot),
+          step(
+            `git checkout ${DEV_BRANCH}`,
+            ["git", "-C", gitRoot, "checkout", DEV_BRANCH],
+            gitRoot,
+          ),
         );
         steps.push(checkoutStep);
         if (checkoutStep.exitCode !== 0) {
@@ -507,17 +485,6 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
             steps,
             durationMs: Date.now() - startedAt,
           };
-        }
-
-        const postCheckoutSha =
-          devBranch == null
-            ? null
-            : await runCommand(["git", "-C", gitRoot, "rev-parse", devBranch], {
-                cwd: gitRoot,
-                timeoutMs,
-              }).catch(() => null);
-        if (postCheckoutSha?.code === 0) {
-          beforeSha = postCheckoutSha.stdout.trim() || beforeSha;
         }
       }
 
@@ -649,11 +616,9 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       }
 
       let selectedSha: string | null = null;
-      const candidateStates = new Map<string, PreflightCandidateState>();
       try {
         for (const sha of candidates) {
           const shortSha = sha.slice(0, 8);
-          const state: PreflightCandidateState = { sha, lastPassed: null };
           const checkoutStep = await runStep(
             step(
               `preflight checkout (${shortSha})`,
@@ -663,45 +628,32 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
           );
           steps.push(checkoutStep);
           if (checkoutStep.exitCode !== 0) {
-            candidateStates.set(sha, state);
             continue;
           }
-          state.lastPassed = "checkout";
 
           const depsStep = await runStep(
             step(`preflight deps install (${shortSha})`, managerInstallArgs(manager), worktreeDir),
           );
           steps.push(depsStep);
-          await runCommand(["git", "-C", worktreeDir, "checkout", "--", "pnpm-lock.yaml"], {
-            cwd: worktreeDir,
-            timeoutMs,
-          }).catch(() => null);
           if (depsStep.exitCode !== 0) {
-            candidateStates.set(sha, state);
             continue;
           }
-          state.lastPassed = "deps";
 
           const lintStep = await runStep(
             step(`preflight lint (${shortSha})`, managerScriptArgs(manager, "lint"), worktreeDir),
           );
           steps.push(lintStep);
           if (lintStep.exitCode !== 0) {
-            candidateStates.set(sha, state);
             continue;
           }
-          state.lastPassed = "lint";
 
           const buildStep = await runStep(
             step(`preflight build (${shortSha})`, managerScriptArgs(manager, "build"), worktreeDir),
           );
           steps.push(buildStep);
           if (buildStep.exitCode !== 0) {
-            candidateStates.set(sha, state);
             continue;
           }
-          state.lastPassed = "build";
-          candidateStates.set(sha, state);
 
           selectedSha = sha;
           break;
@@ -723,19 +675,6 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       }
 
       if (!selectedSha) {
-        const baselineState = beforeSha ? candidateStates.get(beforeSha) : undefined;
-        const upstreamState = candidateStates.get(upstreamSha);
-        if (
-          baselineState &&
-          upstreamState &&
-          preflightScore(upstreamState.lastPassed) >= preflightScore(baselineState.lastPassed) &&
-          upstreamState.lastPassed !== null
-        ) {
-          selectedSha = upstreamSha;
-        }
-      }
-
-      if (!selectedSha) {
         return {
           status: "error",
           mode: "git",
@@ -750,7 +689,6 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       const rebaseStep = await runStep(
         step("git rebase", ["git", "-C", gitRoot, "rebase", selectedSha], gitRoot),
       );
-      postPreflightStepStartIndex = steps.length;
       steps.push(rebaseStep);
       if (rebaseStep.exitCode !== 0) {
         const abortResult = await runCommand(["git", "-C", gitRoot, "rebase", "--abort"], {
@@ -892,10 +830,7 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
     );
     steps.push(doctorStep);
 
-    const failedStep =
-      channel === "dev"
-        ? steps.slice(postPreflightStepStartIndex).find((s) => s.exitCode !== 0)
-        : steps.find((s) => s.exitCode !== 0);
+    const failedStep = steps.find((s) => s.exitCode !== 0);
     const afterShaStep = await runStep(
       step("git rev-parse HEAD (after)", ["git", "-C", gitRoot, "rev-parse", "HEAD"], gitRoot),
     );

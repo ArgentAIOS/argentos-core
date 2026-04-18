@@ -124,6 +124,11 @@ const DEFAULT_APPROVAL_TIMEOUT_MS = 120_000;
 const DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS = 130_000;
 const DEFAULT_APPROVAL_RUNNING_NOTICE_MS = 10_000;
 const APPROVAL_SLUG_LENGTH = 8;
+const FAST_INTERACTIVE_YIELD_MS = 1_500;
+const LONG_RUNNING_COMMAND_RE =
+  /\b(pnpm|npm|yarn|bun|npx|pytest|vitest|playwright|docker|wrangler|cargo|go|uv|make|cmake|gradle|mvn|podman|railway|vercel)\b/i;
+const LONG_RUNNING_SUBCOMMAND_RE =
+  /\b(build|test|install|dev|serve|watch|start|deploy|crawl|reindex|migrate|lint|check|preview)\b/i;
 
 type PtyExitEvent = { exitCode: number; signal?: number };
 type PtyListener<T> = (event: T) => void;
@@ -416,6 +421,25 @@ function emitExecSystemEvent(text: string, opts: { sessionKey?: string; contextK
   }
   enqueueSystemEvent(text, { sessionKey, contextKey: opts.contextKey });
   requestHeartbeatNow({ reason: "exec-event" });
+}
+
+function isSystemSessionKey(sessionKey?: string | null): boolean {
+  const raw = (sessionKey ?? "").trim().toLowerCase();
+  if (!raw) {
+    return false;
+  }
+  return raw.includes("cron") || raw.includes("contemplation") || raw.includes("sis");
+}
+
+function shouldFastBackgroundInteractiveCommand(params: {
+  command: string;
+  sessionKey?: string;
+}): boolean {
+  const trimmed = params.command.trim();
+  if (!trimmed || isSystemSessionKey(params.sessionKey)) {
+    return false;
+  }
+  return LONG_RUNNING_COMMAND_RE.test(trimmed) && LONG_RUNNING_SUBCOMMAND_RE.test(trimmed);
 }
 
 async function runExecProcess(opts: {
@@ -857,10 +881,21 @@ export function createExecTool(
       if (!allowBackground && (backgroundRequested || yieldRequested)) {
         warnings.push("Warning: background execution is disabled; running synchronously.");
       }
+      const computedDefaultYieldMs = shouldFastBackgroundInteractiveCommand({
+        command: params.command,
+        sessionKey: defaults?.sessionKey,
+      })
+        ? Math.min(defaultBackgroundMs, FAST_INTERACTIVE_YIELD_MS)
+        : defaultBackgroundMs;
       const yieldWindow = allowBackground
         ? backgroundRequested
           ? 0
-          : clampNumber(params.yieldMs ?? defaultBackgroundMs, defaultBackgroundMs, 10, 120_000)
+          : clampNumber(
+              params.yieldMs ?? computedDefaultYieldMs,
+              computedDefaultYieldMs,
+              10,
+              120_000,
+            )
         : null;
       const elevatedDefaults = defaults?.elevated;
       const elevatedAllowed = Boolean(elevatedDefaults?.enabled && elevatedDefaults.allowed);

@@ -1,14 +1,14 @@
 {
   "name": "@argentos/zalouser",
-  "version": "2026.4.11.1",
+  "version": "2026.3.2",
   "description": "ArgentOS Zalo Personal Account plugin via zca-cli",
   "type": "module",
   "dependencies": {
     "@sinclair/typebox": "0.34.48",
-    "argentos": "link:../.."
+    "argentos": "workspace:*"
   },
   "devDependencies": {
-    "argentos": "link:../.."
+    "argentos": "workspace:*"
   },
   "argent": {
     "extensions": [

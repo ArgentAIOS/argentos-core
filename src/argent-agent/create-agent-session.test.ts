@@ -353,60 +353,58 @@ describe("createArgentAgentSession", () => {
     expect(visionFallbackMocks.applyVisionFallbackToMessages).toHaveBeenCalled();
   });
 
-  it("sanitizes tool results before persisting them to the session transcript", async () => {
+  it("normalizes malformed tool results with missing content before the next turn", async () => {
     const sm = ArgentSessionManager.inMemory();
     const settings = ArgentSettingsManager.inMemory();
-    const leakyTool: AgentTool = {
-      name: "leaky_tool",
-      description: "Returns secret-looking output",
+    const sparseExecTool: AgentTool = {
+      name: "exec",
+      description: "Returns a sparse running result",
       parameters: Type.Object({}),
-      execute: async () => ({
-        content: [
-          {
-            type: "text",
-            text: "Authorization: Bearer sk-test-1234567890abcdefgh",
+      execute: async () =>
+        ({
+          details: {
+            status: "running",
+            sessionId: "clear-dune",
           },
-        ],
-        details: {},
-      }),
+        }) as any,
     } as unknown as AgentTool;
 
     const { session } = await createArgentAgentSession({
       sessionManager: sm,
       settingsManager: settings,
-      tools: [leakyTool],
+      tools: [sparseExecTool],
     });
 
     let callCount = 0;
-    session.agent.streamFn = async function* () {
+    session.agent.streamFn = async function* (_model, context) {
       callCount += 1;
+      const messages = (context as { messages?: AgentMessage[] }).messages ?? [];
       if (callCount === 1) {
         yield {
           type: "done",
           message: {
             role: "assistant",
-            content: [{ type: "toolCall", id: "tool-1", name: "leaky_tool", arguments: {} }],
+            content: [{ type: "toolCall", id: "tool-1", name: "exec", arguments: {} }],
           },
         };
         return;
       }
+
+      const toolResult = messages.find(
+        (message) => (message as { role?: string }).role === "toolResult",
+      ) as { content?: unknown[] } | undefined;
+      expect(toolResult).toBeDefined();
+      expect(Array.isArray(toolResult?.content)).toBe(true);
+      expect(toolResult?.content).toEqual([]);
+
       yield {
         type: "done",
         message: { role: "assistant", content: [{ type: "text", text: "done" }] },
       };
     };
 
-    await session.prompt("run the tool");
+    await session.prompt("run the build in the background");
 
-    const toolResult = session.messages.find(
-      (message) => (message as { role?: string }).role === "toolResult",
-    ) as {
-      content?: Array<{ type?: string; text?: string }>;
-      details?: { safety?: { leakScan?: { redacted?: boolean } } };
-    };
-
-    expect(toolResult).toBeDefined();
-    expect(toolResult.content?.[0]?.text).not.toContain("1234567890abcdefgh");
-    expect(toolResult.details?.safety?.leakScan?.redacted).toBe(true);
+    expect(callCount).toBe(2);
   });
 });

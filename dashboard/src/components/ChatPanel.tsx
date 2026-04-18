@@ -644,11 +644,37 @@ function MessageContent({
 }
 
 export interface ModelInfo {
-  provider: string;
-  model: string;
-  tier: string;
-  score: number;
-  routed: boolean;
+  provider?: string;
+  model?: string;
+  tier?: string;
+  score?: number;
+  routed?: boolean;
+  matchedSkills?: Array<{
+    id?: string;
+    name: string;
+    source: string;
+    kind?: "generic" | "personal";
+    state?: string;
+    score: number;
+    confidence?: number;
+    provenanceCount?: number;
+    reasons?: string[];
+  }>;
+  personalProcedure?: {
+    id?: string;
+    name?: string;
+    scope?: string;
+    steps?: Array<{
+      index?: number;
+      text?: string;
+      expectedTools?: string[];
+    }>;
+    completedStepCount?: number;
+    totalStepCount?: number;
+    missingSteps?: string[];
+    executedTools?: string[];
+    succeeded?: boolean;
+  };
 }
 
 export interface ChatMessage {
@@ -2176,13 +2202,82 @@ export function ChatPanel({
                                 }`}
                               />
                               <span className="text-xs text-[hsl(var(--muted-foreground))]/60">
-                                {msg.modelInfo.model.replace(/-20\d{6}$/, "")}
+                                {(msg.modelInfo.model ?? "").replace(/-20\d{6}$/, "")}
                               </span>
                             </span>
                           )}
+                          {(() => {
+                            const appliedProcedureName =
+                              msg.modelInfo?.personalProcedure?.name?.trim().toLowerCase() ?? "";
+                            const matchedSkills =
+                              msg.modelInfo?.matchedSkills?.filter((skill) => {
+                                if (skill.kind !== "personal" || !appliedProcedureName) {
+                                  return true;
+                                }
+                                return skill.name.trim().toLowerCase() !== appliedProcedureName;
+                              }) ?? [];
+                            if (matchedSkills.length === 0) {
+                              return null;
+                            }
+                            return (
+                              <>
+                                {(msg.modelInfo || msg.mood || msg.familySource) && (
+                                  <span className="text-[hsl(var(--muted-foreground))]/15">|</span>
+                                )}
+                                {matchedSkills.slice(0, 2).map((skill) => (
+                                  <span
+                                    key={`${msg.id}-skill-${skill.name}`}
+                                    className="text-xs px-2 py-0.5 rounded-full font-medium"
+                                    title={`${skill.kind === "personal" ? "Matched Operator Procedure" : "Matched Workspace Skill"}${skill.state ? ` • state ${skill.state}` : ""} • ${skill.source} • score ${skill.score}${typeof skill.confidence === "number" ? ` • confidence ${skill.confidence.toFixed(2)}` : ""}${typeof skill.provenanceCount === "number" ? ` • provenance ${skill.provenanceCount}` : ""}`}
+                                    style={{
+                                      backgroundColor:
+                                        skill.kind === "personal"
+                                          ? "rgba(56, 189, 248, 0.12)"
+                                          : "rgba(251, 191, 36, 0.10)",
+                                      color:
+                                        skill.kind === "personal"
+                                          ? "rgba(125, 211, 252, 0.95)"
+                                          : "rgba(253, 224, 71, 0.95)",
+                                      border:
+                                        skill.kind === "personal"
+                                          ? "1px solid rgba(56, 189, 248, 0.25)"
+                                          : "1px solid rgba(251, 191, 36, 0.24)",
+                                    }}
+                                  >
+                                    {skill.kind === "personal"
+                                      ? `${skill.state === "incubating" ? "Incubating Procedure" : "Operator Procedure"}: ${skill.name}`
+                                      : `Workspace Skill: ${skill.name}`}
+                                  </span>
+                                ))}
+                              </>
+                            );
+                          })()}
+                          {msg.modelInfo?.personalProcedure?.name && (
+                            <>
+                              {(msg.modelInfo || msg.mood || msg.familySource) && (
+                                <span className="text-[hsl(var(--muted-foreground))]/15">|</span>
+                              )}
+                              <span
+                                className="text-xs px-2 py-0.5 rounded-full font-medium"
+                                title={`Applied Operator Procedure${msg.modelInfo.personalProcedure.scope ? ` • ${msg.modelInfo.personalProcedure.scope}` : ""}`}
+                                style={{
+                                  backgroundColor: "rgba(34, 197, 94, 0.12)",
+                                  color: "rgba(134, 239, 172, 0.95)",
+                                  border: "1px solid rgba(34, 197, 94, 0.25)",
+                                }}
+                              >
+                                Applied Procedure: {msg.modelInfo.personalProcedure.name}
+                                {typeof msg.modelInfo.personalProcedure.completedStepCount ===
+                                  "number" &&
+                                  typeof msg.modelInfo.personalProcedure.totalStepCount ===
+                                    "number" &&
+                                  ` (${msg.modelInfo.personalProcedure.completedStepCount}/${msg.modelInfo.personalProcedure.totalStepCount})`}
+                              </span>
+                            </>
+                          )}
                           {msg.toolsUsed && msg.toolsUsed.length > 0 && (
                             <>
-                              {(msg.modelInfo || msg.mood) && (
+                              {(msg.modelInfo || msg.mood || msg.familySource) && (
                                 <span className="text-[hsl(var(--muted-foreground))]/15">|</span>
                               )}
                               {msg.toolsUsed.map((tool) => (

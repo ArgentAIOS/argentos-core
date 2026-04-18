@@ -808,7 +808,6 @@ interface SubPortNodeData {
   label: string;
   config: Record<string, unknown>;
   execState?: string;
-  [key: string]: unknown;
 }
 
 function ModelProviderNode({ data, selected }: NodeProps<Node<SubPortNodeData>>) {
@@ -2102,10 +2101,9 @@ function ActionForm({
   const update = (field: string, value: unknown) => {
     onUpdate(nodeId, { ...data, [field]: value });
   };
-  const rawCfg = (data.config ?? {}) as Record<string, unknown>;
-  const cfg = rawCfg as Record<string, string | number | undefined>;
+  const cfg = (data.config ?? {}) as Record<string, unknown>;
   const cfgUpdate = (field: string, value: unknown) => {
-    update("config", { ...rawCfg, [field]: value });
+    update("config", { ...cfg, [field]: value });
   };
   const actionTypes: ActionTypeValue[] = [
     "send_message",
@@ -2595,7 +2593,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Sandboxed</label>
             <select
               className={DOCK_INPUT}
-              value={rawCfg.sandboxed === false ? "false" : "true"}
+              value={cfg.sandboxed === false ? "false" : "true"}
               onChange={(e) => cfgUpdate("sandboxed", e.target.value === "true")}
             >
               <option value="true">Yes (required)</option>
@@ -3861,8 +3859,8 @@ function WorkflowCanvasInner({
   // ── Run State ─────────────────────────────────────────────────────
   const [running, setRunning] = useState(false);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
-  const [, setCompletedNodeIds] = useState<Set<string>>(new Set());
-  const [, setFailedNodeIds] = useState<Set<string>>(new Set());
+  const [completedNodeIds, setCompletedNodeIds] = useState<Set<string>>(new Set());
+  const [failedNodeIds, setFailedNodeIds] = useState<Set<string>>(new Set());
 
   // ── Approval State ─────────────────────────────────────────────────
   interface PendingApproval {
@@ -4719,7 +4717,7 @@ function WorkflowCanvasInner({
                         data={selectedNode.data as unknown as SubPortNodeData}
                         onUpdate={onUpdateNodeData}
                         nodeId={selectedNode.id}
-                        connectors={[]}
+                        connectors={connectors}
                       />
                     )}
                   </div>

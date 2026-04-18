@@ -19,6 +19,7 @@ export type {
   SkillEligibilityContext,
   SkillCommandSpec,
   SkillEntry,
+  SkillMatchCandidate,
   SkillInstallSpec,
   SkillSnapshot,
   SkillsInstallPreferences,
@@ -30,9 +31,22 @@ export {
   clearSkillEntryCache,
   filterWorkspaceSkillEntries,
   loadWorkspaceSkillEntries,
+  matchSkillCandidatesForPrompt,
   resolveSkillsPromptForRun,
   syncSkillsToWorkspace,
 } from "./skills/workspace.js";
+export {
+  buildPersonalSkillExecutionPlan,
+  buildExecutablePersonalSkillContextBlock,
+  evaluatePersonalSkillExecutionPlan,
+  buildMatchedPersonalSkillsContextBlock,
+  buildPersonalSkillCandidateReviewPrompt,
+  matchPersonalSkillCandidatesForPrompt,
+  mergeMatchedSkills,
+  recordPersonalSkillUsage,
+  reviewPersonalSkillCandidates,
+  selectExecutablePersonalSkill,
+} from "./skills/personal.js";
 
 export function resolveSkillsInstallPreferences(config?: ArgentConfig): SkillsInstallPreferences {
   const raw = config?.skills?.install;

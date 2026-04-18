@@ -8,6 +8,25 @@ interface SafetyRulesState {
   requiresHumanApproval: string[];
 }
 
+interface SafetyRulesPanelProps {
+  showUpgradeHint?: boolean;
+}
+
+interface FullIntentSettings {
+  enabled: boolean;
+  validationMode: "off" | "warn" | "enforce";
+  runtimeMode: "off" | "advisory" | "enforce";
+  global: {
+    neverDo: string[];
+    requiresHumanApproval: string[];
+    [key: string]: unknown;
+  };
+  departments?: Record<string, unknown>;
+  agents?: Record<string, unknown>;
+  simulationGate?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 const CAUTIOUS_PRESETS = {
   relaxed: {
     label: "Relaxed",
@@ -26,7 +45,8 @@ const CAUTIOUS_PRESETS = {
   },
 };
 
-export default function SafetyRulesPanel() {
+export default function SafetyRulesPanel({ showUpgradeHint = true }: SafetyRulesPanelProps) {
+  const [intentSettings, setIntentSettings] = useState<FullIntentSettings | null>(null);
   const [rules, setRules] = useState<SafetyRulesState>({
     enabled: false,
     runtimeMode: "advisory",
@@ -36,6 +56,7 @@ export default function SafetyRulesPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [newNeverDo, setNewNeverDo] = useState("");
   const [newApproval, setNewApproval] = useState("");
 
@@ -44,10 +65,12 @@ export default function SafetyRulesPanel() {
       const res = await fetch("/api/settings/intent");
       if (res.ok) {
         const data = await res.json();
-        const global = data?.globalPolicy || {};
+        const intent = data?.intent || {};
+        const global = intent?.global || {};
+        setIntentSettings(intent);
         setRules({
-          enabled: data?.enabled ?? false,
-          runtimeMode: data?.runtimeMode ?? "advisory",
+          enabled: intent?.enabled ?? false,
+          runtimeMode: intent?.runtimeMode ?? "advisory",
           neverDo: global.neverDo || [],
           requiresHumanApproval: global.requiresHumanApproval || [],
         });
@@ -63,22 +86,50 @@ export default function SafetyRulesPanel() {
   const saveRules = async () => {
     setSaving(true);
     setSaved(false);
+    setMessage(null);
     try {
-      await fetch("/api/settings/intent", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          enabled: rules.enabled,
-          runtimeMode: rules.runtimeMode,
-          globalPolicy: {
-            neverDo: rules.neverDo,
-            requiresHumanApproval: rules.requiresHumanApproval,
+      const nextIntent: FullIntentSettings = {
+        ...(intentSettings ?? {
+          enabled: false,
+          validationMode: "enforce",
+          runtimeMode: "advisory",
+          global: {
+            neverDo: [],
+            requiresHumanApproval: [],
           },
         }),
+        enabled: rules.enabled,
+        runtimeMode: rules.runtimeMode,
+        global: {
+          ...(intentSettings?.global ?? {}),
+          neverDo: rules.neverDo,
+          requiresHumanApproval: rules.requiresHumanApproval,
+        },
+      };
+      const res = await fetch("/api/settings/intent", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intent: nextIntent }),
       });
+      if (!res.ok) {
+        throw new Error(`Failed to save safety rules (HTTP ${res.status})`);
+      }
+      const data = await res.json();
+      if (data?.intent) {
+        setIntentSettings(data.intent);
+      } else {
+        setIntentSettings(nextIntent);
+      }
       setSaved(true);
+      setMessage({ type: "success", text: "Safety rules saved." });
       setTimeout(() => setSaved(false), 3000);
-    } catch {}
+      setTimeout(() => setMessage(null), 3000);
+    } catch (err) {
+      setMessage({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to save safety rules.",
+      });
+    }
     setSaving(false);
   };
 
@@ -124,6 +175,18 @@ export default function SafetyRulesPanel() {
           {rules.enabled ? "Enabled" : "Disabled"}
         </button>
       </div>
+
+      {message && (
+        <div
+          className={`rounded-lg border px-3 py-2 text-sm ${
+            message.type === "success"
+              ? "border-green-500/30 bg-green-500/10 text-green-300"
+              : "border-red-500/30 bg-red-500/10 text-red-300"
+          }`}
+        >
+          {message.text}
+        </div>
+      )}
 
       {!rules.enabled && (
         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 flex items-start gap-3">
@@ -269,8 +332,16 @@ export default function SafetyRulesPanel() {
           {/* Save */}
           <div className="flex items-center justify-between">
             <p className="text-white/30 text-xs">
-              Upgrade to <span className="text-purple-400">ArgentOS Business</span> for departments,
-              industry packs, simulation gates, and full governance.
+              {showUpgradeHint ? (
+                <>
+                  Upgrade to <span className="text-purple-400">ArgentOS Business</span> for
+                  departments, industry packs, simulation gates, and full governance.
+                </>
+              ) : (
+                <>
+                  Advanced governance tools are available below when you need deeper policy control.
+                </>
+              )}
             </p>
             <button
               onClick={saveRules}

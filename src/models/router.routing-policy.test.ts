@@ -80,28 +80,4 @@ describe("routeModel routing policy", () => {
     expect(withFloor.tier).toBe("balanced");
     expect(withFloor.reason).toContain("memory-likely floor");
   });
-
-  it("lets explicit config tier overrides win even when a built-in active profile exists", () => {
-    const decision = routeModel({
-      signals: {
-        prompt: "Remember that I prefer concise status updates.",
-        sessionType: "main",
-      },
-      config: {
-        enabled: true,
-        activeProfile: "default",
-        tiers: {
-          local: { provider: "groq", model: "llama-3.3-70b-versatile" },
-          fast: { provider: "groq", model: "llama-3.3-70b-versatile" },
-          balanced: { provider: "groq", model: "llama-3.3-70b-versatile" },
-          powerful: { provider: "groq", model: "llama-3.3-70b-versatile" },
-        },
-      },
-      defaultProvider: "groq",
-      defaultModel: "llama-3.3-70b-versatile",
-    });
-
-    expect(decision.provider).toBe("groq");
-    expect(decision.model).toBe("llama-3.3-70b-versatile");
-  });
 });

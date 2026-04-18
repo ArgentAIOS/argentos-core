@@ -177,6 +177,114 @@ describe("sis runner consolidation parser", () => {
   });
 });
 
+describe("personal skill candidate generation from SIS lessons", () => {
+  it("builds candidate inputs only for tool-backed high-confidence lessons", () => {
+    const inputs = __testing.buildPersonalSkillCandidateInputsFromLessons([
+      {
+        id: "lesson-1",
+        type: "discovery",
+        context: "Podcast publishing workflow drifted across runs",
+        action: "Use a standardized payload template",
+        outcome: "Pipeline prep became repeatable",
+        lesson: "Use the podcast publish pipeline payload template before each run.",
+        correction: null,
+        confidence: 0.82,
+        occurrences: 3,
+        lastSeen: "2026-04-15T00:00:00.000Z",
+        tags: ["podcast", "pipeline"],
+        relatedTools: ["podcast_publish_pipeline"],
+        sourceEpisodeIds: ["ep-1"],
+        createdAt: "2026-04-15T00:00:00.000Z",
+        updatedAt: "2026-04-15T00:00:00.000Z",
+      },
+      {
+        id: "lesson-2",
+        type: "discovery",
+        context: "Generic reflection",
+        action: "Think more carefully",
+        outcome: "Felt better",
+        lesson: "Think more carefully next time.",
+        correction: null,
+        confidence: 0.6,
+        occurrences: 1,
+        lastSeen: "2026-04-15T00:00:00.000Z",
+        tags: ["reflection"],
+        relatedTools: [],
+        sourceEpisodeIds: ["ep-2"],
+        createdAt: "2026-04-15T00:00:00.000Z",
+        updatedAt: "2026-04-15T00:00:00.000Z",
+      },
+    ]);
+
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]?.title).toContain("podcast_publish_pipeline procedure");
+    expect(inputs[0]?.sourceLessonIds).toEqual(["lesson-1"]);
+    expect(inputs[0]?.state).toBe("candidate");
+  });
+
+  it("skips duplicate candidates by title or source lesson", async () => {
+    const created: Array<{ title: string; sourceLessonIds: string[] }> = [];
+    const memory = {
+      listPersonalSkillCandidates: async () => [
+        {
+          id: "psc-1",
+          agentId: "main",
+          operatorId: "jason",
+          profileId: null,
+          title:
+            "podcast_publish_pipeline procedure: Use the podcast publish pipeline payload template before each run",
+          summary: "existing",
+          triggerPatterns: [],
+          procedureOutline: null,
+          relatedTools: [],
+          sourceMemoryIds: [],
+          sourceEpisodeIds: [],
+          sourceTaskIds: [],
+          sourceLessonIds: ["lesson-1"],
+          evidenceCount: 1,
+          recurrenceCount: 1,
+          confidence: 0.8,
+          state: "candidate",
+          lastReviewedAt: null,
+          lastUsedAt: null,
+          createdAt: "2026-04-15T00:00:00.000Z",
+          updatedAt: "2026-04-15T00:00:00.000Z",
+        },
+      ],
+      createPersonalSkillCandidate: async (input: any) => {
+        created.push({
+          title: input.title,
+          sourceLessonIds: input.sourceLessonIds,
+        });
+        return input;
+      },
+    } as any;
+
+    const count = await __testing.createPersonalSkillCandidatesFromLessons(memory, [
+      {
+        id: "lesson-1",
+        type: "discovery",
+        context: "Podcast publishing workflow drifted across runs",
+        action: "Use a standardized payload template",
+        outcome: "Pipeline prep became repeatable",
+        lesson: "Use the podcast publish pipeline payload template before each run.",
+        correction: null,
+        confidence: 0.82,
+        occurrences: 3,
+        lastSeen: "2026-04-15T00:00:00.000Z",
+        tags: ["podcast", "pipeline"],
+        relatedTools: ["podcast_publish_pipeline"],
+        sourceEpisodeIds: ["ep-1"],
+        createdAt: "2026-04-15T00:00:00.000Z",
+        updatedAt: "2026-04-15T00:00:00.000Z",
+      },
+    ]);
+
+    expect(count).toBe(0);
+    expect(created).toHaveLength(0);
+  });
+});
+
 describe("sis consolidation checkpoint dedupe", () => {
   it("normalizes empty consolidation signatures across dates and episode counts", () => {
     const first = `## SIS Consolidation (2026-03-12)

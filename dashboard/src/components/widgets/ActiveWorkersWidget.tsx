@@ -5,6 +5,7 @@
  * Scales: 3 agents = cards, 30 = grouped, 300+ = clusters.
  */
 
+import { Activity, Pause, Square, AlertTriangle } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 
 interface Worker {

@@ -42,8 +42,9 @@ apps/ios/*.xcfilelist
 
 # Vendor build artifacts
 vendor/a2ui/renderers/lit/dist/
+src/canvas-host/a2ui/*.bundle.js
 src/canvas-host/a2ui/*.map
-src/canvas-host/a2ui/.bundle.hash
+.bundle.hash
 
 # fastlane (iOS)
 apps/ios/fastlane/README.md

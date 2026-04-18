@@ -35,7 +35,8 @@ vi.mock("../agents/model-auth.js", () => ({
   requireApiKey: vi.fn((auth: { apiKey?: string }) => auth.apiKey ?? ""),
 }));
 
-const { _test, resolveTtsConfig, maybeApplyTtsToPayload, getTtsProvider } = tts;
+const { _test, resolveTtsConfig, maybeApplyTtsToPayload, getTtsProvider, resolveTtsApiKeyAsync } =
+  tts;
 
 const {
   isValidVoiceId,
@@ -348,6 +349,24 @@ describe("tts", () => {
         }),
       ).rejects.toThrow("No summary returned");
     });
+
+    it("throws provider error when summarization returns an error message without content", async () => {
+      vi.mocked(completeSimple).mockResolvedValue({
+        content: undefined as any,
+        stopReason: "error",
+        errorMessage: "provider exploded",
+      });
+
+      await expect(
+        summarizeText({
+          text: "text",
+          targetLength: 500,
+          cfg: baseCfg,
+          config: baseConfig,
+          timeoutMs: 30_000,
+        }),
+      ).rejects.toThrow("provider exploded");
+    });
   });
 
   describe("getTtsProvider", () => {
@@ -431,6 +450,26 @@ describe("tts", () => {
           expect(provider).toBe("edge");
         },
       );
+    });
+  });
+
+  describe("resolveTtsApiKeyAsync", () => {
+    it("resolves the same key as the sync TTS resolver", async () => {
+      const original = process.env.OPENAI_API_KEY;
+      process.env.OPENAI_API_KEY = "test-openai-key";
+      try {
+        const config = resolveTtsConfig({
+          agents: { defaults: { model: { primary: "openai/gpt-4o-mini" } } },
+          messages: { tts: {} },
+        });
+        await expect(resolveTtsApiKeyAsync(config, "openai")).resolves.toBe("test-openai-key");
+      } finally {
+        if (original === undefined) {
+          delete process.env.OPENAI_API_KEY;
+        } else {
+          process.env.OPENAI_API_KEY = original;
+        }
+      }
     });
   });
 

@@ -701,7 +701,8 @@ extension OnboardingView {
             .frame(maxHeight: .infinity)
         }
         .padding(.horizontal, 28)
-        .frame(width: self.pageWidth, height: self.contentHeight, alignment: .top)
+        .frame(width: self.pageWidth, alignment: .top)
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     func readyPage() -> some View {

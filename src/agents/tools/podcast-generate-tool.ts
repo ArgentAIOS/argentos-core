@@ -13,7 +13,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { ArgentConfig } from "../../config/config.js";
 import type { AnyAgentTool } from "./common.js";
-import { resolveServiceKey } from "../../infra/service-keys.js";
+import { resolveServiceKeyAsync } from "../../infra/service-keys.js";
 import { readNumberParam, readStringParam } from "./common.js";
 
 const execFileAsync = promisify(execFile);
@@ -527,14 +527,14 @@ Returns MEDIA:{path} for playback/publishing.`,
         const music = parseMusicOptions(params);
 
         const apiKey =
-          resolveServiceKey("ELEVENLABS_API_KEY", options?.config, {
+          (await resolveServiceKeyAsync("ELEVENLABS_API_KEY", options?.config, {
             sessionKey: options?.agentSessionKey,
             source: "podcast_generate",
-          }) ||
-          resolveServiceKey("XI_API_KEY", options?.config, {
+          })) ||
+          (await resolveServiceKeyAsync("XI_API_KEY", options?.config, {
             sessionKey: options?.agentSessionKey,
             source: "podcast_generate",
-          });
+          }));
         if (!apiKey) {
           return {
             content: [

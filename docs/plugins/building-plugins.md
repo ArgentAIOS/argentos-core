@@ -190,7 +190,7 @@ function resolveApiKey(variableName: string): string | undefined {
       "enabled": true,
       "label": "Atera",
       "category": "other",
-      "scope": "Example Workspace"
+      "scope": "Titanium Computing"
     }
   ]
 }

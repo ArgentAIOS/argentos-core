@@ -35,6 +35,7 @@ describe("memory search config", () => {
     expect(resolved?.provider).toBe("ollama");
     expect(resolved?.fallback).toBe("none");
     expect(resolved?.model).toBe("nomic-embed-text");
+    expect(resolved?.sync.watch).toBe(false);
     expect(resolved?.query.hybrid.mmr).toEqual({ enabled: false, lambda: 0.7 });
     expect(resolved?.query.hybrid.temporalDecay).toEqual({
       enabled: false,

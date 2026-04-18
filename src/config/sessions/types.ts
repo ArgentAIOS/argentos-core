@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import type { Skill } from "../../agent-core/coding.js";
+import type { SkillMatchCandidate } from "../../agents/skills/types.js";
 import type { NormalizedChatType } from "../../channels/chat-type.js";
 import type { ChannelId } from "../../channels/plugins/types.js";
 import type { DeliveryContext } from "../../utils/delivery-context.js";
@@ -189,6 +190,7 @@ export type SessionSystemPromptReport = {
   skills: {
     promptChars: number;
     entries: Array<{ name: string; blockChars: number }>;
+    matchedCandidates?: SkillMatchCandidate[];
   };
   tools: {
     listChars: number;

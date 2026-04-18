@@ -625,6 +625,32 @@ actor GatewayEndpointStore {
 }
 
 extension GatewayEndpointStore {
+    static func localGatewayConfig() -> GatewayConnection.Config {
+        let root = ArgentConfigFile.loadDict()
+        let env = ProcessInfo.processInfo.environment
+        let bind = self.resolveGatewayBindMode(root: root, env: env)
+        let customBindHost = self.resolveGatewayCustomBindHost(root: root)
+        let scheme = self.resolveGatewayScheme(root: root, env: env)
+        let host = self.resolveLocalGatewayHost(
+            bindMode: bind,
+            customBindHost: customBindHost,
+            tailscaleIP: nil)
+        let port = GatewayEnvironment.gatewayPort()
+        let launchdSnapshot = GatewayLaunchAgentManager.launchdConfigSnapshot()
+        let token = self.resolveGatewayToken(
+            isRemote: false,
+            root: root,
+            env: env,
+            launchdSnapshot: launchdSnapshot)
+        let password = self.resolveGatewayPassword(
+            isRemote: false,
+            root: root,
+            env: env,
+            launchdSnapshot: launchdSnapshot)
+        let url = URL(string: "\(scheme)://\(host):\(port)")!
+        return (url: url, token: token, password: password)
+    }
+
     private static func isLoopbackHost(_ host: String?) -> Bool {
         guard let host else { return false }
         let value = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

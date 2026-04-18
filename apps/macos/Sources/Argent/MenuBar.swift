@@ -19,6 +19,7 @@ struct ArgentApp: App {
     @State private var statusItem: NSStatusItem?
     @State private var isMenuPresented = false
     @State private var isPanelVisible = false
+    @State private var statusItemClickInterceptor = StatusItemClickInterceptor()
     @State private var tailscaleService = TailscaleService.shared
 
     @MainActor
@@ -55,7 +56,7 @@ struct ArgentApp: App {
             self.statusItem = item
             MenuSessionsInjector.shared.install(into: item)
             self.applyStatusItemAppearance(paused: self.state.isPaused, sleeping: self.isGatewaySleeping)
-            self.installStatusItemMouseHandler(for: item)
+            self.installStatusItemInteraction(for: item)
             self.updateHoverHUDSuppression()
         }
         .onChange(of: self.state.isPaused) { _, paused in
@@ -130,7 +131,7 @@ struct ArgentApp: App {
     }
 
     @MainActor
-    private func installStatusItemMouseHandler(for item: NSStatusItem) {
+    private func installStatusItemInteraction(for item: NSStatusItem) {
         guard let button = item.button else { return }
         if button.subviews.contains(where: { $0 is StatusItemMouseHandlerView }) { return }
 
@@ -146,16 +147,6 @@ struct ArgentApp: App {
 
         let handler = StatusItemMouseHandlerView()
         handler.translatesAutoresizingMaskIntoConstraints = false
-        handler.onLeftClick = { [self] in
-            HoverHUDController.shared.dismiss(reason: "statusItemClick")
-            self.toggleWebChatPanel()
-        }
-        handler.onRightClick = { [self] in
-            HoverHUDController.shared.dismiss(reason: "statusItemRightClick")
-            WebChatManager.shared.closePanel()
-            self.isMenuPresented = true
-            self.updateStatusHighlight()
-        }
         handler.onHoverChanged = { [self] inside in
             HoverHUDController.shared.statusItemHoverChanged(
                 inside: inside,
@@ -169,6 +160,31 @@ struct ArgentApp: App {
             handler.topAnchor.constraint(equalTo: button.topAnchor),
             handler.bottomAnchor.constraint(equalTo: button.bottomAnchor),
         ])
+
+        self.statusItemClickInterceptor.install(
+            for: item,
+            onLeftClick: { [self] in self.handleStatusItemLeftClick() },
+            onRightClick: { [self] in self.handleStatusItemRightClick() })
+    }
+
+    @MainActor
+    private func handleStatusItemLeftClick() {
+        HoverHUDController.shared.dismiss(reason: "statusItemClick")
+        WebChatManager.shared.closePanel()
+        self.isMenuPresented = false
+        self.updateStatusHighlight()
+        self.updateHoverHUDSuppression()
+        Task { @MainActor in
+            await self.openDashboardFromStatusItem()
+        }
+    }
+
+    @MainActor
+    private func handleStatusItemRightClick() {
+        HoverHUDController.shared.dismiss(reason: "statusItemRightClick")
+        WebChatManager.shared.closePanel()
+        self.isMenuPresented = true
+        self.updateStatusHighlight()
     }
 
     @MainActor
@@ -190,6 +206,27 @@ struct ArgentApp: App {
         return window.convertToScreen(inWindow)
     }
 
+    @MainActor
+    private func openDashboardFromStatusItem() async {
+        func openDashboard(using config: GatewayConnection.Config) throws {
+            let url = try GatewayEndpointStore.dashboardURL(for: config)
+            DashboardManager.shared.show(url: url)
+        }
+        do {
+            let config = try await GatewayEndpointStore.shared.requireConfig()
+            try openDashboard(using: config)
+        } catch {
+            do {
+                try openDashboard(using: GatewayEndpointStore.localGatewayConfig())
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Dashboard unavailable"
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+            }
+        }
+    }
+
     private var effectiveIconState: IconState {
         let selection = self.state.iconOverride
         if selection == .system {
@@ -205,25 +242,10 @@ struct ArgentApp: App {
     }
 }
 
-/// Transparent overlay that intercepts clicks without stealing MenuBarExtra ownership.
+/// Transparent overlay used only for status-item hover tracking.
 private final class StatusItemMouseHandlerView: NSView {
-    var onLeftClick: (() -> Void)?
-    var onRightClick: (() -> Void)?
     var onHoverChanged: ((Bool) -> Void)?
     private var tracking: NSTrackingArea?
-
-    override func mouseDown(with event: NSEvent) {
-        if let onLeftClick {
-            onLeftClick()
-        } else {
-            super.mouseDown(with: event)
-        }
-    }
-
-    override func rightMouseDown(with event: NSEvent) {
-        self.onRightClick?()
-        // Do not call super; menu will be driven by isMenuPresented binding.
-    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -246,6 +268,42 @@ private final class StatusItemMouseHandlerView: NSView {
 
     override func mouseExited(with event: NSEvent) {
         self.onHoverChanged?(false)
+    }
+}
+
+@MainActor
+private final class StatusItemClickInterceptor {
+    private weak var statusItem: NSStatusItem?
+    private var monitor: Any?
+
+    func install(for item: NSStatusItem, onLeftClick: @escaping () -> Void, onRightClick: @escaping () -> Void) {
+        self.statusItem = item
+        self.removeMonitor()
+        self.monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self, self.matchesStatusItem(event) else { return event }
+            switch event.type {
+            case .leftMouseDown:
+                onLeftClick()
+                return nil
+            case .rightMouseDown:
+                onRightClick()
+                return nil
+            default:
+                return event
+            }
+        }
+    }
+    private func matchesStatusItem(_ event: NSEvent) -> Bool {
+        guard let button = self.statusItem?.button, let window = button.window else { return false }
+        guard event.window === window else { return false }
+        let pointInButton = button.convert(event.locationInWindow, from: nil)
+        return button.bounds.contains(pointInButton)
+    }
+
+    private func removeMonitor() {
+        guard let monitor else { return }
+        NSEvent.removeMonitor(monitor)
+        self.monitor = nil
     }
 }
 

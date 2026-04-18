@@ -3,7 +3,11 @@ import os from "node:os";
 import type { ImageContent } from "../../../agent-core/ai.js";
 import type { AgentMessage } from "../../../agent-core/core.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
-import { streamSimple, createArgentStreamSimple } from "../../../agent-core/ai.js";
+import {
+  streamSimple,
+  createArgentStreamSimple,
+  hardenStreamSimple,
+} from "../../../agent-core/ai.js";
 import {
   createAgentSession,
   SessionManager,
@@ -44,6 +48,7 @@ import {
   appendCrossChannelContextEvent,
   readCrossChannelContextEvents,
 } from "../../../data/redis-shared-context.js";
+import { getMemoryAdapter } from "../../../data/storage-factory.js";
 import { getAgentRunContext, recordAgentRunTiming } from "../../../infra/agent-events.js";
 import { getMachineDisplayName } from "../../../infra/machine-name.js";
 import { MAX_IMAGE_BYTES } from "../../../media/constants.js";
@@ -93,10 +98,20 @@ import { repairSessionFileIfNeeded } from "../../session-file-repair.js";
 import { guardSessionManager } from "../../session-tool-result-guard-wrapper.js";
 import { acquireSessionWriteLock } from "../../session-write-lock.js";
 import {
+  buildPersonalSkillExecutionPlan,
+  buildExecutablePersonalSkillContextBlock,
   applySkillEnvOverrides,
   applySkillEnvOverridesFromSnapshot,
+  buildMatchedPersonalSkillsContextBlock,
+  evaluatePersonalSkillExecutionPlan,
   loadWorkspaceSkillEntries,
+  matchSkillCandidatesForPrompt,
+  matchPersonalSkillCandidatesForPrompt,
+  mergeMatchedSkills,
+  recordPersonalSkillUsage,
+  reviewPersonalSkillCandidates,
   resolveSkillsPromptForRun,
+  selectExecutablePersonalSkill,
 } from "../../skills.js";
 import { buildSystemPromptParams } from "../../system-prompt-params.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
@@ -418,6 +433,12 @@ export async function runEmbeddedAttempt(
       config: params.config,
       workspaceDir: effectiveWorkspace,
     });
+    let matchedSkillCandidates = matchSkillCandidatesForPrompt({
+      prompt: params.prompt,
+      entries: shouldLoadSkillEntries ? skillEntries : undefined,
+      resolvedSkills: params.skillsSnapshot?.resolvedSkills,
+      limit: 5,
+    });
 
     const agentDir = params.agentDir ?? resolveArgentAgentDir();
 
@@ -426,6 +447,111 @@ export async function runEmbeddedAttempt(
       sessionKey: params.sessionKey,
       config: params.config,
     });
+
+    let matchedPersonalSkillsContext: string | undefined;
+    let executablePersonalSkillBlock: string | undefined;
+    let executablePersonalSkillPlan:
+      | ReturnType<typeof buildPersonalSkillExecutionPlan>
+      | null
+      | undefined;
+    try {
+      const memory = await getMemoryAdapter();
+      const scopedMemory = memory.withAgentId ? memory.withAgentId(sessionAgentId) : memory;
+      await reviewPersonalSkillCandidates({ memory: scopedMemory });
+      const personalSkills = await scopedMemory.listPersonalSkillCandidates({
+        limit: 50,
+      });
+      const activePersonalSkills = personalSkills.filter(
+        (candidate) =>
+          (candidate.state === "promoted" || candidate.state === "incubating") &&
+          !candidate.supersededByCandidateId,
+      );
+      const promotedPersonalSkills = activePersonalSkills.filter(
+        (candidate) => candidate.state === "promoted",
+      );
+      const matchedPersonalSkills = matchPersonalSkillCandidatesForPrompt({
+        prompt: params.prompt,
+        candidates: activePersonalSkills,
+        limit: 5,
+      });
+      matchedSkillCandidates = mergeMatchedSkills({
+        personal: matchedPersonalSkills,
+        generic: matchedSkillCandidates,
+        limit: 5,
+      });
+      matchedPersonalSkillsContext = buildMatchedPersonalSkillsContextBlock({
+        matches: matchedSkillCandidates,
+        candidates: activePersonalSkills,
+        limit: 2,
+      });
+      const executablePersonalSkill = selectExecutablePersonalSkill({
+        prompt: params.prompt,
+        matches: matchedSkillCandidates,
+        candidates: promotedPersonalSkills,
+      });
+      executablePersonalSkillPlan = buildPersonalSkillExecutionPlan(executablePersonalSkill);
+      executablePersonalSkillBlock =
+        buildExecutablePersonalSkillContextBlock(executablePersonalSkill);
+      if (executablePersonalSkill) {
+        await scopedMemory.createPersonalSkillReviewEvent({
+          candidateId: executablePersonalSkill.id,
+          actorType: "system",
+          action: "procedure_selected",
+          reason: "Runtime selected this Personal Skill as the active procedure for the turn",
+          details: {
+            sessionKey: params.sessionKey ?? params.sessionId,
+            runId: params.runId,
+          },
+        });
+        params.onAgentEvent?.({
+          stream: "lifecycle",
+          data: {
+            phase: "personal_skill_execution_mode",
+            skill: {
+              id: executablePersonalSkill.id,
+              name: executablePersonalSkill.title,
+              scope: executablePersonalSkill.scope,
+            },
+            plan:
+              executablePersonalSkillPlan?.steps.map((step) => ({
+                index: step.index,
+                text: step.text,
+                expectedTools: step.expectedTools,
+              })) ?? [],
+          },
+        });
+      }
+      await Promise.all(
+        matchedPersonalSkills.map((entry) =>
+          entry.id
+            ? scopedMemory.updatePersonalSkillCandidate(entry.id, {
+                lastUsedAt: new Date().toISOString(),
+              })
+            : Promise.resolve(null),
+        ),
+      );
+    } catch (err) {
+      log.debug(`personal skill review unavailable: ${String(err)}`);
+    }
+    if (matchedSkillCandidates.length > 0) {
+      params.onAgentEvent?.({
+        stream: "lifecycle",
+        data: {
+          phase: "skill_candidates",
+          matchedSkills: matchedSkillCandidates.map((entry) => ({
+            id: entry.id,
+            name: entry.name,
+            source: entry.source,
+            kind: entry.kind,
+            state: entry.state,
+            score: entry.score,
+            confidence: entry.confidence,
+            provenanceCount: entry.provenanceCount,
+            reasons: entry.reasons,
+          })),
+        },
+      });
+    }
 
     // Load session store early — discovered tools needed for tool creation
     let sessionBootstrapSnapshot:
@@ -651,6 +777,8 @@ export async function runEmbeddedAttempt(
       params.extraSystemPrompt?.trim(),
       intentPromptHint?.trim(),
       crossChannelContextHint,
+      matchedPersonalSkillsContext,
+      executablePersonalSkillBlock,
     ]
       .filter((entry): entry is string => Boolean(entry))
       .join("\n\n");
@@ -926,7 +1054,7 @@ export async function runEmbeddedAttempt(
             log.info(
               `[openai-codex] Using Pi streamSimple with injected OAuth JWT (${transport === "sse" ? "sse transport for inline images" : "websocket transport"})`,
             );
-            return streamSimple(effectiveModel, context, {
+            return hardenStreamSimple(streamSimple)(effectiveModel, context, {
               ...options,
               apiKey: codexApiKey,
               transport,
@@ -936,7 +1064,7 @@ export async function runEmbeddedAttempt(
           log.warn(
             `[openai-codex] No OAuth JWT found in runtimeOverrides, falling back to bare streamSimple`,
           );
-          activeSession.agent.streamFn = streamSimple;
+          activeSession.agent.streamFn = hardenStreamSimple(streamSimple);
         }
       } else if (runtimePolicy.argentRuntimeEnabled) {
         try {
@@ -953,7 +1081,7 @@ export async function runEmbeddedAttempt(
               runtimePolicy.mode,
               `No Argent provider for "${params.provider}"`,
               () => {
-                activeSession.agent.streamFn = streamSimple;
+                activeSession.agent.streamFn = hardenStreamSimple(streamSimple);
               },
             );
           }
@@ -962,13 +1090,13 @@ export async function runEmbeddedAttempt(
             runtimePolicy.mode,
             `Failed to create Argent provider for "${params.provider}"`,
             () => {
-              activeSession.agent.streamFn = streamSimple;
+              activeSession.agent.streamFn = hardenStreamSimple(streamSimple);
             },
             err,
           );
         }
       } else {
-        activeSession.agent.streamFn = streamSimple;
+        activeSession.agent.streamFn = hardenStreamSimple(streamSimple);
       }
 
       applyExtraParamsToAgent(
@@ -1404,10 +1532,42 @@ export async function runEmbeddedAttempt(
             typeof entry.toolName === "string" && entry.toolName.trim().length > 0,
         )
         .map((entry) => ({ toolName: entry.toolName, meta: entry.meta }));
+      const executedToolNames = [...new Set(toolMetasNormalized.map((entry) => entry.toolName))];
 
       const messagingToolSentTexts = getMessagingToolSentTexts();
       const messagingToolSentTargets = getMessagingToolSentTargets();
       const didSendViaMessaging = didSendViaMessagingTool();
+      if (didSendViaMessaging && !executedToolNames.includes("message")) {
+        executedToolNames.push("message");
+      }
+      const lastToolError = getLastToolError();
+      const procedureReport = evaluatePersonalSkillExecutionPlan({
+        plan: executablePersonalSkillPlan ?? null,
+        executedTools: executedToolNames,
+        runSucceeded: !aborted && !promptError && !lastToolError,
+      });
+      if (procedureReport) {
+        params.onAgentEvent?.({
+          stream: "lifecycle",
+          data: {
+            phase: "personal_skill_execution_report",
+            report: procedureReport,
+          },
+        });
+      }
+
+      try {
+        const memory = await getMemoryAdapter();
+        const scopedMemory = memory.withAgentId ? memory.withAgentId(sessionAgentId) : memory;
+        await recordPersonalSkillUsage({
+          memory: scopedMemory,
+          matches: matchedSkillCandidates,
+          executedTools: executedToolNames,
+          runSucceeded: !aborted && !promptError && !lastToolError,
+        });
+      } catch (err) {
+        log.debug(`personal skill usage tracking unavailable: ${String(err)}`);
+      }
 
       if (!aborted && !promptError && !isSystemSessionKey(params.sessionKey)) {
         const assistantTextCandidate =
@@ -1475,6 +1635,7 @@ export async function runEmbeddedAttempt(
         bootstrapFiles: hookAdjustedBootstrapFiles,
         injectedFiles: contextFiles,
         skillsPrompt,
+        matchedSkillCandidates,
         tools,
       });
 

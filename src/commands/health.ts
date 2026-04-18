@@ -204,8 +204,8 @@ async function probePostgresHealth(cfg: ReturnType<typeof loadConfig>): Promise<
   }
 
   try {
-    const { createPostgresClient } = await import("../data/pg-client.js");
-    const sql = createPostgresClient(conn, {
+    const { default: postgres } = await import("postgres");
+    const sql = postgres(conn, {
       max: 1,
       prepare: false,
       connect_timeout: 2,
