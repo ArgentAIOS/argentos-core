@@ -4,9 +4,9 @@ import type { ConsciousnessKernelRunner } from "../infra/consciousness-kernel.js
 import type { ContemplationRunner } from "../infra/contemplation-runner.js";
 import type { ExecutionWorkerRunner } from "../infra/execution-worker-runner.js";
 import type { HeartbeatRunner } from "../infra/heartbeat-runner.js";
-import type { JobOrchestratorRunner } from "../infra/job-orchestrator-runner.js";
 import type { SisRunner } from "../infra/sis-runner.js";
 import type { ChannelKind, GatewayReloadPlan } from "./config-reload.js";
+import type { JobOrchestratorRunner } from "./job-orchestrator-bridge.js";
 import { clearBootstrapContextCache } from "../agents/bootstrap-files.js";
 import { clearSkillEntryCache } from "../agents/skills.js";
 import {

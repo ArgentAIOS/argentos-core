@@ -14,7 +14,8 @@ Use `pnpm` (Node 22+) from the repo root. Keep the working tree clean before tag
 
 When the operator says “release”, immediately do this preflight (no extra questions unless blocked):
 
-- Read this doc and `docs/platforms/mac/release.md`.
+- Read this doc, `ops/runbooks/release-core.md`, and `ops/runbooks/release-swift-mac.md` before writing release commands.
+- Do not improvise the release process from general knowledge when those runbooks exist.
 - Load env from `~/.profile` and confirm `SPARKLE_PRIVATE_KEY_FILE` + App Store Connect vars are set (SPARKLE_PRIVATE_KEY_FILE should live in `~/.profile`).
 - Use Sparkle keys from `~/Library/CloudStorage/Dropbox/Backup/Sparkle` if needed.
 
