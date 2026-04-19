@@ -2,6 +2,14 @@
 
 Docs: https://docs.argentos.ai
 
+## 2026.4.18.3
+
+### Fixes
+
+- Core boundary: remove Business-only license and workforce execution surfaces from the public Core release and keep the public build working after those removals.
+- macOS release: publish the correctly signed and notarized `apps/macos` menubar app artifact for the patched Core release rail.
+- Website rail: advance `releases/macos/latest.json` to the current notarized Core release.
+
 ## 2026.4.18.2
 
 ### Fixes
