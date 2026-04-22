@@ -946,7 +946,6 @@ const next = {
   distribution: {
     ...(parsed.distribution || {}),
     surfaceProfile: "public-core",
-    dashboardMode: "operations",
   },
   storage: {
     ...(parsed.storage || {}),

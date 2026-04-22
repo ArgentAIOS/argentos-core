@@ -35,10 +35,10 @@ describe("dashboard surface profile", () => {
     expect(isWorkforceSurfaceAllowed("full")).toBe(true);
   });
 
-  it("defaults public-core to operations mode", () => {
-    expect(parseDashboardMode(null, "public-core")).toBe("operations");
+  it("keeps Home/personal as the default mode in public-core", () => {
+    expect(parseDashboardMode(null, "public-core")).toBe("personal");
     expect(parseDashboardMode(JSON.stringify({ distribution: {} }), "public-core")).toBe(
-      "operations",
+      "personal",
     );
     expect(
       parseDashboardMode(

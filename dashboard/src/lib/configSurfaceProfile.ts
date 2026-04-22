@@ -33,7 +33,7 @@ export function parseDashboardMode(
   surfaceProfile: DashboardSurfaceProfile,
 ): DashboardMode {
   if (!rawConfigText) {
-    return surfaceProfile === "public-core" ? "operations" : "personal";
+    return "personal";
   }
   try {
     const parsed = JSON.parse(rawConfigText);
@@ -41,9 +41,9 @@ export function parseDashboardMode(
     if (rawMode === "operations") {
       return "operations";
     }
-    return surfaceProfile === "public-core" ? "operations" : "personal";
+    return "personal";
   } catch {
-    return surfaceProfile === "public-core" ? "operations" : "personal";
+    return "personal";
   }
 }
 

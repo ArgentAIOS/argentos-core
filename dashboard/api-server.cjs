@@ -146,13 +146,10 @@ app.use("/api", (req, res, next) => {
 app.get("/api/settings/dashboard/surface-profile", (req, res) => {
   try {
     const config = readArgentConfig();
-    const surfaceProfile = getDashboardSurfaceProfile(config);
     return res.json({
-      surfaceProfile,
+      surfaceProfile: getDashboardSurfaceProfile(config),
       dashboardMode:
-        config?.distribution?.dashboardMode === "operations" || surfaceProfile === "public-core"
-          ? "operations"
-          : "personal",
+        config?.distribution?.dashboardMode === "operations" ? "operations" : "personal",
     });
   } catch (err) {
     return res.status(500).json({

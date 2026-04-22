@@ -1293,11 +1293,7 @@ function App() {
           const nextSurfaceProfile =
             payload?.surfaceProfile === "public-core" ? "public-core" : "full";
           const configDashboardMode =
-            payload?.dashboardMode === "operations"
-              ? "operations"
-              : nextSurfaceProfile === "public-core"
-                ? "operations"
-                : "personal";
+            payload?.dashboardMode === "operations" ? "operations" : "personal";
           const storedDashboardMode = readStoredDashboardMode();
           const nextDashboardMode =
             storedDashboardMode && isDashboardModeAllowed(storedDashboardMode, nextSurfaceProfile)
@@ -1310,7 +1306,7 @@ function App() {
         if (!cancelled) {
           setSurfaceProfile("public-core");
           const storedDashboardMode = readStoredDashboardMode();
-          setDashboardMode(storedDashboardMode === "personal" ? "personal" : "operations");
+          setDashboardMode(storedDashboardMode === "operations" ? "operations" : "personal");
         }
       }
     };
