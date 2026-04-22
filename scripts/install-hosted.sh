@@ -242,8 +242,10 @@ install_private_node_runtime() {
     exit 1
   fi
 
+  mkdir -p "$runtime_root"
   new_root="${runtime_root}/node.new.$$"
   rm -rf "$new_root"
+  mkdir -p "$(dirname "$new_root")"
   mv "$extracted_root" "$new_root"
 
   backup_root=""
@@ -252,6 +254,7 @@ install_private_node_runtime() {
     rm -rf "$backup_root"
     mv "$node_root" "$backup_root"
   fi
+  mkdir -p "$(dirname "$node_root")"
   if ! mv "$new_root" "$node_root"; then
     rm -rf "$new_root"
     if [[ -n "$backup_root" && -d "$backup_root" ]]; then
