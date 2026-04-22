@@ -7,6 +7,7 @@ import {
   resolveOpenAICodexTransport,
   resolveOpenAICodexVisionModelId,
   resolveEmbeddedAttemptRuntimePolicy,
+  shouldMarkFirstRunComplete,
 } from "./attempt.js";
 
 describe("injectHistoryImagesIntoMessages", () => {
@@ -98,6 +99,40 @@ describe("embedded runtime policy wiring", () => {
     expect(() =>
       applyPiStreamFallbackPolicy("argent_strict", "unit-test strict path", () => {}),
     ).toThrow("Pi fallback blocked in argent_strict mode");
+  });
+});
+
+describe("shouldMarkFirstRunComplete", () => {
+  it("marks first run complete only after a successful non-system turn with FIRST_RUN.md", () => {
+    expect(
+      shouldMarkFirstRunComplete({
+        aborted: false,
+        promptError: null,
+        sessionKey: "agent:main:webchat",
+        bootstrapFiles: [{ name: "FIRST_RUN.md", missing: false }],
+        assistantTextCandidate: "Hello, I just woke up.",
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldMarkFirstRunComplete({
+        aborted: false,
+        promptError: null,
+        sessionKey: "agent:main:webchat",
+        bootstrapFiles: [{ name: "SOUL.md", missing: false }],
+        assistantTextCandidate: "Hello, I just woke up.",
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldMarkFirstRunComplete({
+        aborted: false,
+        promptError: null,
+        sessionKey: "cron:main",
+        bootstrapFiles: [{ name: "FIRST_RUN.md", missing: false }],
+        assistantTextCandidate: "Hello, I just woke up.",
+      }),
+    ).toBe(false);
   });
 });
 

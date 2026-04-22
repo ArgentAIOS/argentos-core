@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import path from "node:path";
 import type { ArgentConfig } from "../config/config.js";
 import type { EmbeddedContextFile } from "./pi-embedded-helpers.js";
@@ -25,6 +26,17 @@ import {
 } from "./workspace.js";
 
 const DEFAULT_KERNEL_CONTINUITY_FILENAME = "KERNEL_CONTINUITY.md";
+export const FIRST_RUN_MARKER_FILENAME = "first-run-complete";
+
+export function resolveFirstRunMarkerPath(homeDir = process.env.HOME || "~"): string {
+  return path.join(homeDir, ".argentos", FIRST_RUN_MARKER_FILENAME);
+}
+
+export async function markFirstRunComplete(homeDir = process.env.HOME || "~"): Promise<void> {
+  const argentDir = path.join(homeDir, ".argentos");
+  await fsPromises.mkdir(argentDir, { recursive: true });
+  await fsPromises.writeFile(resolveFirstRunMarkerPath(homeDir), `${new Date().toISOString()}\n`);
+}
 
 /**
  * Build a first-run onboarding bootstrap file.
@@ -37,7 +49,7 @@ const DEFAULT_KERNEL_CONTINUITY_FILENAME = "KERNEL_CONTINUITY.md";
 async function buildFirstRunBootstrapFile(): Promise<WorkspaceBootstrapFile | null> {
   try {
     const argentDir = path.join(process.env.HOME || "~", ".argentos");
-    const markerPath = path.join(argentDir, "first-run-complete");
+    const markerPath = resolveFirstRunMarkerPath(process.env.HOME || "~");
 
     // Already completed first run — skip
     if (fs.existsSync(markerPath)) return null;

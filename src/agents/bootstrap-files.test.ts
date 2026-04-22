@@ -10,7 +10,12 @@ import {
 } from "../hooks/internal-hooks.js";
 import { createConsciousnessKernelSelfState } from "../infra/consciousness-kernel-state.js";
 import { makeTempWorkspace } from "../test-helpers/workspace.js";
-import { resolveBootstrapContextForRun, resolveBootstrapFilesForRun } from "./bootstrap-files.js";
+import {
+  markFirstRunComplete,
+  resolveBootstrapContextForRun,
+  resolveBootstrapFilesForRun,
+  resolveFirstRunMarkerPath,
+} from "./bootstrap-files.js";
 
 describe("resolveBootstrapFilesForRun", () => {
   beforeEach(() => clearInternalHooks());
@@ -210,5 +215,16 @@ describe("resolveBootstrapContextForRun", () => {
     const extra = result.contextFiles.find((file) => file.path === "EXTRA.md");
 
     expect(extra?.content).toBe("extra");
+  });
+});
+
+describe("first-run completion marker", () => {
+  it("writes the first-run completion marker under ~/.argentos", async () => {
+    const fakeHome = await fs.mkdtemp(path.join(os.tmpdir(), "argent-home-"));
+    await markFirstRunComplete(fakeHome);
+    const markerPath = resolveFirstRunMarkerPath(fakeHome);
+    const marker = await fs.readFile(markerPath, "utf8");
+
+    expect(marker.trim().length).toBeGreaterThan(0);
   });
 });

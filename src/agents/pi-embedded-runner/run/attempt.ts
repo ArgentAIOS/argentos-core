@@ -59,7 +59,11 @@ import { isReasoningTagProvider } from "../../../utils/provider-utils.js";
 import { resolveArgentAgentDir } from "../../agent-paths.js";
 import { resolveSessionAgentIds } from "../../agent-scope.js";
 import { createAnthropicPayloadLogger } from "../../anthropic-payload-log.js";
-import { makeBootstrapWarn, resolveBootstrapContextForRun } from "../../bootstrap-files.js";
+import {
+  makeBootstrapWarn,
+  markFirstRunComplete,
+  resolveBootstrapContextForRun,
+} from "../../bootstrap-files.js";
 import { createCacheTrace } from "../../cache-trace.js";
 import {
   listChannelSupportedActions,
@@ -101,7 +105,7 @@ import {
 import { buildSystemPromptParams } from "../../system-prompt-params.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
 import { resolveTranscriptPolicy } from "../../transcript-policy.js";
-import { DEFAULT_BOOTSTRAP_FILENAME } from "../../workspace.js";
+import { DEFAULT_BOOTSTRAP_FILENAME, DEFAULT_FIRST_RUN_FILENAME } from "../../workspace.js";
 import { isAbortError } from "../abort.js";
 import { appendCacheTtlTimestamp, isCacheTtlEligibleProvider } from "../cache-ttl.js";
 import { buildEmbeddedExtensionPaths } from "../extensions.js";
@@ -195,6 +199,24 @@ export function applyPiStreamFallbackPolicy(
     log.info(`[argent-runtime] ${operation}; using Pi stream fallback (mode=${runtimeMode})`);
   }
   applyFallback();
+}
+
+export function shouldMarkFirstRunComplete(params: {
+  aborted: boolean;
+  promptError: unknown;
+  sessionKey?: string;
+  bootstrapFiles: Array<{ name: string; missing?: boolean }>;
+  assistantTextCandidate?: string | null;
+}): boolean {
+  if (params.aborted || params.promptError || isSystemSessionKey(params.sessionKey)) {
+    return false;
+  }
+  if (!params.assistantTextCandidate?.trim()) {
+    return false;
+  }
+  return params.bootstrapFiles.some(
+    (file) => file.name === DEFAULT_FIRST_RUN_FILENAME && file.missing !== true,
+  );
 }
 
 function messageHasInlineImages(message: unknown): boolean {
@@ -1408,10 +1430,10 @@ export async function runEmbeddedAttempt(
       const messagingToolSentTexts = getMessagingToolSentTexts();
       const messagingToolSentTargets = getMessagingToolSentTargets();
       const didSendViaMessaging = didSendViaMessagingTool();
+      const assistantTextCandidate =
+        assistantTexts.at(-1)?.trim() || extractAssistantTextForContext(lastAssistant);
 
       if (!aborted && !promptError && !isSystemSessionKey(params.sessionKey)) {
-        const assistantTextCandidate =
-          assistantTexts.at(-1)?.trim() || extractAssistantTextForContext(lastAssistant);
         const sharedSummary = selectCrossChannelEventSummary({
           assistantText: assistantTextCandidate,
           toolMetas: toolMetasNormalized,
@@ -1428,6 +1450,20 @@ export async function runEmbeddedAttempt(
             timestampMs: Date.now(),
           });
         }
+      }
+
+      if (
+        shouldMarkFirstRunComplete({
+          aborted,
+          promptError,
+          sessionKey: params.sessionKey,
+          bootstrapFiles: hookAdjustedBootstrapFiles,
+          assistantTextCandidate,
+        })
+      ) {
+        await markFirstRunComplete().catch((err) => {
+          log.warn(`failed to mark first run complete: ${String(err)}`);
+        });
       }
 
       // Persist newly discovered deferred tools to session state
