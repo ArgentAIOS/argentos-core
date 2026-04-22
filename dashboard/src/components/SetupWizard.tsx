@@ -214,6 +214,33 @@ async function fetchJson<T>(url: string, init?: RequestInit, timeoutMs = 10_000)
   return (await res.json()) as T;
 }
 
+async function detectPreferredBackgroundLocalRuntime(): Promise<LocalRuntimeProviderId | null> {
+  const lmstudio = await fetchJson<{
+    models?: Array<{ verified?: boolean; source?: string | null }>;
+  }>("/api/settings/provider-models?provider=lmstudio&limit=10").catch(() => ({ models: [] }));
+  const hasLiveLmStudio = Array.isArray(lmstudio?.models)
+    ? lmstudio.models.some(
+        (entry) =>
+          entry?.verified === true ||
+          String(entry?.source || "")
+            .trim()
+            .toLowerCase() === "live",
+      )
+    : false;
+  if (hasLiveLmStudio) {
+    return "lmstudio";
+  }
+
+  const ollama = await fetchJson<{
+    models?: Array<{ name?: string | null; model?: string | null }>;
+  }>("/api/settings/ollama/models").catch(() => ({ models: [] }));
+  if (Array.isArray(ollama?.models) && ollama.models.length > 0) {
+    return "ollama";
+  }
+
+  return null;
+}
+
 export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
@@ -227,6 +254,8 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
   const [profileName, setProfileName] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [modelOptions, setModelOptions] = useState<ProviderModelChoice[]>([]);
+  const [backgroundLocalRuntime, setBackgroundLocalRuntime] =
+    useState<LocalRuntimeProviderId | null>(null);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -266,20 +295,23 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
       setVoiceToken("");
       setSearchToken("");
       try {
-        const [modelsData, authData, ttsData, searchData] = await Promise.all([
-          fetchJson<{
-            model: unknown;
-            subagentModel: string | null;
-            modelRouter: Record<string, unknown> | null;
-          }>("/api/settings/models"),
-          fetchJson<{ profiles: Array<{ key: string; provider: string; type?: string | null }> }>(
-            "/api/settings/auth-profiles",
-          ),
-          fetchJson<{ provider?: VoiceProviderId }>("/api/settings/tts"),
-          fetchJson<{ provider?: SearchProviderId }>("/api/settings/search").catch(() => ({
-            provider: "brave" as SearchProviderId,
-          })),
-        ]);
+        const [modelsData, authData, ttsData, searchData, detectedLocalRuntime] = await Promise.all(
+          [
+            fetchJson<{
+              model: unknown;
+              subagentModel: string | null;
+              modelRouter: Record<string, unknown> | null;
+            }>("/api/settings/models"),
+            fetchJson<{ profiles: Array<{ key: string; provider: string; type?: string | null }> }>(
+              "/api/settings/auth-profiles",
+            ),
+            fetchJson<{ provider?: VoiceProviderId }>("/api/settings/tts"),
+            fetchJson<{ provider?: SearchProviderId }>("/api/settings/search").catch(() => ({
+              provider: "brave" as SearchProviderId,
+            })),
+            detectPreferredBackgroundLocalRuntime(),
+          ],
+        );
         if (cancelled) {
           return;
         }
@@ -297,6 +329,7 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
 
         setLlmProvider(nextProvider);
         setLocalRuntime(inferredLocalRuntime);
+        setBackgroundLocalRuntime(detectedLocalRuntime);
         setSelectedModel(typeof primaryRef === "string" ? primaryRef : "");
         setVoiceProvider((ttsData.provider as VoiceProviderId | undefined) || "edge");
         setSearchProvider((searchData.provider as SearchProviderId | undefined) || "brave");
@@ -312,6 +345,7 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
           console.error("[SetupWizard] Failed to load existing onboarding state", err);
           setLlmProvider("openai");
           setProfileName(defaultProfileName("openai"));
+          setBackgroundLocalRuntime(null);
         }
       }
     };
@@ -431,9 +465,17 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
     setStep((value) => Math.max(value - 1, 0));
   }
 
-  async function saveAuthProfile() {
+  async function setActiveAuthProfile(key: string) {
+    await fetchJson(`/api/settings/auth-profiles/${encodeURIComponent(key)}/set-active`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+  }
+
+  async function saveAuthProfile(): Promise<string | null> {
     if (!llmProvider || llmProvider === "local") {
-      return;
+      return null;
     }
     if (!token.trim()) {
       throw new Error("Add an API key before continuing.");
@@ -471,7 +513,16 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
     });
     if (alreadyExists) {
       console.info("[SetupWizard] saveAuthProfile:skip-existing", { key });
-      return;
+      const existingMatch = authProfiles.find((profile) => {
+        const existingKey = String(profile.key || "").trim();
+        const existingProvider = String(profile.provider || "")
+          .trim()
+          .toLowerCase();
+        return existingKey === key || existingProvider === provider.toLowerCase();
+      });
+      const existingKey = String(existingMatch?.key || key).trim() || key;
+      await setActiveAuthProfile(existingKey);
+      return existingKey;
     }
 
     console.info("[SetupWizard] saveAuthProfile:create", { key });
@@ -486,7 +537,8 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
     );
     if (createRes.ok) {
       console.info("[SetupWizard] saveAuthProfile:created", { key });
-      return;
+      await setActiveAuthProfile(key);
+      return key;
     }
     if (createRes.status !== 409) {
       const data = await createRes.json().catch(() => ({}));
@@ -495,6 +547,8 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
     // Existing installs may already have a working profile. Onboarding should not rotate or
     // overwrite it implicitly; profile editing belongs in Settings -> API Keys.
     console.info("[SetupWizard] saveAuthProfile:conflict-existing", { key });
+    await setActiveAuthProfile(key);
+    return key;
   }
 
   async function listServiceKeys(): Promise<Array<{ variable?: string | null }>> {
@@ -728,6 +782,21 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
       console.info("[SetupWizard] saveStep:tts:done", { voiceProvider });
 
       await persistSearchProvider();
+      const derived = deriveProviderAwareModelConfig({
+        llmProvider,
+        selectedModel,
+        availableModels: modelOptions,
+        localRuntime,
+      });
+      await fetchJson("/api/settings/models", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: derived.model,
+          subagentModel: derived.subagentModel,
+          modelRouter: derived.modelRouter,
+        }),
+      });
       await fetchJson("/api/settings/agent", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -737,6 +806,7 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
             selectedModel,
             availableModels: modelOptions,
             localRuntime,
+            backgroundLocalRuntime,
           }),
         ),
       });

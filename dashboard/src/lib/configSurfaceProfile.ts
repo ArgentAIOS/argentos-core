@@ -3,7 +3,6 @@ export type DashboardMode = "personal" | "operations";
 
 export const PUBLIC_CORE_BLOCKED_CONFIG_TABS = new Set<string>([
   "systems",
-  "capabilities",
   "intent",
   "security",
   "gateway",
@@ -34,7 +33,7 @@ export function parseDashboardMode(
   surfaceProfile: DashboardSurfaceProfile,
 ): DashboardMode {
   if (!rawConfigText) {
-    return surfaceProfile === "public-core" ? "personal" : "personal";
+    return surfaceProfile === "public-core" ? "operations" : "personal";
   }
   try {
     const parsed = JSON.parse(rawConfigText);
@@ -42,9 +41,9 @@ export function parseDashboardMode(
     if (rawMode === "operations") {
       return "operations";
     }
-    return "personal";
+    return surfaceProfile === "public-core" ? "operations" : "personal";
   } catch {
-    return "personal";
+    return surfaceProfile === "public-core" ? "operations" : "personal";
   }
 }
 

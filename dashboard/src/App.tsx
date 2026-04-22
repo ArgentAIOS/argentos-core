@@ -1207,7 +1207,7 @@ function App() {
   const pollingMultiplier = Math.max(1, runtimeLoadProfile.pollingMultiplier || 1);
   const allowOperationsSurface = isOperationsSurfaceAllowed(surfaceProfile);
   const allowWorkforceSurface = isWorkforceSurfaceAllowed(surfaceProfile);
-  const isOperationsDashboard = allowWorkforceSurface && dashboardMode === "operations";
+  const isOperationsDashboard = allowOperationsSurface && dashboardMode === "operations";
 
   // Ensure Operations tab exists when the surface allows operations.
   useEffect(() => {
@@ -1293,7 +1293,11 @@ function App() {
           const nextSurfaceProfile =
             payload?.surfaceProfile === "public-core" ? "public-core" : "full";
           const configDashboardMode =
-            payload?.dashboardMode === "operations" ? "operations" : "personal";
+            payload?.dashboardMode === "operations"
+              ? "operations"
+              : nextSurfaceProfile === "public-core"
+                ? "operations"
+                : "personal";
           const storedDashboardMode = readStoredDashboardMode();
           const nextDashboardMode =
             storedDashboardMode && isDashboardModeAllowed(storedDashboardMode, nextSurfaceProfile)
@@ -1306,7 +1310,7 @@ function App() {
         if (!cancelled) {
           setSurfaceProfile("public-core");
           const storedDashboardMode = readStoredDashboardMode();
-          setDashboardMode(storedDashboardMode === "operations" ? "operations" : "personal");
+          setDashboardMode(storedDashboardMode === "personal" ? "personal" : "operations");
         }
       }
     };

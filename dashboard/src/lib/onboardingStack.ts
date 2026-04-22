@@ -586,19 +586,36 @@ function parseProviderModelRef(ref: string | null | undefined): {
 function deriveEmbeddingLaneSelection(params: {
   llmProvider: LlmProviderId;
   localRuntime: LocalRuntimeProviderId;
+  backgroundLocalRuntime?: LocalRuntimeProviderId | null;
 }): { provider: string; model: string; fallback: string } {
+  if (params.backgroundLocalRuntime === "lmstudio") {
+    return {
+      provider: "lmstudio",
+      model: "text-embedding-nomic-embed-text-v1.5",
+      fallback: "none",
+    };
+  }
+
+  if (params.backgroundLocalRuntime === "ollama") {
+    return {
+      provider: "ollama",
+      model: "nomic-embed-text",
+      fallback: "none",
+    };
+  }
+
   if (params.llmProvider === "local") {
     if (params.localRuntime === "lmstudio") {
       return {
         provider: "lmstudio",
         model: "text-embedding-nomic-embed-text-v1.5",
-        fallback: "",
+        fallback: "none",
       };
     }
     return {
       provider: "ollama",
       model: "nomic-embed-text",
-      fallback: "",
+      fallback: "none",
     };
   }
 
@@ -606,7 +623,7 @@ function deriveEmbeddingLaneSelection(params: {
     return {
       provider: "openai",
       model: "text-embedding-nomic-embed-text-v1.5",
-      fallback: "",
+      fallback: "none",
     };
   }
 
@@ -614,7 +631,7 @@ function deriveEmbeddingLaneSelection(params: {
     return {
       provider: "zai",
       model: "embedding-3",
-      fallback: "",
+      fallback: "none",
     };
   }
 
@@ -622,14 +639,14 @@ function deriveEmbeddingLaneSelection(params: {
     return {
       provider: "minimax",
       model: "text-embedding",
-      fallback: "",
+      fallback: "none",
     };
   }
 
   return {
     provider: "openai",
     model: "text-embedding-nomic-embed-text-v1.5",
-    fallback: "",
+    fallback: "none",
   };
 }
 
@@ -638,6 +655,7 @@ export function deriveProviderAwareAgentSettingsPatch(params: {
   selectedModel: string;
   availableModels?: ProviderModelChoice[];
   localRuntime?: LocalRuntimeProviderId;
+  backgroundLocalRuntime?: LocalRuntimeProviderId | null;
 }) {
   const localRuntime = params.localRuntime ?? "ollama";
   const derived = deriveProviderAwareModelConfig({
@@ -659,32 +677,56 @@ export function deriveProviderAwareAgentSettingsPatch(params: {
     provider: String(routerTiers.powerful?.provider || balanced.provider).trim(),
     model: String(routerTiers.powerful?.model || balanced.model).trim(),
   };
+  const backgroundRuntime = params.backgroundLocalRuntime ?? null;
+  const localBackgroundRef =
+    backgroundRuntime === "lmstudio"
+      ? LMSTUDIO_LOCAL_MODEL_REF
+      : backgroundRuntime === "ollama"
+        ? LOCAL_MODEL_REF
+        : "";
+  const localBackgroundProvider =
+    (backgroundRuntime && inferProviderFromModelRef(localBackgroundRef)) || "";
+  const localBackgroundModel =
+    (backgroundRuntime && stripProviderFromModelRef(localBackgroundRef)) || "";
+  const kernelLane =
+    backgroundRuntime && localBackgroundProvider && localBackgroundModel
+      ? { provider: localBackgroundProvider, model: localBackgroundModel }
+      : { provider: fast.provider, model: fast.model };
+  const structuredLane =
+    backgroundRuntime && localBackgroundProvider && localBackgroundModel
+      ? { provider: localBackgroundProvider, model: localBackgroundModel }
+      : { provider: balanced.provider, model: balanced.model };
+  const efficientLane =
+    backgroundRuntime && localBackgroundProvider && localBackgroundModel
+      ? { provider: localBackgroundProvider, model: localBackgroundModel }
+      : { provider: fast.provider, model: fast.model };
   const embedding = deriveEmbeddingLaneSelection({
     llmProvider: params.llmProvider,
     localRuntime,
+    backgroundLocalRuntime: backgroundRuntime,
   });
 
   return {
     backgroundModels: {
       kernel: {
-        provider: balanced.provider,
-        model: balanced.model,
+        provider: kernelLane.provider,
+        model: kernelLane.model,
       },
       contemplation: {
-        provider: powerful.provider,
-        model: powerful.model,
+        provider: structuredLane.provider,
+        model: structuredLane.model,
       },
       sis: {
-        provider: balanced.provider,
-        model: balanced.model,
+        provider: structuredLane.provider,
+        model: structuredLane.model,
       },
       heartbeat: {
-        provider: fast.provider,
-        model: fast.model,
+        provider: efficientLane.provider,
+        model: efficientLane.model,
       },
       executionWorker: {
-        provider: balanced.provider,
-        model: balanced.model,
+        provider: efficientLane.provider,
+        model: efficientLane.model,
       },
       embeddings: {
         provider: embedding.provider,
@@ -695,8 +737,8 @@ export function deriveProviderAwareAgentSettingsPatch(params: {
     memory: {
       memu: {
         llm: {
-          provider: balanced.provider,
-          model: balanced.model,
+          provider: structuredLane.provider,
+          model: structuredLane.model,
           thinkLevel: "off",
           timeoutMs: 15000,
         },
