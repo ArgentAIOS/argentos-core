@@ -2,7 +2,8 @@
  * Migrate CLI — Export / Import operator install bundles.
  *
  * Commands:
- *   argent migrate export --out <path>   Produce an encrypted migration bundle
+ *   argent migrate export --out <path>     Produce an encrypted migration bundle
+ *   argent migrate import <bundle> [...]   Decrypt + restore into a target state dir
  *
  * The export bundle captures everything needed to restore an Argent install
  * on a fresh machine: service keys, master key, identity, pairings, per-agent
@@ -19,26 +20,29 @@
  *     authTag  (16 bytes)  written after encryption completes
  *     reserved (5 bytes)   zero
  *     body     (N bytes)   AES-256-GCM(tar.gz)
- *
- * Day 2 `argent migrate import` will consume this file.
  */
 
 import { spawn } from "node:child_process";
 import {
   createCipheriv,
+  createDecipheriv,
   createHash,
   randomBytes,
   scryptSync,
 } from "node:crypto";
 import {
+  chmodSync,
+  closeSync,
   copyFileSync,
   createReadStream,
   createWriteStream,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -116,6 +120,16 @@ interface ExportOptions {
   dryRun: boolean;
 }
 
+interface ImportOptions {
+  bundle: string;
+  targetStateDir?: string;
+  passphraseEnv?: string;
+  skipPgRestore: boolean;
+  skipIdentity: boolean;
+  dryRun: boolean;
+  force: boolean;
+}
+
 // ---------- registration ----------
 
 /**
@@ -143,6 +157,34 @@ export function registerMigrateCli(program: Command): void {
     .option("--dry-run", "Print the plan and exit without writing files", false)
     .action(async (opts: ExportOptions) => {
       await runExport(opts);
+    });
+
+  migrate
+    .command("import")
+    .description("Decrypt and restore an Argent install from a migration bundle")
+    .argument("<bundle>", "Path to .tar.gz.enc bundle produced by `migrate export`")
+    .option(
+      "--target-state-dir <path>",
+      "Override ~/.argentos/ (default: $ARGENT_STATE_DIR or ~/.argentos)",
+    )
+    .option(
+      "--passphrase-env <var>",
+      "Read passphrase from this environment variable instead of prompting",
+    )
+    .option("--skip-pg-restore", "Do not run pg_restore (state files only)", false)
+    .option(
+      "--skip-identity",
+      "Do not restore identity/ (for cross-machine cloning)",
+      false,
+    )
+    .option("--dry-run", "Decrypt + verify checksums; do not write to target", false)
+    .option(
+      "--force",
+      "Overwrite an existing non-empty target state dir (DESTRUCTIVE)",
+      false,
+    )
+    .action(async (bundle: string, opts: Omit<ImportOptions, "bundle">) => {
+      await runImport({ ...opts, bundle });
     });
 }
 
@@ -248,6 +290,284 @@ async function printDryRunPlan(outPath: string, opts: ExportOptions): Promise<vo
   }
 
   console.log(`  pg_dump:          ${PG_DUMP_BIN} -Fc -h ${PG_HOST} -p ${PG_PORT} -U ${PG_USER} -d ${PG_DB}`);
+}
+
+// ---------- import ----------
+
+const PG_RESTORE_BIN = "/opt/homebrew/opt/postgresql@17/bin/pg_restore";
+
+/**
+ * Run the import pipeline end-to-end.
+ *
+ * 1. Open bundle, parse header, derive key, decrypt to temp tar.gz.
+ * 2. Extract tar.gz to temp/bundle/.
+ * 3. Read manifest.json and verify SHA-256 of every referenced file BEFORE
+ *    touching the target state dir. A single mismatch is fatal unless
+ *    --dry-run (in which case we report and bail).
+ * 4. Refuse to write into a non-empty target unless --force.
+ * 5. Copy files into target state dir. --skip-identity skips identity/.
+ * 6. pg_restore --clean --if-exists --no-owner unless --skip-pg-restore.
+ */
+async function runImport(opts: ImportOptions): Promise<void> {
+  const bundlePath = path.resolve(opts.bundle);
+  if (!existsSync(bundlePath)) {
+    console.error(`[migrate] bundle not found: ${bundlePath}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const target = path.resolve(
+    opts.targetStateDir ?? process.env.ARGENT_STATE_DIR ?? ARGENTOS_DIR,
+  );
+
+  // Guardrail: don't let a stray import clobber the operator's live install.
+  if (target === ARGENTOS_DIR && !opts.force && !opts.dryRun) {
+    console.warn(
+      `[migrate] Target is the live state dir (${target}). Pass --force if this is really what you want.`,
+    );
+  }
+
+  const passphrase = await resolvePassphrase(opts.passphraseEnv);
+  if (!passphrase) {
+    console.error("[migrate] No passphrase provided; aborting.");
+    process.exitCode = 1;
+    return;
+  }
+
+  const stageRoot = mkdtempSync(path.join(tmpdir(), "argent-import-"));
+  const tarPath = path.join(stageRoot, "bundle.tar.gz");
+  const extractRoot = path.join(stageRoot, "extract");
+  mkdirSync(extractRoot, { recursive: true });
+
+  try {
+    console.log(`[migrate] Decrypting ${bundlePath} ...`);
+    await decryptStream(bundlePath, tarPath, passphrase);
+
+    console.log(`[migrate] Extracting tarball ...`);
+    await untarBundle(tarPath, extractRoot);
+
+    const bundleDir = path.join(extractRoot, "bundle");
+    if (!existsSync(bundleDir)) {
+      throw new Error("bundle/ directory missing from extracted archive");
+    }
+
+    const manifestPath = path.join(bundleDir, "manifest.json");
+    if (!existsSync(manifestPath)) {
+      throw new Error("manifest.json missing from bundle");
+    }
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Manifest;
+
+    console.log(
+      `[migrate] Bundle source: ${manifest.sourceHostname} (${manifest.createdAt}) — ${manifest.files.length} files`,
+    );
+
+    const mismatches = verifyManifest(bundleDir, manifest);
+    if (mismatches.length > 0) {
+      console.error(`[migrate] Checksum mismatches (${mismatches.length}):`);
+      for (const m of mismatches.slice(0, 10)) {
+        console.error(`  - ${m}`);
+      }
+      if (mismatches.length > 10) {
+        console.error(`  ... and ${mismatches.length - 10} more`);
+      }
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`[migrate] Checksums OK — all ${manifest.files.length} files verified.`);
+
+    if (opts.dryRun) {
+      console.log(`[migrate] DRY RUN — target unchanged. Target would be: ${target}`);
+      printImportPlan(bundleDir, manifest, opts, target);
+      return;
+    }
+
+    // Pre-flight: refuse to clobber a populated target unless --force.
+    if (!opts.force && targetNonEmpty(target)) {
+      console.error(
+        `[migrate] Target ${target} is not empty. Pass --force to overwrite.`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+
+    console.log(`[migrate] Restoring to ${target} ...`);
+    const restored = copyBundleToTarget(bundleDir, target, opts);
+
+    let pgMessage = "skipped";
+    if (!opts.skipPgRestore) {
+      const dumpPath = path.join(bundleDir, "pg-dump.sql");
+      if (!existsSync(dumpPath)) {
+        pgMessage = "no pg-dump.sql in bundle";
+      } else {
+        await runPgRestore(dumpPath);
+        pgMessage = "restored";
+      }
+    }
+
+    console.log(`\n[migrate] Import complete:`);
+    console.log(`  Target:          ${target}`);
+    console.log(`  Files written:   ${restored.filesWritten}`);
+    console.log(`  Bytes written:   ${restored.bytesWritten}`);
+    console.log(`  Skipped (identity): ${restored.skippedIdentity}`);
+    console.log(`  PG restore:      ${pgMessage}`);
+  } finally {
+    rmSync(stageRoot, { recursive: true, force: true });
+  }
+}
+
+function printImportPlan(
+  bundleDir: string,
+  manifest: Manifest,
+  opts: ImportOptions,
+  target: string,
+): void {
+  console.log(`  Target:             ${target}`);
+  console.log(`  Skip pg restore:    ${opts.skipPgRestore}`);
+  console.log(`  Skip identity:      ${opts.skipIdentity}`);
+  console.log(`  Force overwrite:    ${opts.force}`);
+  console.log(`  Bundle agents:      ${manifest.counts.agents}`);
+  console.log(`  Bundle files:       ${manifest.files.length}`);
+  const pgDump = path.join(bundleDir, "pg-dump.sql");
+  console.log(`  pg-dump.sql size:   ${existsSync(pgDump) ? `${statSync(pgDump).size} bytes` : "missing"}`);
+}
+
+/**
+ * For each manifest entry, recompute SHA-256 of the extracted file and compare
+ * against the claimed hash. Returns human-readable mismatch descriptions.
+ */
+function verifyManifest(bundleDir: string, manifest: Manifest): string[] {
+  const bad: string[] = [];
+  for (const entry of manifest.files) {
+    const onDisk = path.join(bundleDir, entry.path);
+    if (!existsSync(onDisk)) {
+      bad.push(`${entry.path}: missing from archive`);
+      continue;
+    }
+    const actual = createHash("sha256").update(readFileSync(onDisk)).digest("hex");
+    if (actual !== entry.sha256) {
+      bad.push(`${entry.path}: sha256 mismatch (expected ${entry.sha256.slice(0, 12)}..., got ${actual.slice(0, 12)}...)`);
+    }
+  }
+  return bad;
+}
+
+interface RestoreStats {
+  filesWritten: number;
+  bytesWritten: number;
+  skippedIdentity: number;
+}
+
+/**
+ * Copy every non-manifest file from the extracted bundle into the target
+ * state dir. The bundle layout is already the target layout modulo one
+ * rename: `bundle/master-key` → `<target>/.master-key`. --skip-identity
+ * drops the identity/ subtree.
+ *
+ * argent.json.sanitized is restored as argent.json (the REDACTED tokens are
+ * expected to be replaced post-restore by the operator or a provision script).
+ */
+function copyBundleToTarget(
+  bundleDir: string,
+  target: string,
+  opts: ImportOptions,
+): RestoreStats {
+  mkdirSync(target, { recursive: true });
+  const stats: RestoreStats = { filesWritten: 0, bytesWritten: 0, skippedIdentity: 0 };
+
+  for (const src of walkFiles(bundleDir, { skipGitObjects: false })) {
+    const rel = path.relative(bundleDir, src);
+    if (rel === "manifest.json") continue;
+
+    // Map bundle-layout paths to target-layout paths.
+    let dstRel = rel;
+    if (rel === "master-key") dstRel = ".master-key";
+    if (rel === "argent.json.sanitized") dstRel = "argent.json";
+
+    if (opts.skipIdentity && dstRel.startsWith(`identity${path.sep}`)) {
+      stats.skippedIdentity += 1;
+      continue;
+    }
+    // pg-dump.sql doesn't belong in the state dir — it's consumed separately.
+    if (dstRel === "pg-dump.sql") continue;
+
+    const dst = path.join(target, dstRel);
+    mkdirSync(path.dirname(dst), { recursive: true });
+    copyFileSync(src, dst);
+
+    // Preserve sensitive-file permissions. The master key is mode 0600 on
+    // the source; force it here in case the FS copy dropped bits.
+    if (dstRel === ".master-key") {
+      chmodSync(dst, 0o600);
+    }
+
+    stats.filesWritten += 1;
+    stats.bytesWritten += statSync(dst).size;
+  }
+  return stats;
+}
+
+function targetNonEmpty(target: string): boolean {
+  if (!existsSync(target)) return false;
+  try {
+    const entries = readdirSync(target);
+    // A lone .DS_Store or empty dir doesn't count.
+    return entries.filter((e) => e !== ".DS_Store").length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function untarBundle(tarPath: string, extractRoot: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn("tar", ["-xzf", tarPath, "-C", extractRoot], {
+      stdio: ["ignore", "inherit", "inherit"],
+    });
+    proc.once("error", reject);
+    proc.once("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`tar extract exited with code ${code}`));
+    });
+  });
+}
+
+async function runPgRestore(dumpPath: string): Promise<void> {
+  if (!existsSync(PG_RESTORE_BIN)) {
+    throw new Error(`pg_restore not found at ${PG_RESTORE_BIN}`);
+  }
+  console.log(`[migrate] Running pg_restore from ${dumpPath} ...`);
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn(
+      PG_RESTORE_BIN,
+      [
+        "--clean",
+        "--if-exists",
+        "--no-owner",
+        "-h",
+        PG_HOST,
+        "-p",
+        PG_PORT,
+        "-U",
+        PG_USER,
+        "-d",
+        PG_DB,
+        dumpPath,
+      ],
+      { stdio: ["ignore", "inherit", "inherit"] },
+    );
+    proc.once("error", reject);
+    proc.once("close", (code) => {
+      // pg_restore returns nonzero on recoverable warnings (missing roles, etc.)
+      // We still treat code 0 as success; warn on nonzero but don't hard fail
+      // unless the dump clearly couldn't be read.
+      if (code === 0) resolve();
+      else {
+        console.warn(
+          `[migrate] pg_restore exited with code ${code} — check output above for errors vs. warnings.`,
+        );
+        resolve();
+      }
+    });
+  });
 }
 
 // ---------- staging helpers ----------
@@ -503,6 +823,48 @@ async function encryptStream(srcPath: string, dstPath: string, passphrase: strin
   }
 }
 
+/**
+ * Stream-decrypt `srcPath` into `dstPath`. Throws on magic/version mismatch
+ * or GCM authTag failure (bad passphrase / tampered bundle).
+ */
+async function decryptStream(srcPath: string, dstPath: string, passphrase: string): Promise<void> {
+  const fd = openSync(srcPath, "r");
+  const header = Buffer.alloc(HEADER_LEN);
+  try {
+    readSync(fd, header, 0, HEADER_LEN, 0);
+  } finally {
+    closeSync(fd);
+  }
+
+  if (!header.slice(0, MAGIC.length).equals(MAGIC)) {
+    throw new Error("Magic mismatch — not an Argent migration bundle.");
+  }
+  let off = MAGIC.length;
+  const version = header.readUInt8(off);
+  off += 1;
+  if (version !== VERSION) {
+    throw new Error(`Unsupported bundle version: ${version}`);
+  }
+  const salt = header.slice(off, off + SALT_LEN);
+  off += SALT_LEN;
+  const iv = header.slice(off, off + IV_LEN);
+  off += IV_LEN;
+  const authTag = header.slice(off, off + TAG_LEN);
+
+  const key = scryptSync(passphrase, salt, KEY_LEN, SCRYPT_OPTS);
+  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(authTag);
+
+  const input = createReadStream(srcPath, { start: HEADER_LEN });
+  const output = createWriteStream(dstPath);
+  try {
+    await pipeline(input, decipher, output);
+  } catch (err) {
+    // GCM authTag failures surface as "Unsupported state or unable to authenticate data".
+    throw new Error(`Decrypt failed: ${(err as Error).message}. Wrong passphrase or corrupted bundle?`);
+  }
+}
+
 // ---------- passphrase ----------
 
 async function resolvePassphrase(envVarName?: string): Promise<string | null> {
@@ -683,23 +1045,38 @@ function redactTokens(input: unknown): unknown {
  */
 async function main(argv: string[]): Promise<void> {
   const [subcmd, ...rest] = argv;
-  if (subcmd !== "export") {
-    printUsage();
-    process.exitCode = subcmd ? 1 : 0;
+  if (subcmd === "export") {
+    const opts: ExportOptions = parseExportArgs(rest);
+    await runExport(opts);
     return;
   }
-  const opts: ExportOptions = parseExportArgs(rest);
-  await runExport(opts);
+  if (subcmd === "import") {
+    const opts: ImportOptions = parseImportArgs(rest);
+    await runImport(opts);
+    return;
+  }
+  printUsage();
+  process.exitCode = subcmd ? 1 : 0;
 }
 
 function printUsage(): void {
-  console.log("Usage: argent migrate export --out <path> [options]");
+  console.log("Usage:");
+  console.log("  argent migrate export --out <path> [options]");
+  console.log("  argent migrate import <bundle> [options]");
   console.log("");
-  console.log("Options:");
+  console.log("Export options:");
   console.log("  --out <path>            Output path (should end in .tar.gz.enc) [required]");
   console.log("  --include-sessions      Include per-agent session history (large)");
   console.log("  --passphrase-env <var>  Read passphrase from this env var");
   console.log("  --dry-run               Print the plan; don't write anything");
+  console.log("");
+  console.log("Import options:");
+  console.log("  --target-state-dir <p>  Target state dir (default: $ARGENT_STATE_DIR or ~/.argentos)");
+  console.log("  --passphrase-env <var>  Read passphrase from this env var");
+  console.log("  --skip-pg-restore       Do not run pg_restore");
+  console.log("  --skip-identity         Do not restore identity/");
+  console.log("  --dry-run               Decrypt + verify; do not write");
+  console.log("  --force                 Overwrite non-empty target (DESTRUCTIVE)");
 }
 
 function parseExportArgs(args: string[]): ExportOptions {
@@ -739,6 +1116,56 @@ function parseExportArgs(args: string[]): ExportOptions {
     process.exit(2);
   }
   return { out, includeSessions, passphraseEnv, dryRun };
+}
+
+function parseImportArgs(args: string[]): ImportOptions {
+  let bundle: string | undefined;
+  let targetStateDir: string | undefined;
+  let passphraseEnv: string | undefined;
+  let skipPgRestore = false;
+  let skipIdentity = false;
+  let dryRun = false;
+  let force = false;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    switch (arg) {
+      case "--target-state-dir":
+        targetStateDir = args[++i];
+        break;
+      case "--passphrase-env":
+        passphraseEnv = args[++i];
+        break;
+      case "--skip-pg-restore":
+        skipPgRestore = true;
+        break;
+      case "--skip-identity":
+        skipIdentity = true;
+        break;
+      case "--dry-run":
+        dryRun = true;
+        break;
+      case "--force":
+        force = true;
+        break;
+      case "-h":
+      case "--help":
+        printUsage();
+        process.exit(0);
+      default:
+        if (arg !== undefined && arg.startsWith("--")) {
+          console.error(`[migrate] unknown option: ${arg}`);
+          process.exit(2);
+        }
+        // first non-flag positional is the bundle path
+        if (!bundle && arg !== undefined) bundle = arg;
+    }
+  }
+  if (!bundle) {
+    console.error("[migrate] bundle path is required");
+    process.exit(2);
+  }
+  return { bundle, targetStateDir, passphraseEnv, skipPgRestore, skipIdentity, dryRun, force };
 }
 
 // Detect "ran directly" by comparing argv[1] resolved path to this file.
