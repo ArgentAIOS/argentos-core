@@ -1353,6 +1353,15 @@ APIPLIST
 </plist>
 UIPLIST
 
+      local launch_domain
+      launch_domain="gui/$(id -u)"
+      /bin/launchctl bootout "$launch_domain" "$api_plist" >/dev/null 2>&1 || true
+      /bin/launchctl bootout "$launch_domain" "$ui_plist" >/dev/null 2>&1 || true
+      /bin/launchctl bootstrap "$launch_domain" "$api_plist" >/dev/null 2>&1 || true
+      /bin/launchctl bootstrap "$launch_domain" "$ui_plist" >/dev/null 2>&1 || true
+      /bin/launchctl kickstart -k "$launch_domain/ai.argent.dashboard-api" >/dev/null 2>&1 || true
+      /bin/launchctl kickstart -k "$launch_domain/ai.argent.dashboard-ui" >/dev/null 2>&1 || true
+
       sleep 2
       if lsof -i :9242 >/dev/null 2>&1 && lsof -i :8080 >/dev/null 2>&1; then
         ok "Dashboard running on http://127.0.0.1:8080/ (API on 127.0.0.1:9242)"
