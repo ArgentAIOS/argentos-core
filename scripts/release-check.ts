@@ -75,7 +75,38 @@ function checkPluginVersions() {
   }
 }
 
+function checkVersionSurfaceAlignment() {
+  const rootPackagePath = resolve("package.json");
+  const dashboardPackagePath = resolve("dashboard", "package.json");
+  const rootPackage = JSON.parse(readFileSync(rootPackagePath, "utf8")) as PackageJson;
+  const dashboardPackage = JSON.parse(readFileSync(dashboardPackagePath, "utf8")) as PackageJson;
+
+  const rootVersion = rootPackage.version?.trim();
+  const dashboardVersion = dashboardPackage.version?.trim();
+
+  if (!rootVersion) {
+    console.error("release-check: root package.json missing version.");
+    process.exit(1);
+  }
+
+  if (!dashboardVersion) {
+    console.error("release-check: dashboard/package.json missing version.");
+    process.exit(1);
+  }
+
+  if (rootVersion !== dashboardVersion) {
+    console.error(
+      `release-check: version mismatch. root=${rootVersion} dashboard=${dashboardVersion}`,
+    );
+    console.error(
+      "release-check: bump package.json and dashboard/package.json together before tagging a release.",
+    );
+    process.exit(1);
+  }
+}
+
 function main() {
+  checkVersionSurfaceAlignment();
   checkPluginVersions();
 
   const results = runPackDry();

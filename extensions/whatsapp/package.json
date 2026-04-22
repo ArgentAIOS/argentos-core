@@ -1,6 +1,6 @@
 {
   "name": "@argentos/whatsapp",
-  "version": "2026.3.2",
+  "version": "2026.4.21.13",
   "description": "ArgentOS WhatsApp channel plugin",
   "type": "module",
   "devDependencies": {

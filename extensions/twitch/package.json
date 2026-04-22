@@ -1,6 +1,6 @@
 {
   "name": "@argentos/twitch",
-  "version": "2026.3.2",
+  "version": "2026.4.21.13",
   "description": "ArgentOS Twitch channel plugin",
   "type": "module",
   "dependencies": {
