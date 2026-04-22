@@ -148,6 +148,10 @@ run_cmd() {
   "$@"
 }
 
+run_git_nohooks() {
+  run_cmd git -c core.hooksPath=/dev/null "$@"
+}
+
 is_supported_runtime_node() {
   local version="${1#v}"
   local major="${version%%.*}"
@@ -1122,10 +1126,10 @@ install_git() {
 
   if [[ -d "$GIT_DIR/.git" ]]; then
     info "Using existing checkout: $GIT_DIR"
-    run_cmd git -C "$GIT_DIR" fetch --tags --prune
+    run_git_nohooks -C "$GIT_DIR" fetch --tags --prune
   else
     info "Cloning source checkout from $GIT_REMOTE to $GIT_DIR"
-    run_cmd git clone "$GIT_REMOTE" "$GIT_DIR"
+    run_git_nohooks clone "$GIT_REMOTE" "$GIT_DIR"
   fi
 
   # Resolve release-tag placeholders to actual git tags
@@ -1155,20 +1159,20 @@ install_git() {
 
   if [[ -n "$VERSION" && "$VERSION" != "main" ]]; then
     info "Checking out git ref: $VERSION"
-    run_cmd git -C "$GIT_DIR" checkout "$VERSION"
+    run_git_nohooks -C "$GIT_DIR" checkout "$VERSION"
     if is_truthy "$GIT_UPDATE"; then
       if git -C "$GIT_DIR" show-ref --verify --quiet "refs/remotes/origin/$VERSION"; then
         info "Updating git ref from origin/$VERSION"
-        run_cmd git -C "$GIT_DIR" reset --hard "origin/$VERSION"
+        run_git_nohooks -C "$GIT_DIR" reset --hard "origin/$VERSION"
       fi
     fi
   else
     info "Tracking source checkout on main"
-    run_cmd git -C "$GIT_DIR" checkout main
+    run_git_nohooks -C "$GIT_DIR" checkout main
     if is_truthy "$GIT_UPDATE"; then
       # Reset lockfile that pnpm install may have modified — will be regenerated below
       git -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
-      run_cmd git -C "$GIT_DIR" pull origin main
+      run_git_nohooks -C "$GIT_DIR" pull origin main
     fi
   fi
 
