@@ -105,10 +105,21 @@ interface Manifest {
     agents: number;
     alignmentDocs: number;
     kernelFiles: number;
-    workspaceFiles: number;
+    workspaceFiles: number; // shared workspace/
+    perAgentWorkspaceFiles: number; // workspace-<id>/ total
+    perAgentWorkspaces: number; // number of workspace-<id> dirs
+    modelsJsonFiles: number;
     devicesFiles: number;
     identityFiles: number;
+    topLevelFiles: number; // nudges.json etc.
+    topLevelDirFiles: number; // cron/, connectors/, widgets/ totals
   };
+  /**
+   * Directories that the import side MUST mkdir even if they contain no
+   * files (e.g. operator has no cron jobs yet). Keeps the state-dir schema
+   * intact across a round trip.
+   */
+  ensureDirs: string[];
   files: ManifestFile[];
   notes: string[];
 }
@@ -235,18 +246,27 @@ async function runExport(opts: ExportOptions): Promise<void> {
       alignmentDocs: 0,
       kernelFiles: 0,
       workspaceFiles: 0,
+      perAgentWorkspaceFiles: 0,
+      perAgentWorkspaces: 0,
+      modelsJsonFiles: 0,
       devicesFiles: 0,
       identityFiles: 0,
+      topLevelFiles: 0,
+      topLevelDirFiles: 0,
     },
+    ensureDirs: [],
     files: [],
     notes: [],
   };
 
   try {
     stageTopLevelSecrets(bundleDir, manifest);
+    stageTopLevelFiles(bundleDir, manifest);
     stageIdentityAndDevices(bundleDir, manifest);
+    stageTopLevelDirs(bundleDir, manifest);
     stageAgents(bundleDir, manifest, opts.includeSessions);
     stageWorkspace(bundleDir, manifest);
+    stagePerAgentWorkspaces(bundleDir, manifest);
     stageSanitizedConfig(bundleDir, manifest);
     await stagePgDump(bundleDir, manifest);
 
@@ -262,11 +282,15 @@ async function runExport(opts: ExportOptions): Promise<void> {
 
     const size = statSync(outPath).size;
     console.log(`\n[migrate] Export complete:`);
-    console.log(`  File:    ${outPath}`);
-    console.log(`  Size:    ${(size / (1024 * 1024)).toFixed(2)} MB`);
-    console.log(`  Agents:  ${manifest.counts.agents}`);
-    console.log(`  Files:   ${manifest.files.length}`);
-    console.log(`  Hostname:${manifest.sourceHostname}`);
+    console.log(`  File:         ${outPath}`);
+    console.log(`  Size:         ${(size / (1024 * 1024)).toFixed(2)} MB`);
+    console.log(`  Agents:       ${manifest.counts.agents}`);
+    console.log(`  Per-agent workspaces: ${manifest.counts.perAgentWorkspaces} (${manifest.counts.perAgentWorkspaceFiles} files)`);
+    console.log(`  models.json:  ${manifest.counts.modelsJsonFiles}`);
+    console.log(`  Top-level files: ${manifest.counts.topLevelFiles}`);
+    console.log(`  Top-level dirs:  ${TOP_LEVEL_DIRS.length} tracked, ${manifest.counts.topLevelDirFiles} files`);
+    console.log(`  Total files:  ${manifest.files.length}`);
+    console.log(`  Hostname:     ${manifest.sourceHostname}`);
   } finally {
     rmSync(stageRoot, { recursive: true, force: true });
   }
@@ -474,6 +498,22 @@ function copyBundleToTarget(
   mkdirSync(target, { recursive: true });
   const stats: RestoreStats = { filesWritten: 0, bytesWritten: 0, skippedIdentity: 0 };
 
+  // Read the manifest to learn about directories that must exist even if empty
+  // (cron/, connectors/, widgets/ on a fresh install).
+  const manifestPath = path.join(bundleDir, "manifest.json");
+  if (existsSync(manifestPath)) {
+    try {
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Manifest;
+      if (Array.isArray(manifest.ensureDirs)) {
+        for (const dirRel of manifest.ensureDirs) {
+          mkdirSync(path.join(target, dirRel), { recursive: true });
+        }
+      }
+    } catch {
+      // already-verified manifest — corruption at this point is unexpected but non-fatal
+    }
+  }
+
   for (const src of walkFiles(bundleDir, { skipGitObjects: false })) {
     const rel = path.relative(bundleDir, src);
     if (rel === "manifest.json") continue;
@@ -587,6 +627,61 @@ function stageTopLevelSecrets(bundleDir: string, manifest: Manifest): void {
   );
 }
 
+/**
+ * Top-level user-state files that live at the state-dir root alongside
+ * service-keys.json. These are small (KBs) but real operator data and must
+ * survive a migration.
+ */
+const TOP_LEVEL_FILES = [
+  "nudges.json",
+  "license.json",
+  "dashboard-calendar.json",
+  "first-run-complete",
+  "provider-registry.json",
+] as const;
+
+function stageTopLevelFiles(bundleDir: string, manifest: Manifest): void {
+  for (const name of TOP_LEVEL_FILES) {
+    if (
+      copyIfExists(
+        path.join(ARGENTOS_DIR, name),
+        path.join(bundleDir, name),
+        manifest,
+        name,
+      )
+    ) {
+      manifest.counts.topLevelFiles += 1;
+    }
+  }
+}
+
+/**
+ * Top-level user-state directories that always round-trip, even if empty.
+ * cron/ holds user-defined schedules. connectors/ and widgets/ are populated
+ * by the dashboard over time. If we didn't explicitly recreate these on
+ * import, walk-based file copy would silently omit them (no files → no dir).
+ */
+const TOP_LEVEL_DIRS = ["cron", "connectors", "widgets"] as const;
+
+function stageTopLevelDirs(bundleDir: string, manifest: Manifest): void {
+  for (const name of TOP_LEVEL_DIRS) {
+    const srcDir = path.join(ARGENTOS_DIR, name);
+    if (!existsSync(srcDir)) continue;
+    const dstDir = path.join(bundleDir, name);
+    mkdirSync(dstDir, { recursive: true });
+    manifest.ensureDirs.push(name);
+
+    for (const entry of walkFiles(srcDir, { skipGitObjects: true })) {
+      const rel = path.relative(srcDir, entry);
+      const out = path.join(dstDir, rel);
+      mkdirSync(path.dirname(out), { recursive: true });
+      copyFileSync(entry, out);
+      recordFile(out, manifest, `${name}/${rel}`);
+      manifest.counts.topLevelDirFiles += 1;
+    }
+  }
+}
+
 function stageIdentityAndDevices(bundleDir: string, manifest: Manifest): void {
   const identityDir = path.join(ARGENTOS_DIR, "identity");
   if (existsSync(identityDir)) {
@@ -620,7 +715,7 @@ function stageAgents(bundleDir: string, manifest: Manifest, includeSessions: boo
     const dst = path.join(bundleDir, "agents", agentId);
     mkdirSync(dst, { recursive: true });
 
-    // agent/ subdirectory — auth-profiles.json + alignment .md + kernel/
+    // agent/ subdirectory — auth-profiles.json + models.json + alignment .md + kernel/
     const srcAgent = path.join(src, "agent");
     const dstAgent = path.join(dst, "agent");
     if (existsSync(srcAgent)) {
@@ -632,6 +727,17 @@ function stageAgents(bundleDir: string, manifest: Manifest, includeSessions: boo
         manifest,
         `agents/${agentId}/agent/auth-profiles.json`,
       );
+
+      if (
+        copyIfExists(
+          path.join(srcAgent, "models.json"),
+          path.join(dstAgent, "models.json"),
+          manifest,
+          `agents/${agentId}/agent/models.json`,
+        )
+      ) {
+        manifest.counts.modelsJsonFiles += 1;
+      }
 
       for (const docName of ALIGNMENT_DOCS) {
         if (
@@ -705,6 +811,39 @@ function stageWorkspace(bundleDir: string, manifest: Manifest): void {
     copyFileSync(entry, out);
     recordFile(out, manifest, `workspace/${rel}`);
     manifest.counts.workspaceFiles += 1;
+  }
+}
+
+/**
+ * Per-agent workspaces live at ~/.argentos/workspace-<id>/ (sibling to the
+ * shared workspace/). Detected dynamically: any top-level dir named
+ * "workspace-*" except "workspace" itself. Same exclusions as the shared
+ * workspace (no .git/objects, no node_modules, no sessions).
+ */
+function stagePerAgentWorkspaces(bundleDir: string, manifest: Manifest): void {
+  if (!existsSync(ARGENTOS_DIR)) return;
+  const candidates = readdirSync(ARGENTOS_DIR, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && d.name.startsWith("workspace-") && d.name !== "workspace")
+    .map((d) => d.name)
+    .sort();
+
+  for (const name of candidates) {
+    const src = path.join(ARGENTOS_DIR, name);
+    const dst = path.join(bundleDir, name);
+    mkdirSync(dst, { recursive: true });
+    manifest.counts.perAgentWorkspaces += 1;
+
+    for (const entry of walkFiles(src, { skipGitObjects: true })) {
+      // Also skip sessions/ inside per-agent workspaces (same policy as
+      // agents/<id>/sessions/).
+      const rel = path.relative(src, entry);
+      if (rel.startsWith(`sessions${path.sep}`)) continue;
+      const out = path.join(dst, rel);
+      mkdirSync(path.dirname(out), { recursive: true });
+      copyFileSync(entry, out);
+      recordFile(out, manifest, `${name}/${rel}`);
+      manifest.counts.perAgentWorkspaceFiles += 1;
+    }
   }
 }
 
