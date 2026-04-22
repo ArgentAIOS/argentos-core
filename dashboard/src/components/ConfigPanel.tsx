@@ -4399,7 +4399,7 @@ export function ConfigPanel({
   }, [isOpen, activeTab, loadKnowledgeCollections]);
 
   useEffect(() => {
-    if (!isOpen || activeTab !== "capabilities") return;
+    if (!isOpen || (activeTab !== "capabilities" && activeTab !== "agent")) return;
     void loadCapabilities(capabilitiesAgentId || defaultAgentId);
     // Intentionally only refresh on tab/open transitions; manual refresh is user-driven.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -6892,7 +6892,7 @@ export function ConfigPanel({
       items: [
         { id: "agent" as TabType, label: "Agent", icon: Brain },
         { id: "systems" as TabType, label: "Systems", icon: Package },
-        { id: "capabilities" as TabType, label: "Capabilities", icon: Wrench },
+        { id: "capabilities" as TabType, label: "Personal Skills", icon: Wrench },
         { id: "intent" as TabType, label: "Intent", icon: Sparkles },
         { id: "knowledge" as TabType, label: "Knowledge", icon: Database },
         { id: "alignment" as TabType, label: "Alignment", icon: BookOpen },
@@ -19620,12 +19620,65 @@ export function ConfigPanel({
                 {activeTab === "memory" && <MemoryConsole />}
 
                 {activeTab === "systems" && (
-                  <SystemsRegistryPanel
-                    defaultAgentId={defaultAgentId}
-                    gatewayRequest={gatewayRequest}
-                    surfaceProfile={surfaceProfile}
-                    onOpenTab={(tabId) => setActiveTab(tabId)}
-                  />
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 space-y-3">
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div>
+                          <div className="text-white/90 text-sm font-medium">Personal Skills</div>
+                          <div className="text-white/45 text-xs">
+                            Skills available to the current agent, shown directly from the live
+                            capabilities scan.
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setActiveTab("capabilities")}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 text-white/70 hover:text-white hover:border-white/20 text-xs"
+                        >
+                          <Wrench className="w-3.5 h-3.5" />
+                          Open Full Skills View
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-white/50">
+                        <span>{availableCapabilitiesSkills.length} available</span>
+                        <span>·</span>
+                        <span>{unavailableCapabilitiesSkills.length} unavailable</span>
+                        {capabilitiesLoading && (
+                          <>
+                            <span>·</span>
+                            <span>Refreshing…</span>
+                          </>
+                        )}
+                      </div>
+                      {capabilitiesSkills.length === 0 ? (
+                        <div className="text-white/40 text-xs">
+                          No personal skills are visible yet for this agent.
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {availableCapabilitiesSkills.slice(0, 12).map((skill) => (
+                            <span
+                              key={`systems-skill-${skill.name}`}
+                              className="inline-flex items-center rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] text-emerald-200"
+                            >
+                              {skill.name}
+                            </span>
+                          ))}
+                          {availableCapabilitiesSkills.length > 12 && (
+                            <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-white/55">
+                              +{availableCapabilitiesSkills.length - 12} more
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <SystemsRegistryPanel
+                      defaultAgentId={defaultAgentId}
+                      gatewayRequest={gatewayRequest}
+                      surfaceProfile={surfaceProfile}
+                      onOpenTab={(tabId) => setActiveTab(tabId)}
+                    />
+                  </div>
                 )}
 
                 {activeTab === "logs" && <LogViewer />}

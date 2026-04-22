@@ -498,9 +498,6 @@ export function deriveProviderAwareModelConfig(params: {
         balanced: { provider, model: tiers.balanced },
         powerful: { provider, model: tiers.powerful },
       },
-      routingPolicy: {
-        likelyToolUseMinTier: "balanced",
-      },
     },
   };
 }
