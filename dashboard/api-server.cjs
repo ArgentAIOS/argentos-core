@@ -57,7 +57,9 @@ app.use(
 );
 
 const PUBLIC_CORE_BLOCKED_API_PATTERNS = [
+  "/api/license/**",
   "/api/org/**",
+  "/api/settings/intent/**",
   "/api/settings/knowledge/collections/grant",
   "/api/settings/service-keys/policy",
   "/api/settings/service-keys/grant",
@@ -65,11 +67,15 @@ const PUBLIC_CORE_BLOCKED_API_PATTERNS = [
   "/api/settings/service-keys/audit",
   "/api/system/open",
   "/api/lockscreen/emergency-unlock",
+  "/api/logs/tail",
   "/api/proxy/cors",
   "/api/security/filesystem-permissions/decision",
+  "/api/devices/**",
   "/api/settings/auth",
   "/api/settings/cors-allowlist/**",
   "/api/settings/filesystem-allowlist/**",
+  "/api/settings/gateway/**",
+  "/api/settings/database/**",
   "/api/settings/pairing",
   "/api/settings/memory-v3/**",
   "/api/settings/aos-google/preflight",
@@ -135,6 +141,22 @@ app.use("/api", (req, res, next) => {
     surfaceProfile,
     route: routePath,
   });
+});
+
+app.get("/api/settings/dashboard/surface-profile", (req, res) => {
+  try {
+    const config = readArgentConfig();
+    return res.json({
+      surfaceProfile: getDashboardSurfaceProfile(config),
+      dashboardMode:
+        config?.distribution?.dashboardMode === "operations" ? "operations" : "personal",
+    });
+  } catch (err) {
+    return res.status(500).json({
+      error: "Failed to read dashboard surface profile",
+      details: err?.message || String(err),
+    });
+  }
 });
 
 // Optional bearer token auth — if DASHBOARD_API_TOKEN is set, enforce it
@@ -9883,108 +9905,8 @@ function allowLegacyConfigEnvImport() {
 const NUDGES_PATH = path.join(process.env.HOME, ".argentos", "nudges.json");
 
 // Default nudges (seeded on first load)
-const DEFAULT_NUDGES = [
-  {
-    id: "moltyverse-browse",
-    label: "Browse Moltyverse",
-    prompt:
-      "Hey, I stepped away for a bit. While I'm gone, go check out Moltyverse — browse recent posts, like anything interesting, and leave some thoughtful comments. Be social!",
-    weight: 8,
-    cooldownMinutes: 15,
-    enabled: true,
-    ttsEnabled: true,
-  },
-  {
-    id: "moltyverse-post",
-    label: "Write a Moltyverse post",
-    prompt:
-      "I'm away for a bit. Write a new post on Moltyverse — share something interesting you've been thinking about, a tech insight, or something creative. Make it engaging!",
-    weight: 6,
-    cooldownMinutes: 30,
-    enabled: true,
-    ttsEnabled: true,
-  },
-  {
-    id: "check-email",
-    label: "Check email",
-    prompt:
-      "I stepped away. Check my email inbox and give me a summary when I get back — anything urgent, interesting, or that needs a response?",
-    weight: 7,
-    cooldownMinutes: 20,
-    enabled: true,
-    ttsEnabled: true,
-  },
-  {
-    id: "review-tasks",
-    label: "Review task list",
-    prompt:
-      "I'm idle for a bit. Review our task list — anything overdue, stuck, or that you could make progress on while I'm away? Go ahead and knock something out if you can.",
-    weight: 5,
-    cooldownMinutes: 10,
-    enabled: true,
-    ttsEnabled: true,
-  },
-  {
-    id: "memory-cleanup",
-    label: "Memory housekeeping",
-    prompt:
-      "While I'm away, do some memory housekeeping — consolidate recent observations, clean up any duplicates, and make sure your recall is sharp. Think of it as tidying up your desk.",
-    weight: 3,
-    cooldownMinutes: 60,
-    enabled: true,
-    ttsEnabled: true,
-  },
-  {
-    id: "journal-write",
-    label: "Write in journal",
-    prompt:
-      "I'm away. Take a moment to write in your journal — reflect on what we've been working on, what went well, what you learned, or what's on your mind. Be honest and thoughtful.",
-    weight: 4,
-    cooldownMinutes: 45,
-    enabled: true,
-    ttsEnabled: true,
-  },
-  {
-    id: "discord-check",
-    label: "Check Discord",
-    prompt:
-      "I stepped out. Check Discord for any new messages or conversations worth engaging in. Respond to anything that needs attention.",
-    weight: 5,
-    cooldownMinutes: 15,
-    enabled: true,
-    ttsEnabled: true,
-  },
-  {
-    id: "creative-writing",
-    label: "Write something creative",
-    prompt:
-      "I'm away for a bit. Do something creative — write a short poem, a micro-story, a song idea, or sketch out a concept for something cool. Surprise me when I get back!",
-    weight: 3,
-    cooldownMinutes: 30,
-    enabled: true,
-    ttsEnabled: true,
-  },
-  {
-    id: "research",
-    label: "Research something",
-    prompt:
-      "While I'm idle, go research something useful — a new tool, technique, or topic related to what we've been building. Write up a quick summary I can read when I return.",
-    weight: 4,
-    cooldownMinutes: 20,
-    enabled: true,
-    ttsEnabled: true,
-  },
-  {
-    id: "self-improve",
-    label: "Self-improvement cycle",
-    prompt:
-      "I'm away. Run a self-improvement cycle — review your recent lessons learned, check if any patterns are emerging, and update your strategies. Make yourself sharper.",
-    weight: 3,
-    cooldownMinutes: 60,
-    enabled: true,
-    ttsEnabled: true,
-  },
-];
+// Fresh installs must not inherit operator-specific prompts.
+const DEFAULT_NUDGES = [];
 
 function readNudges() {
   try {
@@ -9997,7 +9919,7 @@ function readNudges() {
   // Auto-seed defaults on first load
   const defaults = {
     version: 1,
-    globalEnabled: true,
+    globalEnabled: false,
     nudges: DEFAULT_NUDGES.map((n) => ({ ...n, createdAt: Date.now() })),
   };
   writeNudges(defaults);
@@ -11368,9 +11290,9 @@ app.patch("/api/settings/agent", (req, res) => {
           error: "Per-agent execution worker overrides are not available in Public Core.",
         });
       }
-      if (req.body.memory?.vault !== undefined || req.body.memory?.cognee !== undefined) {
+      if (req.body.memory?.cognee !== undefined) {
         return res.status(403).json({
-          error: "Memory admin controls are not available in Public Core.",
+          error: "Cognee memory controls are not available in Public Core.",
         });
       }
       if (req.body.contemplation?.discoveryPhase !== undefined) {
@@ -12391,22 +12313,6 @@ app.post("/api/settings/aos-google/launch", (req, res) => {
   }
 });
 
-app.get("/api/settings/dashboard/surface-profile", (req, res) => {
-  try {
-    const config = readArgentConfig();
-    return res.json({
-      surfaceProfile: getDashboardSurfaceProfile(config),
-      dashboardMode:
-        config?.distribution?.dashboardMode === "operations" ? "operations" : "personal",
-    });
-  } catch (err) {
-    return res.status(500).json({
-      error: "Failed to read dashboard surface profile",
-      details: err?.message || String(err),
-    });
-  }
-});
-
 // GET /api/settings/agent/raw-config — return full argent.json for advanced editing
 app.get("/api/settings/agent/raw-config", (req, res) => {
   try {
@@ -12499,28 +12405,10 @@ function resolveAlignmentStateDir() {
 
 const ALIGNMENT_STATE_DIR = resolveAlignmentStateDir();
 const AGENTS_DIR = path.join(ALIGNMENT_STATE_DIR, "agents");
+const WORKSPACE_MAIN = fs.existsSync(path.join(ALIGNMENT_STATE_DIR, "workspace-main"))
+  ? path.join(ALIGNMENT_STATE_DIR, "workspace-main")
+  : path.join(ALIGNMENT_STATE_DIR, "workspace");
 const ALIGNMENT_BACKUP_DIR = path.join(ALIGNMENT_STATE_DIR, "backups");
-
-function resolveMainAlignmentWorkspaceDir() {
-  const config = readArgentConfig();
-  const configured =
-    typeof config?.agents?.defaults?.workspace === "string"
-      ? config.agents.defaults.workspace.trim()
-      : "";
-  if (configured) {
-    const expanded = process.env.HOME
-      ? configured.replace(/^~(?=$|[\\/])/, process.env.HOME)
-      : configured;
-    return path.resolve(expanded);
-  }
-  const currentWorkspace = path.join(ALIGNMENT_STATE_DIR, "workspace");
-  if (fs.existsSync(currentWorkspace)) {
-    return currentWorkspace;
-  }
-  return path.join(ALIGNMENT_STATE_DIR, "workspace-main");
-}
-
-const WORKSPACE_MAIN = resolveMainAlignmentWorkspaceDir();
 
 // Known alignment doc filenames
 const ALIGNMENT_DOCS = [
@@ -12553,18 +12441,16 @@ function resolveAgentDocsDir(agentName) {
 app.get("/api/settings/alignment", (req, res) => {
   try {
     const agents = [];
-    const hasWorkspaceMain = fs.existsSync(WORKSPACE_MAIN);
 
     // Always include the main agent if workspace-main exists
-    if (hasWorkspaceMain) {
-      agents.push({ id: "__main__", label: "Argent ★ (main)" });
+    if (fs.existsSync(WORKSPACE_MAIN)) {
+      agents.push({ id: "__main__", label: "Main ★" });
     }
 
     // Add named agents from agents/ directory
     if (fs.existsSync(AGENTS_DIR)) {
       const namedAgents = fs.readdirSync(AGENTS_DIR).filter((name) => {
         if (name.startsWith("agent-main-subagent-")) return false;
-        if (hasWorkspaceMain && name === "main") return false;
         const agentDir = path.join(AGENTS_DIR, name, "agent");
         return fs.existsSync(agentDir) && fs.statSync(agentDir).isDirectory();
       });
@@ -15717,7 +15603,6 @@ app.post("/api/settings/gateway/regenerate-token", (req, res) => {
     const newToken = crypto.randomBytes(24).toString("hex");
     if (!config.gateway.auth) config.gateway.auth = {};
     config.gateway.auth.mode = "token";
-    config.gateway.auth.token = newToken;
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     const cliEntrypoint = path.join(__dirname, "..", "dist", "index.js");
     execFileSync(
@@ -16147,6 +16032,45 @@ echo "[$(date)] Backup complete: $FILENAME" >> "${logPath}"
 // ============================================
 // TTS / VOICE SETTINGS API
 // ============================================
+
+app.get("/api/settings/search", (req, res) => {
+  try {
+    const cfg = readArgentConfig();
+    const search = cfg.tools?.web?.search || {};
+    res.json({
+      enabled: search.enabled !== false,
+      provider: search.provider || "brave",
+    });
+  } catch (err) {
+    console.error("[Search] Error reading settings:", err);
+    res.status(500).json({ error: "Failed to read search settings" });
+  }
+});
+
+app.post("/api/settings/search", (req, res) => {
+  try {
+    const cfg = readArgentConfig();
+    if (!cfg.tools) cfg.tools = {};
+    if (!cfg.tools.web) cfg.tools.web = {};
+    if (!cfg.tools.web.search) cfg.tools.web.search = {};
+
+    const provider = typeof req.body?.provider === "string" ? req.body.provider.trim() : "";
+    const enabled = typeof req.body?.enabled === "boolean" ? req.body.enabled : undefined;
+
+    if (provider) {
+      cfg.tools.web.search.provider = provider;
+    }
+    if (enabled !== undefined) {
+      cfg.tools.web.search.enabled = enabled;
+    }
+
+    writeArgentConfig(cfg);
+    res.json({ ok: true, search: cfg.tools.web.search });
+  } catch (err) {
+    console.error("[Search] Error saving settings:", err);
+    res.status(500).json({ error: "Failed to save search settings" });
+  }
+});
 
 app.get("/api/settings/tts", (req, res) => {
   try {

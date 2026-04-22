@@ -35,6 +35,7 @@ import { createFamilyTool } from "./tools/family-tool.js";
 import { createEditLineRangeTool, createEditRegexTool } from "./tools/file-edit-tools.js";
 import { createGatewayTool } from "./tools/gateway-tool.js";
 import { createGithubIssueTool } from "./tools/github-issue-tool.js";
+import { createGroupChatTool } from "./tools/group-chat-tool.js";
 import { createHeygenVideoTool } from "./tools/heygen-video-tool.js";
 import { createImageGenerationTool } from "./tools/image-generation-tool.js";
 import { createImageTool } from "./tools/image-tool.js";
@@ -62,6 +63,11 @@ import { createPluginBuilderTool } from "./tools/plugin-builder-tool.js";
 import { createPodcastGenerateTool } from "./tools/podcast-generate-tool.js";
 import { createPodcastPlanTool } from "./tools/podcast-plan-tool.js";
 import { createPodcastPublishPipelineTool } from "./tools/podcast-publish-pipeline-tool.js";
+import {
+  createProjectCreateTool,
+  createProjectDetailTool,
+  createProjectsListTool,
+} from "./tools/project-tools.js";
 import { createRailwayDeployTool } from "./tools/railway-deploy-tool.js";
 import { createScheduledTasksTool } from "./tools/scheduled-tasks-tool.js";
 import { createSearchTool } from "./tools/search-tool.js";
@@ -79,6 +85,7 @@ import { createTasksTool } from "./tools/tasks-tools.js";
 import { createTeamSpawnTool } from "./tools/team-spawn-tool.js";
 import { createTeamStatusTool } from "./tools/team-status-tool.js";
 import { createTerminalTool } from "./tools/terminal-tool.js";
+import { createThinkTankTool } from "./tools/think-tank-tool.js";
 import { createToolSearchTool } from "./tools/tool-search-tool.js";
 import { createTtsGenerateTool } from "./tools/tts-generate-tool.js";
 import { createTtsTool } from "./tools/tts-tool.js";
@@ -245,6 +252,8 @@ export function createArgentTools(options?: {
       agentSessionKey: options?.agentSessionKey,
       requesterAgentIdOverride: options?.requesterAgentIdOverride,
     }),
+    createThinkTankTool(),
+    createGroupChatTool(),
     createSessionsListTool({
       agentSessionKey: options?.agentSessionKey,
       sandboxed: options?.sandboxed,
@@ -295,6 +304,14 @@ export function createArgentTools(options?: {
     // ArgentOS tools
     createTasksTool({
       agentSessionKey: options?.agentSessionKey,
+      agentId: resolveSessionAgentId({
+        sessionKey: options?.agentSessionKey,
+        config: options?.config,
+      }),
+    }),
+    createProjectsListTool(),
+    createProjectDetailTool(),
+    createProjectCreateTool({
       agentId: resolveSessionAgentId({
         sessionKey: options?.agentSessionKey,
         config: options?.config,

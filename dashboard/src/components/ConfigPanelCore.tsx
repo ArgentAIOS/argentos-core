@@ -38,12 +38,7 @@ type CoreTabType = "agent" | "safety" | "appearance" | "dictionary";
 const STORAGE_KEY = "argent-config";
 
 const defaultConfig: ConfigData = {
-  dictionary: [
-    { id: "1", term: "COMEX", replacement: "Coe-Mex", enabled: true },
-    { id: "2", term: "oz", replacement: "ounces", enabled: true },
-    { id: "3", term: "SGE", replacement: "Shanghai Gold Exchange", enabled: true },
-    { id: "5", term: "API", replacement: "A P I", enabled: true },
-  ],
+  dictionary: [],
   patterns: defaultPatternHandlers.map((h) => ({ name: h.name, enabled: h.enabled })),
   apiKeys: {},
 };

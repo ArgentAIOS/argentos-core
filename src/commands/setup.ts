@@ -1,13 +1,84 @@
 import JSON5 from "json5";
 import fs from "node:fs/promises";
+import path from "node:path";
 import type { RuntimeEnv } from "../runtime.js";
-import { seedBuiltInFamilyAgents } from "../agents/family-seed.js";
 import { DEFAULT_AGENT_WORKSPACE_DIR, ensureAgentWorkspace } from "../agents/workspace.js";
 import { type ArgentConfig, createConfigIO, writeConfigFile } from "../config/config.js";
 import { formatConfigPath, logConfigUpdated } from "../config/logging.js";
 import { resolveSessionTranscriptsDir } from "../config/sessions.js";
 import { defaultRuntime } from "../runtime.js";
 import { shortenHomePath } from "../utils.js";
+import { resolveUserPath } from "../utils.js";
+
+type StarterFamilyAgent = {
+  id: string;
+  name: string;
+  role: string;
+  team: string;
+  model?: string;
+  provider?: string;
+};
+
+async function loadStarterFamily(): Promise<StarterFamilyAgent[]> {
+  const raw = await fs.readFile(new URL("../agents/starter-family.json", import.meta.url), "utf-8");
+  const parsed = JSON.parse(raw);
+  return Array.isArray(parsed) ? (parsed as StarterFamilyAgent[]) : [];
+}
+
+async function seedStarterFamilyAgents(agentsRoot: string): Promise<number> {
+  const starterFamily = await loadStarterFamily();
+  let seeded = 0;
+  for (const agent of starterFamily) {
+    const rootDir = path.join(agentsRoot, agent.id);
+    const agentDir = path.join(rootDir, "agent");
+    const identityPath = path.join(agentDir, "IDENTITY.md");
+    const identityJsonPath = path.join(rootDir, "identity.json");
+    await ensureAgentWorkspace({
+      dir: agentDir,
+      ensureBootstrapFiles: true,
+    });
+    const identityMarkdown = [
+      "# IDENTITY.md",
+      "",
+      `- **Name:** ${agent.name}`,
+      `- **Role:** ${agent.role}`,
+      `- **Team:** ${agent.team}`,
+      "",
+    ].join("\n");
+    let touched = false;
+    try {
+      await fs.access(identityPath);
+    } catch {
+      await fs.writeFile(identityPath, `${identityMarkdown}\n`, "utf-8");
+      touched = true;
+    }
+    try {
+      await fs.access(identityJsonPath);
+    } catch {
+      await fs.writeFile(
+        identityJsonPath,
+        `${JSON.stringify(
+          {
+            id: agent.id,
+            name: agent.name,
+            role: agent.role,
+            team: agent.team,
+            ...(agent.model ? { model: agent.model } : {}),
+            ...(agent.provider ? { provider: agent.provider } : {}),
+          },
+          null,
+          2,
+        )}\n`,
+        "utf-8",
+      );
+      touched = true;
+    }
+    if (touched) {
+      seeded += 1;
+    }
+  }
+  return seeded;
+}
 
 async function readConfigFileRaw(configPath: string): Promise<{
   exists: boolean;
@@ -70,12 +141,36 @@ export async function setupCommand(
   });
   runtime.log(`Workspace OK: ${shortenHomePath(ws.dir)}`);
 
+  const workspaceMainAlias = path.join(path.dirname(ws.dir), "workspace-main");
+  try {
+    await fs.rm(workspaceMainAlias, { force: true, recursive: true });
+  } catch {
+    // ignore
+  }
+  try {
+    await fs.symlink(ws.dir, workspaceMainAlias, "dir");
+  } catch {
+    try {
+      await fs.cp(ws.dir, workspaceMainAlias, {
+        recursive: true,
+        force: false,
+        errorOnExist: false,
+      });
+    } catch {
+      // ignore fallback failures
+    }
+  }
+  runtime.log(`Workspace alias OK: ${shortenHomePath(workspaceMainAlias)}`);
+
+  const agentsRoot = path.join(
+    resolveUserPath(path.join(process.env.HOME ?? "~", ".argentos")),
+    "agents",
+  );
+  await fs.mkdir(agentsRoot, { recursive: true });
+  const seededCount = await seedStarterFamilyAgents(agentsRoot);
+  runtime.log(`Starter family OK: ${seededCount} agents`);
+
   const sessionsDir = resolveSessionTranscriptsDir();
   await fs.mkdir(sessionsDir, { recursive: true });
   runtime.log(`Sessions OK: ${shortenHomePath(sessionsDir)}`);
-
-  const familySeed = await seedBuiltInFamilyAgents();
-  runtime.log(
-    `Family OK: ${familySeed.seededIds.length} seeded, ${familySeed.registeredIds.length} registered`,
-  );
 }

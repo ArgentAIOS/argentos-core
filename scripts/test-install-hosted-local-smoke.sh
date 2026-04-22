@@ -5,29 +5,28 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/argent-install-hosted-local-smoke.XXXXXX")"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
-PKG_DIR="$TMP_ROOT/pkg"
-NPM_PREFIX="$TMP_ROOT/npm-global"
-mkdir -p "$PKG_DIR"
-
-echo "==> Pack local npm artifact"
-(
-  cd "$ROOT_DIR"
-  npm pack --ignore-scripts --pack-destination "$PKG_DIR" >/dev/null
-)
-PACKAGE_TGZ="$(find "$PKG_DIR" -maxdepth 1 -name '*.tgz' | head -n1)"
-test -f "$PACKAGE_TGZ"
+TEST_HOME="$TMP_ROOT/home"
+GIT_DIR="$TMP_ROOT/git-checkout"
+BIN_DIR="$TEST_HOME/bin"
+PKG_DIR="$TEST_HOME/.argentos/lib/node_modules/argentos"
+mkdir -p "$TEST_HOME"
 
 echo "==> Run isolated hosted installer smoke"
 (
   cd "$ROOT_DIR"
-  ARGENT_INSTALL_PACKAGE_SPEC="$PACKAGE_TGZ" \
-  ARGENT_INSTALL_NPM_PREFIX="$NPM_PREFIX" \
+  HOME="$TEST_HOME" \
+  ARGENTOS_GIT_REMOTE="$ROOT_DIR" \
+  ARGENTOS_GIT_DIR="$GIT_DIR" \
+  ARGENT_INSTALL_BIN_DIR="$BIN_DIR" \
+  ARGENT_INSTALL_PACKAGE_DIR="$PKG_DIR" \
   ARGENT_NO_ONBOARD=1 \
-  bash ./scripts/install-hosted.sh --install-method npm --no-onboard --no-prompt
+  bash ./scripts/install-hosted.sh --install-method git --no-onboard --no-prompt
 )
 
 echo "==> Verify isolated install outputs"
-test -x "$NPM_PREFIX/bin/argent"
-"$NPM_PREFIX/bin/argent" --help >/dev/null
+test -x "$BIN_DIR/argent"
+"$BIN_DIR/argent" --help >/dev/null
+test -f "$TEST_HOME/Library/LaunchAgents/ai.argent.dashboard-api.plist"
+test -f "$TEST_HOME/Library/LaunchAgents/ai.argent.dashboard-ui.plist"
 
 echo "OK"

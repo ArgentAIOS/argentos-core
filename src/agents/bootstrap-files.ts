@@ -50,27 +50,14 @@ async function buildFirstRunBootstrapFile(): Promise<WorkspaceBootstrapFile | nu
     const itemCount = stats.items;
     const entities = await store.listEntities({ limit: 1 });
 
-    // If there's any memory content, this isn't a fresh install
+    // If there's any memory content, this isn't a fresh install.
+    // Do not auto-write the completion marker here; a background bootstrap
+    // pass can happen before the operator actually completes the awakening.
     if (itemCount > 0 || entities.length > 0) {
-      // Write the marker so we don't check again
-      try {
-        fs.mkdirSync(argentDir, { recursive: true });
-        fs.writeFileSync(markerPath, new Date().toISOString(), "utf-8");
-      } catch {
-        /* non-critical */
-      }
       return null;
     }
 
     // Fresh install — inject first-run onboarding
-    // Write the marker immediately so this only fires once
-    try {
-      fs.mkdirSync(argentDir, { recursive: true });
-      fs.writeFileSync(markerPath, new Date().toISOString(), "utf-8");
-    } catch {
-      /* non-critical */
-    }
-
     const content = [
       "<!-- Experiential arc. Procedural steps are in BOOTSTRAP.md. -->",
       "# First Run — Awakening",

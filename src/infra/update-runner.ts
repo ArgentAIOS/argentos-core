@@ -28,19 +28,13 @@ export type UpdateStepResult = {
   stderrTail?: string | null;
 };
 
-export type UpdateVersionInfo = {
-  sha?: string | null;
-  version?: string | null;
-  tag?: string | null;
-};
-
 export type UpdateRunResult = {
   status: "ok" | "error" | "skipped";
   mode: "git" | "pnpm" | "bun" | "npm" | "unknown";
   root?: string;
   reason?: string;
-  before?: UpdateVersionInfo;
-  after?: UpdateVersionInfo;
+  before?: { sha?: string | null; version?: string | null };
+  after?: { sha?: string | null; version?: string | null };
   steps: UpdateStepResult[];
   durationMs: number;
 };
@@ -342,14 +336,14 @@ function managerScriptArgs(manager: "pnpm" | "bun" | "npm", script: string, args
   return ["npm", "run", script];
 }
 
-function managerInstallArgs(manager: "pnpm" | "bun" | "npm", frozen = false) {
+function managerInstallArgs(manager: "pnpm" | "bun" | "npm") {
   if (manager === "pnpm") {
-    return frozen ? ["pnpm", "install", "--frozen-lockfile"] : ["pnpm", "install"];
+    return ["pnpm", "install", "--ignore-workspace"];
   }
   if (manager === "bun") {
-    return frozen ? ["bun", "install", "--frozen-lockfile"] : ["bun", "install"];
+    return ["bun", "install"];
   }
-  return frozen ? ["npm", "ci"] : ["npm", "install"];
+  return ["npm", "install"];
 }
 
 function normalizeTag(tag?: string) {
@@ -364,21 +358,6 @@ function normalizeTag(tag?: string) {
     return trimmed.slice(`${DEFAULT_PACKAGE_NAME}@`.length);
   }
   return trimmed;
-}
-
-async function hasTrackedControlUi(
-  runCommand: CommandRunner,
-  root: string,
-  timeoutMs: number,
-): Promise<boolean> {
-  const result = await runCommand(
-    ["git", "-C", root, "rev-parse", "--verify", "HEAD:dist/control-ui"],
-    {
-      cwd: root,
-      timeoutMs,
-    },
-  ).catch(() => null);
-  return !!result && result.code === 0;
 }
 
 export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<UpdateRunResult> {
@@ -466,20 +445,6 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       };
     }
 
-    // Track resolved release tag for stable/beta channels (used in final result)
-    let resolvedTag: string | null = null;
-    // Resolve the tag the current HEAD points to (if any)
-    let beforeTag: string | null = null;
-    if (channel !== "dev" && beforeSha) {
-      const describeResult = await runCommand(
-        ["git", "-C", gitRoot, "describe", "--tags", "--exact-match", "HEAD"],
-        { cwd: gitRoot, timeoutMs },
-      );
-      if (describeResult.code === 0 && describeResult.stdout.trim()) {
-        beforeTag = describeResult.stdout.trim();
-      }
-    }
-
     if (channel === "dev") {
       if (needsCheckoutMain) {
         const checkoutStep = await runStep(
@@ -564,7 +529,6 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
           root: gitRoot,
           reason: "up-to-date",
           before: { sha: beforeSha, version: beforeVersion },
-          after: { sha: upstreamSha, version: beforeVersion },
           steps,
           durationMs: Date.now() - startedAt,
         };
@@ -747,7 +711,6 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       }
 
       const tag = await resolveChannelTag(runCommand, gitRoot, timeoutMs, channel);
-      resolvedTag = tag;
       if (!tag) {
         return {
           status: "error",
@@ -755,26 +718,6 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
           root: gitRoot,
           reason: "no-release-tag",
           before: { sha: beforeSha, version: beforeVersion },
-          steps,
-          durationMs: Date.now() - startedAt,
-        };
-      }
-
-      // Resolve the tag's SHA so we can check if we're already on it
-      const tagShaResult = await runCommand(
-        ["git", "-C", gitRoot, "rev-parse", `${tag}^{commit}`],
-        { cwd: gitRoot, timeoutMs },
-      );
-      const tagSha = tagShaResult.stdout.trim() || null;
-
-      if (beforeSha && tagSha && beforeSha === tagSha) {
-        return {
-          status: "skipped",
-          mode: "git",
-          root: gitRoot,
-          reason: "up-to-date",
-          before: { sha: beforeSha, version: beforeVersion, tag },
-          after: { sha: tagSha, version: beforeVersion, tag },
           steps,
           durationMs: Date.now() - startedAt,
         };
@@ -799,17 +742,8 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
 
     const manager = await detectPackageManager(gitRoot);
 
-    const depsStep = await runStep(
-      step("deps install", managerInstallArgs(manager, true), gitRoot),
-    );
+    const depsStep = await runStep(step("deps install", managerInstallArgs(manager), gitRoot));
     steps.push(depsStep);
-
-    // If frozen-lockfile failed and pnpm fell back to a mutable install, or if
-    // the lockfile was legitimately regenerated, restore it so the checkout stays clean.
-    await runCommand(["git", "-C", gitRoot, "checkout", "--", "pnpm-lock.yaml"], {
-      cwd: gitRoot,
-      timeoutMs,
-    }).catch(() => null);
 
     const buildStep = await runStep(step("build", managerScriptArgs(manager, "build"), gitRoot));
     steps.push(buildStep);
@@ -821,30 +755,30 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
 
     // Restore dist/control-ui/ to committed state to prevent dirty repo after update
     // (ui:build regenerates assets with new hashes, which would block future updates)
-    const hasControlUi = await hasTrackedControlUi(runCommand, gitRoot, timeoutMs);
-    const restoreUiStep = hasControlUi
-      ? await runStep(
-          step(
-            "restore control-ui",
-            ["git", "-C", gitRoot, "checkout", "--", "dist/control-ui/"],
-            gitRoot,
-          ),
-        )
-      : {
-          name: "restore control-ui",
-          command: "git checkout -- dist/control-ui/ (skipped: path not tracked)",
-          cwd: gitRoot,
-          durationMs: 0,
-          exitCode: 0,
-          stdoutTail: "skipped: dist/control-ui/ not tracked in this repo",
-          stderrTail: null,
-        };
+    const restoreUiStep = await runStep(
+      step(
+        "restore control-ui",
+        ["git", "-C", gitRoot, "checkout", "--", "dist/control-ui/"],
+        gitRoot,
+      ),
+    );
     steps.push(restoreUiStep);
 
     const setupStep = await runStep(
       step("workspace setup", managerScriptArgs(manager, "argent", ["setup"]), gitRoot),
     );
     steps.push(setupStep);
+
+    const ensurePgTablesPath = path.join(gitRoot, "scripts", "ensure-pg-tables.sh");
+    try {
+      await fs.access(ensurePgTablesPath);
+      const ensurePgStep = await runStep(
+        step("ensure pg tables", ["bash", ensurePgTablesPath], gitRoot),
+      );
+      steps.push(ensurePgStep);
+    } catch {
+      // Older installs may not have the helper yet; installer recovery path handles that separately.
+    }
 
     const doctorStep = await runStep(
       step(
@@ -868,11 +802,10 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       mode: "git",
       root: gitRoot,
       reason: failedStep ? failedStep.name : undefined,
-      before: { sha: beforeSha, version: beforeVersion, tag: beforeTag },
+      before: { sha: beforeSha, version: beforeVersion },
       after: {
         sha: afterShaStep.stdoutTail?.trim() ?? null,
         version: afterVersion,
-        tag: resolvedTag,
       },
       steps,
       durationMs: Date.now() - startedAt,

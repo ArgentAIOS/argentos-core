@@ -1,0 +1,146 @@
+[
+  {
+    "id": "scout",
+    "name": "Scout",
+    "role": "research_lead",
+    "team": "dev-team"
+  },
+  {
+    "id": "forge",
+    "name": "Forge",
+    "role": "software_engineer",
+    "team": "dev-team"
+  },
+  {
+    "id": "lens",
+    "name": "Lens",
+    "role": "technical_analyst",
+    "team": "dev-team"
+  },
+  {
+    "id": "scribe",
+    "name": "Scribe",
+    "role": "documentation_lead",
+    "team": "dev-team"
+  },
+  {
+    "id": "anvil",
+    "name": "Anvil",
+    "role": "qa_engineer",
+    "team": "dev-team"
+  },
+  {
+    "id": "weave",
+    "name": "Weave",
+    "role": "integration_specialist",
+    "team": "dev-team"
+  },
+  {
+    "id": "vault",
+    "name": "Vault",
+    "role": "knowledge_manager",
+    "team": "dev-team"
+  },
+  {
+    "id": "quill",
+    "name": "Quill",
+    "role": "content_writer",
+    "team": "marketing-team"
+  },
+  {
+    "id": "canvas",
+    "name": "Canvas",
+    "role": "visual_designer",
+    "team": "marketing-team"
+  },
+  {
+    "id": "echo",
+    "name": "Echo",
+    "role": "social_media_manager",
+    "team": "marketing-team"
+  },
+  {
+    "id": "beacon",
+    "name": "Beacon",
+    "role": "seo_sem_specialist",
+    "team": "marketing-team"
+  },
+  {
+    "id": "prism",
+    "name": "Prism",
+    "role": "analytics_expert",
+    "team": "marketing-team"
+  },
+  {
+    "id": "sage",
+    "name": "Sage",
+    "role": "senior_support_engineer",
+    "team": "support-a-team"
+  },
+  {
+    "id": "guide",
+    "name": "Guide",
+    "role": "support_specialist",
+    "team": "support-b-team"
+  },
+  {
+    "id": "relay",
+    "name": "Relay",
+    "role": "tier_1_support_specialist",
+    "team": "support-c-team"
+  },
+  {
+    "id": "shadow-relay",
+    "name": "Shadow Relay",
+    "role": "tier_1_support_specialist",
+    "team": "support-c-team"
+  },
+  {
+    "id": "tier-1-technical-support",
+    "name": "Titanium Tier 1",
+    "role": "tier_1_technical_support",
+    "team": "msp-team"
+  },
+  {
+    "id": "dash",
+    "name": "Dash",
+    "role": "operations_coordinator",
+    "team": "office-runners"
+  },
+  {
+    "id": "draft",
+    "name": "Draft",
+    "role": "document_specialist",
+    "team": "office-creators"
+  },
+  {
+    "id": "tally",
+    "name": "Tally",
+    "role": "data_operations",
+    "team": "office-workers"
+  },
+  {
+    "id": "elon",
+    "name": "Elon Musk",
+    "role": "think_tank_panelist",
+    "team": "think-tank"
+  },
+  {
+    "id": "sam",
+    "name": "Sam Altman",
+    "role": "think_tank_panelist",
+    "team": "think-tank"
+  },
+  {
+    "id": "dario",
+    "name": "Dario Amodei",
+    "role": "think_tank_panelist",
+    "team": "think-tank"
+  },
+  {
+    "id": "jensen",
+    "name": "Jensen Huang",
+    "role": "think_tank_panelist",
+    "team": "think-tank"
+  }
+]

@@ -9,7 +9,6 @@ const PORT = Number(process.env.PORT || process.env.VITE_PORT || 8080);
 const API_PORT = Number(process.env.API_PORT || 9242);
 const DIST_DIR = path.join(__dirname, "dist");
 const INDEX_PATH = path.join(DIST_DIR, "index.html");
-const STATE_DIR = process.env.ARGENT_STATE_DIR || path.join(process.env.HOME || "", ".argentos");
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -35,73 +34,20 @@ function sendError(res, status, message) {
   res.end(message);
 }
 
-function loadConfiguredDashboardApiToken() {
-  const envToken = process.env.DASHBOARD_API_TOKEN?.trim();
-  if (envToken) return envToken;
-
-  try {
-    const envPath = path.join(STATE_DIR, ".env");
-    const raw = fs.readFileSync(envPath, "utf8");
-    const match = raw.match(/^DASHBOARD_API_TOKEN=(.+)$/m);
-    const fileToken = match?.[1]?.trim();
-    return fileToken || null;
-  } catch {
-    return null;
-  }
-}
-
-const CONFIGURED_DASHBOARD_API_TOKEN = loadConfiguredDashboardApiToken();
-
-function dashboardApiTokenFromRequest(req) {
-  try {
-    const selfUrl = new URL(req.url || "/", `http://${req.headers.host || `${HOST}:${PORT}`}`);
-    const fromPath = (
-      selfUrl.searchParams.get("api_token") ?? selfUrl.searchParams.get("token")
-    )?.trim();
-    if (fromPath) return fromPath;
-  } catch {
-    // ignore malformed URL
-  }
-
-  const referer = req.headers.referer;
-  if (typeof referer === "string" && referer.trim()) {
-    try {
-      const refererUrl = new URL(referer);
-      const fromReferer = (
-        refererUrl.searchParams.get("api_token") ?? refererUrl.searchParams.get("token")
-      )?.trim();
-      if (fromReferer) return fromReferer;
-    } catch {
-      // ignore malformed referer
-    }
-  }
-
-  return null;
-}
-
 function proxyRequest(req, res) {
-  const headers = {
-    ...req.headers,
-    host: `127.0.0.1:${API_PORT}`,
-    "x-forwarded-for": req.socket.remoteAddress || "127.0.0.1",
-    "x-forwarded-host": req.headers.host || `${HOST}:${PORT}`,
-    "x-forwarded-proto": "http",
-  };
-
-  if (!headers.authorization) {
-    const token = CONFIGURED_DASHBOARD_API_TOKEN || dashboardApiTokenFromRequest(req);
-    if (token) {
-      headers.authorization = `Bearer ${token}`;
-    }
-  }
-
   const upstream = http.request(
     {
       hostname: "127.0.0.1",
       port: API_PORT,
       path: req.url,
       method: req.method,
-      headers,
+      headers: {
+        ...req.headers,
+        host: `127.0.0.1:${API_PORT}`,
+        "x-forwarded-for": req.socket.remoteAddress || "127.0.0.1",
+        "x-forwarded-host": req.headers.host || `${HOST}:${PORT}`,
+        "x-forwarded-proto": "http",
+      },
     },
     (upstreamRes) => {
       res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);

@@ -369,7 +369,11 @@ export function createAgentEventHandler({
     const last = agentRunSeq.get(evt.runId) ?? 0;
     const isToolEvent = evt.stream === "tool";
     const toolVerbose = isToolEvent ? resolveToolVerboseLevel(evt.runId, sessionKey) : "off";
-    if (isToolEvent && toolVerbose === "off") {
+    const toolPhase =
+      isToolEvent && typeof evt.data?.phase === "string" ? evt.data.phase.trim().toLowerCase() : "";
+    const allowMinimalToolEvent =
+      isToolEvent && toolVerbose === "off" && toolPhase !== "" && toolPhase !== "update";
+    if (isToolEvent && toolVerbose === "off" && !allowMinimalToolEvent) {
       agentRunSeq.set(evt.runId, evt.seq);
       return;
     }
@@ -379,6 +383,10 @@ export function createAgentEventHandler({
             const data = evt.data ? { ...evt.data } : {};
             delete data.result;
             delete data.partialResult;
+            if (toolVerbose === "off") {
+              delete data.args;
+              delete data.meta;
+            }
             return sessionKey ? { ...evt, sessionKey, data } : { ...evt, data };
           })()
         : agentPayload;

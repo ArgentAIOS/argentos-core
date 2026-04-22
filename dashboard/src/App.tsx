@@ -90,7 +90,6 @@ import {
 } from "./lib/avatarConfig";
 import { buildPresetConfig } from "./lib/avatarPresets";
 import {
-  getOperationsWorkspaceTabs,
   isDashboardModeAllowed,
   isOperationsSurfaceAllowed,
   isWorkforceSurfaceAllowed,
@@ -101,6 +100,7 @@ import { setCorsApprovalCallback } from "./lib/corsFetch";
 import { parseInlineTtsDirectives, stripInlineTtsDirectives } from "./lib/inlineTtsDirectives";
 import { applyMoodContinuity } from "./lib/moodContinuity";
 import { type MoodName, parseMoodName } from "./lib/moodSystem";
+import { evaluateOnboardingStatus } from "./lib/onboardingStack";
 import { resolvePrimaryChatAgentId } from "./lib/sessionVisibility";
 import { mergeVisibleChatAgentOptions } from "./lib/sessionVisibility";
 import { fetchLocalApi } from "./utils/localApiFetch";
@@ -1208,8 +1208,6 @@ function App() {
   const allowOperationsSurface = isOperationsSurfaceAllowed(surfaceProfile);
   const allowWorkforceSurface = isWorkforceSurfaceAllowed(surfaceProfile);
   const isOperationsDashboard = allowWorkforceSurface && dashboardMode === "operations";
-  const showOperationsWorkspace = allowOperationsSurface && activeWorkspace === "operations";
-  const operationsWorkspaceTabs = getOperationsWorkspaceTabs(surfaceProfile);
 
   // Ensure Operations tab exists when the surface allows operations.
   useEffect(() => {
@@ -1307,7 +1305,8 @@ function App() {
       } catch {
         if (!cancelled) {
           setSurfaceProfile("public-core");
-          setDashboardMode("personal");
+          const storedDashboardMode = readStoredDashboardMode();
+          setDashboardMode(storedDashboardMode === "operations" ? "operations" : "personal");
         }
       }
     };
@@ -1325,12 +1324,6 @@ function App() {
     }
     persistDashboardMode(dashboardMode);
   }, [dashboardMode, surfaceProfile]);
-
-  useEffect(() => {
-    if (!operationsWorkspaceTabs.some((tab) => tab.id === opsView)) {
-      setOpsView(operationsWorkspaceTabs[0]?.id ?? "map");
-    }
-  }, [operationsWorkspaceTabs, opsView]);
 
   // Reset operations panels when switching away from operations mode.
   // IMPORTANT: showBoard and showWorkforce are NOT in the dependency array —
@@ -1976,12 +1969,36 @@ function App() {
 
   // Check for first-run setup wizard
   useEffect(() => {
-    if (localStorage.getItem("argent-setup-complete")) return;
-    fetchLocalApi("/api/settings/auth-profiles")
-      .then((res) => res.json())
-      .then((data) => {
-        const profiles = data.profiles ? Object.keys(data.profiles) : [];
-        if (profiles.length === 0) {
+    const completed = localStorage.getItem("argent-setup-complete") === "1";
+    Promise.all([
+      fetchLocalApi("/api/settings/auth-profiles").then((res) => res.json()),
+      fetchLocalApi("/api/settings/models").then((res) => res.json()),
+    ])
+      .then(([authData, modelData]) => {
+        const authProfiles = Array.isArray(authData?.profiles) ? authData.profiles : [];
+        const status = evaluateOnboardingStatus({
+          authProfiles,
+          modelConfig: modelData,
+        });
+
+        const modelEntry = modelData?.model;
+        const hasExistingPrimaryModel =
+          typeof modelEntry === "string"
+            ? modelEntry.trim().length > 0
+            : Boolean(
+                modelEntry &&
+                typeof modelEntry === "object" &&
+                typeof (modelEntry as { primary?: unknown }).primary === "string" &&
+                String((modelEntry as { primary?: string }).primary).trim().length > 0,
+              );
+        const hasExistingRouter =
+          Boolean(modelData?.modelRouter) &&
+          typeof modelData.modelRouter === "object" &&
+          Object.keys(modelData.modelRouter as Record<string, unknown>).length > 0;
+        const looksLikeExistingInstall =
+          authProfiles.length > 0 || hasExistingPrimaryModel || hasExistingRouter;
+
+        if ((!completed && !status.valid) || (!status.valid && !looksLikeExistingInstall)) {
           setShowSetup(true);
         }
       })
@@ -4819,11 +4836,8 @@ function App() {
             key={ws.id}
             onClick={() => {
               setActiveWorkspace(ws.id);
-              if (ws.id === "operations" && allowOperationsSurface) {
-                setDashboardMode("operations");
-              } else {
-                setDashboardMode("personal");
-              }
+              if (ws.id === "operations") setDashboardMode("operations");
+              else setDashboardMode("personal");
             }}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               activeWorkspace === ws.id
@@ -4857,7 +4871,7 @@ function App() {
       </div>
 
       {/* Main Content */}
-      {showOperationsWorkspace ? (
+      {isOperationsDashboard && activeWorkspace === "operations" ? (
         /* Operations workspace — sub-nav tabs */
         <div className="flex-1 min-h-0 flex flex-col">
           {/* Sub-nav */}
@@ -4871,7 +4885,16 @@ function App() {
                 org: <OrgChartIcon size={16} />,
                 schedule: <ScheduleIcon size={16} />,
               };
-              return operationsWorkspaceTabs.map((tab) => (
+              return (
+                [
+                  { id: "map", label: "Workflow Map" },
+                  { id: "workflows", label: "Workflows" },
+                  { id: "jobs", label: "Workloads" },
+                  { id: "tasks", label: "Task Manager" },
+                  { id: "org", label: "Org Chart" },
+                  { id: "schedule", label: "Schedule" },
+                ] as const
+              ).map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setOpsView(tab.id)}
@@ -4917,7 +4940,7 @@ function App() {
             </div>
           ) : opsView === "org" ? (
             <div className="flex-1 min-h-0 overflow-auto p-4">
-              <OrgChartWidget operatorName={operatorDisplayName ?? undefined} />
+              <OrgChartWidget />
             </div>
           ) : opsView === "schedule" ? (
             <div className="flex-1 min-h-0 overflow-auto p-4">

@@ -119,20 +119,83 @@ const DEFERRED_TOOL_KEYWORDS: Record<string, string[]> = {
   memory_timeline: ["memory", "timeline", "history", "chronology"],
   memory_graph: ["memory", "graph", "connections", "relationships"],
   // Doc panel extended
-  doc_panel_update: ["document", "update", "edit", "modify"],
-  doc_panel_delete: ["document", "delete", "remove"],
-  doc_panel_list: ["document", "list", "browse"],
-  doc_panel_search: ["document", "search", "find"],
-  doc_panel_get: ["document", "get", "read", "view"],
+  doc_panel_update: [
+    "document",
+    "update",
+    "edit",
+    "modify",
+    "doc panel",
+    "canvas",
+    "open in panel",
+    "surface this",
+    "write brief",
+    "memo",
+    "one pager",
+  ],
+  doc_panel_delete: ["document", "delete", "remove", "doc panel remove", "delete panel doc"],
+  doc_panel_list: ["document", "list", "browse", "doc panel docs", "canvas docs"],
+  doc_panel_search: ["document", "search", "find", "search panel docs", "search canvas docs"],
+  doc_panel_get: ["document", "get", "read", "view", "open panel doc", "read canvas doc"],
   // Sessions
   sessions_list: ["session", "conversation", "list"],
   sessions_history: ["session", "history", "transcript"],
-  sessions_send: ["session", "send", "reply"],
-  sessions_spawn: ["session", "spawn", "create", "new"],
-  sessions_search: ["session", "search", "find"],
+  sessions_send: [
+    "session",
+    "send",
+    "reply",
+    "message agent",
+    "talk to agent",
+    "ask agent",
+    "send to agent",
+    "ping agent",
+    "contact agent",
+    "direct reply",
+  ],
+  sessions_spawn: [
+    "session",
+    "spawn",
+    "create",
+    "new",
+    "delegate",
+    "subagent",
+    "launch specialist",
+    "start new agent",
+    "spin up agent",
+  ],
+  sessions_search: ["session", "search", "find", "conversation search", "chat history"],
   // Teams
-  team_spawn: ["team", "spawn", "delegate", "create"],
-  team_status: ["team", "status", "progress"],
+  team_spawn: ["team", "spawn", "delegate", "create", "swarm", "crew", "multi agent team"],
+  team_status: ["team", "status", "progress", "swarm status", "worker status"],
+  group_chat: [
+    "group",
+    "group chat",
+    "team chat",
+    "message the team",
+    "ask the family",
+    "multi-agent response",
+    "all agents",
+    "everyone respond",
+    "everyone to respond",
+    "collect responses",
+    "collect all responses",
+    "ask everyone",
+    "broadcast to family",
+    "get everyone to respond",
+    "ask the family and get everyone to respond",
+    "panel response",
+  ],
+  think_tank: [
+    "think tank",
+    "roundtable",
+    "panel",
+    "panelists",
+    "debate",
+    "round table debate",
+    "family debate",
+    "advisory board",
+    "brain trust",
+    "ask dario sam elon jensen",
+  ],
   // Media
   image_generation: ["image", "generate", "picture", "create"],
   video_generation: ["video", "generate", "create"],
@@ -169,7 +232,31 @@ const DEFERRED_TOOL_KEYWORDS: Record<string, string[]> = {
   knowledge_search: ["knowledge", "library", "rag", "search"],
   knowledge_collections_list: ["knowledge", "collection", "library", "list"],
   // Projects
-  specforge: ["specforge", "project", "intake", "workflow"],
+  specforge: ["specforge", "project", "intake", "workflow", "project spec", "kickoff"],
+  projects_list: [
+    "projects",
+    "project board",
+    "active projects",
+    "roadmap",
+    "project list",
+    "what are we working on",
+  ],
+  project_detail: [
+    "project detail",
+    "project status",
+    "project tasks",
+    "board detail",
+    "roadmap detail",
+    "project drilldown",
+  ],
+  project_create: [
+    "create project",
+    "new project",
+    "project with tasks",
+    "make project board",
+    "start project",
+    "project setup",
+  ],
   jobs: ["job", "queue", "orchestrator"],
   workforce_setup: ["workforce", "team", "setup", "agents"],
   accountability: ["accountability", "heartbeat", "checklist"],
@@ -187,7 +274,16 @@ const DEFERRED_TOOL_KEYWORDS: Record<string, string[]> = {
   canvas: ["canvas", "device", "screen"],
   nodes: ["node", "device", "remote"],
   // Family
-  family: ["family", "agent", "register", "shared"],
+  family: [
+    "family",
+    "agent",
+    "register",
+    "shared",
+    "family agents",
+    "agent registry",
+    "panelists",
+    "advisory agents",
+  ],
   // YouTube
   youtube_metadata: ["youtube", "video", "metadata"],
   youtube_notebooklm: ["youtube", "notebook", "summary"],
@@ -202,7 +298,7 @@ const DEFERRED_TOOL_KEYWORDS: Record<string, string[]> = {
   plugin_builder: ["plugin", "build", "create"],
   widget_builder: ["widget", "build", "create"],
   onboarding_pack: ["onboarding", "setup", "welcome"],
-  contemplation: ["contemplation", "thinking", "reflection"],
+  contemplation: ["contemplation", "thinking", "reflection", "ponder", "inner monologue"],
   visual_presence: ["visual", "presence", "avatar", "aevp"],
   meeting_recorder: ["meeting", "record", "transcribe", "capture"],
   search: ["search", "find", "query"],
@@ -213,8 +309,12 @@ const DEFERRED_TOOL_KEYWORDS: Record<string, string[]> = {
 };
 
 function normalize(text: string): string {
-  return text.trim().toLowerCase();
+  return text.trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
 }
+
+const NORMALIZED_DEFERRED_TOOL_KEYWORDS = Object.fromEntries(
+  Object.entries(DEFERRED_TOOL_KEYWORDS).map(([name, keywords]) => [normalize(name), keywords]),
+) as Record<string, string[]>;
 
 export class ToolSearchRegistry {
   private entries: ToolGroupEntry[] = [];
@@ -227,7 +327,7 @@ export class ToolSearchRegistry {
     for (const tool of tools) {
       const name = normalize(tool.name);
       const group: ToolGroup = CORE_TOOL_NAMES.has(name) ? "core" : "deferred";
-      const keywords = DEFERRED_TOOL_KEYWORDS[name];
+      const keywords = NORMALIZED_DEFERRED_TOOL_KEYWORDS[name];
       this.register(tool, group, keywords);
     }
   }
@@ -282,7 +382,8 @@ export class ToolSearchRegistry {
     const name = normalize(entry.tool.name);
     const desc = normalize(entry.tool.description ?? "");
     const label = normalize((entry.tool as { label?: string }).label ?? "");
-    const kwSet = new Set((entry.keywords ?? []).map(normalize));
+    const keywords = (entry.keywords ?? []).map(normalize);
+    const queryText = normalize(terms.join(" "));
     let score = 0;
 
     for (const term of terms) {
@@ -290,7 +391,20 @@ export class ToolSearchRegistry {
       else if (name.includes(term)) score += 6;
       if (label.includes(term)) score += 4;
       if (desc.includes(term)) score += 2;
-      if (kwSet.has(term)) score += 5;
+      if (keywords.some((keyword) => keyword === term)) score += 5;
+      if (keywords.some((keyword) => keyword.includes(term))) score += 2;
+    }
+
+    if (name === queryText) score += 14;
+    else if (name.includes(queryText)) score += 8;
+    if (label.includes(queryText)) score += 6;
+    if (desc.includes(queryText)) score += 4;
+    for (const keyword of keywords) {
+      if (keyword === queryText) score += 40;
+      else if (keyword.includes(queryText) || queryText.includes(keyword)) {
+        const phraseBonus = keyword.split(" ").filter(Boolean).length;
+        score += 12 + phraseBonus * 4;
+      }
     }
     return score;
   }

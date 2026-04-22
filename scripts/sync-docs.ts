@@ -77,14 +77,6 @@ const MAPPINGS: DocMapping[] = [
     title: "Migration from OpenClaw",
     description: 'The "Bring Your Agent" migration guide from OpenClaw to ArgentOS.',
   },
-  {
-    source: "LCM.md",
-    section: "memory",
-    slug: "lcm",
-    title: "Lossless Context Management (LCM)",
-    description:
-      "DAG-based context compression that preserves every message with full recall via grep, describe, and expand tools.",
-  },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

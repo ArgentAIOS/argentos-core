@@ -1,3 +1,3 @@
-// Core override: uses the full ConfigPanel (Business tabs are hidden at runtime
-// via configSurfaceProfile.ts when surfaceProfile === "public-core").
+// Private repo bridge — points to full Business ConfigPanel.
+// In the public argentos-core export, this file is replaced to point at ConfigPanelCore.
 export { ConfigPanel, useConfig } from "./ConfigPanel";

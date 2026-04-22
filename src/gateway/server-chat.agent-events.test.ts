@@ -180,7 +180,7 @@ describe("agent event handler", () => {
     resetAgentRunContextForTest();
   });
 
-  it("suppresses tool events when verbose is off", () => {
+  it("still routes minimal tool events when verbose is off", () => {
     const broadcast = vi.fn();
     const broadcastToConnIds = vi.fn();
     const nodeSendToSession = vi.fn();
@@ -207,7 +207,53 @@ describe("agent event handler", () => {
       seq: 1,
       stream: "tool",
       ts: Date.now(),
-      data: { phase: "start", name: "read", toolCallId: "t2" },
+      data: {
+        phase: "start",
+        name: "read",
+        toolCallId: "t2",
+        args: { path: "/tmp/secret.txt" },
+      },
+    });
+
+    expect(broadcastToConnIds).toHaveBeenCalledTimes(1);
+    const payload = broadcastToConnIds.mock.calls[0]?.[1] as { data?: Record<string, unknown> };
+    expect(payload.data?.name).toBe("read");
+    expect(payload.data?.phase).toBe("start");
+    expect(payload.data?.args).toBeUndefined();
+    resetAgentRunContextForTest();
+  });
+
+  it("still suppresses noisy update tool events when verbose is off", () => {
+    const broadcast = vi.fn();
+    const broadcastToConnIds = vi.fn();
+    const nodeSendToSession = vi.fn();
+    const agentRunSeq = new Map<string, number>();
+    const chatRunState = createChatRunState();
+    const toolEventRecipients = createToolEventRecipientRegistry();
+
+    registerAgentRunContext("run-tool-off-update", {
+      sessionKey: "session-1",
+      verboseLevel: "off",
+    });
+    toolEventRecipients.add("run-tool-off-update", "conn-1");
+
+    const handler = createAgentEventHandler({
+      broadcast,
+      broadcastToConnIds,
+      nodeSendToSession,
+      agentRunSeq,
+      chatRunState,
+      resolveSessionKeyForRun: () => "session-1",
+      clearAgentRunContext: vi.fn(),
+      toolEventRecipients,
+    });
+
+    handler({
+      runId: "run-tool-off-update",
+      seq: 1,
+      stream: "tool",
+      ts: Date.now(),
+      data: { phase: "update", name: "read", toolCallId: "t2", partialResult: { ok: true } },
     });
 
     expect(broadcastToConnIds).not.toHaveBeenCalled();

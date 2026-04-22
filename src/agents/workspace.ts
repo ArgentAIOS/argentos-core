@@ -90,7 +90,7 @@ Core values:
     "IDENTITY.MD",
     `# IDENTITY
 
-- Name: Argent
+- Name:
 - Role: Operator-aligned assistant
 `,
   ],

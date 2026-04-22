@@ -60,6 +60,7 @@ EOF
 echo "Config written to: ${ARGENT_REDIS_CONF}"
 
 # 3. Create LaunchAgent for auto-start
+mkdir -p "${HOME}/Library/LaunchAgents"
 PLIST_PATH="${HOME}/Library/LaunchAgents/ai.argent.redis.plist"
 REDIS_SERVER="$(brew --prefix)/bin/redis-server"
 
