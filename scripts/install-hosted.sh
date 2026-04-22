@@ -1174,7 +1174,7 @@ install_git() {
     run_git_nohooks -C "$GIT_DIR" checkout main
     if is_truthy "$GIT_UPDATE"; then
       # Reset lockfile that pnpm install may have modified — will be regenerated below
-      git -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
+      run_git_nohooks -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
       run_git_nohooks -C "$GIT_DIR" pull origin main
     fi
   fi
@@ -1185,7 +1185,7 @@ install_git() {
   run_pnpm "$GIT_DIR" install --ignore-workspace --frozen-lockfile \
     || run_pnpm "$GIT_DIR" install --ignore-workspace
   # Restore lockfile if pnpm mutated it (keeps git checkout clean for argent update)
-  git -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
+  run_git_nohooks -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
   run_pnpm "$GIT_DIR" build
   run_pnpm "$GIT_DIR" rebuild better-sqlite3
   snapshot_git_runtime "$GIT_DIR" "$PACKAGE_DIR_OVERRIDE"
