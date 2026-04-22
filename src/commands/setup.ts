@@ -20,9 +20,22 @@ type StarterFamilyAgent = {
 };
 
 async function loadStarterFamily(): Promise<StarterFamilyAgent[]> {
-  const raw = await fs.readFile(new URL("../agents/starter-family.json", import.meta.url), "utf-8");
-  const parsed = JSON.parse(raw);
-  return Array.isArray(parsed) ? (parsed as StarterFamilyAgent[]) : [];
+  const candidates = [
+    new URL("../agents/starter-family.json", import.meta.url),
+    new URL("../src/agents/starter-family.json", import.meta.url),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const raw = await fs.readFile(candidate, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed as StarterFamilyAgent[];
+      }
+    } catch {
+      // Try next location.
+    }
+  }
+  throw new Error("starter-family.json not found in runtime snapshot");
 }
 
 async function seedStarterFamilyAgents(agentsRoot: string): Promise<number> {
