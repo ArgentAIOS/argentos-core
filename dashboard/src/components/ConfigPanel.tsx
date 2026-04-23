@@ -2590,6 +2590,20 @@ export function ConfigPanel({
 }: ConfigPanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>("dictionary");
   const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("full");
+  const [advancedMode, setAdvancedMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("argent.configPanel.advancedMode") === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("argent.configPanel.advancedMode", advancedMode ? "1" : "0");
+    } catch {
+      /* ignore — storage may be unavailable */
+    }
+  }, [advancedMode]);
   const [config, setConfig] = useState<ConfigData>(loadConfig);
   const [newTerm, setNewTerm] = useState("");
   const [newReplacement, setNewReplacement] = useState("");
@@ -6900,10 +6914,10 @@ export function ConfigPanel({
         { id: "capabilities" as TabType, label: "Capabilities", icon: Wrench },
         { id: "intent" as TabType, label: "Intent", icon: Sparkles },
         { id: "knowledge" as TabType, label: "Knowledge", icon: Database },
-        { id: "alignment" as TabType, label: "Alignment", icon: BookOpen },
-        { id: "models" as TabType, label: "Models", icon: Cpu },
-        { id: "authprofiles" as TabType, label: "Auth Profiles", icon: KeyRound },
-        { id: "apikeys" as TabType, label: "API Keys", icon: Key },
+        { id: "alignment" as TabType, label: "Alignment", icon: BookOpen, defaultView: true },
+        { id: "models" as TabType, label: "Models", icon: Cpu, defaultView: true },
+        { id: "authprofiles" as TabType, label: "Providers", icon: KeyRound, defaultView: true },
+        { id: "apikeys" as TabType, label: "Keys", icon: Key, defaultView: true },
         { id: "dictionary" as TabType, label: "Dictionary", icon: Book },
         { id: "security" as TabType, label: "Security", icon: Shield },
       ],
@@ -6928,10 +6942,10 @@ export function ConfigPanel({
       label: "Appearance",
       items: [
         { id: "avatar" as TabType, label: "Avatar", icon: User },
-        { id: "identity" as TabType, label: "Visual Identity", icon: Palette },
+        { id: "identity" as TabType, label: "Identity", icon: Palette, defaultView: true },
         { id: "widgets" as TabType, label: "Widgets", icon: LayoutGrid },
         { id: "accessibility" as TabType, label: "Accessibility", icon: Accessibility },
-        { id: "voice" as TabType, label: "Voice", icon: Mic },
+        { id: "voice" as TabType, label: "Voice", icon: Mic, defaultView: true },
       ],
     },
     {
@@ -6947,17 +6961,32 @@ export function ConfigPanel({
     },
   ];
 
-  const filteredNavSections = useMemo(
-    () => filterConfigNavSections(navSections, surfaceProfile),
-    [navSections, surfaceProfile],
-  );
+  const filteredNavSections = useMemo(() => {
+    const bySurface = filterConfigNavSections(navSections, surfaceProfile);
+    if (advancedMode) return bySurface;
+    // Default (non-advanced) view: keep only tabs flagged defaultView, and
+    // drop sections that become empty after filtering.
+    return bySurface
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((t) => (t as { defaultView?: boolean }).defaultView === true),
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [navSections, surfaceProfile, advancedMode]);
 
   useEffect(() => {
-    if (isConfigTabAllowed(activeTab, surfaceProfile)) {
+    if (!isConfigTabAllowed(activeTab, surfaceProfile)) {
+      setActiveTab("dictionary");
       return;
     }
-    setActiveTab("dictionary");
-  }, [activeTab, surfaceProfile]);
+    // If we just flipped out of advanced into default and the current tab is
+    // no longer visible, land on the first visible default tab.
+    const visibleIds = new Set(filteredNavSections.flatMap((s) => s.items).map((t) => t.id));
+    if (!visibleIds.has(activeTab)) {
+      const firstVisible = filteredNavSections[0]?.items[0]?.id;
+      if (firstVisible) setActiveTab(firstVisible);
+    }
+  }, [activeTab, surfaceProfile, filteredNavSections]);
 
   const availableCapabilitiesSkills = useMemo(
     () => capabilitiesSkills.filter((skill) => skill.eligible === true),
@@ -7046,12 +7075,38 @@ export function ConfigPanel({
               {/* Content header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
                 <h3 className="text-white font-semibold text-lg">{activeTabLabel}</h3>
-                <button
-                  onClick={onClose}
-                  className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setAdvancedMode((v) => !v)}
+                    title={
+                      advancedMode ? "Switch to simplified view" : "Show every configuration tab"
+                    }
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                      advancedMode
+                        ? "bg-purple-500/15 text-purple-300 hover:bg-purple-500/25"
+                        : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block w-6 h-3.5 rounded-full relative transition-colors ${
+                        advancedMode ? "bg-purple-500/70" : "bg-white/20"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-all ${
+                          advancedMode ? "left-3" : "left-0.5"
+                        }`}
+                      />
+                    </span>
+                    Advanced
+                  </button>
+                  <button
+                    onClick={onClose}
+                    className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
               {/* Scrollable content — avatar tab uses full width with side-by-side preview */}
