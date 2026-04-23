@@ -79,6 +79,10 @@ enum CommandResolver {
 
     static func preferredPaths(home: URL, current: [String], projectRoot: URL) -> [String] {
         var extras = [
+            // `install-hosted.sh` installs to `$HOME/bin` by default (ARGENT_INSTALL_BIN_DIR).
+            // GUI apps launched from launchd don't inherit the user's shell PATH, so we
+            // must probe this location explicitly.
+            home.appendingPathComponent("bin").path,
             home.appendingPathComponent("Library/pnpm").path,
             "/opt/homebrew/bin",
             "/usr/local/bin",
@@ -194,7 +198,86 @@ enum CommandResolver {
     }
 
     static func argentExecutable(searchPaths: [String]? = nil) -> String? {
-        self.findExecutable(named: self.helperName, searchPaths: searchPaths)
+        // When the caller injects explicit search paths (tests, SSH resolution, etc.),
+        // honor them exactly and skip the layered production probe.
+        if let searchPaths {
+            return self.findExecutable(named: self.helperName, searchPaths: searchPaths)
+        }
+        return self.resolveArgentCLI()
+    }
+
+    /// Layered resolver for the `argent` CLI on this Mac.
+    ///
+    /// Works around the classic macOS GUI-app PATH problem: a bundle launched by
+    /// launchd (or double-clicked from Finder) inherits only a minimal PATH and
+    /// does *not* pick up `~/.zshrc` / `~/.zprofile` additions. That means
+    /// `~/bin/argent` — the default target of `install-hosted.sh` — would be
+    /// invisible to a naive `PATH` scan and the app would falsely claim the CLI
+    /// is not installed.
+    ///
+    /// Order of probes (first hit wins):
+    /// 1. `ARGENT_CLI_BIN` env override (rare, supports advanced users and tests)
+    /// 2. Well-known install locations: `~/bin`, `/usr/local/bin`, `/opt/homebrew/bin`
+    /// 3. Everything in `preferredPaths()` (argent-managed bins, Node version managers,
+    ///    pnpm global, `$PATH`, etc.)
+    /// 4. Last-ditch login-shell probe: `/bin/zsh -l -c 'command -v argent'`
+    ///    Picks up whatever the user has configured in their login shell startup
+    ///    files, including custom install prefixes.
+    static func resolveArgentCLI() -> String? {
+        let fm = FileManager()
+
+        // 1. Explicit override.
+        if let override = ProcessInfo.processInfo.environment["ARGENT_CLI_BIN"] {
+            let trimmed = override.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, fm.isExecutableFile(atPath: trimmed) {
+                return trimmed
+            }
+        }
+
+        // 2. Well-known install locations.
+        let home = fm.homeDirectoryForCurrentUser.path
+        let wellKnown = [
+            "\(home)/bin/argent",
+            "/usr/local/bin/argent",
+            "/opt/homebrew/bin/argent",
+        ]
+        for path in wellKnown where fm.isExecutableFile(atPath: path) {
+            return path
+        }
+
+        // 3. Scan every preferred path (argent-managed, Node version managers, pnpm, etc.).
+        if let found = self.findExecutable(named: self.helperName) {
+            return found
+        }
+
+        // 4. Ask the user's login shell — catches weirder install prefixes.
+        return self.resolveArgentViaLoginShell()
+    }
+
+    /// Shell out to `/bin/zsh -l -c 'command -v argent'` as a last-ditch resolver.
+    /// Best-effort: any error (shell missing, timeout, non-executable result) returns nil
+    /// rather than propagating — detection must never crash the settings view.
+    private static func resolveArgentViaLoginShell() -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-l", "-c", "command -v argent 2>/dev/null"]
+        let pipe = Pipe()
+        let errPipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = errPipe
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            guard let raw = String(data: data, encoding: .utf8) else { return nil }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, FileManager().isExecutableFile(atPath: trimmed) {
+                return trimmed
+            }
+        } catch {
+            // Intentional: best-effort resolver must not throw into the UI.
+        }
+        return nil
     }
 
     static func projectArgentExecutable(projectRoot: URL? = nil) -> String? {
