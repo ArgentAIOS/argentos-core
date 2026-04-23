@@ -369,10 +369,10 @@ export function createAgentEventHandler({
     const last = agentRunSeq.get(evt.runId) ?? 0;
     const isToolEvent = evt.stream === "tool";
     const toolVerbose = isToolEvent ? resolveToolVerboseLevel(evt.runId, sessionKey) : "off";
-    if (isToolEvent && toolVerbose === "off") {
-      agentRunSeq.set(evt.runId, evt.seq);
-      return;
-    }
+    // Build tool payload: strip result/partialResult unless verbose=full.
+    // Note: WS clients with the tool-events capability receive tool events
+    // regardless of verboseLevel (see broadcastToConnIds branch below). The
+    // verbose setting only gates detail stripping and node/channel delivery.
     const toolPayload =
       isToolEvent && toolVerbose !== "full"
         ? (() => {
@@ -397,6 +397,10 @@ export function createAgentEventHandler({
     }
     agentRunSeq.set(evt.runId, evt.seq);
     if (isToolEvent) {
+      // Always broadcast tool events to registered WS recipients with the
+      // tool-events capability, regardless of verboseLevel. The verbose
+      // setting only controls whether tool details spill out to messaging
+      // surfaces (Telegram, Discord, CLI, etc.) below via nodeSendToSession.
       const recipients = toolEventRecipients.get(evt.runId);
       if (recipients && recipients.size > 0) {
         broadcastToConnIds("agent", toolPayload, recipients);
@@ -437,7 +441,12 @@ export function createAgentEventHandler({
     }
 
     if (sessionKey) {
-      nodeSendToSession(sessionKey, "agent", isToolEvent ? toolPayload : agentPayload);
+      // Node/channel subscribers (CLI, TUI, messaging surfaces) should only
+      // receive tool events when verbose is enabled. WS clients already got
+      // the tool event above via broadcastToConnIds.
+      if (!isToolEvent || toolVerbose !== "off") {
+        nodeSendToSession(sessionKey, "agent", isToolEvent ? toolPayload : agentPayload);
+      }
       if (
         !isAborted &&
         evt.stream === "assistant" &&
