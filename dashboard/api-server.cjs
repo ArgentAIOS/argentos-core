@@ -85,6 +85,9 @@ try {
   const hostname = os.hostname();
   const ifaces = os.networkInterfaces();
   const extraHosts = new Set([hostname]);
+  if (hostname && !hostname.endsWith(".local")) {
+    extraHosts.add(`${hostname}.local`);
+  }
   for (const name of Object.keys(ifaces)) {
     for (const iface of ifaces[name] || []) {
       if (!iface.internal && iface.family === "IPv4") {
@@ -93,7 +96,7 @@ try {
     }
   }
   for (const host of extraHosts) {
-    for (const port of [8080, 5173]) {
+    for (const port of [8080, 5173, 18789]) {
       const origin = `http://${host}:${port}`;
       if (!ALLOWED_ORIGINS.includes(origin)) {
         ALLOWED_ORIGINS.push(origin);

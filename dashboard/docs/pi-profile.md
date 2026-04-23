@@ -21,7 +21,8 @@ tool events — it just costs ~60% less to draw.
 
 The hard allocation (`MAX_PARTICLES = 180` in `aevp/particles.ts`) is
 unchanged — the buffer still holds room for 180 — so the profile can
-be flipped on and off without a reload or re-alloc.
+be flipped on and off without re-allocation. (A page reload is still
+required because activation is evaluated at module load.)
 
 ## How to enable
 

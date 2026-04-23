@@ -28,11 +28,14 @@ function envFlag(name: string): boolean {
     /* ignore */
   }
   try {
-    // Vite (import.meta.env is statically available only inside Vite-processed
-    // modules; protect with a typeof check so this file compiles under raw tsc)
-    const meta = (globalThis as { __ARGENT_VITE_ENV__?: Record<string, string | undefined> })
-      .__ARGENT_VITE_ENV__;
-    if (meta?.[name] && meta[name] !== "0" && meta[name] !== "") return true;
+    // Vite: import.meta.env is injected at build time. Guard with typeof
+    // so this file stays compilable under raw tsc / SSR.
+    const importMeta =
+      typeof import.meta !== "undefined"
+        ? (import.meta as { env?: Record<string, string | undefined> })
+        : null;
+    const v = importMeta?.env?.[name];
+    if (v && v !== "0" && v !== "") return true;
   } catch {
     /* ignore */
   }

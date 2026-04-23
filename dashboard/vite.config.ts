@@ -70,6 +70,8 @@ export default defineConfig({
   server: {
     port: 8080,
     host: true,
+    // TODO(operator): decide between allowedHosts: true (current) vs explicit allowlist
+    //   ['localhost', '127.0.0.1', /\.local$/] for tighter dev-server DNS-rebind protection.
     allowedHosts: true,
     cors: {
       origin: true,
