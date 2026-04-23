@@ -20,7 +20,15 @@ interface SetupWizardProps {
   onComplete: () => void;
 }
 
-type AuthType = "setup-token" | "api-key" | "minimax-key" | "glm-key" | "skip" | null;
+type AuthType =
+  | "setup-token"
+  | "api-key"
+  | "minimax-key"
+  | "glm-key"
+  | "kimi-key"
+  | "groq-key"
+  | "skip"
+  | null;
 
 function getModelOptions(authType: AuthType) {
   if (authType === "minimax-key") {
@@ -69,6 +77,43 @@ function getModelOptions(authType: AuthType) {
         name: "GLM-4 Flash",
         badge: "Fastest",
         description: "Fastest and most affordable. Perfect for lightweight tasks.",
+        icon: Sparkles,
+      },
+    ];
+  }
+  if (authType === "kimi-key") {
+    return [
+      {
+        id: "moonshot/kimi-k2.5",
+        name: "Kimi K2.5",
+        badge: "Recommended",
+        description: "Moonshot's flagship. 256K context, strong long-form code and reasoning.",
+        icon: Brain,
+      },
+    ];
+  }
+  if (authType === "groq-key") {
+    return [
+      {
+        id: "groq/llama-3.3-70b-versatile",
+        name: "Llama 3.3 70B",
+        badge: "Recommended",
+        description: "Strong general-purpose model served on Groq's LPU. 128K context, very fast.",
+        icon: Zap,
+      },
+      {
+        id: "groq/openai/gpt-oss-120b",
+        name: "GPT OSS 120B",
+        badge: "Reasoning",
+        description:
+          "Open-weight reasoning model. 131K context, slower but smarter for complex tasks.",
+        icon: Brain,
+      },
+      {
+        id: "groq/llama-3.1-8b-instant",
+        name: "Llama 3.1 8B",
+        badge: "Fastest",
+        description: "Tiny, instant responses. Great for simple tasks and high volume.",
         icon: Sparkles,
       },
     ];
@@ -159,7 +204,11 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
           ? "anthropic"
           : authType === "minimax-key"
             ? "minimax"
-            : "zai";
+            : authType === "kimi-key"
+              ? "moonshot"
+              : authType === "groq-key"
+                ? "groq"
+                : "zai";
       const tokenValue = token.trim();
       const rawProfileName = profileName.trim();
       const profileParts = rawProfileName.split(":");
@@ -341,115 +390,234 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
 
         <div className="space-y-3 mb-6">
           {/* Setup Token card */}
-          <button
-            onClick={() => {
-              setAuthType("setup-token");
-              setError("");
-            }}
-            className={`w-full text-left p-4 rounded-lg border transition-all ${
-              authType === "setup-token"
-                ? "bg-amber-600/10 border-amber-500/50"
-                : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Key
-                className={`w-5 h-5 ${authType === "setup-token" ? "text-amber-400" : "text-white/40"}`}
-              />
-              <div>
-                <div className="text-white font-medium">Claude Setup Token</div>
-                <div className="text-white/40 text-xs mt-0.5">
-                  From Anthropic Max subscription. Run{" "}
-                  <code className="text-amber-400/70 bg-white/5 px-1 rounded">
-                    claude setup-token
-                  </code>{" "}
-                  in terminal.
+          <div>
+            <button
+              onClick={() => {
+                setAuthType("setup-token");
+                setError("");
+              }}
+              className={`w-full text-left p-4 rounded-lg border transition-all ${
+                authType === "setup-token"
+                  ? "bg-amber-600/10 border-amber-500/50"
+                  : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Key
+                  className={`w-5 h-5 ${authType === "setup-token" ? "text-amber-400" : "text-white/40"}`}
+                />
+                <div>
+                  <div className="text-white font-medium">Claude Setup Token</div>
+                  <div className="text-white/40 text-xs mt-0.5">
+                    From Anthropic Max subscription. Run{" "}
+                    <code className="text-amber-400/70 bg-white/5 px-1 rounded">
+                      claude setup-token
+                    </code>{" "}
+                    in terminal.
+                  </div>
                 </div>
               </div>
-            </div>
-          </button>
+            </button>
+            <a
+              href="https://docs.argentos.ai/docs/keys/anthropic-setup-token"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 ml-12 inline-flex items-center gap-1 text-xs text-amber-400/70 hover:text-amber-400 hover:underline underline-offset-2"
+            >
+              Get your key →
+            </a>
+          </div>
 
           {/* API Key card */}
-          <button
-            onClick={() => {
-              setAuthType("api-key");
-              setError("");
-            }}
-            className={`w-full text-left p-4 rounded-lg border transition-all ${
-              authType === "api-key"
-                ? "bg-amber-600/10 border-amber-500/50"
-                : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Key
-                className={`w-5 h-5 ${authType === "api-key" ? "text-amber-400" : "text-white/40"}`}
-              />
-              <div>
-                <div className="text-white font-medium">Anthropic API Key</div>
-                <div className="text-white/40 text-xs mt-0.5">
-                  Standard API key from console.anthropic.com. Pay per token.
+          <div>
+            <button
+              onClick={() => {
+                setAuthType("api-key");
+                setError("");
+              }}
+              className={`w-full text-left p-4 rounded-lg border transition-all ${
+                authType === "api-key"
+                  ? "bg-amber-600/10 border-amber-500/50"
+                  : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Key
+                  className={`w-5 h-5 ${authType === "api-key" ? "text-amber-400" : "text-white/40"}`}
+                />
+                <div>
+                  <div className="text-white font-medium">Anthropic API Key</div>
+                  <div className="text-white/40 text-xs mt-0.5">
+                    Standard API key from console.anthropic.com. Pay per token.
+                  </div>
                 </div>
               </div>
-            </div>
-          </button>
+            </button>
+            <a
+              href="https://docs.argentos.ai/docs/keys/anthropic-api-key"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 ml-12 inline-flex items-center gap-1 text-xs text-amber-400/70 hover:text-amber-400 hover:underline underline-offset-2"
+            >
+              Get your key →
+            </a>
+          </div>
 
           {/* MiniMax Coding Plan key */}
-          <button
-            onClick={() => {
-              setAuthType("minimax-key");
-              setProfileName("minimax:default");
-              setError("");
-            }}
-            className={`w-full text-left p-4 rounded-lg border transition-all ${
-              authType === "minimax-key"
-                ? "bg-violet-600/10 border-violet-500/50"
-                : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Key
-                className={`w-5 h-5 ${
-                  authType === "minimax-key" ? "text-violet-400" : "text-white/40"
-                }`}
-              />
-              <div>
-                <div className="text-white font-medium">MiniMax API Key</div>
-                <div className="text-white/40 text-xs mt-0.5">
-                  Coding Plan or standard key from{" "}
-                  <span className="text-violet-400/70">platform.minimaxi.com</span>. Includes text,
-                  vision, TTS, video &amp; music.
+          <div>
+            <button
+              onClick={() => {
+                setAuthType("minimax-key");
+                setProfileName("minimax:default");
+                setError("");
+              }}
+              className={`w-full text-left p-4 rounded-lg border transition-all ${
+                authType === "minimax-key"
+                  ? "bg-violet-600/10 border-violet-500/50"
+                  : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Key
+                  className={`w-5 h-5 ${
+                    authType === "minimax-key" ? "text-violet-400" : "text-white/40"
+                  }`}
+                />
+                <div>
+                  <div className="text-white font-medium">MiniMax API Key</div>
+                  <div className="text-white/40 text-xs mt-0.5">
+                    Coding Plan or standard key from{" "}
+                    <span className="text-violet-400/70">platform.minimaxi.com</span>. Includes
+                    text, vision, TTS, video &amp; music.
+                  </div>
                 </div>
               </div>
-            </div>
-          </button>
+            </button>
+            <a
+              href="https://docs.argentos.ai/docs/keys/minimax"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 ml-12 inline-flex items-center gap-1 text-xs text-violet-400/70 hover:text-violet-400 hover:underline underline-offset-2"
+            >
+              Get your key →
+            </a>
+          </div>
 
           {/* GLM / ZhipuAI key */}
-          <button
-            onClick={() => {
-              setAuthType("glm-key");
-              setProfileName("zai:default");
-              setError("");
-            }}
-            className={`w-full text-left p-4 rounded-lg border transition-all ${
-              authType === "glm-key"
-                ? "bg-cyan-600/10 border-cyan-500/50"
-                : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Key
-                className={`w-5 h-5 ${authType === "glm-key" ? "text-cyan-400" : "text-white/40"}`}
-              />
-              <div>
-                <div className="text-white font-medium">GLM API Key</div>
-                <div className="text-white/40 text-xs mt-0.5">
-                  ZhipuAI key from <span className="text-cyan-400/70">bigmodel.cn</span>. GLM-4
-                  &amp; coding plan with bundled capabilities.
+          <div>
+            <button
+              onClick={() => {
+                setAuthType("glm-key");
+                setProfileName("zai:default");
+                setError("");
+              }}
+              className={`w-full text-left p-4 rounded-lg border transition-all ${
+                authType === "glm-key"
+                  ? "bg-cyan-600/10 border-cyan-500/50"
+                  : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Key
+                  className={`w-5 h-5 ${authType === "glm-key" ? "text-cyan-400" : "text-white/40"}`}
+                />
+                <div>
+                  <div className="text-white font-medium">GLM API Key</div>
+                  <div className="text-white/40 text-xs mt-0.5">
+                    ZhipuAI key from <span className="text-cyan-400/70">bigmodel.cn</span>. GLM-4
+                    &amp; coding plan with bundled capabilities.
+                  </div>
                 </div>
               </div>
-            </div>
-          </button>
+            </button>
+            <a
+              href="https://docs.argentos.ai/docs/keys/zai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 ml-12 inline-flex items-center gap-1 text-xs text-cyan-400/70 hover:text-cyan-400 hover:underline underline-offset-2"
+            >
+              Get your key →
+            </a>
+          </div>
+
+          {/* Kimi K2 / Moonshot key */}
+          <div>
+            <button
+              onClick={() => {
+                setAuthType("kimi-key");
+                setProfileName("moonshot:default");
+                setError("");
+              }}
+              className={`w-full text-left p-4 rounded-lg border transition-all ${
+                authType === "kimi-key"
+                  ? "bg-emerald-600/10 border-emerald-500/50"
+                  : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Key
+                  className={`w-5 h-5 ${
+                    authType === "kimi-key" ? "text-emerald-400" : "text-white/40"
+                  }`}
+                />
+                <div>
+                  <div className="text-white font-medium">Kimi K2 API Key</div>
+                  <div className="text-white/40 text-xs mt-0.5">
+                    Moonshot key from{" "}
+                    <span className="text-emerald-400/70">platform.moonshot.ai</span>. 256K context,
+                    long-form code &amp; reasoning.
+                  </div>
+                </div>
+              </div>
+            </button>
+            <a
+              href="https://docs.argentos.ai/docs/keys/kimi"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 ml-12 inline-flex items-center gap-1 text-xs text-emerald-400/70 hover:text-emerald-400 hover:underline underline-offset-2"
+            >
+              Get your key →
+            </a>
+          </div>
+
+          {/* Groq key */}
+          <div>
+            <button
+              onClick={() => {
+                setAuthType("groq-key");
+                setProfileName("groq:default");
+                setError("");
+              }}
+              className={`w-full text-left p-4 rounded-lg border transition-all ${
+                authType === "groq-key"
+                  ? "bg-orange-600/10 border-orange-500/50"
+                  : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Key
+                  className={`w-5 h-5 ${
+                    authType === "groq-key" ? "text-orange-400" : "text-white/40"
+                  }`}
+                />
+                <div>
+                  <div className="text-white font-medium">Groq API Key</div>
+                  <div className="text-white/40 text-xs mt-0.5">
+                    Free tier from <span className="text-orange-400/70">console.groq.com</span>.
+                    Llama, GPT-OSS, Qwen on Groq's fast LPU.
+                  </div>
+                </div>
+              </div>
+            </button>
+            <a
+              href="https://docs.argentos.ai/docs/keys/groq"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 ml-12 inline-flex items-center gap-1 text-xs text-orange-400/70 hover:text-orange-400 hover:underline underline-offset-2"
+            >
+              Get your key →
+            </a>
+          </div>
 
           {/* Skip card */}
           <button
@@ -493,7 +661,11 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
                     ? "MiniMax API Key"
                     : authType === "glm-key"
                       ? "GLM API Key"
-                      : "API Key"}
+                      : authType === "kimi-key"
+                        ? "Kimi / Moonshot API Key"
+                        : authType === "groq-key"
+                          ? "Groq API Key"
+                          : "API Key"}
               </label>
               <div className="relative">
                 <input
@@ -507,7 +679,11 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
                         ? "sk-cp-... or eyJ..."
                         : authType === "glm-key"
                           ? "your-glm-api-key"
-                          : "sk-ant-api..."
+                          : authType === "kimi-key"
+                            ? "sk-..."
+                            : authType === "groq-key"
+                              ? "gsk_..."
+                              : "sk-ant-api..."
                   }
                   className="w-full bg-[#12121f] border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/20 focus:border-amber-500/50 focus:outline-none pr-10"
                 />
@@ -531,7 +707,11 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
                     ? "minimax:default"
                     : authType === "glm-key"
                       ? "zai:default"
-                      : "anthropic:default"
+                      : authType === "kimi-key"
+                        ? "moonshot:default"
+                        : authType === "groq-key"
+                          ? "groq:default"
+                          : "anthropic:default"
                 }
                 className="w-full bg-[#12121f] border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/20 focus:border-amber-500/50 focus:outline-none"
               />
