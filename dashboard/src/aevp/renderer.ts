@@ -6,6 +6,7 @@
  */
 
 import type { AEVPRenderState } from "./types";
+import { getFrameIntervalMs } from "./pi-profile";
 import {
   ParticleSystem,
   type ParticleFormationRequest,
@@ -271,6 +272,12 @@ export class AEVPRenderer {
     this.rafId = requestAnimationFrame(this.tick);
 
     if (this.contextLost) return;
+
+    // Pi profile: throttle ticks to >= frameIntervalMs between renders.
+    const frameInterval = getFrameIntervalMs();
+    if (frameInterval > 0 && now - this.lastFrameTime < frameInterval) {
+      return;
+    }
 
     const dt = Math.min((now - this.lastFrameTime) / 1000, 0.1); // Cap at 100ms
     this.lastFrameTime = now;

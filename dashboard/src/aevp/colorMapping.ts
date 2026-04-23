@@ -10,6 +10,7 @@
 import type { EmotionalState, ActivityStateName } from "../types/agentState";
 import type { AgentVisualIdentity, AEVPRenderState } from "./types";
 import { classifyTool, getResonanceTargets } from "./toolCategories";
+import { getMaxParticlesCap, getDensityScale } from "./pi-profile";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -445,11 +446,17 @@ export function computeRenderState(
     2.5,
   );
 
-  const maxParticles = Math.round(100 * presence.particleDensity);
+  // Pi profile: scale density + apply a hard cap on top of identity preset.
+  const piCap = getMaxParticlesCap();
+  const piScale = getDensityScale();
+  const maxParticles = Math.min(
+    piCap,
+    Math.round(100 * presence.particleDensity * piScale),
+  );
   let particleCount = Math.round(
     clamp(
       maxParticles * (0.3 + moodVis.brightness * 0.4 + arousal * 0.3) * energyMul,
-      5,
+      maxParticles === 0 ? 0 : Math.min(5, maxParticles),
       maxParticles,
     ),
   );
@@ -476,7 +483,13 @@ export function computeRenderState(
   const energyScale = 0.8 + p.energy * 0.4;
   breathingRate *= energyScale;
   particleSpeed = clamp(particleSpeed * energyScale, 0.1, 2.5);
-  particleCount = Math.round(clamp(particleCount * (0.7 + p.energy * 0.6), 3, 100));
+  particleCount = Math.round(
+    clamp(
+      particleCount * (0.7 + p.energy * 0.6),
+      maxParticles === 0 ? 0 : Math.min(3, maxParticles),
+      maxParticles,
+    ),
+  );
 
   // Formality → edge crispness (higher formality → crisper edges)
   const formalityEdge = p.formality * 0.2; // 0 to 0.2 bonus
