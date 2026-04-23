@@ -37,6 +37,7 @@ import {
   ArgentSettingsManager,
   createArgentAgentSession,
 } from "../../../argent-agent/index.js";
+import { runWithPromptBudget } from "../../../argent-agent/prompt-budget.js";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
 import {
@@ -773,13 +774,15 @@ export async function runEmbeddedAttempt(
         })
       : undefined;
 
-    const effectiveExtraSystemPrompt = [
-      params.extraSystemPrompt?.trim(),
-      intentPromptHint?.trim(),
-      crossChannelContextHint,
-      matchedPersonalSkillsContext,
-      executablePersonalSkillBlock,
-    ]
+    const extraSystemPromptParts: Array<{ name: string; value: string | undefined }> = [
+      { name: "caller-extra-system-prompt", value: params.extraSystemPrompt?.trim() },
+      { name: "intent-hint", value: intentPromptHint?.trim() },
+      { name: "cross-channel-context", value: crossChannelContextHint },
+      { name: "matched-personal-skills", value: matchedPersonalSkillsContext },
+      { name: "executable-personal-skill", value: executablePersonalSkillBlock },
+    ];
+    const effectiveExtraSystemPrompt = extraSystemPromptParts
+      .map((p) => p.value)
       .filter((entry): entry is string => Boolean(entry))
       .join("\n\n");
     const sandboxInfo = buildEmbeddedSandboxInfo(sandbox, params.bashElevated);
@@ -825,36 +828,85 @@ export async function runEmbeddedAttempt(
     const promptMode = isSubagentSessionKey(params.sessionKey) ? "subagent" : "full";
     const ttsHint = params.config ? buildTtsSystemPromptHint(params.config) : undefined;
 
-    const appendPrompt = await buildEmbeddedSystemPrompt({
-      workspaceDir: effectiveWorkspace,
-      defaultThinkLevel: params.thinkLevel,
-      reasoningLevel: params.reasoningLevel ?? "off",
-      extraSystemPrompt: effectiveExtraSystemPrompt || undefined,
-      ownerNumbers: params.ownerNumbers,
-      reasoningTagHint,
-      heartbeatPrompt: isDefaultAgent
-        ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
-        : undefined,
-      skillsPrompt,
-      docsPath: docsPath ?? undefined,
-      ttsHint,
-      workspaceNotes,
-      reactionGuidance,
-      promptMode,
-      runtimeInfo,
-      messageToolHints,
-      sandboxInfo,
-      tools,
-      modelAliasLines: buildModelAliasLines(params.config),
-      userTimezone,
-      userTime,
-      userTimeFormat,
-      contextFiles,
-      memoryCitationsMode: params.config?.memory?.citations,
-      sessionKey: params.sessionKey,
-    });
+    // Opt-in prompt budget audit — gated on ARGENT_PROMPT_BUDGET_LOG=1.
+    // See docs/argent/PROMPT_BUDGET.md. When disabled, runWithPromptBudget still
+    // runs the function but the inner tracker is inert (record() calls no-op).
+    const { result: appendPrompt, tracker: promptBudgetTracker } = await runWithPromptBudget(
+      async (tracker) => {
+        // Record each extraSystemPrompt contributor BEFORE buildEmbeddedSystemPrompt
+        // so the log reflects the actual upstream injectors, not the glued string.
+        for (const part of extraSystemPromptParts) {
+          tracker.record(`extra:${part.name}`, part.value);
+        }
+        tracker.record(
+          "workspace-notes",
+          (workspaceNotes ?? []).filter((n): n is string => Boolean(n)),
+        );
+        tracker.record("message-tool-hints", messageToolHints);
+        tracker.record(
+          "heartbeat-prompt-in",
+          isDefaultAgent
+            ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
+            : undefined,
+        );
+        tracker.record("skills-prompt-in", skillsPrompt);
+        tracker.record("tts-hint", ttsHint);
+        return buildEmbeddedSystemPrompt({
+          workspaceDir: effectiveWorkspace,
+          defaultThinkLevel: params.thinkLevel,
+          reasoningLevel: params.reasoningLevel ?? "off",
+          extraSystemPrompt: effectiveExtraSystemPrompt || undefined,
+          ownerNumbers: params.ownerNumbers,
+          reasoningTagHint,
+          heartbeatPrompt: isDefaultAgent
+            ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
+            : undefined,
+          skillsPrompt,
+          docsPath: docsPath ?? undefined,
+          ttsHint,
+          workspaceNotes,
+          reactionGuidance,
+          promptMode,
+          runtimeInfo,
+          messageToolHints,
+          sandboxInfo,
+          tools,
+          modelAliasLines: buildModelAliasLines(params.config),
+          userTimezone,
+          userTime,
+          userTimeFormat,
+          contextFiles,
+          memoryCitationsMode: params.config?.memory?.citations,
+          sessionKey: params.sessionKey,
+        });
+      },
+    );
     const systemPromptOverride = createSystemPromptOverride(appendPrompt);
     const systemPromptText = systemPromptOverride();
+
+    // Record tool JSON schemas — these are sent alongside the system prompt and
+    // can dominate the token count for tool-heavy configurations.
+    try {
+      let toolSchemaChars = 0;
+      for (const tool of tools) {
+        toolSchemaChars += tool.name?.length ?? 0;
+        toolSchemaChars += tool.description?.length ?? 0;
+        try {
+          toolSchemaChars += JSON.stringify(tool.parameters ?? {}).length;
+        } catch {
+          /* circular schemas would be unusual — skip silently */
+        }
+      }
+      promptBudgetTracker.recordChars(`tool-schemas(n=${tools.length})`, toolSchemaChars);
+    } catch {
+      /* instrumentation must never break the run */
+    }
+    // Emit the one-line per-run summary. Total = system prompt bytes (history is
+    // assembled later by the session; a fresh turn contributes only the user text).
+    promptBudgetTracker.logSummary({
+      model: `${params.provider}/${params.modelId}`,
+      totalChars: systemPromptText.length,
+    });
 
     const sessionLock = await acquireSessionWriteLock({
       sessionFile: params.sessionFile,
