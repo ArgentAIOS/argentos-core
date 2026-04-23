@@ -70,6 +70,7 @@ export default defineConfig({
   server: {
     port: 8080,
     host: true,
+    allowedHosts: true,
     cors: {
       origin: true,
       credentials: true,
