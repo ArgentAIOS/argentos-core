@@ -7,6 +7,7 @@ import {
   parseAgentSessionKey,
 } from "../../routing/session-key.js";
 import { resolveAgentConfig } from "../agent-scope.js";
+import { resolveSubagentAllowAgents } from "../subagent-allowlist.js";
 import { jsonResult } from "./common.js";
 import { resolveInternalSessionKey, resolveMainSessionAlias } from "./sessions-helpers.js";
 
@@ -45,7 +46,16 @@ export function createAgentsListTool(opts?: {
           DEFAULT_AGENT_ID,
       );
 
-      const allowAgents = resolveAgentConfig(cfg, requesterAgentId)?.subagents?.allowAgents ?? [];
+      const requesterConfig = resolveAgentConfig(cfg, requesterAgentId);
+      const defaultAgentId = cfg.agents?.list?.[0]?.id;
+      const fallbackConfig =
+        !requesterConfig && defaultAgentId ? resolveAgentConfig(cfg, defaultAgentId) : undefined;
+      const allowAgents = resolveSubagentAllowAgents({
+        config: cfg,
+        requesterSubagents: requesterConfig?.subagents,
+        fallbackSubagents: fallbackConfig?.subagents,
+        requesterAgentId,
+      });
       const allowAny = allowAgents.some((value) => value.trim() === "*");
       const allowSet = new Set(
         allowAgents

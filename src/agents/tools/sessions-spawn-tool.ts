@@ -14,6 +14,7 @@ import { normalizeDeliveryContext } from "../../utils/delivery-context.js";
 import { resolveAgentConfig } from "../agent-scope.js";
 import { AGENT_LANE_SUBAGENT } from "../lanes.js";
 import { optionalStringEnum } from "../schema/typebox.js";
+import { resolveSubagentAllowAgents } from "../subagent-allowlist.js";
 import { buildSubagentSystemPrompt } from "../subagent-announce.js";
 import { registerSubagentRun } from "../subagent-registry.js";
 import { jsonResult, readStringParam } from "./common.js";
@@ -168,8 +169,12 @@ export function createSessionsSpawnTool(opts?: {
         const defaultAgentId = cfg.agents?.list?.[0]?.id;
         const fallbackConfig =
           !requesterConfig && defaultAgentId ? resolveAgentConfig(cfg, defaultAgentId) : undefined;
-        const allowAgents =
-          requesterConfig?.subagents?.allowAgents ?? fallbackConfig?.subagents?.allowAgents ?? [];
+        const allowAgents = resolveSubagentAllowAgents({
+          config: cfg,
+          requesterSubagents: requesterConfig?.subagents,
+          fallbackSubagents: fallbackConfig?.subagents,
+          requesterAgentId,
+        });
         const allowAny = allowAgents.some((value) => value.trim() === "*");
         const normalizedTargetId = targetAgentId.toLowerCase();
         const allowSet = new Set(

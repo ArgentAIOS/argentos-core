@@ -11,6 +11,7 @@ import { callGateway } from "../../gateway/call.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../../routing/session-key.js";
 import { resolveAgentConfig } from "../agent-scope.js";
 import { AGENT_LANE_SUBAGENT } from "../lanes.js";
+import { resolveSubagentAllowAgents } from "../subagent-allowlist.js";
 import { registerSubagentRun } from "../subagent-registry.js";
 import { readStringParam } from "./common.js";
 
@@ -113,8 +114,12 @@ export async function spawnSubagentSession(
     const defaultAgentId = cfg.agents?.list?.[0]?.id;
     const fallbackConfig =
       !requesterConfig && defaultAgentId ? resolveAgentConfig(cfg, defaultAgentId) : undefined;
-    const allowAgents =
-      requesterConfig?.subagents?.allowAgents ?? fallbackConfig?.subagents?.allowAgents ?? [];
+    const allowAgents = resolveSubagentAllowAgents({
+      config: cfg,
+      requesterSubagents: requesterConfig?.subagents,
+      fallbackSubagents: fallbackConfig?.subagents,
+      requesterAgentId,
+    });
     const allowAny = allowAgents.some((v) => v.trim() === "*");
     const normalizedTargetId = targetAgentId.toLowerCase();
     const allowSet = new Set(
