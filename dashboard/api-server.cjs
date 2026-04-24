@@ -11513,7 +11513,8 @@ app.patch("/api/settings/agent", (req, res) => {
       }
       if (req.body.memory?.vault !== undefined || req.body.memory?.cognee !== undefined) {
         return res.status(403).json({
-          error: "Memory admin controls are not available in Public Core.",
+          error:
+            "Vault and Cognee memory admin controls are not available in Public Core. MemU model settings are Core and remain available.",
         });
       }
       if (req.body.contemplation?.discoveryPhase !== undefined) {

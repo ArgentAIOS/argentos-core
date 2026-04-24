@@ -2659,6 +2659,7 @@ export function ConfigPanel({
   const showAgentTargetScope = !isPublicCoreSurface;
   const showAgentRuntimeLoadProfile = !isPublicCoreSurface;
   const showAgentExecutionControls = !isPublicCoreSurface;
+  const showAgentMemoryStatusControls = true;
   const showAgentMemoryAdminControls = !isPublicCoreSurface;
   const showAgentIntentSimulationControls = !isPublicCoreSurface;
   const showKnowledgeAclWriteControls = !isPublicCoreSurface;
@@ -4353,9 +4354,9 @@ export function ConfigPanel({
   }, [isOpen, activeTab, agentTargetId]);
 
   useEffect(() => {
-    if (!isOpen || activeTab !== "agent" || !showAgentMemoryAdminControls) return;
+    if (!isOpen || activeTab !== "agent" || !showAgentMemoryStatusControls) return;
     void loadMemoryV3Status();
-  }, [isOpen, activeTab, loadMemoryV3Status, showAgentMemoryAdminControls]);
+  }, [isOpen, activeTab, loadMemoryV3Status, showAgentMemoryStatusControls]);
 
   useEffect(() => {
     if (!isOpen || activeTab !== "agent" || !canEditRawAgentConfig) return;
@@ -12679,7 +12680,7 @@ export function ConfigPanel({
                               </div>
                             </div>
 
-                            {showAgentMemoryAdminControls && memoryV3Message && (
+                            {showAgentMemoryStatusControls && memoryV3Message && (
                               <div
                                 className={`rounded-lg px-3 py-2 text-xs ${
                                   memoryV3Message.type === "success"
@@ -12875,7 +12876,7 @@ export function ConfigPanel({
                               );
                             })()}
 
-                            {showAgentMemoryAdminControls && (
+                            {showAgentMemoryStatusControls && (
                               <>
                                 <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-3">
                                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -12903,26 +12904,29 @@ export function ConfigPanel({
                                       >
                                         {memoryV3StatusLoading ? "Refreshing…" : "Refresh status"}
                                       </button>
-                                      <button
-                                        onClick={() => void bootstrapInternalVault(false)}
-                                        disabled={memoryV3StatusAction !== null}
-                                        className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                      >
-                                        {memoryV3StatusAction === "bootstrap"
-                                          ? "Creating…"
-                                          : "Create Argent vault"}
-                                      </button>
-                                      {memoryV3Status?.vault.mode !== "internal" && (
+                                      {showAgentMemoryAdminControls && (
                                         <button
-                                          onClick={() => void bootstrapInternalVault(true)}
+                                          onClick={() => void bootstrapInternalVault(false)}
                                           disabled={memoryV3StatusAction !== null}
-                                          className="px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-200 rounded-lg text-xs font-medium disabled:opacity-50"
+                                          className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg text-xs font-medium disabled:opacity-50"
                                         >
-                                          {memoryV3StatusAction === "bind"
-                                            ? "Binding…"
-                                            : "Bind Argent vault"}
+                                          {memoryV3StatusAction === "bootstrap"
+                                            ? "Creating…"
+                                            : "Create Argent vault"}
                                         </button>
                                       )}
+                                      {showAgentMemoryAdminControls &&
+                                        memoryV3Status?.vault.mode !== "internal" && (
+                                          <button
+                                            onClick={() => void bootstrapInternalVault(true)}
+                                            disabled={memoryV3StatusAction !== null}
+                                            className="px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-200 rounded-lg text-xs font-medium disabled:opacity-50"
+                                          >
+                                            {memoryV3StatusAction === "bind"
+                                              ? "Binding…"
+                                              : "Bind Argent vault"}
+                                          </button>
+                                        )}
                                     </div>
                                   </div>
 
@@ -13025,801 +13029,827 @@ export function ConfigPanel({
                                   </div>
                                 </div>
 
-                                <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 space-y-3">
-                                  <div className="flex items-center gap-2">
-                                    <Book className="w-4 h-4 text-cyan-300" />
-                                    <div>
-                                      <div className="text-white/85 text-sm font-medium">
-                                        Memory V3: Vault Source
+                                {showAgentMemoryAdminControls && (
+                                  <>
+                                    <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 space-y-3">
+                                      <div className="flex items-center gap-2">
+                                        <Book className="w-4 h-4 text-cyan-300" />
+                                        <div>
+                                          <div className="text-white/85 text-sm font-medium">
+                                            Memory V3: Vault Source
+                                          </div>
+                                          <div className="text-white/45 text-xs">
+                                            Point Argent at the markdown folder you want treated as
+                                            its vault. This does not require Obsidian; Obsidian is
+                                            only a viewer/editor over the same folder.
+                                          </div>
+                                        </div>
                                       </div>
-                                      <div className="text-white/45 text-xs">
-                                        Point Argent at the markdown folder you want treated as its
-                                        vault. This does not require Obsidian; Obsidian is only a
-                                        viewer/editor over the same folder.
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
-                                    <div>
-                                      <div className="text-white/75 text-sm">Vault enabled</div>
-                                      <div className="text-white/40 text-xs">
-                                        Turns on vault path support and V3 ingest controls.
-                                      </div>
-                                    </div>
-                                    <button
-                                      onClick={() =>
-                                        void patchMemorySettings(
-                                          {
-                                            vault: {
-                                              enabled: !(
-                                                agentSettings.memory?.vault?.enabled === true
-                                              ),
-                                            },
-                                          },
-                                          `Vault ${agentSettings.memory?.vault?.enabled ? "disabled" : "enabled"}.`,
-                                        )
-                                      }
-                                      className="text-white/50 hover:text-white/80"
-                                      disabled={memoryV3Saving}
-                                    >
-                                      {agentSettings.memory?.vault?.enabled ? (
-                                        <ToggleRight className="w-5 h-5 text-green-400" />
-                                      ) : (
-                                        <ToggleLeft className="w-5 h-5 text-white/30" />
-                                      )}
-                                    </button>
-                                  </div>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <div className="md:col-span-2">
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Vault path
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          value={vaultPathDraft}
-                                          onChange={(e) => setVaultPathDraft(e.target.value)}
-                                          placeholder="/absolute/path/to/argent-vault"
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchMemorySettings(
-                                              { vault: { path: vaultPathDraft.trim() } },
-                                              "Vault path saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Knowledge collection
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          value={vaultCollectionDraft}
-                                          onChange={(e) => setVaultCollectionDraft(e.target.value)}
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
-                                        />
+                                      <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
+                                        <div>
+                                          <div className="text-white/75 text-sm">Vault enabled</div>
+                                          <div className="text-white/40 text-xs">
+                                            Turns on vault path support and V3 ingest controls.
+                                          </div>
+                                        </div>
                                         <button
                                           onClick={() =>
                                             void patchMemorySettings(
                                               {
                                                 vault: {
-                                                  knowledgeCollection: vaultCollectionDraft.trim(),
-                                                },
-                                              },
-                                              "Vault collection saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
-                                      <div>
-                                        <div className="text-white/75 text-sm">
-                                          Scheduled ingest
-                                        </div>
-                                        <div className="text-white/40 text-xs">
-                                          Enables automatic markdown import on the configured
-                                          interval.
-                                        </div>
-                                      </div>
-                                      <button
-                                        onClick={() =>
-                                          void patchMemorySettings(
-                                            {
-                                              vault: {
-                                                ingest: {
                                                   enabled: !(
-                                                    agentSettings.memory?.vault?.ingest?.enabled ===
-                                                    true
+                                                    agentSettings.memory?.vault?.enabled === true
                                                   ),
                                                 },
                                               },
-                                            },
-                                            `Vault ingest ${
-                                              agentSettings.memory?.vault?.ingest?.enabled
-                                                ? "disabled"
-                                                : "enabled"
-                                            }.`,
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                        disabled={memoryV3Saving}
-                                      >
-                                        {agentSettings.memory?.vault?.ingest?.enabled ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Ingest interval
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          value={vaultIntervalDraft}
-                                          onChange={(e) => setVaultIntervalDraft(e.target.value)}
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchMemorySettings(
-                                              {
-                                                vault: {
-                                                  ingest: { interval: vaultIntervalDraft.trim() },
-                                                },
-                                              },
-                                              "Vault ingest interval saved.",
+                                              `Vault ${agentSettings.memory?.vault?.enabled ? "disabled" : "enabled"}.`,
                                             )
                                           }
+                                          className="text-white/50 hover:text-white/80"
                                           disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
                                         >
-                                          Save
+                                          {agentSettings.memory?.vault?.enabled ? (
+                                            <ToggleRight className="w-5 h-5 text-green-400" />
+                                          ) : (
+                                            <ToggleLeft className="w-5 h-5 text-white/30" />
+                                          )}
                                         </button>
                                       </div>
-                                    </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Debounce (ms)
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          type="number"
-                                          min={0}
-                                          value={vaultDebounceDraft}
-                                          onChange={(e) => setVaultDebounceDraft(e.target.value)}
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchMemorySettings(
-                                              {
-                                                vault: {
-                                                  ingest: {
-                                                    debounceMs: Math.max(
-                                                      0,
-                                                      Math.floor(
-                                                        Number(vaultDebounceDraft) || 5000,
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div className="md:col-span-2">
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Vault path
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              value={vaultPathDraft}
+                                              onChange={(e) => setVaultPathDraft(e.target.value)}
+                                              placeholder="/absolute/path/to/argent-vault"
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  { vault: { path: vaultPathDraft.trim() } },
+                                                  "Vault path saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Knowledge collection
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              value={vaultCollectionDraft}
+                                              onChange={(e) =>
+                                                setVaultCollectionDraft(e.target.value)
+                                              }
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  {
+                                                    vault: {
+                                                      knowledgeCollection:
+                                                        vaultCollectionDraft.trim(),
+                                                    },
+                                                  },
+                                                  "Vault collection saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
+                                          <div>
+                                            <div className="text-white/75 text-sm">
+                                              Scheduled ingest
+                                            </div>
+                                            <div className="text-white/40 text-xs">
+                                              Enables automatic markdown import on the configured
+                                              interval.
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() =>
+                                              void patchMemorySettings(
+                                                {
+                                                  vault: {
+                                                    ingest: {
+                                                      enabled: !(
+                                                        agentSettings.memory?.vault?.ingest
+                                                          ?.enabled === true
                                                       ),
-                                                    ),
+                                                    },
                                                   },
                                                 },
-                                              },
-                                              "Vault ingest debounce saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
+                                                `Vault ingest ${
+                                                  agentSettings.memory?.vault?.ingest?.enabled
+                                                    ? "disabled"
+                                                    : "enabled"
+                                                }.`,
+                                              )
+                                            }
+                                            className="text-white/50 hover:text-white/80"
+                                            disabled={memoryV3Saving}
+                                          >
+                                            {agentSettings.memory?.vault?.ingest?.enabled ? (
+                                              <ToggleRight className="w-5 h-5 text-green-400" />
+                                            ) : (
+                                              <ToggleLeft className="w-5 h-5 text-white/30" />
+                                            )}
+                                          </button>
+                                        </div>
+                                        <div>
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Ingest interval
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              value={vaultIntervalDraft}
+                                              onChange={(e) =>
+                                                setVaultIntervalDraft(e.target.value)
+                                              }
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  {
+                                                    vault: {
+                                                      ingest: {
+                                                        interval: vaultIntervalDraft.trim(),
+                                                      },
+                                                    },
+                                                  },
+                                                  "Vault ingest interval saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Debounce (ms)
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              type="number"
+                                              min={0}
+                                              value={vaultDebounceDraft}
+                                              onChange={(e) =>
+                                                setVaultDebounceDraft(e.target.value)
+                                              }
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  {
+                                                    vault: {
+                                                      ingest: {
+                                                        debounceMs: Math.max(
+                                                          0,
+                                                          Math.floor(
+                                                            Number(vaultDebounceDraft) || 5000,
+                                                          ),
+                                                        ),
+                                                      },
+                                                    },
+                                                  },
+                                                  "Vault ingest debounce saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div className="md:col-span-2">
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Excluded paths
+                                          </label>
+                                          <textarea
+                                            value={vaultExcludePathsDraft}
+                                            onChange={(e) =>
+                                              setVaultExcludePathsDraft(e.target.value)
+                                            }
+                                            rows={3}
+                                            placeholder=".obsidian&#10;templates&#10;archive/"
+                                            className="w-full mt-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
+                                          />
+                                          <div className="mt-2 flex justify-end">
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  {
+                                                    vault: {
+                                                      ingest: {
+                                                        excludePaths: vaultExcludePathsDraft
+                                                          .split(/\r?\n/)
+                                                          .map((entry) => entry.trim())
+                                                          .filter(Boolean),
+                                                      },
+                                                    },
+                                                  },
+                                                  "Vault exclusion paths saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save exclusions
+                                            </button>
+                                          </div>
+                                        </div>
                                       </div>
-                                    </div>
-                                    <div className="md:col-span-2">
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Excluded paths
-                                      </label>
-                                      <textarea
-                                        value={vaultExcludePathsDraft}
-                                        onChange={(e) => setVaultExcludePathsDraft(e.target.value)}
-                                        rows={3}
-                                        placeholder=".obsidian&#10;templates&#10;archive/"
-                                        className="w-full mt-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
-                                      />
-                                      <div className="mt-2 flex justify-end">
+                                      <div className="flex flex-wrap gap-2">
                                         <button
-                                          onClick={() =>
-                                            void patchMemorySettings(
-                                              {
-                                                vault: {
-                                                  ingest: {
-                                                    excludePaths: vaultExcludePathsDraft
-                                                      .split(/\r?\n/)
-                                                      .map((entry) => entry.trim())
-                                                      .filter(Boolean),
-                                                  },
-                                                },
-                                              },
-                                              "Vault exclusion paths saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
+                                          onClick={() => void runVaultIngest(true)}
+                                          disabled={vaultIngestAction !== null}
+                                          className="px-3 py-2 bg-white/10 hover:bg-white/15 text-white/80 rounded-lg text-xs font-medium disabled:opacity-50"
+                                        >
+                                          {vaultIngestAction === "preview"
+                                            ? "Previewing…"
+                                            : "Preview vault ingest"}
+                                        </button>
+                                        <button
+                                          onClick={() => void runVaultIngest(false)}
+                                          disabled={vaultIngestAction !== null}
                                           className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
                                         >
-                                          Save exclusions
+                                          {vaultIngestAction === "run"
+                                            ? "Ingesting…"
+                                            : "Run ingest now"}
                                         </button>
                                       </div>
                                     </div>
-                                  </div>
-                                  <div className="flex flex-wrap gap-2">
-                                    <button
-                                      onClick={() => void runVaultIngest(true)}
-                                      disabled={vaultIngestAction !== null}
-                                      className="px-3 py-2 bg-white/10 hover:bg-white/15 text-white/80 rounded-lg text-xs font-medium disabled:opacity-50"
-                                    >
-                                      {vaultIngestAction === "preview"
-                                        ? "Previewing…"
-                                        : "Preview vault ingest"}
-                                    </button>
-                                    <button
-                                      onClick={() => void runVaultIngest(false)}
-                                      disabled={vaultIngestAction !== null}
-                                      className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                    >
-                                      {vaultIngestAction === "run"
-                                        ? "Ingesting…"
-                                        : "Run ingest now"}
-                                    </button>
-                                  </div>
-                                </div>
 
-                                <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-3 space-y-3">
-                                  <div className="flex items-center gap-2">
-                                    <GitBranch className="w-4 h-4 text-violet-300" />
-                                    <div>
-                                      <div className="text-white/85 text-sm font-medium">
-                                        Memory V3: Cognee Relationship Retrieval
-                                      </div>
-                                      <div className="text-white/45 text-xs">
-                                        This is supplemental graph-style retrieval. MemU remains the
-                                        primary operational memory even when Cognee is enabled.
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
-                                      <div>
-                                        <div className="text-white/75 text-sm">Cognee enabled</div>
-                                        <div className="text-white/40 text-xs">
-                                          Master switch for the external graph retrieval path.
+                                    <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-3 space-y-3">
+                                      <div className="flex items-center gap-2">
+                                        <GitBranch className="w-4 h-4 text-violet-300" />
+                                        <div>
+                                          <div className="text-white/85 text-sm font-medium">
+                                            Memory V3: Cognee Relationship Retrieval
+                                          </div>
+                                          <div className="text-white/45 text-xs">
+                                            This is supplemental graph-style retrieval. MemU remains
+                                            the primary operational memory even when Cognee is
+                                            enabled.
+                                          </div>
                                         </div>
                                       </div>
-                                      <button
-                                        onClick={() =>
-                                          void patchMemorySettings(
-                                            {
-                                              cognee: {
-                                                enabled: !(
-                                                  agentSettings.memory?.cognee?.enabled === true
-                                                ),
-                                              },
-                                            },
-                                            `Cognee ${
-                                              agentSettings.memory?.cognee?.enabled
-                                                ? "disabled"
-                                                : "enabled"
-                                            }.`,
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                        disabled={memoryV3Saving}
-                                      >
-                                        {agentSettings.memory?.cognee?.enabled ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
-                                    <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
-                                      <div>
-                                        <div className="text-white/75 text-sm">
-                                          Retrieval enabled
-                                        </div>
-                                        <div className="text-white/40 text-xs">
-                                          Allows `memory_recall` to consult Cognee when gates match.
-                                        </div>
-                                      </div>
-                                      <button
-                                        onClick={() =>
-                                          void patchMemorySettings(
-                                            {
-                                              cognee: {
-                                                retrieval: {
-                                                  enabled: !(
-                                                    agentSettings.memory?.cognee?.retrieval
-                                                      ?.enabled === true
-                                                  ),
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
+                                          <div>
+                                            <div className="text-white/75 text-sm">
+                                              Cognee enabled
+                                            </div>
+                                            <div className="text-white/40 text-xs">
+                                              Master switch for the external graph retrieval path.
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() =>
+                                              void patchMemorySettings(
+                                                {
+                                                  cognee: {
+                                                    enabled: !(
+                                                      agentSettings.memory?.cognee?.enabled === true
+                                                    ),
+                                                  },
                                                 },
-                                              },
-                                            },
-                                            `Cognee retrieval ${
-                                              agentSettings.memory?.cognee?.retrieval?.enabled
-                                                ? "disabled"
-                                                : "enabled"
-                                            }.`,
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                        disabled={memoryV3Saving}
-                                      >
-                                        {agentSettings.memory?.cognee?.retrieval?.enabled ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Retrieval timeout (ms)
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          type="number"
-                                          min={1}
-                                          value={cogneeTimeoutDraft}
-                                          onChange={(e) => setCogneeTimeoutDraft(e.target.value)}
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-violet-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchMemorySettings(
-                                              {
-                                                cognee: {
-                                                  retrieval: {
-                                                    timeoutMs: Math.max(
-                                                      1,
-                                                      Math.floor(
-                                                        Number(cogneeTimeoutDraft) || 5000,
+                                                `Cognee ${
+                                                  agentSettings.memory?.cognee?.enabled
+                                                    ? "disabled"
+                                                    : "enabled"
+                                                }.`,
+                                              )
+                                            }
+                                            className="text-white/50 hover:text-white/80"
+                                            disabled={memoryV3Saving}
+                                          >
+                                            {agentSettings.memory?.cognee?.enabled ? (
+                                              <ToggleRight className="w-5 h-5 text-green-400" />
+                                            ) : (
+                                              <ToggleLeft className="w-5 h-5 text-white/30" />
+                                            )}
+                                          </button>
+                                        </div>
+                                        <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
+                                          <div>
+                                            <div className="text-white/75 text-sm">
+                                              Retrieval enabled
+                                            </div>
+                                            <div className="text-white/40 text-xs">
+                                              Allows `memory_recall` to consult Cognee when gates
+                                              match.
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() =>
+                                              void patchMemorySettings(
+                                                {
+                                                  cognee: {
+                                                    retrieval: {
+                                                      enabled: !(
+                                                        agentSettings.memory?.cognee?.retrieval
+                                                          ?.enabled === true
                                                       ),
-                                                    ),
+                                                    },
                                                   },
                                                 },
-                                              },
-                                              "Cognee timeout saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Max results per query
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          type="number"
-                                          min={1}
-                                          value={cogneeMaxResultsDraft}
-                                          onChange={(e) => setCogneeMaxResultsDraft(e.target.value)}
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-violet-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchMemorySettings(
-                                              {
-                                                cognee: {
-                                                  retrieval: {
-                                                    maxResultsPerQuery: Math.max(
-                                                      1,
-                                                      Math.floor(
-                                                        Number(cogneeMaxResultsDraft) || 5,
+                                                `Cognee retrieval ${
+                                                  agentSettings.memory?.cognee?.retrieval?.enabled
+                                                    ? "disabled"
+                                                    : "enabled"
+                                                }.`,
+                                              )
+                                            }
+                                            className="text-white/50 hover:text-white/80"
+                                            disabled={memoryV3Saving}
+                                          >
+                                            {agentSettings.memory?.cognee?.retrieval?.enabled ? (
+                                              <ToggleRight className="w-5 h-5 text-green-400" />
+                                            ) : (
+                                              <ToggleLeft className="w-5 h-5 text-white/30" />
+                                            )}
+                                          </button>
+                                        </div>
+                                        <div>
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Retrieval timeout (ms)
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              value={cogneeTimeoutDraft}
+                                              onChange={(e) =>
+                                                setCogneeTimeoutDraft(e.target.value)
+                                              }
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-violet-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  {
+                                                    cognee: {
+                                                      retrieval: {
+                                                        timeoutMs: Math.max(
+                                                          1,
+                                                          Math.floor(
+                                                            Number(cogneeTimeoutDraft) || 5000,
+                                                          ),
+                                                        ),
+                                                      },
+                                                    },
+                                                  },
+                                                  "Cognee timeout saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Max results per query
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              value={cogneeMaxResultsDraft}
+                                              onChange={(e) =>
+                                                setCogneeMaxResultsDraft(e.target.value)
+                                              }
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-violet-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  {
+                                                    cognee: {
+                                                      retrieval: {
+                                                        maxResultsPerQuery: Math.max(
+                                                          1,
+                                                          Math.floor(
+                                                            Number(cogneeMaxResultsDraft) || 5,
+                                                          ),
+                                                        ),
+                                                      },
+                                                    },
+                                                  },
+                                                  "Cognee max results saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Embedding dimensions
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              value={cogneeEmbeddingDimensionsDraft}
+                                              onChange={(e) =>
+                                                setCogneeEmbeddingDimensionsDraft(e.target.value)
+                                              }
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-violet-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  {
+                                                    cognee: {
+                                                      embeddingDimensions: Math.max(
+                                                        1,
+                                                        Math.floor(
+                                                          Number(cogneeEmbeddingDimensionsDraft) ||
+                                                            1536,
+                                                        ),
                                                       ),
-                                                    ),
+                                                    },
+                                                  },
+                                                  "Cognee embedding dimensions saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div className="md:col-span-2">
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Search modes
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              value={cogneeSearchModesDraft}
+                                              onChange={(e) =>
+                                                setCogneeSearchModesDraft(e.target.value)
+                                              }
+                                              placeholder="GRAPH_COMPLETION, INSIGHTS"
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-violet-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  {
+                                                    cognee: {
+                                                      retrieval: {
+                                                        searchModes: cogneeSearchModesDraft
+                                                          .split(",")
+                                                          .map((entry) => entry.trim())
+                                                          .filter(Boolean),
+                                                      },
+                                                    },
+                                                  },
+                                                  "Cognee search modes saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
+                                          <div>
+                                            <div className="text-white/75 text-sm">
+                                              Trigger on sufficiency fail
+                                            </div>
+                                            <div className="text-white/40 text-xs">
+                                              Ask Cognee when MemU results are sparse or weak.
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() =>
+                                              void patchMemorySettings(
+                                                {
+                                                  cognee: {
+                                                    retrieval: {
+                                                      triggerOnSufficiencyFail: !(
+                                                        agentSettings.memory?.cognee?.retrieval
+                                                          ?.triggerOnSufficiencyFail !== false
+                                                      ),
+                                                    },
                                                   },
                                                 },
-                                              },
-                                              "Cognee max results saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Embedding dimensions
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          type="number"
-                                          min={1}
-                                          value={cogneeEmbeddingDimensionsDraft}
-                                          onChange={(e) =>
-                                            setCogneeEmbeddingDimensionsDraft(e.target.value)
-                                          }
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-violet-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchMemorySettings(
-                                              {
-                                                cognee: {
-                                                  embeddingDimensions: Math.max(
-                                                    1,
-                                                    Math.floor(
-                                                      Number(cogneeEmbeddingDimensionsDraft) ||
-                                                        1536,
-                                                    ),
-                                                  ),
-                                                },
-                                              },
-                                              "Cognee embedding dimensions saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div className="md:col-span-2">
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Search modes
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          value={cogneeSearchModesDraft}
-                                          onChange={(e) =>
-                                            setCogneeSearchModesDraft(e.target.value)
-                                          }
-                                          placeholder="GRAPH_COMPLETION, INSIGHTS"
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-violet-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchMemorySettings(
-                                              {
-                                                cognee: {
-                                                  retrieval: {
-                                                    searchModes: cogneeSearchModesDraft
-                                                      .split(",")
-                                                      .map((entry) => entry.trim())
-                                                      .filter(Boolean),
+                                                "Cognee sufficiency trigger saved.",
+                                              )
+                                            }
+                                            className="text-white/50 hover:text-white/80"
+                                            disabled={memoryV3Saving}
+                                          >
+                                            {agentSettings.memory?.cognee?.retrieval
+                                              ?.triggerOnSufficiencyFail !== false ? (
+                                              <ToggleRight className="w-5 h-5 text-green-400" />
+                                            ) : (
+                                              <ToggleLeft className="w-5 h-5 text-white/30" />
+                                            )}
+                                          </button>
+                                        </div>
+                                        <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
+                                          <div>
+                                            <div className="text-white/75 text-sm">
+                                              Trigger on structural query
+                                            </div>
+                                            <div className="text-white/40 text-xs">
+                                              Ask Cognee for relationship-heavy questions and
+                                              graph-shaped retrieval problems.
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() =>
+                                              void patchMemorySettings(
+                                                {
+                                                  cognee: {
+                                                    retrieval: {
+                                                      triggerOnStructuralQuery: !(
+                                                        agentSettings.memory?.cognee?.retrieval
+                                                          ?.triggerOnStructuralQuery !== false
+                                                      ),
+                                                    },
                                                   },
                                                 },
-                                              },
-                                              "Cognee search modes saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
-                                      <div>
-                                        <div className="text-white/75 text-sm">
-                                          Trigger on sufficiency fail
-                                        </div>
-                                        <div className="text-white/40 text-xs">
-                                          Ask Cognee when MemU results are sparse or weak.
+                                                "Cognee structural-query trigger saved.",
+                                              )
+                                            }
+                                            className="text-white/50 hover:text-white/80"
+                                            disabled={memoryV3Saving}
+                                          >
+                                            {agentSettings.memory?.cognee?.retrieval
+                                              ?.triggerOnStructuralQuery !== false ? (
+                                              <ToggleRight className="w-5 h-5 text-green-400" />
+                                            ) : (
+                                              <ToggleLeft className="w-5 h-5 text-white/30" />
+                                            )}
+                                          </button>
                                         </div>
                                       </div>
-                                      <button
-                                        onClick={() =>
-                                          void patchMemorySettings(
-                                            {
-                                              cognee: {
-                                                retrieval: {
-                                                  triggerOnSufficiencyFail: !(
-                                                    agentSettings.memory?.cognee?.retrieval
-                                                      ?.triggerOnSufficiencyFail !== false
-                                                  ),
-                                                },
-                                              },
-                                            },
-                                            "Cognee sufficiency trigger saved.",
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                        disabled={memoryV3Saving}
-                                      >
-                                        {agentSettings.memory?.cognee?.retrieval
-                                          ?.triggerOnSufficiencyFail !== false ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
                                     </div>
-                                    <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
-                                      <div>
-                                        <div className="text-white/75 text-sm">
-                                          Trigger on structural query
-                                        </div>
-                                        <div className="text-white/40 text-xs">
-                                          Ask Cognee for relationship-heavy questions and
-                                          graph-shaped retrieval problems.
-                                        </div>
-                                      </div>
-                                      <button
-                                        onClick={() =>
-                                          void patchMemorySettings(
-                                            {
-                                              cognee: {
-                                                retrieval: {
-                                                  triggerOnStructuralQuery: !(
-                                                    agentSettings.memory?.cognee?.retrieval
-                                                      ?.triggerOnStructuralQuery !== false
-                                                  ),
-                                                },
-                                              },
-                                            },
-                                            "Cognee structural-query trigger saved.",
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                        disabled={memoryV3Saving}
-                                      >
-                                        {agentSettings.memory?.cognee?.retrieval
-                                          ?.triggerOnStructuralQuery !== false ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
 
-                                <div className="rounded-lg border border-fuchsia-500/20 bg-fuchsia-500/5 p-3 space-y-3">
-                                  <div className="flex items-center gap-2">
-                                    <Wrench className="w-4 h-4 text-fuchsia-300" />
-                                    <div>
-                                      <div className="text-white/85 text-sm font-medium">
-                                        AOS Google Workspace Readiness
+                                    <div className="rounded-lg border border-fuchsia-500/20 bg-fuchsia-500/5 p-3 space-y-3">
+                                      <div className="flex items-center gap-2">
+                                        <Wrench className="w-4 h-4 text-fuchsia-300" />
+                                        <div>
+                                          <div className="text-white/85 text-sm font-medium">
+                                            AOS Google Workspace Readiness
+                                          </div>
+                                          <div className="text-white/45 text-xs">
+                                            Checks the imported aos-google runtime so Google
+                                            Workspace CLI prerequisites are visible before you rely
+                                            on those tools in Argent.
+                                          </div>
+                                        </div>
                                       </div>
-                                      <div className="text-white/45 text-xs">
-                                        Checks the imported aos-google runtime so Google Workspace
-                                        CLI prerequisites are visible before you rely on those tools
-                                        in Argent.
+                                      <div className="flex flex-wrap gap-2">
+                                        <button
+                                          onClick={() => void runAosGooglePreflight(false)}
+                                          disabled={aosGooglePreflightLoading}
+                                          className="px-3 py-2 bg-fuchsia-500/20 hover:bg-fuchsia-500/30 text-fuchsia-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                        >
+                                          {aosGooglePreflightLoading
+                                            ? "Checking…"
+                                            : "Check GWS readiness"}
+                                        </button>
+                                        <button
+                                          onClick={() => void runAosGooglePreflight(true)}
+                                          disabled={aosGooglePreflightLoading}
+                                          className="px-3 py-2 bg-white/10 hover:bg-white/15 text-white/80 rounded-lg text-xs font-medium disabled:opacity-50"
+                                        >
+                                          {aosGooglePreflightLoading
+                                            ? "Checking…"
+                                            : "Install + check GWS"}
+                                        </button>
                                       </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex flex-wrap gap-2">
-                                    <button
-                                      onClick={() => void runAosGooglePreflight(false)}
-                                      disabled={aosGooglePreflightLoading}
-                                      className="px-3 py-2 bg-fuchsia-500/20 hover:bg-fuchsia-500/30 text-fuchsia-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                    >
-                                      {aosGooglePreflightLoading
-                                        ? "Checking…"
-                                        : "Check GWS readiness"}
-                                    </button>
-                                    <button
-                                      onClick={() => void runAosGooglePreflight(true)}
-                                      disabled={aosGooglePreflightLoading}
-                                      className="px-3 py-2 bg-white/10 hover:bg-white/15 text-white/80 rounded-lg text-xs font-medium disabled:opacity-50"
-                                    >
-                                      {aosGooglePreflightLoading
-                                        ? "Checking…"
-                                        : "Install + check GWS"}
-                                    </button>
-                                  </div>
-                                  {aosGooglePreflight && (
-                                    <div className="rounded-lg bg-gray-800/50 border border-white/10 p-3 space-y-3">
-                                      <div className="flex items-center gap-2 text-sm text-white/85">
-                                        {aosGooglePreflight.ok ? (
-                                          <CheckCircle className="w-4 h-4 text-emerald-400" />
-                                        ) : (
-                                          <AlertTriangle className="w-4 h-4 text-amber-400" />
-                                        )}
-                                        <span>
-                                          {aosGooglePreflight.ok
-                                            ? "aos-google prerequisites ready"
-                                            : "aos-google requires operator action"}
-                                        </span>
-                                      </div>
-                                      {Array.isArray(aosGooglePreflight.checks) &&
-                                        aosGooglePreflight.checks.length > 0 && (
-                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                            {aosGooglePreflight.checks.map((check) => (
-                                              <div
-                                                key={check.name}
-                                                className="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs"
-                                              >
-                                                <div className="flex items-center justify-between gap-2">
-                                                  <span className="font-mono text-white/70">
-                                                    {check.name}
-                                                  </span>
-                                                  <span
-                                                    className={
-                                                      check.ok
-                                                        ? "text-emerald-300"
-                                                        : "text-amber-300"
-                                                    }
+                                      {aosGooglePreflight && (
+                                        <div className="rounded-lg bg-gray-800/50 border border-white/10 p-3 space-y-3">
+                                          <div className="flex items-center gap-2 text-sm text-white/85">
+                                            {aosGooglePreflight.ok ? (
+                                              <CheckCircle className="w-4 h-4 text-emerald-400" />
+                                            ) : (
+                                              <AlertTriangle className="w-4 h-4 text-amber-400" />
+                                            )}
+                                            <span>
+                                              {aosGooglePreflight.ok
+                                                ? "aos-google prerequisites ready"
+                                                : "aos-google requires operator action"}
+                                            </span>
+                                          </div>
+                                          {Array.isArray(aosGooglePreflight.checks) &&
+                                            aosGooglePreflight.checks.length > 0 && (
+                                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                {aosGooglePreflight.checks.map((check) => (
+                                                  <div
+                                                    key={check.name}
+                                                    className="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs"
                                                   >
-                                                    {check.ok ? "ok" : "needs work"}
-                                                  </span>
-                                                </div>
-                                                {check.details && (
-                                                  <div className="mt-2 text-white/45 break-words">
-                                                    {typeof check.details.install_hint ===
-                                                      "string" && (
-                                                      <div>{check.details.install_hint}</div>
-                                                    )}
-                                                    {typeof check.details.reason === "string" && (
-                                                      <div>{check.details.reason}</div>
-                                                    )}
-                                                    {typeof check.details.resolved_path ===
-                                                      "string" && (
-                                                      <div className="font-mono">
-                                                        {check.details.resolved_path}
+                                                    <div className="flex items-center justify-between gap-2">
+                                                      <span className="font-mono text-white/70">
+                                                        {check.name}
+                                                      </span>
+                                                      <span
+                                                        className={
+                                                          check.ok
+                                                            ? "text-emerald-300"
+                                                            : "text-amber-300"
+                                                        }
+                                                      >
+                                                        {check.ok ? "ok" : "needs work"}
+                                                      </span>
+                                                    </div>
+                                                    {check.details && (
+                                                      <div className="mt-2 text-white/45 break-words">
+                                                        {typeof check.details.install_hint ===
+                                                          "string" && (
+                                                          <div>{check.details.install_hint}</div>
+                                                        )}
+                                                        {typeof check.details.reason ===
+                                                          "string" && (
+                                                          <div>{check.details.reason}</div>
+                                                        )}
+                                                        {typeof check.details.resolved_path ===
+                                                          "string" && (
+                                                          <div className="font-mono">
+                                                            {check.details.resolved_path}
+                                                          </div>
+                                                        )}
                                                       </div>
                                                     )}
                                                   </div>
-                                                )}
+                                                ))}
                                               </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                      {Array.isArray(aosGooglePreflight.next_steps) &&
-                                        aosGooglePreflight.next_steps.length > 0 && (
-                                          <div className="text-xs text-white/50 space-y-1">
-                                            {aosGooglePreflight.next_steps.map((step) => (
-                                              <div key={step}>- {step}</div>
-                                            ))}
-                                          </div>
-                                        )}
+                                            )}
+                                          {Array.isArray(aosGooglePreflight.next_steps) &&
+                                            aosGooglePreflight.next_steps.length > 0 && (
+                                              <div className="text-xs text-white/50 space-y-1">
+                                                {aosGooglePreflight.next_steps.map((step) => (
+                                                  <div key={step}>- {step}</div>
+                                                ))}
+                                              </div>
+                                            )}
+                                        </div>
+                                      )}
                                     </div>
-                                  )}
-                                </div>
 
-                                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-3">
-                                  <div className="flex items-center gap-2">
-                                    <Brain className="w-4 h-4 text-emerald-300" />
-                                    <div>
-                                      <div className="text-white/85 text-sm font-medium">
-                                        Contemplation Discovery Phase
-                                      </div>
-                                      <div className="text-white/45 text-xs">
-                                        Discovery runs after contemplation, uses a strict budget,
-                                        and writes only bounded findings back into MemU as knowledge
-                                        items.
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
-                                      <div>
-                                        <div className="text-white/75 text-sm">Enabled</div>
-                                        <div className="text-white/40 text-xs">
-                                          Allows post-contemplation relationship discovery.
+                                    <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-3">
+                                      <div className="flex items-center gap-2">
+                                        <Brain className="w-4 h-4 text-emerald-300" />
+                                        <div>
+                                          <div className="text-white/85 text-sm font-medium">
+                                            Contemplation Discovery Phase
+                                          </div>
+                                          <div className="text-white/45 text-xs">
+                                            Discovery runs after contemplation, uses a strict
+                                            budget, and writes only bounded findings back into MemU
+                                            as knowledge items.
+                                          </div>
                                         </div>
                                       </div>
-                                      <button
-                                        onClick={() =>
-                                          void patchDiscoveryPhaseSettings(
-                                            {
-                                              enabled: !(
-                                                agentSettings.contemplation?.discoveryPhase
-                                                  ?.enabled === true
-                                              ),
-                                            },
-                                            `Discovery phase ${
-                                              agentSettings.contemplation?.discoveryPhase?.enabled
-                                                ? "disabled"
-                                                : "enabled"
-                                            }.`,
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                        disabled={memoryV3Saving}
-                                      >
-                                        {agentSettings.contemplation?.discoveryPhase?.enabled ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Every N episodes
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          type="number"
-                                          min={1}
-                                          value={discoveryEveryEpisodesDraft}
-                                          onChange={(e) =>
-                                            setDiscoveryEveryEpisodesDraft(e.target.value)
-                                          }
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-emerald-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchDiscoveryPhaseSettings(
-                                              {
-                                                everyEpisodes: Math.max(
-                                                  1,
-                                                  Math.floor(
-                                                    Number(discoveryEveryEpisodesDraft) || 5,
+                                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
+                                          <div>
+                                            <div className="text-white/75 text-sm">Enabled</div>
+                                            <div className="text-white/40 text-xs">
+                                              Allows post-contemplation relationship discovery.
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() =>
+                                              void patchDiscoveryPhaseSettings(
+                                                {
+                                                  enabled: !(
+                                                    agentSettings.contemplation?.discoveryPhase
+                                                      ?.enabled === true
                                                   ),
-                                                ),
-                                              },
-                                              "Discovery cadence saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
+                                                },
+                                                `Discovery phase ${
+                                                  agentSettings.contemplation?.discoveryPhase
+                                                    ?.enabled
+                                                    ? "disabled"
+                                                    : "enabled"
+                                                }.`,
+                                              )
+                                            }
+                                            className="text-white/50 hover:text-white/80"
+                                            disabled={memoryV3Saving}
+                                          >
+                                            {agentSettings.contemplation?.discoveryPhase
+                                              ?.enabled ? (
+                                              <ToggleRight className="w-5 h-5 text-green-400" />
+                                            ) : (
+                                              <ToggleLeft className="w-5 h-5 text-white/30" />
+                                            )}
+                                          </button>
+                                        </div>
+                                        <div>
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Every N episodes
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              value={discoveryEveryEpisodesDraft}
+                                              onChange={(e) =>
+                                                setDiscoveryEveryEpisodesDraft(e.target.value)
+                                              }
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-emerald-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchDiscoveryPhaseSettings(
+                                                  {
+                                                    everyEpisodes: Math.max(
+                                                      1,
+                                                      Math.floor(
+                                                        Number(discoveryEveryEpisodesDraft) || 5,
+                                                      ),
+                                                    ),
+                                                  },
+                                                  "Discovery cadence saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Max duration (ms)
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              type="number"
+                                              min={100}
+                                              value={discoveryMaxDurationDraft}
+                                              onChange={(e) =>
+                                                setDiscoveryMaxDurationDraft(e.target.value)
+                                              }
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-emerald-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchDiscoveryPhaseSettings(
+                                                  {
+                                                    maxDurationMs: Math.max(
+                                                      100,
+                                                      Math.floor(
+                                                        Number(discoveryMaxDurationDraft) || 10000,
+                                                      ),
+                                                    ),
+                                                  },
+                                                  "Discovery max duration saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
                                       </div>
                                     </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Max duration (ms)
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          type="number"
-                                          min={100}
-                                          value={discoveryMaxDurationDraft}
-                                          onChange={(e) =>
-                                            setDiscoveryMaxDurationDraft(e.target.value)
-                                          }
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-emerald-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchDiscoveryPhaseSettings(
-                                              {
-                                                maxDurationMs: Math.max(
-                                                  100,
-                                                  Math.floor(
-                                                    Number(discoveryMaxDurationDraft) || 10000,
-                                                  ),
-                                                ),
-                                              },
-                                              "Discovery max duration saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
+                                  </>
+                                )}
                               </>
                             )}
                           </div>
