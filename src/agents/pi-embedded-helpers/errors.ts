@@ -384,6 +384,13 @@ export function formatAssistantErrorText(
     return "The selected model is unavailable or retired. Please choose another model.";
   }
 
+  if (/Cannot read propert(?:y|ies) of undefined \(reading ['"][a-z0-9_]+['"]\)/i.test(raw)) {
+    return (
+      "The model provider returned a malformed response after a tool turn. " +
+      "The transcript was protected for the next retry; try again or switch models if it repeats."
+    );
+  }
+
   if (isLikelyHttpErrorText(raw) || isRawApiErrorPayload(raw)) {
     return formatRawAssistantErrorForUi(raw);
   }

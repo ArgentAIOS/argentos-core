@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import os from "node:os";
-import type { ImageContent } from "../../../agent-core/ai.js";
+import type { Api, ImageContent, Model } from "../../../agent-core/ai.js";
 import type { AgentMessage } from "../../../agent-core/core.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import {
@@ -146,6 +146,7 @@ import {
 import { splitSdkTools } from "../tool-split.js";
 import { describeUnknownError, mapThinkingLevel } from "../utils.js";
 import { detectAndLoadPromptImages, modelSupportsImages } from "./images.js";
+import { sanitizeMessagesForModelAdapter } from "./message-sanitizer.js";
 import {
   buildCrossChannelContextBlock,
   buildSessionBootstrapBlock,
@@ -1429,6 +1430,16 @@ export async function runEmbeddedAttempt(
         promptStartMessageCount = activeSession.messages.length;
 
         try {
+          const sanitizedHistory = sanitizeMessagesForModelAdapter(activeSession.messages);
+          if (sanitizedHistory.changed) {
+            activeSession.agent.replaceMessages(sanitizedHistory.messages);
+            log.warn(
+              `repaired malformed transcript before model adapter: ` +
+                `runId=${params.runId} sessionId=${params.sessionId} ` +
+                `repairs=${sanitizedHistory.repairs.join("; ")}`,
+            );
+          }
+
           // Detect and load images referenced in the prompt for vision-capable models.
           // This eliminates the need for an explicit "view" tool call by injecting
           // images directly into the prompt when the model supports it.
