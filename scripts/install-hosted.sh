@@ -1071,6 +1071,7 @@ install_git() {
     # Restore root workspace lockfile if dashboard install mutated it
     # (this repo uses a single root pnpm-lock.yaml, not dashboard/pnpm-lock.yaml)
     git -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
+    rm -f "$dashboard_dir/pnpm-lock.yaml" 2>/dev/null || true
 
     # Build dashboard (skip tsc — use vite directly to avoid pre-existing TS strict errors)
     info "Building dashboard..."
