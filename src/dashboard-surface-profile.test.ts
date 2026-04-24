@@ -24,6 +24,20 @@ describe("dashboard surface profile", () => {
     expect(parseDashboardSurfaceProfile(null)).toBe("public-core");
     expect(parseDashboardSurfaceProfile("")).toBe("public-core");
     expect(parseDashboardSurfaceProfile("{not-json")).toBe("public-core");
+    expect(parseDashboardSurfaceProfile("{}")).toBe("public-core");
+    expect(parseDashboardSurfaceProfile(JSON.stringify({ distribution: {} }))).toBe("public-core");
+  });
+
+  it("only enables full surface when explicitly configured", () => {
+    expect(
+      parseDashboardSurfaceProfile(
+        JSON.stringify({
+          distribution: {
+            surfaceProfile: "full",
+          },
+        }),
+      ),
+    ).toBe("full");
   });
 
   it("keeps Core settings tabs visible in public-core", () => {

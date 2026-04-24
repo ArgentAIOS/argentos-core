@@ -34,6 +34,16 @@ Status: fixed locally on `dev`.
   `2026.4.24-dev.0`.
 - `pnpm release:check` then passed.
 
+### Public Core could silently render the full dashboard surface
+
+Status: fixed locally on `dev`.
+
+- A readable config without `distribution.surfaceProfile` defaulted to `full`.
+- Public Core now fails closed to `public-core` unless the config explicitly
+  says `distribution.surfaceProfile: "full"`.
+- Execution-worker and job-board controls are both hidden from public Core.
+- Regression coverage was added in `src/dashboard-surface-profile.test.ts`.
+
 ## Core verification checklist before merging to `main`
 
 - Marketplace: Sapphire can discover and call `marketplace`.
@@ -55,6 +65,13 @@ Status: fixed locally on `dev`.
   sync without the tiny-globby copy error.
 - Pack rail: `pnpm build`, `pnpm release:check`, focused tests, and install
   smoke pass.
+
+Known verification caveat:
+
+- `pnpm exec oxlint --type-aware dashboard/src/components/ConfigPanel.tsx`
+  currently reports pre-existing broad lint debt in that file. Do not use that
+  whole-file lint result as proof that a narrow dashboard surface-profile patch
+  failed; use focused tests until the file is cleaned separately.
 
 ## Release procedure
 

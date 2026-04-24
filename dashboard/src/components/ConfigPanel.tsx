@@ -2660,7 +2660,7 @@ export function ConfigPanel({
   const isPublicCoreSurface = surfaceProfile === "public-core";
   const showAgentTargetScope = !isPublicCoreSurface;
   const showAgentRuntimeLoadProfile = !isPublicCoreSurface;
-  const showAgentExecutionControls = true;
+  const showAgentExecutionControls = !isPublicCoreSurface;
   const showAgentMemoryStatusControls = true;
   const showAgentVaultControls = true;
   const showAgentMemoryAdminControls = true;

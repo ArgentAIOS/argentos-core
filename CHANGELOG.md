@@ -21,6 +21,8 @@ Docs: https://docs.argentos.ai
   into chat.
 - Core tools: wire the `marketplace` tool directly into the real agent tool
   surface and remove the obsolete bundled ClawHub skill.
+- Dashboard: default missing dashboard surface profiles to public Core and hide
+  execution-worker/job-board controls unless the full surface is explicit.
 - Release: align bundled extension versions with the Core package version so
   `pnpm release:check` passes.
 

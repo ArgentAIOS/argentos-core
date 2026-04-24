@@ -21,7 +21,7 @@ export function parseDashboardSurfaceProfile(
   }
   try {
     const parsed = JSON.parse(rawConfigText);
-    return parsed?.distribution?.surfaceProfile === "public-core" ? "public-core" : "full";
+    return parsed?.distribution?.surfaceProfile === "full" ? "full" : "public-core";
   } catch {
     return "public-core";
   }
