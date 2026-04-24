@@ -2660,6 +2660,7 @@ export function ConfigPanel({
   const showAgentRuntimeLoadProfile = !isPublicCoreSurface;
   const showAgentExecutionControls = !isPublicCoreSurface;
   const showAgentMemoryStatusControls = true;
+  const showAgentVaultControls = true;
   const showAgentMemoryAdminControls = !isPublicCoreSurface;
   const showAgentIntentSimulationControls = !isPublicCoreSurface;
   const showKnowledgeAclWriteControls = !isPublicCoreSurface;
@@ -12904,7 +12905,7 @@ export function ConfigPanel({
                                       >
                                         {memoryV3StatusLoading ? "Refreshing…" : "Refresh status"}
                                       </button>
-                                      {showAgentMemoryAdminControls && (
+                                      {showAgentVaultControls && (
                                         <button
                                           onClick={() => void bootstrapInternalVault(false)}
                                           disabled={memoryV3StatusAction !== null}
@@ -12915,7 +12916,7 @@ export function ConfigPanel({
                                             : "Create Argent vault"}
                                         </button>
                                       )}
-                                      {showAgentMemoryAdminControls &&
+                                      {showAgentVaultControls &&
                                         memoryV3Status?.vault.mode !== "internal" && (
                                           <button
                                             onClick={() => void bootstrapInternalVault(true)}
@@ -13029,7 +13030,7 @@ export function ConfigPanel({
                                   </div>
                                 </div>
 
-                                {showAgentMemoryAdminControls && (
+                                {showAgentVaultControls && (
                                   <>
                                     <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 space-y-3">
                                       <div className="flex items-center gap-2">
@@ -13302,7 +13303,11 @@ export function ConfigPanel({
                                         </button>
                                       </div>
                                     </div>
+                                  </>
+                                )}
 
+                                {showAgentMemoryAdminControls && (
+                                  <>
                                     <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-3 space-y-3">
                                       <div className="flex items-center gap-2">
                                         <GitBranch className="w-4 h-4 text-violet-300" />

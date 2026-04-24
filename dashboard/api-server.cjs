@@ -11511,10 +11511,10 @@ app.patch("/api/settings/agent", (req, res) => {
           error: "Per-agent execution worker overrides are not available in Public Core.",
         });
       }
-      if (req.body.memory?.vault !== undefined || req.body.memory?.cognee !== undefined) {
+      if (req.body.memory?.cognee !== undefined) {
         return res.status(403).json({
           error:
-            "Vault and Cognee memory admin controls are not available in Public Core. MemU model settings are Core and remain available.",
+            "Cognee memory admin controls are not available in Public Core. Vault and MemU model settings are Core and remain available.",
         });
       }
       if (req.body.contemplation?.discoveryPhase !== undefined) {
