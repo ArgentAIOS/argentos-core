@@ -129,6 +129,60 @@ describe("runGatewayUpdate", () => {
     expect(calls.some((call) => call.includes("rev-list"))).toBe(false);
   });
 
+  it("treats preflight lint as advisory when candidate build passes", async () => {
+    await fs.mkdir(path.join(tempDir, ".git"));
+    await fs.writeFile(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ name: "argentos", version: "1.0.0", packageManager: "pnpm@10.0.0" }),
+      "utf-8",
+    );
+    const upstreamSha = "upstream123";
+    const calls: string[] = [];
+    let headReads = 0;
+    const runner = async (argv: string[]) => {
+      const key = argv.join(" ");
+      calls.push(key);
+      if (key === `git -C ${tempDir} rev-parse --show-toplevel`) {
+        return { stdout: tempDir, stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} rev-parse HEAD`) {
+        headReads += 1;
+        return { stdout: headReads === 1 ? "abc123" : upstreamSha, stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} rev-parse --abbrev-ref HEAD`) {
+        return { stdout: "dev", stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} status --porcelain -- :!dist/control-ui/`) {
+        return { stdout: "", stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} rev-parse --abbrev-ref --symbolic-full-name @{upstream}`) {
+        return { stdout: "origin/dev", stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} rev-parse @{upstream}`) {
+        return { stdout: upstreamSha, stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} rev-list --max-count=10 ${upstreamSha}`) {
+        return { stdout: `${upstreamSha}\n`, stderr: "", code: 0 };
+      }
+      if (key === "pnpm lint") {
+        return { stdout: "", stderr: "legacy lint debt", code: 1 };
+      }
+      return { stdout: "", stderr: "", code: 0 };
+    };
+
+    const result = await runGatewayUpdate({
+      cwd: tempDir,
+      runCommand: async (argv, _options) => runner(argv),
+      timeoutMs: 5000,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.reason).toBeUndefined();
+    expect(result.steps.some((step) => step.name.startsWith("preflight lint advisory"))).toBe(true);
+    expect(calls).toContain("pnpm lint");
+    expect(calls).toContain("pnpm build");
+  });
+
   it("uses stable tag when beta tag is older than release", async () => {
     await fs.mkdir(path.join(tempDir, ".git"));
     await fs.writeFile(

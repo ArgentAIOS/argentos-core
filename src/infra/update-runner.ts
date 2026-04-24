@@ -642,12 +642,13 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
           }
 
           const lintStep = await runStep(
-            step(`preflight lint (${shortSha})`, managerScriptArgs(manager, "lint"), worktreeDir),
+            step(
+              `preflight lint advisory (${shortSha})`,
+              managerScriptArgs(manager, "lint"),
+              worktreeDir,
+            ),
           );
           steps.push(lintStep);
-          if (lintStep.exitCode !== 0) {
-            continue;
-          }
 
           const buildStep = await runStep(
             step(`preflight build (${shortSha})`, managerScriptArgs(manager, "build"), worktreeDir),
@@ -784,6 +785,7 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       }
     }
 
+    const installStepStart = steps.length;
     const manager = await detectPackageManager(gitRoot);
 
     const depsStep = await runStep(
@@ -832,7 +834,7 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
     );
     steps.push(doctorStep);
 
-    const failedStep = steps.find((s) => s.exitCode !== 0);
+    const failedStep = steps.slice(installStepStart).find((s) => s.exitCode !== 0);
     const afterShaStep = await runStep(
       step("git rev-parse HEAD (after)", ["git", "-C", gitRoot, "rev-parse", "HEAD"], gitRoot),
     );
