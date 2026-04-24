@@ -3384,9 +3384,107 @@ export class PgAdapter implements StorageAdapter {
     this.jobs = this.jobAdapter;
   }
 
+  private async ensureCoreSchema(): Promise<void> {
+    await this.db.execute(sql`
+      ALTER TABLE tasks
+        ADD COLUMN IF NOT EXISTS session_id TEXT,
+        ADD COLUMN IF NOT EXISTS channel_id TEXT,
+        ADD COLUMN IF NOT EXISTS depends_on JSONB NOT NULL DEFAULT '[]'::jsonb;
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_tasks_parent_task_id ON tasks(parent_task_id);
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_tasks_team ON tasks(team_id);
+    `);
+
+    await this.db.execute(sql`
+      CREATE TABLE IF NOT EXISTS personal_skill_candidates (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL REFERENCES agents(id),
+        operator_id TEXT,
+        profile_id TEXT,
+        scope TEXT NOT NULL DEFAULT 'operator',
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        trigger_patterns JSONB NOT NULL DEFAULT '[]'::jsonb,
+        procedure_outline TEXT,
+        preconditions JSONB NOT NULL DEFAULT '[]'::jsonb,
+        execution_steps JSONB NOT NULL DEFAULT '[]'::jsonb,
+        expected_outcomes JSONB NOT NULL DEFAULT '[]'::jsonb,
+        related_tools JSONB NOT NULL DEFAULT '[]'::jsonb,
+        source_memory_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+        source_episode_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+        source_task_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+        source_lesson_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+        supersedes_candidate_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+        superseded_by_candidate_id TEXT,
+        conflicts_with_candidate_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+        contradiction_count INTEGER NOT NULL DEFAULT 0,
+        evidence_count INTEGER NOT NULL DEFAULT 0,
+        recurrence_count INTEGER NOT NULL DEFAULT 1,
+        confidence REAL NOT NULL DEFAULT 0.5,
+        strength REAL NOT NULL DEFAULT 0.5,
+        usage_count INTEGER NOT NULL DEFAULT 0,
+        success_count INTEGER NOT NULL DEFAULT 0,
+        failure_count INTEGER NOT NULL DEFAULT 0,
+        state TEXT NOT NULL DEFAULT 'candidate',
+        operator_notes TEXT,
+        last_reviewed_at TIMESTAMPTZ,
+        last_used_at TIMESTAMPTZ,
+        last_reinforced_at TIMESTAMPTZ,
+        last_contradicted_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_personal_skill_candidates_agent
+        ON personal_skill_candidates(agent_id);
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_personal_skill_candidates_state
+        ON personal_skill_candidates(state);
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_personal_skill_candidates_scope
+        ON personal_skill_candidates(scope);
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_personal_skill_candidates_confidence
+        ON personal_skill_candidates(confidence);
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_personal_skill_candidates_updated
+        ON personal_skill_candidates(updated_at DESC);
+    `);
+
+    await this.db.execute(sql`
+      CREATE TABLE IF NOT EXISTS personal_skill_reviews (
+        id TEXT PRIMARY KEY,
+        candidate_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL REFERENCES agents(id),
+        actor_type TEXT NOT NULL,
+        action TEXT NOT NULL,
+        reason TEXT,
+        details JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_personal_skill_reviews_candidate
+        ON personal_skill_reviews(candidate_id, created_at DESC);
+    `);
+    await this.db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_personal_skill_reviews_agent
+        ON personal_skill_reviews(agent_id, created_at DESC);
+    `);
+  }
+
   async init(): Promise<void> {
     // Set RLS agent context for this connection
     await setAgentContext(this.sqlClient, this.agentId);
+    await this.ensureCoreSchema();
     await this.jobAdapter.init();
     this._ready = true;
     log.info("pg adapter: initialized", { agentId: this.agentId });
