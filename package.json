@@ -36,7 +36,8 @@
     "argent.mjs",
     "README-header.png",
     "README.md",
-    "skills/"
+    "skills/",
+    "tools/aos/"
   ],
   "type": "module",
   "main": "dist/index.js",

@@ -13,14 +13,7 @@ async function makeTempDir() {
   return dir;
 }
 
-function readRealLicenseKey(): string {
-  const licensePath = path.join(os.homedir(), ".argentos", "license.json");
-  const parsed = JSON.parse(fs.readFileSync(licensePath, "utf8")) as { key?: string };
-  if (!parsed.key) {
-    throw new Error("Missing local marketplace license");
-  }
-  return parsed.key;
-}
+const TEST_LICENSE_KEY = "aos_test_marketplace_license";
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -50,6 +43,22 @@ async function makeSkillArchive(): Promise<Buffer> {
   return await fsp.readFile(archivePath);
 }
 
+async function makeConnectorArchive(): Promise<Buffer> {
+  const workDir = await makeTempDir();
+  const connectorDir = path.join(workDir, "package", "connectors", "aos-hubspot");
+  await fsp.mkdir(connectorDir, { recursive: true });
+  await fsp.writeFile(
+    path.join(connectorDir, "connector.json"),
+    JSON.stringify({ tool: "aos-hubspot", label: "HubSpot" }, null, 2),
+    "utf8",
+  );
+  await fsp.writeFile(path.join(connectorDir, "README.md"), "# HubSpot\n", "utf8");
+
+  const archivePath = path.join(workDir, "aos-hubspot.tgz");
+  await tar.c({ cwd: workDir, file: archivePath, gzip: true }, ["package"]);
+  return await fsp.readFile(archivePath);
+}
+
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
     try {
@@ -60,19 +69,20 @@ afterEach(() => {
   }
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
+  vi.resetModules();
 });
 
 describe("marketplace tool install", () => {
   it("resolves a slug from search and installs the downloaded skill package", async () => {
-    const licenseKey = readRealLicenseKey();
     const tempHome = await makeTempDir();
     await fsp.mkdir(path.join(tempHome, ".argentos"), { recursive: true });
     await fsp.writeFile(
       path.join(tempHome, ".argentos", "license.json"),
-      JSON.stringify({ key: licenseKey }, null, 2),
+      JSON.stringify({ key: TEST_LICENSE_KEY }, null, 2),
       "utf8",
     );
     vi.stubEnv("HOME", tempHome);
+    vi.stubEnv("ARGENT_STATE_DIR", path.join(tempHome, ".argentos"));
 
     const archive = await makeSkillArchive();
     const packageId = "fc24e08c-05e0-441b-89d4-49dfe1fc212c";
@@ -116,6 +126,7 @@ describe("marketplace tool install", () => {
     // @ts-expect-error override for test
     global.fetch = mockFetch;
 
+    vi.resetModules();
     const { createMarketplaceTool } = await import("./marketplace-tool.js");
     const tool = createMarketplaceTool();
     const result = await tool.execute("test-install", { action: "install", packageId: "calendar" });
@@ -131,6 +142,85 @@ describe("marketplace tool install", () => {
     expect(fs.existsSync(path.join(tempHome, ".argentos", "skills", "calendar", "SKILL.md"))).toBe(
       true,
     );
+
+    // @ts-expect-error restore
+    global.fetch = priorFetch;
+  });
+
+  it("installs downloaded connector packages into user connectors", async () => {
+    const tempHome = await makeTempDir();
+    await fsp.mkdir(path.join(tempHome, ".argentos"), { recursive: true });
+    await fsp.writeFile(
+      path.join(tempHome, ".argentos", "license.json"),
+      JSON.stringify({ key: TEST_LICENSE_KEY }, null, 2),
+      "utf8",
+    );
+    vi.stubEnv("HOME", tempHome);
+    vi.stubEnv("ARGENT_STATE_DIR", path.join(tempHome, ".argentos"));
+
+    const archive = await makeConnectorArchive();
+    const packageId = "31dc4a3c-1e1e-4556-a4e8-111111111111";
+    const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/catalog?") || url.includes("/catalog/licensed?")) {
+        return jsonResponse({
+          items: [
+            {
+              id: packageId,
+              name: "aos-hubspot",
+              display_name: "HubSpot CRM",
+              description: "HubSpot connector",
+              category: "connectors",
+              tags: ["crm"],
+              author_name: "ArgentOS",
+              author_verified: true,
+              latest_version: "1.0.0",
+              total_downloads: 0,
+              rating: 0,
+              pricing: "free",
+              listed: true,
+            },
+          ],
+          total: 1,
+        });
+      }
+      if (url.endsWith(`/catalog/${packageId}/download`)) {
+        return new Response(archive, {
+          status: 200,
+          headers: {
+            "content-type": "application/gzip",
+            "content-disposition": 'attachment; filename="aos-hubspot-1.0.0.argent-pkg"',
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const priorFetch = global.fetch;
+    // @ts-expect-error override for test
+    global.fetch = mockFetch;
+
+    vi.resetModules();
+    const { createMarketplaceTool } = await import("./marketplace-tool.js");
+    const tool = createMarketplaceTool();
+    const result = await tool.execute("test-install", {
+      action: "install",
+      packageId: "aos-hubspot",
+    });
+
+    expect(result.details).toMatchObject({
+      ok: true,
+      action: "install",
+      packageId: "aos-hubspot",
+      name: "aos-hubspot",
+      installed: ["aos-hubspot"],
+    });
+    expect(String(result.content[0]?.text)).toContain("Successfully installed HubSpot CRM");
+    expect(
+      fs.existsSync(
+        path.join(tempHome, ".argentos", "connectors", "aos-hubspot", "connector.json"),
+      ),
+    ).toBe(true);
 
     // @ts-expect-error restore
     global.fetch = priorFetch;
