@@ -29,6 +29,7 @@ export const PUBLIC_CORE_DEFAULT_TOOL_NAMES = [
   "memory_timeline",
   "message",
   "nodes",
+  "personal_skill",
   "session_status",
   "sessions_history",
   "sessions_list",
