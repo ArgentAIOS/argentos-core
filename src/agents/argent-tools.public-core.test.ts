@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 describe("createArgentTools public-core surface", () => {
-  it("keeps the core spine and removes business and hold tools by default", () => {
+  it("defaults to non-business Core tools and removes business tools", () => {
     const config = {
       distribution: {
         surfaceProfile: "public-core",
@@ -65,11 +65,12 @@ describe("createArgentTools public-core surface", () => {
     expect(toolNames.has("intent_tool")).toBe(false);
     expect(toolNames.has("workforce_setup_tool")).toBe(false);
     expect(toolNames.has("jobs_tool")).toBe(false);
-    expect(toolNames.has("plugin_builder")).toBe(false);
-    expect(toolNames.has("service_keys")).toBe(false);
+    expect(toolNames.has("plugin_builder")).toBe(true);
+    expect(toolNames.has("family")).toBe(true);
+    expect(toolNames.has("service_keys")).toBe(true);
   });
 
-  it("can opt power-user tools back in without re-enabling business tools", () => {
+  it("keeps legacy power-user flags harmless while business tools stay blocked", () => {
     const config = {
       distribution: {
         surfaceProfile: "public-core",

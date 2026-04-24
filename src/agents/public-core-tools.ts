@@ -192,13 +192,17 @@ export function resolveBuiltinToolAllowlist(params?: {
   }
 
   const allow = new Set<string>(PUBLIC_CORE_DEFAULT_TOOL_NAMES);
-  const publicCore = config?.distribution?.publicCore;
-  if (publicCore?.includePowerUserTools === true) {
-    for (const toolName of PUBLIC_CORE_POWER_USER_TOOL_NAMES) {
-      allow.add(toolName);
-    }
+  for (const toolName of PUBLIC_CORE_POWER_USER_TOOL_NAMES) {
+    allow.add(toolName);
   }
+  for (const toolName of PUBLIC_CORE_HOLD_TOOL_NAMES) {
+    allow.add(toolName);
+  }
+  const publicCore = config?.distribution?.publicCore;
   const businessBlocked = new Set<string>(PUBLIC_CORE_BUSINESS_BLOCKED_TOOL_NAMES);
+  for (const toolName of businessBlocked) {
+    allow.delete(toolName);
+  }
   for (const toolName of publicCore?.alsoAllowTools ?? []) {
     const normalized = normalizeToolName(toolName);
     if (normalized && !businessBlocked.has(normalized)) {
