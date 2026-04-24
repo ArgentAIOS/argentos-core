@@ -2,6 +2,28 @@
 
 Docs: https://docs.argentos.ai
 
+## 2026.4.24-dev.0
+
+### Changes
+
+- Core boundary: document that Business is limited to worker agents, workforce
+  jobs, governance, training/observer mode, worker onboarding, entitlements, and
+  private distribution; personal-agent capabilities remain Core.
+- Marketplace: make `argent marketplace` the Core path for discovering and
+  installing skills, plugins, and connectors.
+
+### Fixes
+
+- Agents: keep automatic reasoning and deep-think model selection on configured
+  providers instead of falling back to unconfigured Bedrock or Anthropic models.
+- Agents: sanitize malformed provider-bound transcript messages before model
+  adapters see them, preventing raw JavaScript `undefined` errors from leaking
+  into chat.
+- Core tools: wire the `marketplace` tool directly into the real agent tool
+  surface and remove the obsolete bundled ClawHub skill.
+- Release: align bundled extension versions with the Core package version so
+  `pnpm release:check` passes.
+
 ## 2026.4.18.3
 
 ### Fixes

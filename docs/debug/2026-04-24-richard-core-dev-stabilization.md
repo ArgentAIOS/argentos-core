@@ -40,6 +40,21 @@ Verification:
 - `pnpm exec oxlint --type-aware ...`
 - `pnpm build`
 
+Follow-up fix:
+
+- The first fix exposed `marketplace` in the registry, but the main agent tool
+  factory still loaded it through an optional runtime import. Bundled installs
+  do not preserve `./tools/marketplace-tool.js` as a physical path, so the
+  optional loader silently dropped the tool from Sapphire's real callable
+  surface.
+- `src/agents/argent-tools.ts` now imports `createMarketplaceTool` directly and
+  always includes it in Core.
+- The obsolete bundled `clawhub` skill was removed, and skills CLI hints now
+  point at `argent marketplace search` / `argent marketplace install`.
+- Commit: `2a963f16 Make Marketplace a first-class Core tool`
+- Richard's M5 verified `argent marketplace --help`, a live marketplace search,
+  and Sapphire finally found the `marketplace` tool.
+
 ### MiniMax/provider turn leaked an internal JavaScript error
 
 Sapphire's transcript recorded:
@@ -86,7 +101,7 @@ Current deployed build after this stabilization:
 ```json
 {
   "version": "2026.4.24-dev.0",
-  "commit": "5031e3791426a6fd7d69705f509fd05205dd7bea"
+  "commit": "2a963f16114b75da00697f9aab74b4726e6dd5f9"
 }
 ```
 
@@ -102,6 +117,7 @@ done
 ## Follow-Up Checks
 
 - Have Sapphire retry the same Marketplace/tool discovery workflow in a fresh turn.
+- Prepare `dev` for a true public Core release; see `docs/debug/2026-04-24-core-release-readiness.md`.
 - Watch for `repaired malformed transcript before model adapter` in `~/.argent/logs/gateway.log`; if present, capture the surrounding session JSONL before pruning.
 - The older `memory_timeline` `Cannot read properties of undefined (reading 'trim')` errors are separate and should be fixed in the memory timeline tool.
 - The older Bedrock diagnostic entries before commit `6263c969` should not recur on new turns unless a configured profile explicitly includes Bedrock.

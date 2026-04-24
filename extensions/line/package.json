@@ -1,6 +1,6 @@
 {
   "name": "@argentos/line",
-  "version": "2026.3.2",
+  "version": "2026.4.24-dev.0",
   "description": "ArgentOS LINE channel plugin",
   "type": "module",
   "devDependencies": {
