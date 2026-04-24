@@ -134,8 +134,6 @@ const PUBLIC_CORE_BLOCKED_API_PATTERNS = [
   "/api/settings/auth",
   "/api/settings/cors-allowlist/**",
   "/api/settings/filesystem-allowlist/**",
-  "/api/settings/gateway/**",
-  "/api/settings/database/**",
   "/api/settings/pairing",
   "/api/settings/load-profile",
   "/api/settings/aos-google/preflight",
@@ -11560,17 +11558,6 @@ app.patch("/api/settings/agent", (req, res) => {
           error: "Per-agent execution worker overrides are not available in Public Core.",
         });
       }
-      if (req.body.memory?.cognee !== undefined) {
-        return res.status(403).json({
-          error:
-            "Cognee memory admin controls are not available in Public Core. Vault and MemU model settings are Core and remain available.",
-        });
-      }
-      if (req.body.contemplation?.discoveryPhase !== undefined) {
-        return res.status(403).json({
-          error: "Discovery-phase contemplation controls are not available in Public Core.",
-        });
-      }
       if (
         req.body.backgroundModels?.intentSimulationAgent !== undefined ||
         req.body.backgroundModels?.intentSimulationJudge !== undefined
@@ -12424,6 +12411,73 @@ app.post("/api/settings/memory-v3/bootstrap-vault", (req, res) => {
       ok: false,
       error: "Failed to bootstrap internal vault",
       details: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
+// POST /api/settings/memory-v3/choose-vault-folder — choose an existing markdown/Obsidian vault
+app.post("/api/settings/memory-v3/choose-vault-folder", (req, res) => {
+  try {
+    if (process.platform !== "darwin") {
+      return res.status(400).json({
+        ok: false,
+        error: "Folder picker is currently available on macOS only.",
+      });
+    }
+    const prompt =
+      typeof req.body?.prompt === "string" && req.body.prompt.trim()
+        ? req.body.prompt.trim()
+        : "Choose an Obsidian or markdown vault folder for Argent Memory V3";
+    const script = `POSIX path of (choose folder with prompt ${appleScriptStringLiteral(prompt)})`;
+    const selected = execFileSync("osascript", ["-e", script], {
+      encoding: "utf8",
+      timeout: 120000,
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+    if (!selected) {
+      return res.status(400).json({ ok: false, error: "No folder selected." });
+    }
+    const normalized = path.resolve(selected);
+    const stat = fs.statSync(normalized);
+    if (!stat.isDirectory()) {
+      return res.status(400).json({ ok: false, error: "Selected path is not a directory." });
+    }
+
+    const bind = req.body?.bind !== false;
+    if (bind) {
+      const config = readArgentConfig();
+      if (!config.memory) config.memory = {};
+      if (!config.memory.vault || typeof config.memory.vault !== "object") config.memory.vault = {};
+      config.memory.vault.path = normalized;
+      config.memory.vault.enabled = true;
+      if (!config.memory.vault.knowledgeCollection) {
+        config.memory.vault.knowledgeCollection = "vault-knowledge";
+      }
+      if (!config.memory.vault.ingest || typeof config.memory.vault.ingest !== "object") {
+        config.memory.vault.ingest = {};
+      }
+      if (config.memory.vault.ingest.enabled === undefined) {
+        config.memory.vault.ingest.enabled = false;
+      }
+      writeArgentConfig(config);
+      return res.json({
+        ok: true,
+        path: normalized,
+        boundToConfig: true,
+        status: getMemoryV3StatusPayload(readArgentConfig()),
+      });
+    }
+
+    return res.json({ ok: true, path: normalized, boundToConfig: false });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/user canceled/i.test(message)) {
+      return res.status(400).json({ ok: false, error: "Folder selection cancelled." });
+    }
+    return res.status(500).json({
+      ok: false,
+      error: "Failed to choose vault folder",
+      details: message,
     });
   }
 });

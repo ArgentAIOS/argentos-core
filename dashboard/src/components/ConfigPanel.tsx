@@ -2663,7 +2663,7 @@ export function ConfigPanel({
   const showAgentExecutionControls = true;
   const showAgentMemoryStatusControls = true;
   const showAgentVaultControls = true;
-  const showAgentMemoryAdminControls = !isPublicCoreSurface;
+  const showAgentMemoryAdminControls = true;
   const showAgentIntentSimulationControls = !isPublicCoreSurface;
   const showAgentJobsControls = isWorkforceSurfaceAllowed(surfaceProfile);
   const showKnowledgeAclWriteControls = !isPublicCoreSurface;
@@ -4955,13 +4955,63 @@ export function ConfigPanel({
         type: "success",
         text: payload.boundToConfig
           ? `Created and bound Argent vault at ${payload.path || "configured internal path"}.`
-          : `Created Argent vault at ${payload.path || "default internal path"}.`,
+          : `Argent vault is ready at ${payload.path || "default internal path"}.`,
       });
       void loadMemoryV3Status();
     } catch (err) {
       setMemoryV3Message({
         type: "error",
         text: err instanceof Error ? err.message : "Failed to bootstrap internal vault.",
+      });
+    } finally {
+      setMemoryV3StatusAction(null);
+    }
+  };
+
+  const chooseExternalVaultFolder = async () => {
+    try {
+      setMemoryV3StatusAction("bind");
+      setMemoryV3Message(null);
+      const response = await fetch("/api/settings/memory-v3/choose-vault-folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bind: true }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        path?: string;
+        boundToConfig?: boolean;
+        error?: string;
+        status?: MemoryV3StatusResponse;
+      };
+      if (!response.ok || payload.ok === false) {
+        throw new Error(
+          typeof payload?.error === "string"
+            ? payload.error
+            : `HTTP ${response.status} while choosing vault folder`,
+        );
+      }
+      if (payload.status) setMemoryV3Status(payload.status);
+      setVaultPathDraft(payload.path || "");
+      setAgentSettings((prev) =>
+        prev
+          ? {
+              ...prev,
+              memory: mergeMemorySettingsState(prev.memory, {
+                vault: { enabled: true, path: payload.path || "" },
+              }),
+            }
+          : prev,
+      );
+      setMemoryV3Message({
+        type: "success",
+        text: `External vault attached at ${payload.path || "selected folder"}.`,
+      });
+      void loadMemoryV3Status();
+    } catch (err) {
+      setMemoryV3Message({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to choose vault folder.",
       });
     } finally {
       setMemoryV3StatusAction(null);
@@ -6109,20 +6159,32 @@ export function ConfigPanel({
       const current = normalizeLaneSelection(agentSettings.backgroundModels?.[lane]);
       const nextProvider =
         patch.provider !== undefined ? String(patch.provider || "").trim() : current.provider;
-      const nextModel =
+      const rawNextModel =
         patch.model !== undefined ? String(patch.model || "").trim() : current.model;
+      const parsedNextModel = parseModelRef(rawNextModel);
+      const normalizedProvider = nextProvider || parsedNextModel?.provider || "";
+      const normalizedModel =
+        parsedNextModel && (!nextProvider || parsedNextModel.provider === nextProvider)
+          ? parsedNextModel.model
+          : rawNextModel;
       const nextFallback =
         patch.fallback !== undefined ? String(patch.fallback || "").trim() : current.fallback;
       const payload =
         lane === "embeddings"
           ? {
-              provider: nextProvider,
-              model: nextProvider && nextModel ? `${nextProvider}/${nextModel}` : nextModel,
+              provider: normalizedProvider,
+              model:
+                normalizedProvider && normalizedModel
+                  ? `${normalizedProvider}/${normalizedModel}`
+                  : normalizedModel,
               fallback: nextFallback,
             }
           : {
-              provider: nextProvider,
-              model: nextProvider && nextModel ? `${nextProvider}/${nextModel}` : nextModel,
+              provider: normalizedProvider,
+              model:
+                normalizedProvider && normalizedModel
+                  ? `${normalizedProvider}/${normalizedModel}`
+                  : normalizedModel,
             };
 
       await fetch("/api/settings/agent", {
@@ -13116,6 +13178,15 @@ export function ConfigPanel({
                                               placeholder="/absolute/path/to/argent-vault"
                                               className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
                                             />
+                                            <button
+                                              onClick={() => void chooseExternalVaultFolder()}
+                                              disabled={memoryV3StatusAction !== null}
+                                              className="px-3 py-2 bg-white/10 hover:bg-white/15 text-white/80 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              {memoryV3StatusAction === "bind"
+                                                ? "Choosing…"
+                                                : "Choose folder…"}
+                                            </button>
                                             <button
                                               onClick={() =>
                                                 void patchMemorySettings(
