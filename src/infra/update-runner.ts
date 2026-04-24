@@ -450,6 +450,16 @@ function managerInstallArgs(manager: "pnpm" | "bun" | "npm", frozen = false) {
   return frozen ? ["npm", "ci"] : ["npm", "install"];
 }
 
+function dashboardViteBuildArgs(manager: "pnpm" | "bun" | "npm") {
+  if (manager === "pnpm") {
+    return ["pnpm", "exec", "vite", "build"];
+  }
+  if (manager === "bun") {
+    return ["bunx", "vite", "build"];
+  }
+  return ["npx", "--yes", "vite", "build"];
+}
+
 function normalizeTag(tag?: string) {
   const trimmed = tag?.trim();
   if (!trimmed) {
@@ -908,6 +918,14 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       step("ui:build", managerScriptArgs(manager, "ui:build"), gitRoot),
     );
     steps.push(uiBuildStep);
+
+    const dashboardRoot = path.join(gitRoot, "dashboard");
+    if (await pathExists(path.join(dashboardRoot, "package.json"))) {
+      const dashboardBuildStep = await runStep(
+        step("dashboard vite build", dashboardViteBuildArgs(manager), dashboardRoot),
+      );
+      steps.push(dashboardBuildStep);
+    }
 
     // Restore committed Control UI assets when they exist. Some public Core
     // checkouts generate dist/control-ui/ as an ignored artifact instead.

@@ -183,14 +183,20 @@ describe("runGatewayUpdate", () => {
     expect(calls).toContain("pnpm build");
   });
 
-  it("syncs hosted git updates into the runtime snapshot package", async () => {
+  it("syncs hosted git updates and dashboard builds into the runtime snapshot package", async () => {
     const gitRoot = path.join(tempDir, "git");
     const snapshotRoot = path.join(tempDir, "snapshot");
     await fs.mkdir(path.join(gitRoot, ".git"), { recursive: true });
+    await fs.mkdir(path.join(gitRoot, "dashboard", "dist"), { recursive: true });
     await fs.mkdir(path.join(gitRoot, "dist", "control-ui"), { recursive: true });
     await fs.writeFile(
       path.join(gitRoot, "package.json"),
       JSON.stringify({ name: "argentos", version: "1.0.0", packageManager: "pnpm@10.0.0" }),
+      "utf-8",
+    );
+    await fs.writeFile(
+      path.join(gitRoot, "dashboard", "package.json"),
+      JSON.stringify({ name: "argent-dashboard" }),
       "utf-8",
     );
     await fs.writeFile(path.join(gitRoot, "argent.mjs"), "source cli", "utf-8");
@@ -198,6 +204,11 @@ describe("runGatewayUpdate", () => {
     await fs.writeFile(
       path.join(gitRoot, "dist", "control-ui", "index.html"),
       "fresh control ui",
+      "utf-8",
+    );
+    await fs.writeFile(
+      path.join(gitRoot, "dashboard", "dist", "index.html"),
+      "fresh dashboard ui",
       "utf-8",
     );
     await fs.mkdir(snapshotRoot, { recursive: true });
@@ -255,9 +266,13 @@ describe("runGatewayUpdate", () => {
     await expect(
       fs.readFile(path.join(snapshotRoot, "dist", "control-ui", "index.html"), "utf-8"),
     ).resolves.toBe("fresh control ui");
+    await expect(
+      fs.readFile(path.join(snapshotRoot, "dashboard", "dist", "index.html"), "utf-8"),
+    ).resolves.toBe("fresh dashboard ui");
     await expect(pathExists(path.join(snapshotRoot, "stale.txt"))).resolves.toBe(true);
     await expect(pathExists(path.join(snapshotRoot, ".git"))).resolves.toBe(false);
     expect(calls).toContain("pnpm ui:build");
+    expect(calls).toContain("pnpm exec vite build");
   });
 
   it("uses stable tag when beta tag is older than release", async () => {
