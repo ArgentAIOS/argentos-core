@@ -318,7 +318,7 @@ function buildDocsSection(params: { docsPath?: string; isMinimal: boolean; readT
     "Mirror: https://docs.argent.ai",
     "Source: https://github.com/argent/argent",
     "Community: https://discord.com/invite/clawd",
-    "Find new skills: https://clawhub.com",
+    "Find skills, plugins, and connectors through the ArgentOS Marketplace.",
     "For Argent behavior, commands, config, or architecture: consult local docs first.",
     "When diagnosing issues, run `argent status` yourself when possible; only ask the user if you lack access (e.g., sandboxed).",
     "",

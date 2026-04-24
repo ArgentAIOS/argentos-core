@@ -67,6 +67,7 @@ describe("createArgentTools public-core surface", () => {
     expect(toolNames.has("workforce_setup_tool")).toBe(false);
     expect(toolNames.has("jobs_tool")).toBe(false);
     expect(toolNames.has("plugin_builder")).toBe(true);
+    expect(toolNames.has("marketplace")).toBe(true);
     expect(toolNames.has("family")).toBe(true);
     expect(toolNames.has("service_keys")).toBe(true);
   });

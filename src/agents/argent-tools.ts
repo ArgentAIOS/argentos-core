@@ -42,6 +42,7 @@ import {
   createKnowledgeCollectionsListTool,
   createKnowledgeSearchTool,
 } from "./tools/knowledge-tools.js";
+import { createMarketplaceTool } from "./tools/marketplace-tool.js";
 import { createMeetingRecorderTool } from "./tools/meeting-recorder-tool.js";
 import { createMemoryGraphTool } from "./tools/memory-graph-tool.js";
 import { createMemoryTimelineTool } from "./tools/memory-timeline-tool.js";
@@ -158,11 +159,6 @@ export function createArgentTools(options?: {
   const createSpecforgeTool = loadOptionalToolFactory<
     (params: { agentSessionKey?: string; agentId?: string }) => AnyAgentTool
   >("./tools/specforge-tool.js", "createSpecforgeTool");
-  const createMarketplaceTool = loadOptionalToolFactory<() => AnyAgentTool>(
-    "./tools/marketplace-tool.js",
-    "createMarketplaceTool",
-  );
-
   const imageTool = options?.agentDir?.trim()
     ? createImageTool({
         config: options?.config,
@@ -430,7 +426,7 @@ export function createArgentTools(options?: {
     createSkillsTool({ config: options?.config }),
     createTerminalTool(),
     createGithubIssueTool(),
-    ...(createMarketplaceTool ? [createMarketplaceTool()] : []),
+    createMarketplaceTool(),
     createMeetingRecorderTool({ agentSessionKey: options?.agentSessionKey }),
     createOsDocsTool(),
     // Agent Family — multi-agent registration, messaging, shared knowledge, spawn
