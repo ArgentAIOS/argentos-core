@@ -299,11 +299,16 @@ async function isEmptyDir(targetPath: string): Promise<boolean> {
 }
 
 function resolveGitInstallDir(): string {
-  const override = process.env.ARGENTOS_GIT_DIR?.trim() || process.env.ARGENT_GIT_DIR?.trim();
+  const override = resolveHostedGitDirOverride();
   if (override) {
-    return path.resolve(override);
+    return override;
   }
   return resolveDefaultGitDir();
+}
+
+function resolveHostedGitDirOverride(): string | null {
+  const override = process.env.ARGENT_GIT_DIR?.trim() || process.env.ARGENTOS_GIT_DIR?.trim();
+  return override ? path.resolve(override) : null;
 }
 
 function resolveDefaultGitDir(): string {
@@ -462,11 +467,13 @@ export async function updateStatusCommand(opts: UpdateStatusOptions): Promise<vo
   }
 
   const root =
+    resolveHostedGitDirOverride() ??
     (await resolveArgentPackageRoot({
       moduleUrl: import.meta.url,
       argv1: process.argv[1],
       cwd: process.cwd(),
-    })) ?? process.cwd();
+    })) ??
+    process.cwd();
   const configSnapshot = await readConfigFileSnapshot();
   const configChannel = configSnapshot.valid
     ? normalizeUpdateChannel(configSnapshot.config.update?.channel)
@@ -736,9 +743,9 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
   // For hosted git installs: ARGENT_GIT_DIR points to the real source checkout.
   // Without this, the update resolves root to the runtime snapshot (~/.argentos/lib/...)
   // which has no .git, causing installKind to be misclassified as "package".
-  const gitDirOverride = process.env.ARGENT_GIT_DIR?.trim();
+  const gitDirOverride = resolveHostedGitDirOverride();
   const root = gitDirOverride
-    ? path.resolve(gitDirOverride)
+    ? gitDirOverride
     : ((await resolveArgentPackageRoot({
         moduleUrl: import.meta.url,
         argv1: process.argv[1],
@@ -1192,9 +1199,9 @@ export async function updateWizardCommand(opts: UpdateWizardOptions = {}): Promi
   }
 
   // For hosted git installs: prefer ARGENT_GIT_DIR over snapshot root
-  const gitDirOverride2 = process.env.ARGENT_GIT_DIR?.trim();
-  const root = gitDirOverride2
-    ? path.resolve(gitDirOverride2)
+  const gitDirOverride = resolveHostedGitDirOverride();
+  const root = gitDirOverride
+    ? gitDirOverride
     : ((await resolveArgentPackageRoot({
         moduleUrl: import.meta.url,
         argv1: process.argv[1],

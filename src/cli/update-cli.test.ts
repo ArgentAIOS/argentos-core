@@ -214,6 +214,32 @@ describe("update-cli", () => {
     expect(parsed.channel.value).toBe("stable");
   });
 
+  it("updateStatusCommand resolves hosted git installs through ARGENT_GIT_DIR", async () => {
+    const previousArgentGitDir = process.env.ARGENT_GIT_DIR;
+    const previousArgentosGitDir = process.env.ARGENTOS_GIT_DIR;
+    try {
+      process.env.ARGENT_GIT_DIR = "/hosted/argentos";
+      delete process.env.ARGENTOS_GIT_DIR;
+      const { checkUpdateStatus } = await import("../infra/update-check.js");
+      const { updateStatusCommand } = await import("./update-cli.js");
+
+      await updateStatusCommand({ json: true });
+
+      expect(vi.mocked(checkUpdateStatus).mock.calls.at(-1)?.[0]?.root).toBe("/hosted/argentos");
+    } finally {
+      if (previousArgentGitDir) {
+        process.env.ARGENT_GIT_DIR = previousArgentGitDir;
+      } else {
+        delete process.env.ARGENT_GIT_DIR;
+      }
+      if (previousArgentosGitDir) {
+        process.env.ARGENTOS_GIT_DIR = previousArgentosGitDir;
+      } else {
+        delete process.env.ARGENTOS_GIT_DIR;
+      }
+    }
+  });
+
   it("defaults to stable channel for release-tag git installs when unset", async () => {
     const { runGatewayUpdate } = await import("../infra/update-runner.js");
     const { updateCommand } = await import("./update-cli.js");
