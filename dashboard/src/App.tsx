@@ -1217,7 +1217,8 @@ function App() {
   const pollingMultiplier = Math.max(1, runtimeLoadProfile.pollingMultiplier || 1);
   const allowOperationsSurface = isOperationsSurfaceAllowed(surfaceProfile);
   const allowWorkforceSurface = isWorkforceSurfaceAllowed(surfaceProfile);
-  const isOperationsDashboard = allowWorkforceSurface && dashboardMode === "operations";
+  const isOperationsDashboard = allowOperationsSurface && dashboardMode === "operations";
+  const isWorkforceDashboard = allowWorkforceSurface && dashboardMode === "operations";
 
   // Ensure Operations tab exists when the surface allows operations.
   useEffect(() => {
@@ -1243,7 +1244,7 @@ function App() {
     refreshTasks,
   } = useTasks({ enabled: backgroundPollingEnabled, pollMs: 15000 * pollingMultiplier });
   const { tasks: workerTasks } = useTasks({
-    enabled: backgroundPollingEnabled && isOperationsDashboard,
+    enabled: backgroundPollingEnabled && isWorkforceDashboard,
     pollMs: 15000 * pollingMultiplier,
     includeWorkerTasks: true,
     workerOnly: true,
@@ -4811,7 +4812,7 @@ function App() {
           onActivityClick={() => setActivityPanelOpen(!activityPanelOpen)}
           onAppsClick={() => setAppForgeOpen(true)}
           onWorkforceClick={
-            isOperationsDashboard
+            isWorkforceDashboard
               ? (focus) => {
                   setShowBoard(false);
                   setWorkforceFocus(focus ?? "all");
@@ -4819,9 +4820,9 @@ function App() {
                 }
               : undefined
           }
-          workforceDueCount={isOperationsDashboard ? workforceBadge.dueNow : 0}
-          workforceBlockedCount={isOperationsDashboard ? workforceBadge.blocked : 0}
-          onNewWorkerClick={isOperationsDashboard ? () => setWorkerFlowOpen(true) : undefined}
+          workforceDueCount={isWorkforceDashboard ? workforceBadge.dueNow : 0}
+          workforceBlockedCount={isWorkforceDashboard ? workforceBadge.blocked : 0}
+          onNewWorkerClick={isWorkforceDashboard ? () => setWorkerFlowOpen(true) : undefined}
           onSettingsClick={() => setConfigPanelOpen(true)}
           onLockClick={lockScreen.lock}
           canLock={lockScreen.hasCredentials}
@@ -4956,7 +4957,7 @@ function App() {
             </div>
           ) : null}
         </div>
-      ) : isOperationsDashboard ? (
+      ) : isWorkforceDashboard ? (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* Operations sub-nav: switch between Map and Workers (Business only) */}
           {activeWorkspace === "operations" && (
@@ -5915,7 +5916,7 @@ function App() {
       />
 
       {/* Worker Flow */}
-      {isOperationsDashboard && (
+      {isWorkforceDashboard && (
         <WorkerFlowModal
           isOpen={workerFlowOpen}
           onClose={() => setWorkerFlowOpen(false)}
