@@ -304,34 +304,8 @@ async function syncRuntimeSnapshot(sourceRoot: string, snapshotRoot: string) {
     return;
   }
 
-  const parent = path.dirname(target);
-  const tmp = path.join(parent, `${path.basename(target)}.new.${process.pid}.${Date.now()}`);
-  const backup = path.join(parent, `${path.basename(target)}.old.${process.pid}.${Date.now()}`);
-  await fs.rm(tmp, { recursive: true, force: true });
-  await fs.mkdir(parent, { recursive: true });
-
-  await copyDirectoryWithoutGit(source, tmp);
-
-  let movedExisting = false;
-  try {
-    await fs.rename(target, backup);
-    movedExisting = true;
-  } catch {
-    // First install may not have an existing snapshot.
-  }
-
-  try {
-    await fs.rename(tmp, target);
-  } catch (err) {
-    if (movedExisting) {
-      await fs.rename(backup, target).catch(() => null);
-    }
-    throw err;
-  }
-
-  if (movedExisting) {
-    await fs.rm(backup, { recursive: true, force: true });
-  }
+  await fs.mkdir(target, { recursive: true });
+  await copyDirectoryWithoutGit(source, target);
 }
 
 async function detectPackageManager(root: string) {

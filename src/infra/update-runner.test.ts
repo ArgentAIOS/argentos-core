@@ -255,7 +255,7 @@ describe("runGatewayUpdate", () => {
     await expect(
       fs.readFile(path.join(snapshotRoot, "dist", "control-ui", "index.html"), "utf-8"),
     ).resolves.toBe("fresh control ui");
-    await expect(pathExists(path.join(snapshotRoot, "stale.txt"))).resolves.toBe(false);
+    await expect(pathExists(path.join(snapshotRoot, "stale.txt"))).resolves.toBe(true);
     await expect(pathExists(path.join(snapshotRoot, ".git"))).resolves.toBe(false);
     expect(calls).toContain("pnpm ui:build");
   });
