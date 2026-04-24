@@ -81,7 +81,6 @@ type UpdateRunnerOptions = {
 const DEFAULT_TIMEOUT_MS = 20 * 60_000;
 const MAX_LOG_CHARS = 8000;
 const PREFLIGHT_MAX_COMMITS = 10;
-const START_DIRS = ["cwd", "argv1", "process"];
 const DEFAULT_PACKAGE_NAME = "argentos";
 const CORE_PACKAGE_NAMES = new Set([DEFAULT_PACKAGE_NAME, "argent"]);
 
@@ -255,6 +254,86 @@ async function findPackageRoot(candidates: string[]) {
   return null;
 }
 
+async function pathExists(value: string) {
+  try {
+    await fs.stat(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveRuntimeSnapshotPackageRoot(opts: UpdateRunnerOptions) {
+  const override = normalizeDir(process.env.ARGENT_INSTALL_PACKAGE_DIR);
+  if (override && (await pathExists(path.join(override, "package.json")))) {
+    return override;
+  }
+
+  const argv1 = normalizeDir(opts.argv1);
+  if (!argv1) {
+    return null;
+  }
+
+  const packageRoot = resolveNodeModulesBinPackageRoot(argv1);
+  if (packageRoot && (await pathExists(path.join(packageRoot, "package.json")))) {
+    return packageRoot;
+  }
+
+  return findPackageRoot([path.dirname(argv1)]);
+}
+
+async function copyDirectoryWithoutGit(sourceRoot: string, targetRoot: string) {
+  const source = path.resolve(sourceRoot);
+  await fs.cp(source, targetRoot, {
+    recursive: true,
+    dereference: false,
+    filter: (src) => {
+      const rel = path.relative(source, src);
+      if (!rel) {
+        return true;
+      }
+      return rel.split(path.sep)[0] !== ".git";
+    },
+  });
+}
+
+async function syncRuntimeSnapshot(sourceRoot: string, snapshotRoot: string) {
+  const source = path.resolve(sourceRoot);
+  const target = path.resolve(snapshotRoot);
+  if (source === target) {
+    return;
+  }
+
+  const parent = path.dirname(target);
+  const tmp = path.join(parent, `${path.basename(target)}.new.${process.pid}.${Date.now()}`);
+  const backup = path.join(parent, `${path.basename(target)}.old.${process.pid}.${Date.now()}`);
+  await fs.rm(tmp, { recursive: true, force: true });
+  await fs.mkdir(parent, { recursive: true });
+
+  await copyDirectoryWithoutGit(source, tmp);
+
+  let movedExisting = false;
+  try {
+    await fs.rename(target, backup);
+    movedExisting = true;
+  } catch {
+    // First install may not have an existing snapshot.
+  }
+
+  try {
+    await fs.rename(tmp, target);
+  } catch (err) {
+    if (movedExisting) {
+      await fs.rename(backup, target).catch(() => null);
+    }
+    throw err;
+  }
+
+  if (movedExisting) {
+    await fs.rm(backup, { recursive: true, force: true });
+  }
+}
+
 async function detectPackageManager(root: string) {
   try {
     const raw = await fs.readFile(path.join(root, "package.json"), "utf-8");
@@ -327,6 +406,49 @@ async function runStep(opts: RunStepOptions): Promise<UpdateStepResult> {
     stdoutTail: trimLogTail(result.stdout, MAX_LOG_CHARS),
     stderrTail: trimLogTail(result.stderr, MAX_LOG_CHARS),
   };
+}
+
+async function runRuntimeSnapshotStep(params: {
+  sourceRoot: string;
+  snapshotRoot: string;
+  progress?: UpdateStepProgress;
+  stepIndex: number;
+  totalSteps: number;
+}): Promise<UpdateStepResult> {
+  const { sourceRoot, snapshotRoot, progress, stepIndex, totalSteps } = params;
+  const stepInfo: UpdateStepInfo = {
+    name: "runtime snapshot sync",
+    command: `sync ${sourceRoot} -> ${snapshotRoot}`,
+    index: stepIndex,
+    total: totalSteps,
+  };
+  progress?.onStepStart?.(stepInfo);
+
+  const started = Date.now();
+  try {
+    await syncRuntimeSnapshot(sourceRoot, snapshotRoot);
+    const durationMs = Date.now() - started;
+    progress?.onStepComplete?.({ ...stepInfo, durationMs, exitCode: 0 });
+    return {
+      name: stepInfo.name,
+      command: stepInfo.command,
+      cwd: sourceRoot,
+      durationMs,
+      exitCode: 0,
+    };
+  } catch (err) {
+    const durationMs = Date.now() - started;
+    const stderrTail = trimLogTail(err instanceof Error ? err.message : String(err), MAX_LOG_CHARS);
+    progress?.onStepComplete?.({ ...stepInfo, durationMs, exitCode: 1, stderrTail });
+    return {
+      name: stepInfo.name,
+      command: stepInfo.command,
+      cwd: sourceRoot,
+      durationMs,
+      exitCode: 1,
+      stderrTail,
+    };
+  }
 }
 
 function managerScriptArgs(manager: "pnpm" | "bun" | "npm", script: string, args: string[] = []) {
@@ -429,7 +551,12 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
     const channel: UpdateChannel = opts.channel ?? "dev";
     const branch = channel === "dev" ? await readBranchName(runCommand, gitRoot, timeoutMs) : null;
     const needsCheckoutMain = channel === "dev" && branch !== DEV_BRANCH;
-    gitTotalSteps = channel === "dev" ? (needsCheckoutMain ? 12 : 11) : 10;
+    const runtimeSnapshotRoot = await resolveRuntimeSnapshotPackageRoot(opts);
+    const shouldSyncRuntimeSnapshot =
+      runtimeSnapshotRoot != null && path.resolve(runtimeSnapshotRoot) !== path.resolve(gitRoot);
+    gitTotalSteps =
+      (channel === "dev" ? (needsCheckoutMain ? 12 : 11) : 10) +
+      (shouldSyncRuntimeSnapshot ? 1 : 0);
 
     const statusCheck = await runStep(
       step(
@@ -577,11 +704,11 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
         };
       }
 
-      const candidates = (revListStep.stdoutTail ?? "")
+      const candidateShas = (revListStep.stdoutTail ?? "")
         .split("\n")
         .map((line) => line.trim())
         .filter(Boolean);
-      if (candidates.length === 0) {
+      if (candidateShas.length === 0) {
         return {
           status: "error",
           mode: "git",
@@ -619,7 +746,7 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
 
       let selectedSha: string | null = null;
       try {
-        for (const sha of candidates) {
+        for (const sha of candidateShas) {
           const shortSha = sha.slice(0, 8);
           const checkoutStep = await runStep(
             step(
@@ -828,6 +955,18 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       steps.push(restoreUiStep);
     }
 
+    if (shouldSyncRuntimeSnapshot && runtimeSnapshotRoot) {
+      const snapshotStep = await runRuntimeSnapshotStep({
+        sourceRoot: gitRoot,
+        snapshotRoot: runtimeSnapshotRoot,
+        progress,
+        stepIndex,
+        totalSteps: gitTotalSteps,
+      });
+      stepIndex += 1;
+      steps.push(snapshotStep);
+    }
+
     const setupStep = await runStep(
       step("workspace setup", managerScriptArgs(manager, "argent", ["setup"]), gitRoot),
     );
@@ -897,7 +1036,7 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       stepIndex: 0,
       totalSteps: 1,
     });
-    const steps = [updateStep];
+    const packageSteps = [updateStep];
     const afterVersion = await readPackageVersion(pkgRoot);
     return {
       status: updateStep.exitCode === 0 ? "ok" : "error",
@@ -906,7 +1045,7 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       reason: updateStep.exitCode === 0 ? undefined : updateStep.name,
       before: { version: beforeVersion },
       after: { version: afterVersion },
-      steps,
+      steps: packageSteps,
       durationMs: Date.now() - startedAt,
     };
   }
