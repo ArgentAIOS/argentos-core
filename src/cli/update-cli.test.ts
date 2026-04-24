@@ -562,6 +562,59 @@ describe("update-cli", () => {
     expect(runDaemonRestart).toHaveBeenCalled();
   });
 
+  it("updateCommand restarts macOS dashboard services after daemon restart", async () => {
+    const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-home-"));
+    const originalPlatform = process.platform;
+    let homedirSpy: ReturnType<typeof vi.spyOn> | null = null;
+    try {
+      const launchAgents = path.join(tempHome, "Library", "LaunchAgents");
+      await fs.mkdir(launchAgents, { recursive: true });
+      await fs.writeFile(path.join(launchAgents, "ai.argent.dashboard-api.plist"), "");
+      await fs.writeFile(path.join(launchAgents, "ai.argent.dashboard-ui.plist"), "");
+      homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(tempHome);
+      Object.defineProperty(process, "platform", {
+        value: "darwin",
+        configurable: true,
+      });
+
+      const { spawnSync } = await import("node:child_process");
+      const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { runDaemonRestart } = await import("./daemon-cli.js");
+      const { updateCommand } = await import("./update-cli.js");
+
+      vi.mocked(runGatewayUpdate).mockResolvedValue({
+        status: "ok",
+        mode: "git",
+        steps: [],
+        durationMs: 100,
+      });
+      vi.mocked(runDaemonRestart).mockResolvedValue(true);
+      vi.mocked(spawnSync).mockClear();
+
+      await updateCommand({});
+
+      const calls = vi.mocked(spawnSync).mock.calls.map(([cmd, args]) => ({
+        cmd,
+        args: Array.isArray(args) ? args.join(" ") : "",
+      }));
+      expect(calls).toContainEqual(
+        expect.objectContaining({
+          cmd: "/bin/launchctl",
+          args: expect.stringContaining("kickstart -k"),
+        }),
+      );
+      expect(calls.some((call) => call.args.includes("ai.argent.dashboard-api"))).toBe(true);
+      expect(calls.some((call) => call.args.includes("ai.argent.dashboard-ui"))).toBe(true);
+    } finally {
+      homedirSpy?.mockRestore();
+      Object.defineProperty(process, "platform", {
+        value: originalPlatform,
+        configurable: true,
+      });
+      await fs.rm(tempHome, { recursive: true, force: true });
+    }
+  });
+
   it("updateCommand skips restart when --no-restart is set", async () => {
     const { runGatewayUpdate } = await import("../infra/update-runner.js");
     const { runDaemonRestart } = await import("./daemon-cli.js");

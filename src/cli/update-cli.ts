@@ -118,6 +118,7 @@ const UPDATE_QUIPS = [
 
 const MAX_LOG_CHARS = 8000;
 const DEFAULT_PACKAGE_NAME = "argent";
+const MACOS_DASHBOARD_SERVICE_LABELS = ["ai.argent.dashboard-api", "ai.argent.dashboard-ui"];
 const CORE_PACKAGE_NAMES = new Set([DEFAULT_PACKAGE_NAME]);
 const CLI_NAME = resolveCliName();
 const ARGENT_REPO_URL = "https://github.com/ArgentAIOS/argentos.git";
@@ -226,6 +227,39 @@ async function tryWriteCompletionCache(root: string, jsonMode: boolean): Promise
     const stderr = (result.stderr ?? "").toString().trim();
     const detail = stderr ? ` (${stderr})` : "";
     defaultRuntime.log(theme.warn(`Completion cache update failed${detail}.`));
+  }
+}
+
+async function restartMacDashboardServices(jsonMode: boolean): Promise<void> {
+  if (process.platform !== "darwin") return;
+  const uid = typeof process.getuid === "function" ? process.getuid() : null;
+  if (uid == null) return;
+
+  const domain = `gui/${uid}`;
+  const launchAgentsDir = path.join(os.homedir(), "Library", "LaunchAgents");
+  const restarted: string[] = [];
+  const failed: string[] = [];
+
+  for (const label of MACOS_DASHBOARD_SERVICE_LABELS) {
+    const plistPath = path.join(launchAgentsDir, `${label}.plist`);
+    if (!(await pathExists(plistPath))) continue;
+    const result = spawnSync("/bin/launchctl", ["kickstart", "-k", `${domain}/${label}`], {
+      env: process.env,
+      encoding: "utf-8",
+    });
+    if (result.status === 0 && !result.error) {
+      restarted.push(label);
+    } else {
+      failed.push(label);
+    }
+  }
+
+  if (jsonMode || (restarted.length === 0 && failed.length === 0)) return;
+  if (restarted.length > 0) {
+    defaultRuntime.log(theme.success(`Dashboard services restarted: ${restarted.join(", ")}.`));
+  }
+  if (failed.length > 0) {
+    defaultRuntime.log(theme.warn(`Dashboard service restart failed: ${failed.join(", ")}.`));
   }
 }
 
@@ -1130,8 +1164,13 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     try {
       const { runDaemonRestart } = await import("./daemon-cli.js");
       const restarted = await runDaemonRestart();
+      if (restarted) {
+        if (!opts.json) {
+          defaultRuntime.log(theme.success("Daemon restarted successfully."));
+        }
+        await restartMacDashboardServices(Boolean(opts.json));
+      }
       if (!opts.json && restarted) {
-        defaultRuntime.log(theme.success("Daemon restarted successfully."));
         defaultRuntime.log("");
         process.env.ARGENT_UPDATE_IN_PROGRESS = "1";
         try {
