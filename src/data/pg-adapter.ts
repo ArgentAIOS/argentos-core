@@ -3399,6 +3399,11 @@ export class PgAdapter implements StorageAdapter {
     `);
 
     await this.db.execute(sql`
+      ALTER TABLE item_entities
+        ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'mentioned';
+    `);
+
+    await this.db.execute(sql`
       CREATE TABLE IF NOT EXISTS personal_skill_candidates (
         id TEXT PRIMARY KEY,
         agent_id TEXT NOT NULL REFERENCES agents(id),
