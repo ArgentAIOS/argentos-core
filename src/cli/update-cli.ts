@@ -263,6 +263,34 @@ async function restartMacDashboardServices(jsonMode: boolean): Promise<void> {
   }
 }
 
+async function runPostUpdateDoctor(params: {
+  root: string;
+  jsonMode: boolean;
+  interactive: boolean;
+}): Promise<void> {
+  if (params.jsonMode) return;
+  const cliPath = path.join(params.root, "argent.mjs");
+  if (!(await pathExists(cliPath))) {
+    defaultRuntime.log(theme.warn(`Doctor skipped: CLI entry not found at ${cliPath}.`));
+    return;
+  }
+
+  const result = spawnSync(
+    resolveNodeRunner(),
+    [cliPath, "doctor", ...(params.interactive ? [] : ["--non-interactive"])],
+    {
+      cwd: params.root,
+      env: { ...process.env, ARGENT_UPDATE_IN_PROGRESS: "1" },
+      stdio: "inherit",
+    },
+  );
+  if (result.error) {
+    defaultRuntime.log(theme.warn(`Doctor failed: ${String(result.error)}`));
+  } else if (typeof result.status === "number" && result.status !== 0) {
+    defaultRuntime.log(theme.warn(`Doctor exited with status ${result.status}.`));
+  }
+}
+
 /** Check if shell completion is installed and prompt user to install if not. */
 async function tryInstallShellCompletion(opts: {
   jsonMode: boolean;
@@ -1172,18 +1200,12 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
       }
       if (!opts.json && restarted) {
         defaultRuntime.log("");
-        process.env.ARGENT_UPDATE_IN_PROGRESS = "1";
-        try {
-          const { doctorCommand } = await import("../commands/doctor.js");
-          const interactiveDoctor = Boolean(process.stdin.isTTY) && !opts.json && opts.yes !== true;
-          await doctorCommand(defaultRuntime, {
-            nonInteractive: !interactiveDoctor,
-          });
-        } catch (err) {
-          defaultRuntime.log(theme.warn(`Doctor failed: ${String(err)}`));
-        } finally {
-          delete process.env.ARGENT_UPDATE_IN_PROGRESS;
-        }
+        const interactiveDoctor = Boolean(process.stdin.isTTY) && opts.yes !== true;
+        await runPostUpdateDoctor({
+          root: result.root ?? root,
+          jsonMode: Boolean(opts.json),
+          interactive: interactiveDoctor,
+        });
       }
     } catch (err) {
       if (!opts.json) {

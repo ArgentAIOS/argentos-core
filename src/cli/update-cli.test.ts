@@ -615,6 +615,42 @@ describe("update-cli", () => {
     }
   });
 
+  it("updateCommand runs post-update doctor from a fresh CLI process", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-root-"));
+    try {
+      await fs.writeFile(path.join(tempRoot, "argent.mjs"), "#!/usr/bin/env node\n");
+
+      const { spawnSync } = await import("node:child_process");
+      const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { runDaemonRestart } = await import("./daemon-cli.js");
+      const { updateCommand } = await import("./update-cli.js");
+
+      vi.mocked(runGatewayUpdate).mockResolvedValue({
+        status: "ok",
+        mode: "git",
+        root: tempRoot,
+        steps: [],
+        durationMs: 100,
+      });
+      vi.mocked(runDaemonRestart).mockResolvedValue(true);
+      vi.mocked(spawnSync).mockClear();
+
+      await updateCommand({ yes: true });
+
+      expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+        expect.any(String),
+        [path.join(tempRoot, "argent.mjs"), "doctor", "--non-interactive"],
+        expect.objectContaining({
+          cwd: tempRoot,
+          stdio: "inherit",
+          env: expect.objectContaining({ ARGENT_UPDATE_IN_PROGRESS: "1" }),
+        }),
+      );
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("updateCommand skips restart when --no-restart is set", async () => {
     const { runGatewayUpdate } = await import("../infra/update-runner.js");
     const { runDaemonRestart } = await import("./daemon-cli.js");
