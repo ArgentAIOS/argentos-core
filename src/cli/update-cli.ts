@@ -15,6 +15,7 @@ import {
 } from "../commands/status.update.js";
 import { readConfigFileSnapshot, writeConfigFile } from "../config/config.js";
 import { resolveArgentPackageRoot } from "../infra/argent-root.js";
+import { resolveHostedGitDirOverride } from "../infra/hosted-git-dir.js";
 import { trimLogTail } from "../infra/restart-sentinel.js";
 import { parseSemver } from "../infra/runtime-guard.js";
 import {
@@ -304,11 +305,6 @@ function resolveGitInstallDir(): string {
     return override;
   }
   return resolveDefaultGitDir();
-}
-
-function resolveHostedGitDirOverride(): string | null {
-  const override = process.env.ARGENT_GIT_DIR?.trim() || process.env.ARGENTOS_GIT_DIR?.trim();
-  return override ? path.resolve(override) : null;
 }
 
 function resolveDefaultGitDir(): string {

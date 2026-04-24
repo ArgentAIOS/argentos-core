@@ -12,6 +12,7 @@ import { normalizeControlUiBasePath } from "../gateway/control-ui-shared.js";
 import { probeGateway } from "../gateway/probe.js";
 import { resolveArgentPackageRoot } from "../infra/argent-root.js";
 import { collectChannelStatusIssues } from "../infra/channels-status-issues.js";
+import { resolveHostedGitDirOverride } from "../infra/hosted-git-dir.js";
 import { resolveOsSummary } from "../infra/os-summary.js";
 import { inspectPortUsage } from "../infra/ports.js";
 import { readRestartSentinel } from "../infra/restart-sentinel.js";
@@ -81,11 +82,13 @@ export async function statusAllCommand(
     progress.tick();
 
     progress.setLabel("Checking for updates…");
-    const root = await resolveArgentPackageRoot({
-      moduleUrl: import.meta.url,
-      argv1: process.argv[1],
-      cwd: process.cwd(),
-    });
+    const root =
+      resolveHostedGitDirOverride() ??
+      (await resolveArgentPackageRoot({
+        moduleUrl: import.meta.url,
+        argv1: process.argv[1],
+        cwd: process.cwd(),
+      }));
     const update = await checkUpdateStatus({
       root,
       timeoutMs: 6500,
