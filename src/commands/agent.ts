@@ -12,17 +12,23 @@ import {
   resolveAlignmentIntegrityMode,
   runAlignmentIntegrityStartupCheck,
 } from "../agents/alignment-integrity.js";
-import { ensureAuthProfileStore } from "../agents/auth-profiles.js";
+import { ensureAuthProfileStore, listProfilesForProvider } from "../agents/auth-profiles.js";
 import { clearSessionAuthProfileOverride } from "../agents/auth-profiles/session-override.js";
 import { runCliAgent } from "../agents/cli-runner.js";
 import { getCliSessionId } from "../agents/cli-session.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
+import {
+  getCustomProviderApiKey,
+  resolveAwsSdkEnvVarName,
+  resolveEnvApiKey,
+} from "../agents/model-auth.js";
 import { loadModelCatalog } from "../agents/model-catalog.js";
 import { runWithModelFallback } from "../agents/model-fallback.js";
 import {
   buildAllowedModelSet,
   isCliProvider,
   modelKey,
+  normalizeProviderId,
   resolveBestReasoningModel,
   resolveConfiguredModelRef,
   selectionDiffersFromConfiguredPrimary,
@@ -68,6 +74,48 @@ import { deliverAgentCommandResult } from "./agent/delivery.js";
 import { resolveAgentRunContext } from "./agent/run-context.js";
 import { updateSessionStoreAfterAgentRun } from "./agent/session-store.js";
 import { resolveSession } from "./agent/session.js";
+
+function isAutomaticModelProviderAvailable(params: {
+  cfg: Parameters<typeof getCustomProviderApiKey>[0];
+  provider: string;
+  agentDir?: string;
+}) {
+  const normalizedProvider = normalizeProviderId(params.provider);
+  if (normalizedProvider === "lmstudio" || normalizedProvider === "ollama") {
+    return true;
+  }
+  if (
+    listProfilesForProvider(ensureAuthProfileStore(params.agentDir), normalizedProvider).length > 0
+  ) {
+    return true;
+  }
+  if (resolveEnvApiKey(normalizedProvider)?.apiKey) {
+    return true;
+  }
+  if (getCustomProviderApiKey(params.cfg, normalizedProvider)) {
+    return true;
+  }
+  if (normalizedProvider === "amazon-bedrock") {
+    return Boolean(resolveAwsSdkEnvVarName());
+  }
+  return false;
+}
+
+function resolveRouterPowerfulModel(cfg: Parameters<typeof getCustomProviderApiKey>[0]) {
+  const router = cfg?.agents?.defaults?.modelRouter;
+  if (!router?.enabled) {
+    return null;
+  }
+  const activeProfileName = router.activeProfile ?? "balanced";
+  const activeProfile = router.profiles?.[activeProfileName];
+  const powerful = activeProfile?.tiers?.powerful;
+  const provider = normalizeProviderId(String(powerful?.provider ?? ""));
+  const model = String(powerful?.model ?? "").trim();
+  if (!provider || !model) {
+    return null;
+  }
+  return { provider, model };
+}
 
 export async function agentCommand(
   opts: AgentCommandOpts,
@@ -324,11 +372,28 @@ export async function agentCommand(
         defaultProvider,
         defaultModel,
       });
-      const bestReasoning = resolveBestReasoningModel({
-        catalog: modelCatalog,
-        allowedKeys: allowed.allowedKeys,
-        allowAny: allowed.allowAny,
-      });
+      const routerPowerful = resolveRouterPowerfulModel(cfg);
+      const bestReasoning =
+        routerPowerful &&
+        isAutomaticModelProviderAvailable({
+          cfg,
+          provider: routerPowerful.provider,
+          agentDir,
+        }) &&
+        (allowed.allowAny ||
+          allowed.allowedKeys.has(modelKey(routerPowerful.provider, routerPowerful.model)))
+          ? routerPowerful
+          : resolveBestReasoningModel({
+              catalog: modelCatalog,
+              allowedKeys: allowed.allowedKeys,
+              allowAny: allowed.allowAny,
+              providerEligible: (candidateProvider) =>
+                isAutomaticModelProviderAvailable({
+                  cfg,
+                  provider: candidateProvider,
+                  agentDir,
+                }),
+            });
       if (bestReasoning) {
         const entry = sessionStore[sessionKey] ??
           sessionEntry ?? { sessionId, updatedAt: Date.now() };

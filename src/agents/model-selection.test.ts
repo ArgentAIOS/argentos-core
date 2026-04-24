@@ -4,6 +4,7 @@ import {
   parseModelRef,
   resolveModelRefFromString,
   resolveConfiguredModelRef,
+  resolveBestReasoningModel,
   buildModelAliasIndex,
   normalizeProviderId,
   modelKey,
@@ -174,6 +175,32 @@ describe("model-selection", () => {
           defaultModel: "claude-haiku-4-5",
         }),
       ).toBe(true);
+    });
+  });
+
+  describe("resolveBestReasoningModel", () => {
+    it("skips ineligible providers when auto-selecting a reasoning model", () => {
+      const result = resolveBestReasoningModel({
+        catalog: [
+          {
+            provider: "amazon-bedrock",
+            id: "anthropic.claude-haiku-4-5-20251001-v1:0",
+            name: "Claude Haiku 4.5",
+            reasoning: true,
+          },
+          {
+            provider: "zai",
+            id: "glm-5",
+            name: "GLM 5",
+            reasoning: true,
+          },
+        ],
+        allowedKeys: new Set(),
+        allowAny: true,
+        providerEligible: (provider) => provider === "zai",
+      });
+
+      expect(result).toEqual({ provider: "zai", model: "glm-5" });
     });
   });
 });
