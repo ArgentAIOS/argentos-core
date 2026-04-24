@@ -12657,14 +12657,26 @@ function resolveAgentDocsDir(agentName) {
   return path.join(AGENTS_DIR, agentName, "agent");
 }
 
+function resolveAlignmentMainAgentLabel(config) {
+  const defaultAgentId = resolveDefaultAgentId(config);
+  const mainAgent = findConfigAgent(config, "main") || findConfigAgent(config, defaultAgentId);
+  const identityName =
+    mainAgent?.identity && typeof mainAgent.identity.name === "string"
+      ? mainAgent.identity.name.trim()
+      : "";
+  const agentName = typeof mainAgent?.name === "string" ? mainAgent.name.trim() : "";
+  return agentName || identityName || defaultAgentId || "main";
+}
+
 // GET /api/settings/alignment — List agents and their docs
 app.get("/api/settings/alignment", (req, res) => {
   try {
+    const config = readArgentConfig();
     const agents = [];
 
     // Always include the main agent if workspace-main exists
     if (fs.existsSync(WORKSPACE_MAIN)) {
-      agents.push({ id: "__main__", label: "Argent ★ (main)" });
+      agents.push({ id: "__main__", label: resolveAlignmentMainAgentLabel(config) });
     }
 
     // Add named agents from agents/ directory
@@ -14625,11 +14637,14 @@ function resolveHeartbeatWorkspaceContext() {
   const agentHeartbeat =
     agentEntry?.heartbeat && typeof agentEntry.heartbeat === "object" ? agentEntry.heartbeat : {};
   const heartbeat = { ...defaultsHeartbeat, ...agentHeartbeat };
+  const heartbeatEnabled = heartbeat?.enabled !== false;
   const heartbeatSession =
     typeof heartbeat?.session === "string" && heartbeat.session.trim()
       ? heartbeat.session.trim()
-      : "heartbeat";
-  const heartbeatEveryMs = parseHeartbeatEveryMs(heartbeat?.every);
+      : "main";
+  const heartbeatEveryMs = heartbeatEnabled
+    ? parseHeartbeatEveryMs(heartbeat?.every ?? "30m")
+    : null;
   return {
     config,
     defaultAgentId,
