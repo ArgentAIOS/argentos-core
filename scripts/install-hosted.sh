@@ -42,6 +42,7 @@ PNPM_SUBCOMMAND=""
 WRAPPER_NODE_BIN=""
 PATH_LINE=""
 ONBOARD_NO_PROMPT=()
+PNPM_SHIM_DIR=""
 
 usage() {
   cat <<'EOF'
@@ -147,6 +148,10 @@ run_cmd() {
   "$@"
 }
 
+run_git_nohooks() {
+  run_cmd git -c core.hooksPath=/dev/null "$@"
+}
+
 is_supported_runtime_node() {
   local version="${1#v}"
   local major="${version%%.*}"
@@ -237,8 +242,10 @@ install_private_node_runtime() {
     exit 1
   fi
 
+  mkdir -p "$runtime_root"
   new_root="${runtime_root}/node.new.$$"
   rm -rf "$new_root"
+  mkdir -p "$(dirname "$new_root")"
   mv "$extracted_root" "$new_root"
 
   backup_root=""
@@ -247,6 +254,7 @@ install_private_node_runtime() {
     rm -rf "$backup_root"
     mv "$node_root" "$backup_root"
   fi
+  mkdir -p "$(dirname "$node_root")"
   if ! mv "$new_root" "$node_root"; then
     rm -rf "$new_root"
     if [[ -n "$backup_root" && -d "$backup_root" ]]; then
@@ -282,6 +290,10 @@ resolve_pnpm_runner() {
   if [[ -x "$node_dir/corepack" ]]; then
     # Enable corepack if not already (idempotent)
     "$node_dir/corepack" enable 2>/dev/null || true
+    if [[ -x "$node_dir/pnpm" ]]; then
+      PNPM_EXEC="$node_dir/pnpm"
+      return 0
+    fi
     PNPM_EXEC="$node_dir/corepack"
     PNPM_SUBCOMMAND="pnpm"
     return 0
@@ -338,6 +350,33 @@ resolve_pnpm_runner() {
   return 1
 }
 
+ensure_pnpm_shim() {
+  local node_dir pnpm_target
+  node_dir="$(dirname "$NODE_BIN")"
+  PNPM_SHIM_DIR="${RUNTIME_DIR}/bin"
+
+  if is_truthy "$DRY_RUN"; then
+    info "Would ensure pnpm shim under ${PNPM_SHIM_DIR}"
+    return 0
+  fi
+
+  mkdir -p "$PNPM_SHIM_DIR"
+  pnpm_target="${PNPM_SHIM_DIR}/pnpm"
+
+  if [[ -x "$node_dir/pnpm" ]]; then
+    ln -sf "$node_dir/pnpm" "$pnpm_target"
+    return 0
+  fi
+
+  [[ -n "$PNPM_EXEC" ]] || return 0
+  cat > "$pnpm_target" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+exec $(printf '%q' "$PNPM_EXEC") ${PNPM_SUBCOMMAND:+$(printf '%q ' "$PNPM_SUBCOMMAND")}"\$@"
+EOF
+  chmod +x "$pnpm_target"
+}
+
 activate_runtime() {
   local resolved_node system_node_version node_dir
 
@@ -358,12 +397,17 @@ activate_runtime() {
 
   WRAPPER_NODE_BIN="$NODE_BIN"
   node_dir="$(dirname "$NODE_BIN")"
-  PATH_LINE="export PATH=\"$node_dir:\$PATH\""
   NPM_BIN="$node_dir/npm"
   if [[ ! -x "$NPM_BIN" ]]; then
     NPM_BIN="$(command -v npm 2>/dev/null || true)"
   fi
   resolve_pnpm_runner "$NODE_BIN" || true
+  ensure_pnpm_shim
+  if [[ -n "$PNPM_SHIM_DIR" ]]; then
+    PATH_LINE="export PATH=\"$node_dir:$PNPM_SHIM_DIR:\$PATH\""
+  else
+    PATH_LINE="export PATH=\"$node_dir:\$PATH\""
+  fi
   ONBOARD_NO_PROMPT=()
   if is_truthy "$NO_PROMPT"; then
     ONBOARD_NO_PROMPT+=(--no-prompt)
@@ -436,10 +480,22 @@ run_pnpm() {
     err "pnpm is required for git installs."
     exit 1
   fi
+  local path_prefix
+  path_prefix="$(dirname "$NODE_BIN")"
+  if [[ -n "$PNPM_SHIM_DIR" ]]; then
+    path_prefix="$path_prefix:$PNPM_SHIM_DIR"
+  fi
+  if [[ -n "$PNPM_EXEC" ]]; then
+    local pnpm_dir
+    pnpm_dir="$(dirname "$PNPM_EXEC")"
+    if [[ "$pnpm_dir" != "$path_prefix" ]]; then
+      path_prefix="$path_prefix:$pnpm_dir"
+    fi
+  fi
   if [[ -n "$PNPM_SUBCOMMAND" ]]; then
-    PATH="$(dirname "$NODE_BIN"):$PATH" run_cmd "$PNPM_EXEC" "$PNPM_SUBCOMMAND" --dir "$dir" "$@"
+    PATH="$path_prefix:$PATH" run_cmd "$PNPM_EXEC" "$PNPM_SUBCOMMAND" --dir "$dir" "$@"
   else
-    PATH="$(dirname "$NODE_BIN"):$PATH" run_cmd "$PNPM_EXEC" --dir "$dir" "$@"
+    PATH="$path_prefix:$PATH" run_cmd "$PNPM_EXEC" --dir "$dir" "$@"
   fi
 }
 
@@ -467,6 +523,55 @@ run_onboard() {
 
   err "Interactive onboarding requires a terminal. Re-run in a terminal, or pass --no-prompt / --no-onboard."
   exit 1
+}
+
+read_master_key_from_keychain() {
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    return 1
+  fi
+  security find-generic-password -s "ArgentOS-MasterKey" -a "ArgentOS" -w 2>/dev/null || true
+}
+
+generate_master_key_inline() {
+  local key_path="$HOME/.argentos/.master-key"
+  local key_dir
+  key_dir="$(dirname "$key_path")"
+  mkdir -p "$key_dir"
+
+  if [[ -f "$key_path" ]]; then
+    cat "$key_path" 2>/dev/null || true
+    return 0
+  fi
+
+  local existing_keychain=""
+  existing_keychain="$(read_master_key_from_keychain)"
+  if [[ "$existing_keychain" =~ ^[0-9a-fA-F]{64}$ ]]; then
+    printf '%s' "$existing_keychain" >"$key_path"
+    chmod 600 "$key_path" 2>/dev/null || true
+    printf '%s' "$existing_keychain"
+    return 0
+  fi
+
+  local hex=""
+  if command -v openssl >/dev/null 2>&1; then
+    hex="$(openssl rand -hex 32 2>/dev/null || true)"
+  fi
+  if [[ ! "$hex" =~ ^[0-9a-fA-F]{64}$ ]]; then
+    hex="$("$NODE_BIN" -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))" 2>/dev/null || true)"
+  fi
+  if [[ ! "$hex" =~ ^[0-9a-fA-F]{64}$ ]]; then
+    return 1
+  fi
+
+  printf '%s' "$hex" >"$key_path"
+  chmod 600 "$key_path" 2>/dev/null || true
+
+  if [[ "$(uname -s)" == "Darwin" ]] && ! is_truthy "$NO_PROMPT" && [[ -r /dev/tty ]]; then
+    security add-generic-password -U -s "ArgentOS-MasterKey" -a "ArgentOS" -w "$hex" >/dev/null 2>&1 || true
+  fi
+
+  printf '%s' "$hex"
+  return 0
 }
 
 resolve_configured_workspace_dir() {
@@ -596,6 +701,51 @@ should_run_cli_onboard() {
   return 0
 }
 
+persist_bin_dir_on_path() {
+  local bin_dir="$1"
+  local path_expr="$bin_dir"
+  if [[ "$bin_dir" == "$HOME/"* ]]; then
+    path_expr="\$HOME/${bin_dir#"$HOME"/}"
+  fi
+  local marker="# ArgentOS installer PATH"
+  local export_line="export PATH=\"${path_expr}:\$PATH\""
+  local shell_file
+  for shell_file in "$HOME/.zprofile" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+    if is_truthy "$DRY_RUN"; then
+      printf 'DRY-RUN: ensure PATH stanza in %q\n' "$shell_file"
+      continue
+    fi
+    touch "$shell_file"
+    if grep -Fq "$marker" "$shell_file" 2>/dev/null || grep -Fq "$export_line" "$shell_file" 2>/dev/null; then
+      continue
+    fi
+    {
+      printf '\n%s\n' "$marker"
+      printf '%s\n' "$export_line"
+    } >>"$shell_file"
+  done
+}
+
+persist_cli_aliases() {
+  local shell_file
+  local marker="# ArgentOS installer alias"
+  local alias_line="alias Argent=argent"
+  for shell_file in "$HOME/.zprofile" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+    if is_truthy "$DRY_RUN"; then
+      printf 'DRY-RUN: ensure CLI alias in %q\n' "$shell_file"
+      continue
+    fi
+    touch "$shell_file"
+    if grep -Fq "$marker" "$shell_file" 2>/dev/null || grep -Fq "$alias_line" "$shell_file" 2>/dev/null; then
+      continue
+    fi
+    {
+      printf '\n%s\n' "$marker"
+      printf '%s\n' "$alias_line"
+    } >>"$shell_file"
+  done
+}
+
 write_git_wrapper() {
   local bin_dir="$1"
   local escaped_package_dir escaped_node_bin escaped_entry
@@ -684,7 +834,9 @@ install_npm() {
     PATH="$(dirname "$NODE_BIN"):$PATH" run_cmd "$NPM_BIN" install -g --prefix "$NPM_PREFIX_OVERRIDE" "$package_spec"
     target_bin="$NPM_PREFIX_OVERRIDE/bin/argent"
     ok "Installed into prefix: $NPM_PREFIX_OVERRIDE"
-    info "Add this to PATH if needed: $NPM_PREFIX_OVERRIDE/bin"
+    persist_bin_dir_on_path "$NPM_PREFIX_OVERRIDE/bin"
+    persist_cli_aliases
+    info "Ensured shell PATH includes: $NPM_PREFIX_OVERRIDE/bin"
   else
     PATH="$(dirname "$NODE_BIN"):$PATH" run_cmd "$NPM_BIN" install -g "$package_spec"
     target_bin="$(
@@ -820,6 +972,18 @@ launch_argent_app() {
   echo "       Use: argent tui"
   echo ""
 
+  # Fresh installs should always see the native onboarding flow.
+  # If the app has never stored onboarding defaults on this machine,
+  # seed an explicit incomplete state before first launch.
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    local onboarding_domain="ai.argent.mac"
+    if ! defaults read "$onboarding_domain" argent.onboardingSeen >/dev/null 2>&1 \
+      && ! defaults read "$onboarding_domain" argent.onboardingVersion >/dev/null 2>&1; then
+      defaults write "$onboarding_domain" argent.onboardingSeen -bool false >/dev/null 2>&1 || true
+      defaults write "$onboarding_domain" argent.onboardingVersion -int 0 >/dev/null 2>&1 || true
+    fi
+  fi
+
   if is_truthy "$NO_PROMPT" || [[ ! -r /dev/tty ]]; then
     info "Launching Argent.app..."
     open -n -a /Applications/Argent.app 2>/dev/null || true
@@ -950,6 +1114,8 @@ provision_core_storage_stack() {
     return 0
   fi
 
+  mkdir -p "$HOME/Library/LaunchAgents"
+
   local pg_script="$GIT_DIR/scripts/setup-postgres.sh"
   local redis_script="$GIT_DIR/scripts/setup-redis.sh"
 
@@ -969,19 +1135,147 @@ provision_core_storage_stack() {
   write_core_distribution_and_storage_defaults
 }
 
+ensure_pg_tables_helper() {
+  local pg_script="$GIT_DIR/scripts/ensure-pg-tables.sh"
+  [[ -f "$pg_script" ]] && return 0
+
+  local fallback_url="https://argentos.ai/ensure-pg-tables.sh"
+  info "Restoring PostgreSQL schema bootstrap helper..."
+  if is_truthy "$DRY_RUN"; then
+    printf 'DRY-RUN: curl -fsSL %q -o %q\n' "$fallback_url" "$pg_script"
+    return 0
+  fi
+  mkdir -p "$(dirname "$pg_script")"
+  curl -fsSL "$fallback_url" -o "$pg_script" 2>/dev/null || return 1
+  chmod +x "$pg_script" 2>/dev/null || true
+  [[ -f "$pg_script" ]]
+}
+
+ensure_workspace_main_alias() {
+  local state_dir="$HOME/.argentos"
+  local workspace_dir="$state_dir/workspace"
+  local workspace_main="$state_dir/workspace-main"
+  [[ -d "$workspace_dir" ]] || return 0
+  if is_truthy "$DRY_RUN"; then
+    printf 'DRY-RUN: ensure workspace-main alias for %q\n' "$workspace_dir"
+    return 0
+  fi
+  if [[ -e "$workspace_main" || -L "$workspace_main" ]]; then
+    return 0
+  fi
+  ln -s "$workspace_dir" "$workspace_main" 2>/dev/null || cp -R "$workspace_dir" "$workspace_main"
+}
+
+seed_starter_family() {
+  local state_dir="$HOME/.argentos"
+  local workspace_dir="$state_dir/workspace"
+  local manifest_path="$GIT_DIR/src/agents/starter-family.json"
+  [[ -d "$workspace_dir" ]] || return 0
+  [[ -f "$manifest_path" ]] || return 0
+
+  if is_truthy "$DRY_RUN"; then
+    printf 'DRY-RUN: seed starter family under %q\n' "$state_dir/agents"\n
+    return 0
+  fi
+
+  ARGENT_STARTER_FAMILY_MANIFEST="$manifest_path" "$NODE_BIN" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+const home = process.env.HOME || "";
+const stateDir = path.join(home, ".argentos");
+const workspaceDir = path.join(stateDir, "workspace");
+const agentsRoot = path.join(stateDir, "agents");
+const manifestPath = process.env.ARGENT_STARTER_FAMILY_MANIFEST || "";
+if (!fs.existsSync(workspaceDir)) process.exit(0);
+if (!manifestPath || !fs.existsSync(manifestPath)) process.exit(0);
+fs.mkdirSync(agentsRoot, { recursive: true });
+const starter = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+const bootstrapFiles = [
+  "AGENTS.md",
+  "SOUL.md",
+  "TOOLS.md",
+  "USER.md",
+  "HEARTBEAT.md",
+  "CONTEMPLATION.md",
+  "BOOTSTRAP.md",
+  "WORKFLOWS.md",
+  "MEMORY.md",
+];
+for (const agent of starter) {
+  const rootDir = path.join(agentsRoot, agent.id);
+  const agentDir = path.join(rootDir, "agent");
+  fs.mkdirSync(agentDir, { recursive: true });
+  for (const file of bootstrapFiles) {
+    const src = path.join(workspaceDir, file);
+    const dest = path.join(agentDir, file);
+    if (fs.existsSync(src) && !fs.existsSync(dest)) {
+      fs.copyFileSync(src, dest);
+    }
+  }
+  const identity = [
+    "# IDENTITY.md",
+    "",
+    `- **Name:** ${agent.name}`,
+    `- **Role:** ${agent.role}`,
+    `- **Team:** ${agent.team}`,
+    "",
+  ].join("\n");
+  const identityPath = path.join(agentDir, "IDENTITY.md");
+  if (!fs.existsSync(identityPath)) {
+    fs.writeFileSync(identityPath, `${identity}\n`, "utf8");
+  }
+  const identityJsonPath = path.join(rootDir, "identity.json");
+  if (!fs.existsSync(identityJsonPath)) {
+    fs.writeFileSync(
+      identityJsonPath,
+      `${JSON.stringify(
+        {
+          id: agent.id,
+          name: agent.name,
+          role: agent.role,
+          team: agent.team,
+          ...(agent.model ? { model: agent.model } : {}),
+          ...(agent.provider ? { provider: agent.provider } : {}),
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+  }
+}
+NODE
+}
+
+seed_safe_core_defaults() {
+  local state_dir="$HOME/.argentos"
+  if is_truthy "$DRY_RUN"; then
+    printf 'DRY-RUN: write safe nudges defaults to %q\n' "$state_dir/nudges.json"
+    return 0
+  fi
+  mkdir -p "$state_dir"
+  cat > "$state_dir/nudges.json" <<'EOF'
+{
+  "version": 1,
+  "globalEnabled": false,
+  "nudges": []
+}
+EOF
+}
+
 install_git() {
   require_command git
 
   if [[ -d "$GIT_DIR/.git" ]]; then
     info "Using existing checkout: $GIT_DIR"
     if is_truthy "$GIT_UPDATE"; then
-      run_cmd git -C "$GIT_DIR" fetch --tags --prune
+      run_git_nohooks -C "$GIT_DIR" fetch --tags --prune
     else
       info "Skipping git fetch (--no-git-update)"
     fi
   else
     info "Cloning source checkout from $GIT_REMOTE to $GIT_DIR"
-    run_cmd git clone "$GIT_REMOTE" "$GIT_DIR"
+    run_git_nohooks clone "$GIT_REMOTE" "$GIT_DIR"
   fi
 
   # Resolve release-tag placeholders to actual git tags
@@ -1011,20 +1305,20 @@ install_git() {
 
   if [[ -n "$VERSION" && "$VERSION" != "main" ]]; then
     info "Checking out git ref: $VERSION"
-    run_cmd git -C "$GIT_DIR" checkout "$VERSION"
+    run_git_nohooks -C "$GIT_DIR" checkout "$VERSION"
     if is_truthy "$GIT_UPDATE"; then
       if git -C "$GIT_DIR" show-ref --verify --quiet "refs/remotes/origin/$VERSION"; then
         info "Updating git ref from origin/$VERSION"
-        run_cmd git -C "$GIT_DIR" reset --hard "origin/$VERSION"
+        run_git_nohooks -C "$GIT_DIR" reset --hard "origin/$VERSION"
       fi
     fi
   else
     info "Tracking source checkout on main"
-    run_cmd git -C "$GIT_DIR" checkout main
+    run_git_nohooks -C "$GIT_DIR" checkout main
     if is_truthy "$GIT_UPDATE"; then
       # Reset lockfile that pnpm install may have modified — will be regenerated below
-      git -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
-      run_cmd git -C "$GIT_DIR" pull origin main
+      run_git_nohooks -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
+      run_git_nohooks -C "$GIT_DIR" pull origin main
     fi
   fi
 
@@ -1034,24 +1328,35 @@ install_git() {
   run_pnpm "$GIT_DIR" install --ignore-workspace --frozen-lockfile \
     || run_pnpm "$GIT_DIR" install --ignore-workspace
   # Restore lockfile if pnpm mutated it (keeps git checkout clean for argent update)
-  git -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
+  run_git_nohooks -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
   run_pnpm "$GIT_DIR" build
   run_pnpm "$GIT_DIR" rebuild better-sqlite3
   snapshot_git_runtime "$GIT_DIR" "$PACKAGE_DIR_OVERRIDE"
   ok "Installed stable runtime snapshot: $PACKAGE_DIR_OVERRIDE"
   write_git_wrapper "$BIN_DIR_OVERRIDE"
+  persist_bin_dir_on_path "$BIN_DIR_OVERRIDE"
+  persist_cli_aliases
   ok "Installed git wrapper: $BIN_DIR_OVERRIDE/argent"
-  info "Add this to PATH if needed: $BIN_DIR_OVERRIDE"
+  info "Ensured shell PATH includes: $BIN_DIR_OVERRIDE"
 
   provision_core_storage_stack
 
   ensure_workspace_bootstrap_state "$BIN_DIR_OVERRIDE/argent"
+  ensure_workspace_main_alias
+  seed_starter_family
+  seed_safe_core_defaults
 
   # Create all PG tables (knowledge, memory, tasks, etc.) using safe CREATE IF NOT EXISTS.
   # Must run AFTER PG is provisioned.
   info "Creating PostgreSQL schema tables..."
-  bash "$GIT_DIR/scripts/ensure-pg-tables.sh" 2>/dev/null \
-    || warn "Table creation failed — run manually: bash ~/argentos/scripts/ensure-pg-tables.sh"
+  if ensure_pg_tables_helper; then
+    bash "$GIT_DIR/scripts/ensure-pg-tables.sh" 2>/dev/null \
+      || warn "Table creation failed — run manually: bash ~/argentos/scripts/ensure-pg-tables.sh"
+  else
+    warn "PostgreSQL schema helper missing and could not be restored"
+    warn "Run manually once available: bash ~/argentos/scripts/ensure-pg-tables.sh"
+  fi
+
   # macOS: Download Argent.app from R2 BEFORE onboarding (runs during service setup)
   if [[ "$(uname -s)" == "Darwin" ]]; then
     download_argent_app || true
@@ -1075,7 +1380,7 @@ install_git() {
       || warn "Dashboard deps failed"
     # Restore root workspace lockfile if dashboard install mutated it
     # (this repo uses a single root pnpm-lock.yaml, not dashboard/pnpm-lock.yaml)
-    git -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
+    run_git_nohooks -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
     rm -f "$dashboard_dir/pnpm-lock.yaml" 2>/dev/null || true
 
     # Build dashboard (skip tsc — use vite directly to avoid pre-existing TS strict errors)
@@ -1083,25 +1388,73 @@ install_git() {
     (cd "$dashboard_dir" && PATH="$node_dir:$PATH" "$node_dir/npx" --yes vite build 2>&1 | tail -3) \
       || warn "Dashboard build failed — run later: cd ~/argentos/dashboard && npx vite build"
 
-    # Start dashboard UI via the bundled static server on port 8080
+    # Start dashboard UI and API services. The UI proxies /api/* to the API
+    # service on port 9242, so both must be running for settings/auth writes.
     if [[ "$(uname -s)" == "Darwin" && -d "$dashboard_dir/dist" ]] && ! is_truthy "$DRY_RUN"; then
       mkdir -p "$HOME/.argentos/logs"
 
-      # Kill anything on 8080 first
+      # Kill anything on 8080/9242 first
       lsof -ti :8080 | xargs kill 2>/dev/null || true
+      lsof -ti :9242 | xargs kill 2>/dev/null || true
 
       local static_server="$dashboard_dir/static-server.cjs"
+      local api_server="$dashboard_dir/api-server.cjs"
       if [[ ! -f "$static_server" ]]; then
         warn "Dashboard static server missing at $static_server"
         return 0
       fi
+      if [[ ! -f "$api_server" ]]; then
+        warn "Dashboard API server missing at $api_server"
+        return 0
+      fi
+
+      # Start dashboard API in background
+      PORT=9242 API_PORT=9242 HOST=127.0.0.1 PATH="$node_dir:$PATH" nohup "$NODE_BIN" "$api_server" \
+        > "$HOME/.argentos/logs/dashboard-api.log" 2>&1 &
 
       # Start dashboard UI in background
       PORT=8080 API_PORT=9242 PATH="$node_dir:$PATH" nohup "$NODE_BIN" "$static_server" \
         > "$HOME/.argentos/logs/dashboard-ui.log" 2>&1 &
-      local dash_pid=$!
 
-      # Create a LaunchAgent so it survives reboots
+      # Create LaunchAgents so services survive reboots
+      local api_plist="$HOME/Library/LaunchAgents/ai.argent.dashboard-api.plist"
+      cat > "$api_plist" <<APIPLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.argent.dashboard-api</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$NODE_BIN</string>
+    <string>$api_server</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>$dashboard_dir</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>$HOME</string>
+    <key>PATH</key>
+    <string>$node_dir:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOST</key>
+    <string>127.0.0.1</string>
+    <key>API_PORT</key>
+    <string>9242</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>$HOME/.argentos/logs/dashboard-api.log</string>
+  <key>StandardErrorPath</key>
+  <string>$HOME/.argentos/logs/dashboard-api.log</string>
+</dict>
+</plist>
+APIPLIST
+
       local ui_plist="$HOME/Library/LaunchAgents/ai.argent.dashboard-ui.plist"
       cat > "$ui_plist" <<UIPLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -1119,6 +1472,8 @@ install_git() {
   <string>$dashboard_dir</string>
   <key>EnvironmentVariables</key>
   <dict>
+    <key>HOME</key>
+    <string>$HOME</string>
     <key>PATH</key>
     <string>$node_dir:/usr/bin:/bin:/usr/sbin:/sbin</string>
     <key>HOST</key>
@@ -1140,11 +1495,20 @@ install_git() {
 </plist>
 UIPLIST
 
+      local launch_domain
+      launch_domain="gui/$(id -u)"
+      /bin/launchctl bootout "$launch_domain" "$api_plist" >/dev/null 2>&1 || true
+      /bin/launchctl bootout "$launch_domain" "$ui_plist" >/dev/null 2>&1 || true
+      /bin/launchctl bootstrap "$launch_domain" "$api_plist" >/dev/null 2>&1 || true
+      /bin/launchctl bootstrap "$launch_domain" "$ui_plist" >/dev/null 2>&1 || true
+      /bin/launchctl kickstart -k "$launch_domain/ai.argent.dashboard-api" >/dev/null 2>&1 || true
+      /bin/launchctl kickstart -k "$launch_domain/ai.argent.dashboard-ui" >/dev/null 2>&1 || true
+
       sleep 2
-      if lsof -i :8080 >/dev/null 2>&1; then
-        ok "Dashboard running on http://127.0.0.1:8080/"
+      if lsof -i :9242 >/dev/null 2>&1 && lsof -i :8080 >/dev/null 2>&1; then
+        ok "Dashboard running on http://127.0.0.1:8080/ (API on 127.0.0.1:9242)"
       else
-        warn "Dashboard may not have started — check ~/.argentos/logs/dashboard-ui.log"
+        warn "Dashboard may not have started cleanly — check ~/.argentos/logs/dashboard-api.log and ~/.argentos/logs/dashboard-ui.log"
       fi
     elif [[ ! -d "$dashboard_dir/dist" ]]; then
       warn "Dashboard build output missing — dashboard will not be available on port 8080"
@@ -1165,12 +1529,11 @@ UIPLIST
   # Generate key if it doesn't exist
   if [[ ! -f "$master_key_file" ]]; then
     info "Generating master encryption key..."
-    # Suppress config-validation noise — redirect stderr, capture only key output
-    PATH="$(dirname "$NODE_BIN"):$PATH" "$argent_bin" gateway install --force >/dev/null 2>&1 || true
+    master_key="$(generate_master_key_inline)" || master_key=""
   fi
 
   # Read the key
-  if [[ -f "$master_key_file" ]]; then
+  if [[ -z "$master_key" && -f "$master_key_file" ]]; then
     master_key="$(cat "$master_key_file" 2>/dev/null)" || master_key=""
   fi
 
@@ -1231,6 +1594,13 @@ UIPLIST
     fi
     echo ""
   fi
+
+  # Ensure the gateway service is installed before health verification.
+  # On macOS we skip terminal onboarding by default because Argent.app guides
+  # first-run UX, but the service itself still needs to exist.
+  info "Installing gateway service..."
+  PATH="$(dirname "$NODE_BIN"):$PATH" "$argent_bin" gateway install --force >/dev/null 2>&1 \
+    || warn "Gateway service install failed — run manually: argent gateway install --force"
 
   # ── Gateway health verification ───────────────────────────────────
   # Deterministic: TCP probe on the gateway port. The gateway binds
@@ -1314,10 +1684,6 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
-
-if is_truthy "${ARGENT_INSTALL_SOURCE_ONLY:-0}"; then
-  return 0 2>/dev/null || exit 0
-fi
 
 require_unix
 require_command curl

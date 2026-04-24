@@ -8,10 +8,26 @@ set -euo pipefail
 PG_PORT="${ARGENT_PG_PORT:-5433}"
 PG_DB="${ARGENT_PG_DB:-argentos}"
 CONN="postgres://localhost:${PG_PORT}/${PG_DB}"
+PSQL_BIN="${ARGENT_PSQL_BIN:-}"
+
+if [[ -z "$PSQL_BIN" ]]; then
+	if command -v psql >/dev/null 2>&1; then
+		PSQL_BIN="$(command -v psql)"
+	elif [[ -x /opt/homebrew/opt/postgresql@17/bin/psql ]]; then
+		PSQL_BIN="/opt/homebrew/opt/postgresql@17/bin/psql"
+	elif [[ -x /usr/local/opt/postgresql@17/bin/psql ]]; then
+		PSQL_BIN="/usr/local/opt/postgresql@17/bin/psql"
+	fi
+fi
+
+if [[ -z "$PSQL_BIN" || ! -x "$PSQL_BIN" ]]; then
+	echo "psql not found. Install PostgreSQL 17 or set ARGENT_PSQL_BIN=/path/to/psql." >&2
+	exit 127
+fi
 
 echo "Ensuring ArgentOS PostgreSQL tables exist (port ${PG_PORT}, db ${PG_DB})..."
 
-psql "$CONN" -v ON_ERROR_STOP=0 <<'ENDOFSQL'
+"$PSQL_BIN" "$CONN" -v ON_ERROR_STOP=0 <<'ENDOFSQL'
 
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;

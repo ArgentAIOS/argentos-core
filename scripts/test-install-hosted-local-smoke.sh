@@ -3,7 +3,13 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/argent-install-hosted-local-smoke.XXXXXX")"
-trap 'rm -rf "$TMP_ROOT"' EXIT
+
+cleanup() {
+  pkill -f "$TMP_ROOT" 2>/dev/null || true
+  sleep 1
+  rm -rf "$TMP_ROOT" 2>/dev/null || true
+}
+trap cleanup EXIT
 
 TEST_HOME="$TMP_ROOT/home"
 GIT_DIR="$TMP_ROOT/git-checkout"
