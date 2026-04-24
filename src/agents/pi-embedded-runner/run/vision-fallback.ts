@@ -27,8 +27,8 @@ type MessageLike = {
 };
 
 const DEFAULT_MAX_DESCRIBED_IMAGES = 2;
-const DEFAULT_TOTAL_BUDGET_MS = 12_000;
-const DEFAULT_PER_IMAGE_TIMEOUT_MS = 4_000;
+const DEFAULT_TOTAL_BUDGET_MS = 30_000;
+const DEFAULT_PER_IMAGE_TIMEOUT_MS = 15_000;
 const SKIP_NOTE = "[Image attached — description skipped to keep response fast]";
 
 function hasContentArray(msg: unknown): msg is MessageLike & { content: ContentBlock[] } {
