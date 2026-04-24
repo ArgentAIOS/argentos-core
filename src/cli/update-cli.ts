@@ -1328,7 +1328,7 @@ export function registerUpdateCli(program: Command) {
       const examples = [
         ["argent update", "Update a source checkout (git)"],
         ["argent update --channel beta", "Switch to the beta release channel"],
-        ["argent update --channel dev", "Switch to the dev channel (tracks main)"],
+        ["argent update --channel dev", "Switch to the dev channel (tracks the dev branch)"],
         ["argent update --tag beta", "Legacy one-off override for package installs"],
         ["argent update --no-restart", "Update without restarting the service"],
         ["argent update --json", "Output result as JSON"],

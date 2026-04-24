@@ -3,7 +3,7 @@ export type UpdateChannelSource = "config" | "git-tag" | "git-branch" | "default
 
 export const DEFAULT_PACKAGE_CHANNEL: UpdateChannel = "stable";
 export const DEFAULT_GIT_CHANNEL: UpdateChannel = "dev";
-export const DEV_BRANCH = "main";
+export const DEV_BRANCH = "dev";
 
 export function normalizeUpdateChannel(value?: string | null): UpdateChannel | null {
   if (!value) {

@@ -868,7 +868,10 @@ write_core_distribution_and_storage_defaults() {
   fi
 
   mkdir -p "$HOME/.argentos"
-  ARGENT_INSTALL_CONFIG_PATH="$config_path" ARGENT_INSTALL_CHANNEL="${CHANNEL:-stable}" "$NODE_BIN" <<'NODE'
+  ARGENT_INSTALL_CONFIG_PATH="$config_path" \
+    ARGENT_INSTALL_CHANNEL="${CHANNEL:-stable}" \
+    ARGENT_INSTALL_REF="${VERSION:-}" \
+    "$NODE_BIN" <<'NODE'
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -895,7 +898,9 @@ const crypto = require("node:crypto");
 const existingToken = parsed.gateway?.auth?.token;
 const gwToken = existingToken || crypto.randomBytes(32).toString("hex");
 
-const installChannel = process.env.ARGENT_INSTALL_CHANNEL || "stable";
+const installRef = process.env.ARGENT_INSTALL_REF || "";
+const installChannel =
+  installRef === "dev" ? "dev" : process.env.ARGENT_INSTALL_CHANNEL || "stable";
 
 const next = {
   ...parsed,
