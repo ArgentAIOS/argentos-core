@@ -119,6 +119,32 @@ describe("resolveModel", () => {
     expect(result.model?.baseUrl).toBe("https://api.minimax.io/anthropic");
   });
 
+  it("repairs stale inline MiniMax OpenAI-compatible configs", () => {
+    const cfg = {
+      models: {
+        providers: {
+          minimax: {
+            baseUrl: "https://api.minimaxi.chat/v1",
+            api: "openai-completions",
+            models: [
+              {
+                ...makeModel("MiniMax-M2.7-highspeed"),
+                reasoning: true,
+              },
+            ],
+          },
+        },
+      },
+    } as ArgentConfig;
+
+    const result = resolveModel("minimax", "MiniMax-M2.7-highspeed", "/tmp/agent", cfg);
+
+    expect(result.error).toBeUndefined();
+    expect(result.model?.provider).toBe("minimax");
+    expect(result.model?.api).toBe("anthropic-messages");
+    expect(result.model?.baseUrl).toBe("https://api.minimax.io/anthropic");
+  });
+
   it("includes provider baseUrl in fallback model", () => {
     const cfg = {
       models: {

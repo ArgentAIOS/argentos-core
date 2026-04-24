@@ -4,10 +4,23 @@ function isOpenAiCompletionsModel(model: Model<Api>): model is Model<"openai-com
   return model.api === "openai-completions";
 }
 
+function isMiniMaxM2Model(model: Model<Api>): boolean {
+  return model.provider === "minimax" && /^MiniMax-M2(?:\.|$)/.test(model.id);
+}
+
 export function normalizeModelCompat(model: Model<Api>): Model<Api> {
+  if (isMiniMaxM2Model(model)) {
+    return {
+      ...model,
+      api: "anthropic-messages",
+      baseUrl: "https://api.minimax.io/anthropic",
+    } as Model<Api>;
+  }
+
   const baseUrl = model.baseUrl ?? "";
   const isZai = model.provider === "zai" || baseUrl.includes("api.z.ai");
-  if (!isZai || !isOpenAiCompletionsModel(model)) {
+  const isMiniMax = model.provider === "minimax" || baseUrl.includes("api.minimax");
+  if ((!isZai && !isMiniMax) || !isOpenAiCompletionsModel(model)) {
     return model;
   }
 
