@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import {
   buildMessageWithAttachments,
@@ -132,10 +133,42 @@ describe("parseMessageWithAttachments", () => {
             content: big,
           },
         ],
-        { maxBytes: 5_000_000, log: { warn: () => {} } },
+        { maxBytes: 5_000_000, maxImageInputBytes: 5_000_000, log: { warn: () => {} } },
       ),
     ).rejects.toThrow(/exceeds size limit/i);
   });
+
+  it("resizes image attachments that exceed provider dimensions", async () => {
+    const png = await sharp({
+      create: {
+        width: 2952,
+        height: 1714,
+        channels: 3,
+        background: { r: 120, g: 140, b: 160 },
+      },
+    })
+      .png({ compressionLevel: 9 })
+      .toBuffer();
+
+    const parsed = await parseMessageWithAttachments(
+      "what does this show?",
+      [
+        {
+          type: "image",
+          mimeType: "image/png",
+          fileName: "screenshot.png",
+          content: png.toString("base64"),
+        },
+      ],
+      { log: { warn: () => {} } },
+    );
+
+    expect(parsed.images).toHaveLength(1);
+    expect(parsed.images[0]?.mimeType).toBe("image/jpeg");
+    const meta = await sharp(Buffer.from(parsed.images[0]!.data, "base64")).metadata();
+    expect(meta.width).toBeLessThanOrEqual(2000);
+    expect(meta.height).toBeLessThanOrEqual(2000);
+  }, 20_000);
 
   it("sniffs mime when missing", async () => {
     const logs: string[] = [];

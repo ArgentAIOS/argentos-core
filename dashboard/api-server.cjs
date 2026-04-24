@@ -11548,11 +11548,6 @@ app.patch("/api/settings/agent", (req, res) => {
           error: "Tool governance editing is not available in Public Core.",
         });
       }
-      if (req.body.kernel !== undefined) {
-        return res.status(403).json({
-          error: "Consciousness kernel controls are not available in Public Core.",
-        });
-      }
       if (updatingAgentOverride && req.body.executionWorker !== undefined) {
         return res.status(403).json({
           error: "Per-agent execution worker overrides are not available in Public Core.",

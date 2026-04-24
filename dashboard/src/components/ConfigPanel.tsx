@@ -13958,297 +13958,293 @@ export function ConfigPanel({
                             )}
                           </div>
 
-                          {!isPublicCoreSurface && (
-                            <div className="bg-white/5 rounded-xl p-4 space-y-3">
-                              <div className="flex items-center gap-2">
-                                <Activity className="w-5 h-5 text-cyan-300" />
-                                <h3 className="text-white/90 font-medium">Consciousness Kernel</h3>
+                          <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                            <div className="flex items-center gap-2">
+                              <Activity className="w-5 h-5 text-cyan-300" />
+                              <h3 className="text-white/90 font-medium">Consciousness Kernel</h3>
+                            </div>
+                            <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 px-3 py-2 text-xs text-white/60">
+                              Shadow mode is the current live rollout. Soft and full remain storable
+                              in config, but they stay runtime-blocked until later authority slices
+                              land.
+                            </div>
+                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2">
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-white/70 text-sm">Enabled</span>
+                                    <span className="text-white/40 text-xs">
+                                      Main-agent-only continuous executive lane
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={() =>
+                                      void toggleAgentSetting(
+                                        "kernel",
+                                        "enabled",
+                                        !agentSettings.kernel.enabled,
+                                      )
+                                    }
+                                    className="text-white/50 hover:text-white/80"
+                                  >
+                                    {agentSettings.kernel.enabled ? (
+                                      <ToggleRight className="w-5 h-5 text-green-400" />
+                                    ) : (
+                                      <ToggleLeft className="w-5 h-5 text-white/30" />
+                                    )}
+                                  </button>
+                                </div>
+                                <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2 gap-3">
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-white/70 text-sm">Mode</span>
+                                    <span className="text-white/40 text-xs">
+                                      Desired rollout mode for the kernel lane
+                                    </span>
+                                  </div>
+                                  <select
+                                    value={agentSettings.kernel.mode}
+                                    onChange={(e) =>
+                                      void toggleAgentSetting("kernel", "mode", e.target.value)
+                                    }
+                                    className="bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-cyan-500/50 cursor-pointer"
+                                  >
+                                    <option value="off">Off</option>
+                                    <option value="shadow">Shadow</option>
+                                    <option value="soft">Soft</option>
+                                    <option value="full">Full</option>
+                                  </select>
+                                </div>
+                                <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2 gap-3">
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-white/70 text-sm">Tick cadence</span>
+                                    <span className="text-white/40 text-xs">
+                                      Shadow-kernel wakeup interval in milliseconds
+                                    </span>
+                                  </div>
+                                  <select
+                                    value={agentSettings.kernel.tickMs}
+                                    onChange={(e) =>
+                                      void toggleAgentSetting(
+                                        "kernel",
+                                        "tickMs",
+                                        Number.parseInt(e.target.value, 10),
+                                      )
+                                    }
+                                    className="bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-cyan-500/50 cursor-pointer"
+                                  >
+                                    {[5000, 10000, 30000, 60000, 120000].map((value) => (
+                                      <option key={value} value={value}>
+                                        {value.toLocaleString()} ms
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2 gap-3">
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-white/70 text-sm">
+                                      Max escalations / hour
+                                    </span>
+                                    <span className="text-white/40 text-xs">
+                                      Soft budget for future model escalations
+                                    </span>
+                                  </div>
+                                  <select
+                                    value={agentSettings.kernel.maxEscalationsPerHour}
+                                    onChange={(e) =>
+                                      void toggleAgentSetting(
+                                        "kernel",
+                                        "maxEscalationsPerHour",
+                                        Number.parseInt(e.target.value, 10),
+                                      )
+                                    }
+                                    className="bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-cyan-500/50 cursor-pointer"
+                                  >
+                                    {[1, 2, 4, 6, 8, 12].map((value) => (
+                                      <option key={value} value={value}>
+                                        {value}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
                               </div>
-                              <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 px-3 py-2 text-xs text-white/60">
-                                Shadow mode is the current live rollout. Soft and full remain
-                                storable in config, but they stay runtime-blocked until later
-                                authority slices land.
-                              </div>
-                              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                                <div className="space-y-3">
-                                  <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2">
-                                    <div className="flex flex-col gap-1">
-                                      <span className="text-white/70 text-sm">Enabled</span>
-                                      <span className="text-white/40 text-xs">
-                                        Main-agent-only continuous executive lane
-                                      </span>
+                              <div className="space-y-3">
+                                <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
+                                  <div className="text-white/70 text-sm">
+                                    Desired runtime posture
+                                  </div>
+                                  <div className="text-white/45 text-xs leading-relaxed">
+                                    {agentSettings.kernel.enabled
+                                      ? agentSettings.kernel.mode === "shadow"
+                                        ? "Shadow mode is the active runtime. The kernel persists durable self-state, keeps the continuity thread warm, takes scheduling authority over main-agent contemplation and SIS, and runs private local-model inner reflection while outward autonomy stays blocked."
+                                        : `Mode ${agentSettings.kernel.mode} is stored, but the runtime will block it until later slices add full authority and embodiment.`
+                                      : "Kernel is currently off. Legacy contemplation, SIS, heartbeat, and worker schedulers remain in control."}
+                                  </div>
+                                </div>
+                                <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="text-white/70 text-sm">Local model</div>
+                                    <button
+                                      type="button"
+                                      onClick={() => void refreshKernelLocalModels()}
+                                      disabled={kernelLocalModelsRefreshing}
+                                      className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-white/10 text-white/50 hover:text-white/80 hover:border-white/20 disabled:text-white/20 disabled:border-white/5 transition-all text-[11px]"
+                                    >
+                                      <RefreshCw
+                                        className={`w-3.5 h-3.5 ${
+                                          kernelLocalModelsRefreshing ? "animate-spin" : ""
+                                        }`}
+                                      />
+                                      Refresh
+                                    </button>
+                                  </div>
+                                  <select
+                                    value={kernelLocalModelSelectValue}
+                                    onChange={(e) => {
+                                      const nextValue = e.target.value;
+                                      setAgentSettings((prev) =>
+                                        prev
+                                          ? {
+                                              ...prev,
+                                              kernel: {
+                                                ...prev.kernel,
+                                                localModel: nextValue,
+                                              },
+                                            }
+                                          : prev,
+                                      );
+                                      void patchAgentSetting("kernel", {
+                                        localModel: nextValue,
+                                      });
+                                    }}
+                                    className="w-full bg-gray-700 text-white/80 text-sm rounded-lg px-3 py-2 border border-white/10 focus:outline-none focus:border-cyan-500/50"
+                                  >
+                                    <option value="">
+                                      {kernelLocalModelOptions.length > 0
+                                        ? "Select a running local model"
+                                        : "No running local model runtimes detected"}
+                                    </option>
+                                    {!kernelLocalModelIsDiscovered && kernelLocalModelValue ? (
+                                      <option value={kernelLocalModelValue}>
+                                        Current custom: {kernelLocalModelValue}
+                                      </option>
+                                    ) : null}
+                                    {runningKernelLocalRuntimes.map((runtime) => (
+                                      <optgroup
+                                        key={runtime.provider}
+                                        label={`${runtime.label} (${runtime.models.length})`}
+                                      >
+                                        {runtime.models.map((model) => (
+                                          <option key={model.ref} value={model.ref}>
+                                            {model.ref}
+                                          </option>
+                                        ))}
+                                      </optgroup>
+                                    ))}
+                                  </select>
+                                  <div className="text-white/35 text-[11px] leading-relaxed">
+                                    {runningKernelLocalRuntimes.length > 0
+                                      ? `Detected local runtimes: ${runningKernelLocalRuntimes
+                                          .map(
+                                            (runtime) =>
+                                              `${runtime.label} (${runtime.models.length})`,
+                                          )
+                                          .join(", ")}.`
+                                      : "No running Ollama or LM Studio runtime was detected."}{" "}
+                                    Shadow reflection uses this local model when a compatible
+                                    runtime is available. The background-model card below mirrors
+                                    the same lane using the shared provider/model UI.
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
+                                    <div className="text-white/70 text-sm">Daily budget</div>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      step="1"
+                                      value={agentSettings.kernel.dailyBudget}
+                                      onChange={(e) =>
+                                        void patchAgentSetting("kernel", {
+                                          dailyBudget: Math.max(
+                                            0,
+                                            Number.parseInt(e.target.value || "0", 10) || 0,
+                                          ),
+                                        })
+                                      }
+                                      className="w-full bg-gray-700 text-white/80 text-sm rounded-lg px-3 py-2 border border-white/10 focus:outline-none focus:border-cyan-500/50"
+                                    />
+                                  </div>
+                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
+                                    <div className="text-white/70 text-sm">
+                                      Hardware host required
                                     </div>
                                     <button
                                       onClick={() =>
                                         void toggleAgentSetting(
                                           "kernel",
-                                          "enabled",
-                                          !agentSettings.kernel.enabled,
+                                          "hardwareHostRequired",
+                                          !agentSettings.kernel.hardwareHostRequired,
                                         )
                                       }
                                       className="text-white/50 hover:text-white/80"
                                     >
-                                      {agentSettings.kernel.enabled ? (
+                                      {agentSettings.kernel.hardwareHostRequired ? (
                                         <ToggleRight className="w-5 h-5 text-green-400" />
                                       ) : (
                                         <ToggleLeft className="w-5 h-5 text-white/30" />
                                       )}
                                     </button>
                                   </div>
-                                  <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2 gap-3">
-                                    <div className="flex flex-col gap-1">
-                                      <span className="text-white/70 text-sm">Mode</span>
-                                      <span className="text-white/40 text-xs">
-                                        Desired rollout mode for the kernel lane
-                                      </span>
-                                    </div>
-                                    <select
-                                      value={agentSettings.kernel.mode}
-                                      onChange={(e) =>
-                                        void toggleAgentSetting("kernel", "mode", e.target.value)
-                                      }
-                                      className="bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-cyan-500/50 cursor-pointer"
-                                    >
-                                      <option value="off">Off</option>
-                                      <option value="shadow">Shadow</option>
-                                      <option value="soft">Soft</option>
-                                      <option value="full">Full</option>
-                                    </select>
-                                  </div>
-                                  <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2 gap-3">
-                                    <div className="flex flex-col gap-1">
-                                      <span className="text-white/70 text-sm">Tick cadence</span>
-                                      <span className="text-white/40 text-xs">
-                                        Shadow-kernel wakeup interval in milliseconds
-                                      </span>
-                                    </div>
-                                    <select
-                                      value={agentSettings.kernel.tickMs}
-                                      onChange={(e) =>
-                                        void toggleAgentSetting(
-                                          "kernel",
-                                          "tickMs",
-                                          Number.parseInt(e.target.value, 10),
-                                        )
-                                      }
-                                      className="bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-cyan-500/50 cursor-pointer"
-                                    >
-                                      {[5000, 10000, 30000, 60000, 120000].map((value) => (
-                                        <option key={value} value={value}>
-                                          {value.toLocaleString()} ms
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2 gap-3">
-                                    <div className="flex flex-col gap-1">
-                                      <span className="text-white/70 text-sm">
-                                        Max escalations / hour
-                                      </span>
-                                      <span className="text-white/40 text-xs">
-                                        Soft budget for future model escalations
-                                      </span>
-                                    </div>
-                                    <select
-                                      value={agentSettings.kernel.maxEscalationsPerHour}
-                                      onChange={(e) =>
-                                        void toggleAgentSetting(
-                                          "kernel",
-                                          "maxEscalationsPerHour",
-                                          Number.parseInt(e.target.value, 10),
-                                        )
-                                      }
-                                      className="bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-cyan-500/50 cursor-pointer"
-                                    >
-                                      {[1, 2, 4, 6, 8, 12].map((value) => (
-                                        <option key={value} value={value}>
-                                          {value}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
                                 </div>
-                                <div className="space-y-3">
-                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
-                                    <div className="text-white/70 text-sm">
-                                      Desired runtime posture
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2">
+                                    <div className="flex items-center gap-2">
+                                      <Mic className="w-4 h-4 text-white/55" />
+                                      <span className="text-white/70 text-sm">Allow Listening</span>
                                     </div>
-                                    <div className="text-white/45 text-xs leading-relaxed">
-                                      {agentSettings.kernel.enabled
-                                        ? agentSettings.kernel.mode === "shadow"
-                                          ? "Shadow mode is the active runtime. The kernel persists durable self-state, keeps the continuity thread warm, takes scheduling authority over main-agent contemplation and SIS, and runs private local-model inner reflection while outward autonomy stays blocked."
-                                          : `Mode ${agentSettings.kernel.mode} is stored, but the runtime will block it until later slices add full authority and embodiment.`
-                                        : "Kernel is currently off. Legacy contemplation, SIS, heartbeat, and worker schedulers remain in control."}
-                                    </div>
-                                  </div>
-                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
-                                    <div className="flex items-center justify-between gap-3">
-                                      <div className="text-white/70 text-sm">Local model</div>
-                                      <button
-                                        type="button"
-                                        onClick={() => void refreshKernelLocalModels()}
-                                        disabled={kernelLocalModelsRefreshing}
-                                        className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-white/10 text-white/50 hover:text-white/80 hover:border-white/20 disabled:text-white/20 disabled:border-white/5 transition-all text-[11px]"
-                                      >
-                                        <RefreshCw
-                                          className={`w-3.5 h-3.5 ${
-                                            kernelLocalModelsRefreshing ? "animate-spin" : ""
-                                          }`}
-                                        />
-                                        Refresh
-                                      </button>
-                                    </div>
-                                    <select
-                                      value={kernelLocalModelSelectValue}
-                                      onChange={(e) => {
-                                        const nextValue = e.target.value;
-                                        setAgentSettings((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                kernel: {
-                                                  ...prev.kernel,
-                                                  localModel: nextValue,
-                                                },
-                                              }
-                                            : prev,
-                                        );
-                                        void patchAgentSetting("kernel", {
-                                          localModel: nextValue,
-                                        });
-                                      }}
-                                      className="w-full bg-gray-700 text-white/80 text-sm rounded-lg px-3 py-2 border border-white/10 focus:outline-none focus:border-cyan-500/50"
+                                    <button
+                                      onClick={() =>
+                                        void toggleAgentSetting(
+                                          "kernel",
+                                          "allowListening",
+                                          !agentSettings.kernel.allowListening,
+                                        )
+                                      }
+                                      className="text-white/50 hover:text-white/80"
                                     >
-                                      <option value="">
-                                        {kernelLocalModelOptions.length > 0
-                                          ? "Select a running local model"
-                                          : "No running local model runtimes detected"}
-                                      </option>
-                                      {!kernelLocalModelIsDiscovered && kernelLocalModelValue ? (
-                                        <option value={kernelLocalModelValue}>
-                                          Current custom: {kernelLocalModelValue}
-                                        </option>
-                                      ) : null}
-                                      {runningKernelLocalRuntimes.map((runtime) => (
-                                        <optgroup
-                                          key={runtime.provider}
-                                          label={`${runtime.label} (${runtime.models.length})`}
-                                        >
-                                          {runtime.models.map((model) => (
-                                            <option key={model.ref} value={model.ref}>
-                                              {model.ref}
-                                            </option>
-                                          ))}
-                                        </optgroup>
-                                      ))}
-                                    </select>
-                                    <div className="text-white/35 text-[11px] leading-relaxed">
-                                      {runningKernelLocalRuntimes.length > 0
-                                        ? `Detected local runtimes: ${runningKernelLocalRuntimes
-                                            .map(
-                                              (runtime) =>
-                                                `${runtime.label} (${runtime.models.length})`,
-                                            )
-                                            .join(", ")}.`
-                                        : "No running Ollama or LM Studio runtime was detected."}{" "}
-                                      Shadow reflection uses this local model when a compatible
-                                      runtime is available. The background-model card below mirrors
-                                      the same lane using the shared provider/model UI.
-                                    </div>
+                                      {agentSettings.kernel.allowListening ? (
+                                        <ToggleRight className="w-5 h-5 text-green-400" />
+                                      ) : (
+                                        <ToggleLeft className="w-5 h-5 text-white/30" />
+                                      )}
+                                    </button>
                                   </div>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
-                                      <div className="text-white/70 text-sm">Daily budget</div>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        step="1"
-                                        value={agentSettings.kernel.dailyBudget}
-                                        onChange={(e) =>
-                                          void patchAgentSetting("kernel", {
-                                            dailyBudget: Math.max(
-                                              0,
-                                              Number.parseInt(e.target.value || "0", 10) || 0,
-                                            ),
-                                          })
-                                        }
-                                        className="w-full bg-gray-700 text-white/80 text-sm rounded-lg px-3 py-2 border border-white/10 focus:outline-none focus:border-cyan-500/50"
-                                      />
+                                  <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2">
+                                    <div className="flex items-center gap-2">
+                                      <Eye className="w-4 h-4 text-white/55" />
+                                      <span className="text-white/70 text-sm">Allow Vision</span>
                                     </div>
-                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
-                                      <div className="text-white/70 text-sm">
-                                        Hardware host required
-                                      </div>
-                                      <button
-                                        onClick={() =>
-                                          void toggleAgentSetting(
-                                            "kernel",
-                                            "hardwareHostRequired",
-                                            !agentSettings.kernel.hardwareHostRequired,
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                      >
-                                        {agentSettings.kernel.hardwareHostRequired ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
-                                  </div>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2">
-                                      <div className="flex items-center gap-2">
-                                        <Mic className="w-4 h-4 text-white/55" />
-                                        <span className="text-white/70 text-sm">
-                                          Allow Listening
-                                        </span>
-                                      </div>
-                                      <button
-                                        onClick={() =>
-                                          void toggleAgentSetting(
-                                            "kernel",
-                                            "allowListening",
-                                            !agentSettings.kernel.allowListening,
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                      >
-                                        {agentSettings.kernel.allowListening ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
-                                    <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2">
-                                      <div className="flex items-center gap-2">
-                                        <Eye className="w-4 h-4 text-white/55" />
-                                        <span className="text-white/70 text-sm">Allow Vision</span>
-                                      </div>
-                                      <button
-                                        onClick={() =>
-                                          void toggleAgentSetting(
-                                            "kernel",
-                                            "allowVision",
-                                            !agentSettings.kernel.allowVision,
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                      >
-                                        {agentSettings.kernel.allowVision ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
+                                    <button
+                                      onClick={() =>
+                                        void toggleAgentSetting(
+                                          "kernel",
+                                          "allowVision",
+                                          !agentSettings.kernel.allowVision,
+                                        )
+                                      }
+                                      className="text-white/50 hover:text-white/80"
+                                    >
+                                      {agentSettings.kernel.allowVision ? (
+                                        <ToggleRight className="w-5 h-5 text-green-400" />
+                                      ) : (
+                                        <ToggleLeft className="w-5 h-5 text-white/30" />
+                                      )}
+                                    </button>
                                   </div>
                                 </div>
                               </div>
                             </div>
-                          )}
+                          </div>
 
                           <div className="bg-white/5 rounded-xl p-4 space-y-4 xl:col-span-2">
                             <div className="flex items-center gap-2">
