@@ -304,8 +304,28 @@ async function syncRuntimeSnapshot(sourceRoot: string, snapshotRoot: string) {
     return;
   }
 
-  await fs.mkdir(target, { recursive: true });
-  await copyDirectoryWithoutGit(source, target);
+  const parent = path.dirname(target);
+  const tmp = path.join(parent, `${path.basename(target)}.new.${process.pid}.${Date.now()}`);
+  const backup = path.join(parent, `${path.basename(target)}.old.${process.pid}.${Date.now()}`);
+  await fs.mkdir(parent, { recursive: true });
+  await fs.rm(tmp, { recursive: true, force: true });
+  await fs.rm(backup, { recursive: true, force: true });
+
+  try {
+    await fs.mkdir(tmp, { recursive: true });
+    await copyDirectoryWithoutGit(source, tmp);
+    if (await pathExists(target)) {
+      await fs.rename(target, backup);
+    }
+    await fs.rename(tmp, target);
+    await fs.rm(backup, { recursive: true, force: true });
+  } catch (err) {
+    await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
+    if ((await pathExists(backup)) && !(await pathExists(target))) {
+      await fs.rename(backup, target).catch(() => {});
+    }
+    throw err;
+  }
 }
 
 async function detectPackageManager(root: string) {
@@ -656,11 +676,34 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       }
 
       if (beforeSha && upstreamSha === beforeSha) {
+        if (shouldSyncRuntimeSnapshot && runtimeSnapshotRoot) {
+          const snapshotStep = await runRuntimeSnapshotStep({
+            sourceRoot: gitRoot,
+            snapshotRoot: runtimeSnapshotRoot,
+            progress,
+            stepIndex,
+            totalSteps: gitTotalSteps,
+          });
+          stepIndex += 1;
+          steps.push(snapshotStep);
+          if (snapshotStep.exitCode !== 0) {
+            return {
+              status: "error",
+              mode: "git",
+              root: gitRoot,
+              reason: snapshotStep.name,
+              before: { sha: beforeSha, version: beforeVersion },
+              after: { sha: upstreamSha, version: beforeVersion },
+              steps,
+              durationMs: Date.now() - startedAt,
+            };
+          }
+        }
         return {
-          status: "skipped",
+          status: shouldSyncRuntimeSnapshot ? "ok" : "skipped",
           mode: "git",
           root: gitRoot,
-          reason: "up-to-date",
+          reason: shouldSyncRuntimeSnapshot ? undefined : "up-to-date",
           before: { sha: beforeSha, version: beforeVersion },
           after: { sha: upstreamSha, version: beforeVersion },
           steps,

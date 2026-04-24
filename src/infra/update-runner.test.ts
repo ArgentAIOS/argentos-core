@@ -129,6 +129,54 @@ describe("runGatewayUpdate", () => {
     expect(calls.some((call) => call.includes("rev-list"))).toBe(false);
   });
 
+  it("repairs runtime snapshot even when git is already up to date", async () => {
+    const gitRoot = path.join(tempDir, "git");
+    const snapshotRoot = path.join(tempDir, "snapshot");
+    await fs.mkdir(path.join(gitRoot, ".git"), { recursive: true });
+    await fs.writeFile(
+      path.join(gitRoot, "package.json"),
+      JSON.stringify({ name: "argentos", version: "1.0.0" }),
+      "utf-8",
+    );
+    await fs.writeFile(path.join(gitRoot, "argent.mjs"), "fresh cli", "utf-8");
+    await fs.writeFile(path.join(gitRoot, ".git", "HEAD"), "ref: refs/heads/dev\n", "utf-8");
+    await fs.mkdir(snapshotRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(snapshotRoot, "package.json"),
+      JSON.stringify({ name: "argentos", version: "0.9.0" }),
+      "utf-8",
+    );
+    await fs.writeFile(path.join(snapshotRoot, "argent.mjs"), "old cli", "utf-8");
+
+    const { runner, calls } = createRunner({
+      [`git -C ${gitRoot} rev-parse --show-toplevel`]: { stdout: gitRoot },
+      [`git -C ${gitRoot} rev-parse HEAD`]: { stdout: "abc123" },
+      [`git -C ${gitRoot} rev-parse --abbrev-ref HEAD`]: { stdout: "dev" },
+      [`git -C ${gitRoot} status --porcelain -- :!dist/control-ui/`]: { stdout: "" },
+      [`git -C ${gitRoot} rev-parse --abbrev-ref --symbolic-full-name @{upstream}`]: {
+        stdout: "origin/dev",
+      },
+      [`git -C ${gitRoot} fetch --all --prune --tags`]: { stdout: "" },
+      [`git -C ${gitRoot} rev-parse @{upstream}`]: { stdout: "abc123" },
+    });
+
+    const result = await runGatewayUpdate({
+      cwd: gitRoot,
+      argv1: path.join(snapshotRoot, "argent.mjs"),
+      runCommand: async (argv, _options) => runner(argv),
+      timeoutMs: 5000,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.reason).toBeUndefined();
+    expect(result.steps.some((step) => step.name === "runtime snapshot sync")).toBe(true);
+    await expect(fs.readFile(path.join(snapshotRoot, "argent.mjs"), "utf-8")).resolves.toBe(
+      "fresh cli",
+    );
+    await expect(pathExists(path.join(snapshotRoot, ".git"))).resolves.toBe(false);
+    expect(calls.some((call) => call.includes("rev-list"))).toBe(false);
+  });
+
   it("treats preflight lint as advisory when candidate build passes", async () => {
     await fs.mkdir(path.join(tempDir, ".git"));
     await fs.writeFile(
@@ -269,7 +317,7 @@ describe("runGatewayUpdate", () => {
     await expect(
       fs.readFile(path.join(snapshotRoot, "dashboard", "dist", "index.html"), "utf-8"),
     ).resolves.toBe("fresh dashboard ui");
-    await expect(pathExists(path.join(snapshotRoot, "stale.txt"))).resolves.toBe(true);
+    await expect(pathExists(path.join(snapshotRoot, "stale.txt"))).resolves.toBe(false);
     await expect(pathExists(path.join(snapshotRoot, ".git"))).resolves.toBe(false);
     expect(calls).toContain("pnpm ui:build");
     expect(calls).toContain("pnpm exec vite build");
