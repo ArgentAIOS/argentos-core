@@ -46,9 +46,9 @@ const xaiBase = {
 };
 
 const minimaxBase = {
-  api: "openai-completions" as const,
+  api: "anthropic-messages" as const,
   provider: "minimax" as const,
-  baseUrl: "https://api.minimaxi.chat/v1",
+  baseUrl: "https://api.minimax.io/anthropic",
   input: ["text"] as ("text" | "image")[],
 };
 

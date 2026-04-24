@@ -143,7 +143,6 @@ const PUBLIC_CORE_BLOCKED_API_PATTERNS = [
   "/api/settings/database/**",
   "/api/settings/pairing",
   "/api/settings/load-profile",
-  "/api/settings/memory-v3/**",
   "/api/settings/aos-google/preflight",
   "/api/settings/aos-google/launch",
   "/api/settings/connectors/scaffold",

@@ -109,6 +109,16 @@ describe("buildInlineProviderModels", () => {
 });
 
 describe("resolveModel", () => {
+  it("uses the MiniMax anthropic-compatible endpoint from the built-in catalog", () => {
+    const result = resolveModel("minimax", "MiniMax-M2.7-highspeed", "/tmp/agent", {});
+
+    expect(result.error).toBeUndefined();
+    expect(result.model?.provider).toBe("minimax");
+    expect(result.model?.id).toBe("MiniMax-M2.7-highspeed");
+    expect(result.model?.api).toBe("anthropic-messages");
+    expect(result.model?.baseUrl).toBe("https://api.minimax.io/anthropic");
+  });
+
   it("includes provider baseUrl in fallback model", () => {
     const cfg = {
       models: {
