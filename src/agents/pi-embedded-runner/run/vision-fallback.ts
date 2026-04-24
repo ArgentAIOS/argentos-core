@@ -9,6 +9,7 @@
  * don't natively support multimodal input.
  */
 
+import type { ArgentConfig } from "../../../config/config.js";
 import { minimaxUnderstandImage, resolveMinimaxApiKeyAsync } from "../../minimax-vlm.js";
 import { log } from "../logger.js";
 
@@ -110,6 +111,8 @@ export async function applyVisionFallbackToMessages<T>(
   opts: {
     modelHasVision: boolean;
     minimaxBaseUrl?: string;
+    cfg?: ArgentConfig;
+    agentDir?: string;
   },
 ): Promise<T[]> {
   if (opts.modelHasVision) return messages;
@@ -135,7 +138,9 @@ export async function applyVisionFallbackToMessages<T>(
     60_000,
   );
 
-  const apiKey = await resolveMinimaxApiKeyAsync();
+  const apiKey = await resolveMinimaxApiKeyAsync(opts.cfg, undefined, {
+    agentDir: opts.agentDir,
+  });
 
   if (!apiKey) {
     // No MiniMax key — strip images silently to avoid API errors

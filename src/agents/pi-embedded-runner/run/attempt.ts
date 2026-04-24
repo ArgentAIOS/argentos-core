@@ -1014,6 +1014,7 @@ export async function runEmbeddedAttempt(
           sessionManager: sessionManager as unknown as ArgentSessionManager,
           settingsManager: argentSettingsManager as ArgentSettingsManager,
           model: params.model,
+          config: params.config,
           thinkingLevel: mapThinkingLevel(params.thinkLevel),
           tools: tools,
         }));
@@ -1201,6 +1202,8 @@ export async function runEmbeddedAttempt(
         const visionReady = await applyVisionFallbackToMessages(limited, {
           modelHasVision,
           minimaxBaseUrl: params.model.provider === "minimax" ? params.model.baseUrl : undefined,
+          cfg: params.config,
+          agentDir,
         });
 
         if (visionReady.length > 0) {

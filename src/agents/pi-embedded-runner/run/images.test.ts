@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { detectAndLoadPromptImages, detectImageReferences, modelSupportsImages } from "./images.js";
 
+const PNG_1X1 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/woAAn8B9FD5fHAAAAAASUVORK5CYII=";
+
 describe("detectImageReferences", () => {
   it("detects absolute file paths with common extensions", () => {
     const prompt = "Check this image /path/to/screenshot.png and tell me what you see";
@@ -207,10 +210,10 @@ describe("detectAndLoadPromptImages", () => {
       prompt: "ignore",
       workspaceDir: "/tmp",
       model: { input: ["text"] },
-      existingImages: [{ type: "image", data: "abc", mimeType: "image/png" }],
+      existingImages: [{ type: "image", data: PNG_1X1, mimeType: "image/png" }],
     });
 
-    expect(result.images).toEqual([{ type: "image", data: "abc", mimeType: "image/png" }]);
+    expect(result.images).toEqual([{ type: "image", data: PNG_1X1, mimeType: "image/png" }]);
     expect(result.detectedRefs).toHaveLength(0);
   });
 

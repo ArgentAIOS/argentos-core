@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../minimax-vlm.js", () => ({
   minimaxUnderstandImage: vi.fn(),
-  resolveMinimaxApiKey: vi.fn(),
+  resolveMinimaxApiKeyAsync: vi.fn(),
 }));
 
-import { minimaxUnderstandImage, resolveMinimaxApiKey } from "../../minimax-vlm.js";
+import { minimaxUnderstandImage, resolveMinimaxApiKeyAsync } from "../../minimax-vlm.js";
 import { applyVisionFallbackToMessages, messagesHaveInlineImages } from "./vision-fallback.js";
 
 type Message = {
@@ -52,7 +52,7 @@ describe("vision fallback", () => {
   });
 
   it("strips inline images when no MiniMax key is available", async () => {
-    vi.mocked(resolveMinimaxApiKey).mockReturnValue(undefined);
+    vi.mocked(resolveMinimaxApiKeyAsync).mockResolvedValue(undefined);
 
     const messages: Message[] = [
       {
@@ -79,7 +79,7 @@ describe("vision fallback", () => {
   it("applies image count guardrail to avoid long pre-prompt stalls", async () => {
     process.env.ARGENT_VISION_FALLBACK_MAX_IMAGES = "1";
     process.env.ARGENT_VISION_FALLBACK_BUDGET_MS = "120000";
-    vi.mocked(resolveMinimaxApiKey).mockReturnValue("test-key");
+    vi.mocked(resolveMinimaxApiKeyAsync).mockResolvedValue("test-key");
     vi.mocked(minimaxUnderstandImage).mockResolvedValue("a screenshot of a dashboard");
 
     const messages: Message[] = [
@@ -106,7 +106,7 @@ describe("vision fallback", () => {
 
   it("passes configured timeout through to MiniMax VLM requests", async () => {
     process.env.ARGENT_VISION_FALLBACK_TIMEOUT_MS = "1234";
-    vi.mocked(resolveMinimaxApiKey).mockReturnValue("test-key");
+    vi.mocked(resolveMinimaxApiKeyAsync).mockResolvedValue("test-key");
     vi.mocked(minimaxUnderstandImage).mockResolvedValue("a screenshot");
 
     const messages: Message[] = [
@@ -123,5 +123,28 @@ describe("vision fallback", () => {
         timeoutMs: 1234,
       }),
     );
+  });
+
+  it("passes config and agentDir to MiniMax credential resolution", async () => {
+    vi.mocked(resolveMinimaxApiKeyAsync).mockResolvedValue("test-key");
+    vi.mocked(minimaxUnderstandImage).mockResolvedValue("a screenshot");
+
+    const messages: Message[] = [
+      {
+        role: "user",
+        content: [{ type: "image", data: "Zm9v", mimeType: "image/png" }],
+      },
+    ];
+    const cfg = { models: { providers: {} } } as never;
+
+    await applyVisionFallbackToMessages(messages, {
+      modelHasVision: false,
+      cfg,
+      agentDir: "/tmp/agent",
+    });
+
+    expect(resolveMinimaxApiKeyAsync).toHaveBeenCalledWith(cfg, undefined, {
+      agentDir: "/tmp/agent",
+    });
   });
 });

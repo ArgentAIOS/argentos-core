@@ -11,7 +11,8 @@ import {
  * Resolves the MiniMax API key from (in priority order):
  * 1. Service key store / env fallback for MINIMAX_CODE_PLAN_KEY
  * 2. Service key store / env fallback for MINIMAX_API_KEY
- * 3. providers.minimax.apiKey in argent-models.json (dashboard provider config)
+ * 3. Auth profiles / provider auth resolver
+ * 4. providers.minimax.apiKey in argent-models.json (dashboard provider config)
  */
 export function resolveMinimaxApiKey(): string | undefined {
   const configuredKey =
@@ -44,14 +45,36 @@ export function resolveMinimaxApiKey(): string | undefined {
   }
 }
 
+async function resolveMinimaxAuthProfileKey(
+  cfg?: ArgentConfig,
+  options?: { agentDir?: string },
+): Promise<string | undefined> {
+  try {
+    const { resolveApiKeyForProvider } = await import("./model-auth.js");
+    const auth = await resolveApiKeyForProvider({
+      provider: "minimax",
+      cfg,
+      agentDir: options?.agentDir,
+    });
+    return auth.apiKey?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function resolveMinimaxApiKeyAsync(
   cfg?: ArgentConfig,
   context?: ServiceKeyAccessContext,
+  options?: { agentDir?: string },
 ): Promise<string | undefined> {
   const configuredKey =
     (await resolveServiceKeyAsync("MINIMAX_CODE_PLAN_KEY", cfg, context))?.trim() ||
     (await resolveServiceKeyAsync("MINIMAX_API_KEY", cfg, context))?.trim();
   if (configuredKey) return configuredKey;
+
+  const profileKey = await resolveMinimaxAuthProfileKey(cfg, options);
+  if (profileKey) return profileKey;
+
   return resolveMinimaxApiKey();
 }
 
