@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  filterConfigNavSections,
   isConfigTabAllowed,
   isRawConfigEditorAllowed,
   isWorkforceSurfaceAllowed,
@@ -25,11 +26,39 @@ describe("dashboard surface profile", () => {
     expect(parseDashboardSurfaceProfile("{not-json")).toBe("public-core");
   });
 
-  it("blocks admin config tabs in public-core", () => {
-    expect(isConfigTabAllowed("gateway", "public-core")).toBe(false);
-    expect(isConfigTabAllowed("systems", "public-core")).toBe(false);
+  it("keeps Core settings tabs visible in public-core", () => {
+    expect(isConfigTabAllowed("gateway", "public-core")).toBe(true);
+    expect(isConfigTabAllowed("systems", "public-core")).toBe(true);
+    expect(isConfigTabAllowed("logs", "public-core")).toBe(true);
+    expect(isConfigTabAllowed("license", "public-core")).toBe(true);
     expect(isConfigTabAllowed("intent", "public-core")).toBe(true);
     expect(isConfigTabAllowed("appearance", "public-core")).toBe(true);
+  });
+
+  it("does not drop Core nav sections in public-core", () => {
+    const sections = filterConfigNavSections(
+      [
+        {
+          label: "System",
+          items: [{ id: "systems" }, { id: "license" }],
+        },
+        {
+          label: "Developer",
+          items: [{ id: "logs" }],
+        },
+      ],
+      "public-core",
+    );
+    expect(sections).toEqual([
+      {
+        label: "System",
+        items: [{ id: "systems" }, { id: "license" }],
+      },
+      {
+        label: "Developer",
+        items: [{ id: "logs" }],
+      },
+    ]);
   });
 
   it("disables raw config editing and workforce surfaces in public-core", () => {

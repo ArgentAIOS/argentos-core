@@ -84,6 +84,7 @@ import { processTextForSpeech, defaultPatternHandlers } from "../utils/textToSpe
 import { AlignmentDocs } from "./AlignmentDocs";
 import { AvatarCustomizer } from "./AvatarCustomizer";
 import { AvatarPreviewPane } from "./AvatarPreviewPane";
+import { LicensePanel } from "./LicensePanel";
 import { LogViewer } from "./LogViewer";
 import { MarketplaceTab } from "./MarketplaceTab";
 import { MemoryConsole } from "./MemoryConsole";
@@ -6914,7 +6915,7 @@ export function ConfigPanel({
       label: "System",
       items: [
         { id: "agent" as TabType, label: "Agent", icon: Brain },
-        { id: "systems" as TabType, label: "Systems", icon: Package },
+        { id: "systems" as TabType, label: "Systems", icon: Package, defaultView: true },
         { id: "capabilities" as TabType, label: "Capabilities", icon: Wrench },
         { id: "intent" as TabType, label: "Intent", icon: Sparkles },
         { id: "knowledge" as TabType, label: "Knowledge", icon: Database },
@@ -6922,8 +6923,9 @@ export function ConfigPanel({
         { id: "models" as TabType, label: "Models", icon: Cpu, defaultView: true },
         { id: "authprofiles" as TabType, label: "Providers", icon: KeyRound, defaultView: true },
         { id: "apikeys" as TabType, label: "Keys", icon: Key, defaultView: true },
+        { id: "license" as TabType, label: "Licensing", icon: Award, defaultView: true },
         { id: "dictionary" as TabType, label: "Dictionary", icon: Book },
-        { id: "security" as TabType, label: "Security", icon: Shield },
+        { id: "security" as TabType, label: "Security", icon: Shield, defaultView: true },
       ],
     },
     {
@@ -6956,7 +6958,7 @@ export function ConfigPanel({
       label: "Developer",
       items: [
         { id: "memory" as TabType, label: "Memory Inspector", icon: Fingerprint },
-        { id: "logs" as TabType, label: "Live Logs", icon: FileText },
+        { id: "logs" as TabType, label: "Live Logs", icon: FileText, defaultView: true },
       ],
     },
     {
@@ -6991,6 +6993,12 @@ export function ConfigPanel({
       if (firstVisible) setActiveTab(firstVisible);
     }
   }, [activeTab, surfaceProfile, filteredNavSections]);
+
+  useEffect(() => {
+    const listener = () => setActiveTab("license");
+    window.addEventListener("navigate-to-license", listener);
+    return () => window.removeEventListener("navigate-to-license", listener);
+  }, []);
 
   const availableCapabilitiesSkills = useMemo(
     () => capabilitiesSkills.filter((skill) => skill.eligible === true),
@@ -19793,6 +19801,8 @@ export function ConfigPanel({
                 )}
 
                 {activeTab === "logs" && <LogViewer />}
+
+                {activeTab === "license" && <LicensePanel />}
 
                 {activeTab === "alignment" && <AlignmentDocs />}
 

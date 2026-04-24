@@ -122,7 +122,6 @@ app.use(
 );
 
 const PUBLIC_CORE_BLOCKED_API_PATTERNS = [
-  "/api/license/**",
   "/api/org/**",
   "/api/settings/intent/**",
   "/api/settings/knowledge/collections/grant",
