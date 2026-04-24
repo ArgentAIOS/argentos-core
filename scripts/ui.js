@@ -130,7 +130,10 @@ if (action === "install") {
   if (!depsInstalled(action === "test" ? "test" : "build")) {
     const installEnv =
       action === "build" ? { ...process.env, NODE_ENV: "production" } : process.env;
-    const installArgs = action === "build" ? ["install", "--prod"] : ["install"];
+    const installArgs =
+      action === "build"
+        ? ["install", "--ignore-workspace", "--prod", "--no-frozen-lockfile"]
+        : ["install", "--ignore-workspace"];
     runSync(runner.cmd, installArgs, installEnv);
   }
   run(runner.cmd, ["run", script, ...rest]);

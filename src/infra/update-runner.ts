@@ -808,16 +808,25 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
     );
     steps.push(uiBuildStep);
 
-    // Restore dist/control-ui/ to committed state to prevent dirty repo after update
-    // (ui:build regenerates assets with new hashes, which would block future updates)
-    const restoreUiStep = await runStep(
-      step(
-        "restore control-ui",
-        ["git", "-C", gitRoot, "checkout", "--", "dist/control-ui/"],
-        gitRoot,
-      ),
-    );
-    steps.push(restoreUiStep);
+    // Restore committed Control UI assets when they exist. Some public Core
+    // checkouts generate dist/control-ui/ as an ignored artifact instead.
+    const controlUiTracked = await runCommand(
+      ["git", "-C", gitRoot, "ls-files", "--error-unmatch", "dist/control-ui/"],
+      {
+        cwd: gitRoot,
+        timeoutMs,
+      },
+    ).catch(() => null);
+    if (controlUiTracked?.code === 0) {
+      const restoreUiStep = await runStep(
+        step(
+          "restore control-ui",
+          ["git", "-C", gitRoot, "checkout", "--", "dist/control-ui/"],
+          gitRoot,
+        ),
+      );
+      steps.push(restoreUiStep);
+    }
 
     const setupStep = await runStep(
       step("workspace setup", managerScriptArgs(manager, "argent", ["setup"]), gitRoot),
