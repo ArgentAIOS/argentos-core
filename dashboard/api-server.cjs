@@ -8630,9 +8630,40 @@ const ENC_PREFIX = "enc:v1:";
 
 let _masterKeyCache = null;
 
+function readEncryptedServiceKeyValues() {
+  try {
+    const data = JSON.parse(fs.readFileSync(SERVICE_KEYS_PATH, "utf-8"));
+    return (data.keys || [])
+      .map((entry) => (typeof entry.value === "string" ? entry.value : ""))
+      .filter((value) => value.startsWith(ENC_PREFIX));
+  } catch {
+    return [];
+  }
+}
+
+function canDecryptSecretValue(value, key) {
+  const parts = value.slice(ENC_PREFIX.length).split(":");
+  if (parts.length !== 3) return false;
+  try {
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(parts[0], "hex"));
+    decipher.setAuthTag(Buffer.from(parts[1], "hex"));
+    decipher.update(parts[2], "hex", "utf8");
+    decipher.final("utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function canDecryptExistingSecrets(key) {
+  const encryptedValues = readEncryptedServiceKeyValues();
+  if (encryptedValues.length === 0) return true;
+  return encryptedValues.every((value) => canDecryptSecretValue(value, key));
+}
+
 function getMasterKey() {
   if (_masterKeyCache) return _masterKeyCache;
-  // Try macOS Keychain
+  let keychainKey = null;
   if (process.platform === "darwin") {
     try {
       const hex = execSync(
@@ -8641,24 +8672,48 @@ function getMasterKey() {
       ).trim();
       const buf = Buffer.from(hex, "hex");
       if (buf.length === 32) {
-        _masterKeyCache = buf;
-        return buf;
+        keychainKey = buf;
       }
     } catch {
       /* not found */
     }
   }
-  // Try file fallback
+  let fileKey = null;
   try {
     const hex = fs.readFileSync(MASTER_KEY_FILE, "utf-8").trim();
     const buf = Buffer.from(hex, "hex");
     if (buf.length === 32) {
-      _masterKeyCache = buf;
-      return buf;
+      fileKey = buf;
     }
   } catch {
     /* not found */
   }
+
+  if (readEncryptedServiceKeyValues().length > 0) {
+    if (keychainKey && canDecryptExistingSecrets(keychainKey)) {
+      _masterKeyCache = keychainKey;
+      return keychainKey;
+    }
+    if (fileKey && canDecryptExistingSecrets(fileKey)) {
+      _masterKeyCache = fileKey;
+      return fileKey;
+    }
+    if (keychainKey || fileKey) {
+      throw new Error(
+        "Master encryption key mismatch. Existing encrypted service keys cannot be decrypted.",
+      );
+    }
+  }
+
+  if (keychainKey) {
+    _masterKeyCache = keychainKey;
+    return keychainKey;
+  }
+  if (fileKey) {
+    _masterKeyCache = fileKey;
+    return fileKey;
+  }
+
   // Generate new key
   const key = crypto.randomBytes(32);
   if (process.platform === "darwin") {
