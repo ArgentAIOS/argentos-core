@@ -967,7 +967,11 @@ install_git() {
 
   if [[ -d "$GIT_DIR/.git" ]]; then
     info "Using existing checkout: $GIT_DIR"
-    run_cmd git -C "$GIT_DIR" fetch --tags --prune
+    if is_truthy "$GIT_UPDATE"; then
+      run_cmd git -C "$GIT_DIR" fetch --tags --prune
+    else
+      info "Skipping git fetch (--no-git-update)"
+    fi
   else
     info "Cloning source checkout to $GIT_DIR"
     run_cmd git clone https://github.com/ArgentAIOS/argentos-core.git "$GIT_DIR"
