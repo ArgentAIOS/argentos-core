@@ -68,6 +68,7 @@ import {
   filterConfigNavSections,
   isConfigTabAllowed,
   isRawConfigEditorAllowed,
+  isWorkforceSurfaceAllowed,
   parseDashboardSurfaceProfile,
   type DashboardSurfaceProfile,
 } from "../lib/configSurfaceProfile";
@@ -2589,7 +2590,7 @@ export function ConfigPanel({
   gatewayRequest,
 }: ConfigPanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>("dictionary");
-  const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("full");
+  const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("public-core");
   const [advancedMode, setAdvancedMode] = useState<boolean>(() => {
     try {
       return localStorage.getItem("argent.configPanel.advancedMode") === "1";
@@ -2645,7 +2646,7 @@ export function ConfigPanel({
         }
       } catch {
         if (!cancelled) {
-          setSurfaceProfile("full");
+          setSurfaceProfile("public-core");
         }
       }
     };
@@ -2658,11 +2659,12 @@ export function ConfigPanel({
   const isPublicCoreSurface = surfaceProfile === "public-core";
   const showAgentTargetScope = !isPublicCoreSurface;
   const showAgentRuntimeLoadProfile = !isPublicCoreSurface;
-  const showAgentExecutionControls = !isPublicCoreSurface;
+  const showAgentExecutionControls = true;
   const showAgentMemoryStatusControls = true;
   const showAgentVaultControls = true;
   const showAgentMemoryAdminControls = !isPublicCoreSurface;
   const showAgentIntentSimulationControls = !isPublicCoreSurface;
+  const showAgentJobsControls = isWorkforceSurfaceAllowed(surfaceProfile);
   const showKnowledgeAclWriteControls = !isPublicCoreSurface;
   const showKnowledgeLibraryMaintenanceControls = !isPublicCoreSurface;
   const canEditRawAgentConfig = isRawConfigEditorAllowed(surfaceProfile);
@@ -3958,7 +3960,7 @@ export function ConfigPanel({
   }, [gatewayRequest]);
 
   const loadJobsData = useCallback(async () => {
-    if (!gatewayRequest) return;
+    if (!gatewayRequest || !showAgentJobsControls) return;
     setJobsLoading(true);
     try {
       const [overview, templatesPayload, assignmentsPayload, runsPayload] = await Promise.all([
@@ -3983,7 +3985,7 @@ export function ConfigPanel({
     } finally {
       setJobsLoading(false);
     }
-  }, [gatewayRequest]);
+  }, [gatewayRequest, showAgentJobsControls]);
 
   const createJobTemplate = useCallback(async () => {
     if (!gatewayRequest) return;
@@ -4450,7 +4452,7 @@ export function ConfigPanel({
   ]);
 
   useEffect(() => {
-    if (!isOpen || activeTab !== "agent" || !gatewayRequest || !showAgentExecutionControls) return;
+    if (!isOpen || activeTab !== "agent" || !gatewayRequest || !showAgentJobsControls) return;
     void loadJobsData();
     const timer = setInterval(() => {
       void loadJobsData();
@@ -4462,7 +4464,7 @@ export function ConfigPanel({
     gatewayRequest,
     loadJobsData,
     loadProfilePollingMultiplier,
-    showAgentExecutionControls,
+    showAgentJobsControls,
   ]);
 
   useEffect(() => {
@@ -12051,372 +12053,390 @@ export function ConfigPanel({
                                 </div>
                               </div>
 
-                              {/* Job Board */}
-                              <div className="bg-white/5 rounded-xl p-4 space-y-3">
-                                <div className="flex items-center gap-2">
-                                  <LayoutGrid className="w-5 h-5 text-cyan-300" />
-                                  <h3 className="text-white/90 font-medium">Job Board</h3>
-                                </div>
-                                <p className="text-white/40 text-xs">
-                                  Assign digital employee roles, run cadence, and simulation/live
-                                  mode per job contract.
-                                </p>
-                                <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/5 px-3 py-2">
-                                  <div className="text-[11px] text-cyan-100/90 mb-1">Help docs</div>
-                                  <div className="flex flex-wrap gap-2 text-[11px]">
-                                    {WORKFORCE_HELP_DOCS.map((doc) => (
-                                      <a
-                                        key={doc.href}
-                                        href={doc.href}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="px-2 py-1 rounded border border-cyan-300/30 text-cyan-100 hover:border-cyan-200/50 hover:text-white"
-                                      >
-                                        {doc.label}
-                                      </a>
-                                    ))}
-                                  </div>
-                                </div>
-                                {jobsMessage && (
-                                  <div
-                                    className={`text-xs rounded border px-2 py-1 ${
-                                      jobsMessage.type === "success"
-                                        ? "border-emerald-300/30 bg-emerald-500/10 text-emerald-100"
-                                        : "border-red-300/30 bg-red-500/10 text-red-100"
-                                    }`}
-                                  >
-                                    {jobsMessage.text}
-                                  </div>
-                                )}
-                                <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-white/70 text-sm">
-                                      Workforce Overview
-                                    </span>
-                                    <button
-                                      onClick={() => void loadJobsData()}
-                                      className="text-xs px-2 py-1 rounded border border-white/15 text-white/60 hover:text-white hover:border-white/25 disabled:opacity-40"
-                                      disabled={!gatewayRequest || jobsLoading}
-                                    >
-                                      {jobsLoading ? "Refreshing..." : "Refresh"}
-                                    </button>
-                                  </div>
-                                  {jobsOverview ? (
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
-                                      <div className="bg-gray-900/50 rounded px-2 py-1">
-                                        <div className="text-white/35 uppercase tracking-wide">
-                                          Templates
-                                        </div>
-                                        <div className="text-white/80">
-                                          {jobsOverview.templatesCount}
-                                        </div>
-                                      </div>
-                                      <div className="bg-gray-900/50 rounded px-2 py-1">
-                                        <div className="text-white/35 uppercase tracking-wide">
-                                          Assignments
-                                        </div>
-                                        <div className="text-white/80">
-                                          {jobsOverview.enabledAssignmentsCount}/
-                                          {jobsOverview.assignmentsCount}
-                                        </div>
-                                      </div>
-                                      <div className="bg-gray-900/50 rounded px-2 py-1">
-                                        <div className="text-white/35 uppercase tracking-wide">
-                                          Due Now
-                                        </div>
-                                        <div className="text-white/80">
-                                          {jobsOverview.dueNowCount}
-                                        </div>
-                                      </div>
-                                      <div className="bg-gray-900/50 rounded px-2 py-1">
-                                        <div className="text-white/35 uppercase tracking-wide">
-                                          Blocked Runs
-                                        </div>
-                                        <div className="text-white/80">
-                                          {jobsOverview.blockedRunsCount}
-                                        </div>
-                                      </div>
+                              {showAgentJobsControls && (
+                                <>
+                                  {/* Job Board */}
+                                  <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                                    <div className="flex items-center gap-2">
+                                      <LayoutGrid className="w-5 h-5 text-cyan-300" />
+                                      <h3 className="text-white/90 font-medium">Job Board</h3>
                                     </div>
-                                  ) : (
-                                    <div className="text-white/45 text-xs">
-                                      {!gatewayRequest
-                                        ? "Job board unavailable (gateway not connected)."
-                                        : "No job overview loaded yet."}
-                                    </div>
-                                  )}
-                                  {jobsOverview && jobsOverview.agents.length > 0 && (
-                                    <div className="rounded-lg border border-white/10 overflow-hidden">
-                                      <div className="px-2 py-1 text-[11px] text-white/40 bg-gray-900/40">
-                                        Agent roster status
+                                    <p className="text-white/40 text-xs">
+                                      Assign digital employee roles, run cadence, and
+                                      simulation/live mode per job contract.
+                                    </p>
+                                    <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/5 px-3 py-2">
+                                      <div className="text-[11px] text-cyan-100/90 mb-1">
+                                        Help docs
                                       </div>
-                                      <div className="max-h-28 overflow-y-auto divide-y divide-white/5">
-                                        {jobsOverview.agents.map((agent) => (
-                                          <div
-                                            key={agent.agentId}
-                                            className="px-2 py-1 text-[11px] text-white/70 flex items-center justify-between gap-2"
+                                      <div className="flex flex-wrap gap-2 text-[11px]">
+                                        {WORKFORCE_HELP_DOCS.map((doc) => (
+                                          <a
+                                            key={doc.href}
+                                            href={doc.href}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="px-2 py-1 rounded border border-cyan-300/30 text-cyan-100 hover:border-cyan-200/50 hover:text-white"
                                           >
-                                            <span className="font-mono">{agent.agentId}</span>
-                                            <span>
-                                              jobs {agent.enabled}/{agent.total} · due{" "}
-                                              {agent.dueNow} · blocked {agent.blockedTasks}
-                                              {agent.nextDueAt ? (
-                                                <span className="text-white/45">
-                                                  {" "}
-                                                  · next{" "}
-                                                  {new Date(agent.nextDueAt).toLocaleTimeString()}
-                                                </span>
-                                              ) : null}
-                                            </span>
-                                          </div>
+                                            {doc.label}
+                                          </a>
                                         ))}
                                       </div>
                                     </div>
-                                  )}
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
-                                    <div className="text-white/70 text-sm">Create Job Template</div>
-                                    <input
-                                      type="text"
-                                      value={jobTemplateName}
-                                      onChange={(e) => setJobTemplateName(e.target.value)}
-                                      placeholder="Template name (e.g. Tier 1 Ticket Triage)"
-                                      className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
-                                    />
-                                    <textarea
-                                      value={jobRolePrompt}
-                                      onChange={(e) => setJobRolePrompt(e.target.value)}
-                                      placeholder="Role contract / job expectations"
-                                      rows={3}
-                                      className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none resize-none"
-                                    />
-                                    <div className="flex items-center gap-2">
-                                      <select
-                                        value={jobTemplateMode}
-                                        onChange={(e) =>
-                                          setJobTemplateMode(
-                                            e.target.value === "live" ? "live" : "simulate",
-                                          )
-                                        }
-                                        className="bg-gray-700 text-white/80 text-xs rounded-lg px-2 py-1.5 border border-white/10 focus:outline-none"
+                                    {jobsMessage && (
+                                      <div
+                                        className={`text-xs rounded border px-2 py-1 ${
+                                          jobsMessage.type === "success"
+                                            ? "border-emerald-300/30 bg-emerald-500/10 text-emerald-100"
+                                            : "border-red-300/30 bg-red-500/10 text-red-100"
+                                        }`}
                                       >
-                                        <option value="simulate">Default: Simulate</option>
-                                        <option value="live">Default: Live</option>
-                                      </select>
-                                      <button
-                                        onClick={() => void createJobTemplate()}
-                                        disabled={!gatewayRequest || jobsLoading}
-                                        className="text-xs px-2.5 py-1.5 rounded border border-cyan-300/35 text-cyan-100 hover:border-cyan-200/45 disabled:opacity-40"
-                                      >
-                                        Create Template
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
-                                    <div className="text-white/70 text-sm">Assign Job to Agent</div>
-                                    <select
-                                      value={jobAssignmentTemplateId}
-                                      onChange={(e) => setJobAssignmentTemplateId(e.target.value)}
-                                      className="w-full bg-gray-700 text-white/80 text-xs rounded-lg px-2 py-1.5 border border-white/10 focus:outline-none"
-                                    >
-                                      <option value="">Select template…</option>
-                                      {jobTemplates.map((template) => (
-                                        <option key={template.id} value={template.id}>
-                                          {template.name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <select
-                                      value={jobAssignmentAgentId}
-                                      onChange={(e) => setJobAssignmentAgentId(e.target.value)}
-                                      className="w-full bg-gray-700 text-white/80 text-xs rounded-lg px-2 py-1.5 border border-white/10 focus:outline-none"
-                                    >
-                                      {agentOptions.map((agent) => (
-                                        <option key={agent.id} value={agent.id}>
-                                          {agent.label}
-                                        </option>
-                                      ))}
-                                      {agentOptions.length === 0 && (
-                                        <option value="main">main</option>
-                                      )}
-                                    </select>
-                                    <input
-                                      type="text"
-                                      value={jobAssignmentTitle}
-                                      onChange={(e) => setJobAssignmentTitle(e.target.value)}
-                                      placeholder="Assignment title override (optional)"
-                                      className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
-                                    />
-                                    <div className="flex items-center gap-2">
-                                      <input
-                                        type="number"
-                                        min={1}
-                                        value={jobAssignmentCadenceMinutes}
-                                        onChange={(e) =>
-                                          setJobAssignmentCadenceMinutes(e.target.value)
-                                        }
-                                        className="w-28 bg-gray-700 text-white/80 rounded-lg px-2.5 py-1.5 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
-                                      />
-                                      <span className="text-white/45 text-xs">minutes</span>
-                                      <input
-                                        type="text"
-                                        value={jobAssignmentEventTriggers}
-                                        onChange={(e) =>
-                                          setJobAssignmentEventTriggers(e.target.value)
-                                        }
-                                        placeholder="events (ticket.updated, command:new)"
-                                        className="flex-1 bg-gray-700 text-white/80 rounded-lg px-2.5 py-1.5 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
-                                      />
-                                      <select
-                                        value={jobAssignmentMode}
-                                        onChange={(e) =>
-                                          setJobAssignmentMode(
-                                            e.target.value === "live" ? "live" : "simulate",
-                                          )
-                                        }
-                                        className="bg-gray-700 text-white/80 text-xs rounded-lg px-2 py-1.5 border border-white/10 focus:outline-none"
-                                      >
-                                        <option value="simulate">Simulate</option>
-                                        <option value="live">Live</option>
-                                      </select>
-                                      <button
-                                        onClick={() => void createJobAssignment()}
-                                        disabled={!gatewayRequest || jobsLoading}
-                                        className="text-xs px-2.5 py-1.5 rounded border border-cyan-300/35 text-cyan-100 hover:border-cyan-200/45 disabled:opacity-40"
-                                      >
-                                        Assign
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
-                                    <div className="text-white/70 text-sm">Job Roster</div>
-                                    <div className="max-h-48 overflow-y-auto divide-y divide-white/5 rounded border border-white/10">
-                                      {jobAssignments.map((assignment) => (
-                                        <div
-                                          key={assignment.id}
-                                          className="px-2 py-1.5 text-[11px] text-white/70 space-y-1"
+                                        {jobsMessage.text}
+                                      </div>
+                                    )}
+                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-white/70 text-sm">
+                                          Workforce Overview
+                                        </span>
+                                        <button
+                                          onClick={() => void loadJobsData()}
+                                          className="text-xs px-2 py-1 rounded border border-white/15 text-white/60 hover:text-white hover:border-white/25 disabled:opacity-40"
+                                          disabled={!gatewayRequest || jobsLoading}
                                         >
-                                          <div className="flex items-center justify-between gap-2">
-                                            <span className="font-medium text-white/85">
-                                              {assignment.title}
-                                            </span>
-                                            <button
-                                              onClick={() =>
-                                                void setAssignmentEnabled(
-                                                  assignment.id,
-                                                  !assignment.enabled,
-                                                )
-                                              }
-                                              className="text-[10px] px-1.5 py-0.5 rounded border border-white/15 text-white/65 hover:text-white"
-                                              disabled={!gatewayRequest}
-                                            >
-                                              {assignment.enabled ? "Disable" : "Enable"}
-                                            </button>
-                                          </div>
-                                          <div className="text-white/45">
-                                            {assignment.agentId} · {assignment.executionMode} ·
-                                            every {assignment.cadenceMinutes}m
-                                          </div>
-                                          {assignment.metadata?.eventTriggers?.length ? (
-                                            <div className="text-cyan-200/80">
-                                              events: {assignment.metadata.eventTriggers.join(", ")}
+                                          {jobsLoading ? "Refreshing..." : "Refresh"}
+                                        </button>
+                                      </div>
+                                      {jobsOverview ? (
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
+                                          <div className="bg-gray-900/50 rounded px-2 py-1">
+                                            <div className="text-white/35 uppercase tracking-wide">
+                                              Templates
                                             </div>
-                                          ) : (
-                                            <div className="text-white/35">
-                                              events: none (schedule only)
+                                            <div className="text-white/80">
+                                              {jobsOverview.templatesCount}
                                             </div>
-                                          )}
-                                          <div className="text-white/45">
-                                            next{" "}
-                                            {assignment.nextRunAt
-                                              ? new Date(assignment.nextRunAt).toLocaleString()
-                                              : "n/a"}
+                                          </div>
+                                          <div className="bg-gray-900/50 rounded px-2 py-1">
+                                            <div className="text-white/35 uppercase tracking-wide">
+                                              Assignments
+                                            </div>
+                                            <div className="text-white/80">
+                                              {jobsOverview.enabledAssignmentsCount}/
+                                              {jobsOverview.assignmentsCount}
+                                            </div>
+                                          </div>
+                                          <div className="bg-gray-900/50 rounded px-2 py-1">
+                                            <div className="text-white/35 uppercase tracking-wide">
+                                              Due Now
+                                            </div>
+                                            <div className="text-white/80">
+                                              {jobsOverview.dueNowCount}
+                                            </div>
+                                          </div>
+                                          <div className="bg-gray-900/50 rounded px-2 py-1">
+                                            <div className="text-white/35 uppercase tracking-wide">
+                                              Blocked Runs
+                                            </div>
+                                            <div className="text-white/80">
+                                              {jobsOverview.blockedRunsCount}
+                                            </div>
                                           </div>
                                         </div>
-                                      ))}
-                                      {jobAssignments.length === 0 && (
-                                        <div className="px-2 py-3 text-[11px] text-white/40">
-                                          No assignments yet.
+                                      ) : (
+                                        <div className="text-white/45 text-xs">
+                                          {!gatewayRequest
+                                            ? "Job board unavailable (gateway not connected)."
+                                            : "No job overview loaded yet."}
                                         </div>
                                       )}
-                                    </div>
-                                  </div>
-
-                                  <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
-                                    <div className="text-white/70 text-sm">Recent Job Runs</div>
-                                    <div className="max-h-48 overflow-y-auto divide-y divide-white/5 rounded border border-white/10">
-                                      {jobRuns.map((run) => (
-                                        <div
-                                          key={run.id}
-                                          className="px-2 py-1.5 text-[11px] text-white/70"
-                                        >
-                                          <div className="flex items-center justify-between">
-                                            <span className="font-mono">{run.agentId}</span>
-                                            <div className="flex items-center gap-1.5">
-                                              <span
-                                                className={`px-1.5 py-0.5 rounded border ${
-                                                  run.status === "completed"
-                                                    ? "border-emerald-300/30 text-emerald-200"
-                                                    : run.status === "blocked"
-                                                      ? "border-amber-300/30 text-amber-200"
-                                                      : run.status === "failed"
-                                                        ? "border-red-300/30 text-red-200"
-                                                        : "border-cyan-300/30 text-cyan-200"
-                                                }`}
+                                      {jobsOverview && jobsOverview.agents.length > 0 && (
+                                        <div className="rounded-lg border border-white/10 overflow-hidden">
+                                          <div className="px-2 py-1 text-[11px] text-white/40 bg-gray-900/40">
+                                            Agent roster status
+                                          </div>
+                                          <div className="max-h-28 overflow-y-auto divide-y divide-white/5">
+                                            {jobsOverview.agents.map((agent) => (
+                                              <div
+                                                key={agent.agentId}
+                                                className="px-2 py-1 text-[11px] text-white/70 flex items-center justify-between gap-2"
                                               >
-                                                {run.status}
-                                              </span>
-                                              {run.metadata?.intentVerdict && (
-                                                <span
-                                                  className={`px-1.5 py-0.5 rounded border ${
-                                                    run.metadata.intentVerdict === "ok"
-                                                      ? "border-emerald-300/30 text-emerald-200"
-                                                      : run.metadata.intentVerdict ===
-                                                          "policy-violation"
-                                                        ? "border-red-300/30 text-red-200"
-                                                        : run.metadata.intentVerdict ===
-                                                            "hierarchy-invalid"
-                                                          ? "border-amber-300/30 text-amber-200"
-                                                          : "border-white/25 text-white/55"
-                                                  }`}
-                                                >
-                                                  intent:{run.metadata.intentVerdict}
+                                                <span className="font-mono">{agent.agentId}</span>
+                                                <span>
+                                                  jobs {agent.enabled}/{agent.total} · due{" "}
+                                                  {agent.dueNow} · blocked {agent.blockedTasks}
+                                                  {agent.nextDueAt ? (
+                                                    <span className="text-white/45">
+                                                      {" "}
+                                                      · next{" "}
+                                                      {new Date(
+                                                        agent.nextDueAt,
+                                                      ).toLocaleTimeString()}
+                                                    </span>
+                                                  ) : null}
                                                 </span>
-                                              )}
-                                            </div>
+                                              </div>
+                                            ))}
                                           </div>
-                                          <div className="text-white/45">
-                                            mode {run.executionMode} · task {run.taskId.slice(0, 8)}
-                                          </div>
-                                          {run.metadata?.intent && (
-                                            <div className="text-white/45">
-                                              runtime {run.metadata.intent.runtimeMode ?? "n/a"} ·
-                                              validation{" "}
-                                              {run.metadata.intent.validationMode ?? "n/a"} · issues{" "}
-                                              {typeof run.metadata.intent.issuesCount === "number"
-                                                ? run.metadata.intent.issuesCount
-                                                : "n/a"}
-                                            </div>
-                                          )}
-                                          <div className="text-white/45">
-                                            {new Date(run.startedAt).toLocaleString()}
-                                          </div>
-                                        </div>
-                                      ))}
-                                      {jobRuns.length === 0 && (
-                                        <div className="px-2 py-3 text-[11px] text-white/40">
-                                          No job runs recorded yet.
                                         </div>
                                       )}
                                     </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                      <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
+                                        <div className="text-white/70 text-sm">
+                                          Create Job Template
+                                        </div>
+                                        <input
+                                          type="text"
+                                          value={jobTemplateName}
+                                          onChange={(e) => setJobTemplateName(e.target.value)}
+                                          placeholder="Template name (e.g. Tier 1 Ticket Triage)"
+                                          className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                                        />
+                                        <textarea
+                                          value={jobRolePrompt}
+                                          onChange={(e) => setJobRolePrompt(e.target.value)}
+                                          placeholder="Role contract / job expectations"
+                                          rows={3}
+                                          className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none resize-none"
+                                        />
+                                        <div className="flex items-center gap-2">
+                                          <select
+                                            value={jobTemplateMode}
+                                            onChange={(e) =>
+                                              setJobTemplateMode(
+                                                e.target.value === "live" ? "live" : "simulate",
+                                              )
+                                            }
+                                            className="bg-gray-700 text-white/80 text-xs rounded-lg px-2 py-1.5 border border-white/10 focus:outline-none"
+                                          >
+                                            <option value="simulate">Default: Simulate</option>
+                                            <option value="live">Default: Live</option>
+                                          </select>
+                                          <button
+                                            onClick={() => void createJobTemplate()}
+                                            disabled={!gatewayRequest || jobsLoading}
+                                            className="text-xs px-2.5 py-1.5 rounded border border-cyan-300/35 text-cyan-100 hover:border-cyan-200/45 disabled:opacity-40"
+                                          >
+                                            Create Template
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
+                                        <div className="text-white/70 text-sm">
+                                          Assign Job to Agent
+                                        </div>
+                                        <select
+                                          value={jobAssignmentTemplateId}
+                                          onChange={(e) =>
+                                            setJobAssignmentTemplateId(e.target.value)
+                                          }
+                                          className="w-full bg-gray-700 text-white/80 text-xs rounded-lg px-2 py-1.5 border border-white/10 focus:outline-none"
+                                        >
+                                          <option value="">Select template…</option>
+                                          {jobTemplates.map((template) => (
+                                            <option key={template.id} value={template.id}>
+                                              {template.name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <select
+                                          value={jobAssignmentAgentId}
+                                          onChange={(e) => setJobAssignmentAgentId(e.target.value)}
+                                          className="w-full bg-gray-700 text-white/80 text-xs rounded-lg px-2 py-1.5 border border-white/10 focus:outline-none"
+                                        >
+                                          {agentOptions.map((agent) => (
+                                            <option key={agent.id} value={agent.id}>
+                                              {agent.label}
+                                            </option>
+                                          ))}
+                                          {agentOptions.length === 0 && (
+                                            <option value="main">main</option>
+                                          )}
+                                        </select>
+                                        <input
+                                          type="text"
+                                          value={jobAssignmentTitle}
+                                          onChange={(e) => setJobAssignmentTitle(e.target.value)}
+                                          placeholder="Assignment title override (optional)"
+                                          className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                                        />
+                                        <div className="flex items-center gap-2">
+                                          <input
+                                            type="number"
+                                            min={1}
+                                            value={jobAssignmentCadenceMinutes}
+                                            onChange={(e) =>
+                                              setJobAssignmentCadenceMinutes(e.target.value)
+                                            }
+                                            className="w-28 bg-gray-700 text-white/80 rounded-lg px-2.5 py-1.5 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                                          />
+                                          <span className="text-white/45 text-xs">minutes</span>
+                                          <input
+                                            type="text"
+                                            value={jobAssignmentEventTriggers}
+                                            onChange={(e) =>
+                                              setJobAssignmentEventTriggers(e.target.value)
+                                            }
+                                            placeholder="events (ticket.updated, command:new)"
+                                            className="flex-1 bg-gray-700 text-white/80 rounded-lg px-2.5 py-1.5 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                                          />
+                                          <select
+                                            value={jobAssignmentMode}
+                                            onChange={(e) =>
+                                              setJobAssignmentMode(
+                                                e.target.value === "live" ? "live" : "simulate",
+                                              )
+                                            }
+                                            className="bg-gray-700 text-white/80 text-xs rounded-lg px-2 py-1.5 border border-white/10 focus:outline-none"
+                                          >
+                                            <option value="simulate">Simulate</option>
+                                            <option value="live">Live</option>
+                                          </select>
+                                          <button
+                                            onClick={() => void createJobAssignment()}
+                                            disabled={!gatewayRequest || jobsLoading}
+                                            className="text-xs px-2.5 py-1.5 rounded border border-cyan-300/35 text-cyan-100 hover:border-cyan-200/45 disabled:opacity-40"
+                                          >
+                                            Assign
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                      <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
+                                        <div className="text-white/70 text-sm">Job Roster</div>
+                                        <div className="max-h-48 overflow-y-auto divide-y divide-white/5 rounded border border-white/10">
+                                          {jobAssignments.map((assignment) => (
+                                            <div
+                                              key={assignment.id}
+                                              className="px-2 py-1.5 text-[11px] text-white/70 space-y-1"
+                                            >
+                                              <div className="flex items-center justify-between gap-2">
+                                                <span className="font-medium text-white/85">
+                                                  {assignment.title}
+                                                </span>
+                                                <button
+                                                  onClick={() =>
+                                                    void setAssignmentEnabled(
+                                                      assignment.id,
+                                                      !assignment.enabled,
+                                                    )
+                                                  }
+                                                  className="text-[10px] px-1.5 py-0.5 rounded border border-white/15 text-white/65 hover:text-white"
+                                                  disabled={!gatewayRequest}
+                                                >
+                                                  {assignment.enabled ? "Disable" : "Enable"}
+                                                </button>
+                                              </div>
+                                              <div className="text-white/45">
+                                                {assignment.agentId} · {assignment.executionMode} ·
+                                                every {assignment.cadenceMinutes}m
+                                              </div>
+                                              {assignment.metadata?.eventTriggers?.length ? (
+                                                <div className="text-cyan-200/80">
+                                                  events:{" "}
+                                                  {assignment.metadata.eventTriggers.join(", ")}
+                                                </div>
+                                              ) : (
+                                                <div className="text-white/35">
+                                                  events: none (schedule only)
+                                                </div>
+                                              )}
+                                              <div className="text-white/45">
+                                                next{" "}
+                                                {assignment.nextRunAt
+                                                  ? new Date(assignment.nextRunAt).toLocaleString()
+                                                  : "n/a"}
+                                              </div>
+                                            </div>
+                                          ))}
+                                          {jobAssignments.length === 0 && (
+                                            <div className="px-2 py-3 text-[11px] text-white/40">
+                                              No assignments yet.
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
+                                        <div className="text-white/70 text-sm">Recent Job Runs</div>
+                                        <div className="max-h-48 overflow-y-auto divide-y divide-white/5 rounded border border-white/10">
+                                          {jobRuns.map((run) => (
+                                            <div
+                                              key={run.id}
+                                              className="px-2 py-1.5 text-[11px] text-white/70"
+                                            >
+                                              <div className="flex items-center justify-between">
+                                                <span className="font-mono">{run.agentId}</span>
+                                                <div className="flex items-center gap-1.5">
+                                                  <span
+                                                    className={`px-1.5 py-0.5 rounded border ${
+                                                      run.status === "completed"
+                                                        ? "border-emerald-300/30 text-emerald-200"
+                                                        : run.status === "blocked"
+                                                          ? "border-amber-300/30 text-amber-200"
+                                                          : run.status === "failed"
+                                                            ? "border-red-300/30 text-red-200"
+                                                            : "border-cyan-300/30 text-cyan-200"
+                                                    }`}
+                                                  >
+                                                    {run.status}
+                                                  </span>
+                                                  {run.metadata?.intentVerdict && (
+                                                    <span
+                                                      className={`px-1.5 py-0.5 rounded border ${
+                                                        run.metadata.intentVerdict === "ok"
+                                                          ? "border-emerald-300/30 text-emerald-200"
+                                                          : run.metadata.intentVerdict ===
+                                                              "policy-violation"
+                                                            ? "border-red-300/30 text-red-200"
+                                                            : run.metadata.intentVerdict ===
+                                                                "hierarchy-invalid"
+                                                              ? "border-amber-300/30 text-amber-200"
+                                                              : "border-white/25 text-white/55"
+                                                      }`}
+                                                    >
+                                                      intent:{run.metadata.intentVerdict}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                              <div className="text-white/45">
+                                                mode {run.executionMode} · task{" "}
+                                                {run.taskId.slice(0, 8)}
+                                              </div>
+                                              {run.metadata?.intent && (
+                                                <div className="text-white/45">
+                                                  runtime {run.metadata.intent.runtimeMode ?? "n/a"}{" "}
+                                                  · validation{" "}
+                                                  {run.metadata.intent.validationMode ?? "n/a"} ·
+                                                  issues{" "}
+                                                  {typeof run.metadata.intent.issuesCount ===
+                                                  "number"
+                                                    ? run.metadata.intent.issuesCount
+                                                    : "n/a"}
+                                                </div>
+                                              )}
+                                              <div className="text-white/45">
+                                                {new Date(run.startedAt).toLocaleString()}
+                                              </div>
+                                            </div>
+                                          ))}
+                                          {jobRuns.length === 0 && (
+                                            <div className="px-2 py-3 text-[11px] text-white/40">
+                                              No job runs recorded yet.
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
                                   </div>
-                                </div>
-                              </div>
+                                </>
+                              )}
                             </>
                           )}
 

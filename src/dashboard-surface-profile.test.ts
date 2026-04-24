@@ -19,6 +19,12 @@ describe("dashboard surface profile", () => {
     ).toBe("public-core");
   });
 
+  it("fails closed to public-core when profile is missing or unreadable", () => {
+    expect(parseDashboardSurfaceProfile(null)).toBe("public-core");
+    expect(parseDashboardSurfaceProfile("")).toBe("public-core");
+    expect(parseDashboardSurfaceProfile("{not-json")).toBe("public-core");
+  });
+
   it("blocks admin config tabs in public-core", () => {
     expect(isConfigTabAllowed("gateway", "public-core")).toBe(false);
     expect(isConfigTabAllowed("systems", "public-core")).toBe(false);

@@ -1117,7 +1117,7 @@ function MemoryStatsCards() {
 function App() {
   const [avatarState, setAvatarState] = useState<AvatarState>("idle");
   const [avatarMood, setAvatarMood] = useState<MoodName | undefined>(undefined);
-  const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("full");
+  const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("public-core");
   const [dashboardMode, setDashboardMode] = useState<DashboardMode>("personal");
 
   // Workspace tabs
@@ -1313,9 +1313,8 @@ function App() {
         }
       } catch {
         if (!cancelled) {
-          setSurfaceProfile("full");
-          const storedDashboardMode = readStoredDashboardMode();
-          setDashboardMode(storedDashboardMode === "operations" ? "operations" : "personal");
+          setSurfaceProfile("public-core");
+          setDashboardMode("personal");
         }
       }
     };
@@ -2569,7 +2568,14 @@ function App() {
     let timer: ReturnType<typeof setInterval> | null = null;
 
     const refreshWorkforceBadge = async () => {
-      if (!gateway.connected || !backgroundPollingEnabled || !workforceBadgeAvailable) return;
+      if (
+        !allowWorkforceSurface ||
+        !gateway.connected ||
+        !backgroundPollingEnabled ||
+        !workforceBadgeAvailable
+      ) {
+        return;
+      }
       try {
         const overview = await gateway.request<{ dueNowCount?: number; blockedRunsCount?: number }>(
           "jobs.overview",
@@ -2599,7 +2605,12 @@ function App() {
       }
     };
 
-    if (gateway.connected && backgroundPollingEnabled && workforceBadgeAvailable) {
+    if (
+      allowWorkforceSurface &&
+      gateway.connected &&
+      backgroundPollingEnabled &&
+      workforceBadgeAvailable
+    ) {
       void refreshWorkforceBadge();
       timer = setInterval(() => {
         void refreshWorkforceBadge();
@@ -2615,6 +2626,7 @@ function App() {
   }, [
     gateway.connected,
     gateway.request,
+    allowWorkforceSurface,
     backgroundPollingEnabled,
     workforceBadgeAvailable,
     pollingMultiplier,
