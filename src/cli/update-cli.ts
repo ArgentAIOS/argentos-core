@@ -291,6 +291,39 @@ async function runPostUpdateDoctor(params: {
   }
 }
 
+async function runPostUpdateGatewayRestart(params: {
+  root: string;
+  jsonMode: boolean;
+}): Promise<boolean> {
+  const cliPath = path.join(params.root, "argent.mjs");
+  if (!(await pathExists(cliPath))) {
+    if (!params.jsonMode) {
+      defaultRuntime.log(theme.warn(`Daemon restart skipped: CLI entry not found at ${cliPath}.`));
+    }
+    return false;
+  }
+
+  const result = spawnSync(
+    resolveNodeRunner(),
+    [cliPath, "gateway", "restart", ...(params.jsonMode ? ["--json"] : [])],
+    {
+      cwd: params.root,
+      env: process.env,
+      encoding: params.jsonMode ? "utf-8" : undefined,
+      stdio: params.jsonMode ? "pipe" : "inherit",
+    },
+  );
+  if (result.error) {
+    throw result.error;
+  }
+  if (typeof result.status === "number" && result.status !== 0) {
+    const stderr =
+      typeof result.stderr === "string" && result.stderr.trim() ? `: ${result.stderr.trim()}` : "";
+    throw new Error(`gateway restart exited with status ${result.status}${stderr}`);
+  }
+  return true;
+}
+
 /** Check if shell completion is installed and prompt user to install if not. */
 async function tryInstallShellCompletion(opts: {
   jsonMode: boolean;
@@ -1190,8 +1223,10 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
       defaultRuntime.log(theme.heading("Restarting service..."));
     }
     try {
-      const { runDaemonRestart } = await import("./daemon-cli.js");
-      const restarted = await runDaemonRestart();
+      const restarted = await runPostUpdateGatewayRestart({
+        root: result.root ?? root,
+        jsonMode: Boolean(opts.json),
+      });
       if (restarted) {
         if (!opts.json) {
           defaultRuntime.log(theme.success("Daemon restarted successfully."));
