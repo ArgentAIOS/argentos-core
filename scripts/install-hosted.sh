@@ -29,6 +29,7 @@ PACKAGE_SPEC_OVERRIDE="${ARGENT_INSTALL_PACKAGE_SPEC:-}"
 NPM_PREFIX_OVERRIDE="${ARGENT_INSTALL_NPM_PREFIX:-}"
 BIN_DIR_OVERRIDE="${ARGENT_INSTALL_BIN_DIR:-$HOME/bin}"
 PACKAGE_DIR_OVERRIDE="${ARGENT_INSTALL_PACKAGE_DIR:-$HOME/.argentos/lib/node_modules/argentos}"
+GIT_REMOTE="${ARGENTOS_GIT_REMOTE:-https://github.com/ArgentAIOS/argentos-core.git}"
 NODE_VERSION="${ARGENT_NODE_VERSION:-22.22.0}"
 NODE_DIST_URL_BASE="${ARGENT_NODE_DIST_URL_BASE:-https://nodejs.org/dist}"
 NODE_BIN_OVERRIDE="${ARGENT_NODE_BIN:-}"
@@ -65,6 +66,7 @@ Environment equivalents:
   ARGENTOS_INSTALL_METHOD
   ARGENTOS_INSTALL_CHANNEL
   ARGENTOS_GIT_DIR
+  ARGENTOS_GIT_REMOTE
   ARGENTOS_DRY_RUN
   ARGENTOS_NO_PROMPT
   ARGENT_NO_ONBOARD
@@ -973,8 +975,8 @@ install_git() {
       info "Skipping git fetch (--no-git-update)"
     fi
   else
-    info "Cloning source checkout to $GIT_DIR"
-    run_cmd git clone https://github.com/ArgentAIOS/argentos-core.git "$GIT_DIR"
+    info "Cloning source checkout from $GIT_REMOTE to $GIT_DIR"
+    run_cmd git clone "$GIT_REMOTE" "$GIT_DIR"
   fi
 
   # Resolve release-tag placeholders to actual git tags
@@ -1024,7 +1026,8 @@ install_git() {
   # Clean stale build artifacts and node_modules to prevent version mismatch
   rm -rf "$GIT_DIR/dist" 2>/dev/null || true
   rm -rf "$GIT_DIR/node_modules/.pnpm" 2>/dev/null || true
-  run_pnpm "$GIT_DIR" install --frozen-lockfile || run_pnpm "$GIT_DIR" install
+  run_pnpm "$GIT_DIR" install --ignore-workspace --frozen-lockfile \
+    || run_pnpm "$GIT_DIR" install --ignore-workspace
   # Restore lockfile if pnpm mutated it (keeps git checkout clean for argent update)
   git -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
   run_pnpm "$GIT_DIR" build
@@ -1062,8 +1065,8 @@ install_git() {
   if [[ -d "$dashboard_dir" ]]; then
     # Install dashboard deps
     info "Installing dashboard dependencies..."
-    PATH="$node_dir:$PATH" run_pnpm "$dashboard_dir" install --frozen-lockfile 2>/dev/null \
-      || PATH="$node_dir:$PATH" run_pnpm "$dashboard_dir" install 2>/dev/null \
+    PATH="$node_dir:$PATH" run_pnpm "$dashboard_dir" install --ignore-workspace --frozen-lockfile 2>/dev/null \
+      || PATH="$node_dir:$PATH" run_pnpm "$dashboard_dir" install --ignore-workspace 2>/dev/null \
       || warn "Dashboard deps failed"
     # Restore root workspace lockfile if dashboard install mutated it
     # (this repo uses a single root pnpm-lock.yaml, not dashboard/pnpm-lock.yaml)

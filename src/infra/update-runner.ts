@@ -344,7 +344,9 @@ function managerScriptArgs(manager: "pnpm" | "bun" | "npm", script: string, args
 
 function managerInstallArgs(manager: "pnpm" | "bun" | "npm", frozen = false) {
   if (manager === "pnpm") {
-    return frozen ? ["pnpm", "install", "--frozen-lockfile"] : ["pnpm", "install"];
+    return frozen
+      ? ["pnpm", "install", "--ignore-workspace", "--frozen-lockfile"]
+      : ["pnpm", "install", "--ignore-workspace"];
   }
   if (manager === "bun") {
     return frozen ? ["bun", "install", "--frozen-lockfile"] : ["bun", "install"];
