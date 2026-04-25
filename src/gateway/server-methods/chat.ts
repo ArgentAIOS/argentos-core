@@ -7,6 +7,7 @@ import { resolveSessionAgentId } from "../../agents/agent-scope.js";
 import {
   buildAllowedModelSet,
   modelKey,
+  normalizeProviderId,
   resolveBestReasoningModel,
   resolveThinkingDefault,
 } from "../../agents/model-selection.js";
@@ -223,6 +224,40 @@ function buildSpecforgeToolDirective(userMessage: string): string {
 const shouldInvokeSpecforgeToolForMessageOptional = loadOptionalExport<
   (params: { sessionKey?: string; message: string }) => Promise<boolean>
 >(import.meta.url, "../../infra/specforge-conductor.js", "shouldInvokeSpecforgeToolForMessage");
+
+function resolveRouterPowerfulModel(cfg: ReturnType<typeof loadSessionEntry>["cfg"]): {
+  provider: string;
+  model: string;
+} | null {
+  const defaults = cfg.agents?.defaults as
+    | {
+        modelRouter?: {
+          activeProfile?: string;
+          profiles?: Record<
+            string,
+            {
+              tiers?: {
+                powerful?: {
+                  provider?: string;
+                  model?: string;
+                };
+              };
+            }
+          >;
+        };
+      }
+    | undefined;
+  const router = defaults?.modelRouter;
+  const activeProfile = router?.activeProfile?.trim();
+  const profile = activeProfile ? router?.profiles?.[activeProfile] : undefined;
+  const powerful = profile?.tiers?.powerful;
+  const provider = powerful?.provider?.trim();
+  const model = powerful?.model?.trim();
+  if (!provider || !model) {
+    return null;
+  }
+  return { provider: normalizeProviderId(provider), model };
+}
 
 export const chatHandlers: GatewayRequestHandlers = {
   "chat.history": async ({ params, respond, context }) => {
@@ -623,11 +658,19 @@ export const chatHandlers: GatewayRequestHandlers = {
             catalog,
             defaultProvider: "anthropic",
           });
-          const best = resolveBestReasoningModel({
-            catalog,
-            allowedKeys: allowed.allowedKeys,
-            allowAny: allowed.allowAny,
-          });
+          const powerful = resolveRouterPowerfulModel(innerCfg);
+          const powerfulKey = powerful ? modelKey(powerful.provider, powerful.model) : "";
+          const powerfulAllowed =
+            powerful && (allowed.allowAny || allowed.allowedKeys.has(powerfulKey));
+          const best =
+            powerfulAllowed
+              ? powerful
+              : resolveBestReasoningModel({
+                  catalog,
+                  allowedKeys: allowed.allowedKeys,
+                  allowAny: allowed.allowAny,
+                  excludedProviders: ["amazon-bedrock", "azure-openai"],
+                });
           if (best) {
             modelOverridePrefix = `/model ${best.provider}/${best.model} `;
           }

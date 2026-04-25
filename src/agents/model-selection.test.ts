@@ -8,6 +8,7 @@ import {
   normalizeProviderId,
   modelKey,
   selectionDiffersFromConfiguredPrimary,
+  resolveBestReasoningModel,
 } from "./model-selection.js";
 
 describe("model-selection", () => {
@@ -174,6 +175,32 @@ describe("model-selection", () => {
           defaultModel: "claude-haiku-4-5",
         }),
       ).toBe(true);
+    });
+  });
+
+  describe("resolveBestReasoningModel", () => {
+    it("skips excluded providers during automatic reasoning upgrades", () => {
+      const result = resolveBestReasoningModel({
+        catalog: [
+          {
+            provider: "amazon-bedrock",
+            id: "anthropic.claude-haiku-4-5-20251001-v1:0",
+            name: "Bedrock Haiku",
+            reasoning: true,
+          },
+          {
+            provider: "zai",
+            id: "glm-5",
+            name: "GLM 5",
+            reasoning: true,
+          },
+        ],
+        allowedKeys: new Set(),
+        allowAny: true,
+        excludedProviders: ["amazon-bedrock"],
+      });
+
+      expect(result).toEqual({ provider: "zai", model: "glm-5" });
     });
   });
 });
