@@ -2,7 +2,7 @@
   "name": "ArgentOS Core Docs",
   "generatedBy": "scripts/build-core-docs-vault.mjs",
   "source": "docs/",
-  "generatedAt": "2026-04-25T08:19:45-05:00",
+  "generatedAt": "2026-04-25T12:07:54-05:00",
   "documents": 299,
   "excludes": {
     "directories": [".i18n", "archive", "debug", "obsidian-vault", "research"],

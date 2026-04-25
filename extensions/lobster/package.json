@@ -1,6 +1,6 @@
 {
   "name": "@argentos/lobster",
-  "version": "2026.4.25.1",
+  "version": "2026.4.25.2",
   "description": "Lobster workflow tool plugin (typed pipelines + resumable approvals)",
   "type": "module",
   "devDependencies": {

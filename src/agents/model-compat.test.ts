@@ -35,6 +35,45 @@ describe("normalizeModelCompat", () => {
     expect(normalized.baseUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
   });
 
+  it("preserves live z.ai catalog entries on the general endpoint", () => {
+    const model = {
+      ...baseModel(),
+      id: "glm-5-turbo",
+      name: "GLM-5-Turbo",
+      baseUrl: "https://api.z.ai/api/paas/v4",
+    };
+
+    const normalized = normalizeModelCompat(model);
+
+    expect(normalized.baseUrl).toBe("https://api.z.ai/api/paas/v4/chat/completions");
+  });
+
+  it("preserves explicit z.ai coding endpoints for GLM-5 models", () => {
+    const model = {
+      ...baseModel(),
+      id: "glm-5-turbo",
+      name: "GLM-5-Turbo",
+      baseUrl: "https://api.z.ai/api/coding/paas/v4",
+    };
+
+    const normalized = normalizeModelCompat(model);
+
+    expect(normalized.baseUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
+  });
+
+  it("moves stale GLM-5 catalog entries to the coding endpoint", () => {
+    const model = {
+      ...baseModel(),
+      id: "glm-5-turbo",
+      name: "GLM-5-Turbo",
+      baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+    };
+
+    const normalized = normalizeModelCompat(model);
+
+    expect(normalized.baseUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
+  });
+
   it("leaves non-zai models untouched", () => {
     const model = {
       ...baseModel(),
