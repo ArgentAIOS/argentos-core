@@ -2,8 +2,8 @@
   "name": "ArgentOS Core Docs",
   "generatedBy": "scripts/build-core-docs-vault.mjs",
   "source": "docs/",
-  "generatedAt": "2026-04-25T03:38:12.638Z",
-  "documents": 297,
+  "generatedAt": "2026-04-25T07:24:47-05:00",
+  "documents": 299,
   "excludes": {
     "directories": [".i18n", "archive", "debug", "obsidian-vault", "research"],
     "files": ["CLAUDE.md"],

@@ -24,6 +24,7 @@ Core architecture, sessions, memory, routing, OAuth, models, and product boundar
 - [Presence](<90 - Public Docs Mirror/docs/concepts/presence.md>) - How ArgentOS presence entries are produced, merged, and displayed
 - [Command Queue](<90 - Public Docs Mirror/docs/concepts/queue.md>) - Command queue design that serializes inbound auto-reply runs
 - [Retry Policy](<90 - Public Docs Mirror/docs/concepts/retry.md>) - Retry policy for outbound provider calls
+- [Rust shadow runtime](<90 - Public Docs Mirror/docs/concepts/rust-shadow-runtime.md>)
 - [Session Pruning](<90 - Public Docs Mirror/docs/concepts/session-pruning.md>) - Session pruning: tool-result trimming to reduce context bloat
 - [Session Tools](<90 - Public Docs Mirror/docs/concepts/session-tool.md>) - Agent session tools for listing sessions, fetching history, and sending cross-session messages
 - [Session Management](<90 - Public Docs Mirror/docs/concepts/session.md>) - Session management rules, keys, and persistence for chats

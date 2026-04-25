@@ -37,6 +37,7 @@ What it does (high level):
 - Use a compatible system Node when available, otherwise install a private Node 22 runtime.
 - Derive `npm` / `corepack pnpm` from the selected runtime instead of trusting whatever `node` is on `PATH`.
 - For git installs: clone/update the checkout, run `pnpm install`, `pnpm build`, and `pnpm rebuild better-sqlite3`, then write the `argent` wrapper against the selected runtime.
+- On macOS, install the signed `Argent.app` from the public release manifest at `https://argentos.ai/releases/macos/latest.json`. Dev/beta installs try channel-specific app manifests first and fall back to the stable app artifact when no channel app has been published.
 - Install the generated public Core docs Obsidian vault at `~/.argentos/vaults/ArgentOS Core Docs` so the local operator agent has a clean docs source for setup and troubleshooting questions.
 
 If you _want_ `sharp` to link against a globally-installed libvips (or you’re debugging), set:
@@ -57,7 +58,7 @@ The repo-root `install.sh` is a different script with a different purpose:
 
 - macOS only
 - expects a built checkout or packaged runtime already present
-- installs the local runtime, dashboard services, wrappers, optional `Argent.app`, and the generated public Core docs Obsidian vault
+- installs the local runtime, dashboard services, wrappers, optional `Argent.app`, and the generated public Core docs Obsidian vault; if no app bundle is embedded, it fetches the signed app artifact from the public release manifest
 
 ## Core docs vault
 

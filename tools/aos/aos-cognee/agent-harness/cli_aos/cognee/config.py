@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_COLLECTION = "vault-knowledge"
+OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
 
 
 def _home() -> Path:
@@ -31,6 +32,43 @@ def read_argent_config() -> dict[str, Any]:
         return json.loads(path.read_text())
     except Exception:
         return {}
+
+
+def _config_env_vars(config: dict[str, Any] | None = None) -> dict[str, str]:
+    cfg = config if config is not None else read_argent_config()
+    env_config = cfg.get("env")
+    if not isinstance(env_config, dict):
+        return {}
+
+    entries: dict[str, str] = {}
+
+    raw_vars = env_config.get("vars")
+    if isinstance(raw_vars, dict):
+        for key, value in raw_vars.items():
+            if isinstance(value, str) and value.strip():
+                entries[str(key)] = value
+
+    for key, value in env_config.items():
+        if key in {"shellEnv", "vars"}:
+            continue
+        if isinstance(value, str) and value.strip():
+            entries[str(key)] = value
+
+    return entries
+
+
+def ensure_openai_api_key(config: dict[str, Any] | None = None) -> bool:
+    existing = (os.getenv(OPENAI_API_KEY_ENV) or "").strip()
+    if existing:
+        return True
+
+    config_env = _config_env_vars(config)
+    api_key = (config_env.get(OPENAI_API_KEY_ENV) or "").strip()
+    if not api_key:
+        return False
+
+    os.environ[OPENAI_API_KEY_ENV] = api_key
+    return True
 
 
 def vault_path(config: dict[str, Any] | None = None, override: str | None = None) -> str:

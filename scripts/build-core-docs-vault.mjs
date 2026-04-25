@@ -1,5 +1,7 @@
 #!/usr/bin/env node
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,7 +9,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const root = path.resolve(__dirname, "..");
 const docsRoot = path.join(root, "docs");
-const vaultRoot = path.join(docsRoot, "obsidian-vault", "ArgentOS Core Docs");
+const defaultVaultRoot = path.join(docsRoot, "obsidian-vault", "ArgentOS Core Docs");
+const checkMode = process.argv.includes("--check");
+const vaultRoot = checkMode
+  ? fs.mkdtempSync(path.join(os.tmpdir(), "argent-core-docs-vault-"))
+  : defaultVaultRoot;
 const mirrorRoot = path.join(vaultRoot, "90 - Public Docs Mirror", "docs");
 
 const EXCLUDED_DIRS = new Set([".i18n", "archive", "debug", "obsidian-vault", "research"]);
@@ -79,6 +85,25 @@ function walk(dir, base = dir) {
   return files.toSorted((a, b) => a.localeCompare(b));
 }
 
+function walkAllFiles(dir, base = dir) {
+  if (!fs.existsSync(dir)) {
+    return [];
+  }
+  const files = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    const relPath = path.relative(base, fullPath);
+    if (entry.isDirectory()) {
+      files.push(...walkAllFiles(fullPath, base));
+      continue;
+    }
+    if (entry.isFile()) {
+      files.push(relPath);
+    }
+  }
+  return files.toSorted((a, b) => a.localeCompare(b));
+}
+
 function parseTitle(content, relPath) {
   const titleMatch = content.match(/\ntitle:\s*["']?([^"'\n]+)["']?\n/);
   if (titleMatch?.[1]) {
@@ -122,6 +147,49 @@ function sectionIndex(files, title, description, prefixes) {
     }
   }
   return lines.join("\n");
+}
+
+function generatedAtForDocs() {
+  try {
+    const value = execFileSync("git", ["log", "-1", "--format=%cI", "--", "docs"], {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (value) {
+      return value;
+    }
+  } catch {
+    // Keep generated vault checks stable outside a git checkout.
+  }
+  return "1970-01-01T00:00:00.000Z";
+}
+
+function compareDirs(actualRoot, expectedRoot) {
+  const actualFiles = new Set(walkAllFiles(actualRoot));
+  const expectedFiles = new Set(walkAllFiles(expectedRoot));
+  const diffs = [];
+
+  for (const relPath of expectedFiles) {
+    const actualPath = path.join(actualRoot, relPath);
+    const expectedPath = path.join(expectedRoot, relPath);
+    if (!actualFiles.has(relPath)) {
+      diffs.push(`missing ${relPath}`);
+      continue;
+    }
+    const actual = fs.readFileSync(actualPath, "utf8");
+    const expected = fs.readFileSync(expectedPath, "utf8");
+    if (actual !== expected) {
+      diffs.push(`changed ${relPath}`);
+    }
+  }
+  for (const relPath of actualFiles) {
+    if (!expectedFiles.has(relPath)) {
+      diffs.push(`extra ${relPath}`);
+    }
+  }
+
+  return diffs;
 }
 
 if (!fs.existsSync(docsRoot)) {
@@ -294,7 +362,7 @@ writeFile(
       name: "ArgentOS Core Docs",
       generatedBy: "scripts/build-core-docs-vault.mjs",
       source: "docs/",
-      generatedAt: new Date().toISOString(),
+      generatedAt: generatedAtForDocs(docs),
       documents: docs.size,
       excludes: {
         directories: [...EXCLUDED_DIRS].toSorted(),
@@ -309,3 +377,20 @@ writeFile(
 );
 
 console.log(`docs:vault: generated ${docs.size} docs at ${path.relative(root, vaultRoot)}`);
+
+if (checkMode) {
+  const diffs = compareDirs(defaultVaultRoot, vaultRoot);
+  fs.rmSync(vaultRoot, { recursive: true, force: true });
+  if (diffs.length > 0) {
+    console.error("docs:vault: generated Obsidian vault is out of sync.");
+    for (const diff of diffs.slice(0, 50)) {
+      console.error(`  - ${diff}`);
+    }
+    if (diffs.length > 50) {
+      console.error(`  ... ${diffs.length - 50} more`);
+    }
+    console.error("docs:vault: run `pnpm docs:vault` and stage the generated vault changes.");
+    process.exit(1);
+  }
+  console.log("docs:vault: check passed");
+}

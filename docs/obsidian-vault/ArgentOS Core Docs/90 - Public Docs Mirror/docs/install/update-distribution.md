@@ -12,6 +12,7 @@ ArgentOS has two separate update rails:
 - Triggered by `argent update` or Gateway RPC `update.run` (Dashboard "Update & Restart Gateway").
 - Updates CLI/runtime code used by gateway, dashboard API, and control services.
 - Does **not** update the native macOS app bundle in `/Applications/Argent.app`.
+- During install/bootstrap, the shell installer may install `/Applications/Argent.app` from the public macOS release manifest when no embedded app bundle is present.
 
 2. Native macOS app rail (Swift + Sparkle):
 

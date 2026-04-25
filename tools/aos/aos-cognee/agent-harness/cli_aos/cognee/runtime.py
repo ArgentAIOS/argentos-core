@@ -7,15 +7,23 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .config import dataset_name, read_argent_config, redacted_config_snapshot, vault_path
+from .config import (
+    dataset_name,
+    ensure_openai_api_key,
+    read_argent_config,
+    redacted_config_snapshot,
+    vault_path,
+)
 from .constants import CONNECTOR_PATH, MANIFEST_SCHEMA_VERSION, MODE_ORDER, SEARCH_MODES, TOOL_NAME
 from .errors import CliError
+
 
 def _load_connector_manifest() -> dict[str, Any]:
     return json.loads(CONNECTOR_PATH.read_text())
 
 
 def _load_cognee() -> tuple[Any | None, str | None]:
+    ensure_openai_api_key()
     try:
         return importlib.import_module("cognee"), None
     except Exception as err:

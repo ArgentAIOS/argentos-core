@@ -1,6 +1,6 @@
 # Vault Map
 
-Generated from 297 public Core docs files.
+Generated from 299 public Core docs files.
 
 ## Primary indexes
 

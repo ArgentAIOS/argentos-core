@@ -107,9 +107,10 @@
   "auth": {
     "kind": "local-runtime",
     "required": false,
-    "service_keys": [],
+    "service_keys": ["OPENAI_API_KEY"],
     "interactive_setup": [
       "Install the Python harness in this connector's agent-harness directory.",
+      "Add OPENAI_API_KEY in API Keys when Cognee uses OpenAI-backed embeddings or chat flows.",
       "Configure Cognee's normal LLM/vector provider environment if your Cognee pipeline requires it.",
       "Bind memory.vault.path in ArgentOS settings or set AOS_COGNEE_VAULT_PATH."
     ]

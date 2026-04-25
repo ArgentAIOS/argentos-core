@@ -1132,7 +1132,7 @@
               },
               {
                 "group": "Project",
-                "pages": ["reference/credits"]
+                "pages": ["reference/credits", "reference/docs-vault-contract"]
               },
               {
                 "group": "Release notes",

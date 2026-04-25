@@ -69,6 +69,7 @@
     "docs:dev": "cd docs && mint dev",
     "docs:list": "node scripts/docs-list.js",
     "docs:vault": "node scripts/build-core-docs-vault.mjs",
+    "docs:vault:check": "node scripts/build-core-docs-vault.mjs --check",
     "export:hosted-installers": "node --import tsx scripts/export-hosted-installers.ts",
     "format": "oxfmt --check",
     "format:all": "pnpm format && pnpm format:swift",
