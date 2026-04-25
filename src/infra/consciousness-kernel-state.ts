@@ -168,6 +168,11 @@ export type ConsciousnessKernelOperatorRequestState = {
   source: "agenda" | "active-work" | "background-work" | "agency" | "concern" | "executive" | null;
 };
 
+export type ConsciousnessKernelOperatorNotificationState = {
+  lastSignature: string | null;
+  lastNotifiedAt: string | null;
+};
+
 export type ConsciousnessKernelExecutiveState = {
   updatedAt: string | null;
   work: ConsciousnessKernelExecutiveWorkState | null;
@@ -238,6 +243,7 @@ export type ConsciousnessKernelSelfState = {
   activeWork: ConsciousnessKernelActiveWorkState;
   backgroundWork: ConsciousnessKernelActiveWorkState;
   agenda: ConsciousnessKernelAgendaState;
+  operatorNotifications: ConsciousnessKernelOperatorNotificationState;
   executive: ConsciousnessKernelExecutiveState;
   concerns: string[];
   shadow: {
@@ -383,6 +389,10 @@ export function createConsciousnessKernelSelfState(params: {
     activeWork: createEmptyConsciousnessKernelActiveWorkState(),
     backgroundWork: createEmptyConsciousnessKernelActiveWorkState(),
     agenda: createEmptyConsciousnessKernelAgendaState(),
+    operatorNotifications: {
+      lastSignature: null,
+      lastNotifiedAt: null,
+    },
     executive: createEmptyConsciousnessKernelExecutiveState(),
     concerns: [],
     shadow: {
@@ -1080,6 +1090,9 @@ export function loadConsciousnessKernelSelfState(
     const activeWork = isPlainObject(parsed.activeWork) ? parsed.activeWork : {};
     const backgroundWork = isPlainObject(parsed.backgroundWork) ? parsed.backgroundWork : {};
     const agenda = isPlainObject(parsed.agenda) ? parsed.agenda : {};
+    const operatorNotifications = isPlainObject(parsed.operatorNotifications)
+      ? parsed.operatorNotifications
+      : {};
     const executive = isPlainObject(parsed.executive) ? parsed.executive : {};
     const shadow = isPlainObject(parsed.shadow) ? parsed.shadow : {};
     const recentDecision = isPlainObject(parsed.recentDecision) ? parsed.recentDecision : null;
@@ -1188,6 +1201,10 @@ export function loadConsciousnessKernelSelfState(
         candidateItems: asAgendaItems(agenda.candidateItems),
         activeItem:
           asAgendaItem(agenda.activeItem) ?? asAgendaItems(agenda.candidateItems)[0] ?? null,
+      },
+      operatorNotifications: {
+        lastSignature: asString(operatorNotifications.lastSignature),
+        lastNotifiedAt: asString(operatorNotifications.lastNotifiedAt),
       },
       executive: {
         updatedAt: asString(executive.updatedAt),

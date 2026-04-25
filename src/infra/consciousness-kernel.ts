@@ -14,6 +14,7 @@ import {
   runConsciousnessKernelInnerLoop,
   type ConsciousnessKernelReflection,
 } from "./consciousness-kernel-inner-loop.js";
+import { maybeNotifyConsciousnessKernelOperatorRequest } from "./consciousness-kernel-notifier.js";
 import {
   appendConsciousnessKernelDecision,
   createConsciousnessKernelSelfState,
@@ -1343,6 +1344,7 @@ export function startConsciousnessKernel(opts: {
           candidateItems: selfState.agenda.candidateItems.map((item) => ({ ...item })),
           activeItem: selfState.agenda.activeItem ? { ...selfState.agenda.activeItem } : null,
         },
+        operatorNotifications: { ...selfState.operatorNotifications },
         executive: {
           ...selfState.executive,
           work: selfState.executive.work
@@ -1566,6 +1568,28 @@ export function startConsciousnessKernel(opts: {
     }
     await maybeRunManagedContemplation(resolved, now);
     await maybeRunManagedSis(resolved, now);
+  };
+
+  const maybeNotifyOperatorRequest = async (_resolved: ResolvedKernelConfig, now: string) => {
+    if (!selfState) {
+      return;
+    }
+    const result = await maybeNotifyConsciousnessKernelOperatorRequest({
+      cfg,
+      selfState,
+      now,
+    });
+    if (result.status === "sent") {
+      persistSelfState(now);
+      log.info("consciousness kernel: operator request notification sent", {
+        targets: result.delivered.length,
+        errors: result.errors,
+      });
+    } else if (result.status === "failed") {
+      log.warn("consciousness kernel: operator request notification failed", {
+        errors: result.errors,
+      });
+    }
   };
 
   const maybeRunInnerReflection = async (resolved: ResolvedKernelConfig, now: string) => {
@@ -1981,6 +2005,7 @@ export function startConsciousnessKernel(opts: {
         await maybeRunInnerReflection(latest, now);
         await maybeRunExecutiveCycle(latest, now);
         await maybeRunManagedSubsystems(latest, now);
+        await maybeNotifyOperatorRequest(latest, now);
         setSnapshot(cfg, buildSnapshot(latest));
         scheduleTick(latest);
       })().catch((err: unknown) => {

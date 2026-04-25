@@ -353,6 +353,18 @@ const FIELD_LABELS: Record<string, string> = {
   "agents.defaults.kernel.hardwareHostRequired": "Consciousness Kernel Hardware Host Required",
   "agents.defaults.kernel.allowListening": "Consciousness Kernel Allow Listening",
   "agents.defaults.kernel.allowVision": "Consciousness Kernel Allow Vision",
+  "agents.defaults.kernel.operatorNotifications": "Kernel Operator Notifications",
+  "agents.defaults.kernel.operatorNotifications.enabled": "Kernel Operator Notifications Enabled",
+  "agents.defaults.kernel.operatorNotifications.cooldownMs":
+    "Kernel Operator Notification Cooldown (ms)",
+  "agents.defaults.kernel.operatorNotifications.targets": "Kernel Operator Notification Targets",
+  "agents.defaults.kernel.operatorNotifications.targets.channel":
+    "Kernel Operator Notification Channel",
+  "agents.defaults.kernel.operatorNotifications.targets.to": "Kernel Operator Notification Target",
+  "agents.defaults.kernel.operatorNotifications.targets.accountId":
+    "Kernel Operator Notification Account",
+  "agents.defaults.kernel.operatorNotifications.targets.threadId":
+    "Kernel Operator Notification Thread",
   license: "License",
   "license.encrypted": "License Data (Encrypted)",
   "license.machineId": "Machine ID",
@@ -880,6 +892,22 @@ const FIELD_HELP: Record<string, string> = {
     "Allow future listening-capable kernel modes to request microphone context.",
   "agents.defaults.kernel.allowVision":
     "Allow future vision-capable kernel modes to request camera context.",
+  "agents.defaults.kernel.operatorNotifications":
+    "Optional outbound targets for kernel requests that need operator input. Uses the normal channel delivery pipeline, so Telegram/Slack/Discord/plugin targets stay configurable instead of hardcoded.",
+  "agents.defaults.kernel.operatorNotifications.enabled":
+    "Enable delivery of operator-needed kernel requests to configured outbound targets.",
+  "agents.defaults.kernel.operatorNotifications.cooldownMs":
+    "Minimum interval before re-sending the same operator request. Default: 900000 ms.",
+  "agents.defaults.kernel.operatorNotifications.targets":
+    "Explicit chat targets for operator-needed kernel requests. Example: [{ channel: 'telegram', to: '123456789' }].",
+  "agents.defaults.kernel.operatorNotifications.targets.channel":
+    "Outbound channel id such as telegram, slack, discord, or a plugin channel id.",
+  "agents.defaults.kernel.operatorNotifications.targets.to":
+    "Destination id for the selected channel, such as a Telegram chat id.",
+  "agents.defaults.kernel.operatorNotifications.targets.accountId":
+    "Optional account id for multi-account channels.",
+  "agents.defaults.kernel.operatorNotifications.targets.threadId":
+    "Optional thread id for channels that support threaded delivery.",
   "agents.defaults.memorySearch.cache.maxEntries":
     "Optional cap on cached embeddings (best-effort).",
   "agents.defaults.memorySearch.sync.onSearch":
