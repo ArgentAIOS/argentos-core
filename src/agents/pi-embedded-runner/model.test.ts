@@ -140,6 +140,17 @@ describe("resolveModel", () => {
     expect(result.model?.baseUrl).toBe("https://api.minimax.io/anthropic");
   });
 
+  it("uses the built-in GLM-5-Turbo fallback when Pi's catalog does not have it yet", () => {
+    const result = resolveModel("zai", "glm-5-turbo", "/tmp/agent", {});
+
+    expect(result.error).toBeUndefined();
+    expect(result.model?.provider).toBe("zai");
+    expect(result.model?.id).toBe("glm-5-turbo");
+    expect(result.model?.api).toBe("openai-completions");
+    expect(result.model?.baseUrl).toBe("https://api.z.ai/api/paas/v4/chat/completions");
+    expect(result.model?.reasoning).toBe(true);
+  });
+
   it("repairs stale inline MiniMax OpenAI-compatible configs", () => {
     const cfg = {
       models: {

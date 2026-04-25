@@ -196,6 +196,25 @@ export const ConsciousnessKernelSchema = z
     hardwareHostRequired: z.boolean().optional(),
     allowListening: z.boolean().optional(),
     allowVision: z.boolean().optional(),
+    operatorNotifications: z
+      .object({
+        enabled: z.boolean().optional(),
+        cooldownMs: z.number().int().nonnegative().optional(),
+        targets: z
+          .array(
+            z
+              .object({
+                channel: z.string().min(1),
+                to: z.string().min(1),
+                accountId: z.string().optional(),
+                threadId: z.union([z.string(), z.number()]).optional(),
+              })
+              .strict(),
+          )
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .optional();

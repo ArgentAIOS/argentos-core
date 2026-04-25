@@ -121,6 +121,9 @@ export const CORE_TOOL_NAMES = new Set([
 const DEFERRED_TOOL_KEYWORDS: Record<string, string[]> = {
   // Memory extended
   memory_categories: ["memory", "category", "categories", "organize"],
+  memory_category_cleanup: ["memory", "category", "cleanup", "dedupe", "merge", "empty"],
+  memory_category_merge: ["memory", "category", "merge", "dedupe", "cleanup"],
+  memory_category_rename: ["memory", "category", "rename", "clean"],
   memory_forget: ["memory", "forget", "delete", "remove"],
   memory_entity: ["memory", "entity", "person", "contact", "identity"],
   memory_reflect: ["memory", "reflect", "reflection", "introspect"],

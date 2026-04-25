@@ -43,6 +43,7 @@ export const DEFAULT_SIS_CONTEXT_FILENAME = "SIS_CONTEXT.md";
 export const DEFAULT_SESSION_SNAPSHOT_FILENAME = "SESSION_SNAPSHOT.md";
 export const DEFAULT_LIVE_INBOX_LEDGER_FILENAME = "LIVE_INBOX_LEDGER.md";
 export const DEFAULT_TTS_POLICY_FILENAME = "TTS_POLICY.md";
+export const DEFAULT_KERNEL_CONTINUITY_FILENAME = "KERNEL_CONTINUITY.md";
 
 function stripFrontMatter(content: string): string {
   if (!content.startsWith("---")) {
@@ -205,7 +206,8 @@ export type WorkspaceBootstrapFileName =
   | typeof DEFAULT_SIS_CONTEXT_FILENAME
   | typeof DEFAULT_SESSION_SNAPSHOT_FILENAME
   | typeof DEFAULT_LIVE_INBOX_LEDGER_FILENAME
-  | typeof DEFAULT_TTS_POLICY_FILENAME;
+  | typeof DEFAULT_TTS_POLICY_FILENAME
+  | typeof DEFAULT_KERNEL_CONTINUITY_FILENAME;
 
 export type WorkspaceBootstrapFile = {
   name: WorkspaceBootstrapFileName;

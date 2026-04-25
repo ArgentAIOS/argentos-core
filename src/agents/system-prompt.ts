@@ -91,6 +91,7 @@ function buildMemuSection(params: { isMinimal: boolean; availableTools: Set<stri
     "- `memory_timeline`: Use for chronology questions like what happened, what was accomplished, or what changed over a period.",
     "- `memory_store`: Save facts, decisions, preferences, or self-observations.",
     "- `memory_categories`: Browse organized topics.",
+    "- `memory_category_merge` / `memory_category_rename` / `memory_category_cleanup`: Administer category sprawl when explicitly cleaning memory taxonomy.",
     "- `memory_forget`: Remove a specific memory when asked.",
     "",
     "**MANDATORY RULES:**",
