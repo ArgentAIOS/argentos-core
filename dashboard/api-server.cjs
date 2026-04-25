@@ -16368,7 +16368,7 @@ app.post("/api/settings/services/:serviceId/:action", async (req, res) => {
       });
       if (action === "stop") {
         if (!verified.loaded && verified.status === "stopped") break;
-      } else if (verified.loaded || verified.status === "running") {
+      } else if (verified.status === "running") {
         break;
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
@@ -16377,7 +16377,7 @@ app.post("/api/settings/services/:serviceId/:action", async (req, res) => {
     if (
       verified &&
       ((action === "stop" && (verified.loaded || verified.status !== "stopped")) ||
-        (action !== "stop" && !verified.loaded && verified.status !== "running"))
+        (action !== "stop" && verified.status !== "running"))
     ) {
       return res.status(500).json({
         error: "Service action did not reach the expected state",
