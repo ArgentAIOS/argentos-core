@@ -230,8 +230,42 @@ describe("createArgentStreamSimple", () => {
 });
 
 describe("hardenStreamSimple", () => {
+  it("synthesizes a terminal event when an upstream stream ends without done/error", async () => {
+    const streamFn: Parameters<typeof hardenStreamSimple>[0] = () => {
+      const stream = createAssistantMessageEventStream();
+      void (async () => {
+        stream.push({
+          type: "start",
+          partial: {
+            ...makeBaseAssistant(),
+            content: undefined as unknown as AssistantMessage["content"],
+          },
+        });
+        stream.end({
+          ...makeBaseAssistant(),
+          content: undefined as unknown as AssistantMessage["content"],
+        });
+      })();
+      return stream;
+    };
+
+    const stream = hardenStreamSimple(streamFn)(mockModel, mockContext);
+    const eventTypes: string[] = [];
+    for await (const event of stream) {
+      eventTypes.push(event.type);
+      if ("partial" in event && event.partial) {
+        expect(Array.isArray(event.partial.content)).toBe(true);
+      }
+    }
+
+    const result = await stream.result();
+    expect(eventTypes).toEqual(["start", "done"]);
+    expect(Array.isArray(result.content)).toBe(true);
+    expect(result.stopReason).toBe("stop");
+  });
+
   it("normalizes malformed assistant result content to an array", async () => {
-    const streamFn = () => {
+    const streamFn: Parameters<typeof hardenStreamSimple>[0] = () => {
       const stream = createAssistantMessageEventStream();
       void (async () => {
         stream.push({
@@ -255,7 +289,7 @@ describe("hardenStreamSimple", () => {
       return stream;
     };
 
-    const stream = hardenStreamSimple(streamFn as any)(mockModel, mockContext);
+    const stream = hardenStreamSimple(streamFn)(mockModel, mockContext);
     for await (const _event of stream) {
       // drain
     }

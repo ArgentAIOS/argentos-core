@@ -116,7 +116,6 @@ import type {
   AssistantMessageEventStream,
   Context,
   Model,
-  Provider,
   SimpleStreamOptions,
   Usage,
 } from "@mariozechner/pi-ai";
@@ -178,6 +177,7 @@ function normalizeAssistantMessageEventStream(
 ): AssistantMessageEventStream {
   let terminalEventSeen = false;
   let emittedFallbackError: AssistantMessage | undefined;
+  let terminalMessage: AssistantMessage | undefined;
   const normalizedStream = createAssistantMessageEventStream();
 
   void (async () => {
@@ -186,8 +186,15 @@ function normalizeAssistantMessageEventStream(
         const normalizedEvent = normalizeEvent(event);
         if (normalizedEvent.type === "done" || normalizedEvent.type === "error") {
           terminalEventSeen = true;
+          terminalMessage =
+            normalizedEvent.type === "done" ? normalizedEvent.message : normalizedEvent.error;
         }
         normalizedStream.push(normalizedEvent);
+      }
+      if (!terminalEventSeen) {
+        terminalMessage = normalizeMessage(await stream.result());
+        normalizedStream.push(buildTerminalEvent(terminalMessage));
+        terminalEventSeen = true;
       }
     } catch (error) {
       if (!terminalEventSeen) {
@@ -197,12 +204,14 @@ function normalizeAssistantMessageEventStream(
     } finally {
       if (emittedFallbackError) {
         normalizedStream.end(emittedFallbackError);
-        return;
-      }
-      try {
-        normalizedStream.end(normalizeMessage(await stream.result()));
-      } catch (error) {
-        normalizedStream.end(buildStreamErrorMessage(model, error));
+      } else if (terminalMessage) {
+        normalizedStream.end(terminalMessage);
+      } else {
+        try {
+          normalizedStream.end(normalizeMessage(await stream.result()));
+        } catch (error) {
+          normalizedStream.end(buildStreamErrorMessage(model, error));
+        }
       }
     }
   })();
@@ -213,9 +222,6 @@ function normalizeAssistantMessageEventStream(
 function normalizeEvent(event: AssistantMessageEvent): AssistantMessageEvent {
   if (event.type === "toolcall_end") {
     const args = normalizeToolCallArguments(event.toolCall.arguments);
-    if (args === event.toolCall.arguments) {
-      return event;
-    }
     return {
       ...event,
       toolCall: {
@@ -240,6 +246,24 @@ function normalizeEvent(event: AssistantMessageEvent): AssistantMessageEvent {
     return { ...event, error: normalizeMessage(event.error) };
   }
   return event;
+}
+
+function buildTerminalEvent(message: AssistantMessage): AssistantMessageEvent {
+  if (message.stopReason === "error" || message.stopReason === "aborted") {
+    return {
+      type: "error",
+      reason: message.stopReason,
+      error: message,
+    };
+  }
+  return {
+    type: "done",
+    reason:
+      message.stopReason === "length" || message.stopReason === "toolUse"
+        ? message.stopReason
+        : "stop",
+    message,
+  };
 }
 
 function normalizeMessage(message: AssistantMessage): AssistantMessage {
@@ -302,7 +326,7 @@ function buildStreamErrorMessage(model: Model<Api>, error: unknown): AssistantMe
     role: "assistant",
     content: [buildAssistantErrorTextContent(errorMessage)],
     api: model.api,
-    provider: model.provider as Provider,
+    provider: model.provider,
     model: model.id,
     usage,
     stopReason: "error",
