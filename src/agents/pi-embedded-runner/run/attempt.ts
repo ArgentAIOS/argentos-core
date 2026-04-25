@@ -257,7 +257,30 @@ type OpenAICodexModelRegistryLike = {
 
 type AuthStorageWithRuntimeOverrides = {
   runtimeOverrides?: Map<string, string>;
+  getApiKey?: (
+    provider: string,
+    options?: { includeFallback?: boolean },
+  ) => Promise<string | undefined>;
 };
+
+export async function resolveRuntimeProviderApiKey(
+  authStorage: AuthStorageWithRuntimeOverrides,
+  provider: string,
+): Promise<string | undefined> {
+  const normalizedProvider = provider.trim();
+  if (!normalizedProvider) {
+    return undefined;
+  }
+
+  if (typeof authStorage.getApiKey === "function") {
+    const apiKey = await authStorage.getApiKey(normalizedProvider, { includeFallback: false });
+    if (apiKey) {
+      return apiKey;
+    }
+  }
+
+  return authStorage.runtimeOverrides?.get(normalizedProvider);
+}
 
 export function resolveOpenAICodexVisionModelId(params: {
   model: Pick<Model<Api>, "id" | "provider" | "input">;
@@ -1080,9 +1103,10 @@ export async function runEmbeddedAttempt(
       // streamSimpleOpenAICodexResponses (chatgpt.com/backend-api/codex/responses),
       // but it needs apiKey in options since getEnvApiKey has no mapping for openai-codex.
       // Wrap streamSimple to inject the OAuth JWT from authStorage.runtimeOverrides.
-      const runtimeOverrides = (params.authStorage as AuthStorageWithRuntimeOverrides)
-        .runtimeOverrides;
-      const providerApiKey = runtimeOverrides?.get(params.provider);
+      const providerApiKey = await resolveRuntimeProviderApiKey(
+        params.authStorage as AuthStorageWithRuntimeOverrides,
+        params.provider,
+      );
       if (params.provider === "openai-codex") {
         const codexApiKey = providerApiKey;
         if (codexApiKey) {

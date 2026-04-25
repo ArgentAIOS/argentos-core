@@ -4,6 +4,7 @@ import type { AgentMessage } from "../../../agent-core/core.js";
 import {
   applyPiStreamFallbackPolicy,
   injectHistoryImagesIntoMessages,
+  resolveRuntimeProviderApiKey,
   resolveOpenAICodexTransport,
   resolveOpenAICodexVisionModelId,
   resolveEmbeddedAttemptRuntimePolicy,
@@ -64,6 +65,27 @@ describe("injectHistoryImagesIntoMessages", () => {
 });
 
 describe("embedded runtime policy wiring", () => {
+  it("resolves runtime provider keys through the public auth storage API", async () => {
+    const authStorage = {
+      runtimeOverrides: new Map([["minimax", "private-map-key"]]),
+      getApiKey: async (provider: string, options?: { includeFallback?: boolean }) => {
+        expect(provider).toBe("minimax");
+        expect(options).toEqual({ includeFallback: false });
+        return "profile-key";
+      },
+    };
+
+    await expect(resolveRuntimeProviderApiKey(authStorage, "minimax")).resolves.toBe("profile-key");
+  });
+
+  it("keeps the runtime override fallback for older auth storage implementations", async () => {
+    const authStorage = {
+      runtimeOverrides: new Map([["minimax", "runtime-key"]]),
+    };
+
+    await expect(resolveRuntimeProviderApiKey(authStorage, "minimax")).resolves.toBe("runtime-key");
+  });
+
   it("resolves legacy ARGENT_RUNTIME=true to fallback mode", () => {
     const policy = resolveEmbeddedAttemptRuntimePolicy({ ARGENT_RUNTIME: "true" });
     expect(policy.mode).toBe("argent_with_fallback");
