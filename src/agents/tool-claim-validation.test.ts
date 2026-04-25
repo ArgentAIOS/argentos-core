@@ -210,6 +210,27 @@ describe("validateToolClaims", () => {
     expect(result.evidenceKinds).toContain("research");
   });
 
+  it("flags marketplace browse commitments without a marketplace tool call", () => {
+    const result = validateToolClaims({
+      responseText: "Let me see what's on the marketplace.",
+      executedToolNames: [],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.missingCommitments[0]?.kind).toBe("research");
+    expect(result.missingClaimLabels).toContain("research action");
+  });
+
+  it("passes marketplace browse commitments when marketplace executes", () => {
+    const result = validateToolClaims({
+      responseText: "Let me see what's on the marketplace.",
+      executedToolNames: ["marketplace"],
+    });
+    expect(result.valid).toBe(true);
+    expect(result.missingCommitments).toEqual([]);
+    expect(result.evidenceKinds).toContain("research");
+    expect(result.hasExternalArtifact).toBe(true);
+  });
+
   it("flags short active-work claims without same-turn evidence", () => {
     const result = validateToolClaims({
       responseText: "I'm on it.",

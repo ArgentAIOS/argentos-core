@@ -8,6 +8,7 @@ const MONITORED_CLAIM_TOOLS = [
   "memory_store",
   "memory_reflect",
   "tasks",
+  "marketplace",
 ] as const;
 
 const EXECUTED_TOOL_NAMES = [...MONITORED_CLAIM_TOOLS, "read", "exec", "process"] as const;
@@ -17,6 +18,7 @@ const EXTERNAL_ARTIFACT_TOOLS = new Set<ExecutedToolName>([
   "web_fetch",
   "doc_panel",
   "message",
+  "marketplace",
 ]);
 
 const TOOL_CANONICAL_MAP: Array<{ canonical: ExecutedToolName; matches: RegExp[] }> = [
@@ -51,6 +53,10 @@ const TOOL_CANONICAL_MAP: Array<{ canonical: ExecutedToolName; matches: RegExp[]
   {
     canonical: "tasks",
     matches: [/\btasks\b/i],
+  },
+  {
+    canonical: "marketplace",
+    matches: [/\bmarketplace\b/i],
   },
   {
     canonical: "read",
@@ -95,6 +101,10 @@ const EXPLICIT_TOOL_ALIASES: Array<{
   {
     canonical: "tasks",
     toolPattern: "(?:`?tasks`?)",
+  },
+  {
+    canonical: "marketplace",
+    toolPattern: "(?:`?marketplace`?|Marketplace)",
   },
 ];
 
@@ -190,6 +200,10 @@ const COMMITMENT_PATTERNS: readonly CommitmentPattern[] = [
         String.raw`\b(?:I(?:['’]m| am)\s+)?(?:pulling|fetching|checking|reading|opening|looking\s+up)\b[^.!?\n]{0,80}\b(?:page|text|docs?|documentation|readme|spec(?:ification)?|url|link|site|repo(?:sitory)?|source|code|codebase)\b[^.!?\n]{0,40}\b(?:now|right\s+now)\b`,
         "gi",
       ),
+      new RegExp(
+        String.raw`\b${DIRECT_ACTION_PREFIX}(?:browse|browsing|search|searching|check|checking|look(?:ing)?|see(?:ing)?)\b[^.!?\n]{0,120}\b(?:what(?:['’]s|\s+is)\s+(?:on|available\s+(?:on|in))\s+)?(?:the\s+)?marketplace\b[^.!?\n]{0,80}`,
+        "gi",
+      ),
     ],
   },
   {
@@ -277,6 +291,7 @@ const COMMITMENT_PATTERNS: readonly CommitmentPattern[] = [
       "read",
       "doc_panel",
       "tasks",
+      "marketplace",
       "message",
     ],
     patterns: [
@@ -297,6 +312,7 @@ const TOOL_EVIDENCE_KIND_MAP: Partial<Record<ExecutedToolName, CommitmentEvidenc
   web_fetch: "research",
   browser: "research",
   read: "research",
+  marketplace: "research",
   doc_panel: "planning",
   tasks: "task",
   message: "message",
@@ -315,6 +331,7 @@ const GENERIC_PROGRESS_TOOL_FAMILIES: ExecutedToolName[] = [
   "web_fetch",
   "browser",
   "read",
+  "marketplace",
   "doc_panel",
   "tasks",
   "message",
