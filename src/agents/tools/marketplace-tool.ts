@@ -1,9 +1,11 @@
 import { Type } from "@sinclair/typebox";
+import { execFile } from "node:child_process";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { promisify } from "node:util";
 import { createGunzip } from "node:zlib";
 import type { AnyAgentTool } from "./common.js";
 import { resolvePackedRootDir } from "../../infra/archive.js";
@@ -13,6 +15,7 @@ import { optionalStringEnum } from "../schema/typebox.js";
 import { readStringParam, readNumberParam } from "./common.js";
 
 const MARKETPLACE_API = "https://marketplace.argentos.ai/api/v1";
+const execFileAsync = promisify(execFile);
 
 const ACTIONS = ["search", "details", "install"] as const;
 
@@ -98,6 +101,33 @@ type ResolvedMarketplacePackage = {
   pkg: MarketplacePackageRecord;
   source: "details" | "search";
 };
+
+function formatUnknown(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (value == null) {
+    return "";
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return Object.prototype.toString.call(value);
+  }
+}
+
+function packageString(pkg: MarketplacePackageRecord, key: string, fallback = ""): string {
+  const value = pkg[key];
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function packageDisplayName(pkg: MarketplacePackageRecord, fallback: string): string {
+  const name = packageString(pkg, "name", fallback);
+  return packageString(pkg, "display_name", name);
+}
 
 function isUuidLike(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
@@ -188,17 +218,21 @@ async function actionDetails(params: Record<string, unknown>) {
   const licenseKey = readLicenseKey();
   const resolved = await resolveMarketplacePackage(packageId, licenseKey);
   const pkg = resolved.pkg;
+  const name = packageString(pkg, "name", packageId);
+  const displayName = packageDisplayName(pkg, packageId);
   const lines: string[] = [];
-  lines.push(`Package: ${pkg.display_name || pkg.name}`);
-  lines.push(`ID: ${pkg.id}`);
-  lines.push(`Name: ${pkg.name}`);
-  lines.push(`Category: ${pkg.category}`);
-  lines.push(`Author: ${pkg.author_name}${pkg.author_verified ? " ✓" : ""}`);
-  lines.push(`Version: ${pkg.latest_version}`);
-  lines.push(`Pricing: ${pkg.pricing}`);
-  lines.push(`Downloads: ${pkg.total_downloads}`);
-  lines.push(`Rating: ${pkg.rating} (${pkg.rating_count} reviews)`);
-  lines.push(`Description: ${pkg.description}`);
+  lines.push(`Package: ${displayName}`);
+  lines.push(`ID: ${packageString(pkg, "id")}`);
+  lines.push(`Name: ${name}`);
+  lines.push(`Category: ${packageString(pkg, "category")}`);
+  lines.push(
+    `Author: ${packageString(pkg, "author_name")}${pkg.author_verified === true ? " ✓" : ""}`,
+  );
+  lines.push(`Version: ${packageString(pkg, "latest_version")}`);
+  lines.push(`Pricing: ${packageString(pkg, "pricing")}`);
+  lines.push(`Downloads: ${formatUnknown(pkg.total_downloads)}`);
+  lines.push(`Rating: ${formatUnknown(pkg.rating)} (${formatUnknown(pkg.rating_count)} reviews)`);
+  lines.push(`Description: ${packageString(pkg, "description")}`);
 
   const tags = pkg.tags;
   if (Array.isArray(tags) && tags.length > 0) {
@@ -210,16 +244,21 @@ async function actionDetails(params: Record<string, unknown>) {
     lines.push("Marketplace details endpoint unavailable; showing catalog summary.");
   }
 
-  const latest = pkg.latest as Record<string, unknown> | null;
+  const latest =
+    pkg.latest && typeof pkg.latest === "object" && !Array.isArray(pkg.latest)
+      ? (pkg.latest as Record<string, unknown>)
+      : null;
   if (latest) {
     lines.push("");
     lines.push("Latest Version Details:");
-    lines.push(`  Version: ${latest.version}`);
-    if (latest.changelog) {
-      lines.push(`  Changelog: ${latest.changelog}`);
+    lines.push(`  Version: ${formatUnknown(latest.version)}`);
+    const changelog = formatUnknown(latest.changelog);
+    if (changelog) {
+      lines.push(`  Changelog: ${changelog}`);
     }
-    if (latest.min_argent_version) {
-      lines.push(`  Min ArgentOS: ${latest.min_argent_version}`);
+    const minArgentVersion = formatUnknown(latest.min_argent_version);
+    if (minArgentVersion) {
+      lines.push(`  Min ArgentOS: ${minArgentVersion}`);
     }
     const tools = latest.tools as string[] | null;
     if (Array.isArray(tools) && tools.length > 0) {
@@ -231,11 +270,11 @@ async function actionDetails(params: Record<string, unknown>) {
     }
   }
 
-  lines.push(`\nVersions available: ${pkg.version_count}`);
+  lines.push(`\nVersions available: ${formatUnknown(pkg.version_count)}`);
 
   return {
     content: [{ type: "text" as const, text: lines.join("\n") }],
-    details: { ok: true, action: "details", packageId, name: pkg.name },
+    details: { ok: true, action: "details", packageId, name },
   };
 }
 
@@ -245,6 +284,8 @@ async function actionInstall(params: Record<string, unknown>) {
 
   const resolved = await resolveMarketplacePackage(packageId, licenseKey);
   const pkg = resolved.pkg;
+  const packageName = packageString(pkg, "name", packageId);
+  const displayName = packageDisplayName(pkg, packageId);
   const resolvedPackageId =
     readStringParam(pkg, "id", { required: false, label: "package id" }) ?? packageId;
 
@@ -270,7 +311,7 @@ async function actionInstall(params: Record<string, unknown>) {
 
   // Save to temp file
   const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "argent-marketplace-"));
-  const archiveName = `${pkg.name || packageId}.tgz`;
+  const archiveName = `${packageName}.tgz`;
   const archivePath = path.join(tmpDir, archiveName);
   const body = downloadRes.body;
   if (!body) {
@@ -337,7 +378,7 @@ async function actionInstall(params: Record<string, unknown>) {
       content: [
         {
           type: "text" as const,
-          text: `Failed to install ${pkg.display_name || pkg.name}: ${installResult.message}`,
+          text: `Failed to install ${displayName}: ${installResult.message}`,
         },
       ],
       details: { ok: false, action: "install", packageId, error: installResult.message },
@@ -345,7 +386,7 @@ async function actionInstall(params: Record<string, unknown>) {
   }
 
   const lines: string[] = [];
-  lines.push(`Successfully installed ${pkg.display_name || pkg.name}!`);
+  lines.push(`Successfully installed ${displayName}!`);
   lines.push(`  ${installResult.message}`);
   if (installResult.installed.length > 0) {
     lines.push(`  Installed: ${installResult.installed.join(", ")}`);
@@ -359,7 +400,7 @@ async function actionInstall(params: Record<string, unknown>) {
       ok: true,
       action: "install",
       packageId,
-      name: pkg.name,
+      name: packageName,
       installed: installResult.installed,
     },
   };
@@ -610,6 +651,8 @@ async function installMarketplaceConnectorPackage(
   await fsp.mkdir(connectorsTarget, { recursive: true });
 
   const installed: string[] = [];
+  const harnesses: string[] = [];
+  const harnessErrors: string[] = [];
   for (const srcConnectorDir of connectorDirs) {
     const connectorName = path.basename(srcConnectorDir);
     if (!connectorName.startsWith("aos-")) {
@@ -621,6 +664,12 @@ async function installMarketplaceConnectorPackage(
     }
     await fsp.cp(srcConnectorDir, destConnectorDir, { recursive: true });
     installed.push(connectorName);
+    const harnessResult = await installConnectorHarness(destConnectorDir, connectorName);
+    if (harnessResult.status === "installed") {
+      harnesses.push(connectorName);
+    } else if (harnessResult.status === "failed") {
+      harnessErrors.push(`${connectorName}: ${harnessResult.error}`);
+    }
   }
 
   if (installed.length === 0) {
@@ -631,11 +680,167 @@ async function installMarketplaceConnectorPackage(
     };
   }
 
+  if (harnessErrors.length > 0) {
+    return {
+      ok: false,
+      message: `Installed connector files, but failed to install harness: ${harnessErrors.join("; ")}`,
+      installed,
+    };
+  }
+
   return {
     ok: true,
-    message: `Installed ${installed.length} connector(s) to ${connectorsTarget}`,
+    message: [
+      `Installed ${installed.length} connector(s) to ${connectorsTarget}`,
+      harnesses.length > 0 ? `Installed ${harnesses.length} connector harness(es).` : "",
+    ]
+      .filter(Boolean)
+      .join("; "),
     installed,
   };
+}
+
+async function commandExists(command: string): Promise<boolean> {
+  try {
+    await execFileAsync(command, ["--version"], { timeout: 5_000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function pythonVersion(command: string): Promise<{ major: number; minor: number } | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      command,
+      ["-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
+      { timeout: 5_000 },
+    );
+    const [major, minor] = stdout
+      .trim()
+      .split(".")
+      .map((part) => Number.parseInt(part, 10));
+    if (Number.isFinite(major) && Number.isFinite(minor)) {
+      return { major: major ?? 0, minor: minor ?? 0 };
+    }
+  } catch {
+    // ignored; candidate is not usable
+  }
+  return null;
+}
+
+function parseRequiresPythonMin(pyprojectSource: string): { major: number; minor: number } {
+  const match = pyprojectSource.match(/^requires-python\s*=\s*"([^"]+)"/m);
+  const spec = match?.[1] ?? "";
+  const lowerBound = spec.match(/>=\s*(\d+)\.(\d+)/);
+  if (!lowerBound) {
+    return { major: 3, minor: 9 };
+  }
+  return {
+    major: Number.parseInt(lowerBound[1] ?? "3", 10),
+    minor: Number.parseInt(lowerBound[2] ?? "9", 10),
+  };
+}
+
+function versionSatisfies(
+  version: { major: number; minor: number },
+  minimum: { major: number; minor: number },
+): boolean {
+  return (
+    version.major > minimum.major ||
+    (version.major === minimum.major && version.minor >= minimum.minor)
+  );
+}
+
+async function resolvePythonBin(minimum: { major: number; minor: number }): Promise<string | null> {
+  for (const candidate of [
+    "python3.13",
+    "python3.12",
+    "python3.11",
+    "python3.10",
+    "python3",
+    "python",
+  ]) {
+    if (!(await commandExists(candidate))) {
+      continue;
+    }
+    const version = await pythonVersion(candidate);
+    if (version && versionSatisfies(version, minimum)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+async function runProcess(
+  command: string,
+  args: string[],
+  options: { cwd?: string; timeoutMs?: number } = {},
+): Promise<void> {
+  await execFileAsync(command, args, {
+    cwd: options.cwd,
+    timeout: options.timeoutMs ?? 120_000,
+    maxBuffer: 1_000_000,
+    env: {
+      ...process.env,
+      NO_COLOR: "1",
+    },
+  });
+}
+
+async function installConnectorHarness(
+  connectorDir: string,
+  connectorName: string,
+): Promise<{ status: "none" | "installed" | "failed"; error?: string }> {
+  const harnessDir = path.join(connectorDir, "agent-harness");
+  const pyprojectPath = path.join(harnessDir, "pyproject.toml");
+  if (!fs.existsSync(pyprojectPath)) {
+    return { status: "none" };
+  }
+
+  const requiredPython = parseRequiresPythonMin(await fsp.readFile(pyprojectPath, "utf8"));
+  const pythonBin = await resolvePythonBin(requiredPython);
+  if (!pythonBin) {
+    return {
+      status: "failed",
+      error: `Python ${requiredPython.major}.${requiredPython.minor}+ not found on PATH`,
+    };
+  }
+
+  const venvDir = path.join(harnessDir, ".venv");
+  const venvPython = path.join(venvDir, "bin", "python");
+  const expectedBinary = path.join(venvDir, "bin", connectorName);
+
+  try {
+    if (!fs.existsSync(venvPython)) {
+      await runProcess(pythonBin, ["-m", "venv", ".venv"], { cwd: harnessDir });
+    }
+    await runProcess(venvPython, ["-m", "pip", "install", "--upgrade", "pip"], {
+      cwd: harnessDir,
+      timeoutMs: 180_000,
+    });
+    await runProcess(venvPython, ["-m", "pip", "install", "-e", "."], {
+      cwd: harnessDir,
+      timeoutMs: 300_000,
+    });
+    if (!fs.existsSync(expectedBinary)) {
+      return {
+        status: "failed",
+        error: `expected harness binary was not created at ${expectedBinary}`,
+      };
+    }
+    return { status: "installed" };
+  } catch (err) {
+    const stderr =
+      typeof (err as { stderr?: unknown }).stderr === "string"
+        ? String((err as { stderr?: string }).stderr).trim()
+        : "";
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      status: "failed",
+      error: [message, stderr].filter(Boolean).join(" | "),
+    };
+  }
 }
 
 export function createMarketplaceTool(): AnyAgentTool {
