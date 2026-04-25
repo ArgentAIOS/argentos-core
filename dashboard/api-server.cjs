@@ -9349,6 +9349,70 @@ function isEmbeddingOnlyModelId(value) {
   );
 }
 
+function resolveArgentAgentDirForModelCatalog() {
+  const override = String(
+    process.env.ARGENT_AGENT_DIR || process.env.PI_CODING_AGENT_DIR || "",
+  ).trim();
+  if (override) {
+    return override.replace(/^~(?=$|\/)/, process.env.HOME || "");
+  }
+  return path.join(process.env.HOME || "", ".argentos", "agents", "main", "agent");
+}
+
+let piModelCatalogPromise = null;
+let piModelCatalogLoggedError = false;
+let piModelCatalogLoadedAt = 0;
+const PI_MODEL_CATALOG_CACHE_MS = 60 * 1000;
+
+async function loadPiBackedModelCatalog() {
+  if (piModelCatalogPromise && Date.now() - piModelCatalogLoadedAt < PI_MODEL_CATALOG_CACHE_MS) {
+    return piModelCatalogPromise;
+  }
+
+  piModelCatalogLoadedAt = Date.now();
+  piModelCatalogPromise = (async () => {
+    try {
+      const { AuthStorage, ModelRegistry } = await import("@mariozechner/pi-coding-agent");
+      const agentDir = resolveArgentAgentDirForModelCatalog();
+      const authStorage = new AuthStorage(path.join(agentDir, "auth.json"));
+      const registry = new ModelRegistry(authStorage, path.join(agentDir, "models.json"));
+      const entries = Array.isArray(registry)
+        ? registry
+        : typeof registry.getAll === "function"
+          ? registry.getAll()
+          : [];
+      return entries
+        .map((entry) => {
+          const id = String(entry?.id || "").trim();
+          const provider = String(entry?.provider || "").trim();
+          if (!id || !provider) return null;
+          const name = String(entry?.name || id).trim() || id;
+          return {
+            id,
+            name,
+            provider,
+            contextWindow:
+              typeof entry?.contextWindow === "number" && entry.contextWindow > 0
+                ? entry.contextWindow
+                : undefined,
+            reasoning: typeof entry?.reasoning === "boolean" ? entry.reasoning : undefined,
+            input: Array.isArray(entry?.input) ? entry.input : undefined,
+          };
+        })
+        .filter(Boolean);
+    } catch (err) {
+      if (!piModelCatalogLoggedError) {
+        piModelCatalogLoggedError = true;
+        console.warn("[AvailableModels] Pi model catalog unavailable:", err?.message || err);
+      }
+      piModelCatalogPromise = null;
+      return [];
+    }
+  })();
+
+  return piModelCatalogPromise;
+}
+
 async function collectAvailableModelsCatalog(config) {
   const models = config.agents?.defaults?.models || {};
   const modelDefaults = config.agents?.defaults?.model || {};
@@ -9453,6 +9517,20 @@ async function collectAvailableModelsCatalog(config) {
         pushModel(`${providerId}/${modelId}`, alias);
       }
     }
+  }
+
+  const piCatalog = await loadPiBackedModelCatalog();
+  for (const entry of piCatalog) {
+    pushModel(
+      `${entry.provider}/${entry.id}`,
+      entry.name && entry.name !== entry.id ? entry.name : null,
+      {
+        source: "pi",
+        contextWindow: entry.contextWindow,
+        reasoning: entry.reasoning,
+        input: entry.input,
+      },
+    );
   }
 
   let authProfilesData = null;
@@ -13963,6 +14041,19 @@ app.get("/api/settings/provider-models", async (req, res) => {
           pushRow(modelId, alias);
         }
       }
+    }
+
+    const piCatalog = await loadPiBackedModelCatalog();
+    for (const entry of piCatalog) {
+      if (
+        String(entry.provider || "")
+          .trim()
+          .toLowerCase() !== provider
+      )
+        continue;
+      pushRow(entry.id, entry.name && entry.name !== entry.id ? entry.name : null, {
+        source: "pi",
+      });
     }
 
     // Provider-specific curated models not in the registry
