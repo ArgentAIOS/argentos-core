@@ -151,6 +151,60 @@ describe("resolveModel", () => {
     expect(result.model?.reasoning).toBe(true);
   });
 
+  it("lets provider config route built-in Z.AI models to the coding subscription endpoint", () => {
+    const cfg = {
+      models: {
+        providers: {
+          zai: {
+            baseUrl: "https://api.z.ai/api/coding/paas/v4",
+            api: "openai-completions",
+            models: [],
+          },
+        },
+      },
+    } as ArgentConfig;
+
+    const result = resolveModel("zai", "glm-5-turbo", "/tmp/agent", cfg);
+
+    expect(result.error).toBeUndefined();
+    expect(result.model?.provider).toBe("zai");
+    expect(result.model?.id).toBe("glm-5-turbo");
+    expect(result.model?.baseUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
+  });
+
+  it("lets normalized Z.AI provider aliases override catalog model endpoints", () => {
+    const registryModel = {
+      ...makeModel("glm-5.1"),
+      provider: "zai",
+      api: "openai-completions" as const,
+      baseUrl: "https://api.z.ai/api/paas/v4",
+      reasoning: true,
+    };
+    vi.mocked(discoverModels).mockReturnValueOnce({
+      find: vi.fn((provider: string, id: string) =>
+        provider === "z.ai" && id === registryModel.id ? registryModel : null,
+      ),
+    } as never);
+    const cfg = {
+      models: {
+        providers: {
+          "z.ai": {
+            baseUrl: "https://api.z.ai/api/coding/paas/v4",
+            api: "openai-completions",
+            models: [],
+          },
+        },
+      },
+    } as ArgentConfig;
+
+    const result = resolveModel("z.ai", "glm-5.1", "/tmp/agent", cfg);
+
+    expect(result.error).toBeUndefined();
+    expect(result.model?.provider).toBe("zai");
+    expect(result.model?.id).toBe("glm-5.1");
+    expect(result.model?.baseUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
+  });
+
   it("repairs stale inline MiniMax OpenAI-compatible configs", () => {
     const cfg = {
       models: {

@@ -48,6 +48,19 @@ describe("normalizeModelCompat", () => {
     expect(normalized.baseUrl).toBe("https://api.z.ai/api/paas/v4/chat/completions");
   });
 
+  it("preserves explicit z.ai coding endpoints for GLM-5 models", () => {
+    const model = {
+      ...baseModel(),
+      id: "glm-5-turbo",
+      name: "GLM-5-Turbo",
+      baseUrl: "https://api.z.ai/api/coding/paas/v4",
+    };
+
+    const normalized = normalizeModelCompat(model);
+
+    expect(normalized.baseUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
+  });
+
   it("moves stale GLM-5 catalog entries to the general endpoint", () => {
     const model = {
       ...baseModel(),

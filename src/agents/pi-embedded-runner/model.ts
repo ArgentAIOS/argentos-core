@@ -85,6 +85,34 @@ function resolveDynamicProviderBaseUrl(
   return provider === "ollama" ? DEFAULT_OLLAMA_BASE_URL : DEFAULT_LMSTUDIO_BASE_URL;
 }
 
+function resolveConfiguredProvider(
+  provider: string,
+  cfg?: ArgentConfig,
+): InlineProviderConfig | undefined {
+  const providers = cfg?.models?.providers ?? {};
+  const direct = providers[provider];
+  if (direct) {
+    return direct;
+  }
+  const normalized = normalizeProviderId(provider);
+  return (
+    providers[normalized] ??
+    Object.entries(providers).find(([key]) => normalizeProviderId(key) === normalized)?.[1]
+  );
+}
+
+function applyProviderOverrides(model: Model<Api>, cfg?: ArgentConfig): Model<Api> {
+  const providerConfig = resolveConfiguredProvider(model.provider, cfg);
+  if (!providerConfig?.baseUrl && !providerConfig?.api) {
+    return model;
+  }
+  return {
+    ...model,
+    ...(providerConfig.baseUrl ? { baseUrl: providerConfig.baseUrl } : {}),
+    ...(providerConfig.api ? { api: providerConfig.api } : {}),
+  } as Model<Api>;
+}
+
 export function resolveModel(
   provider: string,
   modelId: string,
@@ -109,7 +137,7 @@ export function resolveModel(
       const argentModel = argentProvider[modelId];
       if (argentModel) {
         return {
-          model: normalizeModelCompat(argentModel as Model<Api>),
+          model: normalizeModelCompat(applyProviderOverrides(argentModel as Model<Api>, cfg)),
           authStorage,
           modelRegistry,
         };
@@ -148,7 +176,7 @@ export function resolveModel(
       } as Model<Api>);
       return { model: localModel, authStorage, modelRegistry };
     }
-    const providerCfg = providers[provider];
+    const providerCfg = resolveConfiguredProvider(provider, cfg);
     if (providerCfg || modelId.startsWith("mock-")) {
       const fallbackModel: Model<Api> = normalizeModelCompat({
         id: modelId,
@@ -170,5 +198,9 @@ export function resolveModel(
       modelRegistry,
     };
   }
-  return { model: normalizeModelCompat(model), authStorage, modelRegistry };
+  return {
+    model: normalizeModelCompat(applyProviderOverrides(model, cfg)),
+    authStorage,
+    modelRegistry,
+  };
 }
