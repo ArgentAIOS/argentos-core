@@ -16,6 +16,12 @@ import {
 } from "../../data/knowledge-acl.js";
 import { getStorageAdapter } from "../../data/storage-factory.js";
 import { callGateway } from "../../gateway/call.js";
+import {
+  listMemoryCategoriesWithCounts,
+  mergeMemoryCategories,
+  planMemoryCategoryCleanup,
+  renameMemoryCategory,
+} from "../../memory/categories/admin.js";
 import { getMemuEmbedder } from "../../memory/memu-embed.js";
 import { contentHash } from "../../memory/memu-store.js";
 import { MEMORY_TYPES } from "../../memory/memu-types.js";
@@ -2989,7 +2995,53 @@ const MemoryStoreSchema = Type.Object({
 
 const MemoryCategoriesSchema = Type.Object({
   query: Type.Optional(Type.String({ description: "Filter categories by keyword" })),
+  pattern: Type.Optional(
+    Type.String({ description: "Regex or substring filter for category name" }),
+  ),
+  minItems: Type.Optional(Type.Number({ description: "Minimum linked memory item count" })),
+  maxItems: Type.Optional(Type.Number({ description: "Maximum linked memory item count" })),
+  sort: Type.Optional(
+    Type.Union([Type.Literal("name"), Type.Literal("itemCount")], {
+      description: "Sort categories by name or itemCount",
+    }),
+  ),
+  sortDirection: Type.Optional(
+    Type.Union([Type.Literal("asc"), Type.Literal("desc")], {
+      description: "Sort direction",
+    }),
+  ),
   limit: Type.Optional(Type.Number({ description: "Max categories (default 20)", default: 20 })),
+});
+
+const MemoryCategoryMergeSchema = Type.Object({
+  sourceCategoryIds: Type.Array(Type.String(), {
+    description: "Category IDs to absorb into the target category",
+  }),
+  targetCategoryId: Type.String({ description: "Surviving category ID" }),
+});
+
+const MemoryCategoryRenameSchema = Type.Object({
+  categoryId: Type.String({ description: "Category ID to rename" }),
+  newName: Type.String({ description: "New display name" }),
+});
+
+const MemoryCategoryCleanupSchema = Type.Object({
+  dryRun: Type.Optional(Type.Boolean({ description: "Preview changes before applying" })),
+  deleteEmpty: Type.Optional(
+    Type.Boolean({ description: "Delete categories with 0 linked items" }),
+  ),
+  mergeSimilar: Type.Optional(Type.Boolean({ description: "Merge near-duplicate categories" })),
+  similarityThreshold: Type.Optional(
+    Type.Number({
+      description: "Normalized Levenshtein threshold for near-duplicate names (default 0.8)",
+    }),
+  ),
+  maxMergeSourceItems: Type.Optional(
+    Type.Number({
+      description:
+        "Only auto-merge source categories with this many linked items or fewer (default 3)",
+    }),
+  ),
 });
 
 const MemoryForgetSchema = Type.Object({
@@ -3001,12 +3053,39 @@ const MemoryForgetSchema = Type.Object({
 
 // ── Tool Factories ──
 
+function readBooleanParam(params: Record<string, unknown>, key: string): boolean | undefined {
+  const raw = params[key];
+  if (typeof raw === "boolean") {
+    return raw;
+  }
+  if (typeof raw === "string") {
+    const normalized = raw.trim().toLowerCase();
+    if (normalized === "true") {
+      return true;
+    }
+    if (normalized === "false") {
+      return false;
+    }
+  }
+  return undefined;
+}
+
+function readMemoryCategorySort(value: string | undefined): "name" | "itemCount" | undefined {
+  return value === "name" || value === "itemCount" ? value : undefined;
+}
+
+function readSortDirection(value: string | undefined): "asc" | "desc" | undefined {
+  return value === "asc" || value === "desc" ? value : undefined;
+}
+
 export function createMemoryRecallTool(options: {
   config?: ArgentConfig;
   agentId?: string;
 }): AnyAgentTool | null {
   const cfg = options.config;
-  if (!cfg) return null;
+  if (!cfg) {
+    return null;
+  }
 
   const tool: AnyAgentTool = {
     label: "Memory Recall",
@@ -4229,7 +4308,9 @@ export function createMemoryStoreTool(options: {
   agentId?: string;
 }): AnyAgentTool | null {
   const cfg = options.config;
-  if (!cfg) return null;
+  if (!cfg) {
+    return null;
+  }
 
   return {
     label: "Memory Store",
@@ -4411,7 +4492,9 @@ export function createMemoryCategoriesTool(options: {
   agentId?: string;
 }): AnyAgentTool | null {
   const cfg = options.config;
-  if (!cfg) return null;
+  if (!cfg) {
+    return null;
+  }
 
   return {
     label: "Memory Categories",
@@ -4423,6 +4506,11 @@ export function createMemoryCategoriesTool(options: {
     parameters: MemoryCategoriesSchema,
     execute: async (_toolCallId, params) => {
       const query = readStringParam(params, "query");
+      const pattern = readStringParam(params, "pattern");
+      const minItems = readNumberParam(params, "minItems", { integer: true });
+      const maxItems = readNumberParam(params, "maxItems", { integer: true });
+      const sort = readMemoryCategorySort(readStringParam(params, "sort"));
+      const sortDirection = readSortDirection(readStringParam(params, "sortDirection"));
       const limit = readNumberParam(params, "limit", { integer: true }) ?? 20;
 
       try {
@@ -4432,19 +4520,15 @@ export function createMemoryCategoriesTool(options: {
             ? storage.memory.withAgentId(options.agentId)
             : storage.memory;
 
-        const categories = await memory.listCategories({ query: query ?? undefined, limit });
-        const results = await Promise.all(
-          categories.map(async (category) => {
-            const itemCount = await memory.getCategoryItemCount(category.id);
-            return {
-              id: category.id,
-              name: category.name,
-              description: category.description,
-              summary: category.summary,
-              itemCount,
-            };
-          }),
-        );
+        const results = await listMemoryCategoriesWithCounts(memory, {
+          query,
+          pattern,
+          minItems,
+          maxItems,
+          sort,
+          sortDirection,
+          limit,
+        });
 
         const stats = await memory.getStats();
 
@@ -4458,6 +4542,133 @@ export function createMemoryCategoriesTool(options: {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return jsonResult({ categories: [], error: message });
+      }
+    },
+  };
+}
+
+export function createMemoryCategoryMergeTool(options: {
+  config?: ArgentConfig;
+  agentId?: string;
+}): AnyAgentTool | null {
+  const cfg = options.config;
+  if (!cfg) {
+    return null;
+  }
+
+  return {
+    label: "Memory Category Merge",
+    name: "memory_category_merge",
+    description:
+      "Merge one or more source memory categories into a target category. " +
+      "All linked memory items are relinked to the target, then source categories are deleted.",
+    parameters: MemoryCategoryMergeSchema,
+    execute: async (_toolCallId, params) => {
+      const sourceCategoryIds = readStringArrayParam(params, "sourceCategoryIds", {
+        required: true,
+      });
+      const targetCategoryId = readStringParam(params, "targetCategoryId", { required: true });
+
+      try {
+        const storage = await getStorageAdapter();
+        const memory =
+          options.agentId && storage.memory.withAgentId
+            ? storage.memory.withAgentId(options.agentId)
+            : storage.memory;
+        const result = await mergeMemoryCategories({
+          memory,
+          sourceCategoryIds,
+          targetCategoryId,
+        });
+        return jsonResult({ action: "merged", ...result });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return jsonResult({ error: message });
+      }
+    },
+  };
+}
+
+export function createMemoryCategoryRenameTool(options: {
+  config?: ArgentConfig;
+  agentId?: string;
+}): AnyAgentTool | null {
+  const cfg = options.config;
+  if (!cfg) {
+    return null;
+  }
+
+  return {
+    label: "Memory Category Rename",
+    name: "memory_category_rename",
+    description: "Rename a memory category display name without changing linked memory items.",
+    parameters: MemoryCategoryRenameSchema,
+    execute: async (_toolCallId, params) => {
+      const categoryId = readStringParam(params, "categoryId", { required: true });
+      const newName = readStringParam(params, "newName", { required: true });
+
+      try {
+        const storage = await getStorageAdapter();
+        const memory =
+          options.agentId && storage.memory.withAgentId
+            ? storage.memory.withAgentId(options.agentId)
+            : storage.memory;
+        const category = await renameMemoryCategory({ memory, categoryId, newName });
+        return jsonResult({ action: "renamed", category });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return jsonResult({ error: message });
+      }
+    },
+  };
+}
+
+export function createMemoryCategoryCleanupTool(options: {
+  config?: ArgentConfig;
+  agentId?: string;
+}): AnyAgentTool | null {
+  const cfg = options.config;
+  if (!cfg) {
+    return null;
+  }
+
+  return {
+    label: "Memory Category Cleanup",
+    name: "memory_category_cleanup",
+    description:
+      "Preview or apply category cleanup: delete empty category shells and merge conservative duplicate/sprawl category names. Dry-run defaults to true.",
+    parameters: MemoryCategoryCleanupSchema,
+    execute: async (_toolCallId, params) => {
+      const dryRun = readBooleanParam(params, "dryRun") ?? true;
+      const deleteEmpty = readBooleanParam(params, "deleteEmpty") ?? true;
+      const mergeSimilar = readBooleanParam(params, "mergeSimilar") ?? true;
+      const similarityThreshold = readNumberParam(params, "similarityThreshold");
+      const maxMergeSourceItems = readNumberParam(params, "maxMergeSourceItems", {
+        integer: true,
+      });
+
+      try {
+        const storage = await getStorageAdapter();
+        const memory =
+          options.agentId && storage.memory.withAgentId
+            ? storage.memory.withAgentId(options.agentId)
+            : storage.memory;
+        const plan = await planMemoryCategoryCleanup(memory, {
+          dryRun,
+          deleteEmpty,
+          mergeSimilar,
+          similarityThreshold,
+          maxMergeSourceItems,
+        });
+        return jsonResult({
+          action: dryRun ? "preview" : "cleaned",
+          ...plan,
+          emptyCategoryCount: plan.emptyCategories.length,
+          mergeCount: plan.merges.length,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return jsonResult({ error: message });
       }
     },
   };

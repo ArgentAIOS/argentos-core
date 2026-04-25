@@ -103,6 +103,11 @@ export interface MemoryEntityListFilter {
   limit?: number;
 }
 
+export interface MemoryCategoryListFilter {
+  query?: string;
+  limit?: number;
+}
+
 export interface MemoryAdapter {
   // Resources
   createResource(input: CreateResourceInput): Promise<Resource>;
@@ -130,12 +135,13 @@ export interface MemoryAdapter {
   getCategory(id: string): Promise<MemoryCategory | null>;
   getCategoryByName(name: string): Promise<MemoryCategory | null>;
   getOrCreateCategory(name: string, description?: string): Promise<MemoryCategory>;
-  listCategories(filter?: { query?: string; limit?: number }): Promise<MemoryCategory[]>;
+  listCategories(filter?: MemoryCategoryListFilter): Promise<MemoryCategory[]>;
   getCategoryItems(categoryId: string, limit?: number): Promise<MemoryItem[]>;
   getCategoryItemCount(categoryId: string): Promise<number>;
   getItemCategories(itemId: string): Promise<MemoryCategory[]>;
   linkItemToCategory(itemId: string, categoryId: string): Promise<void>;
   unlinkItemFromCategory(itemId: string, categoryId: string): Promise<void>;
+  updateCategoryName(categoryId: string, name: string): Promise<MemoryCategory | null>;
   updateCategorySummary(categoryId: string, summary: string): Promise<void>;
   deleteCategory(categoryId: string): Promise<void>;
 

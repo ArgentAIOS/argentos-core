@@ -52,6 +52,7 @@ import type {
   MemoryStats,
   MemoryEntityListFilter,
   MemoryItemListFilter,
+  MemoryCategoryListFilter,
 } from "./adapter.js";
 import type { StorageConfig } from "./storage-config.js";
 import type {
@@ -190,7 +191,7 @@ class DualMemoryAdapter implements MemoryAdapter {
       : this.sqlite.getOrCreateCategory(name, description);
   }
 
-  async listCategories(filter?: { query?: string; limit?: number }): Promise<MemoryCategory[]> {
+  async listCategories(filter?: MemoryCategoryListFilter): Promise<MemoryCategory[]> {
     return this.reader().listCategories(filter);
   }
 
@@ -377,6 +378,22 @@ class DualMemoryAdapter implements MemoryAdapter {
         this.pg.unlinkItemFromCategory(itemId, categoryId),
       );
     }
+  }
+
+  async updateCategoryName(categoryId: string, name: string): Promise<MemoryCategory | null> {
+    const writeSqlite = shouldWriteTo(this.config, "sqlite");
+    const writePg = shouldWriteTo(this.config, "postgres");
+
+    if (writeSqlite && writePg) {
+      const result = await this.sqlite.updateCategoryName(categoryId, name);
+      await secondaryWrite("updateCategoryName", () =>
+        this.pg.updateCategoryName(categoryId, name),
+      );
+      return result;
+    }
+    return writePg
+      ? this.pg.updateCategoryName(categoryId, name)
+      : this.sqlite.updateCategoryName(categoryId, name);
   }
 
   async updateCategorySummary(categoryId: string, summary: string): Promise<void> {

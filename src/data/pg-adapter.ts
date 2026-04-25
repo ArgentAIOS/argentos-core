@@ -655,18 +655,44 @@ class PgMemoryAdapter implements MemoryAdapter {
       );
   }
 
+  async updateCategoryName(categoryId: string, name: string): Promise<MemoryCategory | null> {
+    const [row] = await this.db
+      .update(schema.memoryCategories)
+      .set({ name, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.memoryCategories.id, categoryId),
+          eq(schema.memoryCategories.agentId, this.agentId),
+        ),
+      )
+      .returning();
+    return row ? this.mapCategory(row) : null;
+  }
+
   async updateCategorySummary(categoryId: string, summary: string): Promise<void> {
     await this.db
       .update(schema.memoryCategories)
       .set({ summary, updatedAt: new Date() })
-      .where(eq(schema.memoryCategories.id, categoryId));
+      .where(
+        and(
+          eq(schema.memoryCategories.id, categoryId),
+          eq(schema.memoryCategories.agentId, this.agentId),
+        ),
+      );
   }
 
   async deleteCategory(categoryId: string): Promise<void> {
     await this.db
       .delete(schema.categoryItems)
       .where(eq(schema.categoryItems.categoryId, categoryId));
-    await this.db.delete(schema.memoryCategories).where(eq(schema.memoryCategories.id, categoryId));
+    await this.db
+      .delete(schema.memoryCategories)
+      .where(
+        and(
+          eq(schema.memoryCategories.id, categoryId),
+          eq(schema.memoryCategories.agentId, this.agentId),
+        ),
+      );
   }
 
   async searchItemsByKeyword(query: string, limit: number): Promise<MemoryItem[]> {
