@@ -6,9 +6,9 @@
  *   argent migrate import <bundle> [...]   Decrypt + restore into a target state dir
  *
  * The export bundle captures everything needed to restore an Argent install
- * on a fresh machine: service keys, master key, identity, pairings, per-agent
- * auth + alignment docs + kernel state, workspace, and a custom-format pg_dump
- * of the argentos database.
+ * on a fresh machine: service keys, master key, identity, pairings, OAuth
+ * credentials, per-agent auth + alignment docs + kernel state, workspace, and a
+ * custom-format pg_dump of the argentos database.
  *
  * Encryption:
  *   AES-256-GCM, scrypt(passphrase, salt) → 32 byte key.
@@ -22,14 +22,9 @@
  *     body     (N bytes)   AES-256-GCM(tar.gz)
  */
 
+import type { Command } from "commander";
 import { spawn } from "node:child_process";
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-  scryptSync,
-} from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from "node:crypto";
 import {
   chmodSync,
   closeSync,
@@ -51,7 +46,6 @@ import { homedir, hostname, tmpdir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { pipeline } from "node:stream/promises";
-import type { Command } from "commander";
 
 const MAGIC = Buffer.from("ARGENT-MIG-V1\0", "utf8"); // 14 bytes
 const VERSION = 0x01;
@@ -183,17 +177,9 @@ export function registerMigrateCli(program: Command): void {
       "Read passphrase from this environment variable instead of prompting",
     )
     .option("--skip-pg-restore", "Do not run pg_restore (state files only)", false)
-    .option(
-      "--skip-identity",
-      "Do not restore identity/ (for cross-machine cloning)",
-      false,
-    )
+    .option("--skip-identity", "Do not restore identity/ (for cross-machine cloning)", false)
     .option("--dry-run", "Decrypt + verify checksums; do not write to target", false)
-    .option(
-      "--force",
-      "Overwrite an existing non-empty target state dir (DESTRUCTIVE)",
-      false,
-    )
+    .option("--force", "Overwrite an existing non-empty target state dir (DESTRUCTIVE)", false)
     .action(async (bundle: string, opts: Omit<ImportOptions, "bundle">) => {
       await runImport({ ...opts, bundle });
     });
@@ -285,10 +271,14 @@ async function runExport(opts: ExportOptions): Promise<void> {
     console.log(`  File:         ${outPath}`);
     console.log(`  Size:         ${(size / (1024 * 1024)).toFixed(2)} MB`);
     console.log(`  Agents:       ${manifest.counts.agents}`);
-    console.log(`  Per-agent workspaces: ${manifest.counts.perAgentWorkspaces} (${manifest.counts.perAgentWorkspaceFiles} files)`);
+    console.log(
+      `  Per-agent workspaces: ${manifest.counts.perAgentWorkspaces} (${manifest.counts.perAgentWorkspaceFiles} files)`,
+    );
     console.log(`  models.json:  ${manifest.counts.modelsJsonFiles}`);
     console.log(`  Top-level files: ${manifest.counts.topLevelFiles}`);
-    console.log(`  Top-level dirs:  ${TOP_LEVEL_DIRS.length} tracked, ${manifest.counts.topLevelDirFiles} files`);
+    console.log(
+      `  Top-level dirs:  ${TOP_LEVEL_DIRS.length} tracked, ${manifest.counts.topLevelDirFiles} files`,
+    );
     console.log(`  Total files:  ${manifest.files.length}`);
     console.log(`  Hostname:     ${manifest.sourceHostname}`);
   } finally {
@@ -300,7 +290,9 @@ async function printDryRunPlan(outPath: string, opts: ExportOptions): Promise<vo
   console.log(`[migrate] DRY RUN — no files will be written.`);
   console.log(`  Output:           ${outPath}`);
   console.log(`  Include sessions: ${opts.includeSessions}`);
-  console.log(`  Passphrase env:   ${opts.passphraseEnv ?? "ARGENT_MIGRATION_PASSPHRASE (or prompt)"}`);
+  console.log(
+    `  Passphrase env:   ${opts.passphraseEnv ?? "ARGENT_MIGRATION_PASSPHRASE (or prompt)"}`,
+  );
   console.log(`  Source:           ${ARGENTOS_DIR}`);
 
   const agents = listAgents();
@@ -313,7 +305,9 @@ async function printDryRunPlan(outPath: string, opts: ExportOptions): Promise<vo
     for (const a of skipped) console.log(`    - ${a}`);
   }
 
-  console.log(`  pg_dump:          ${PG_DUMP_BIN} -Fc -h ${PG_HOST} -p ${PG_PORT} -U ${PG_USER} -d ${PG_DB}`);
+  console.log(
+    `  pg_dump:          ${PG_DUMP_BIN} -Fc -h ${PG_HOST} -p ${PG_PORT} -U ${PG_USER} -d ${PG_DB}`,
+  );
 }
 
 // ---------- import ----------
@@ -340,9 +334,7 @@ async function runImport(opts: ImportOptions): Promise<void> {
     return;
   }
 
-  const target = path.resolve(
-    opts.targetStateDir ?? process.env.ARGENT_STATE_DIR ?? ARGENTOS_DIR,
-  );
+  const target = path.resolve(opts.targetStateDir ?? process.env.ARGENT_STATE_DIR ?? ARGENTOS_DIR);
 
   // Guardrail: don't let a stray import clobber the operator's live install.
   if (target === ARGENTOS_DIR && !opts.force && !opts.dryRun) {
@@ -407,9 +399,7 @@ async function runImport(opts: ImportOptions): Promise<void> {
 
     // Pre-flight: refuse to clobber a populated target unless --force.
     if (!opts.force && targetNonEmpty(target)) {
-      console.error(
-        `[migrate] Target ${target} is not empty. Pass --force to overwrite.`,
-      );
+      console.error(`[migrate] Target ${target} is not empty. Pass --force to overwrite.`);
       process.exitCode = 1;
       return;
     }
@@ -452,7 +442,9 @@ function printImportPlan(
   console.log(`  Bundle agents:      ${manifest.counts.agents}`);
   console.log(`  Bundle files:       ${manifest.files.length}`);
   const pgDump = path.join(bundleDir, "pg-dump.sql");
-  console.log(`  pg-dump.sql size:   ${existsSync(pgDump) ? `${statSync(pgDump).size} bytes` : "missing"}`);
+  console.log(
+    `  pg-dump.sql size:   ${existsSync(pgDump) ? `${statSync(pgDump).size} bytes` : "missing"}`,
+  );
 }
 
 /**
@@ -469,7 +461,9 @@ function verifyManifest(bundleDir: string, manifest: Manifest): string[] {
     }
     const actual = createHash("sha256").update(readFileSync(onDisk)).digest("hex");
     if (actual !== entry.sha256) {
-      bad.push(`${entry.path}: sha256 mismatch (expected ${entry.sha256.slice(0, 12)}..., got ${actual.slice(0, 12)}...)`);
+      bad.push(
+        `${entry.path}: sha256 mismatch (expected ${entry.sha256.slice(0, 12)}..., got ${actual.slice(0, 12)}...)`,
+      );
     }
   }
   return bad;
@@ -490,11 +484,7 @@ interface RestoreStats {
  * argent.json.sanitized is restored as argent.json (the REDACTED tokens are
  * expected to be replaced post-restore by the operator or a provision script).
  */
-function copyBundleToTarget(
-  bundleDir: string,
-  target: string,
-  opts: ImportOptions,
-): RestoreStats {
+function copyBundleToTarget(bundleDir: string, target: string, opts: ImportOptions): RestoreStats {
   mkdirSync(target, { recursive: true });
   const stats: RestoreStats = { filesWritten: 0, bytesWritten: 0, skippedIdentity: 0 };
 
@@ -642,14 +632,7 @@ const TOP_LEVEL_FILES = [
 
 function stageTopLevelFiles(bundleDir: string, manifest: Manifest): void {
   for (const name of TOP_LEVEL_FILES) {
-    if (
-      copyIfExists(
-        path.join(ARGENTOS_DIR, name),
-        path.join(bundleDir, name),
-        manifest,
-        name,
-      )
-    ) {
+    if (copyIfExists(path.join(ARGENTOS_DIR, name), path.join(bundleDir, name), manifest, name)) {
       manifest.counts.topLevelFiles += 1;
     }
   }
@@ -657,11 +640,12 @@ function stageTopLevelFiles(bundleDir: string, manifest: Manifest): void {
 
 /**
  * Top-level user-state directories that always round-trip, even if empty.
- * cron/ holds user-defined schedules. connectors/ and widgets/ are populated
+ * cron/ holds user-defined schedules, credentials/ can hold OAuth/browser
+ * credential state, and connectors/ and widgets/ are populated
  * by the dashboard over time. If we didn't explicitly recreate these on
  * import, walk-based file copy would silently omit them (no files → no dir).
  */
-const TOP_LEVEL_DIRS = ["cron", "connectors", "widgets"] as const;
+const TOP_LEVEL_DIRS = ["cron", "connectors", "credentials", "widgets"] as const;
 
 function stageTopLevelDirs(bundleDir: string, manifest: Manifest): void {
   for (const name of TOP_LEVEL_DIRS) {
@@ -688,7 +672,14 @@ function stageIdentityAndDevices(bundleDir: string, manifest: Manifest): void {
     const dst = path.join(bundleDir, "identity");
     mkdirSync(dst, { recursive: true });
     for (const name of ["device.json", "device-auth.json"]) {
-      if (copyIfExists(path.join(identityDir, name), path.join(dst, name), manifest, `identity/${name}`)) {
+      if (
+        copyIfExists(
+          path.join(identityDir, name),
+          path.join(dst, name),
+          manifest,
+          `identity/${name}`,
+        )
+      ) {
         manifest.counts.identityFiles += 1;
       }
     }
@@ -699,7 +690,9 @@ function stageIdentityAndDevices(bundleDir: string, manifest: Manifest): void {
     const dst = path.join(bundleDir, "devices");
     mkdirSync(dst, { recursive: true });
     for (const name of ["paired.json", "pending.json"]) {
-      if (copyIfExists(path.join(devicesDir, name), path.join(dst, name), manifest, `devices/${name}`)) {
+      if (
+        copyIfExists(path.join(devicesDir, name), path.join(dst, name), manifest, `devices/${name}`)
+      ) {
         manifest.counts.devicesFiles += 1;
       }
     }
@@ -905,11 +898,9 @@ function writeManifest(bundleDir: string, manifest: Manifest): void {
 
 async function tarBundle(stageRoot: string, tarPath: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const proc = spawn(
-      "tar",
-      ["-czf", tarPath, "-C", stageRoot, "bundle"],
-      { stdio: ["ignore", "inherit", "inherit"] },
-    );
+    const proc = spawn("tar", ["-czf", tarPath, "-C", stageRoot, "bundle"], {
+      stdio: ["ignore", "inherit", "inherit"],
+    });
     proc.once("error", reject);
     proc.once("close", (code) => {
       if (code === 0) resolve();
@@ -936,10 +927,14 @@ async function encryptStream(srcPath: string, dstPath: string, passphrase: strin
 
   const header = Buffer.alloc(HEADER_LEN, 0);
   let offset = 0;
-  MAGIC.copy(header, offset); offset += MAGIC.length;
-  header.writeUInt8(VERSION, offset); offset += 1;
-  salt.copy(header, offset); offset += SALT_LEN;
-  iv.copy(header, offset); offset += IV_LEN;
+  MAGIC.copy(header, offset);
+  offset += MAGIC.length;
+  header.writeUInt8(VERSION, offset);
+  offset += 1;
+  salt.copy(header, offset);
+  offset += SALT_LEN;
+  iv.copy(header, offset);
+  offset += IV_LEN;
   // authTag slot left zero for now; patched post-encrypt.
   const tagOffset = offset;
   offset += TAG_LEN;
@@ -1000,7 +995,9 @@ async function decryptStream(srcPath: string, dstPath: string, passphrase: strin
     await pipeline(input, decipher, output);
   } catch (err) {
     // GCM authTag failures surface as "Unsupported state or unable to authenticate data".
-    throw new Error(`Decrypt failed: ${(err as Error).message}. Wrong passphrase or corrupted bundle?`);
+    throw new Error(
+      `Decrypt failed: ${(err as Error).message}. Wrong passphrase or corrupted bundle?`,
+    );
   }
 }
 
@@ -1116,12 +1113,7 @@ function ensureOutDir(outPath: string): void {
  * Copy src→dst if src exists. Records file in manifest with given bundle-relative path.
  * Returns true if the copy happened.
  */
-function copyIfExists(
-  src: string,
-  dst: string,
-  manifest: Manifest,
-  manifestPath: string,
-): boolean {
+function copyIfExists(src: string, dst: string, manifest: Manifest, manifestPath: string): boolean {
   if (!existsSync(src)) return false;
   mkdirSync(path.dirname(dst), { recursive: true });
   copyFileSync(src, dst);
@@ -1143,7 +1135,10 @@ function readArgentCoreVersion(): string {
     const pkgPath = path.join(cur, "package.json");
     if (existsSync(pkgPath)) {
       try {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string; name?: string };
+        const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+          version?: string;
+          name?: string;
+        };
         if (pkg.name === "argentos" && pkg.version) return pkg.version;
       } catch {
         // fall through
@@ -1210,7 +1205,9 @@ function printUsage(): void {
   console.log("  --dry-run               Print the plan; don't write anything");
   console.log("");
   console.log("Import options:");
-  console.log("  --target-state-dir <p>  Target state dir (default: $ARGENT_STATE_DIR or ~/.argentos)");
+  console.log(
+    "  --target-state-dir <p>  Target state dir (default: $ARGENT_STATE_DIR or ~/.argentos)",
+  );
   console.log("  --passphrase-env <var>  Read passphrase from this env var");
   console.log("  --skip-pg-restore       Do not run pg_restore");
   console.log("  --skip-identity         Do not restore identity/");

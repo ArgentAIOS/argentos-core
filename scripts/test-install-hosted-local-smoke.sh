@@ -25,6 +25,7 @@ echo "==> Run isolated hosted installer smoke"
   ARGENTOS_GIT_DIR="$GIT_DIR" \
   ARGENT_INSTALL_BIN_DIR="$BIN_DIR" \
   ARGENT_INSTALL_PACKAGE_DIR="$PKG_DIR" \
+  ARGENT_SKIP_APP_INSTALL=1 \
   ARGENT_NO_ONBOARD=1 \
   bash ./scripts/install-hosted.sh --install-method git --no-onboard --no-prompt
 )

@@ -235,8 +235,14 @@ elif [[ -n "$APP_SOURCE" ]]; then
   ok "Argent.app → $APP_DEST"
   # Launch it so it appears in menu bar
   open -a "$APP_DEST" 2>/dev/null || true
+elif [[ -f "$ARGENT_HOME/scripts/install-macos-app.sh" ]]; then
+  ARGENT_APP_DEST="$APP_DEST" \
+    ARGENT_APP_OPEN="${ARGENT_APP_OPEN:-1}" \
+    ARGENT_APP_RELEASE_CHANNEL="${ARGENT_APP_RELEASE_CHANNEL:-${ARGENTOS_INSTALL_CHANNEL:-${ARGENT_INSTALL_CHANNEL:-stable}}}" \
+    bash "$ARGENT_HOME/scripts/install-macos-app.sh" || \
+      warn "Could not install Argent.app from the public release manifest"
 else
-  warn "No macOS app bundle embedded in runtime — install Argent.app from DMG if needed"
+  warn "No embedded app bundle or release artifact installer found — download Argent.app later from https://argentos.ai"
 fi
 
 # ============================================================================

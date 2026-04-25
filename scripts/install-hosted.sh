@@ -853,6 +853,22 @@ install_npm() {
 download_argent_app() {
   info "═══ Downloading Argent.app ═══"
 
+  if is_truthy "${ARGENT_SKIP_APP_INSTALL:-${ARGENT_INSTALL_SKIP_APP:-0}}"; then
+    info "Skipping Argent.app install (ARGENT_SKIP_APP_INSTALL=1)"
+    return 0
+  fi
+
+  local shared_installer="$GIT_DIR/scripts/install-macos-app.sh"
+  if [[ -f "$shared_installer" ]]; then
+    ARGENT_NODE_BIN="$NODE_BIN" \
+      ARGENT_APP_RELEASE_CHANNEL="$CHANNEL" \
+      ARGENT_APP_RELEASE_REF="$VERSION" \
+      ARGENT_APP_DRY_RUN="$DRY_RUN" \
+      ARGENT_APP_OPEN=0 \
+      bash "$shared_installer"
+    return 0
+  fi
+
   local manifest_url="https://argentos.ai/releases/macos/latest.json"
   local tmp_dir
   tmp_dir="$(mktemp -d)"
