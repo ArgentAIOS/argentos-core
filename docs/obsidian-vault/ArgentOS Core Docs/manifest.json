@@ -1,0 +1,19 @@
+{
+  "name": "ArgentOS Core Docs",
+  "generatedBy": "scripts/build-core-docs-vault.mjs",
+  "source": "docs/",
+  "generatedAt": "2026-04-25T03:38:12.638Z",
+  "documents": 297,
+  "excludes": {
+    "directories": [".i18n", "archive", "debug", "obsidian-vault", "research"],
+    "files": ["CLAUDE.md"],
+    "paths": [
+      "platforms/mac/release.md",
+      "platforms/mac/signing.md",
+      "plugins/building-plugins.md",
+      "reference/AGENTS.default.md",
+      "reference/RELEASING.md"
+    ],
+    "prefixes": ["reference/templates/"]
+  }
+}

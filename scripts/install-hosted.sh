@@ -25,6 +25,7 @@ NO_ONBOARD="${ARGENT_NO_ONBOARD:-0}"
 FORCE_CLI_ONBOARD="${ARGENT_FORCE_CLI_ONBOARD:-0}"
 NO_PROMPT="${ARGENTOS_NO_PROMPT:-0}"
 DRY_RUN="${ARGENTOS_DRY_RUN:-0}"
+SKIP_CORE_DOCS_VAULT="${ARGENT_SKIP_CORE_DOCS_VAULT:-0}"
 PACKAGE_SPEC_OVERRIDE="${ARGENT_INSTALL_PACKAGE_SPEC:-}"
 NPM_PREFIX_OVERRIDE="${ARGENT_INSTALL_NPM_PREFIX:-}"
 BIN_DIR_OVERRIDE="${ARGENT_INSTALL_BIN_DIR:-$HOME/bin}"
@@ -1182,6 +1183,32 @@ ensure_workspace_main_alias() {
   ln -s "$workspace_dir" "$workspace_main" 2>/dev/null || cp -R "$workspace_dir" "$workspace_main"
 }
 
+install_core_docs_vault() {
+  local state_dir="$HOME/.argentos"
+  local src="$GIT_DIR/docs/obsidian-vault/ArgentOS Core Docs"
+  local dest="$state_dir/vaults/ArgentOS Core Docs"
+
+  if is_truthy "$SKIP_CORE_DOCS_VAULT"; then
+    info "Skipping Core docs vault install (ARGENT_SKIP_CORE_DOCS_VAULT=1)"
+    return 0
+  fi
+
+  if [[ ! -d "$src" ]]; then
+    warn "Core docs vault not found at $src"
+    return 0
+  fi
+
+  if is_truthy "$DRY_RUN"; then
+    printf 'DRY-RUN: install Core docs vault from %q to %q\n' "$src" "$dest"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$dest")"
+  rm -rf "$dest"
+  cp -R "$src" "$dest"
+  ok "Installed Core docs vault: $dest"
+}
+
 seed_starter_family() {
   local state_dir="$HOME/.argentos"
   local workspace_dir="$state_dir/workspace"
@@ -1359,6 +1386,7 @@ install_git() {
 
   ensure_workspace_bootstrap_state "$BIN_DIR_OVERRIDE/argent"
   ensure_workspace_main_alias
+  install_core_docs_vault
   seed_starter_family
   seed_safe_core_defaults
 

@@ -32,6 +32,7 @@ echo "==> Run isolated hosted installer smoke"
 
 echo "==> Verify isolated install outputs"
 test -x "$BIN_DIR/argent"
+test -f "$TEST_HOME/.argentos/vaults/ArgentOS Core Docs/Home.md"
 "$BIN_DIR/argent" --help >/dev/null
 
 echo "OK"

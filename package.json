@@ -67,6 +67,7 @@
     "docs:build": "cd docs && pnpm dlx --reporter append-only mint broken-links",
     "docs:dev": "cd docs && mint dev",
     "docs:list": "node scripts/docs-list.js",
+    "docs:vault": "node scripts/build-core-docs-vault.mjs",
     "export:hosted-installers": "node --import tsx scripts/export-hosted-installers.ts",
     "format": "oxfmt --check",
     "format:all": "pnpm format && pnpm format:swift",
