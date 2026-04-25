@@ -603,6 +603,7 @@ async function runPgRestore(dumpPath: string): Promise<void> {
 // ---------- staging helpers ----------
 
 function stageTopLevelSecrets(bundleDir: string, manifest: Manifest): void {
+  copyIfExists(path.join(ARGENTOS_DIR, ".env"), path.join(bundleDir, ".env"), manifest, ".env");
   copyIfExists(
     path.join(ARGENTOS_DIR, "service-keys.json"),
     path.join(bundleDir, "service-keys.json"),
