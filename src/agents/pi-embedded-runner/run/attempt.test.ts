@@ -6,6 +6,8 @@ import {
   createPiStreamSimpleWithRuntimeApiKey,
   injectHistoryImagesIntoMessages,
   resolveRuntimeProviderApiKey,
+  resolveArgentProviderBaseURL,
+  resolveArgentProviderFallbackReason,
   resolveOpenAICodexTransport,
   resolveOpenAICodexVisionModelId,
   resolveEmbeddedAttemptRuntimePolicy,
@@ -66,6 +68,31 @@ describe("injectHistoryImagesIntoMessages", () => {
 });
 
 describe("embedded runtime policy wiring", () => {
+  it("does not pass MiniMax Anthropic-compatible base URL into the Argent-native provider", () => {
+    expect(
+      resolveArgentProviderBaseURL("minimax", "https://api.minimax.io/anthropic"),
+    ).toBeUndefined();
+    expect(
+      resolveArgentProviderBaseURL("minimax", "https://api.minimax.io/anthropic/"),
+    ).toBeUndefined();
+    expect(
+      resolveArgentProviderBaseURL("minimax", "https://api.minimax.chat/v1/text/chatcompletion_v2"),
+    ).toBe("https://api.minimax.chat/v1/text/chatcompletion_v2");
+    expect(resolveArgentProviderBaseURL("anthropic", "https://example.test")).toBe(
+      "https://example.test",
+    );
+  });
+
+  it("keeps MiniMax on the Pi adapter until the native adapter reaches parity", () => {
+    expect(resolveArgentProviderFallbackReason("minimax")).toContain(
+      "Anthropic-compatible adapter",
+    );
+    expect(resolveArgentProviderFallbackReason("MiniMax")).toContain(
+      "Anthropic-compatible adapter",
+    );
+    expect(resolveArgentProviderFallbackReason("anthropic")).toBeUndefined();
+  });
+
   it("resolves runtime provider keys through the public auth storage API", async () => {
     const authStorage = {
       runtimeOverrides: new Map([["minimax", "private-map-key"]]),

@@ -337,9 +337,39 @@ export function resolveOpenAICodexVisionModelId(params: {
  * Resolve an Argent-native provider from a provider name string.
  * API keys are auto-loaded from the dashboard key store.
  */
+export function resolveArgentProviderBaseURL(
+  providerName: string,
+  baseURL?: string,
+): string | undefined {
+  const normalizedProvider = providerName.trim().toLowerCase();
+  const normalizedBaseURL = baseURL?.trim();
+  if (!normalizedBaseURL) {
+    return undefined;
+  }
+  if (
+    normalizedProvider === "minimax" &&
+    /^https:\/\/api\.minimax\.io\/anthropic\/?$/i.test(normalizedBaseURL)
+  ) {
+    return undefined;
+  }
+  return normalizedBaseURL;
+}
+
+export function resolveArgentProviderFallbackReason(providerName: string): string | undefined {
+  const normalizedProvider = providerName.trim().toLowerCase();
+  if (normalizedProvider === "minimax") {
+    return "MiniMax M2 uses the Pi Anthropic-compatible adapter until the native adapter reaches parity";
+  }
+  return undefined;
+}
+
 async function resolveArgentProvider(providerName: string, baseURL?: string, apiKey?: string) {
+  if (resolveArgentProviderFallbackReason(providerName)) {
+    return null;
+  }
+  const argentBaseURL = resolveArgentProviderBaseURL(providerName, baseURL);
   const opts: Record<string, unknown> = {
-    ...(baseURL ? { baseURL } : {}),
+    ...(argentBaseURL ? { baseURL: argentBaseURL } : {}),
     ...(apiKey ? { apiKey } : {}),
   };
   switch (providerName) {
@@ -1173,7 +1203,8 @@ export async function runEmbeddedAttempt(
           } else {
             applyPiStreamFallbackPolicy(
               runtimePolicy.mode,
-              `No Argent provider for "${params.provider}"`,
+              resolveArgentProviderFallbackReason(params.provider) ??
+                `No Argent provider for "${params.provider}"`,
               () => {
                 activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
                   streamSimple,
