@@ -1,0 +1,242 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://argentos.ai/executive-shadow.protocol.schema.json",
+  "title": "ArgentOS Executive Shadow Protocol",
+  "description": "HTTP payloads for the rust/argent-execd shadow control surface.",
+  "definitions": {
+    "ExecutiveShadowHealth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "uptimeSeconds": {
+          "type": "number"
+        },
+        "bootCount": {
+          "type": "number"
+        },
+        "tickCount": {
+          "type": "number"
+        },
+        "activeLane": {
+          "type": ["string", "null"]
+        },
+        "journalEventCount": {
+          "type": "number"
+        },
+        "stateDir": {
+          "type": "string"
+        },
+        "nextTickDueAtMs": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "status",
+        "uptimeSeconds",
+        "bootCount",
+        "tickCount",
+        "activeLane",
+        "journalEventCount",
+        "stateDir",
+        "nextTickDueAtMs"
+      ]
+    },
+    "ExecutiveShadowMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "activeLane": {
+          "type": ["string", "null"]
+        },
+        "laneCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "idle": {
+              "type": "number"
+            },
+            "pending": {
+              "type": "number"
+            },
+            "active": {
+              "type": "number"
+            }
+          },
+          "required": ["idle", "pending", "active"]
+        },
+        "bootCount": {
+          "type": "number"
+        },
+        "tickCount": {
+          "type": "number"
+        },
+        "journalEventCount": {
+          "type": "number"
+        },
+        "nextTickDueAtMs": {
+          "type": "number"
+        },
+        "lastTickAtMs": {
+          "type": ["number", "null"]
+        },
+        "lastRecoveredAtMs": {
+          "type": ["number", "null"]
+        },
+        "nextLeaseExpiryAtMs": {
+          "type": ["number", "null"]
+        },
+        "highestPendingPriority": {
+          "type": ["number", "null"]
+        }
+      },
+      "required": [
+        "activeLane",
+        "laneCounts",
+        "bootCount",
+        "tickCount",
+        "journalEventCount",
+        "nextTickDueAtMs",
+        "lastTickAtMs",
+        "lastRecoveredAtMs",
+        "nextLeaseExpiryAtMs",
+        "highestPendingPriority"
+      ]
+    },
+    "ExecutiveShadowTimelineSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "activeLane": {
+          "type": ["string", "null"]
+        },
+        "journalEventCount": {
+          "type": "number"
+        },
+        "recentEvents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "seq": {
+                "type": "number"
+              },
+              "atMs": {
+                "type": "number"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "booted",
+                  "recovered",
+                  "tick",
+                  "lane_requested",
+                  "lane_activated",
+                  "lane_released"
+                ]
+              },
+              "lane": {
+                "type": ["string", "null"]
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["seq", "atMs", "type", "lane", "summary"]
+          }
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "booted": {
+              "type": "number"
+            },
+            "recovered": {
+              "type": "number"
+            },
+            "tick": {
+              "type": "number"
+            },
+            "lane_requested": {
+              "type": "number"
+            },
+            "lane_activated": {
+              "type": "number"
+            },
+            "lane_released": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "booted",
+            "recovered",
+            "tick",
+            "lane_requested",
+            "lane_activated",
+            "lane_released"
+          ]
+        },
+        "lastRequestAtMs": {
+          "type": ["number", "null"]
+        },
+        "lastActivationAtMs": {
+          "type": ["number", "null"]
+        },
+        "lastReleaseAtMs": {
+          "type": ["number", "null"]
+        },
+        "lastReleaseOutcome": {
+          "type": ["string", "null"]
+        }
+      },
+      "required": [
+        "activeLane",
+        "journalEventCount",
+        "recentEvents",
+        "counts",
+        "lastRequestAtMs",
+        "lastActivationAtMs",
+        "lastReleaseAtMs",
+        "lastReleaseOutcome"
+      ]
+    },
+    "ExecutiveShadowStateEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "config": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bindAddr": {
+              "type": "string"
+            },
+            "stateDir": {
+              "type": "string"
+            }
+          },
+          "required": ["bindAddr", "stateDir"]
+        },
+        "state": {
+          "type": "object"
+        }
+      },
+      "required": ["config", "state"]
+    },
+    "ExecutiveShadowOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": ["ok"]
+    }
+  }
+}

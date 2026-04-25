@@ -3,6 +3,7 @@ import type { ArgentConfig } from "../config/config.js";
 import type { ModelProviderAuthMode, ModelProviderConfig } from "../config/types.js";
 import { type Api, getEnvApiKey, type Model } from "../agent-core/ai.js";
 import { formatCliCommand } from "../cli/command-format.js";
+import { resolveServiceKey } from "../infra/service-keys.js";
 import { getShellEnvAppliedKeys } from "../infra/shell-env.js";
 import {
   type AuthProfileStore,
@@ -165,6 +166,30 @@ async function resolveServiceKeyForProvider(
   return null;
 }
 
+function resolveServiceKeyForProviderSync(
+  provider: string,
+  cfg?: ArgentConfig,
+): { apiKey: string; source: string } | null {
+  const normalized = normalizeProviderId(provider);
+  if (normalized === "google-vertex") {
+    return null;
+  }
+
+  const candidates = resolveProviderEnvVarCandidates(normalized);
+  if (!candidates || candidates.length === 0) {
+    return null;
+  }
+
+  for (const envVar of candidates) {
+    const value = resolveServiceKey(envVar, cfg, { source: "model_auto_routing" })?.trim();
+    if (value) {
+      return { apiKey: value, source: `service-keys: ${envVar}` };
+    }
+  }
+
+  return null;
+}
+
 export function resolveAwsSdkEnvVarName(env: NodeJS.ProcessEnv = process.env): string | undefined {
   if (env[AWS_BEARER_ENV]?.trim()) {
     return AWS_BEARER_ENV;
@@ -176,6 +201,42 @@ export function resolveAwsSdkEnvVarName(env: NodeJS.ProcessEnv = process.env): s
     return AWS_PROFILE_ENV;
   }
   return undefined;
+}
+
+export function isModelProviderAvailableForAutomaticRouting(params: {
+  cfg?: ArgentConfig;
+  provider: string;
+  agentDir?: string;
+  store?: AuthProfileStore;
+}): boolean {
+  const normalizedProvider = normalizeProviderId(params.provider);
+  if (normalizedProvider === "lmstudio" || normalizedProvider === "ollama") {
+    return true;
+  }
+
+  const store =
+    params.store ?? ensureAuthProfileStore(params.agentDir, { allowKeychainPrompt: false });
+  if (listProfilesForProvider(store, normalizedProvider).length > 0) {
+    return true;
+  }
+
+  if (resolveEnvApiKey(normalizedProvider)?.apiKey) {
+    return true;
+  }
+
+  if (resolveServiceKeyForProviderSync(normalizedProvider, params.cfg)?.apiKey) {
+    return true;
+  }
+
+  if (getCustomProviderApiKey(params.cfg, normalizedProvider)) {
+    return true;
+  }
+
+  if (normalizedProvider === "amazon-bedrock") {
+    return Boolean(resolveAwsSdkEnvVarName());
+  }
+
+  return false;
 }
 
 function resolveAwsSdkAuthInfo(): { mode: "aws-sdk"; source: string } {

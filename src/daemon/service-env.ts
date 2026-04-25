@@ -174,6 +174,7 @@ export function buildServiceEnvironment(params: {
     ARGENT_GATEWAY_PORT: String(port),
     ARGENT_GATEWAY_TOKEN: token,
     DASHBOARD_API_TOKEN: dashboardApiToken,
+    ARGENT_RUNTIME_MODE: env.ARGENT_RUNTIME_MODE ?? "argent_with_fallback",
     ARGENT_LAUNCHD_LABEL: resolvedLaunchdLabel,
     ARGENT_SYSTEMD_UNIT: systemdUnit,
     ARGENT_SERVICE_MARKER: GATEWAY_SERVICE_MARKER,

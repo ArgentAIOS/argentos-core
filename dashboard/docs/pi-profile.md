@@ -13,11 +13,11 @@ tool events — it just costs ~60% less to draw.
 
 ## What it changes
 
-| Lever | Default | Pi profile | Source of truth |
-|---|---|---|---|
-| Particle cap (runtime) | up to `180` | `60` | `aevp/colorMapping.ts` via `getMaxParticlesCap()` |
-| Density scale | `1.0 ×` | `0.5 ×` | `aevp/colorMapping.ts` via `getDensityScale()` |
-| Render tick interval | `0 ms` (rAF) | `33 ms` (~30 fps) | `aevp/renderer.ts` via `getFrameIntervalMs()` |
+| Lever                  | Default      | Pi profile        | Source of truth                                   |
+| ---------------------- | ------------ | ----------------- | ------------------------------------------------- |
+| Particle cap (runtime) | up to `180`  | `60`              | `aevp/colorMapping.ts` via `getMaxParticlesCap()` |
+| Density scale          | `1.0 ×`      | `0.5 ×`           | `aevp/colorMapping.ts` via `getDensityScale()`    |
+| Render tick interval   | `0 ms` (rAF) | `33 ms` (~30 fps) | `aevp/renderer.ts` via `getFrameIntervalMs()`     |
 
 The hard allocation (`MAX_PARTICLES = 180` in `aevp/particles.ts`) is
 unchanged — the buffer still holds room for 180 — so the profile can
@@ -29,12 +29,12 @@ required because activation is evaluated at module load.)
 Any one of these signals activates the profile. The check runs once
 at module load.
 
-| Method | Where | When to use |
-|---|---|---|
-| `PI_PROFILE=1` env var | Node / SSR | Build-time or Electron wrappers |
-| `VITE_PI_PROFILE=1` env var | Vite dev/build | `.env.local` in dashboard dev |
-| `localStorage.setItem("argent.piProfile", "1")` | Browser console | Runtime toggle, survives reload |
-| `?piProfile=1` URL param | Any | One-shot test without touching storage |
+| Method                                          | Where           | When to use                            |
+| ----------------------------------------------- | --------------- | -------------------------------------- |
+| `PI_PROFILE=1` env var                          | Node / SSR      | Build-time or Electron wrappers        |
+| `VITE_PI_PROFILE=1` env var                     | Vite dev/build  | `.env.local` in dashboard dev          |
+| `localStorage.setItem("argent.piProfile", "1")` | Browser console | Runtime toggle, survives reload        |
+| `?piProfile=1` URL param                        | Any             | One-shot test without touching storage |
 
 To disable, unset / remove / set to `"0"`, and reload.
 

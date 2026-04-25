@@ -26,6 +26,10 @@
 
 ArgentOS is a personal AI operating system that runs on your hardware, speaks through your channels, remembers your context, and works autonomously on your behalf. Core is the free, open-source foundation.
 
+## Latest Update
+
+The April Core stabilization lane is landing on `main`: 89 commits of install/update hardening, dashboard setup and model-routing polish, expanded public docs, the Cognee AOS connector, MCP exposure fixes, and the observable Rust executive shadow runtime. See [CHANGELOG.md](CHANGELOG.md) for the full release narrative.
+
 ## Install
 
 **Prerequisite:** [Homebrew](https://brew.sh) (macOS) — the installer uses it for PostgreSQL, Redis, and system services.

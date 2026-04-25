@@ -430,9 +430,23 @@ export function resolveBestReasoningModel(params: {
   catalog: ModelCatalogEntry[];
   allowedKeys: Set<string>;
   allowAny: boolean;
+  providerEligible?: (provider: string) => boolean;
+  excludedProviders?: Iterable<string>;
 }): ModelRef | null {
+  const excludedProviders = new Set(
+    [...(params.excludedProviders ?? [])].map((provider) => normalizeProviderId(provider)),
+  );
   for (const entry of params.catalog) {
-    if (!entry.reasoning) continue;
+    const provider = normalizeProviderId(entry.provider);
+    if (!entry.reasoning) {
+      continue;
+    }
+    if (excludedProviders.has(provider)) {
+      continue;
+    }
+    if (params.providerEligible && !params.providerEligible(provider)) {
+      continue;
+    }
     const key = modelKey(entry.provider, entry.id);
     if (params.allowAny || params.allowedKeys.has(key)) {
       return { provider: entry.provider, model: entry.id };

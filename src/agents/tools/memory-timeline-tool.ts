@@ -368,7 +368,10 @@ export function createMemoryTimelineTool(options: {
           entityMatchTerms = [
             effectiveEntityName,
             ...resolvedEntities.map((entity) => entity.name),
-          ].filter((value, index, values) => value.trim() && values.indexOf(value) === index);
+          ].filter(
+            (value, index, values): value is string =>
+              Boolean(value?.trim()) && values.indexOf(value) === index,
+          );
         }
 
         let items: MemoryItem[] = [];

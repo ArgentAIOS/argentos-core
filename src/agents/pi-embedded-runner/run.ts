@@ -498,7 +498,7 @@ export async function runEmbeddedPiAgent(
       const effectiveRouterConfig =
         isSisSession && routerConfig ? { ...routerConfig, enabled: false } : routerConfig;
       const routing =
-        isPreselectedModel && !isExplicitOverride
+        isPreselectedModel && !isExplicitOverride && !forceMaxTier
           ? {
               provider: rawProvider,
               model: rawModelId,

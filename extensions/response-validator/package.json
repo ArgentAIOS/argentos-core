@@ -1,6 +1,6 @@
 {
   "name": "@argentos/response-validator",
-  "version": "2026.3.2",
+  "version": "2026.4.24-dev.0",
   "description": "ArgentOS plugin to enforce response format requirements",
   "license": "MIT",
   "author": "Titanium Computing",

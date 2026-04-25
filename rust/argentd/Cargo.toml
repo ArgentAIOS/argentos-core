@@ -1,0 +1,8 @@
+[package]
+name = "argentd"
+version = "0.1.0"
+edition = "2021"
+description = "ArgentOS Rust shadow gateway daemon scaffold"
+license = "MIT"
+
+[dependencies]

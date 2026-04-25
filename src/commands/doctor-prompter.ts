@@ -40,11 +40,11 @@ export function createDoctorPrompter(params: {
 
   const canPrompt = isTty && !yes && !nonInteractive;
   const confirmDefault = async (p: Parameters<typeof confirm>[0]) => {
-    if (nonInteractive) {
-      return false;
-    }
     if (shouldRepair) {
       return true;
+    }
+    if (nonInteractive) {
+      return false;
     }
     if (!canPrompt) {
       return Boolean(p.initialValue ?? false);
@@ -61,19 +61,18 @@ export function createDoctorPrompter(params: {
   return {
     confirm: confirmDefault,
     confirmRepair: async (p) => {
-      if (nonInteractive) {
-        return false;
-      }
+      if (shouldRepair) return true;
+      if (nonInteractive) return false;
       return confirmDefault(p);
     },
     confirmAggressive: async (p) => {
-      if (nonInteractive) {
-        return false;
-      }
       if (shouldRepair && shouldForce) {
         return true;
       }
       if (shouldRepair && !shouldForce) {
+        return false;
+      }
+      if (nonInteractive) {
         return false;
       }
       if (!canPrompt) {
@@ -88,11 +87,11 @@ export function createDoctorPrompter(params: {
       );
     },
     confirmSkipInNonInteractive: async (p) => {
-      if (nonInteractive) {
-        return false;
-      }
       if (shouldRepair) {
         return true;
+      }
+      if (nonInteractive) {
+        return false;
       }
       return confirmDefault(p);
     },

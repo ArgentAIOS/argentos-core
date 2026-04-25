@@ -2,6 +2,59 @@
 
 Docs: https://docs.argentos.ai
 
+## 2026.4.25-dev.0
+
+### Changes
+
+- Release visibility: move the month-long Core stabilization lane into a public
+  release narrative so the main branch shows the current project activity.
+- Install/update: harden the git update rail, hosted installer flow, runtime
+  snapshot sync, and doctor repair path for source-checkout installs.
+- Dashboard: refresh the setup/config experience, model catalog surfaces, Core
+  profile gating, and license/status panels so public Core users see the right
+  controls.
+- Docs: publish the expanded Core docs mirror and Obsidian vault, including
+  gateway, channels, install, provider, workflow, and troubleshooting coverage.
+- Runtime: add the Rust executive shadow lane as an observable, contract-tested
+  path without promoting it ahead of the Node gateway.
+- Connectors: ship the Cognee AOS connector artifact and enforce manifest/runtime
+  checks for the connector catalog.
+
+### Fixes
+
+- MCP: keep OAuth well-known discovery paths out of the root-mounted Control UI
+  fallback so external MCP clients can reach `/mcp` instead of parsing HTML.
+- Models: keep routed defaults, deep-think, image fallback, MiniMax, GLM, and
+  powerful-tier selection on configured compatible providers.
+- Security: reject fake marketplace tool-call blocks and require marketplace
+  evidence before browse/install claims.
+- Gateway: wait for shadow services to report running, reduce false cleanup
+  warnings, and surface runtime health more clearly during update/doctor flows.
+
+## 2026.4.24-dev.0
+
+### Changes
+
+- Core boundary: document that Business is limited to worker agents, workforce
+  jobs, governance, training/observer mode, worker onboarding, entitlements, and
+  private distribution; personal-agent capabilities remain Core.
+- Marketplace: make `argent marketplace` the Core path for discovering and
+  installing skills, plugins, and connectors.
+
+### Fixes
+
+- Agents: keep automatic reasoning and deep-think model selection on configured
+  providers instead of falling back to unconfigured Bedrock or Anthropic models.
+- Agents: sanitize malformed provider-bound transcript messages before model
+  adapters see them, preventing raw JavaScript `undefined` errors from leaking
+  into chat.
+- Core tools: wire the `marketplace` tool directly into the real agent tool
+  surface and remove the obsolete bundled ClawHub skill.
+- Dashboard: default missing dashboard surface profiles to public Core and hide
+  execution-worker/job-board controls unless the full surface is explicit.
+- Release: align bundled extension versions with the Core package version so
+  `pnpm release:check` passes.
+
 ## 2026.4.18.3
 
 ### Fixes

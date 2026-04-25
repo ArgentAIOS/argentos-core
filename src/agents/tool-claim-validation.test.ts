@@ -210,6 +210,27 @@ describe("validateToolClaims", () => {
     expect(result.evidenceKinds).toContain("research");
   });
 
+  it("flags marketplace browse commitments without a marketplace tool call", () => {
+    const result = validateToolClaims({
+      responseText: "Let me see what's on the marketplace.",
+      executedToolNames: [],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.missingCommitments[0]?.kind).toBe("research");
+    expect(result.missingClaimLabels).toContain("research action");
+  });
+
+  it("passes marketplace browse commitments when marketplace executes", () => {
+    const result = validateToolClaims({
+      responseText: "Let me see what's on the marketplace.",
+      executedToolNames: ["marketplace"],
+    });
+    expect(result.valid).toBe(true);
+    expect(result.missingCommitments).toEqual([]);
+    expect(result.evidenceKinds).toContain("research");
+    expect(result.hasExternalArtifact).toBe(true);
+  });
+
   it("flags short active-work claims without same-turn evidence", () => {
     const result = validateToolClaims({
       responseText: "I'm on it.",
@@ -490,6 +511,22 @@ describe("validateToolClaims", () => {
     expect(result.missingClaims).toContain("tool_json");
     expect(result.structuredClaims).toContain("tool_json");
     expect(result.highConfidenceMissingClaims).toContain("tool_json");
+  });
+
+  it("flags fake TOOL_CALL marketplace blocks as high-confidence missing tool use", () => {
+    const result = validateToolClaims({
+      responseText: `[TOOL_CALL]
+{tool => "marketplace", args => {
+--action "search"
+--query ""
+}}
+[/TOOL_CALL]`,
+      executedToolNames: [],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.missingClaims).toContain("marketplace");
+    expect(result.structuredClaims).toContain("marketplace");
+    expect(result.highConfidenceMissingClaims).toContain("marketplace");
   });
 
   it("does not misclassify unrelated JSON payloads as browser tool claims", () => {

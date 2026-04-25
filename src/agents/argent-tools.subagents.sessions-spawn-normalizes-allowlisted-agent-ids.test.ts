@@ -128,6 +128,60 @@ describe("argent-tools: subagents", () => {
     expect(callGatewayMock).not.toHaveBeenCalled();
   });
 
+  it("sessions_spawn allows configured public Core family agents by default", async () => {
+    resetSubagentRegistryForTests();
+    callGatewayMock.mockReset();
+    configOverride = {
+      session: {
+        mainKey: "main",
+        scope: "per-sender",
+      },
+      distribution: {
+        surfaceProfile: "public-core",
+      },
+      agents: {
+        list: [
+          { id: "main", name: "Sapphire" },
+          { id: "sam", name: "Sam Altman" },
+          { id: "execution-worker", name: "Execution Worker" },
+        ],
+      },
+    };
+
+    let childSessionKey: string | undefined;
+    callGatewayMock.mockImplementation(async (opts: unknown) => {
+      const request = opts as { method?: string; params?: unknown };
+      if (request.method === "agent") {
+        const params = request.params as { sessionKey?: string } | undefined;
+        childSessionKey = params?.sessionKey;
+        return { runId: "run-public-core", status: "accepted", acceptedAt: 5200 };
+      }
+      if (request.method === "agent.wait") {
+        return { status: "timeout" };
+      }
+      return {};
+    });
+
+    const tool = createArgentTools({
+      agentSessionKey: "main",
+      agentChannel: "whatsapp",
+    }).find((candidate) => candidate.name === "sessions_spawn");
+    if (!tool) {
+      throw new Error("missing sessions_spawn tool");
+    }
+
+    const result = await tool.execute("call-public-core", {
+      task: "think about this",
+      agentId: "sam",
+    });
+
+    expect(result.details).toMatchObject({
+      status: "accepted",
+      runId: "run-public-core",
+    });
+    expect(childSessionKey?.startsWith("agent:sam:subagent:")).toBe(true);
+  });
+
   it("sessions_spawn runs cleanup via lifecycle events", async () => {
     resetSubagentRegistryForTests();
     callGatewayMock.mockReset();

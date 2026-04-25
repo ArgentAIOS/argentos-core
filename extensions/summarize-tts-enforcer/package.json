@@ -1,6 +1,6 @@
 {
   "name": "@argentos/summarize-tts-enforcer",
-  "version": "2026.3.2",
+  "version": "2026.4.24-dev.0",
   "description": "ArgentOS plugin to enforce TTS output for summarize tool",
   "license": "MIT",
   "author": "Titanium Computing",

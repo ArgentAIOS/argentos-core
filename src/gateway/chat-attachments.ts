@@ -1,3 +1,4 @@
+import { sanitizeImageBlocks } from "../agents/tool-images.js";
 import {
   DEFAULT_INPUT_FILE_MAX_CHARS,
   DEFAULT_INPUT_FILE_MAX_BYTES,
@@ -145,12 +146,14 @@ export async function parseMessageWithAttachments(
   attachments: ChatAttachment[] | undefined,
   opts?: {
     maxBytes?: number;
+    maxImageInputBytes?: number;
     maxTextCharsPerAttachment?: number;
     maxTotalTextChars?: number;
     log?: AttachmentLog;
   },
 ): Promise<ParsedMessageWithImages> {
   const maxBytes = opts?.maxBytes ?? 5_000_000; // 5 MB
+  const maxImageInputBytes = opts?.maxImageInputBytes ?? Math.max(maxBytes * 5, maxBytes);
   const maxTextCharsPerAttachment =
     opts?.maxTextCharsPerAttachment ?? DEFAULT_MAX_TEXT_CHARS_PER_ATTACHMENT;
   const maxTotalTextChars = opts?.maxTotalTextChars ?? DEFAULT_MAX_TOTAL_TEXT_CHARS;
@@ -199,9 +202,9 @@ export async function parseMessageWithAttachments(
     if (imageCandidate) {
       const imageBuffer = decodeBase64(payload, label);
       const sizeBytes = imageBuffer.byteLength;
-      if (sizeBytes <= 0 || sizeBytes > maxBytes) {
+      if (sizeBytes <= 0 || sizeBytes > maxImageInputBytes) {
         throw new Error(
-          `attachment ${label}: exceeds size limit (${sizeBytes} > ${maxBytes} bytes)`,
+          `attachment ${label}: exceeds size limit (${sizeBytes} > ${maxImageInputBytes} bytes)`,
         );
       }
 
@@ -301,9 +304,16 @@ export async function parseMessageWithAttachments(
     attachmentSections.push(`[Attached file: ${label}]\n${clipped}`);
   }
 
+  const sanitized = await sanitizeImageBlocks(images, "gateway:attachment", {
+    maxBytes,
+  });
+  if (sanitized.dropped > 0) {
+    log?.warn(`dropped ${sanitized.dropped} image attachment(s) after resizing`);
+  }
+
   return {
     message: appendAttachmentSections(message, attachmentSections),
-    images,
+    images: sanitized.images,
   };
 }
 

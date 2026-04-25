@@ -13,7 +13,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createDecipheriv, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -26,6 +26,7 @@ const KEY_FILE_NAME = ".master-key";
 const SERVICE_KEYS_FILE_NAME = "service-keys.json";
 const KEYCHAIN_AUTO_MIGRATE_ENV = "ARGENT_KEYCHAIN_MIGRATE_FILE_KEY";
 const KEYCHAIN_DISABLE_WRITE_ENV = "ARGENT_KEYCHAIN_DISABLE_WRITE";
+const SECRET_PREFIX = "enc:v1:";
 
 let cachedKey: Buffer | null = null;
 
@@ -140,6 +141,46 @@ function hasEncryptedSecrets(): boolean {
   }
 }
 
+function readEncryptedServiceKeyValues(): string[] {
+  const home = process.env.HOME ?? "/tmp";
+  const filePath = path.join(home, ".argentos", SERVICE_KEYS_FILE_NAME);
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as {
+      keys?: Array<{ value?: unknown }>;
+    };
+    return (parsed.keys ?? [])
+      .map((entry) => (typeof entry.value === "string" ? entry.value : ""))
+      .filter((value) => value.startsWith(SECRET_PREFIX));
+  } catch {
+    return [];
+  }
+}
+
+function canDecryptSecretValue(value: string, key: Buffer): boolean {
+  const parts = value.slice(SECRET_PREFIX.length).split(":");
+  if (parts.length !== 3) {
+    return false;
+  }
+  try {
+    const [ivHex, authTagHex, cipherHex] = parts;
+    const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex!, "hex"));
+    decipher.setAuthTag(Buffer.from(authTagHex!, "hex"));
+    decipher.update(cipherHex!, "hex", "utf8");
+    decipher.final("utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function canDecryptExistingSecrets(key: Buffer): boolean {
+  const encryptedValues = readEncryptedServiceKeyValues();
+  if (encryptedValues.length === 0) {
+    return true;
+  }
+  return encryptedValues.every((value) => canDecryptSecretValue(value, key));
+}
+
 /**
  * Ensure the key is stored in both locations for redundancy.
  * Called whenever a key is successfully read from either source.
@@ -175,16 +216,39 @@ function ensureRedundantStorage(key: Buffer, source: "keychain" | "file"): void 
 export function getMasterKey(): Buffer {
   if (cachedKey) return cachedKey;
 
-  // Try Keychain first
   const keychainKey = readKeychainKey();
+  const fileKey = readFileKey();
+
+  if (hasEncryptedSecrets()) {
+    if (keychainKey && canDecryptExistingSecrets(keychainKey)) {
+      cachedKey = keychainKey;
+      ensureRedundantStorage(keychainKey, "keychain");
+      return keychainKey;
+    }
+    if (fileKey && canDecryptExistingSecrets(fileKey)) {
+      cachedKey = fileKey;
+      ensureRedundantStorage(fileKey, "file");
+      return fileKey;
+    }
+    if (keychainKey || fileKey) {
+      log.error(
+        "CRITICAL: Available master key cannot decrypt existing encrypted service keys. " +
+          "Restore the matching master key before reading or rotating secrets.",
+      );
+      throw new Error(
+        "Master encryption key mismatch. Existing encrypted service keys cannot be decrypted.",
+      );
+    }
+  }
+
+  // Try Keychain first when there are no encrypted secrets to validate against.
   if (keychainKey) {
     cachedKey = keychainKey;
     ensureRedundantStorage(keychainKey, "keychain");
     return keychainKey;
   }
 
-  // Try file fallback
-  const fileKey = readFileKey();
+  // Try file fallback.
   if (fileKey) {
     cachedKey = fileKey;
     ensureRedundantStorage(fileKey, "file");

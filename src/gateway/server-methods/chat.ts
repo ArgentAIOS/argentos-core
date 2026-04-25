@@ -4,9 +4,11 @@ import type { MsgContext } from "../../auto-reply/templating.js";
 import type { GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
 import { CURRENT_SESSION_VERSION, SessionManager } from "../../agent-core/coding.js";
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
+import { isModelProviderAvailableForAutomaticRouting } from "../../agents/model-auth.js";
 import {
   buildAllowedModelSet,
   modelKey,
+  normalizeProviderId,
   resolveBestReasoningModel,
   resolveThinkingDefault,
 } from "../../agents/model-selection.js";
@@ -191,6 +193,22 @@ function broadcastChatFinal(params: {
   };
   params.context.broadcast("chat", payload);
   params.context.nodeSendToSession(params.sessionKey, "chat", payload);
+}
+
+function resolveRouterPowerfulModel(cfg: ReturnType<typeof loadSessionEntry>["cfg"]) {
+  const router = cfg.agents?.defaults?.modelRouter;
+  if (!router?.enabled) {
+    return null;
+  }
+  const activeProfileName = router.activeProfile ?? "balanced";
+  const activeProfile = router.profiles?.[activeProfileName];
+  const powerful = activeProfile?.tiers?.powerful;
+  const provider = normalizeProviderId(String(powerful?.provider ?? ""));
+  const model = String(powerful?.model ?? "").trim();
+  if (!provider || !model) {
+    return null;
+  }
+  return { provider, model };
 }
 
 function broadcastChatError(params: {
@@ -431,24 +449,25 @@ export const chatHandlers: GatewayRequestHandlers = {
     }
 
     if (storePath && canonicalKey) {
-      await updateSessionStore(storePath, (store) => {
-        const currentEntry = (store[canonicalKey] ?? entry) as SessionEntry | undefined;
+      await updateSessionStore(storePath, (nextStore) => {
+        const currentEntry = (nextStore[canonicalKey] ?? entry) as SessionEntry | undefined;
         const sessionId = currentEntry?.sessionId;
         if (sessionId) {
-          store[canonicalKey] = {
-            ...(currentEntry || {}),
+          nextStore[canonicalKey] = {
+            ...currentEntry,
             sessionId,
             updatedAt: now,
             lastUserMessageAt: now,
           };
         }
 
-        const globalEntry = store["__lastUserMessage"] as SessionEntry | undefined;
+        const globalEntry = nextStore["__lastUserMessage"] as SessionEntry | undefined;
         const previousLastAt =
           globalEntry?.lastUserMessageAt ?? prevLastUserMessageAt ?? globalEntry?.updatedAt;
         const previousSessionKey = globalEntry?.lastInteractionSessionKey ?? prevLastUserSessionKey;
-        store["__lastUserMessage"] = {
-          ...(globalEntry || {}),
+        nextStore["__lastUserMessage"] = {
+          ...globalEntry,
+          sessionId: globalEntry?.sessionId ?? sessionId ?? entry?.sessionId ?? canonicalKey,
           previousLastUserMessageAt: previousLastAt,
           previousSessionKey,
           lastUserMessageAt: now,
@@ -612,7 +631,8 @@ export const chatHandlers: GatewayRequestHandlers = {
         }
       }
 
-      // Resolve model override for deep-think: auto-select best reasoning model
+      // Resolve model override for deep-think. Prefer the operator's configured powerful tier
+      // before falling back to the catalog so unconfigured hosted providers are not chosen.
       let modelOverridePrefix = "";
       if (injectThinking && p.thinking === "xhigh") {
         try {
@@ -623,11 +643,23 @@ export const chatHandlers: GatewayRequestHandlers = {
             catalog,
             defaultProvider: "anthropic",
           });
-          const best = resolveBestReasoningModel({
-            catalog,
-            allowedKeys: allowed.allowedKeys,
-            allowAny: allowed.allowAny,
-          });
+          const routerPowerful = resolveRouterPowerfulModel(innerCfg);
+          const best =
+            routerPowerful &&
+            isModelProviderAvailableForAutomaticRouting({
+              cfg: innerCfg,
+              provider: routerPowerful.provider,
+            }) &&
+            (allowed.allowAny ||
+              allowed.allowedKeys.has(modelKey(routerPowerful.provider, routerPowerful.model)))
+              ? routerPowerful
+              : resolveBestReasoningModel({
+                  catalog,
+                  allowedKeys: allowed.allowedKeys,
+                  allowAny: allowed.allowAny,
+                  providerEligible: (provider) =>
+                    isModelProviderAvailableForAutomaticRouting({ cfg: innerCfg, provider }),
+                });
           if (best) {
             modelOverridePrefix = `/model ${best.provider}/${best.model} `;
           }
@@ -754,11 +786,11 @@ export const chatHandlers: GatewayRequestHandlers = {
                 context.logGateway.warn(
                   `webchat transcript append failed: ${appended.error ?? "unknown error"}`,
                 );
-                const now = Date.now();
+                const fallbackTimestamp = Date.now();
                 message = {
                   role: "assistant",
                   content: [{ type: "text", text: combinedReply }],
-                  timestamp: now,
+                  timestamp: fallbackTimestamp,
                   // Keep this compatible with Pi stopReason enums even though this message isn't
                   // persisted to the transcript due to the append failure.
                   stopReason: "stop",

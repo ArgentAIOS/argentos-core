@@ -214,6 +214,32 @@ describe("update-cli", () => {
     expect(parsed.channel.value).toBe("stable");
   });
 
+  it("updateStatusCommand resolves hosted git installs through ARGENT_GIT_DIR", async () => {
+    const previousArgentGitDir = process.env.ARGENT_GIT_DIR;
+    const previousArgentosGitDir = process.env.ARGENTOS_GIT_DIR;
+    try {
+      process.env.ARGENT_GIT_DIR = "/hosted/argentos";
+      delete process.env.ARGENTOS_GIT_DIR;
+      const { checkUpdateStatus } = await import("../infra/update-check.js");
+      const { updateStatusCommand } = await import("./update-cli.js");
+
+      await updateStatusCommand({ json: true });
+
+      expect(vi.mocked(checkUpdateStatus).mock.calls.at(-1)?.[0]?.root).toBe("/hosted/argentos");
+    } finally {
+      if (previousArgentGitDir) {
+        process.env.ARGENT_GIT_DIR = previousArgentGitDir;
+      } else {
+        delete process.env.ARGENT_GIT_DIR;
+      }
+      if (previousArgentosGitDir) {
+        process.env.ARGENTOS_GIT_DIR = previousArgentosGitDir;
+      } else {
+        delete process.env.ARGENTOS_GIT_DIR;
+      }
+    }
+  });
+
   it("defaults to stable channel for release-tag git installs when unset", async () => {
     const { runGatewayUpdate } = await import("../infra/update-runner.js");
     const { updateCommand } = await import("./update-cli.js");
@@ -516,29 +542,130 @@ describe("update-cli", () => {
     expect(lines.some((line) => line.includes("Already up to date"))).toBe(true);
   });
 
-  it("updateCommand restarts daemon by default", async () => {
-    const { runGatewayUpdate } = await import("../infra/update-runner.js");
-    const { runDaemonRestart } = await import("./daemon-cli.js");
-    const { updateCommand } = await import("./update-cli.js");
+  it("updateCommand restarts daemon through a fresh CLI process by default", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-root-"));
+    try {
+      await fs.writeFile(path.join(tempRoot, "argent.mjs"), "#!/usr/bin/env node\n");
+      const { spawnSync } = await import("node:child_process");
+      const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { updateCommand } = await import("./update-cli.js");
 
-    const mockResult: UpdateRunResult = {
-      status: "ok",
-      mode: "git",
-      steps: [],
-      durationMs: 100,
-    };
+      vi.mocked(runGatewayUpdate).mockResolvedValue({
+        status: "ok",
+        mode: "git",
+        root: tempRoot,
+        steps: [],
+        durationMs: 100,
+      });
+      vi.mocked(spawnSync).mockClear();
 
-    vi.mocked(runGatewayUpdate).mockResolvedValue(mockResult);
-    vi.mocked(runDaemonRestart).mockResolvedValue(true);
+      await updateCommand({});
 
-    await updateCommand({});
+      expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+        expect.any(String),
+        [path.join(tempRoot, "argent.mjs"), "gateway", "restart"],
+        expect.objectContaining({
+          cwd: tempRoot,
+          stdio: "inherit",
+        }),
+      );
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
 
-    expect(runDaemonRestart).toHaveBeenCalled();
+  it("updateCommand restarts macOS dashboard services after daemon restart", async () => {
+    const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-home-"));
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-root-"));
+    const originalPlatform = process.platform;
+    let homedirSpy: ReturnType<typeof vi.spyOn> | null = null;
+    try {
+      await fs.writeFile(path.join(tempRoot, "argent.mjs"), "#!/usr/bin/env node\n");
+      const launchAgents = path.join(tempHome, "Library", "LaunchAgents");
+      await fs.mkdir(launchAgents, { recursive: true });
+      await fs.writeFile(path.join(launchAgents, "ai.argent.dashboard-api.plist"), "");
+      await fs.writeFile(path.join(launchAgents, "ai.argent.dashboard-ui.plist"), "");
+      homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(tempHome);
+      Object.defineProperty(process, "platform", {
+        value: "darwin",
+        configurable: true,
+      });
+
+      const { spawnSync } = await import("node:child_process");
+      const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { updateCommand } = await import("./update-cli.js");
+
+      vi.mocked(runGatewayUpdate).mockResolvedValue({
+        status: "ok",
+        mode: "git",
+        root: tempRoot,
+        steps: [],
+        durationMs: 100,
+      });
+      vi.mocked(spawnSync).mockClear();
+
+      await updateCommand({});
+
+      const calls = vi.mocked(spawnSync).mock.calls.map(([cmd, args]) => ({
+        cmd,
+        args: Array.isArray(args) ? args.join(" ") : "",
+      }));
+      expect(calls).toContainEqual(
+        expect.objectContaining({
+          cmd: "/bin/launchctl",
+          args: expect.stringContaining("kickstart -k"),
+        }),
+      );
+      expect(calls.some((call) => call.args.includes("ai.argent.dashboard-api"))).toBe(true);
+      expect(calls.some((call) => call.args.includes("ai.argent.dashboard-ui"))).toBe(true);
+    } finally {
+      homedirSpy?.mockRestore();
+      Object.defineProperty(process, "platform", {
+        value: originalPlatform,
+        configurable: true,
+      });
+      await fs.rm(tempHome, { recursive: true, force: true });
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("updateCommand runs post-update doctor from a fresh CLI process", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-root-"));
+    try {
+      await fs.writeFile(path.join(tempRoot, "argent.mjs"), "#!/usr/bin/env node\n");
+
+      const { spawnSync } = await import("node:child_process");
+      const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { updateCommand } = await import("./update-cli.js");
+
+      vi.mocked(runGatewayUpdate).mockResolvedValue({
+        status: "ok",
+        mode: "git",
+        root: tempRoot,
+        steps: [],
+        durationMs: 100,
+      });
+      vi.mocked(spawnSync).mockClear();
+
+      await updateCommand({ yes: true });
+
+      expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+        expect.any(String),
+        [path.join(tempRoot, "argent.mjs"), "doctor", "--non-interactive", "--repair"],
+        expect.objectContaining({
+          cwd: tempRoot,
+          stdio: "inherit",
+          env: expect.objectContaining({ ARGENT_UPDATE_IN_PROGRESS: "1" }),
+        }),
+      );
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
   });
 
   it("updateCommand skips restart when --no-restart is set", async () => {
     const { runGatewayUpdate } = await import("../infra/update-runner.js");
-    const { runDaemonRestart } = await import("./daemon-cli.js");
+    const { spawnSync } = await import("node:child_process");
     const { updateCommand } = await import("./update-cli.js");
 
     const mockResult: UpdateRunResult = {
@@ -549,33 +676,41 @@ describe("update-cli", () => {
     };
 
     vi.mocked(runGatewayUpdate).mockResolvedValue(mockResult);
+    vi.mocked(spawnSync).mockClear();
 
     await updateCommand({ restart: false });
 
-    expect(runDaemonRestart).not.toHaveBeenCalled();
+    const calls = vi
+      .mocked(spawnSync)
+      .mock.calls.map(([, args]) => (Array.isArray(args) ? args.join(" ") : ""));
+    expect(calls.some((args) => args.includes("gateway restart"))).toBe(false);
   });
 
   it("updateCommand skips success message when restart does not run", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-no-cli-"));
     const { runGatewayUpdate } = await import("../infra/update-runner.js");
-    const { runDaemonRestart } = await import("./daemon-cli.js");
     const { defaultRuntime } = await import("../runtime.js");
     const { updateCommand } = await import("./update-cli.js");
 
-    const mockResult: UpdateRunResult = {
-      status: "ok",
-      mode: "git",
-      steps: [],
-      durationMs: 100,
-    };
+    try {
+      const mockResult: UpdateRunResult = {
+        status: "ok",
+        mode: "git",
+        root: tempRoot,
+        steps: [],
+        durationMs: 100,
+      };
 
-    vi.mocked(runGatewayUpdate).mockResolvedValue(mockResult);
-    vi.mocked(runDaemonRestart).mockResolvedValue(false);
-    vi.mocked(defaultRuntime.log).mockClear();
+      vi.mocked(runGatewayUpdate).mockResolvedValue(mockResult);
+      vi.mocked(defaultRuntime.log).mockClear();
 
-    await updateCommand({ restart: true });
+      await updateCommand({ restart: true });
 
-    const logLines = vi.mocked(defaultRuntime.log).mock.calls.map((call) => String(call[0]));
-    expect(logLines.some((line) => line.includes("Daemon restarted successfully."))).toBe(false);
+      const logLines = vi.mocked(defaultRuntime.log).mock.calls.map((call) => String(call[0]));
+      expect(logLines.some((line) => line.includes("Daemon restarted successfully."))).toBe(false);
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
   });
 
   it("updateCommand validates timeout option", async () => {

@@ -15,6 +15,7 @@ import {
 } from "../commands/status.update.js";
 import { readConfigFileSnapshot, writeConfigFile } from "../config/config.js";
 import { resolveArgentPackageRoot } from "../infra/argent-root.js";
+import { resolveHostedGitDirOverride } from "../infra/hosted-git-dir.js";
 import { trimLogTail } from "../infra/restart-sentinel.js";
 import { parseSemver } from "../infra/runtime-guard.js";
 import {
@@ -117,6 +118,7 @@ const UPDATE_QUIPS = [
 
 const MAX_LOG_CHARS = 8000;
 const DEFAULT_PACKAGE_NAME = "argent";
+const MACOS_DASHBOARD_SERVICE_LABELS = ["ai.argent.dashboard-api", "ai.argent.dashboard-ui"];
 const CORE_PACKAGE_NAMES = new Set([DEFAULT_PACKAGE_NAME]);
 const CLI_NAME = resolveCliName();
 const ARGENT_REPO_URL = "https://github.com/ArgentAIOS/argentos.git";
@@ -228,6 +230,105 @@ async function tryWriteCompletionCache(root: string, jsonMode: boolean): Promise
   }
 }
 
+async function restartMacDashboardServices(jsonMode: boolean): Promise<void> {
+  if (process.platform !== "darwin") return;
+  const uid = typeof process.getuid === "function" ? process.getuid() : null;
+  if (uid == null) return;
+
+  const domain = `gui/${uid}`;
+  const launchAgentsDir = path.join(os.homedir(), "Library", "LaunchAgents");
+  const restarted: string[] = [];
+  const failed: string[] = [];
+
+  for (const label of MACOS_DASHBOARD_SERVICE_LABELS) {
+    const plistPath = path.join(launchAgentsDir, `${label}.plist`);
+    if (!(await pathExists(plistPath))) continue;
+    const result = spawnSync("/bin/launchctl", ["kickstart", "-k", `${domain}/${label}`], {
+      env: process.env,
+      encoding: "utf-8",
+    });
+    if (result.status === 0 && !result.error) {
+      restarted.push(label);
+    } else {
+      failed.push(label);
+    }
+  }
+
+  if (jsonMode || (restarted.length === 0 && failed.length === 0)) return;
+  if (restarted.length > 0) {
+    defaultRuntime.log(theme.success(`Dashboard services restarted: ${restarted.join(", ")}.`));
+  }
+  if (failed.length > 0) {
+    defaultRuntime.log(theme.warn(`Dashboard service restart failed: ${failed.join(", ")}.`));
+  }
+}
+
+async function runPostUpdateDoctor(params: {
+  root: string;
+  jsonMode: boolean;
+  interactive: boolean;
+}): Promise<void> {
+  if (params.jsonMode) return;
+  const cliPath = path.join(params.root, "argent.mjs");
+  if (!(await pathExists(cliPath))) {
+    defaultRuntime.log(theme.warn(`Doctor skipped: CLI entry not found at ${cliPath}.`));
+    return;
+  }
+
+  const result = spawnSync(
+    resolveNodeRunner(),
+    [
+      cliPath,
+      "doctor",
+      ...(params.interactive ? [] : ["--non-interactive"]),
+      ...(params.interactive ? [] : ["--repair"]),
+    ],
+    {
+      cwd: params.root,
+      env: { ...process.env, ARGENT_UPDATE_IN_PROGRESS: "1" },
+      stdio: "inherit",
+    },
+  );
+  if (result.error) {
+    defaultRuntime.log(theme.warn(`Doctor failed: ${String(result.error)}`));
+  } else if (typeof result.status === "number" && result.status !== 0) {
+    defaultRuntime.log(theme.warn(`Doctor exited with status ${result.status}.`));
+  }
+}
+
+async function runPostUpdateGatewayRestart(params: {
+  root: string;
+  jsonMode: boolean;
+}): Promise<boolean> {
+  const cliPath = path.join(params.root, "argent.mjs");
+  if (!(await pathExists(cliPath))) {
+    if (!params.jsonMode) {
+      defaultRuntime.log(theme.warn(`Daemon restart skipped: CLI entry not found at ${cliPath}.`));
+    }
+    return false;
+  }
+
+  const result = spawnSync(
+    resolveNodeRunner(),
+    [cliPath, "gateway", "restart", ...(params.jsonMode ? ["--json"] : [])],
+    {
+      cwd: params.root,
+      env: process.env,
+      encoding: params.jsonMode ? "utf-8" : undefined,
+      stdio: params.jsonMode ? "pipe" : "inherit",
+    },
+  );
+  if (result.error) {
+    throw result.error;
+  }
+  if (typeof result.status === "number" && result.status !== 0) {
+    const stderr =
+      typeof result.stderr === "string" && result.stderr.trim() ? `: ${result.stderr.trim()}` : "";
+    throw new Error(`gateway restart exited with status ${result.status}${stderr}`);
+  }
+  return true;
+}
+
 /** Check if shell completion is installed and prompt user to install if not. */
 async function tryInstallShellCompletion(opts: {
   jsonMode: boolean;
@@ -299,9 +400,9 @@ async function isEmptyDir(targetPath: string): Promise<boolean> {
 }
 
 function resolveGitInstallDir(): string {
-  const override = process.env.ARGENTOS_GIT_DIR?.trim() || process.env.ARGENT_GIT_DIR?.trim();
+  const override = resolveHostedGitDirOverride();
   if (override) {
-    return path.resolve(override);
+    return override;
   }
   return resolveDefaultGitDir();
 }
@@ -462,11 +563,13 @@ export async function updateStatusCommand(opts: UpdateStatusOptions): Promise<vo
   }
 
   const root =
+    resolveHostedGitDirOverride() ??
     (await resolveArgentPackageRoot({
       moduleUrl: import.meta.url,
       argv1: process.argv[1],
       cwd: process.cwd(),
-    })) ?? process.cwd();
+    })) ??
+    process.cwd();
   const configSnapshot = await readConfigFileSnapshot();
   const configChannel = configSnapshot.valid
     ? normalizeUpdateChannel(configSnapshot.config.update?.channel)
@@ -736,9 +839,9 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
   // For hosted git installs: ARGENT_GIT_DIR points to the real source checkout.
   // Without this, the update resolves root to the runtime snapshot (~/.argentos/lib/...)
   // which has no .git, causing installKind to be misclassified as "package".
-  const gitDirOverride = process.env.ARGENT_GIT_DIR?.trim();
+  const gitDirOverride = resolveHostedGitDirOverride();
   const root = gitDirOverride
-    ? path.resolve(gitDirOverride)
+    ? gitDirOverride
     : ((await resolveArgentPackageRoot({
         moduleUrl: import.meta.url,
         argv1: process.argv[1],
@@ -898,7 +1001,7 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
       if (await pathExists(entryPath)) {
         const doctorStep = await runUpdateStep({
           name: `${CLI_NAME} doctor`,
-          argv: [resolveNodeRunner(), entryPath, "doctor", "--non-interactive"],
+          argv: [resolveNodeRunner(), entryPath, "doctor", "--non-interactive", "--repair"],
           timeoutMs: timeoutMs ?? 20 * 60_000,
           progress,
         });
@@ -1125,23 +1228,24 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
       defaultRuntime.log(theme.heading("Restarting service..."));
     }
     try {
-      const { runDaemonRestart } = await import("./daemon-cli.js");
-      const restarted = await runDaemonRestart();
-      if (!opts.json && restarted) {
-        defaultRuntime.log(theme.success("Daemon restarted successfully."));
-        defaultRuntime.log("");
-        process.env.ARGENT_UPDATE_IN_PROGRESS = "1";
-        try {
-          const { doctorCommand } = await import("../commands/doctor.js");
-          const interactiveDoctor = Boolean(process.stdin.isTTY) && !opts.json && opts.yes !== true;
-          await doctorCommand(defaultRuntime, {
-            nonInteractive: !interactiveDoctor,
-          });
-        } catch (err) {
-          defaultRuntime.log(theme.warn(`Doctor failed: ${String(err)}`));
-        } finally {
-          delete process.env.ARGENT_UPDATE_IN_PROGRESS;
+      const restarted = await runPostUpdateGatewayRestart({
+        root: result.root ?? root,
+        jsonMode: Boolean(opts.json),
+      });
+      if (restarted) {
+        if (!opts.json) {
+          defaultRuntime.log(theme.success("Daemon restarted successfully."));
         }
+        await restartMacDashboardServices(Boolean(opts.json));
+      }
+      if (!opts.json && restarted) {
+        defaultRuntime.log("");
+        const interactiveDoctor = Boolean(process.stdin.isTTY) && opts.yes !== true;
+        await runPostUpdateDoctor({
+          root: result.root ?? root,
+          jsonMode: Boolean(opts.json),
+          interactive: interactiveDoctor,
+        });
       }
     } catch (err) {
       if (!opts.json) {
@@ -1192,9 +1296,9 @@ export async function updateWizardCommand(opts: UpdateWizardOptions = {}): Promi
   }
 
   // For hosted git installs: prefer ARGENT_GIT_DIR over snapshot root
-  const gitDirOverride2 = process.env.ARGENT_GIT_DIR?.trim();
-  const root = gitDirOverride2
-    ? path.resolve(gitDirOverride2)
+  const gitDirOverride = resolveHostedGitDirOverride();
+  const root = gitDirOverride
+    ? gitDirOverride
     : ((await resolveArgentPackageRoot({
         moduleUrl: import.meta.url,
         argv1: process.argv[1],
@@ -1328,7 +1432,7 @@ export function registerUpdateCli(program: Command) {
       const examples = [
         ["argent update", "Update a source checkout (git)"],
         ["argent update --channel beta", "Switch to the beta release channel"],
-        ["argent update --channel dev", "Switch to the dev channel (tracks main)"],
+        ["argent update --channel dev", "Switch to the dev channel (tracks the dev branch)"],
         ["argent update --tag beta", "Legacy one-off override for package installs"],
         ["argent update --no-restart", "Update without restarting the service"],
         ["argent update --json", "Output result as JSON"],

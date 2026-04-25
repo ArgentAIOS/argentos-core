@@ -1,3 +1,4 @@
+import type { LucideIcon } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Rocket,
@@ -13,90 +14,175 @@ import {
   Brain,
   Sparkles,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 interface SetupWizardProps {
   isOpen: boolean;
   onComplete: () => void;
 }
 
-type AuthType = "setup-token" | "api-key" | "minimax-key" | "glm-key" | "skip" | null;
+type AuthType =
+  | "setup-token"
+  | "api-key"
+  | "minimax-key"
+  | "glm-key"
+  | "kimi-key"
+  | "groq-key"
+  | "skip"
+  | null;
 
-function getModelOptions(authType: AuthType) {
-  if (authType === "minimax-key") {
-    return [
-      {
-        id: "minimax/MiniMax-M2.5",
-        name: "MiniMax M2.5",
-        badge: "Recommended",
-        description: "Latest MiniMax model. Fast, capable, and cost-effective for most tasks.",
-        icon: Zap,
-      },
-      {
-        id: "minimax/MiniMax-M2.1",
-        name: "MiniMax M2.1",
-        badge: "Balanced",
-        description: "Strong reasoning and coding. Good balance of speed and power.",
-        icon: Brain,
-      },
-      {
-        id: "minimax/MiniMax-M2",
-        name: "MiniMax M2",
-        badge: "Efficient",
-        description: "Lightweight and fast. Great for simple tasks and high-volume use.",
-        icon: Sparkles,
-      },
-    ];
+type ModelOption = {
+  id: string;
+  name: string;
+  badge: string;
+  description: string;
+  icon: LucideIcon;
+};
+
+type AvailableModelEntry = {
+  id: string;
+  alias: string | null;
+  params?: {
+    reasoning?: boolean;
+    input?: string[];
+    contextWindow?: number;
+    source?: string;
+  } | null;
+};
+
+function providerForAuthType(authType: AuthType) {
+  if (authType === "minimax-key") return "minimax";
+  if (authType === "glm-key") return "zai";
+  if (authType === "kimi-key") return "moonshot";
+  if (authType === "groq-key") return "groq";
+  return "anthropic";
+}
+
+function providerLabelForAuthType(authType: AuthType) {
+  if (authType === "minimax-key") return "MiniMax";
+  if (authType === "glm-key") return "GLM";
+  if (authType === "kimi-key") return "Kimi";
+  if (authType === "groq-key") return "Groq";
+  return "Claude";
+}
+
+function parseModelRef(ref: string) {
+  const slashIndex = ref.indexOf("/");
+  if (slashIndex <= 0 || slashIndex >= ref.length - 1) return null;
+  return {
+    provider: ref.slice(0, slashIndex),
+    model: ref.slice(slashIndex + 1),
+  };
+}
+
+function prettifyModelName(modelId: string) {
+  return modelId
+    .replace(/^openai\//, "")
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .replace(/\bGpt\b/g, "GPT")
+    .replace(/\bGlm\b/g, "GLM")
+    .replace(/\bM2\b/g, "M2");
+}
+
+function looksLikeEmbeddingOnlyModel(modelId: string) {
+  const model = modelId.toLowerCase();
+  return (
+    /(?:^|[-_:./])embed(?:$|[-_:./\d])/.test(model) ||
+    /(?:^|[-_:./])embedding(?:$|[-_:./\d])/.test(model) ||
+    /(?:^|[-_:./])embeddings?(?:$|[-_:./\d])/.test(model)
+  );
+}
+
+function scoreCatalogModel(entry: AvailableModelEntry) {
+  const model = entry.id.toLowerCase();
+  const params = entry.params && typeof entry.params === "object" ? entry.params : null;
+  if (looksLikeEmbeddingOnlyModel(model)) return -1000;
+  let score = 0;
+  if (params?.reasoning) score += 250;
+  if (Array.isArray(params?.input) && params.input.includes("image")) score += 40;
+  if (params?.contextWindow && Number.isFinite(params.contextWindow)) {
+    score += Math.min(params.contextWindow / 1000, 400);
   }
-  if (authType === "glm-key") {
-    return [
-      {
-        id: "zai/glm-4-plus",
-        name: "GLM-4 Plus",
-        badge: "Recommended",
-        description: "Most capable GLM model. Best for complex reasoning, coding, and analysis.",
-        icon: Brain,
-      },
-      {
-        id: "zai/glm-4",
-        name: "GLM-4",
-        badge: "Balanced",
-        description: "Strong general-purpose model. Great balance for most tasks.",
-        icon: Zap,
-      },
-      {
-        id: "zai/glm-4-flash",
-        name: "GLM-4 Flash",
-        badge: "Fastest",
-        description: "Fastest and most affordable. Perfect for lightweight tasks.",
-        icon: Sparkles,
-      },
-    ];
+  const numericVersions = Array.from(model.matchAll(/\d+(?:\.\d+)?/g))
+    .map((match) => Number.parseFloat(match[0] ?? "0"))
+    .filter((value) => Number.isFinite(value));
+  if (numericVersions.length > 0) {
+    score += Math.max(...numericVersions) * 50;
   }
-  // Anthropic (default)
-  return [
-    {
-      id: "anthropic/claude-sonnet-4-6",
-      name: "Sonnet",
-      badge: "Recommended",
-      description: "Best balance of speed and intelligence. Good for most tasks.",
-      icon: Zap,
-    },
-    {
-      id: "anthropic/claude-opus-4-6",
-      name: "Opus",
-      badge: "Most Capable",
-      description: "Most capable. Best for complex reasoning and coding.",
-      icon: Brain,
-    },
-    {
-      id: "anthropic/claude-haiku-4-5",
-      name: "Haiku",
-      badge: "Fastest",
-      description: "Fastest and most affordable. Great for simple tasks.",
-      icon: Sparkles,
-    },
-  ];
+  if (/opus|reason|glm-5|k2|120b|70b/.test(model)) score += 80;
+  if (/sonnet|m2\.7|glm-4\.7/.test(model)) score += 60;
+  if (/highspeed|turbo|flash|instant/.test(model)) score += 20;
+  if (/deprecated|legacy/.test(model)) score -= 200;
+  return score;
+}
+
+function describeCatalogModel(entry: AvailableModelEntry, index: number): string {
+  const params = entry.params && typeof entry.params === "object" ? entry.params : null;
+  const details: string[] = [];
+  if (params?.contextWindow && Number.isFinite(params.contextWindow)) {
+    const rounded = Math.round(params.contextWindow / 1000);
+    details.push(`${rounded}K context`);
+  }
+  if (params?.reasoning) details.push("reasoning capable");
+  if (Array.isArray(params?.input) && params.input.includes("image"))
+    details.push("vision capable");
+  const suffix = details.length ? ` ${details.join(", ")}.` : "";
+  if (index === 0) return `Recommended current catalog option for this provider.${suffix}`;
+  if (index === 1) return `Alternative current catalog option for this provider.${suffix}`;
+  return `Additional model discovered from the current catalog.${suffix}`;
+}
+
+function badgeForCatalogModel(entry: AvailableModelEntry, index: number) {
+  const model = entry.id.toLowerCase();
+  const params = entry.params && typeof entry.params === "object" ? entry.params : null;
+  if (index === 0) return "Recommended";
+  if (params?.reasoning || /reason|opus|glm-5|k2|120b|70b/.test(model)) return "Reasoning";
+  if (/flash|instant|speed|highspeed|turbo|haiku|8b/.test(model)) return "Fast";
+  return "Catalog";
+}
+
+function iconForCatalogModel(entry: AvailableModelEntry, index: number) {
+  const model = entry.id.toLowerCase();
+  const params = entry.params && typeof entry.params === "object" ? entry.params : null;
+  if (params?.reasoning || /reason|opus|glm-5|k2|120b|70b/.test(model)) return Brain;
+  if (/flash|instant|speed|highspeed|turbo|haiku|8b/.test(model)) return Sparkles;
+  return index === 0 ? Zap : Brain;
+}
+
+function getModelOptions(authType: AuthType, availableModels: AvailableModelEntry[]) {
+  const provider = providerForAuthType(authType);
+  const catalogOptions = availableModels
+    .map((entry) => {
+      const parsed = parseModelRef(entry.id);
+      if (!parsed || parsed.provider !== provider) return null;
+      if (looksLikeEmbeddingOnlyModel(parsed.model)) return null;
+      return { entry, parsed };
+    })
+    .filter(
+      (row): row is { entry: AvailableModelEntry; parsed: { provider: string; model: string } } =>
+        row !== null,
+    )
+    .sort((a, b) => {
+      const scoreDelta = scoreCatalogModel(b.entry) - scoreCatalogModel(a.entry);
+      if (scoreDelta !== 0) return scoreDelta;
+      const aName = a.entry.alias || a.parsed.model;
+      const bName = b.entry.alias || b.parsed.model;
+      return aName.localeCompare(bName);
+    })
+    .slice(0, 8)
+    .map(({ entry, parsed }, index): ModelOption => {
+      const alias = entry.alias?.trim();
+      return {
+        id: entry.id,
+        name: alias || prettifyModelName(parsed.model),
+        badge: badgeForCatalogModel(entry, index),
+        description: describeCatalogModel(entry, index),
+        icon: iconForCatalogModel(entry, index),
+      };
+    });
+
+  return catalogOptions;
 }
 
 const slideVariants = {
@@ -120,10 +206,81 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
   const [authType, setAuthType] = useState<AuthType>(null);
   const [token, setToken] = useState("");
   const [profileName, setProfileName] = useState("anthropic:default");
-  const [selectedModel, setSelectedModel] = useState("anthropic/claude-sonnet-4-6");
+  const [selectedModel, setSelectedModel] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showToken, setShowToken] = useState(false);
+  const [availableModels, setAvailableModels] = useState<AvailableModelEntry[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    setCatalogLoading(true);
+    fetch("/api/settings/available-models", { signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Failed to load model catalog (${res.status})`);
+        return res.json();
+      })
+      .then((data) => {
+        const rows = Array.isArray(data?.models)
+          ? data.models
+              .map((entry: unknown): AvailableModelEntry | null => {
+                if (!entry || typeof entry !== "object") return null;
+                const id =
+                  typeof (entry as { id?: unknown }).id === "string"
+                    ? (entry as { id: string }).id.trim()
+                    : "";
+                if (!id || !parseModelRef(id)) return null;
+                const alias =
+                  typeof (entry as { alias?: unknown }).alias === "string"
+                    ? (entry as { alias: string }).alias
+                    : null;
+                const params =
+                  (entry as { params?: unknown }).params &&
+                  typeof (entry as { params?: unknown }).params === "object"
+                    ? ((entry as { params: AvailableModelEntry["params"] }).params ?? null)
+                    : null;
+                return { id, alias, params };
+              })
+              .filter((entry: AvailableModelEntry | null): entry is AvailableModelEntry =>
+                Boolean(entry),
+              )
+          : [];
+        if (cancelled) return;
+        setAvailableModels(rows);
+      })
+      .catch((err) => {
+        if ((err as { name?: string })?.name !== "AbortError") {
+          console.warn("[SetupWizard] Model catalog unavailable; using fallback models.", err);
+        }
+      })
+      .finally(() => {
+        clearTimeout(timeout);
+        if (!cancelled) {
+          setCatalogLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [isOpen]);
+
+  const modelOptions = useMemo(
+    () => getModelOptions(authType, availableModels),
+    [authType, availableModels],
+  );
+
+  useEffect(() => {
+    if (step !== 2 || modelOptions.length === 0) return;
+    if (!modelOptions.some((model) => model.id === selectedModel)) {
+      setSelectedModel(modelOptions[0]?.id ?? selectedModel);
+    }
+  }, [modelOptions, selectedModel, step]);
 
   const steps = [
     { title: "Welcome", icon: Rocket },
@@ -159,7 +316,11 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
           ? "anthropic"
           : authType === "minimax-key"
             ? "minimax"
-            : "zai";
+            : authType === "kimi-key"
+              ? "moonshot"
+              : authType === "groq-key"
+                ? "groq"
+                : "zai";
       const tokenValue = token.trim();
       const rawProfileName = profileName.trim();
       const profileParts = rawProfileName.split(":");
@@ -246,9 +407,10 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
     }
   }
 
-  async function saveModel() {
+  async function saveModel(modelOverride?: string) {
     setSaving(true);
     setError("");
+    const modelToSave = modelOverride || selectedModel;
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10_000);
@@ -256,7 +418,7 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
         const res = await fetch("/api/settings/models", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ defaultModel: selectedModel }),
+          body: JSON.stringify({ defaultModel: modelToSave }),
           signal: controller.signal,
         });
         clearTimeout(timeout);
@@ -341,115 +503,234 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
 
         <div className="space-y-3 mb-6">
           {/* Setup Token card */}
-          <button
-            onClick={() => {
-              setAuthType("setup-token");
-              setError("");
-            }}
-            className={`w-full text-left p-4 rounded-lg border transition-all ${
-              authType === "setup-token"
-                ? "bg-amber-600/10 border-amber-500/50"
-                : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Key
-                className={`w-5 h-5 ${authType === "setup-token" ? "text-amber-400" : "text-white/40"}`}
-              />
-              <div>
-                <div className="text-white font-medium">Claude Setup Token</div>
-                <div className="text-white/40 text-xs mt-0.5">
-                  From Anthropic Max subscription. Run{" "}
-                  <code className="text-amber-400/70 bg-white/5 px-1 rounded">
-                    claude setup-token
-                  </code>{" "}
-                  in terminal.
+          <div>
+            <button
+              onClick={() => {
+                setAuthType("setup-token");
+                setError("");
+              }}
+              className={`w-full text-left p-4 rounded-lg border transition-all ${
+                authType === "setup-token"
+                  ? "bg-amber-600/10 border-amber-500/50"
+                  : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Key
+                  className={`w-5 h-5 ${authType === "setup-token" ? "text-amber-400" : "text-white/40"}`}
+                />
+                <div>
+                  <div className="text-white font-medium">Claude Setup Token</div>
+                  <div className="text-white/40 text-xs mt-0.5">
+                    From Anthropic Max subscription. Run{" "}
+                    <code className="text-amber-400/70 bg-white/5 px-1 rounded">
+                      claude setup-token
+                    </code>{" "}
+                    in terminal.
+                  </div>
                 </div>
               </div>
-            </div>
-          </button>
+            </button>
+            <a
+              href="https://docs.argentos.ai/docs/keys/anthropic-setup-token"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 ml-12 inline-flex items-center gap-1 text-xs text-amber-400/70 hover:text-amber-400 hover:underline underline-offset-2"
+            >
+              Get your key →
+            </a>
+          </div>
 
           {/* API Key card */}
-          <button
-            onClick={() => {
-              setAuthType("api-key");
-              setError("");
-            }}
-            className={`w-full text-left p-4 rounded-lg border transition-all ${
-              authType === "api-key"
-                ? "bg-amber-600/10 border-amber-500/50"
-                : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Key
-                className={`w-5 h-5 ${authType === "api-key" ? "text-amber-400" : "text-white/40"}`}
-              />
-              <div>
-                <div className="text-white font-medium">Anthropic API Key</div>
-                <div className="text-white/40 text-xs mt-0.5">
-                  Standard API key from console.anthropic.com. Pay per token.
+          <div>
+            <button
+              onClick={() => {
+                setAuthType("api-key");
+                setError("");
+              }}
+              className={`w-full text-left p-4 rounded-lg border transition-all ${
+                authType === "api-key"
+                  ? "bg-amber-600/10 border-amber-500/50"
+                  : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Key
+                  className={`w-5 h-5 ${authType === "api-key" ? "text-amber-400" : "text-white/40"}`}
+                />
+                <div>
+                  <div className="text-white font-medium">Anthropic API Key</div>
+                  <div className="text-white/40 text-xs mt-0.5">
+                    Standard API key from console.anthropic.com. Pay per token.
+                  </div>
                 </div>
               </div>
-            </div>
-          </button>
+            </button>
+            <a
+              href="https://docs.argentos.ai/docs/keys/anthropic-api-key"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 ml-12 inline-flex items-center gap-1 text-xs text-amber-400/70 hover:text-amber-400 hover:underline underline-offset-2"
+            >
+              Get your key →
+            </a>
+          </div>
 
           {/* MiniMax Coding Plan key */}
-          <button
-            onClick={() => {
-              setAuthType("minimax-key");
-              setProfileName("minimax:default");
-              setError("");
-            }}
-            className={`w-full text-left p-4 rounded-lg border transition-all ${
-              authType === "minimax-key"
-                ? "bg-violet-600/10 border-violet-500/50"
-                : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Key
-                className={`w-5 h-5 ${
-                  authType === "minimax-key" ? "text-violet-400" : "text-white/40"
-                }`}
-              />
-              <div>
-                <div className="text-white font-medium">MiniMax API Key</div>
-                <div className="text-white/40 text-xs mt-0.5">
-                  Coding Plan or standard key from{" "}
-                  <span className="text-violet-400/70">platform.minimaxi.com</span>. Includes text,
-                  vision, TTS, video &amp; music.
+          <div>
+            <button
+              onClick={() => {
+                setAuthType("minimax-key");
+                setProfileName("minimax:default");
+                setError("");
+              }}
+              className={`w-full text-left p-4 rounded-lg border transition-all ${
+                authType === "minimax-key"
+                  ? "bg-violet-600/10 border-violet-500/50"
+                  : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Key
+                  className={`w-5 h-5 ${
+                    authType === "minimax-key" ? "text-violet-400" : "text-white/40"
+                  }`}
+                />
+                <div>
+                  <div className="text-white font-medium">MiniMax API Key</div>
+                  <div className="text-white/40 text-xs mt-0.5">
+                    Coding Plan or standard key from{" "}
+                    <span className="text-violet-400/70">platform.minimaxi.com</span>. Includes
+                    text, vision, TTS, video &amp; music.
+                  </div>
                 </div>
               </div>
-            </div>
-          </button>
+            </button>
+            <a
+              href="https://docs.argentos.ai/docs/keys/minimax"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 ml-12 inline-flex items-center gap-1 text-xs text-violet-400/70 hover:text-violet-400 hover:underline underline-offset-2"
+            >
+              Get your key →
+            </a>
+          </div>
 
           {/* GLM / ZhipuAI key */}
-          <button
-            onClick={() => {
-              setAuthType("glm-key");
-              setProfileName("zai:default");
-              setError("");
-            }}
-            className={`w-full text-left p-4 rounded-lg border transition-all ${
-              authType === "glm-key"
-                ? "bg-cyan-600/10 border-cyan-500/50"
-                : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Key
-                className={`w-5 h-5 ${authType === "glm-key" ? "text-cyan-400" : "text-white/40"}`}
-              />
-              <div>
-                <div className="text-white font-medium">GLM API Key</div>
-                <div className="text-white/40 text-xs mt-0.5">
-                  ZhipuAI key from <span className="text-cyan-400/70">bigmodel.cn</span>. GLM-4
-                  &amp; coding plan with bundled capabilities.
+          <div>
+            <button
+              onClick={() => {
+                setAuthType("glm-key");
+                setProfileName("zai:default");
+                setError("");
+              }}
+              className={`w-full text-left p-4 rounded-lg border transition-all ${
+                authType === "glm-key"
+                  ? "bg-cyan-600/10 border-cyan-500/50"
+                  : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Key
+                  className={`w-5 h-5 ${authType === "glm-key" ? "text-cyan-400" : "text-white/40"}`}
+                />
+                <div>
+                  <div className="text-white font-medium">GLM API Key</div>
+                  <div className="text-white/40 text-xs mt-0.5">
+                    ZhipuAI key from <span className="text-cyan-400/70">bigmodel.cn</span>. GLM-4
+                    &amp; coding plan with bundled capabilities.
+                  </div>
                 </div>
               </div>
-            </div>
-          </button>
+            </button>
+            <a
+              href="https://docs.argentos.ai/docs/keys/zai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 ml-12 inline-flex items-center gap-1 text-xs text-cyan-400/70 hover:text-cyan-400 hover:underline underline-offset-2"
+            >
+              Get your key →
+            </a>
+          </div>
+
+          {/* Kimi K2 / Moonshot key */}
+          <div>
+            <button
+              onClick={() => {
+                setAuthType("kimi-key");
+                setProfileName("moonshot:default");
+                setError("");
+              }}
+              className={`w-full text-left p-4 rounded-lg border transition-all ${
+                authType === "kimi-key"
+                  ? "bg-emerald-600/10 border-emerald-500/50"
+                  : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Key
+                  className={`w-5 h-5 ${
+                    authType === "kimi-key" ? "text-emerald-400" : "text-white/40"
+                  }`}
+                />
+                <div>
+                  <div className="text-white font-medium">Kimi K2 API Key</div>
+                  <div className="text-white/40 text-xs mt-0.5">
+                    Moonshot key from{" "}
+                    <span className="text-emerald-400/70">platform.moonshot.ai</span>. 256K context,
+                    long-form code &amp; reasoning.
+                  </div>
+                </div>
+              </div>
+            </button>
+            <a
+              href="https://docs.argentos.ai/docs/keys/kimi"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 ml-12 inline-flex items-center gap-1 text-xs text-emerald-400/70 hover:text-emerald-400 hover:underline underline-offset-2"
+            >
+              Get your key →
+            </a>
+          </div>
+
+          {/* Groq key */}
+          <div>
+            <button
+              onClick={() => {
+                setAuthType("groq-key");
+                setProfileName("groq:default");
+                setError("");
+              }}
+              className={`w-full text-left p-4 rounded-lg border transition-all ${
+                authType === "groq-key"
+                  ? "bg-orange-600/10 border-orange-500/50"
+                  : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Key
+                  className={`w-5 h-5 ${
+                    authType === "groq-key" ? "text-orange-400" : "text-white/40"
+                  }`}
+                />
+                <div>
+                  <div className="text-white font-medium">Groq API Key</div>
+                  <div className="text-white/40 text-xs mt-0.5">
+                    Free tier from <span className="text-orange-400/70">console.groq.com</span>.
+                    Llama, GPT-OSS, Qwen on Groq's fast LPU.
+                  </div>
+                </div>
+              </div>
+            </button>
+            <a
+              href="https://docs.argentos.ai/docs/keys/groq"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 ml-12 inline-flex items-center gap-1 text-xs text-orange-400/70 hover:text-orange-400 hover:underline underline-offset-2"
+            >
+              Get your key →
+            </a>
+          </div>
 
           {/* Skip card */}
           <button
@@ -493,7 +774,11 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
                     ? "MiniMax API Key"
                     : authType === "glm-key"
                       ? "GLM API Key"
-                      : "API Key"}
+                      : authType === "kimi-key"
+                        ? "Kimi / Moonshot API Key"
+                        : authType === "groq-key"
+                          ? "Groq API Key"
+                          : "API Key"}
               </label>
               <div className="relative">
                 <input
@@ -507,7 +792,11 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
                         ? "sk-cp-... or eyJ..."
                         : authType === "glm-key"
                           ? "your-glm-api-key"
-                          : "sk-ant-api..."
+                          : authType === "kimi-key"
+                            ? "sk-..."
+                            : authType === "groq-key"
+                              ? "gsk_..."
+                              : "sk-ant-api..."
                   }
                   className="w-full bg-[#12121f] border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/20 focus:border-amber-500/50 focus:outline-none pr-10"
                 />
@@ -531,7 +820,11 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
                     ? "minimax:default"
                     : authType === "glm-key"
                       ? "zai:default"
-                      : "anthropic:default"
+                      : authType === "kimi-key"
+                        ? "moonshot:default"
+                        : authType === "groq-key"
+                          ? "groq:default"
+                          : "anthropic:default"
                 }
                 className="w-full bg-[#12121f] border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/20 focus:border-amber-500/50 focus:outline-none"
               />
@@ -568,10 +861,8 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
   }
 
   function renderModelSelection() {
-    const modelOptions = getModelOptions(authType);
     // Default-select first option when provider changes and current selection doesn't match
-    const providerLabel =
-      authType === "minimax-key" ? "MiniMax" : authType === "glm-key" ? "GLM" : "Claude";
+    const providerLabel = providerLabelForAuthType(authType);
     const validIds = new Set(modelOptions.map((m) => m.id));
     const effectiveModel = validIds.has(selectedModel)
       ? selectedModel
@@ -582,46 +873,70 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
         <p className="text-white/50 text-sm text-center mb-6">
           Select your default {providerLabel} model. You can change this anytime.
         </p>
+        {catalogLoading && (
+          <div className="mb-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/50">
+            Loading current model catalog...
+          </div>
+        )}
 
-        <div className="space-y-3 mb-6">
-          {modelOptions.map((model) => {
-            const Icon = model.icon;
-            const isSelected = effectiveModel === model.id;
-            return (
-              <button
-                key={model.id}
-                onClick={() => setSelectedModel(model.id)}
-                className={`w-full text-left p-4 rounded-lg border transition-all ${
-                  isSelected
-                    ? "bg-amber-600/10 border-amber-500/50"
-                    : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Icon className={`w-5 h-5 ${isSelected ? "text-amber-400" : "text-white/40"}`} />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-white font-medium">{model.name}</span>
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                          model.badge === "Recommended"
-                            ? "bg-amber-600/20 text-amber-400"
-                            : model.badge === "Most Capable" || model.badge === "Balanced"
-                              ? "bg-purple-600/20 text-purple-400"
-                              : "bg-green-600/20 text-green-400"
-                        }`}
-                      >
-                        {model.badge}
-                      </span>
+        {modelOptions.length > 0 ? (
+          <div className="space-y-3 mb-6">
+            {modelOptions.map((model) => {
+              const Icon = model.icon;
+              const isSelected = effectiveModel === model.id;
+              return (
+                <button
+                  key={model.id}
+                  onClick={() => setSelectedModel(model.id)}
+                  className={`w-full text-left p-4 rounded-lg border transition-all ${
+                    isSelected
+                      ? "bg-amber-600/10 border-amber-500/50"
+                      : "bg-[#1a1a2e] border-white/10 hover:border-white/20"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon
+                      className={`w-5 h-5 ${isSelected ? "text-amber-400" : "text-white/40"}`}
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-medium">{model.name}</span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                            model.badge === "Recommended"
+                              ? "bg-amber-600/20 text-amber-400"
+                              : model.badge === "Reasoning" || model.badge === "Catalog"
+                                ? "bg-purple-600/20 text-purple-400"
+                                : "bg-green-600/20 text-green-400"
+                          }`}
+                        >
+                          {model.badge}
+                        </span>
+                      </div>
+                      <div className="text-white/40 text-xs mt-0.5">{model.description}</div>
                     </div>
-                    <div className="text-white/40 text-xs mt-0.5">{model.description}</div>
+                    {isSelected && <CheckCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />}
                   </div>
-                  {isSelected && <CheckCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="space-y-2 mb-6">
+            <label className="text-white/60 text-xs font-medium block">Model ID</label>
+            <input
+              type="text"
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              placeholder={`${providerForAuthType(authType)}/model-id`}
+              className="w-full bg-[#12121f] border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/20 focus:border-amber-500/50 focus:outline-none font-mono"
+            />
+            <p className="text-white/35 text-xs">
+              The live catalog did not return models for this provider. Enter a model reference or
+              skip this step.
+            </p>
+          </div>
+        )}
 
         {error && (
           <div className="flex items-center gap-2 text-red-400 text-sm mb-4">
@@ -648,9 +963,9 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
             <button
               onClick={() => {
                 setSelectedModel(effectiveModel);
-                saveModel();
+                saveModel(effectiveModel);
               }}
-              disabled={saving}
+              disabled={saving || !effectiveModel.trim()}
               className="flex items-center gap-2 px-6 py-2.5 bg-amber-600 hover:bg-amber-500 disabled:bg-white/10 disabled:text-white/30 text-white font-medium rounded-lg transition-colors text-sm"
             >
               {saving ? "Saving..." : "Continue"}
@@ -670,8 +985,7 @@ export function SetupWizard({ isOpen, onComplete }: SetupWizardProps) {
           ? `Setup token saved as ${profileName}`
           : `API key saved as ${profileName}`;
 
-    const modelName =
-      getModelOptions(authType).find((m) => m.id === selectedModel)?.name || selectedModel;
+    const modelName = modelOptions.find((m) => m.id === selectedModel)?.name || selectedModel;
 
     return (
       <div className="flex flex-col items-center text-center px-4">

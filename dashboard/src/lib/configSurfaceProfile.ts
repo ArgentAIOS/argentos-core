@@ -11,30 +11,19 @@ export type DashboardMode = "personal" | "operations";
  * business decision that requires explicit sign-off from Jason.
  * See: ops/rules/never-do.md → "Core / Business Boundary"
  */
-export const PUBLIC_CORE_BLOCKED_CONFIG_TABS = new Set<string>([
-  "systems",
-  "capabilities",
-  "security",
-  "gateway",
-  "database",
-  "devices",
-  "observability",
-  "marketplace",
-  "license",
-  "logs",
-]);
+export const PUBLIC_CORE_BLOCKED_CONFIG_TABS = new Set<string>();
 
 export function parseDashboardSurfaceProfile(
   rawConfigText: string | null | undefined,
 ): DashboardSurfaceProfile {
   if (!rawConfigText) {
-    return "full";
+    return "public-core";
   }
   try {
     const parsed = JSON.parse(rawConfigText);
-    return parsed?.distribution?.surfaceProfile === "public-core" ? "public-core" : "full";
+    return parsed?.distribution?.surfaceProfile === "full" ? "full" : "public-core";
   } catch {
-    return "full";
+    return "public-core";
   }
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@argentos/feishu",
-  "version": "2026.3.2",
+  "version": "2026.4.24-dev.0",
   "description": "ArgentOS Feishu channel plugin",
   "type": "module",
   "devDependencies": {

@@ -284,6 +284,45 @@ export async function statusCommand(
       .filter(Boolean);
     return parts.length > 0 ? parts.join(", ") : "disabled";
   })();
+  const executiveShadowValue = (() => {
+    const status = summary.executiveShadow;
+    if (!status) {
+      return muted("unknown");
+    }
+    if (!status.reachable) {
+      return muted(status.error ? `unavailable (${status.error})` : "unavailable");
+    }
+    const parts = [
+      ok("reachable"),
+      status.activeLane ? `lane ${status.activeLane}` : "lane none",
+      status.laneCounts ? `pending ${status.laneCounts.pending}` : null,
+      status.highestPendingPriority != null
+        ? `pending-priority ${status.highestPendingPriority}`
+        : null,
+      status.lastEventSummary ? `last ${status.lastEventSummary}` : null,
+      status.tickCount != null ? `ticks ${status.tickCount}` : null,
+      status.bootCount != null ? `boots ${status.bootCount}` : null,
+      status.journalEventCount != null ? `journal ${status.journalEventCount}` : null,
+    ].filter(Boolean);
+    return parts.join(" · ");
+  })();
+  const executiveShadowInspectionValue = (() => {
+    const inspection = summary.executiveShadowKernelInspection;
+    if (!inspection) {
+      return muted("unknown");
+    }
+    if (!inspection.comparable) {
+      return muted(inspection.notes.join(" · ") || "not comparable");
+    }
+    const parts = [
+      inspection.laneMatch ? ok("lane aligned") : warn("lane diverged"),
+      inspection.kernelActiveLane ? `kernel ${inspection.kernelActiveLane}` : "kernel none",
+      inspection.executiveActiveLane ? `shadow ${inspection.executiveActiveLane}` : "shadow none",
+      inspection.kernelFocus ? `focus ${inspection.kernelFocus}` : null,
+      inspection.executiveLastEventSummary ? `last ${inspection.executiveLastEventSummary}` : null,
+    ].filter(Boolean);
+    return parts.join(" · ");
+  })();
   const lastHeartbeatValue = (() => {
     if (!opts.deep) {
       return null;
@@ -395,6 +434,8 @@ export async function statusCommand(
     { Item: "Probes", Value: probesValue },
     { Item: "Events", Value: eventsValue },
     { Item: "Heartbeat", Value: heartbeatValue },
+    { Item: "Executive shadow", Value: executiveShadowValue },
+    { Item: "Exec inspect", Value: executiveShadowInspectionValue },
     ...(lastHeartbeatValue ? [{ Item: "Last heartbeat", Value: lastHeartbeatValue }] : []),
     {
       Item: "Sessions",

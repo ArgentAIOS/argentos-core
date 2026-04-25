@@ -315,6 +315,31 @@ describe("createTelegramBot", () => {
     expect(registered.some((command) => reserved.has(command.command))).toBe(false);
   });
 
+  it("caps the Telegram command menu at the provider limit", () => {
+    const customCommands = Array.from({ length: 105 }, (_, index) => ({
+      command: `custom_${index}`,
+      description: `Custom command ${index}`,
+    }));
+    loadConfig.mockReturnValue({
+      commands: { native: false },
+      channels: {
+        telegram: {
+          customCommands,
+        },
+      },
+    });
+
+    createTelegramBot({ token: "tok" });
+
+    const registered = setMyCommandsSpy.mock.calls[0]?.[0] as Array<{
+      command: string;
+      description: string;
+    }>;
+    expect(registered).toHaveLength(100);
+    expect(registered[0]?.command).toBe("custom_0");
+    expect(registered.at(-1)?.command).toBe("custom_99");
+  });
+
   it("uses wrapped fetch when global fetch is available", () => {
     const originalFetch = globalThis.fetch;
     const fetchSpy = vi.fn() as unknown as typeof fetch;

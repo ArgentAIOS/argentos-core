@@ -9,7 +9,7 @@ import { sanitizeToolResultImages } from "./tool-images.js";
 
 // NOTE(steipete): Upstream read now does file-magic MIME detection; we keep the wrapper
 // to normalize payloads and sanitize oversized images before they hit providers.
-type ToolContentBlock = AgentToolResult<unknown>["content"][number];
+type ToolContentBlock = AgentToolResult["content"][number];
 type ImageContentBlock = Extract<ToolContentBlock, { type: "image" }>;
 type TextContentBlock = Extract<ToolContentBlock, { type: "text" }>;
 
@@ -42,9 +42,9 @@ function rewriteReadImageHeader(text: string, mimeType: string): string {
 }
 
 async function normalizeReadImageResult(
-  result: AgentToolResult<unknown>,
+  result: AgentToolResult,
   filePath: string,
-): Promise<AgentToolResult<unknown>> {
+): Promise<AgentToolResult> {
   const content = Array.isArray(result.content) ? result.content : [];
 
   const image = content.find(
@@ -113,18 +113,18 @@ export const CLAUDE_PARAM_GROUPS = {
   edit: [
     { keys: ["path", "file_path"], label: "path (path or file_path)" },
     {
-      keys: ["oldText", "old_string"],
-      label: "oldText (oldText or old_string)",
+      keys: ["oldText", "old_string", "edits"],
+      label: "oldText (oldText or old_string) or edits",
     },
     {
-      keys: ["newText", "new_string"],
-      label: "newText (newText or new_string)",
+      keys: ["newText", "new_string", "edits"],
+      label: "newText (newText or new_string) or edits",
     },
   ],
 } as const;
 
 // Normalize tool parameters from Claude Code conventions to pi-coding-agent conventions.
-// Claude Code uses file_path/old_string/new_string while pi-coding-agent uses path/oldText/newText.
+// Claude Code uses file_path/old_string/new_string while pi-coding-agent uses path/edits[].
 // This prevents models trained on Claude Code from getting stuck in tool-call loops.
 export function normalizeToolParams(params: unknown): Record<string, unknown> | undefined {
   if (!params || typeof params !== "object") {
@@ -146,6 +146,15 @@ export function normalizeToolParams(params: unknown): Record<string, unknown> | 
   if ("new_string" in normalized && !("newText" in normalized)) {
     normalized.newText = normalized.new_string;
     delete normalized.new_string;
+  }
+  if (
+    !Array.isArray(normalized.edits) &&
+    typeof normalized.oldText === "string" &&
+    typeof normalized.newText === "string"
+  ) {
+    normalized.edits = [{ oldText: normalized.oldText, newText: normalized.newText }];
+    delete normalized.oldText;
+    delete normalized.newText;
   }
   return normalized;
 }
@@ -216,6 +225,9 @@ export function assertRequiredParams(
         return false;
       }
       const value = record[key];
+      if (Array.isArray(value)) {
+        return value.length > 0;
+      }
       if (typeof value !== "string") {
         return false;
       }
@@ -295,17 +307,23 @@ function tryResolveSkillFallbackPath(
   requestedPath: string,
   workspaceDir?: string,
 ): string | undefined {
-  if (!workspaceDir) return undefined;
+  if (!workspaceDir) {
+    return undefined;
+  }
 
   // Match paths ending in /skills/<skill-name>/SKILL.md (case-sensitive)
   const match = requestedPath.match(/\/skills\/([^/]+)\/SKILL\.md$/);
-  if (!match) return undefined;
+  if (!match) {
+    return undefined;
+  }
 
   const skillName = match[1];
   const workspaceSkillPath = path.join(workspaceDir, "skills", skillName, "SKILL.md");
 
   // Only fallback if the requested path doesn't exist and the workspace path does
-  if (requestedPath === workspaceSkillPath) return undefined;
+  if (requestedPath === workspaceSkillPath) {
+    return undefined;
+  }
   try {
     fs.accessSync(workspaceSkillPath, fs.constants.R_OK);
     return workspaceSkillPath;

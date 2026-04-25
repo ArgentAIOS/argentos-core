@@ -12,6 +12,7 @@
  */
 
 import type { TextContent, ImageContent } from "../argent-ai/types.js";
+import type { ArgentConfig } from "../config/config.js";
 import type {
   AgentSession,
   AgentSessionAgent,
@@ -85,6 +86,8 @@ class ArgentAgentSessionImpl implements AgentSession {
   private _autoRetry = true;
   private _thinkingLevel: ThinkingLevel;
   private _model: unknown;
+  private _config: ArgentConfig | undefined;
+  private _agentDir: string | undefined;
   private _steeringMode: "all" | "one-at-a-time" = "all";
   private _followUpMode: "all" | "one-at-a-time" = "all";
   private _steeringQueue: string[] = [];
@@ -100,11 +103,17 @@ class ArgentAgentSessionImpl implements AgentSession {
     model: unknown,
     thinkingLevel: ThinkingLevel,
     tools: AgentTool[],
+    opts?: {
+      config?: ArgentConfig;
+      agentDir?: string;
+    },
   ) {
     this.agent = agent;
     this.sessionManager = sm;
     this.settingsManager = settings;
     this._model = model;
+    this._config = opts?.config;
+    this._agentDir = opts?.agentDir;
     this._thinkingLevel = thinkingLevel;
     this._tools = tools;
     this._steeringMode = settings.getSteeringMode();
@@ -514,6 +523,8 @@ class ArgentAgentSessionImpl implements AgentSession {
     const prepared = await applyVisionFallbackToMessages(currentMessages, {
       modelHasVision: false,
       minimaxBaseUrl: modelMeta.provider === "minimax" ? modelMeta.baseUrl : undefined,
+      cfg: this._config,
+      agentDir: this._agentDir,
     });
     if (prepared !== currentMessages) {
       this.agent.replaceMessages(prepared);
@@ -992,6 +1003,13 @@ export async function createArgentAgentSession(
     options?.model,
     thinkingLevel,
     tools,
+    {
+      config: options?.config,
+      agentDir:
+        typeof options?.agentDir === "string" && options.agentDir.trim()
+          ? options.agentDir
+          : undefined,
+    },
   );
 
   return {

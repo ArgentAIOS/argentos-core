@@ -371,9 +371,7 @@ export function createArgentCodingTools(options?: {
       agentDir: options?.agentDir,
       sandboxRoot,
       workspaceDir: options?.workspaceDir,
-      extraAllowedPaths: options?.config?.agents?.defaults?.extraAllowedPaths as
-        | string[]
-        | undefined,
+      extraAllowedPaths: options?.config?.agents?.defaults?.extraAllowedPaths,
       sandboxed: !!sandbox,
       config: options?.config,
       pluginToolAllowlist: collectExplicitAllowlist([
@@ -558,12 +556,14 @@ export function createArgentCodingTools(options?: {
     if (!subsystemCoreSet) {
       // Apply config overrides only for interactive sessions
       if (Array.isArray(toolSearchConfig.coreInclude)) {
-        for (const name of toolSearchConfig.coreInclude)
+        for (const name of toolSearchConfig.coreInclude) {
           coreOverrides.add(name.trim().toLowerCase());
+        }
       }
       if (Array.isArray(toolSearchConfig.coreExclude)) {
-        for (const name of toolSearchConfig.coreExclude)
+        for (const name of toolSearchConfig.coreExclude) {
           coreOverrides.delete(name.trim().toLowerCase());
+        }
       }
     }
 

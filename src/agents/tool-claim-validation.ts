@@ -8,6 +8,7 @@ const MONITORED_CLAIM_TOOLS = [
   "memory_store",
   "memory_reflect",
   "tasks",
+  "marketplace",
 ] as const;
 
 const EXECUTED_TOOL_NAMES = [...MONITORED_CLAIM_TOOLS, "read", "exec", "process"] as const;
@@ -17,6 +18,7 @@ const EXTERNAL_ARTIFACT_TOOLS = new Set<ExecutedToolName>([
   "web_fetch",
   "doc_panel",
   "message",
+  "marketplace",
 ]);
 
 const TOOL_CANONICAL_MAP: Array<{ canonical: ExecutedToolName; matches: RegExp[] }> = [
@@ -51,6 +53,10 @@ const TOOL_CANONICAL_MAP: Array<{ canonical: ExecutedToolName; matches: RegExp[]
   {
     canonical: "tasks",
     matches: [/\btasks\b/i],
+  },
+  {
+    canonical: "marketplace",
+    matches: [/\bmarketplace\b/i],
   },
   {
     canonical: "read",
@@ -96,6 +102,10 @@ const EXPLICIT_TOOL_ALIASES: Array<{
     canonical: "tasks",
     toolPattern: "(?:`?tasks`?)",
   },
+  {
+    canonical: "marketplace",
+    toolPattern: "(?:`?marketplace`?|Marketplace)",
+  },
 ];
 
 const CLAIM_VERB_FRAGMENT =
@@ -126,6 +136,9 @@ const STRUCTURED_ACTION_CONTROL_KEYS = new Set([
   "url",
   "path",
 ]);
+const PSEUDO_TOOL_CALL_BLOCK_RE = /\[TOOL_CALL\]([\s\S]{0,2400}?)\[\/TOOL_CALL\]/gi;
+const PSEUDO_TOOL_NAME_RE =
+  /\btool\s*(?::|=>)\s*(?:"([^"]+)"|'([^']+)'|`([^`]+)`|([A-Za-z0-9_-]+))/i;
 
 const DIRECT_ACTION_PREFIX = String.raw`(?:I(?:['’]m| am)?\s+(?:going to\s+)?|I(?:['’]ll| will)\s+|let me\s+|next thing I(?:['’]m| am)\s+(?:doing|going to do)\s+is\s+)`;
 const RESEARCH_TARGET_FRAGMENT = String.raw`(?:docs?|documentation|readme|spec(?:ification)?|repo(?:sitory)?|file|files|source|code|codebase)`;
@@ -188,6 +201,10 @@ const COMMITMENT_PATTERNS: readonly CommitmentPattern[] = [
       ),
       new RegExp(
         String.raw`\b(?:I(?:['’]m| am)\s+)?(?:pulling|fetching|checking|reading|opening|looking\s+up)\b[^.!?\n]{0,80}\b(?:page|text|docs?|documentation|readme|spec(?:ification)?|url|link|site|repo(?:sitory)?|source|code|codebase)\b[^.!?\n]{0,40}\b(?:now|right\s+now)\b`,
+        "gi",
+      ),
+      new RegExp(
+        String.raw`\b${DIRECT_ACTION_PREFIX}(?:browse|browsing|search|searching|check|checking|look(?:ing)?|see(?:ing)?)\b[^.!?\n]{0,120}\b(?:what(?:['’]s|\s+is)\s+(?:on|available\s+(?:on|in))\s+)?(?:the\s+)?marketplace\b[^.!?\n]{0,80}`,
         "gi",
       ),
     ],
@@ -277,6 +294,7 @@ const COMMITMENT_PATTERNS: readonly CommitmentPattern[] = [
       "read",
       "doc_panel",
       "tasks",
+      "marketplace",
       "message",
     ],
     patterns: [
@@ -297,6 +315,7 @@ const TOOL_EVIDENCE_KIND_MAP: Partial<Record<ExecutedToolName, CommitmentEvidenc
   web_fetch: "research",
   browser: "research",
   read: "research",
+  marketplace: "research",
   doc_panel: "planning",
   tasks: "task",
   message: "message",
@@ -315,6 +334,7 @@ const GENERIC_PROGRESS_TOOL_FAMILIES: ExecutedToolName[] = [
   "web_fetch",
   "browser",
   "read",
+  "marketplace",
   "doc_panel",
   "tasks",
   "message",
@@ -583,6 +603,22 @@ function isLikelyStandaloneToolActionJson(responseText: string): boolean {
 
 function extractStructuredClaims(responseText: string): StructuredClaimMention[] {
   const out: StructuredClaimMention[] = [];
+  let pseudoMatch: RegExpExecArray | null;
+  const pseudoRegex = new RegExp(PSEUDO_TOOL_CALL_BLOCK_RE.source, PSEUDO_TOOL_CALL_BLOCK_RE.flags);
+  while ((pseudoMatch = pseudoRegex.exec(responseText)) !== null) {
+    const block = pseudoMatch[1] ?? "";
+    const toolMatch = PSEUDO_TOOL_NAME_RE.exec(block);
+    const rawTool = toolMatch?.[1] ?? toolMatch?.[2] ?? toolMatch?.[3] ?? toolMatch?.[4];
+    const canonical = rawTool ? canonicalizeToolName(rawTool) : null;
+    out.push({
+      tool:
+        canonical && MONITORED_CLAIM_TOOLS.includes(canonical as MonitoredClaimTool)
+          ? (canonical as MonitoredClaimTool)
+          : "tool_json",
+      claimText: pseudoMatch[0].trim().slice(0, 240),
+      highConfidence: true,
+    });
+  }
   if (
     BROWSER_ACTION_JSON_RE.test(responseText) &&
     BROWSER_REQUEST_KIND_JSON_RE.test(responseText)

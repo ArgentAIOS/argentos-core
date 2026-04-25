@@ -16,6 +16,7 @@
  */
 
 import type { TextContent, ImageContent, StreamEvent, ModelConfig } from "../argent-ai/types.js";
+import type { ArgentConfig } from "../config/config.js";
 import type { ToolDefinition, ExtensionContext } from "./extension-types.js";
 import type { AgentMessage, AgentTool, AgentToolResult } from "./pi-types.js";
 import type {
@@ -193,6 +194,7 @@ export interface CreateAgentSessionOptions {
   authStorage?: unknown;
   modelRegistry?: unknown;
   model?: unknown;
+  config?: ArgentConfig;
   thinkingLevel?: ThinkingLevel;
   scopedModels?: Array<{ model: unknown; thinkingLevel: ThinkingLevel }>;
   tools?: AgentTool[];

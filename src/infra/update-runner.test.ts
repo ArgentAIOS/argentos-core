@@ -51,7 +51,7 @@ describe("runGatewayUpdate", () => {
     const { runner, calls } = createRunner({
       [`git -C ${tempDir} rev-parse --show-toplevel`]: { stdout: tempDir },
       [`git -C ${tempDir} rev-parse HEAD`]: { stdout: "abc123" },
-      [`git -C ${tempDir} rev-parse --abbrev-ref HEAD`]: { stdout: "main" },
+      [`git -C ${tempDir} rev-parse --abbrev-ref HEAD`]: { stdout: "dev" },
       [`git -C ${tempDir} status --porcelain -- :!dist/control-ui/`]: { stdout: " M README.md" },
     });
 
@@ -76,10 +76,10 @@ describe("runGatewayUpdate", () => {
     const { runner, calls } = createRunner({
       [`git -C ${tempDir} rev-parse --show-toplevel`]: { stdout: tempDir },
       [`git -C ${tempDir} rev-parse HEAD`]: { stdout: "abc123" },
-      [`git -C ${tempDir} rev-parse --abbrev-ref HEAD`]: { stdout: "main" },
+      [`git -C ${tempDir} rev-parse --abbrev-ref HEAD`]: { stdout: "dev" },
       [`git -C ${tempDir} status --porcelain -- :!dist/control-ui/`]: { stdout: "" },
       [`git -C ${tempDir} rev-parse --abbrev-ref --symbolic-full-name @{upstream}`]: {
-        stdout: "origin/main",
+        stdout: "origin/dev",
       },
       [`git -C ${tempDir} fetch --all --prune --tags`]: { stdout: "" },
       [`git -C ${tempDir} rev-parse @{upstream}`]: { stdout: "upstream123" },
@@ -109,10 +109,10 @@ describe("runGatewayUpdate", () => {
     const { runner, calls } = createRunner({
       [`git -C ${tempDir} rev-parse --show-toplevel`]: { stdout: tempDir },
       [`git -C ${tempDir} rev-parse HEAD`]: { stdout: "abc123" },
-      [`git -C ${tempDir} rev-parse --abbrev-ref HEAD`]: { stdout: "main" },
+      [`git -C ${tempDir} rev-parse --abbrev-ref HEAD`]: { stdout: "dev" },
       [`git -C ${tempDir} status --porcelain -- :!dist/control-ui/`]: { stdout: "" },
       [`git -C ${tempDir} rev-parse --abbrev-ref --symbolic-full-name @{upstream}`]: {
-        stdout: "origin/main",
+        stdout: "origin/dev",
       },
       [`git -C ${tempDir} fetch --all --prune --tags`]: { stdout: "" },
       [`git -C ${tempDir} rev-parse @{upstream}`]: { stdout: "abc123" },
@@ -127,6 +127,200 @@ describe("runGatewayUpdate", () => {
     expect(result.status).toBe("skipped");
     expect(result.reason).toBe("up-to-date");
     expect(calls.some((call) => call.includes("rev-list"))).toBe(false);
+  });
+
+  it("repairs runtime snapshot even when git is already up to date", async () => {
+    const gitRoot = path.join(tempDir, "git");
+    const snapshotRoot = path.join(tempDir, "snapshot");
+    await fs.mkdir(path.join(gitRoot, ".git"), { recursive: true });
+    await fs.writeFile(
+      path.join(gitRoot, "package.json"),
+      JSON.stringify({ name: "argentos", version: "1.0.0" }),
+      "utf-8",
+    );
+    await fs.writeFile(path.join(gitRoot, "argent.mjs"), "fresh cli", "utf-8");
+    await fs.writeFile(path.join(gitRoot, ".git", "HEAD"), "ref: refs/heads/dev\n", "utf-8");
+    await fs.mkdir(snapshotRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(snapshotRoot, "package.json"),
+      JSON.stringify({ name: "argentos", version: "0.9.0" }),
+      "utf-8",
+    );
+    await fs.writeFile(path.join(snapshotRoot, "argent.mjs"), "old cli", "utf-8");
+
+    const { runner, calls } = createRunner({
+      [`git -C ${gitRoot} rev-parse --show-toplevel`]: { stdout: gitRoot },
+      [`git -C ${gitRoot} rev-parse HEAD`]: { stdout: "abc123" },
+      [`git -C ${gitRoot} rev-parse --abbrev-ref HEAD`]: { stdout: "dev" },
+      [`git -C ${gitRoot} status --porcelain -- :!dist/control-ui/`]: { stdout: "" },
+      [`git -C ${gitRoot} rev-parse --abbrev-ref --symbolic-full-name @{upstream}`]: {
+        stdout: "origin/dev",
+      },
+      [`git -C ${gitRoot} fetch --all --prune --tags`]: { stdout: "" },
+      [`git -C ${gitRoot} rev-parse @{upstream}`]: { stdout: "abc123" },
+    });
+
+    const result = await runGatewayUpdate({
+      cwd: gitRoot,
+      argv1: path.join(snapshotRoot, "argent.mjs"),
+      runCommand: async (argv, _options) => runner(argv),
+      timeoutMs: 5000,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.reason).toBeUndefined();
+    expect(result.steps.some((step) => step.name === "runtime snapshot sync")).toBe(true);
+    await expect(fs.readFile(path.join(snapshotRoot, "argent.mjs"), "utf-8")).resolves.toBe(
+      "fresh cli",
+    );
+    await expect(pathExists(path.join(snapshotRoot, ".git"))).resolves.toBe(false);
+    expect(calls.some((call) => call.includes("rev-list"))).toBe(false);
+  });
+
+  it("treats preflight lint as advisory when candidate build passes", async () => {
+    await fs.mkdir(path.join(tempDir, ".git"));
+    await fs.writeFile(
+      path.join(tempDir, "package.json"),
+      JSON.stringify({ name: "argentos", version: "1.0.0", packageManager: "pnpm@10.0.0" }),
+      "utf-8",
+    );
+    const upstreamSha = "upstream123";
+    const calls: string[] = [];
+    let headReads = 0;
+    const runner = async (argv: string[]) => {
+      const key = argv.join(" ");
+      calls.push(key);
+      if (key === `git -C ${tempDir} rev-parse --show-toplevel`) {
+        return { stdout: tempDir, stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} rev-parse HEAD`) {
+        headReads += 1;
+        return { stdout: headReads === 1 ? "abc123" : upstreamSha, stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} rev-parse --abbrev-ref HEAD`) {
+        return { stdout: "dev", stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} status --porcelain -- :!dist/control-ui/`) {
+        return { stdout: "", stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} rev-parse --abbrev-ref --symbolic-full-name @{upstream}`) {
+        return { stdout: "origin/dev", stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} rev-parse @{upstream}`) {
+        return { stdout: upstreamSha, stderr: "", code: 0 };
+      }
+      if (key === `git -C ${tempDir} rev-list --max-count=10 ${upstreamSha}`) {
+        return { stdout: `${upstreamSha}\n`, stderr: "", code: 0 };
+      }
+      if (key === "pnpm lint") {
+        return { stdout: "", stderr: "legacy lint debt", code: 1 };
+      }
+      return { stdout: "", stderr: "", code: 0 };
+    };
+
+    const result = await runGatewayUpdate({
+      cwd: tempDir,
+      runCommand: async (argv, _options) => runner(argv),
+      timeoutMs: 5000,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.reason).toBeUndefined();
+    expect(result.steps.some((step) => step.name.startsWith("preflight lint advisory"))).toBe(true);
+    expect(calls).toContain("pnpm lint");
+    expect(calls).toContain("pnpm build");
+  });
+
+  it("syncs hosted git updates and dashboard builds into the runtime snapshot package", async () => {
+    const gitRoot = path.join(tempDir, "git");
+    const snapshotRoot = path.join(tempDir, "snapshot");
+    await fs.mkdir(path.join(gitRoot, ".git"), { recursive: true });
+    await fs.mkdir(path.join(gitRoot, "dashboard", "dist"), { recursive: true });
+    await fs.mkdir(path.join(gitRoot, "dist", "control-ui"), { recursive: true });
+    await fs.writeFile(
+      path.join(gitRoot, "package.json"),
+      JSON.stringify({ name: "argentos", version: "1.0.0", packageManager: "pnpm@10.0.0" }),
+      "utf-8",
+    );
+    await fs.writeFile(
+      path.join(gitRoot, "dashboard", "package.json"),
+      JSON.stringify({ name: "argent-dashboard" }),
+      "utf-8",
+    );
+    await fs.writeFile(path.join(gitRoot, "argent.mjs"), "source cli", "utf-8");
+    await fs.writeFile(path.join(gitRoot, ".git", "HEAD"), "ref: refs/heads/dev\n", "utf-8");
+    await fs.writeFile(
+      path.join(gitRoot, "dist", "control-ui", "index.html"),
+      "fresh control ui",
+      "utf-8",
+    );
+    await fs.writeFile(
+      path.join(gitRoot, "dashboard", "dist", "index.html"),
+      "fresh dashboard ui",
+      "utf-8",
+    );
+    await fs.mkdir(snapshotRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(snapshotRoot, "package.json"),
+      JSON.stringify({ name: "argentos", version: "0.9.0" }),
+      "utf-8",
+    );
+    await fs.writeFile(path.join(snapshotRoot, "stale.txt"), "stale", "utf-8");
+    await fs.writeFile(path.join(snapshotRoot, "argent.mjs"), "old cli", "utf-8");
+
+    const upstreamSha = "upstream123";
+    const calls: string[] = [];
+    let headReads = 0;
+    const runner = async (argv: string[]) => {
+      const key = argv.join(" ");
+      calls.push(key);
+      if (key === `git -C ${gitRoot} rev-parse --show-toplevel`) {
+        return { stdout: gitRoot, stderr: "", code: 0 };
+      }
+      if (key === `git -C ${gitRoot} rev-parse HEAD`) {
+        headReads += 1;
+        return { stdout: headReads === 1 ? "abc123" : upstreamSha, stderr: "", code: 0 };
+      }
+      if (key === `git -C ${gitRoot} rev-parse --abbrev-ref HEAD`) {
+        return { stdout: "dev", stderr: "", code: 0 };
+      }
+      if (key === `git -C ${gitRoot} status --porcelain -- :!dist/control-ui/`) {
+        return { stdout: "", stderr: "", code: 0 };
+      }
+      if (key === `git -C ${gitRoot} rev-parse --abbrev-ref --symbolic-full-name @{upstream}`) {
+        return { stdout: "origin/dev", stderr: "", code: 0 };
+      }
+      if (key === `git -C ${gitRoot} rev-parse @{upstream}`) {
+        return { stdout: upstreamSha, stderr: "", code: 0 };
+      }
+      if (key === `git -C ${gitRoot} rev-list --max-count=10 ${upstreamSha}`) {
+        return { stdout: `${upstreamSha}\n`, stderr: "", code: 0 };
+      }
+      return { stdout: "", stderr: "", code: 0 };
+    };
+
+    const result = await runGatewayUpdate({
+      cwd: gitRoot,
+      argv1: path.join(snapshotRoot, "argent.mjs"),
+      runCommand: async (argv, _options) => runner(argv),
+      timeoutMs: 5000,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.steps.some((step) => step.name === "runtime snapshot sync")).toBe(true);
+    await expect(fs.readFile(path.join(snapshotRoot, "argent.mjs"), "utf-8")).resolves.toBe(
+      "source cli",
+    );
+    await expect(
+      fs.readFile(path.join(snapshotRoot, "dist", "control-ui", "index.html"), "utf-8"),
+    ).resolves.toBe("fresh control ui");
+    await expect(
+      fs.readFile(path.join(snapshotRoot, "dashboard", "dist", "index.html"), "utf-8"),
+    ).resolves.toBe("fresh dashboard ui");
+    await expect(pathExists(path.join(snapshotRoot, "stale.txt"))).resolves.toBe(false);
+    await expect(pathExists(path.join(snapshotRoot, ".git"))).resolves.toBe(false);
+    expect(calls).toContain("pnpm ui:build");
+    expect(calls).toContain("pnpm exec vite build");
   });
 
   it("uses stable tag when beta tag is older than release", async () => {
@@ -152,7 +346,7 @@ describe("runGatewayUpdate", () => {
       "pnpm ui:build": { stdout: "" },
       [`git -C ${tempDir} checkout -- dist/control-ui/`]: { stdout: "" },
       "pnpm argent setup": { stdout: "" },
-      "pnpm argent doctor --non-interactive": { stdout: "" },
+      "pnpm argent doctor --non-interactive --repair": { stdout: "" },
     });
 
     const result = await runGatewayUpdate({
@@ -167,7 +361,7 @@ describe("runGatewayUpdate", () => {
     expect(calls).not.toContain(`git -C ${tempDir} checkout --detach ${betaTag}`);
     expect(calls).toContain("pnpm argent setup");
     expect(calls.indexOf("pnpm argent setup")).toBeLessThan(
-      calls.indexOf("pnpm argent doctor --non-interactive"),
+      calls.indexOf("pnpm argent doctor --non-interactive --repair"),
     );
   });
 

@@ -3,6 +3,7 @@ import type { MemoryCitationsMode } from "../config/types.memory.js";
 import type { Lesson } from "../memory/memu-types.js";
 import type { ResolvedTimeFormat } from "./date-time.js";
 import type { EmbeddedContextFile } from "./pi-embedded-helpers.js";
+import { getCurrentPromptBudgetTracker } from "../argent-agent/prompt-budget.js";
 import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import { getMemoryAdapter } from "../data/storage-factory.js";
 import { setActiveLessons } from "../infra/sis-active-lessons.js";
@@ -317,7 +318,7 @@ function buildDocsSection(params: { docsPath?: string; isMinimal: boolean; readT
     "Mirror: https://docs.argent.ai",
     "Source: https://github.com/argent/argent",
     "Community: https://discord.com/invite/clawd",
-    "Find new skills: https://clawhub.com",
+    "Find skills, plugins, and connectors through the ArgentOS Marketplace.",
     "For Argent behavior, commands, config, or architecture: consult local docs first.",
     "When diagnosing issues, run `argent status` yourself when possible; only ask the user if you lack access (e.g., sandboxed).",
     "",
@@ -493,6 +494,11 @@ export async function buildAgentSystemPrompt(params: {
     toolLines.push(summary ? `- ${name}: ${summary}` : `- ${name}`);
   }
 
+  // Opt-in prompt budget instrumentation — see docs/argent/PROMPT_BUDGET.md.
+  // Safe to call unconditionally: returns undefined unless ARGENT_PROMPT_BUDGET_LOG=1.
+  const budget = getCurrentPromptBudgetTracker();
+  budget?.record("tools-spec", toolLines);
+
   const hasGateway = availableTools.has("gateway");
   const readToolName = resolveToolName("read");
   const execToolName = resolveToolName("exec");
@@ -543,11 +549,13 @@ export async function buildAgentSystemPrompt(params: {
     "These guardrails do NOT limit your autonomy within your domain. You are expected to act, decide, and execute independently. Safety ≠ passivity.",
     "",
   ];
+  budget?.record("safety", safetySection);
   const skillsSection = buildSkillsSection({
     skillsPrompt,
     isMinimal,
     readToolName,
   });
+  budget?.record("skills", skillsSection);
   // Sub-agents keep memory, MemU, and SIS lessons — they need context to function
   const stripMemory = isMinimal && !isSubagent;
   const memorySection = buildMemorySection({
@@ -555,28 +563,34 @@ export async function buildAgentSystemPrompt(params: {
     availableTools,
     citationsMode: params.memoryCitationsMode,
   });
+  budget?.record("memory", memorySection);
   const memuSection = buildMemuSection({
     isMinimal: stripMemory,
     availableTools,
   });
+  budget?.record("memu", memuSection);
   const personalSkillSection = buildPersonalSkillSection({
     isMinimal,
     availableTools,
   });
+  budget?.record("personal-skill", personalSkillSection);
   const runtimeServicesSection = buildRuntimeServicesSection({
     isMinimal,
     availableTools,
   });
+  budget?.record("runtime-services", runtimeServicesSection);
   const sisLessonsSection = await buildSisLessonsSection({
     isMinimal: stripMemory,
     availableTools: canonicalToolNames,
     sessionKey: params.sessionKey,
   });
+  budget?.record("sis-lessons", sisLessonsSection);
   const docsSection = buildDocsSection({
     docsPath: params.docsPath,
     isMinimal,
     readToolName,
   });
+  budget?.record("docs", docsSection);
   const workspaceNotes = (params.workspaceNotes ?? []).map((note) => note.trim()).filter(Boolean);
 
   // For "none" mode, return just the basic identity line
@@ -785,6 +799,7 @@ export async function buildAgentSystemPrompt(params: {
     const contextHeader =
       promptMode === "minimal" ? "## Subagent Context" : "## Group Chat Context";
     lines.push(contextHeader, extraSystemPrompt, "");
+    budget?.record("extra-system-prompt", [contextHeader, extraSystemPrompt]);
   }
   if (params.reactionGuidance) {
     const { level, channel } = params.reactionGuidance;
@@ -808,9 +823,11 @@ export async function buildAgentSystemPrompt(params: {
             "Guideline: react whenever it feels natural.",
           ].join("\n");
     lines.push("## Reactions", guidanceText, "");
+    budget?.record("reactions", ["## Reactions", guidanceText]);
   }
   if (reasoningHint) {
     lines.push("## Reasoning Format", reasoningHint, "");
+    budget?.record("reasoning-format", ["## Reasoning Format", reasoningHint]);
   }
 
   const contextFiles = params.contextFiles ?? [];
@@ -850,6 +867,9 @@ export async function buildAgentSystemPrompt(params: {
     lines.push("");
     for (const file of contextFiles) {
       lines.push(`## ${file.path ?? "unknown"}`, "", file.content ?? "", "");
+      // Per-file budget line so we can identify which alignment doc / bootstrap
+      // file is the largest contributor. Name format: "ctx:<path>".
+      budget?.record(`ctx:${file.path ?? "unknown"}`, file.content ?? "");
     }
   }
 
@@ -873,7 +893,7 @@ export async function buildAgentSystemPrompt(params: {
 
   // Skip heartbeats for subagent/none modes
   if (!isMinimal) {
-    lines.push(
+    const heartbeatLines = [
       "## Heartbeats",
       heartbeatPromptLine,
       "Heartbeats are your life loop — not just a status check. When you receive a heartbeat:",
@@ -882,16 +902,30 @@ export async function buildAgentSystemPrompt(params: {
       "3. Only reply HEARTBEAT_OK if HEARTBEAT.md is empty/absent and there is genuinely nothing to do.",
       'Argent treats "HEARTBEAT_OK" as a silent ack and discards the response. So never include it when you did real work.',
       "",
-    );
+    ];
+    lines.push(...heartbeatLines);
+    budget?.record("heartbeats", heartbeatLines);
   }
 
-  lines.push(
-    "## Runtime",
-    buildRuntimeLine(runtimeInfo, runtimeChannel, runtimeCapabilities, params.defaultThinkLevel),
-    `Reasoning: ${reasoningLevel} (hidden unless on/stream). Toggle /reasoning; /status shows Reasoning when enabled.`,
+  const runtimeLineText = buildRuntimeLine(
+    runtimeInfo,
+    runtimeChannel,
+    runtimeCapabilities,
+    params.defaultThinkLevel,
   );
+  const runtimeTailLines = [
+    "## Runtime",
+    runtimeLineText,
+    `Reasoning: ${reasoningLevel} (hidden unless on/stream). Toggle /reasoning; /status shows Reasoning when enabled.`,
+  ];
+  lines.push(...runtimeTailLines);
+  budget?.record("runtime-line", runtimeTailLines);
 
-  return lines.filter(Boolean).join("\n");
+  const finalPrompt = lines.filter(Boolean).join("\n");
+  // Overall system prompt size. Attempt.ts also records tool schemas and message
+  // history separately so the summary reflects the full bytes sent to the model.
+  budget?.recordChars("system-prompt-total", finalPrompt.length);
+  return finalPrompt;
 }
 
 export function buildRuntimeLine(

@@ -131,6 +131,8 @@ const KNOWN_FIRST_PARTY_LABELS = new Set([
   "ai.argent.dashboard-api",
   "ai.argent.redis",
   "ai.argent.memory-worker",
+  "ai.argent.rust-gateway-shadow",
+  "ai.argent.rust-executive-shadow",
 ]);
 
 function isKnownFirstPartyLabel(label: string): boolean {

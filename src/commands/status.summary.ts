@@ -11,9 +11,11 @@ import {
 } from "../config/sessions.js";
 import { listAgentsForGateway } from "../gateway/session-utils.js";
 import { buildChannelSummary } from "../infra/channel-summary.js";
+import { inspectExecutiveShadowAgainstKernel } from "../infra/executive-shadow-kernel-inspector.js";
 import { resolveHeartbeatSummaryForAgent } from "../infra/heartbeat-runner.js";
 import { peekSystemEvents } from "../infra/system-events.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
+import { getExecutiveShadowSummary } from "./status.executive-shadow.js";
 import { resolveLinkChannelContext } from "./status.link-channel.js";
 
 const classifyKey = (key: string, entry?: SessionEntry): SessionStatus["kind"] => {
@@ -82,6 +84,10 @@ export async function getStatusSummary(): Promise<StatusSummary> {
   const channelSummary = await buildChannelSummary(cfg, {
     colorize: true,
     includeAllowFrom: true,
+  });
+  const executiveShadow = await getExecutiveShadowSummary();
+  const executiveShadowKernelInspection = await inspectExecutiveShadowAgainstKernel({
+    getExecutiveSummary: async () => executiveShadow,
   });
   const mainSessionKey = resolveMainSessionKey(cfg);
   const queuedSystemEvents = peekSystemEvents(mainSessionKey);
@@ -189,6 +195,8 @@ export async function getStatusSummary(): Promise<StatusSummary> {
       defaultAgentId: agentList.defaultId,
       agents: heartbeatAgents,
     },
+    executiveShadow,
+    executiveShadowKernelInspection,
     channelSummary,
     queuedSystemEvents,
     sessions: {

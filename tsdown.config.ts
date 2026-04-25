@@ -110,6 +110,7 @@ export default defineConfig([
         ["pg-adapter", "src/data/pg-adapter.ts"],
         ["infra/execution-worker-runner", "src/infra/execution-worker-runner.ts"],
         ["infra/exec-approval-forwarder", "src/infra/exec-approval-forwarder.ts"],
+        ["infra/service-keys", "src/infra/service-keys.ts"],
       ].filter(([, file]) => fs.existsSync(file)),
     ),
     env,

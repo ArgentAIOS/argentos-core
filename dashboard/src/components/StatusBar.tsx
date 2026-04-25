@@ -106,7 +106,9 @@ export function StatusBar({
     const loadBuildInfo = async () => {
       try {
         const res = await fetch("/api/build-info", { signal: controller.signal });
-        if (!res.ok) return;
+        if (!res.ok) {
+          return;
+        }
         const data = (await res.json()) as { version?: unknown };
         if (!cancelled && typeof data.version === "string" && data.version.trim()) {
           setReleaseVersion(data.version.trim());
@@ -177,14 +179,15 @@ export function StatusBar({
 
         const runnerState =
           typeof data?.heartbeat?.runner?.state === "string" ? data.heartbeat.runner.state : null;
+        const runnerEnabled = data?.heartbeat?.runner?.enabled === true;
         const runnerLastRunAt =
           typeof data?.heartbeat?.runner?.lastRunAt === "string"
             ? data.heartbeat.runner.lastRunAt
             : null;
-        const runnerKey = `${runnerState ?? "unknown"}:${runnerLastRunAt ?? "none"}`;
+        const runnerKey = `${runnerEnabled ? "enabled" : "disabled"}:${runnerState ?? "unknown"}:${runnerLastRunAt ?? "none"}`;
         if (runnerKey !== heartbeatRunnerKeyRef.current) {
           heartbeatRunnerKeyRef.current = runnerKey;
-          if (runnerState === "stale" || runnerState === "unknown") {
+          if (runnerEnabled && (runnerState === "stale" || runnerState === "unknown")) {
             window.dispatchEvent(
               new CustomEvent("heartbeat-runner-inactive", {
                 detail: {
@@ -213,7 +216,7 @@ export function StatusBar({
           ? health.criticalServicesDown
               .map((v: unknown) => (typeof v === "string" ? v.trim() : ""))
               .filter(Boolean)
-              .sort()
+              .toSorted()
           : [];
         const key = down.length > 0 ? down.join(",") : "none";
         const prevKey = criticalServicesKeyRef.current;

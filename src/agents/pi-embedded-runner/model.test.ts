@@ -6,6 +6,7 @@ vi.mock("../pi-model-discovery.js", () => ({
 }));
 
 import type { ArgentConfig } from "../../config/config.js";
+import { discoverModels } from "../pi-model-discovery.js";
 import { buildInlineProviderModels, resolveModel } from "./model.js";
 
 const makeModel = (id: string) => ({
@@ -109,6 +110,62 @@ describe("buildInlineProviderModels", () => {
 });
 
 describe("resolveModel", () => {
+  it("does not block configured Bedrock models from Pi's catalog", () => {
+    const bedrockModel = {
+      ...makeModel("anthropic.claude-haiku-4-5-20251001-v1:0"),
+      provider: "amazon-bedrock",
+      api: "bedrock-converse-stream" as const,
+      reasoning: true,
+    };
+    vi.mocked(discoverModels).mockReturnValueOnce({
+      find: vi.fn((provider: string, id: string) =>
+        provider === "amazon-bedrock" && id === bedrockModel.id ? bedrockModel : null,
+      ),
+    } as never);
+
+    const result = resolveModel("amazon-bedrock", bedrockModel.id, "/tmp/agent", {});
+
+    expect(result.error).toBeUndefined();
+    expect(result.model?.provider).toBe("amazon-bedrock");
+    expect(result.model?.id).toBe(bedrockModel.id);
+  });
+
+  it("uses the MiniMax anthropic-compatible endpoint from the built-in catalog", () => {
+    const result = resolveModel("minimax", "MiniMax-M2.7-highspeed", "/tmp/agent", {});
+
+    expect(result.error).toBeUndefined();
+    expect(result.model?.provider).toBe("minimax");
+    expect(result.model?.id).toBe("MiniMax-M2.7-highspeed");
+    expect(result.model?.api).toBe("anthropic-messages");
+    expect(result.model?.baseUrl).toBe("https://api.minimax.io/anthropic");
+  });
+
+  it("repairs stale inline MiniMax OpenAI-compatible configs", () => {
+    const cfg = {
+      models: {
+        providers: {
+          minimax: {
+            baseUrl: "https://api.minimaxi.chat/v1",
+            api: "openai-completions",
+            models: [
+              {
+                ...makeModel("MiniMax-M2.7-highspeed"),
+                reasoning: true,
+              },
+            ],
+          },
+        },
+      },
+    } as ArgentConfig;
+
+    const result = resolveModel("minimax", "MiniMax-M2.7-highspeed", "/tmp/agent", cfg);
+
+    expect(result.error).toBeUndefined();
+    expect(result.model?.provider).toBe("minimax");
+    expect(result.model?.api).toBe("anthropic-messages");
+    expect(result.model?.baseUrl).toBe("https://api.minimax.io/anthropic");
+  });
+
   it("includes provider baseUrl in fallback model", () => {
     const cfg = {
       models: {

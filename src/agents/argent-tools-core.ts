@@ -41,6 +41,7 @@ import {
   createKnowledgeCollectionsListTool,
   createKnowledgeSearchTool,
 } from "./tools/knowledge-tools.js";
+import { createMarketplaceTool } from "./tools/marketplace-tool.js";
 import { createMeetingRecorderTool } from "./tools/meeting-recorder-tool.js";
 import { createMemoryGraphTool } from "./tools/memory-graph-tool.js";
 import { createMemoryTimelineTool } from "./tools/memory-timeline-tool.js";
@@ -380,6 +381,7 @@ export function createArgentTools(options?: {
     createArgentConfigTool({ config: options?.config }),
     createServiceKeysTool(),
     createSkillsTool({ config: options?.config }),
+    createMarketplaceTool(),
     createTerminalTool(),
     createGithubIssueTool(),
     createMeetingRecorderTool({ agentSessionKey: options?.agentSessionKey }),

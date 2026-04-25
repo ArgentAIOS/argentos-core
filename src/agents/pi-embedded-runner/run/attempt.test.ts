@@ -3,7 +3,11 @@ import type { ImageContent } from "../../../agent-core/ai.js";
 import type { AgentMessage } from "../../../agent-core/core.js";
 import {
   applyPiStreamFallbackPolicy,
+  createPiStreamSimpleWithRuntimeApiKey,
   injectHistoryImagesIntoMessages,
+  resolveRuntimeProviderApiKey,
+  resolveArgentProviderBaseURL,
+  resolveArgentProviderFallbackReason,
   resolveOpenAICodexTransport,
   resolveOpenAICodexVisionModelId,
   resolveEmbeddedAttemptRuntimePolicy,
@@ -64,6 +68,69 @@ describe("injectHistoryImagesIntoMessages", () => {
 });
 
 describe("embedded runtime policy wiring", () => {
+  it("does not pass MiniMax Anthropic-compatible base URL into the Argent-native provider", () => {
+    expect(
+      resolveArgentProviderBaseURL("minimax", "https://api.minimax.io/anthropic"),
+    ).toBeUndefined();
+    expect(
+      resolveArgentProviderBaseURL("minimax", "https://api.minimax.io/anthropic/"),
+    ).toBeUndefined();
+    expect(
+      resolveArgentProviderBaseURL("minimax", "https://api.minimax.chat/v1/text/chatcompletion_v2"),
+    ).toBe("https://api.minimax.chat/v1/text/chatcompletion_v2");
+    expect(resolveArgentProviderBaseURL("anthropic", "https://example.test")).toBe(
+      "https://example.test",
+    );
+  });
+
+  it("keeps MiniMax on the Pi adapter until the native adapter reaches parity", () => {
+    expect(resolveArgentProviderFallbackReason("minimax")).toContain(
+      "Anthropic-compatible adapter",
+    );
+    expect(resolveArgentProviderFallbackReason("MiniMax")).toContain(
+      "Anthropic-compatible adapter",
+    );
+    expect(resolveArgentProviderFallbackReason("anthropic")).toBeUndefined();
+  });
+
+  it("resolves runtime provider keys through the public auth storage API", async () => {
+    const authStorage = {
+      runtimeOverrides: new Map([["minimax", "private-map-key"]]),
+      getApiKey: async (provider: string, options?: { includeFallback?: boolean }) => {
+        expect(provider).toBe("minimax");
+        expect(options).toEqual({ includeFallback: false });
+        return "profile-key";
+      },
+    };
+
+    await expect(resolveRuntimeProviderApiKey(authStorage, "minimax")).resolves.toBe("profile-key");
+  });
+
+  it("keeps the runtime override fallback for older auth storage implementations", async () => {
+    const authStorage = {
+      runtimeOverrides: new Map([["minimax", "runtime-key"]]),
+    };
+
+    await expect(resolveRuntimeProviderApiKey(authStorage, "minimax")).resolves.toBe("runtime-key");
+  });
+
+  it("injects auth profile keys into Pi stream fallbacks", () => {
+    let capturedOptions: { apiKey?: string; temperature?: number } | undefined;
+    const streamFn = ((_model, _context, options) => {
+      capturedOptions = options;
+      return {} as ReturnType<typeof createPiStreamSimpleWithRuntimeApiKey>;
+    }) as Parameters<typeof createPiStreamSimpleWithRuntimeApiKey>[0];
+
+    const wrapped = createPiStreamSimpleWithRuntimeApiKey(streamFn, "profile-key");
+    wrapped(
+      { id: "MiniMax-M2.7", provider: "minimax", api: "openai-completions" } as never,
+      { messages: [] },
+      { temperature: 0.2 },
+    );
+
+    expect(capturedOptions).toEqual({ temperature: 0.2, apiKey: "profile-key" });
+  });
+
   it("resolves legacy ARGENT_RUNTIME=true to fallback mode", () => {
     const policy = resolveEmbeddedAttemptRuntimePolicy({ ARGENT_RUNTIME: "true" });
     expect(policy.mode).toBe("argent_with_fallback");

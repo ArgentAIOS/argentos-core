@@ -59,4 +59,12 @@ describe("formatAssistantErrorText", () => {
     );
     expect(formatAssistantErrorText(msg)).toBe("LLM error server_error: Something exploded");
   });
+
+  it("does not expose internal JavaScript adapter errors to the operator", () => {
+    const msg = makeAssistantError("Cannot read properties of undefined (reading 'some')");
+    expect(formatAssistantErrorText(msg)).toBe(
+      "The model provider returned a malformed response after a tool turn. " +
+        "The transcript was protected for the next retry; try again or switch models if it repeats.",
+    );
+  });
 });

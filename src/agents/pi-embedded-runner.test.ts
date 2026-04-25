@@ -586,4 +586,62 @@ describe("runEmbeddedPiAgent", () => {
     expect(modelRouterCall).toContain('reason="preselected model"');
     expect(modelRouterCall).not.toContain('reason="user override"');
   });
+
+  it("routes deep think to the powerful tier even with a preselected model", async () => {
+    const sessionFile = nextSessionFile();
+    const cfg = {
+      ...makeOpenAiConfig(["mock-1", "powerful-model"]),
+      agents: {
+        defaults: {
+          model: {
+            primary: "openai/mock-1",
+          },
+          modelRouter: {
+            enabled: true,
+            activeProfile: "test-profile",
+            profiles: {
+              "test-profile": {
+                tiers: {
+                  local: { provider: "openai", model: "mock-1" },
+                  fast: { provider: "openai", model: "mock-1" },
+                  balanced: { provider: "openai", model: "mock-1" },
+                  powerful: { provider: "openai", model: "powerful-model" },
+                },
+              },
+            },
+          },
+        },
+      },
+    } satisfies ArgentConfig;
+    await ensureModels(cfg);
+
+    const { log } = await import("./pi-embedded-runner/logger.js");
+    const infoSpy = vi.spyOn(log, "info").mockImplementation(() => {});
+
+    let modelRouterCall: string | undefined;
+    try {
+      await runEmbeddedPiAgent({
+        sessionId: "session:test",
+        sessionKey: testSessionKey,
+        sessionFile,
+        workspaceDir,
+        config: cfg,
+        prompt: "[DEEP_THINK] hello",
+        provider: "openai",
+        model: "mock-1",
+        preselectedModel: true,
+        timeoutMs: 5_000,
+        agentDir,
+        enqueue: immediateEnqueue,
+      });
+      modelRouterCall = infoSpy.mock.calls
+        .map(([message]) => String(message))
+        .find((message) => message.includes("[model-router]"));
+    } finally {
+      infoSpy.mockRestore();
+    }
+
+    expect(modelRouterCall).toContain('reason="forceMaxTier (deep think)"');
+    expect(modelRouterCall).toContain("openai/powerful-model");
+  });
 });

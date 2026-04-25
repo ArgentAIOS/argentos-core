@@ -68,6 +68,7 @@ import {
   filterConfigNavSections,
   isConfigTabAllowed,
   isRawConfigEditorAllowed,
+  isWorkforceSurfaceAllowed,
   parseDashboardSurfaceProfile,
   type DashboardSurfaceProfile,
 } from "../lib/configSurfaceProfile";
@@ -83,6 +84,7 @@ import { processTextForSpeech, defaultPatternHandlers } from "../utils/textToSpe
 import { AlignmentDocs } from "./AlignmentDocs";
 import { AvatarCustomizer } from "./AvatarCustomizer";
 import { AvatarPreviewPane } from "./AvatarPreviewPane";
+import { LicensePanel } from "./LicensePanel";
 import { LogViewer } from "./LogViewer";
 import { MarketplaceTab } from "./MarketplaceTab";
 import { MemoryConsole } from "./MemoryConsole";
@@ -116,6 +118,45 @@ const STORAGE_KEY = "argent-config";
 const AGENT_SETTINGS_DEFAULT_TARGET = "__defaults__";
 const AGENT_SETTINGS_TARGET_STORAGE_KEY = "argent-settings-agent-target-id";
 const CALENDAR_ACCOUNT_STORAGE_KEY = "argent-calendar-account";
+
+const CHANNEL_SETUP_GUIDES: Record<
+  string,
+  {
+    tokenPlaceholder: string;
+    allowPlaceholder: string;
+    guide: string;
+  }
+> = {
+  telegram: {
+    tokenPlaceholder: "Bot token from @BotFather",
+    allowPlaceholder: "Telegram user IDs, one per line",
+    guide:
+      "Create a bot with @BotFather, paste the bot token here, then add your numeric Telegram user ID to allow direct messages.",
+  },
+  discord: {
+    tokenPlaceholder: "Discord bot token",
+    allowPlaceholder: "Discord user IDs, one per line",
+    guide:
+      "Create a Discord application with a bot token, enable Message Content Intent, invite the bot to your server, then add trusted user IDs.",
+  },
+};
+
+const defaultChannelSetupGuide = {
+  tokenPlaceholder: "Bot token",
+  allowPlaceholder: "Allowed sender IDs, one per line",
+  guide: "Paste the provider token and add trusted sender IDs when using allowlist mode.",
+};
+
+function parseChannelAllowFrom(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(/[\n,]+/)
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ),
+  );
+}
 const WORKFORCE_HELP_DOCS: Array<{ label: string; href: string }> = [
   {
     label: "5-Minute Quick Start",
@@ -2589,7 +2630,21 @@ export function ConfigPanel({
   gatewayRequest,
 }: ConfigPanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>("dictionary");
-  const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("full");
+  const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("public-core");
+  const [advancedMode, setAdvancedMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("argent.configPanel.advancedMode") === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("argent.configPanel.advancedMode", advancedMode ? "1" : "0");
+    } catch {
+      /* ignore — storage may be unavailable */
+    }
+  }, [advancedMode]);
   const [config, setConfig] = useState<ConfigData>(loadConfig);
   const [newTerm, setNewTerm] = useState("");
   const [newReplacement, setNewReplacement] = useState("");
@@ -2631,7 +2686,7 @@ export function ConfigPanel({
         }
       } catch {
         if (!cancelled) {
-          setSurfaceProfile("full");
+          setSurfaceProfile("public-core");
         }
       }
     };
@@ -2645,8 +2700,11 @@ export function ConfigPanel({
   const showAgentTargetScope = !isPublicCoreSurface;
   const showAgentRuntimeLoadProfile = !isPublicCoreSurface;
   const showAgentExecutionControls = !isPublicCoreSurface;
-  const showAgentMemoryAdminControls = !isPublicCoreSurface;
+  const showAgentMemoryStatusControls = true;
+  const showAgentVaultControls = true;
+  const showAgentMemoryAdminControls = true;
   const showAgentIntentSimulationControls = !isPublicCoreSurface;
+  const showAgentJobsControls = isWorkforceSurfaceAllowed(surfaceProfile);
   const showKnowledgeAclWriteControls = !isPublicCoreSurface;
   const showKnowledgeLibraryMaintenanceControls = !isPublicCoreSurface;
   const canEditRawAgentConfig = isRawConfigEditorAllowed(surfaceProfile);
@@ -2856,12 +2914,16 @@ export function ConfigPanel({
   const [newChannelProvider, setNewChannelProvider] = useState("discord");
   const [newChannelToken, setNewChannelToken] = useState("");
   const [newChannelDmPolicy, setNewChannelDmPolicy] = useState("open");
+  const [newChannelAllowFrom, setNewChannelAllowFrom] = useState("");
   const [showChannelToken, setShowChannelToken] = useState(false);
   const [channelMessage, setChannelMessage] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
   const [editingChannelId, setEditingChannelId] = useState<string | null>(null);
+  const [editingChannelAllowFrom, setEditingChannelAllowFrom] = useState<Record<string, string>>(
+    {},
+  );
 
   // Agent tab state
   interface AgentSettings {
@@ -3942,7 +4004,7 @@ export function ConfigPanel({
   }, [gatewayRequest]);
 
   const loadJobsData = useCallback(async () => {
-    if (!gatewayRequest) return;
+    if (!gatewayRequest || !showAgentJobsControls) return;
     setJobsLoading(true);
     try {
       const [overview, templatesPayload, assignmentsPayload, runsPayload] = await Promise.all([
@@ -3967,7 +4029,7 @@ export function ConfigPanel({
     } finally {
       setJobsLoading(false);
     }
-  }, [gatewayRequest]);
+  }, [gatewayRequest, showAgentJobsControls]);
 
   const createJobTemplate = useCallback(async () => {
     if (!gatewayRequest) return;
@@ -4339,9 +4401,9 @@ export function ConfigPanel({
   }, [isOpen, activeTab, agentTargetId]);
 
   useEffect(() => {
-    if (!isOpen || activeTab !== "agent" || !showAgentMemoryAdminControls) return;
+    if (!isOpen || activeTab !== "agent" || !showAgentMemoryStatusControls) return;
     void loadMemoryV3Status();
-  }, [isOpen, activeTab, loadMemoryV3Status, showAgentMemoryAdminControls]);
+  }, [isOpen, activeTab, loadMemoryV3Status, showAgentMemoryStatusControls]);
 
   useEffect(() => {
     if (!isOpen || activeTab !== "agent" || !canEditRawAgentConfig) return;
@@ -4434,7 +4496,7 @@ export function ConfigPanel({
   ]);
 
   useEffect(() => {
-    if (!isOpen || activeTab !== "agent" || !gatewayRequest || !showAgentExecutionControls) return;
+    if (!isOpen || activeTab !== "agent" || !gatewayRequest || !showAgentJobsControls) return;
     void loadJobsData();
     const timer = setInterval(() => {
       void loadJobsData();
@@ -4446,7 +4508,7 @@ export function ConfigPanel({
     gatewayRequest,
     loadJobsData,
     loadProfilePollingMultiplier,
-    showAgentExecutionControls,
+    showAgentJobsControls,
   ]);
 
   useEffect(() => {
@@ -4936,13 +4998,63 @@ export function ConfigPanel({
         type: "success",
         text: payload.boundToConfig
           ? `Created and bound Argent vault at ${payload.path || "configured internal path"}.`
-          : `Created Argent vault at ${payload.path || "default internal path"}.`,
+          : `Argent vault is ready at ${payload.path || "default internal path"}.`,
       });
       void loadMemoryV3Status();
     } catch (err) {
       setMemoryV3Message({
         type: "error",
         text: err instanceof Error ? err.message : "Failed to bootstrap internal vault.",
+      });
+    } finally {
+      setMemoryV3StatusAction(null);
+    }
+  };
+
+  const chooseExternalVaultFolder = async () => {
+    try {
+      setMemoryV3StatusAction("bind");
+      setMemoryV3Message(null);
+      const response = await fetch("/api/settings/memory-v3/choose-vault-folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bind: true }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        path?: string;
+        boundToConfig?: boolean;
+        error?: string;
+        status?: MemoryV3StatusResponse;
+      };
+      if (!response.ok || payload.ok === false) {
+        throw new Error(
+          typeof payload?.error === "string"
+            ? payload.error
+            : `HTTP ${response.status} while choosing vault folder`,
+        );
+      }
+      if (payload.status) setMemoryV3Status(payload.status);
+      setVaultPathDraft(payload.path || "");
+      setAgentSettings((prev) =>
+        prev
+          ? {
+              ...prev,
+              memory: mergeMemorySettingsState(prev.memory, {
+                vault: { enabled: true, path: payload.path || "" },
+              }),
+            }
+          : prev,
+      );
+      setMemoryV3Message({
+        type: "success",
+        text: `External vault attached at ${payload.path || "selected folder"}.`,
+      });
+      void loadMemoryV3Status();
+    } catch (err) {
+      setMemoryV3Message({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to choose vault folder.",
       });
     } finally {
       setMemoryV3StatusAction(null);
@@ -6090,20 +6202,32 @@ export function ConfigPanel({
       const current = normalizeLaneSelection(agentSettings.backgroundModels?.[lane]);
       const nextProvider =
         patch.provider !== undefined ? String(patch.provider || "").trim() : current.provider;
-      const nextModel =
+      const rawNextModel =
         patch.model !== undefined ? String(patch.model || "").trim() : current.model;
+      const parsedNextModel = parseModelRef(rawNextModel);
+      const normalizedProvider = nextProvider || parsedNextModel?.provider || "";
+      const normalizedModel =
+        parsedNextModel && (!nextProvider || parsedNextModel.provider === nextProvider)
+          ? parsedNextModel.model
+          : rawNextModel;
       const nextFallback =
         patch.fallback !== undefined ? String(patch.fallback || "").trim() : current.fallback;
       const payload =
         lane === "embeddings"
           ? {
-              provider: nextProvider,
-              model: nextProvider && nextModel ? `${nextProvider}/${nextModel}` : nextModel,
+              provider: normalizedProvider,
+              model:
+                normalizedProvider && normalizedModel
+                  ? `${normalizedProvider}/${normalizedModel}`
+                  : normalizedModel,
               fallback: nextFallback,
             }
           : {
-              provider: nextProvider,
-              model: nextProvider && nextModel ? `${nextProvider}/${nextModel}` : nextModel,
+              provider: normalizedProvider,
+              model:
+                normalizedProvider && normalizedModel
+                  ? `${normalizedProvider}/${normalizedModel}`
+                  : normalizedModel,
             };
 
       await fetch("/api/settings/agent", {
@@ -6896,16 +7020,17 @@ export function ConfigPanel({
       label: "System",
       items: [
         { id: "agent" as TabType, label: "Agent", icon: Brain },
-        { id: "systems" as TabType, label: "Systems", icon: Package },
+        { id: "systems" as TabType, label: "Systems", icon: Package, defaultView: true },
         { id: "capabilities" as TabType, label: "Capabilities", icon: Wrench },
         { id: "intent" as TabType, label: "Intent", icon: Sparkles },
         { id: "knowledge" as TabType, label: "Knowledge", icon: Database },
-        { id: "alignment" as TabType, label: "Alignment", icon: BookOpen },
-        { id: "models" as TabType, label: "Models", icon: Cpu },
-        { id: "authprofiles" as TabType, label: "Auth Profiles", icon: KeyRound },
-        { id: "apikeys" as TabType, label: "API Keys", icon: Key },
+        { id: "alignment" as TabType, label: "Alignment", icon: BookOpen, defaultView: true },
+        { id: "models" as TabType, label: "Models", icon: Cpu, defaultView: true },
+        { id: "authprofiles" as TabType, label: "Providers", icon: KeyRound, defaultView: true },
+        { id: "apikeys" as TabType, label: "Keys", icon: Key, defaultView: true },
+        { id: "license" as TabType, label: "Licensing", icon: Award, defaultView: true },
         { id: "dictionary" as TabType, label: "Dictionary", icon: Book },
-        { id: "security" as TabType, label: "Security", icon: Shield },
+        { id: "security" as TabType, label: "Security", icon: Shield, defaultView: true },
       ],
     },
     {
@@ -6928,17 +7053,17 @@ export function ConfigPanel({
       label: "Appearance",
       items: [
         { id: "avatar" as TabType, label: "Avatar", icon: User },
-        { id: "identity" as TabType, label: "Visual Identity", icon: Palette },
+        { id: "identity" as TabType, label: "Identity", icon: Palette, defaultView: true },
         { id: "widgets" as TabType, label: "Widgets", icon: LayoutGrid },
         { id: "accessibility" as TabType, label: "Accessibility", icon: Accessibility },
-        { id: "voice" as TabType, label: "Voice", icon: Mic },
+        { id: "voice" as TabType, label: "Voice", icon: Mic, defaultView: true },
       ],
     },
     {
       label: "Developer",
       items: [
         { id: "memory" as TabType, label: "Memory Inspector", icon: Fingerprint },
-        { id: "logs" as TabType, label: "Live Logs", icon: FileText },
+        { id: "logs" as TabType, label: "Live Logs", icon: FileText, defaultView: true },
       ],
     },
     {
@@ -6947,17 +7072,38 @@ export function ConfigPanel({
     },
   ];
 
-  const filteredNavSections = useMemo(
-    () => filterConfigNavSections(navSections, surfaceProfile),
-    [navSections, surfaceProfile],
-  );
+  const filteredNavSections = useMemo(() => {
+    const bySurface = filterConfigNavSections(navSections, surfaceProfile);
+    if (advancedMode) return bySurface;
+    // Default (non-advanced) view: keep only tabs flagged defaultView, and
+    // drop sections that become empty after filtering.
+    return bySurface
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((t) => (t as { defaultView?: boolean }).defaultView === true),
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [navSections, surfaceProfile, advancedMode]);
 
   useEffect(() => {
-    if (isConfigTabAllowed(activeTab, surfaceProfile)) {
+    if (!isConfigTabAllowed(activeTab, surfaceProfile)) {
+      setActiveTab("dictionary");
       return;
     }
-    setActiveTab("dictionary");
-  }, [activeTab, surfaceProfile]);
+    // If we just flipped out of advanced into default and the current tab is
+    // no longer visible, land on the first visible default tab.
+    const visibleIds = new Set(filteredNavSections.flatMap((s) => s.items).map((t) => t.id));
+    if (!visibleIds.has(activeTab)) {
+      const firstVisible = filteredNavSections[0]?.items[0]?.id;
+      if (firstVisible) setActiveTab(firstVisible);
+    }
+  }, [activeTab, surfaceProfile, filteredNavSections]);
+
+  useEffect(() => {
+    const listener = () => setActiveTab("license");
+    window.addEventListener("navigate-to-license", listener);
+    return () => window.removeEventListener("navigate-to-license", listener);
+  }, []);
 
   const availableCapabilitiesSkills = useMemo(
     () => capabilitiesSkills.filter((skill) => skill.eligible === true),
@@ -7046,12 +7192,38 @@ export function ConfigPanel({
               {/* Content header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
                 <h3 className="text-white font-semibold text-lg">{activeTabLabel}</h3>
-                <button
-                  onClick={onClose}
-                  className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setAdvancedMode((v) => !v)}
+                    title={
+                      advancedMode ? "Switch to simplified view" : "Show every configuration tab"
+                    }
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                      advancedMode
+                        ? "bg-purple-500/15 text-purple-300 hover:bg-purple-500/25"
+                        : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block w-6 h-3.5 rounded-full relative transition-colors ${
+                        advancedMode ? "bg-purple-500/70" : "bg-white/20"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-all ${
+                          advancedMode ? "left-3" : "left-0.5"
+                        }`}
+                      />
+                    </span>
+                    Advanced
+                  </button>
+                  <button
+                    onClick={onClose}
+                    className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
               {/* Scrollable content — avatar tab uses full width with side-by-side preview */}
@@ -10495,6 +10667,7 @@ export function ConfigPanel({
                           setNewChannelProvider("discord");
                           setNewChannelToken("");
                           setNewChannelDmPolicy("open");
+                          setNewChannelAllowFrom("");
                           setShowChannelToken(false);
                         }}
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded-lg transition-all text-sm font-medium"
@@ -10533,7 +10706,10 @@ export function ConfigPanel({
                         <div className="text-white/70 text-sm font-medium">Add Channel</div>
                         <select
                           value={newChannelProvider}
-                          onChange={(e) => setNewChannelProvider(e.target.value)}
+                          onChange={(e) => {
+                            setNewChannelProvider(e.target.value);
+                            setNewChannelAllowFrom("");
+                          }}
                           className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white/90 focus:outline-none focus:border-purple-500/50"
                         >
                           <option value="discord" className="bg-gray-900">
@@ -10552,10 +10728,19 @@ export function ConfigPanel({
                             WhatsApp
                           </option>
                         </select>
+                        <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/50">
+                          {
+                            (CHANNEL_SETUP_GUIDES[newChannelProvider] ?? defaultChannelSetupGuide)
+                              .guide
+                          }
+                        </div>
                         <div className="relative">
                           <input
                             type={showChannelToken ? "text" : "password"}
-                            placeholder="Bot token"
+                            placeholder={
+                              (CHANNEL_SETUP_GUIDES[newChannelProvider] ?? defaultChannelSetupGuide)
+                                .tokenPlaceholder
+                            }
                             value={newChannelToken}
                             onChange={(e) => setNewChannelToken(e.target.value)}
                             className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 pr-10 text-sm text-white font-mono placeholder-white/30 focus:outline-none focus:border-purple-500/50"
@@ -10587,6 +10772,16 @@ export function ConfigPanel({
                             DM Policy: Allowlist
                           </option>
                         </select>
+                        <textarea
+                          value={newChannelAllowFrom}
+                          onChange={(e) => setNewChannelAllowFrom(e.target.value)}
+                          placeholder={
+                            (CHANNEL_SETUP_GUIDES[newChannelProvider] ?? defaultChannelSetupGuide)
+                              .allowPlaceholder
+                          }
+                          rows={3}
+                          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                        />
                         <div className="flex gap-2">
                           <button
                             onClick={() => setShowAddChannel(false)}
@@ -10605,6 +10800,7 @@ export function ConfigPanel({
                                     provider: newChannelProvider,
                                     token: newChannelToken.trim(),
                                     dmPolicy: newChannelDmPolicy,
+                                    allowFrom: parseChannelAllowFrom(newChannelAllowFrom),
                                   }),
                                 });
                                 if (resp.ok) {
@@ -10614,6 +10810,7 @@ export function ConfigPanel({
                                   });
                                   setShowAddChannel(false);
                                   setNewChannelToken("");
+                                  setNewChannelAllowFrom("");
                                   const data = await (await fetch("/api/settings/channels")).json();
                                   setChannelList(data.channels || []);
                                 } else {
@@ -10701,9 +10898,16 @@ export function ConfigPanel({
 
                               {/* Edit button */}
                               <button
-                                onClick={() =>
-                                  setEditingChannelId(editingChannelId === ch.id ? null : ch.id)
-                                }
+                                onClick={() => {
+                                  const nextEditing = editingChannelId === ch.id ? null : ch.id;
+                                  setEditingChannelId(nextEditing);
+                                  if (nextEditing) {
+                                    setEditingChannelAllowFrom((prev) => ({
+                                      ...prev,
+                                      [ch.id]: (ch.allowFromEntries || []).join("\n"),
+                                    }));
+                                  }
+                                }}
                                 className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white/70 transition-all"
                               >
                                 <Edit3 className="w-4 h-4" />
@@ -10843,6 +11047,81 @@ export function ConfigPanel({
                                       Open
                                     </option>
                                   </select>
+                                </div>
+
+                                {/* Allowed senders */}
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                      <span className="text-white/50 text-sm">Allowed IDs</span>
+                                      <div className="text-white/30 text-xs">
+                                        Numeric user IDs or provider-prefixed IDs; one per line.
+                                      </div>
+                                    </div>
+                                    {ch.dmPolicy === "allowlist" && ch.allowFrom === 0 && (
+                                      <span className="text-xs text-yellow-300 bg-yellow-500/10 border border-yellow-500/20 rounded px-2 py-1">
+                                        Empty allowlist blocks DMs
+                                      </span>
+                                    )}
+                                  </div>
+                                  <textarea
+                                    value={
+                                      editingChannelAllowFrom[ch.id] ??
+                                      (ch.allowFromEntries || []).join("\n")
+                                    }
+                                    onChange={(e) =>
+                                      setEditingChannelAllowFrom((prev) => ({
+                                        ...prev,
+                                        [ch.id]: e.target.value,
+                                      }))
+                                    }
+                                    rows={3}
+                                    placeholder={
+                                      (CHANNEL_SETUP_GUIDES[ch.id] ?? defaultChannelSetupGuide)
+                                        .allowPlaceholder
+                                    }
+                                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                                  />
+                                  <div className="flex justify-end">
+                                    <button
+                                      onClick={async () => {
+                                        const allowFrom = parseChannelAllowFrom(
+                                          editingChannelAllowFrom[ch.id] ?? "",
+                                        );
+                                        setChannelList((prev) =>
+                                          prev.map((c) =>
+                                            c.id === ch.id
+                                              ? {
+                                                  ...c,
+                                                  allowFrom: allowFrom.length,
+                                                  allowFromEntries: allowFrom,
+                                                }
+                                              : c,
+                                          ),
+                                        );
+                                        try {
+                                          await fetch(`/api/settings/channels/${ch.id}`, {
+                                            method: "PATCH",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ allowFrom }),
+                                          });
+                                          setChannelMessage({
+                                            type: "success",
+                                            text: `${ch.id} allowlist saved`,
+                                          });
+                                        } catch {
+                                          setChannelMessage({
+                                            type: "error",
+                                            text: "Failed to save allowlist",
+                                          });
+                                        }
+                                        setTimeout(() => setChannelMessage(null), 3000);
+                                      }}
+                                      className="px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-sm font-medium"
+                                    >
+                                      Save IDs
+                                    </button>
+                                  </div>
                                 </div>
 
                                 {/* Mention Gating */}
@@ -11994,372 +12273,390 @@ export function ConfigPanel({
                                 </div>
                               </div>
 
-                              {/* Job Board */}
-                              <div className="bg-white/5 rounded-xl p-4 space-y-3">
-                                <div className="flex items-center gap-2">
-                                  <LayoutGrid className="w-5 h-5 text-cyan-300" />
-                                  <h3 className="text-white/90 font-medium">Job Board</h3>
-                                </div>
-                                <p className="text-white/40 text-xs">
-                                  Assign digital employee roles, run cadence, and simulation/live
-                                  mode per job contract.
-                                </p>
-                                <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/5 px-3 py-2">
-                                  <div className="text-[11px] text-cyan-100/90 mb-1">Help docs</div>
-                                  <div className="flex flex-wrap gap-2 text-[11px]">
-                                    {WORKFORCE_HELP_DOCS.map((doc) => (
-                                      <a
-                                        key={doc.href}
-                                        href={doc.href}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="px-2 py-1 rounded border border-cyan-300/30 text-cyan-100 hover:border-cyan-200/50 hover:text-white"
-                                      >
-                                        {doc.label}
-                                      </a>
-                                    ))}
-                                  </div>
-                                </div>
-                                {jobsMessage && (
-                                  <div
-                                    className={`text-xs rounded border px-2 py-1 ${
-                                      jobsMessage.type === "success"
-                                        ? "border-emerald-300/30 bg-emerald-500/10 text-emerald-100"
-                                        : "border-red-300/30 bg-red-500/10 text-red-100"
-                                    }`}
-                                  >
-                                    {jobsMessage.text}
-                                  </div>
-                                )}
-                                <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-white/70 text-sm">
-                                      Workforce Overview
-                                    </span>
-                                    <button
-                                      onClick={() => void loadJobsData()}
-                                      className="text-xs px-2 py-1 rounded border border-white/15 text-white/60 hover:text-white hover:border-white/25 disabled:opacity-40"
-                                      disabled={!gatewayRequest || jobsLoading}
-                                    >
-                                      {jobsLoading ? "Refreshing..." : "Refresh"}
-                                    </button>
-                                  </div>
-                                  {jobsOverview ? (
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
-                                      <div className="bg-gray-900/50 rounded px-2 py-1">
-                                        <div className="text-white/35 uppercase tracking-wide">
-                                          Templates
-                                        </div>
-                                        <div className="text-white/80">
-                                          {jobsOverview.templatesCount}
-                                        </div>
-                                      </div>
-                                      <div className="bg-gray-900/50 rounded px-2 py-1">
-                                        <div className="text-white/35 uppercase tracking-wide">
-                                          Assignments
-                                        </div>
-                                        <div className="text-white/80">
-                                          {jobsOverview.enabledAssignmentsCount}/
-                                          {jobsOverview.assignmentsCount}
-                                        </div>
-                                      </div>
-                                      <div className="bg-gray-900/50 rounded px-2 py-1">
-                                        <div className="text-white/35 uppercase tracking-wide">
-                                          Due Now
-                                        </div>
-                                        <div className="text-white/80">
-                                          {jobsOverview.dueNowCount}
-                                        </div>
-                                      </div>
-                                      <div className="bg-gray-900/50 rounded px-2 py-1">
-                                        <div className="text-white/35 uppercase tracking-wide">
-                                          Blocked Runs
-                                        </div>
-                                        <div className="text-white/80">
-                                          {jobsOverview.blockedRunsCount}
-                                        </div>
-                                      </div>
+                              {showAgentJobsControls && (
+                                <>
+                                  {/* Job Board */}
+                                  <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                                    <div className="flex items-center gap-2">
+                                      <LayoutGrid className="w-5 h-5 text-cyan-300" />
+                                      <h3 className="text-white/90 font-medium">Job Board</h3>
                                     </div>
-                                  ) : (
-                                    <div className="text-white/45 text-xs">
-                                      {!gatewayRequest
-                                        ? "Job board unavailable (gateway not connected)."
-                                        : "No job overview loaded yet."}
-                                    </div>
-                                  )}
-                                  {jobsOverview && jobsOverview.agents.length > 0 && (
-                                    <div className="rounded-lg border border-white/10 overflow-hidden">
-                                      <div className="px-2 py-1 text-[11px] text-white/40 bg-gray-900/40">
-                                        Agent roster status
+                                    <p className="text-white/40 text-xs">
+                                      Assign digital employee roles, run cadence, and
+                                      simulation/live mode per job contract.
+                                    </p>
+                                    <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/5 px-3 py-2">
+                                      <div className="text-[11px] text-cyan-100/90 mb-1">
+                                        Help docs
                                       </div>
-                                      <div className="max-h-28 overflow-y-auto divide-y divide-white/5">
-                                        {jobsOverview.agents.map((agent) => (
-                                          <div
-                                            key={agent.agentId}
-                                            className="px-2 py-1 text-[11px] text-white/70 flex items-center justify-between gap-2"
+                                      <div className="flex flex-wrap gap-2 text-[11px]">
+                                        {WORKFORCE_HELP_DOCS.map((doc) => (
+                                          <a
+                                            key={doc.href}
+                                            href={doc.href}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="px-2 py-1 rounded border border-cyan-300/30 text-cyan-100 hover:border-cyan-200/50 hover:text-white"
                                           >
-                                            <span className="font-mono">{agent.agentId}</span>
-                                            <span>
-                                              jobs {agent.enabled}/{agent.total} · due{" "}
-                                              {agent.dueNow} · blocked {agent.blockedTasks}
-                                              {agent.nextDueAt ? (
-                                                <span className="text-white/45">
-                                                  {" "}
-                                                  · next{" "}
-                                                  {new Date(agent.nextDueAt).toLocaleTimeString()}
-                                                </span>
-                                              ) : null}
-                                            </span>
-                                          </div>
+                                            {doc.label}
+                                          </a>
                                         ))}
                                       </div>
                                     </div>
-                                  )}
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
-                                    <div className="text-white/70 text-sm">Create Job Template</div>
-                                    <input
-                                      type="text"
-                                      value={jobTemplateName}
-                                      onChange={(e) => setJobTemplateName(e.target.value)}
-                                      placeholder="Template name (e.g. Tier 1 Ticket Triage)"
-                                      className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
-                                    />
-                                    <textarea
-                                      value={jobRolePrompt}
-                                      onChange={(e) => setJobRolePrompt(e.target.value)}
-                                      placeholder="Role contract / job expectations"
-                                      rows={3}
-                                      className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none resize-none"
-                                    />
-                                    <div className="flex items-center gap-2">
-                                      <select
-                                        value={jobTemplateMode}
-                                        onChange={(e) =>
-                                          setJobTemplateMode(
-                                            e.target.value === "live" ? "live" : "simulate",
-                                          )
-                                        }
-                                        className="bg-gray-700 text-white/80 text-xs rounded-lg px-2 py-1.5 border border-white/10 focus:outline-none"
+                                    {jobsMessage && (
+                                      <div
+                                        className={`text-xs rounded border px-2 py-1 ${
+                                          jobsMessage.type === "success"
+                                            ? "border-emerald-300/30 bg-emerald-500/10 text-emerald-100"
+                                            : "border-red-300/30 bg-red-500/10 text-red-100"
+                                        }`}
                                       >
-                                        <option value="simulate">Default: Simulate</option>
-                                        <option value="live">Default: Live</option>
-                                      </select>
-                                      <button
-                                        onClick={() => void createJobTemplate()}
-                                        disabled={!gatewayRequest || jobsLoading}
-                                        className="text-xs px-2.5 py-1.5 rounded border border-cyan-300/35 text-cyan-100 hover:border-cyan-200/45 disabled:opacity-40"
-                                      >
-                                        Create Template
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
-                                    <div className="text-white/70 text-sm">Assign Job to Agent</div>
-                                    <select
-                                      value={jobAssignmentTemplateId}
-                                      onChange={(e) => setJobAssignmentTemplateId(e.target.value)}
-                                      className="w-full bg-gray-700 text-white/80 text-xs rounded-lg px-2 py-1.5 border border-white/10 focus:outline-none"
-                                    >
-                                      <option value="">Select template…</option>
-                                      {jobTemplates.map((template) => (
-                                        <option key={template.id} value={template.id}>
-                                          {template.name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <select
-                                      value={jobAssignmentAgentId}
-                                      onChange={(e) => setJobAssignmentAgentId(e.target.value)}
-                                      className="w-full bg-gray-700 text-white/80 text-xs rounded-lg px-2 py-1.5 border border-white/10 focus:outline-none"
-                                    >
-                                      {agentOptions.map((agent) => (
-                                        <option key={agent.id} value={agent.id}>
-                                          {agent.label}
-                                        </option>
-                                      ))}
-                                      {agentOptions.length === 0 && (
-                                        <option value="main">main</option>
-                                      )}
-                                    </select>
-                                    <input
-                                      type="text"
-                                      value={jobAssignmentTitle}
-                                      onChange={(e) => setJobAssignmentTitle(e.target.value)}
-                                      placeholder="Assignment title override (optional)"
-                                      className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
-                                    />
-                                    <div className="flex items-center gap-2">
-                                      <input
-                                        type="number"
-                                        min={1}
-                                        value={jobAssignmentCadenceMinutes}
-                                        onChange={(e) =>
-                                          setJobAssignmentCadenceMinutes(e.target.value)
-                                        }
-                                        className="w-28 bg-gray-700 text-white/80 rounded-lg px-2.5 py-1.5 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
-                                      />
-                                      <span className="text-white/45 text-xs">minutes</span>
-                                      <input
-                                        type="text"
-                                        value={jobAssignmentEventTriggers}
-                                        onChange={(e) =>
-                                          setJobAssignmentEventTriggers(e.target.value)
-                                        }
-                                        placeholder="events (ticket.updated, command:new)"
-                                        className="flex-1 bg-gray-700 text-white/80 rounded-lg px-2.5 py-1.5 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
-                                      />
-                                      <select
-                                        value={jobAssignmentMode}
-                                        onChange={(e) =>
-                                          setJobAssignmentMode(
-                                            e.target.value === "live" ? "live" : "simulate",
-                                          )
-                                        }
-                                        className="bg-gray-700 text-white/80 text-xs rounded-lg px-2 py-1.5 border border-white/10 focus:outline-none"
-                                      >
-                                        <option value="simulate">Simulate</option>
-                                        <option value="live">Live</option>
-                                      </select>
-                                      <button
-                                        onClick={() => void createJobAssignment()}
-                                        disabled={!gatewayRequest || jobsLoading}
-                                        className="text-xs px-2.5 py-1.5 rounded border border-cyan-300/35 text-cyan-100 hover:border-cyan-200/45 disabled:opacity-40"
-                                      >
-                                        Assign
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
-                                    <div className="text-white/70 text-sm">Job Roster</div>
-                                    <div className="max-h-48 overflow-y-auto divide-y divide-white/5 rounded border border-white/10">
-                                      {jobAssignments.map((assignment) => (
-                                        <div
-                                          key={assignment.id}
-                                          className="px-2 py-1.5 text-[11px] text-white/70 space-y-1"
+                                        {jobsMessage.text}
+                                      </div>
+                                    )}
+                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-white/70 text-sm">
+                                          Workforce Overview
+                                        </span>
+                                        <button
+                                          onClick={() => void loadJobsData()}
+                                          className="text-xs px-2 py-1 rounded border border-white/15 text-white/60 hover:text-white hover:border-white/25 disabled:opacity-40"
+                                          disabled={!gatewayRequest || jobsLoading}
                                         >
-                                          <div className="flex items-center justify-between gap-2">
-                                            <span className="font-medium text-white/85">
-                                              {assignment.title}
-                                            </span>
-                                            <button
-                                              onClick={() =>
-                                                void setAssignmentEnabled(
-                                                  assignment.id,
-                                                  !assignment.enabled,
-                                                )
-                                              }
-                                              className="text-[10px] px-1.5 py-0.5 rounded border border-white/15 text-white/65 hover:text-white"
-                                              disabled={!gatewayRequest}
-                                            >
-                                              {assignment.enabled ? "Disable" : "Enable"}
-                                            </button>
-                                          </div>
-                                          <div className="text-white/45">
-                                            {assignment.agentId} · {assignment.executionMode} ·
-                                            every {assignment.cadenceMinutes}m
-                                          </div>
-                                          {assignment.metadata?.eventTriggers?.length ? (
-                                            <div className="text-cyan-200/80">
-                                              events: {assignment.metadata.eventTriggers.join(", ")}
+                                          {jobsLoading ? "Refreshing..." : "Refresh"}
+                                        </button>
+                                      </div>
+                                      {jobsOverview ? (
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
+                                          <div className="bg-gray-900/50 rounded px-2 py-1">
+                                            <div className="text-white/35 uppercase tracking-wide">
+                                              Templates
                                             </div>
-                                          ) : (
-                                            <div className="text-white/35">
-                                              events: none (schedule only)
+                                            <div className="text-white/80">
+                                              {jobsOverview.templatesCount}
                                             </div>
-                                          )}
-                                          <div className="text-white/45">
-                                            next{" "}
-                                            {assignment.nextRunAt
-                                              ? new Date(assignment.nextRunAt).toLocaleString()
-                                              : "n/a"}
+                                          </div>
+                                          <div className="bg-gray-900/50 rounded px-2 py-1">
+                                            <div className="text-white/35 uppercase tracking-wide">
+                                              Assignments
+                                            </div>
+                                            <div className="text-white/80">
+                                              {jobsOverview.enabledAssignmentsCount}/
+                                              {jobsOverview.assignmentsCount}
+                                            </div>
+                                          </div>
+                                          <div className="bg-gray-900/50 rounded px-2 py-1">
+                                            <div className="text-white/35 uppercase tracking-wide">
+                                              Due Now
+                                            </div>
+                                            <div className="text-white/80">
+                                              {jobsOverview.dueNowCount}
+                                            </div>
+                                          </div>
+                                          <div className="bg-gray-900/50 rounded px-2 py-1">
+                                            <div className="text-white/35 uppercase tracking-wide">
+                                              Blocked Runs
+                                            </div>
+                                            <div className="text-white/80">
+                                              {jobsOverview.blockedRunsCount}
+                                            </div>
                                           </div>
                                         </div>
-                                      ))}
-                                      {jobAssignments.length === 0 && (
-                                        <div className="px-2 py-3 text-[11px] text-white/40">
-                                          No assignments yet.
+                                      ) : (
+                                        <div className="text-white/45 text-xs">
+                                          {!gatewayRequest
+                                            ? "Job board unavailable (gateway not connected)."
+                                            : "No job overview loaded yet."}
                                         </div>
                                       )}
-                                    </div>
-                                  </div>
-
-                                  <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
-                                    <div className="text-white/70 text-sm">Recent Job Runs</div>
-                                    <div className="max-h-48 overflow-y-auto divide-y divide-white/5 rounded border border-white/10">
-                                      {jobRuns.map((run) => (
-                                        <div
-                                          key={run.id}
-                                          className="px-2 py-1.5 text-[11px] text-white/70"
-                                        >
-                                          <div className="flex items-center justify-between">
-                                            <span className="font-mono">{run.agentId}</span>
-                                            <div className="flex items-center gap-1.5">
-                                              <span
-                                                className={`px-1.5 py-0.5 rounded border ${
-                                                  run.status === "completed"
-                                                    ? "border-emerald-300/30 text-emerald-200"
-                                                    : run.status === "blocked"
-                                                      ? "border-amber-300/30 text-amber-200"
-                                                      : run.status === "failed"
-                                                        ? "border-red-300/30 text-red-200"
-                                                        : "border-cyan-300/30 text-cyan-200"
-                                                }`}
+                                      {jobsOverview && jobsOverview.agents.length > 0 && (
+                                        <div className="rounded-lg border border-white/10 overflow-hidden">
+                                          <div className="px-2 py-1 text-[11px] text-white/40 bg-gray-900/40">
+                                            Agent roster status
+                                          </div>
+                                          <div className="max-h-28 overflow-y-auto divide-y divide-white/5">
+                                            {jobsOverview.agents.map((agent) => (
+                                              <div
+                                                key={agent.agentId}
+                                                className="px-2 py-1 text-[11px] text-white/70 flex items-center justify-between gap-2"
                                               >
-                                                {run.status}
-                                              </span>
-                                              {run.metadata?.intentVerdict && (
-                                                <span
-                                                  className={`px-1.5 py-0.5 rounded border ${
-                                                    run.metadata.intentVerdict === "ok"
-                                                      ? "border-emerald-300/30 text-emerald-200"
-                                                      : run.metadata.intentVerdict ===
-                                                          "policy-violation"
-                                                        ? "border-red-300/30 text-red-200"
-                                                        : run.metadata.intentVerdict ===
-                                                            "hierarchy-invalid"
-                                                          ? "border-amber-300/30 text-amber-200"
-                                                          : "border-white/25 text-white/55"
-                                                  }`}
-                                                >
-                                                  intent:{run.metadata.intentVerdict}
+                                                <span className="font-mono">{agent.agentId}</span>
+                                                <span>
+                                                  jobs {agent.enabled}/{agent.total} · due{" "}
+                                                  {agent.dueNow} · blocked {agent.blockedTasks}
+                                                  {agent.nextDueAt ? (
+                                                    <span className="text-white/45">
+                                                      {" "}
+                                                      · next{" "}
+                                                      {new Date(
+                                                        agent.nextDueAt,
+                                                      ).toLocaleTimeString()}
+                                                    </span>
+                                                  ) : null}
                                                 </span>
-                                              )}
-                                            </div>
+                                              </div>
+                                            ))}
                                           </div>
-                                          <div className="text-white/45">
-                                            mode {run.executionMode} · task {run.taskId.slice(0, 8)}
-                                          </div>
-                                          {run.metadata?.intent && (
-                                            <div className="text-white/45">
-                                              runtime {run.metadata.intent.runtimeMode ?? "n/a"} ·
-                                              validation{" "}
-                                              {run.metadata.intent.validationMode ?? "n/a"} · issues{" "}
-                                              {typeof run.metadata.intent.issuesCount === "number"
-                                                ? run.metadata.intent.issuesCount
-                                                : "n/a"}
-                                            </div>
-                                          )}
-                                          <div className="text-white/45">
-                                            {new Date(run.startedAt).toLocaleString()}
-                                          </div>
-                                        </div>
-                                      ))}
-                                      {jobRuns.length === 0 && (
-                                        <div className="px-2 py-3 text-[11px] text-white/40">
-                                          No job runs recorded yet.
                                         </div>
                                       )}
                                     </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                      <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
+                                        <div className="text-white/70 text-sm">
+                                          Create Job Template
+                                        </div>
+                                        <input
+                                          type="text"
+                                          value={jobTemplateName}
+                                          onChange={(e) => setJobTemplateName(e.target.value)}
+                                          placeholder="Template name (e.g. Tier 1 Ticket Triage)"
+                                          className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                                        />
+                                        <textarea
+                                          value={jobRolePrompt}
+                                          onChange={(e) => setJobRolePrompt(e.target.value)}
+                                          placeholder="Role contract / job expectations"
+                                          rows={3}
+                                          className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none resize-none"
+                                        />
+                                        <div className="flex items-center gap-2">
+                                          <select
+                                            value={jobTemplateMode}
+                                            onChange={(e) =>
+                                              setJobTemplateMode(
+                                                e.target.value === "live" ? "live" : "simulate",
+                                              )
+                                            }
+                                            className="bg-gray-700 text-white/80 text-xs rounded-lg px-2 py-1.5 border border-white/10 focus:outline-none"
+                                          >
+                                            <option value="simulate">Default: Simulate</option>
+                                            <option value="live">Default: Live</option>
+                                          </select>
+                                          <button
+                                            onClick={() => void createJobTemplate()}
+                                            disabled={!gatewayRequest || jobsLoading}
+                                            className="text-xs px-2.5 py-1.5 rounded border border-cyan-300/35 text-cyan-100 hover:border-cyan-200/45 disabled:opacity-40"
+                                          >
+                                            Create Template
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
+                                        <div className="text-white/70 text-sm">
+                                          Assign Job to Agent
+                                        </div>
+                                        <select
+                                          value={jobAssignmentTemplateId}
+                                          onChange={(e) =>
+                                            setJobAssignmentTemplateId(e.target.value)
+                                          }
+                                          className="w-full bg-gray-700 text-white/80 text-xs rounded-lg px-2 py-1.5 border border-white/10 focus:outline-none"
+                                        >
+                                          <option value="">Select template…</option>
+                                          {jobTemplates.map((template) => (
+                                            <option key={template.id} value={template.id}>
+                                              {template.name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <select
+                                          value={jobAssignmentAgentId}
+                                          onChange={(e) => setJobAssignmentAgentId(e.target.value)}
+                                          className="w-full bg-gray-700 text-white/80 text-xs rounded-lg px-2 py-1.5 border border-white/10 focus:outline-none"
+                                        >
+                                          {agentOptions.map((agent) => (
+                                            <option key={agent.id} value={agent.id}>
+                                              {agent.label}
+                                            </option>
+                                          ))}
+                                          {agentOptions.length === 0 && (
+                                            <option value="main">main</option>
+                                          )}
+                                        </select>
+                                        <input
+                                          type="text"
+                                          value={jobAssignmentTitle}
+                                          onChange={(e) => setJobAssignmentTitle(e.target.value)}
+                                          placeholder="Assignment title override (optional)"
+                                          className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                                        />
+                                        <div className="flex items-center gap-2">
+                                          <input
+                                            type="number"
+                                            min={1}
+                                            value={jobAssignmentCadenceMinutes}
+                                            onChange={(e) =>
+                                              setJobAssignmentCadenceMinutes(e.target.value)
+                                            }
+                                            className="w-28 bg-gray-700 text-white/80 rounded-lg px-2.5 py-1.5 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                                          />
+                                          <span className="text-white/45 text-xs">minutes</span>
+                                          <input
+                                            type="text"
+                                            value={jobAssignmentEventTriggers}
+                                            onChange={(e) =>
+                                              setJobAssignmentEventTriggers(e.target.value)
+                                            }
+                                            placeholder="events (ticket.updated, command:new)"
+                                            className="flex-1 bg-gray-700 text-white/80 rounded-lg px-2.5 py-1.5 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                                          />
+                                          <select
+                                            value={jobAssignmentMode}
+                                            onChange={(e) =>
+                                              setJobAssignmentMode(
+                                                e.target.value === "live" ? "live" : "simulate",
+                                              )
+                                            }
+                                            className="bg-gray-700 text-white/80 text-xs rounded-lg px-2 py-1.5 border border-white/10 focus:outline-none"
+                                          >
+                                            <option value="simulate">Simulate</option>
+                                            <option value="live">Live</option>
+                                          </select>
+                                          <button
+                                            onClick={() => void createJobAssignment()}
+                                            disabled={!gatewayRequest || jobsLoading}
+                                            className="text-xs px-2.5 py-1.5 rounded border border-cyan-300/35 text-cyan-100 hover:border-cyan-200/45 disabled:opacity-40"
+                                          >
+                                            Assign
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                      <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
+                                        <div className="text-white/70 text-sm">Job Roster</div>
+                                        <div className="max-h-48 overflow-y-auto divide-y divide-white/5 rounded border border-white/10">
+                                          {jobAssignments.map((assignment) => (
+                                            <div
+                                              key={assignment.id}
+                                              className="px-2 py-1.5 text-[11px] text-white/70 space-y-1"
+                                            >
+                                              <div className="flex items-center justify-between gap-2">
+                                                <span className="font-medium text-white/85">
+                                                  {assignment.title}
+                                                </span>
+                                                <button
+                                                  onClick={() =>
+                                                    void setAssignmentEnabled(
+                                                      assignment.id,
+                                                      !assignment.enabled,
+                                                    )
+                                                  }
+                                                  className="text-[10px] px-1.5 py-0.5 rounded border border-white/15 text-white/65 hover:text-white"
+                                                  disabled={!gatewayRequest}
+                                                >
+                                                  {assignment.enabled ? "Disable" : "Enable"}
+                                                </button>
+                                              </div>
+                                              <div className="text-white/45">
+                                                {assignment.agentId} · {assignment.executionMode} ·
+                                                every {assignment.cadenceMinutes}m
+                                              </div>
+                                              {assignment.metadata?.eventTriggers?.length ? (
+                                                <div className="text-cyan-200/80">
+                                                  events:{" "}
+                                                  {assignment.metadata.eventTriggers.join(", ")}
+                                                </div>
+                                              ) : (
+                                                <div className="text-white/35">
+                                                  events: none (schedule only)
+                                                </div>
+                                              )}
+                                              <div className="text-white/45">
+                                                next{" "}
+                                                {assignment.nextRunAt
+                                                  ? new Date(assignment.nextRunAt).toLocaleString()
+                                                  : "n/a"}
+                                              </div>
+                                            </div>
+                                          ))}
+                                          {jobAssignments.length === 0 && (
+                                            <div className="px-2 py-3 text-[11px] text-white/40">
+                                              No assignments yet.
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
+                                        <div className="text-white/70 text-sm">Recent Job Runs</div>
+                                        <div className="max-h-48 overflow-y-auto divide-y divide-white/5 rounded border border-white/10">
+                                          {jobRuns.map((run) => (
+                                            <div
+                                              key={run.id}
+                                              className="px-2 py-1.5 text-[11px] text-white/70"
+                                            >
+                                              <div className="flex items-center justify-between">
+                                                <span className="font-mono">{run.agentId}</span>
+                                                <div className="flex items-center gap-1.5">
+                                                  <span
+                                                    className={`px-1.5 py-0.5 rounded border ${
+                                                      run.status === "completed"
+                                                        ? "border-emerald-300/30 text-emerald-200"
+                                                        : run.status === "blocked"
+                                                          ? "border-amber-300/30 text-amber-200"
+                                                          : run.status === "failed"
+                                                            ? "border-red-300/30 text-red-200"
+                                                            : "border-cyan-300/30 text-cyan-200"
+                                                    }`}
+                                                  >
+                                                    {run.status}
+                                                  </span>
+                                                  {run.metadata?.intentVerdict && (
+                                                    <span
+                                                      className={`px-1.5 py-0.5 rounded border ${
+                                                        run.metadata.intentVerdict === "ok"
+                                                          ? "border-emerald-300/30 text-emerald-200"
+                                                          : run.metadata.intentVerdict ===
+                                                              "policy-violation"
+                                                            ? "border-red-300/30 text-red-200"
+                                                            : run.metadata.intentVerdict ===
+                                                                "hierarchy-invalid"
+                                                              ? "border-amber-300/30 text-amber-200"
+                                                              : "border-white/25 text-white/55"
+                                                      }`}
+                                                    >
+                                                      intent:{run.metadata.intentVerdict}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                              <div className="text-white/45">
+                                                mode {run.executionMode} · task{" "}
+                                                {run.taskId.slice(0, 8)}
+                                              </div>
+                                              {run.metadata?.intent && (
+                                                <div className="text-white/45">
+                                                  runtime {run.metadata.intent.runtimeMode ?? "n/a"}{" "}
+                                                  · validation{" "}
+                                                  {run.metadata.intent.validationMode ?? "n/a"} ·
+                                                  issues{" "}
+                                                  {typeof run.metadata.intent.issuesCount ===
+                                                  "number"
+                                                    ? run.metadata.intent.issuesCount
+                                                    : "n/a"}
+                                                </div>
+                                              )}
+                                              <div className="text-white/45">
+                                                {new Date(run.startedAt).toLocaleString()}
+                                              </div>
+                                            </div>
+                                          ))}
+                                          {jobRuns.length === 0 && (
+                                            <div className="px-2 py-3 text-[11px] text-white/40">
+                                              No job runs recorded yet.
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
                                   </div>
-                                </div>
-                              </div>
+                                </>
+                              )}
                             </>
                           )}
 
@@ -12624,7 +12921,7 @@ export function ConfigPanel({
                               </div>
                             </div>
 
-                            {showAgentMemoryAdminControls && memoryV3Message && (
+                            {showAgentMemoryStatusControls && memoryV3Message && (
                               <div
                                 className={`rounded-lg px-3 py-2 text-xs ${
                                   memoryV3Message.type === "success"
@@ -12820,7 +13117,7 @@ export function ConfigPanel({
                               );
                             })()}
 
-                            {showAgentMemoryAdminControls && (
+                            {showAgentMemoryStatusControls && (
                               <>
                                 <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-3">
                                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -12848,26 +13145,29 @@ export function ConfigPanel({
                                       >
                                         {memoryV3StatusLoading ? "Refreshing…" : "Refresh status"}
                                       </button>
-                                      <button
-                                        onClick={() => void bootstrapInternalVault(false)}
-                                        disabled={memoryV3StatusAction !== null}
-                                        className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                      >
-                                        {memoryV3StatusAction === "bootstrap"
-                                          ? "Creating…"
-                                          : "Create Argent vault"}
-                                      </button>
-                                      {memoryV3Status?.vault.mode !== "internal" && (
+                                      {showAgentVaultControls && (
                                         <button
-                                          onClick={() => void bootstrapInternalVault(true)}
+                                          onClick={() => void bootstrapInternalVault(false)}
                                           disabled={memoryV3StatusAction !== null}
-                                          className="px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-200 rounded-lg text-xs font-medium disabled:opacity-50"
+                                          className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg text-xs font-medium disabled:opacity-50"
                                         >
-                                          {memoryV3StatusAction === "bind"
-                                            ? "Binding…"
-                                            : "Bind Argent vault"}
+                                          {memoryV3StatusAction === "bootstrap"
+                                            ? "Creating…"
+                                            : "Create Argent vault"}
                                         </button>
                                       )}
+                                      {showAgentVaultControls &&
+                                        memoryV3Status?.vault.mode !== "internal" && (
+                                          <button
+                                            onClick={() => void bootstrapInternalVault(true)}
+                                            disabled={memoryV3StatusAction !== null}
+                                            className="px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-200 rounded-lg text-xs font-medium disabled:opacity-50"
+                                          >
+                                            {memoryV3StatusAction === "bind"
+                                              ? "Binding…"
+                                              : "Bind Argent vault"}
+                                          </button>
+                                        )}
                                     </div>
                                   </div>
 
@@ -12970,1096 +13270,1131 @@ export function ConfigPanel({
                                   </div>
                                 </div>
 
-                                <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 space-y-3">
-                                  <div className="flex items-center gap-2">
-                                    <Book className="w-4 h-4 text-cyan-300" />
-                                    <div>
-                                      <div className="text-white/85 text-sm font-medium">
-                                        Memory V3: Vault Source
+                                {showAgentVaultControls && (
+                                  <>
+                                    <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 space-y-3">
+                                      <div className="flex items-center gap-2">
+                                        <Book className="w-4 h-4 text-cyan-300" />
+                                        <div>
+                                          <div className="text-white/85 text-sm font-medium">
+                                            Memory V3: Vault Source
+                                          </div>
+                                          <div className="text-white/45 text-xs">
+                                            Point Argent at the markdown folder you want treated as
+                                            its vault. This does not require Obsidian; Obsidian is
+                                            only a viewer/editor over the same folder.
+                                          </div>
+                                        </div>
                                       </div>
-                                      <div className="text-white/45 text-xs">
-                                        Point Argent at the markdown folder you want treated as its
-                                        vault. This does not require Obsidian; Obsidian is only a
-                                        viewer/editor over the same folder.
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
-                                    <div>
-                                      <div className="text-white/75 text-sm">Vault enabled</div>
-                                      <div className="text-white/40 text-xs">
-                                        Turns on vault path support and V3 ingest controls.
-                                      </div>
-                                    </div>
-                                    <button
-                                      onClick={() =>
-                                        void patchMemorySettings(
-                                          {
-                                            vault: {
-                                              enabled: !(
-                                                agentSettings.memory?.vault?.enabled === true
-                                              ),
-                                            },
-                                          },
-                                          `Vault ${agentSettings.memory?.vault?.enabled ? "disabled" : "enabled"}.`,
-                                        )
-                                      }
-                                      className="text-white/50 hover:text-white/80"
-                                      disabled={memoryV3Saving}
-                                    >
-                                      {agentSettings.memory?.vault?.enabled ? (
-                                        <ToggleRight className="w-5 h-5 text-green-400" />
-                                      ) : (
-                                        <ToggleLeft className="w-5 h-5 text-white/30" />
-                                      )}
-                                    </button>
-                                  </div>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <div className="md:col-span-2">
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Vault path
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          value={vaultPathDraft}
-                                          onChange={(e) => setVaultPathDraft(e.target.value)}
-                                          placeholder="/absolute/path/to/argent-vault"
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchMemorySettings(
-                                              { vault: { path: vaultPathDraft.trim() } },
-                                              "Vault path saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Knowledge collection
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          value={vaultCollectionDraft}
-                                          onChange={(e) => setVaultCollectionDraft(e.target.value)}
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
-                                        />
+                                      <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
+                                        <div>
+                                          <div className="text-white/75 text-sm">Vault enabled</div>
+                                          <div className="text-white/40 text-xs">
+                                            Turns on vault path support and V3 ingest controls.
+                                          </div>
+                                        </div>
                                         <button
                                           onClick={() =>
                                             void patchMemorySettings(
                                               {
                                                 vault: {
-                                                  knowledgeCollection: vaultCollectionDraft.trim(),
-                                                },
-                                              },
-                                              "Vault collection saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
-                                      <div>
-                                        <div className="text-white/75 text-sm">
-                                          Scheduled ingest
-                                        </div>
-                                        <div className="text-white/40 text-xs">
-                                          Enables automatic markdown import on the configured
-                                          interval.
-                                        </div>
-                                      </div>
-                                      <button
-                                        onClick={() =>
-                                          void patchMemorySettings(
-                                            {
-                                              vault: {
-                                                ingest: {
                                                   enabled: !(
-                                                    agentSettings.memory?.vault?.ingest?.enabled ===
-                                                    true
+                                                    agentSettings.memory?.vault?.enabled === true
                                                   ),
                                                 },
                                               },
-                                            },
-                                            `Vault ingest ${
-                                              agentSettings.memory?.vault?.ingest?.enabled
-                                                ? "disabled"
-                                                : "enabled"
-                                            }.`,
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                        disabled={memoryV3Saving}
-                                      >
-                                        {agentSettings.memory?.vault?.ingest?.enabled ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Ingest interval
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          value={vaultIntervalDraft}
-                                          onChange={(e) => setVaultIntervalDraft(e.target.value)}
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchMemorySettings(
-                                              {
-                                                vault: {
-                                                  ingest: { interval: vaultIntervalDraft.trim() },
-                                                },
-                                              },
-                                              "Vault ingest interval saved.",
+                                              `Vault ${agentSettings.memory?.vault?.enabled ? "disabled" : "enabled"}.`,
                                             )
                                           }
+                                          className="text-white/50 hover:text-white/80"
                                           disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
                                         >
-                                          Save
+                                          {agentSettings.memory?.vault?.enabled ? (
+                                            <ToggleRight className="w-5 h-5 text-green-400" />
+                                          ) : (
+                                            <ToggleLeft className="w-5 h-5 text-white/30" />
+                                          )}
                                         </button>
                                       </div>
-                                    </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Debounce (ms)
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          type="number"
-                                          min={0}
-                                          value={vaultDebounceDraft}
-                                          onChange={(e) => setVaultDebounceDraft(e.target.value)}
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchMemorySettings(
-                                              {
-                                                vault: {
-                                                  ingest: {
-                                                    debounceMs: Math.max(
-                                                      0,
-                                                      Math.floor(
-                                                        Number(vaultDebounceDraft) || 5000,
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div className="md:col-span-2">
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Vault path
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              value={vaultPathDraft}
+                                              onChange={(e) => setVaultPathDraft(e.target.value)}
+                                              placeholder="/absolute/path/to/argent-vault"
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() => void chooseExternalVaultFolder()}
+                                              disabled={memoryV3StatusAction !== null}
+                                              className="px-3 py-2 bg-white/10 hover:bg-white/15 text-white/80 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              {memoryV3StatusAction === "bind"
+                                                ? "Choosing…"
+                                                : "Choose folder…"}
+                                            </button>
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  { vault: { path: vaultPathDraft.trim() } },
+                                                  "Vault path saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Knowledge collection
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              value={vaultCollectionDraft}
+                                              onChange={(e) =>
+                                                setVaultCollectionDraft(e.target.value)
+                                              }
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  {
+                                                    vault: {
+                                                      knowledgeCollection:
+                                                        vaultCollectionDraft.trim(),
+                                                    },
+                                                  },
+                                                  "Vault collection saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
+                                          <div>
+                                            <div className="text-white/75 text-sm">
+                                              Scheduled ingest
+                                            </div>
+                                            <div className="text-white/40 text-xs">
+                                              Enables automatic markdown import on the configured
+                                              interval.
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() =>
+                                              void patchMemorySettings(
+                                                {
+                                                  vault: {
+                                                    ingest: {
+                                                      enabled: !(
+                                                        agentSettings.memory?.vault?.ingest
+                                                          ?.enabled === true
                                                       ),
-                                                    ),
+                                                    },
                                                   },
                                                 },
-                                              },
-                                              "Vault ingest debounce saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
+                                                `Vault ingest ${
+                                                  agentSettings.memory?.vault?.ingest?.enabled
+                                                    ? "disabled"
+                                                    : "enabled"
+                                                }.`,
+                                              )
+                                            }
+                                            className="text-white/50 hover:text-white/80"
+                                            disabled={memoryV3Saving}
+                                          >
+                                            {agentSettings.memory?.vault?.ingest?.enabled ? (
+                                              <ToggleRight className="w-5 h-5 text-green-400" />
+                                            ) : (
+                                              <ToggleLeft className="w-5 h-5 text-white/30" />
+                                            )}
+                                          </button>
+                                        </div>
+                                        <div>
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Ingest interval
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              value={vaultIntervalDraft}
+                                              onChange={(e) =>
+                                                setVaultIntervalDraft(e.target.value)
+                                              }
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  {
+                                                    vault: {
+                                                      ingest: {
+                                                        interval: vaultIntervalDraft.trim(),
+                                                      },
+                                                    },
+                                                  },
+                                                  "Vault ingest interval saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Debounce (ms)
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              type="number"
+                                              min={0}
+                                              value={vaultDebounceDraft}
+                                              onChange={(e) =>
+                                                setVaultDebounceDraft(e.target.value)
+                                              }
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  {
+                                                    vault: {
+                                                      ingest: {
+                                                        debounceMs: Math.max(
+                                                          0,
+                                                          Math.floor(
+                                                            Number(vaultDebounceDraft) || 5000,
+                                                          ),
+                                                        ),
+                                                      },
+                                                    },
+                                                  },
+                                                  "Vault ingest debounce saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div className="md:col-span-2">
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Excluded paths
+                                          </label>
+                                          <textarea
+                                            value={vaultExcludePathsDraft}
+                                            onChange={(e) =>
+                                              setVaultExcludePathsDraft(e.target.value)
+                                            }
+                                            rows={3}
+                                            placeholder=".obsidian&#10;templates&#10;archive/"
+                                            className="w-full mt-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
+                                          />
+                                          <div className="mt-2 flex justify-end">
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  {
+                                                    vault: {
+                                                      ingest: {
+                                                        excludePaths: vaultExcludePathsDraft
+                                                          .split(/\r?\n/)
+                                                          .map((entry) => entry.trim())
+                                                          .filter(Boolean),
+                                                      },
+                                                    },
+                                                  },
+                                                  "Vault exclusion paths saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save exclusions
+                                            </button>
+                                          </div>
+                                        </div>
                                       </div>
-                                    </div>
-                                    <div className="md:col-span-2">
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Excluded paths
-                                      </label>
-                                      <textarea
-                                        value={vaultExcludePathsDraft}
-                                        onChange={(e) => setVaultExcludePathsDraft(e.target.value)}
-                                        rows={3}
-                                        placeholder=".obsidian&#10;templates&#10;archive/"
-                                        className="w-full mt-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-cyan-500/50 outline-none font-mono"
-                                      />
-                                      <div className="mt-2 flex justify-end">
+                                      <div className="flex flex-wrap gap-2">
                                         <button
-                                          onClick={() =>
-                                            void patchMemorySettings(
-                                              {
-                                                vault: {
-                                                  ingest: {
-                                                    excludePaths: vaultExcludePathsDraft
-                                                      .split(/\r?\n/)
-                                                      .map((entry) => entry.trim())
-                                                      .filter(Boolean),
-                                                  },
-                                                },
-                                              },
-                                              "Vault exclusion paths saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
+                                          onClick={() => void runVaultIngest(true)}
+                                          disabled={vaultIngestAction !== null}
+                                          className="px-3 py-2 bg-white/10 hover:bg-white/15 text-white/80 rounded-lg text-xs font-medium disabled:opacity-50"
+                                        >
+                                          {vaultIngestAction === "preview"
+                                            ? "Previewing…"
+                                            : "Preview vault ingest"}
+                                        </button>
+                                        <button
+                                          onClick={() => void runVaultIngest(false)}
+                                          disabled={vaultIngestAction !== null}
                                           className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
                                         >
-                                          Save exclusions
+                                          {vaultIngestAction === "run"
+                                            ? "Ingesting…"
+                                            : "Run ingest now"}
                                         </button>
                                       </div>
                                     </div>
-                                  </div>
-                                  <div className="flex flex-wrap gap-2">
-                                    <button
-                                      onClick={() => void runVaultIngest(true)}
-                                      disabled={vaultIngestAction !== null}
-                                      className="px-3 py-2 bg-white/10 hover:bg-white/15 text-white/80 rounded-lg text-xs font-medium disabled:opacity-50"
-                                    >
-                                      {vaultIngestAction === "preview"
-                                        ? "Previewing…"
-                                        : "Preview vault ingest"}
-                                    </button>
-                                    <button
-                                      onClick={() => void runVaultIngest(false)}
-                                      disabled={vaultIngestAction !== null}
-                                      className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                    >
-                                      {vaultIngestAction === "run"
-                                        ? "Ingesting…"
-                                        : "Run ingest now"}
-                                    </button>
-                                  </div>
-                                </div>
+                                  </>
+                                )}
 
-                                <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-3 space-y-3">
-                                  <div className="flex items-center gap-2">
-                                    <GitBranch className="w-4 h-4 text-violet-300" />
-                                    <div>
-                                      <div className="text-white/85 text-sm font-medium">
-                                        Memory V3: Cognee Relationship Retrieval
-                                      </div>
-                                      <div className="text-white/45 text-xs">
-                                        This is supplemental graph-style retrieval. MemU remains the
-                                        primary operational memory even when Cognee is enabled.
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
-                                      <div>
-                                        <div className="text-white/75 text-sm">Cognee enabled</div>
-                                        <div className="text-white/40 text-xs">
-                                          Master switch for the external graph retrieval path.
+                                {showAgentMemoryAdminControls && (
+                                  <>
+                                    <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-3 space-y-3">
+                                      <div className="flex items-center gap-2">
+                                        <GitBranch className="w-4 h-4 text-violet-300" />
+                                        <div>
+                                          <div className="text-white/85 text-sm font-medium">
+                                            Memory V3: Cognee Relationship Retrieval
+                                          </div>
+                                          <div className="text-white/45 text-xs">
+                                            This is supplemental graph-style retrieval. MemU remains
+                                            the primary operational memory even when Cognee is
+                                            enabled.
+                                          </div>
                                         </div>
                                       </div>
-                                      <button
-                                        onClick={() =>
-                                          void patchMemorySettings(
-                                            {
-                                              cognee: {
-                                                enabled: !(
-                                                  agentSettings.memory?.cognee?.enabled === true
-                                                ),
-                                              },
-                                            },
-                                            `Cognee ${
-                                              agentSettings.memory?.cognee?.enabled
-                                                ? "disabled"
-                                                : "enabled"
-                                            }.`,
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                        disabled={memoryV3Saving}
-                                      >
-                                        {agentSettings.memory?.cognee?.enabled ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
-                                    <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
-                                      <div>
-                                        <div className="text-white/75 text-sm">
-                                          Retrieval enabled
-                                        </div>
-                                        <div className="text-white/40 text-xs">
-                                          Allows `memory_recall` to consult Cognee when gates match.
-                                        </div>
-                                      </div>
-                                      <button
-                                        onClick={() =>
-                                          void patchMemorySettings(
-                                            {
-                                              cognee: {
-                                                retrieval: {
-                                                  enabled: !(
-                                                    agentSettings.memory?.cognee?.retrieval
-                                                      ?.enabled === true
-                                                  ),
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
+                                          <div>
+                                            <div className="text-white/75 text-sm">
+                                              Cognee enabled
+                                            </div>
+                                            <div className="text-white/40 text-xs">
+                                              Master switch for the external graph retrieval path.
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() =>
+                                              void patchMemorySettings(
+                                                {
+                                                  cognee: {
+                                                    enabled: !(
+                                                      agentSettings.memory?.cognee?.enabled === true
+                                                    ),
+                                                  },
                                                 },
-                                              },
-                                            },
-                                            `Cognee retrieval ${
-                                              agentSettings.memory?.cognee?.retrieval?.enabled
-                                                ? "disabled"
-                                                : "enabled"
-                                            }.`,
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                        disabled={memoryV3Saving}
-                                      >
-                                        {agentSettings.memory?.cognee?.retrieval?.enabled ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Retrieval timeout (ms)
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          type="number"
-                                          min={1}
-                                          value={cogneeTimeoutDraft}
-                                          onChange={(e) => setCogneeTimeoutDraft(e.target.value)}
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-violet-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchMemorySettings(
-                                              {
-                                                cognee: {
-                                                  retrieval: {
-                                                    timeoutMs: Math.max(
-                                                      1,
-                                                      Math.floor(
-                                                        Number(cogneeTimeoutDraft) || 5000,
+                                                `Cognee ${
+                                                  agentSettings.memory?.cognee?.enabled
+                                                    ? "disabled"
+                                                    : "enabled"
+                                                }.`,
+                                              )
+                                            }
+                                            className="text-white/50 hover:text-white/80"
+                                            disabled={memoryV3Saving}
+                                          >
+                                            {agentSettings.memory?.cognee?.enabled ? (
+                                              <ToggleRight className="w-5 h-5 text-green-400" />
+                                            ) : (
+                                              <ToggleLeft className="w-5 h-5 text-white/30" />
+                                            )}
+                                          </button>
+                                        </div>
+                                        <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
+                                          <div>
+                                            <div className="text-white/75 text-sm">
+                                              Retrieval enabled
+                                            </div>
+                                            <div className="text-white/40 text-xs">
+                                              Allows `memory_recall` to consult Cognee when gates
+                                              match.
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() =>
+                                              void patchMemorySettings(
+                                                {
+                                                  cognee: {
+                                                    retrieval: {
+                                                      enabled: !(
+                                                        agentSettings.memory?.cognee?.retrieval
+                                                          ?.enabled === true
                                                       ),
-                                                    ),
+                                                    },
                                                   },
                                                 },
-                                              },
-                                              "Cognee timeout saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Max results per query
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          type="number"
-                                          min={1}
-                                          value={cogneeMaxResultsDraft}
-                                          onChange={(e) => setCogneeMaxResultsDraft(e.target.value)}
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-violet-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchMemorySettings(
-                                              {
-                                                cognee: {
-                                                  retrieval: {
-                                                    maxResultsPerQuery: Math.max(
-                                                      1,
-                                                      Math.floor(
-                                                        Number(cogneeMaxResultsDraft) || 5,
+                                                `Cognee retrieval ${
+                                                  agentSettings.memory?.cognee?.retrieval?.enabled
+                                                    ? "disabled"
+                                                    : "enabled"
+                                                }.`,
+                                              )
+                                            }
+                                            className="text-white/50 hover:text-white/80"
+                                            disabled={memoryV3Saving}
+                                          >
+                                            {agentSettings.memory?.cognee?.retrieval?.enabled ? (
+                                              <ToggleRight className="w-5 h-5 text-green-400" />
+                                            ) : (
+                                              <ToggleLeft className="w-5 h-5 text-white/30" />
+                                            )}
+                                          </button>
+                                        </div>
+                                        <div>
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Retrieval timeout (ms)
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              value={cogneeTimeoutDraft}
+                                              onChange={(e) =>
+                                                setCogneeTimeoutDraft(e.target.value)
+                                              }
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-violet-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  {
+                                                    cognee: {
+                                                      retrieval: {
+                                                        timeoutMs: Math.max(
+                                                          1,
+                                                          Math.floor(
+                                                            Number(cogneeTimeoutDraft) || 5000,
+                                                          ),
+                                                        ),
+                                                      },
+                                                    },
+                                                  },
+                                                  "Cognee timeout saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Max results per query
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              value={cogneeMaxResultsDraft}
+                                              onChange={(e) =>
+                                                setCogneeMaxResultsDraft(e.target.value)
+                                              }
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-violet-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  {
+                                                    cognee: {
+                                                      retrieval: {
+                                                        maxResultsPerQuery: Math.max(
+                                                          1,
+                                                          Math.floor(
+                                                            Number(cogneeMaxResultsDraft) || 5,
+                                                          ),
+                                                        ),
+                                                      },
+                                                    },
+                                                  },
+                                                  "Cognee max results saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Embedding dimensions
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              value={cogneeEmbeddingDimensionsDraft}
+                                              onChange={(e) =>
+                                                setCogneeEmbeddingDimensionsDraft(e.target.value)
+                                              }
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-violet-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  {
+                                                    cognee: {
+                                                      embeddingDimensions: Math.max(
+                                                        1,
+                                                        Math.floor(
+                                                          Number(cogneeEmbeddingDimensionsDraft) ||
+                                                            1536,
+                                                        ),
                                                       ),
-                                                    ),
+                                                    },
+                                                  },
+                                                  "Cognee embedding dimensions saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div className="md:col-span-2">
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Search modes
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              value={cogneeSearchModesDraft}
+                                              onChange={(e) =>
+                                                setCogneeSearchModesDraft(e.target.value)
+                                              }
+                                              placeholder="GRAPH_COMPLETION, INSIGHTS"
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-violet-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchMemorySettings(
+                                                  {
+                                                    cognee: {
+                                                      retrieval: {
+                                                        searchModes: cogneeSearchModesDraft
+                                                          .split(",")
+                                                          .map((entry) => entry.trim())
+                                                          .filter(Boolean),
+                                                      },
+                                                    },
+                                                  },
+                                                  "Cognee search modes saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
+                                          <div>
+                                            <div className="text-white/75 text-sm">
+                                              Trigger on sufficiency fail
+                                            </div>
+                                            <div className="text-white/40 text-xs">
+                                              Ask Cognee when MemU results are sparse or weak.
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() =>
+                                              void patchMemorySettings(
+                                                {
+                                                  cognee: {
+                                                    retrieval: {
+                                                      triggerOnSufficiencyFail: !(
+                                                        agentSettings.memory?.cognee?.retrieval
+                                                          ?.triggerOnSufficiencyFail !== false
+                                                      ),
+                                                    },
                                                   },
                                                 },
-                                              },
-                                              "Cognee max results saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Embedding dimensions
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          type="number"
-                                          min={1}
-                                          value={cogneeEmbeddingDimensionsDraft}
-                                          onChange={(e) =>
-                                            setCogneeEmbeddingDimensionsDraft(e.target.value)
-                                          }
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-violet-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchMemorySettings(
-                                              {
-                                                cognee: {
-                                                  embeddingDimensions: Math.max(
-                                                    1,
-                                                    Math.floor(
-                                                      Number(cogneeEmbeddingDimensionsDraft) ||
-                                                        1536,
-                                                    ),
-                                                  ),
-                                                },
-                                              },
-                                              "Cognee embedding dimensions saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div className="md:col-span-2">
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Search modes
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          value={cogneeSearchModesDraft}
-                                          onChange={(e) =>
-                                            setCogneeSearchModesDraft(e.target.value)
-                                          }
-                                          placeholder="GRAPH_COMPLETION, INSIGHTS"
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-violet-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchMemorySettings(
-                                              {
-                                                cognee: {
-                                                  retrieval: {
-                                                    searchModes: cogneeSearchModesDraft
-                                                      .split(",")
-                                                      .map((entry) => entry.trim())
-                                                      .filter(Boolean),
+                                                "Cognee sufficiency trigger saved.",
+                                              )
+                                            }
+                                            className="text-white/50 hover:text-white/80"
+                                            disabled={memoryV3Saving}
+                                          >
+                                            {agentSettings.memory?.cognee?.retrieval
+                                              ?.triggerOnSufficiencyFail !== false ? (
+                                              <ToggleRight className="w-5 h-5 text-green-400" />
+                                            ) : (
+                                              <ToggleLeft className="w-5 h-5 text-white/30" />
+                                            )}
+                                          </button>
+                                        </div>
+                                        <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
+                                          <div>
+                                            <div className="text-white/75 text-sm">
+                                              Trigger on structural query
+                                            </div>
+                                            <div className="text-white/40 text-xs">
+                                              Ask Cognee for relationship-heavy questions and
+                                              graph-shaped retrieval problems.
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() =>
+                                              void patchMemorySettings(
+                                                {
+                                                  cognee: {
+                                                    retrieval: {
+                                                      triggerOnStructuralQuery: !(
+                                                        agentSettings.memory?.cognee?.retrieval
+                                                          ?.triggerOnStructuralQuery !== false
+                                                      ),
+                                                    },
                                                   },
                                                 },
-                                              },
-                                              "Cognee search modes saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
-                                      <div>
-                                        <div className="text-white/75 text-sm">
-                                          Trigger on sufficiency fail
-                                        </div>
-                                        <div className="text-white/40 text-xs">
-                                          Ask Cognee when MemU results are sparse or weak.
+                                                "Cognee structural-query trigger saved.",
+                                              )
+                                            }
+                                            className="text-white/50 hover:text-white/80"
+                                            disabled={memoryV3Saving}
+                                          >
+                                            {agentSettings.memory?.cognee?.retrieval
+                                              ?.triggerOnStructuralQuery !== false ? (
+                                              <ToggleRight className="w-5 h-5 text-green-400" />
+                                            ) : (
+                                              <ToggleLeft className="w-5 h-5 text-white/30" />
+                                            )}
+                                          </button>
                                         </div>
                                       </div>
-                                      <button
-                                        onClick={() =>
-                                          void patchMemorySettings(
-                                            {
-                                              cognee: {
-                                                retrieval: {
-                                                  triggerOnSufficiencyFail: !(
-                                                    agentSettings.memory?.cognee?.retrieval
-                                                      ?.triggerOnSufficiencyFail !== false
-                                                  ),
-                                                },
-                                              },
-                                            },
-                                            "Cognee sufficiency trigger saved.",
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                        disabled={memoryV3Saving}
-                                      >
-                                        {agentSettings.memory?.cognee?.retrieval
-                                          ?.triggerOnSufficiencyFail !== false ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
                                     </div>
-                                    <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
-                                      <div>
-                                        <div className="text-white/75 text-sm">
-                                          Trigger on structural query
-                                        </div>
-                                        <div className="text-white/40 text-xs">
-                                          Ask Cognee for relationship-heavy questions and
-                                          graph-shaped retrieval problems.
-                                        </div>
-                                      </div>
-                                      <button
-                                        onClick={() =>
-                                          void patchMemorySettings(
-                                            {
-                                              cognee: {
-                                                retrieval: {
-                                                  triggerOnStructuralQuery: !(
-                                                    agentSettings.memory?.cognee?.retrieval
-                                                      ?.triggerOnStructuralQuery !== false
-                                                  ),
-                                                },
-                                              },
-                                            },
-                                            "Cognee structural-query trigger saved.",
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                        disabled={memoryV3Saving}
-                                      >
-                                        {agentSettings.memory?.cognee?.retrieval
-                                          ?.triggerOnStructuralQuery !== false ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
 
-                                <div className="rounded-lg border border-fuchsia-500/20 bg-fuchsia-500/5 p-3 space-y-3">
-                                  <div className="flex items-center gap-2">
-                                    <Wrench className="w-4 h-4 text-fuchsia-300" />
-                                    <div>
-                                      <div className="text-white/85 text-sm font-medium">
-                                        AOS Google Workspace Readiness
+                                    <div className="rounded-lg border border-fuchsia-500/20 bg-fuchsia-500/5 p-3 space-y-3">
+                                      <div className="flex items-center gap-2">
+                                        <Wrench className="w-4 h-4 text-fuchsia-300" />
+                                        <div>
+                                          <div className="text-white/85 text-sm font-medium">
+                                            AOS Google Workspace Readiness
+                                          </div>
+                                          <div className="text-white/45 text-xs">
+                                            Checks the imported aos-google runtime so Google
+                                            Workspace CLI prerequisites are visible before you rely
+                                            on those tools in Argent.
+                                          </div>
+                                        </div>
                                       </div>
-                                      <div className="text-white/45 text-xs">
-                                        Checks the imported aos-google runtime so Google Workspace
-                                        CLI prerequisites are visible before you rely on those tools
-                                        in Argent.
+                                      <div className="flex flex-wrap gap-2">
+                                        <button
+                                          onClick={() => void runAosGooglePreflight(false)}
+                                          disabled={aosGooglePreflightLoading}
+                                          className="px-3 py-2 bg-fuchsia-500/20 hover:bg-fuchsia-500/30 text-fuchsia-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                        >
+                                          {aosGooglePreflightLoading
+                                            ? "Checking…"
+                                            : "Check GWS readiness"}
+                                        </button>
+                                        <button
+                                          onClick={() => void runAosGooglePreflight(true)}
+                                          disabled={aosGooglePreflightLoading}
+                                          className="px-3 py-2 bg-white/10 hover:bg-white/15 text-white/80 rounded-lg text-xs font-medium disabled:opacity-50"
+                                        >
+                                          {aosGooglePreflightLoading
+                                            ? "Checking…"
+                                            : "Install + check GWS"}
+                                        </button>
                                       </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex flex-wrap gap-2">
-                                    <button
-                                      onClick={() => void runAosGooglePreflight(false)}
-                                      disabled={aosGooglePreflightLoading}
-                                      className="px-3 py-2 bg-fuchsia-500/20 hover:bg-fuchsia-500/30 text-fuchsia-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                    >
-                                      {aosGooglePreflightLoading
-                                        ? "Checking…"
-                                        : "Check GWS readiness"}
-                                    </button>
-                                    <button
-                                      onClick={() => void runAosGooglePreflight(true)}
-                                      disabled={aosGooglePreflightLoading}
-                                      className="px-3 py-2 bg-white/10 hover:bg-white/15 text-white/80 rounded-lg text-xs font-medium disabled:opacity-50"
-                                    >
-                                      {aosGooglePreflightLoading
-                                        ? "Checking…"
-                                        : "Install + check GWS"}
-                                    </button>
-                                  </div>
-                                  {aosGooglePreflight && (
-                                    <div className="rounded-lg bg-gray-800/50 border border-white/10 p-3 space-y-3">
-                                      <div className="flex items-center gap-2 text-sm text-white/85">
-                                        {aosGooglePreflight.ok ? (
-                                          <CheckCircle className="w-4 h-4 text-emerald-400" />
-                                        ) : (
-                                          <AlertTriangle className="w-4 h-4 text-amber-400" />
-                                        )}
-                                        <span>
-                                          {aosGooglePreflight.ok
-                                            ? "aos-google prerequisites ready"
-                                            : "aos-google requires operator action"}
-                                        </span>
-                                      </div>
-                                      {Array.isArray(aosGooglePreflight.checks) &&
-                                        aosGooglePreflight.checks.length > 0 && (
-                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                            {aosGooglePreflight.checks.map((check) => (
-                                              <div
-                                                key={check.name}
-                                                className="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs"
-                                              >
-                                                <div className="flex items-center justify-between gap-2">
-                                                  <span className="font-mono text-white/70">
-                                                    {check.name}
-                                                  </span>
-                                                  <span
-                                                    className={
-                                                      check.ok
-                                                        ? "text-emerald-300"
-                                                        : "text-amber-300"
-                                                    }
+                                      {aosGooglePreflight && (
+                                        <div className="rounded-lg bg-gray-800/50 border border-white/10 p-3 space-y-3">
+                                          <div className="flex items-center gap-2 text-sm text-white/85">
+                                            {aosGooglePreflight.ok ? (
+                                              <CheckCircle className="w-4 h-4 text-emerald-400" />
+                                            ) : (
+                                              <AlertTriangle className="w-4 h-4 text-amber-400" />
+                                            )}
+                                            <span>
+                                              {aosGooglePreflight.ok
+                                                ? "aos-google prerequisites ready"
+                                                : "aos-google requires operator action"}
+                                            </span>
+                                          </div>
+                                          {Array.isArray(aosGooglePreflight.checks) &&
+                                            aosGooglePreflight.checks.length > 0 && (
+                                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                {aosGooglePreflight.checks.map((check) => (
+                                                  <div
+                                                    key={check.name}
+                                                    className="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs"
                                                   >
-                                                    {check.ok ? "ok" : "needs work"}
-                                                  </span>
-                                                </div>
-                                                {check.details && (
-                                                  <div className="mt-2 text-white/45 break-words">
-                                                    {typeof check.details.install_hint ===
-                                                      "string" && (
-                                                      <div>{check.details.install_hint}</div>
-                                                    )}
-                                                    {typeof check.details.reason === "string" && (
-                                                      <div>{check.details.reason}</div>
-                                                    )}
-                                                    {typeof check.details.resolved_path ===
-                                                      "string" && (
-                                                      <div className="font-mono">
-                                                        {check.details.resolved_path}
+                                                    <div className="flex items-center justify-between gap-2">
+                                                      <span className="font-mono text-white/70">
+                                                        {check.name}
+                                                      </span>
+                                                      <span
+                                                        className={
+                                                          check.ok
+                                                            ? "text-emerald-300"
+                                                            : "text-amber-300"
+                                                        }
+                                                      >
+                                                        {check.ok ? "ok" : "needs work"}
+                                                      </span>
+                                                    </div>
+                                                    {check.details && (
+                                                      <div className="mt-2 text-white/45 break-words">
+                                                        {typeof check.details.install_hint ===
+                                                          "string" && (
+                                                          <div>{check.details.install_hint}</div>
+                                                        )}
+                                                        {typeof check.details.reason ===
+                                                          "string" && (
+                                                          <div>{check.details.reason}</div>
+                                                        )}
+                                                        {typeof check.details.resolved_path ===
+                                                          "string" && (
+                                                          <div className="font-mono">
+                                                            {check.details.resolved_path}
+                                                          </div>
+                                                        )}
                                                       </div>
                                                     )}
                                                   </div>
-                                                )}
+                                                ))}
                                               </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                      {Array.isArray(aosGooglePreflight.next_steps) &&
-                                        aosGooglePreflight.next_steps.length > 0 && (
-                                          <div className="text-xs text-white/50 space-y-1">
-                                            {aosGooglePreflight.next_steps.map((step) => (
-                                              <div key={step}>- {step}</div>
-                                            ))}
-                                          </div>
-                                        )}
+                                            )}
+                                          {Array.isArray(aosGooglePreflight.next_steps) &&
+                                            aosGooglePreflight.next_steps.length > 0 && (
+                                              <div className="text-xs text-white/50 space-y-1">
+                                                {aosGooglePreflight.next_steps.map((step) => (
+                                                  <div key={step}>- {step}</div>
+                                                ))}
+                                              </div>
+                                            )}
+                                        </div>
+                                      )}
                                     </div>
-                                  )}
-                                </div>
 
-                                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-3">
-                                  <div className="flex items-center gap-2">
-                                    <Brain className="w-4 h-4 text-emerald-300" />
-                                    <div>
-                                      <div className="text-white/85 text-sm font-medium">
-                                        Contemplation Discovery Phase
-                                      </div>
-                                      <div className="text-white/45 text-xs">
-                                        Discovery runs after contemplation, uses a strict budget,
-                                        and writes only bounded findings back into MemU as knowledge
-                                        items.
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
-                                      <div>
-                                        <div className="text-white/75 text-sm">Enabled</div>
-                                        <div className="text-white/40 text-xs">
-                                          Allows post-contemplation relationship discovery.
+                                    <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-3">
+                                      <div className="flex items-center gap-2">
+                                        <Brain className="w-4 h-4 text-emerald-300" />
+                                        <div>
+                                          <div className="text-white/85 text-sm font-medium">
+                                            Contemplation Discovery Phase
+                                          </div>
+                                          <div className="text-white/45 text-xs">
+                                            Discovery runs after contemplation, uses a strict
+                                            budget, and writes only bounded findings back into MemU
+                                            as knowledge items.
+                                          </div>
                                         </div>
                                       </div>
-                                      <button
-                                        onClick={() =>
-                                          void patchDiscoveryPhaseSettings(
-                                            {
-                                              enabled: !(
-                                                agentSettings.contemplation?.discoveryPhase
-                                                  ?.enabled === true
-                                              ),
-                                            },
-                                            `Discovery phase ${
-                                              agentSettings.contemplation?.discoveryPhase?.enabled
-                                                ? "disabled"
-                                                : "enabled"
-                                            }.`,
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                        disabled={memoryV3Saving}
-                                      >
-                                        {agentSettings.contemplation?.discoveryPhase?.enabled ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Every N episodes
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          type="number"
-                                          min={1}
-                                          value={discoveryEveryEpisodesDraft}
-                                          onChange={(e) =>
-                                            setDiscoveryEveryEpisodesDraft(e.target.value)
-                                          }
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-emerald-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchDiscoveryPhaseSettings(
-                                              {
-                                                everyEpisodes: Math.max(
-                                                  1,
-                                                  Math.floor(
-                                                    Number(discoveryEveryEpisodesDraft) || 5,
+                                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
+                                          <div>
+                                            <div className="text-white/75 text-sm">Enabled</div>
+                                            <div className="text-white/40 text-xs">
+                                              Allows post-contemplation relationship discovery.
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() =>
+                                              void patchDiscoveryPhaseSettings(
+                                                {
+                                                  enabled: !(
+                                                    agentSettings.contemplation?.discoveryPhase
+                                                      ?.enabled === true
                                                   ),
-                                                ),
-                                              },
-                                              "Discovery cadence saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
+                                                },
+                                                `Discovery phase ${
+                                                  agentSettings.contemplation?.discoveryPhase
+                                                    ?.enabled
+                                                    ? "disabled"
+                                                    : "enabled"
+                                                }.`,
+                                              )
+                                            }
+                                            className="text-white/50 hover:text-white/80"
+                                            disabled={memoryV3Saving}
+                                          >
+                                            {agentSettings.contemplation?.discoveryPhase
+                                              ?.enabled ? (
+                                              <ToggleRight className="w-5 h-5 text-green-400" />
+                                            ) : (
+                                              <ToggleLeft className="w-5 h-5 text-white/30" />
+                                            )}
+                                          </button>
+                                        </div>
+                                        <div>
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Every N episodes
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              value={discoveryEveryEpisodesDraft}
+                                              onChange={(e) =>
+                                                setDiscoveryEveryEpisodesDraft(e.target.value)
+                                              }
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-emerald-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchDiscoveryPhaseSettings(
+                                                  {
+                                                    everyEpisodes: Math.max(
+                                                      1,
+                                                      Math.floor(
+                                                        Number(discoveryEveryEpisodesDraft) || 5,
+                                                      ),
+                                                    ),
+                                                  },
+                                                  "Discovery cadence saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                            Max duration (ms)
+                                          </label>
+                                          <div className="mt-1 flex gap-2">
+                                            <input
+                                              type="number"
+                                              min={100}
+                                              value={discoveryMaxDurationDraft}
+                                              onChange={(e) =>
+                                                setDiscoveryMaxDurationDraft(e.target.value)
+                                              }
+                                              className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-emerald-500/50 outline-none font-mono"
+                                            />
+                                            <button
+                                              onClick={() =>
+                                                void patchDiscoveryPhaseSettings(
+                                                  {
+                                                    maxDurationMs: Math.max(
+                                                      100,
+                                                      Math.floor(
+                                                        Number(discoveryMaxDurationDraft) || 10000,
+                                                      ),
+                                                    ),
+                                                  },
+                                                  "Discovery max duration saved.",
+                                                )
+                                              }
+                                              disabled={memoryV3Saving}
+                                              className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
+                                        </div>
                                       </div>
                                     </div>
-                                    <div>
-                                      <label className="text-white/40 text-[10px] uppercase tracking-wider">
-                                        Max duration (ms)
-                                      </label>
-                                      <div className="mt-1 flex gap-2">
-                                        <input
-                                          type="number"
-                                          min={100}
-                                          value={discoveryMaxDurationDraft}
-                                          onChange={(e) =>
-                                            setDiscoveryMaxDurationDraft(e.target.value)
-                                          }
-                                          className="flex-1 bg-gray-800/50 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-emerald-500/50 outline-none font-mono"
-                                        />
-                                        <button
-                                          onClick={() =>
-                                            void patchDiscoveryPhaseSettings(
-                                              {
-                                                maxDurationMs: Math.max(
-                                                  100,
-                                                  Math.floor(
-                                                    Number(discoveryMaxDurationDraft) || 10000,
-                                                  ),
-                                                ),
-                                              },
-                                              "Discovery max duration saved.",
-                                            )
-                                          }
-                                          disabled={memoryV3Saving}
-                                          className="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg text-xs font-medium disabled:opacity-50"
-                                        >
-                                          Save
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
+                                  </>
+                                )}
                               </>
                             )}
                           </div>
 
-                          {!isPublicCoreSurface && (
-                            <div className="bg-white/5 rounded-xl p-4 space-y-3">
-                              <div className="flex items-center gap-2">
-                                <Activity className="w-5 h-5 text-cyan-300" />
-                                <h3 className="text-white/90 font-medium">Consciousness Kernel</h3>
+                          <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                            <div className="flex items-center gap-2">
+                              <Activity className="w-5 h-5 text-cyan-300" />
+                              <h3 className="text-white/90 font-medium">Consciousness Kernel</h3>
+                            </div>
+                            <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 px-3 py-2 text-xs text-white/60">
+                              Shadow mode is the current live rollout. Soft and full remain storable
+                              in config, but they stay runtime-blocked until later authority slices
+                              land.
+                            </div>
+                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2">
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-white/70 text-sm">Enabled</span>
+                                    <span className="text-white/40 text-xs">
+                                      Main-agent-only continuous executive lane
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={() =>
+                                      void toggleAgentSetting(
+                                        "kernel",
+                                        "enabled",
+                                        !agentSettings.kernel.enabled,
+                                      )
+                                    }
+                                    className="text-white/50 hover:text-white/80"
+                                  >
+                                    {agentSettings.kernel.enabled ? (
+                                      <ToggleRight className="w-5 h-5 text-green-400" />
+                                    ) : (
+                                      <ToggleLeft className="w-5 h-5 text-white/30" />
+                                    )}
+                                  </button>
+                                </div>
+                                <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2 gap-3">
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-white/70 text-sm">Mode</span>
+                                    <span className="text-white/40 text-xs">
+                                      Desired rollout mode for the kernel lane
+                                    </span>
+                                  </div>
+                                  <select
+                                    value={agentSettings.kernel.mode}
+                                    onChange={(e) =>
+                                      void toggleAgentSetting("kernel", "mode", e.target.value)
+                                    }
+                                    className="bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-cyan-500/50 cursor-pointer"
+                                  >
+                                    <option value="off">Off</option>
+                                    <option value="shadow">Shadow</option>
+                                    <option value="soft">Soft</option>
+                                    <option value="full">Full</option>
+                                  </select>
+                                </div>
+                                <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2 gap-3">
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-white/70 text-sm">Tick cadence</span>
+                                    <span className="text-white/40 text-xs">
+                                      Shadow-kernel wakeup interval in milliseconds
+                                    </span>
+                                  </div>
+                                  <select
+                                    value={agentSettings.kernel.tickMs}
+                                    onChange={(e) =>
+                                      void toggleAgentSetting(
+                                        "kernel",
+                                        "tickMs",
+                                        Number.parseInt(e.target.value, 10),
+                                      )
+                                    }
+                                    className="bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-cyan-500/50 cursor-pointer"
+                                  >
+                                    {[5000, 10000, 30000, 60000, 120000].map((value) => (
+                                      <option key={value} value={value}>
+                                        {value.toLocaleString()} ms
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2 gap-3">
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-white/70 text-sm">
+                                      Max escalations / hour
+                                    </span>
+                                    <span className="text-white/40 text-xs">
+                                      Soft budget for future model escalations
+                                    </span>
+                                  </div>
+                                  <select
+                                    value={agentSettings.kernel.maxEscalationsPerHour}
+                                    onChange={(e) =>
+                                      void toggleAgentSetting(
+                                        "kernel",
+                                        "maxEscalationsPerHour",
+                                        Number.parseInt(e.target.value, 10),
+                                      )
+                                    }
+                                    className="bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-cyan-500/50 cursor-pointer"
+                                  >
+                                    {[1, 2, 4, 6, 8, 12].map((value) => (
+                                      <option key={value} value={value}>
+                                        {value}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
                               </div>
-                              <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 px-3 py-2 text-xs text-white/60">
-                                Shadow mode is the current live rollout. Soft and full remain
-                                storable in config, but they stay runtime-blocked until later
-                                authority slices land.
-                              </div>
-                              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                                <div className="space-y-3">
-                                  <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2">
-                                    <div className="flex flex-col gap-1">
-                                      <span className="text-white/70 text-sm">Enabled</span>
-                                      <span className="text-white/40 text-xs">
-                                        Main-agent-only continuous executive lane
-                                      </span>
+                              <div className="space-y-3">
+                                <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
+                                  <div className="text-white/70 text-sm">
+                                    Desired runtime posture
+                                  </div>
+                                  <div className="text-white/45 text-xs leading-relaxed">
+                                    {agentSettings.kernel.enabled
+                                      ? agentSettings.kernel.mode === "shadow"
+                                        ? "Shadow mode is the active runtime. The kernel persists durable self-state, keeps the continuity thread warm, takes scheduling authority over main-agent contemplation and SIS, and runs private local-model inner reflection while outward autonomy stays blocked."
+                                        : `Mode ${agentSettings.kernel.mode} is stored, but the runtime will block it until later slices add full authority and embodiment.`
+                                      : "Kernel is currently off. Legacy contemplation, SIS, heartbeat, and worker schedulers remain in control."}
+                                  </div>
+                                </div>
+                                <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="text-white/70 text-sm">Local model</div>
+                                    <button
+                                      type="button"
+                                      onClick={() => void refreshKernelLocalModels()}
+                                      disabled={kernelLocalModelsRefreshing}
+                                      className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-white/10 text-white/50 hover:text-white/80 hover:border-white/20 disabled:text-white/20 disabled:border-white/5 transition-all text-[11px]"
+                                    >
+                                      <RefreshCw
+                                        className={`w-3.5 h-3.5 ${
+                                          kernelLocalModelsRefreshing ? "animate-spin" : ""
+                                        }`}
+                                      />
+                                      Refresh
+                                    </button>
+                                  </div>
+                                  <select
+                                    value={kernelLocalModelSelectValue}
+                                    onChange={(e) => {
+                                      const nextValue = e.target.value;
+                                      setAgentSettings((prev) =>
+                                        prev
+                                          ? {
+                                              ...prev,
+                                              kernel: {
+                                                ...prev.kernel,
+                                                localModel: nextValue,
+                                              },
+                                            }
+                                          : prev,
+                                      );
+                                      void patchAgentSetting("kernel", {
+                                        localModel: nextValue,
+                                      });
+                                    }}
+                                    className="w-full bg-gray-700 text-white/80 text-sm rounded-lg px-3 py-2 border border-white/10 focus:outline-none focus:border-cyan-500/50"
+                                  >
+                                    <option value="">
+                                      {kernelLocalModelOptions.length > 0
+                                        ? "Select a running local model"
+                                        : "No running local model runtimes detected"}
+                                    </option>
+                                    {!kernelLocalModelIsDiscovered && kernelLocalModelValue ? (
+                                      <option value={kernelLocalModelValue}>
+                                        Current custom: {kernelLocalModelValue}
+                                      </option>
+                                    ) : null}
+                                    {runningKernelLocalRuntimes.map((runtime) => (
+                                      <optgroup
+                                        key={runtime.provider}
+                                        label={`${runtime.label} (${runtime.models.length})`}
+                                      >
+                                        {runtime.models.map((model) => (
+                                          <option key={model.ref} value={model.ref}>
+                                            {model.ref}
+                                          </option>
+                                        ))}
+                                      </optgroup>
+                                    ))}
+                                  </select>
+                                  <div className="text-white/35 text-[11px] leading-relaxed">
+                                    {runningKernelLocalRuntimes.length > 0
+                                      ? `Detected local runtimes: ${runningKernelLocalRuntimes
+                                          .map(
+                                            (runtime) =>
+                                              `${runtime.label} (${runtime.models.length})`,
+                                          )
+                                          .join(", ")}.`
+                                      : "No running Ollama or LM Studio runtime was detected."}{" "}
+                                    Shadow reflection uses this local model when a compatible
+                                    runtime is available. The background-model card below mirrors
+                                    the same lane using the shared provider/model UI.
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
+                                    <div className="text-white/70 text-sm">Daily budget</div>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      step="1"
+                                      value={agentSettings.kernel.dailyBudget}
+                                      onChange={(e) =>
+                                        void patchAgentSetting("kernel", {
+                                          dailyBudget: Math.max(
+                                            0,
+                                            Number.parseInt(e.target.value || "0", 10) || 0,
+                                          ),
+                                        })
+                                      }
+                                      className="w-full bg-gray-700 text-white/80 text-sm rounded-lg px-3 py-2 border border-white/10 focus:outline-none focus:border-cyan-500/50"
+                                    />
+                                  </div>
+                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
+                                    <div className="text-white/70 text-sm">
+                                      Hardware host required
                                     </div>
                                     <button
                                       onClick={() =>
                                         void toggleAgentSetting(
                                           "kernel",
-                                          "enabled",
-                                          !agentSettings.kernel.enabled,
+                                          "hardwareHostRequired",
+                                          !agentSettings.kernel.hardwareHostRequired,
                                         )
                                       }
                                       className="text-white/50 hover:text-white/80"
                                     >
-                                      {agentSettings.kernel.enabled ? (
+                                      {agentSettings.kernel.hardwareHostRequired ? (
                                         <ToggleRight className="w-5 h-5 text-green-400" />
                                       ) : (
                                         <ToggleLeft className="w-5 h-5 text-white/30" />
                                       )}
                                     </button>
                                   </div>
-                                  <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2 gap-3">
-                                    <div className="flex flex-col gap-1">
-                                      <span className="text-white/70 text-sm">Mode</span>
-                                      <span className="text-white/40 text-xs">
-                                        Desired rollout mode for the kernel lane
-                                      </span>
-                                    </div>
-                                    <select
-                                      value={agentSettings.kernel.mode}
-                                      onChange={(e) =>
-                                        void toggleAgentSetting("kernel", "mode", e.target.value)
-                                      }
-                                      className="bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-cyan-500/50 cursor-pointer"
-                                    >
-                                      <option value="off">Off</option>
-                                      <option value="shadow">Shadow</option>
-                                      <option value="soft">Soft</option>
-                                      <option value="full">Full</option>
-                                    </select>
-                                  </div>
-                                  <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2 gap-3">
-                                    <div className="flex flex-col gap-1">
-                                      <span className="text-white/70 text-sm">Tick cadence</span>
-                                      <span className="text-white/40 text-xs">
-                                        Shadow-kernel wakeup interval in milliseconds
-                                      </span>
-                                    </div>
-                                    <select
-                                      value={agentSettings.kernel.tickMs}
-                                      onChange={(e) =>
-                                        void toggleAgentSetting(
-                                          "kernel",
-                                          "tickMs",
-                                          Number.parseInt(e.target.value, 10),
-                                        )
-                                      }
-                                      className="bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-cyan-500/50 cursor-pointer"
-                                    >
-                                      {[5000, 10000, 30000, 60000, 120000].map((value) => (
-                                        <option key={value} value={value}>
-                                          {value.toLocaleString()} ms
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2 gap-3">
-                                    <div className="flex flex-col gap-1">
-                                      <span className="text-white/70 text-sm">
-                                        Max escalations / hour
-                                      </span>
-                                      <span className="text-white/40 text-xs">
-                                        Soft budget for future model escalations
-                                      </span>
-                                    </div>
-                                    <select
-                                      value={agentSettings.kernel.maxEscalationsPerHour}
-                                      onChange={(e) =>
-                                        void toggleAgentSetting(
-                                          "kernel",
-                                          "maxEscalationsPerHour",
-                                          Number.parseInt(e.target.value, 10),
-                                        )
-                                      }
-                                      className="bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-cyan-500/50 cursor-pointer"
-                                    >
-                                      {[1, 2, 4, 6, 8, 12].map((value) => (
-                                        <option key={value} value={value}>
-                                          {value}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
                                 </div>
-                                <div className="space-y-3">
-                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
-                                    <div className="text-white/70 text-sm">
-                                      Desired runtime posture
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2">
+                                    <div className="flex items-center gap-2">
+                                      <Mic className="w-4 h-4 text-white/55" />
+                                      <span className="text-white/70 text-sm">Allow Listening</span>
                                     </div>
-                                    <div className="text-white/45 text-xs leading-relaxed">
-                                      {agentSettings.kernel.enabled
-                                        ? agentSettings.kernel.mode === "shadow"
-                                          ? "Shadow mode is the active runtime. The kernel persists durable self-state, keeps the continuity thread warm, takes scheduling authority over main-agent contemplation and SIS, and runs private local-model inner reflection while outward autonomy stays blocked."
-                                          : `Mode ${agentSettings.kernel.mode} is stored, but the runtime will block it until later slices add full authority and embodiment.`
-                                        : "Kernel is currently off. Legacy contemplation, SIS, heartbeat, and worker schedulers remain in control."}
-                                    </div>
-                                  </div>
-                                  <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
-                                    <div className="flex items-center justify-between gap-3">
-                                      <div className="text-white/70 text-sm">Local model</div>
-                                      <button
-                                        type="button"
-                                        onClick={() => void refreshKernelLocalModels()}
-                                        disabled={kernelLocalModelsRefreshing}
-                                        className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-white/10 text-white/50 hover:text-white/80 hover:border-white/20 disabled:text-white/20 disabled:border-white/5 transition-all text-[11px]"
-                                      >
-                                        <RefreshCw
-                                          className={`w-3.5 h-3.5 ${
-                                            kernelLocalModelsRefreshing ? "animate-spin" : ""
-                                          }`}
-                                        />
-                                        Refresh
-                                      </button>
-                                    </div>
-                                    <select
-                                      value={kernelLocalModelSelectValue}
-                                      onChange={(e) => {
-                                        const nextValue = e.target.value;
-                                        setAgentSettings((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                kernel: {
-                                                  ...prev.kernel,
-                                                  localModel: nextValue,
-                                                },
-                                              }
-                                            : prev,
-                                        );
-                                        void patchAgentSetting("kernel", {
-                                          localModel: nextValue,
-                                        });
-                                      }}
-                                      className="w-full bg-gray-700 text-white/80 text-sm rounded-lg px-3 py-2 border border-white/10 focus:outline-none focus:border-cyan-500/50"
+                                    <button
+                                      onClick={() =>
+                                        void toggleAgentSetting(
+                                          "kernel",
+                                          "allowListening",
+                                          !agentSettings.kernel.allowListening,
+                                        )
+                                      }
+                                      className="text-white/50 hover:text-white/80"
                                     >
-                                      <option value="">
-                                        {kernelLocalModelOptions.length > 0
-                                          ? "Select a running local model"
-                                          : "No running local model runtimes detected"}
-                                      </option>
-                                      {!kernelLocalModelIsDiscovered && kernelLocalModelValue ? (
-                                        <option value={kernelLocalModelValue}>
-                                          Current custom: {kernelLocalModelValue}
-                                        </option>
-                                      ) : null}
-                                      {runningKernelLocalRuntimes.map((runtime) => (
-                                        <optgroup
-                                          key={runtime.provider}
-                                          label={`${runtime.label} (${runtime.models.length})`}
-                                        >
-                                          {runtime.models.map((model) => (
-                                            <option key={model.ref} value={model.ref}>
-                                              {model.ref}
-                                            </option>
-                                          ))}
-                                        </optgroup>
-                                      ))}
-                                    </select>
-                                    <div className="text-white/35 text-[11px] leading-relaxed">
-                                      {runningKernelLocalRuntimes.length > 0
-                                        ? `Detected local runtimes: ${runningKernelLocalRuntimes
-                                            .map(
-                                              (runtime) =>
-                                                `${runtime.label} (${runtime.models.length})`,
-                                            )
-                                            .join(", ")}.`
-                                        : "No running Ollama or LM Studio runtime was detected."}{" "}
-                                      Shadow reflection uses this local model when a compatible
-                                      runtime is available. The background-model card below mirrors
-                                      the same lane using the shared provider/model UI.
-                                    </div>
+                                      {agentSettings.kernel.allowListening ? (
+                                        <ToggleRight className="w-5 h-5 text-green-400" />
+                                      ) : (
+                                        <ToggleLeft className="w-5 h-5 text-white/30" />
+                                      )}
+                                    </button>
                                   </div>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
-                                      <div className="text-white/70 text-sm">Daily budget</div>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        step="1"
-                                        value={agentSettings.kernel.dailyBudget}
-                                        onChange={(e) =>
-                                          void patchAgentSetting("kernel", {
-                                            dailyBudget: Math.max(
-                                              0,
-                                              Number.parseInt(e.target.value || "0", 10) || 0,
-                                            ),
-                                          })
-                                        }
-                                        className="w-full bg-gray-700 text-white/80 text-sm rounded-lg px-3 py-2 border border-white/10 focus:outline-none focus:border-cyan-500/50"
-                                      />
+                                  <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2">
+                                    <div className="flex items-center gap-2">
+                                      <Eye className="w-4 h-4 text-white/55" />
+                                      <span className="text-white/70 text-sm">Allow Vision</span>
                                     </div>
-                                    <div className="bg-gray-800/50 rounded-lg px-3 py-2 space-y-2">
-                                      <div className="text-white/70 text-sm">
-                                        Hardware host required
-                                      </div>
-                                      <button
-                                        onClick={() =>
-                                          void toggleAgentSetting(
-                                            "kernel",
-                                            "hardwareHostRequired",
-                                            !agentSettings.kernel.hardwareHostRequired,
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                      >
-                                        {agentSettings.kernel.hardwareHostRequired ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
-                                  </div>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2">
-                                      <div className="flex items-center gap-2">
-                                        <Mic className="w-4 h-4 text-white/55" />
-                                        <span className="text-white/70 text-sm">
-                                          Allow Listening
-                                        </span>
-                                      </div>
-                                      <button
-                                        onClick={() =>
-                                          void toggleAgentSetting(
-                                            "kernel",
-                                            "allowListening",
-                                            !agentSettings.kernel.allowListening,
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                      >
-                                        {agentSettings.kernel.allowListening ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
-                                    <div className="flex items-center justify-between bg-gray-800/50 rounded-lg px-3 py-2">
-                                      <div className="flex items-center gap-2">
-                                        <Eye className="w-4 h-4 text-white/55" />
-                                        <span className="text-white/70 text-sm">Allow Vision</span>
-                                      </div>
-                                      <button
-                                        onClick={() =>
-                                          void toggleAgentSetting(
-                                            "kernel",
-                                            "allowVision",
-                                            !agentSettings.kernel.allowVision,
-                                          )
-                                        }
-                                        className="text-white/50 hover:text-white/80"
-                                      >
-                                        {agentSettings.kernel.allowVision ? (
-                                          <ToggleRight className="w-5 h-5 text-green-400" />
-                                        ) : (
-                                          <ToggleLeft className="w-5 h-5 text-white/30" />
-                                        )}
-                                      </button>
-                                    </div>
+                                    <button
+                                      onClick={() =>
+                                        void toggleAgentSetting(
+                                          "kernel",
+                                          "allowVision",
+                                          !agentSettings.kernel.allowVision,
+                                        )
+                                      }
+                                      className="text-white/50 hover:text-white/80"
+                                    >
+                                      {agentSettings.kernel.allowVision ? (
+                                        <ToggleRight className="w-5 h-5 text-green-400" />
+                                      ) : (
+                                        <ToggleLeft className="w-5 h-5 text-white/30" />
+                                      )}
+                                    </button>
                                   </div>
                                 </div>
                               </div>
                             </div>
-                          )}
+                          </div>
 
                           <div className="bg-white/5 rounded-xl p-4 space-y-4 xl:col-span-2">
                             <div className="flex items-center gap-2">
@@ -19683,6 +20018,8 @@ export function ConfigPanel({
                 )}
 
                 {activeTab === "logs" && <LogViewer />}
+
+                {activeTab === "license" && <LicensePanel />}
 
                 {activeTab === "alignment" && <AlignmentDocs />}
 

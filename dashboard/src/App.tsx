@@ -1117,7 +1117,7 @@ function MemoryStatsCards() {
 function App() {
   const [avatarState, setAvatarState] = useState<AvatarState>("idle");
   const [avatarMood, setAvatarMood] = useState<MoodName | undefined>(undefined);
-  const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("full");
+  const [surfaceProfile, setSurfaceProfile] = useState<DashboardSurfaceProfile>("public-core");
   const [dashboardMode, setDashboardMode] = useState<DashboardMode>("personal");
 
   // Workspace tabs
@@ -1217,7 +1217,8 @@ function App() {
   const pollingMultiplier = Math.max(1, runtimeLoadProfile.pollingMultiplier || 1);
   const allowOperationsSurface = isOperationsSurfaceAllowed(surfaceProfile);
   const allowWorkforceSurface = isWorkforceSurfaceAllowed(surfaceProfile);
-  const isOperationsDashboard = allowWorkforceSurface && dashboardMode === "operations";
+  const isOperationsDashboard = allowOperationsSurface && dashboardMode === "operations";
+  const isWorkforceDashboard = allowWorkforceSurface && dashboardMode === "operations";
 
   // Ensure Operations tab exists when the surface allows operations.
   useEffect(() => {
@@ -1243,7 +1244,7 @@ function App() {
     refreshTasks,
   } = useTasks({ enabled: backgroundPollingEnabled, pollMs: 15000 * pollingMultiplier });
   const { tasks: workerTasks } = useTasks({
-    enabled: backgroundPollingEnabled && isOperationsDashboard,
+    enabled: backgroundPollingEnabled && isWorkforceDashboard,
     pollMs: 15000 * pollingMultiplier,
     includeWorkerTasks: true,
     workerOnly: true,
@@ -1313,9 +1314,8 @@ function App() {
         }
       } catch {
         if (!cancelled) {
-          setSurfaceProfile("full");
-          const storedDashboardMode = readStoredDashboardMode();
-          setDashboardMode(storedDashboardMode === "operations" ? "operations" : "personal");
+          setSurfaceProfile("public-core");
+          setDashboardMode("personal");
         }
       }
     };
@@ -2569,7 +2569,14 @@ function App() {
     let timer: ReturnType<typeof setInterval> | null = null;
 
     const refreshWorkforceBadge = async () => {
-      if (!gateway.connected || !backgroundPollingEnabled || !workforceBadgeAvailable) return;
+      if (
+        !allowWorkforceSurface ||
+        !gateway.connected ||
+        !backgroundPollingEnabled ||
+        !workforceBadgeAvailable
+      ) {
+        return;
+      }
       try {
         const overview = await gateway.request<{ dueNowCount?: number; blockedRunsCount?: number }>(
           "jobs.overview",
@@ -2599,7 +2606,12 @@ function App() {
       }
     };
 
-    if (gateway.connected && backgroundPollingEnabled && workforceBadgeAvailable) {
+    if (
+      allowWorkforceSurface &&
+      gateway.connected &&
+      backgroundPollingEnabled &&
+      workforceBadgeAvailable
+    ) {
       void refreshWorkforceBadge();
       timer = setInterval(() => {
         void refreshWorkforceBadge();
@@ -2615,6 +2627,7 @@ function App() {
   }, [
     gateway.connected,
     gateway.request,
+    allowWorkforceSurface,
     backgroundPollingEnabled,
     workforceBadgeAvailable,
     pollingMultiplier,
@@ -4799,7 +4812,7 @@ function App() {
           onActivityClick={() => setActivityPanelOpen(!activityPanelOpen)}
           onAppsClick={() => setAppForgeOpen(true)}
           onWorkforceClick={
-            isOperationsDashboard
+            isWorkforceDashboard
               ? (focus) => {
                   setShowBoard(false);
                   setWorkforceFocus(focus ?? "all");
@@ -4807,9 +4820,9 @@ function App() {
                 }
               : undefined
           }
-          workforceDueCount={isOperationsDashboard ? workforceBadge.dueNow : 0}
-          workforceBlockedCount={isOperationsDashboard ? workforceBadge.blocked : 0}
-          onNewWorkerClick={isOperationsDashboard ? () => setWorkerFlowOpen(true) : undefined}
+          workforceDueCount={isWorkforceDashboard ? workforceBadge.dueNow : 0}
+          workforceBlockedCount={isWorkforceDashboard ? workforceBadge.blocked : 0}
+          onNewWorkerClick={isWorkforceDashboard ? () => setWorkerFlowOpen(true) : undefined}
           onSettingsClick={() => setConfigPanelOpen(true)}
           onLockClick={lockScreen.lock}
           canLock={lockScreen.hasCredentials}
@@ -4944,7 +4957,7 @@ function App() {
             </div>
           ) : null}
         </div>
-      ) : isOperationsDashboard ? (
+      ) : isWorkforceDashboard ? (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* Operations sub-nav: switch between Map and Workers (Business only) */}
           {activeWorkspace === "operations" && (
@@ -5377,7 +5390,7 @@ function App() {
                     isProcessingSpeech={speech.isProcessing}
                     speechError={effectiveSpeechError}
                     deepThinkMode={deepThinkMode}
-                    onToggleDeepThink={() => setDeepThinkMode(!deepThinkMode)}
+                    onToggleDeepThink={() => setDeepThinkMode((enabled) => !enabled)}
                     deepResearchMode={deepResearchMode}
                     onToggleDeepResearch={() => setDeepResearchMode(!deepResearchMode)}
                     canvasOpen={canvasOpen}
@@ -5488,7 +5501,7 @@ function App() {
                   isProcessingSpeech={speech.isProcessing}
                   speechError={effectiveSpeechError}
                   deepThinkMode={deepThinkMode}
-                  onToggleDeepThink={() => setDeepThinkMode(!deepThinkMode)}
+                  onToggleDeepThink={() => setDeepThinkMode((enabled) => !enabled)}
                   deepResearchMode={deepResearchMode}
                   onToggleDeepResearch={() => setDeepResearchMode(!deepResearchMode)}
                   canvasOpen={canvasOpen}
@@ -5903,7 +5916,7 @@ function App() {
       />
 
       {/* Worker Flow */}
-      {isOperationsDashboard && (
+      {isWorkforceDashboard && (
         <WorkerFlowModal
           isOpen={workerFlowOpen}
           onClose={() => setWorkerFlowOpen(false)}

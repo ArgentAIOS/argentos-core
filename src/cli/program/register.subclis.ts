@@ -291,6 +291,14 @@ const entries: SubCliEntry[] = [
     },
   },
   {
+    name: "migrate",
+    description: "Export or import an Argent install bundle",
+    register: async (program) => {
+      const mod = await import("../migrate-cli.js");
+      mod.registerMigrateCli(program);
+    },
+  },
+  {
     name: "completion",
     description: "Generate shell completion script",
     register: async (program) => {

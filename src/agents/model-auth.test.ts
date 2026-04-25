@@ -315,6 +315,8 @@ describe("getApiKeyForModel", () => {
       vi.doMock("../infra/service-keys.js", () => ({
         resolveServiceKey: (envName: string) =>
           envName === "INCEPTION_API_KEY" ? "inception-service-key" : undefined,
+        resolveServiceKeyAsync: async (envName: string) =>
+          envName === "INCEPTION_API_KEY" ? "inception-service-key" : undefined,
       }));
 
       const { resolveApiKeyForProvider } = await import("./model-auth.js");
@@ -495,6 +497,87 @@ describe("getApiKeyForModel", () => {
       expect(resolved.mode).toBe("aws-sdk");
       expect(resolved.apiKey).toBeUndefined();
       expect(resolved.source).toContain("AWS_PROFILE");
+    } finally {
+      if (previous.bearer === undefined) {
+        delete process.env.AWS_BEARER_TOKEN_BEDROCK;
+      } else {
+        process.env.AWS_BEARER_TOKEN_BEDROCK = previous.bearer;
+      }
+      if (previous.access === undefined) {
+        delete process.env.AWS_ACCESS_KEY_ID;
+      } else {
+        process.env.AWS_ACCESS_KEY_ID = previous.access;
+      }
+      if (previous.secret === undefined) {
+        delete process.env.AWS_SECRET_ACCESS_KEY;
+      } else {
+        process.env.AWS_SECRET_ACCESS_KEY = previous.secret;
+      }
+      if (previous.profile === undefined) {
+        delete process.env.AWS_PROFILE;
+      } else {
+        process.env.AWS_PROFILE = previous.profile;
+      }
+    }
+  });
+});
+
+describe("isModelProviderAvailableForAutomaticRouting", () => {
+  it("treats dashboard service keys as configured provider auth", async () => {
+    const previousMiniMax = process.env.MINIMAX_API_KEY;
+    try {
+      delete process.env.MINIMAX_API_KEY;
+      vi.resetModules();
+      vi.doMock("../infra/service-keys.js", () => ({
+        resolveServiceKey: vi.fn((name: string) =>
+          name === "MINIMAX_API_KEY" ? "minimax-service-key" : undefined,
+        ),
+        resolveServiceKeyAsync: vi.fn(async (name: string) =>
+          name === "MINIMAX_API_KEY" ? "minimax-service-key" : undefined,
+        ),
+      }));
+
+      const { isModelProviderAvailableForAutomaticRouting } = await import("./model-auth.js");
+
+      expect(
+        isModelProviderAvailableForAutomaticRouting({
+          provider: "minimax",
+          store: { version: 1, profiles: {} },
+        }),
+      ).toBe(true);
+    } finally {
+      vi.doUnmock("../infra/service-keys.js");
+      if (previousMiniMax === undefined) {
+        delete process.env.MINIMAX_API_KEY;
+      } else {
+        process.env.MINIMAX_API_KEY = previousMiniMax;
+      }
+    }
+  });
+
+  it("does not treat Bedrock's default AWS chain as automatic routing readiness", async () => {
+    const previous = {
+      bearer: process.env.AWS_BEARER_TOKEN_BEDROCK,
+      access: process.env.AWS_ACCESS_KEY_ID,
+      secret: process.env.AWS_SECRET_ACCESS_KEY,
+      profile: process.env.AWS_PROFILE,
+    };
+
+    try {
+      delete process.env.AWS_BEARER_TOKEN_BEDROCK;
+      delete process.env.AWS_ACCESS_KEY_ID;
+      delete process.env.AWS_SECRET_ACCESS_KEY;
+      delete process.env.AWS_PROFILE;
+
+      vi.resetModules();
+      const { isModelProviderAvailableForAutomaticRouting } = await import("./model-auth.js");
+
+      expect(
+        isModelProviderAvailableForAutomaticRouting({
+          provider: "amazon-bedrock",
+          store: { version: 1, profiles: {} },
+        }),
+      ).toBe(false);
     } finally {
       if (previous.bearer === undefined) {
         delete process.env.AWS_BEARER_TOKEN_BEDROCK;

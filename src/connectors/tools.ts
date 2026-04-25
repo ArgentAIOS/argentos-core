@@ -7,8 +7,10 @@ import {
   readStringArrayParam,
   readStringParam,
 } from "../agents/tools/common.js";
+import { resolveServiceKey } from "../infra/service-keys.js";
 import {
   type ConnectorCatalogCommand,
+  type ConnectorCatalogEntry,
   discoverConnectorRuntimeCatalogSync,
   runConnectorCommandJson,
 } from "./catalog.js";
@@ -122,6 +124,28 @@ function mergeOptionRecords(
   };
 }
 
+export function resolveConnectorServiceKeyEnv(options: {
+  connector: Pick<ConnectorCatalogEntry, "tool" | "auth">;
+  config?: ArgentConfig;
+  agentSessionKey?: string;
+}): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const variable of options.connector.auth?.serviceKeys ?? []) {
+    const normalized = variable.trim();
+    if (!normalized) {
+      continue;
+    }
+    const value = resolveServiceKey(normalized, options.config, {
+      sessionKey: options.agentSessionKey,
+      source: `connector:${options.connector.tool}`,
+    });
+    if (value) {
+      env[normalized] = value;
+    }
+  }
+  return env;
+}
+
 export function createConnectorTools(options?: {
   config?: ArgentConfig;
   agentSessionKey?: string;
@@ -195,12 +219,22 @@ export function createConnectorTools(options?: {
           appendOptionArgs(argv, mergedOptions);
           argv.push(...passthrough);
 
+          const serviceKeyEnv = resolveConnectorServiceKeyEnv({
+            connector,
+            config: options?.config,
+            agentSessionKey: options?.agentSessionKey,
+          });
+          const connectorEnv = {
+            ...sessionDefaults?.env,
+            ...serviceKeyEnv,
+          };
+
           const result = await runConnectorCommandJson({
             binaryPath,
             args: argv,
             cwd: connector.discovery.harnessDir,
             timeoutMs,
-            env: sessionDefaults?.env,
+            env: Object.keys(connectorEnv).length > 0 ? connectorEnv : undefined,
           });
 
           return jsonResult({
@@ -217,6 +251,10 @@ export function createConnectorTools(options?: {
               globalOptions: mergedGlobalOptions,
               args: passthrough,
               env: sessionDefaults?.env,
+              serviceKeys: (connector.auth?.serviceKeys ?? []).map((variable) => ({
+                variable,
+                injected: Boolean(serviceKeyEnv[variable]),
+              })),
             },
             ...(result.ok
               ? {

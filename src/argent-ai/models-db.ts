@@ -46,16 +46,16 @@ const xaiBase = {
 };
 
 const minimaxBase = {
-  api: "openai-completions" as const,
+  api: "anthropic-messages" as const,
   provider: "minimax" as const,
-  baseUrl: "https://api.minimaxi.chat/v1",
+  baseUrl: "https://api.minimax.io/anthropic",
   input: ["text"] as ("text" | "image")[],
 };
 
 const zaiBase = {
   api: "openai-completions" as const,
   provider: "zai" as const,
-  baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+  baseUrl: "https://api.z.ai/api/coding/paas/v4/chat/completions",
   input: ["text"] as ("text" | "image")[],
 };
 

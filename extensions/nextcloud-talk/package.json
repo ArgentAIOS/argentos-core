@@ -1,6 +1,6 @@
 {
   "name": "@argentos/nextcloud-talk",
-  "version": "2026.3.2",
+  "version": "2026.4.24-dev.0",
   "description": "ArgentOS Nextcloud Talk channel plugin",
   "type": "module",
   "devDependencies": {

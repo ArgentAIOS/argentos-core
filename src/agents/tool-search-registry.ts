@@ -64,12 +64,19 @@ export const SUBSYSTEM_CORE_TOOLS: Record<BackgroundSubsystem, Set<string>> = {
  * Returns undefined for interactive (non-background) sessions.
  */
 export function detectSubsystem(sessionKey?: string): BackgroundSubsystem | undefined {
-  if (!sessionKey) return undefined;
+  if (!sessionKey) {
+    return undefined;
+  }
   const lower = sessionKey.toLowerCase();
-  if (lower.includes(":contemplation")) return "contemplation";
-  if (lower.includes(":sis")) return "sis";
-  if (lower.includes(":execution-worker") || lower.includes(":exec-worker"))
+  if (lower.includes(":contemplation")) {
+    return "contemplation";
+  }
+  if (lower.includes(":sis")) {
+    return "sis";
+  }
+  if (lower.includes(":execution-worker") || lower.includes(":exec-worker")) {
     return "execution-worker";
+  }
   // Heartbeat is harder — it uses the main session key.
   // Detected via the isHeartbeat flag, not session key.
   return undefined;
@@ -94,6 +101,7 @@ export const CORE_TOOL_NAMES = new Set([
   "doc_panel",
   // Discovery
   "tool_search",
+  "marketplace",
   // Self-awareness
   "session_status",
   "agents_list",
@@ -273,7 +281,7 @@ export class ToolSearchRegistry {
         score: this.scoreMatch(entry, terms),
       }))
       .filter((e) => e.score > 0)
-      .sort((a, b) => b.score - a.score || a.tool.name.localeCompare(b.tool.name));
+      .toSorted((a, b) => b.score - a.score || a.tool.name.localeCompare(b.tool.name));
 
     return scored.slice(0, limit);
   }
@@ -286,11 +294,20 @@ export class ToolSearchRegistry {
     let score = 0;
 
     for (const term of terms) {
-      if (name === term) score += 10;
-      else if (name.includes(term)) score += 6;
-      if (label.includes(term)) score += 4;
-      if (desc.includes(term)) score += 2;
-      if (kwSet.has(term)) score += 5;
+      if (name === term) {
+        score += 10;
+      } else if (name.includes(term)) {
+        score += 6;
+      }
+      if (label.includes(term)) {
+        score += 4;
+      }
+      if (desc.includes(term)) {
+        score += 2;
+      }
+      if (kwSet.has(term)) {
+        score += 5;
+      }
     }
     return score;
   }

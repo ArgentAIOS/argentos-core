@@ -24,6 +24,17 @@ describe("normalizeModelCompat", () => {
     expect(normalized.compat?.supportsDeveloperRole).toBe(false);
   });
 
+  it("moves stale z.ai catalog entries to the coding endpoint", () => {
+    const model = {
+      ...baseModel(),
+      baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+    };
+
+    const normalized = normalizeModelCompat(model);
+
+    expect(normalized.baseUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
+  });
+
   it("leaves non-zai models untouched", () => {
     const model = {
       ...baseModel(),
@@ -39,6 +50,40 @@ describe("normalizeModelCompat", () => {
     const model = baseModel();
     model.compat = { supportsDeveloperRole: false };
     const normalized = normalizeModelCompat(model);
+    expect(normalized.compat?.supportsDeveloperRole).toBe(false);
+  });
+
+  it("routes stale MiniMax M2 OpenAI-compatible configs to the Anthropic endpoint", () => {
+    const model = {
+      ...baseModel(),
+      id: "MiniMax-M2.7-highspeed",
+      name: "MiniMax-M2.7-highspeed",
+      provider: "minimax",
+      baseUrl: "https://api.minimaxi.chat/v1",
+      api: "openai-completions",
+    } as Model<Api>;
+
+    const normalized = normalizeModelCompat(model);
+
+    expect(normalized.provider).toBe("minimax");
+    expect(normalized.id).toBe("MiniMax-M2.7-highspeed");
+    expect(normalized.api).toBe("anthropic-messages");
+    expect(normalized.baseUrl).toBe("https://api.minimax.io/anthropic");
+  });
+
+  it("disables developer role for non-M2 MiniMax OpenAI-compatible configs", () => {
+    const model = {
+      ...baseModel(),
+      id: "legacy-minimax",
+      name: "legacy-minimax",
+      provider: "minimax",
+      baseUrl: "https://api.minimax.chat/v1",
+      api: "openai-completions",
+    } as Model<Api>;
+
+    const normalized = normalizeModelCompat(model);
+
+    expect(normalized.api).toBe("openai-completions");
     expect(normalized.compat?.supportsDeveloperRole).toBe(false);
   });
 });

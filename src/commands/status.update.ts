@@ -1,5 +1,6 @@
 import { formatCliCommand } from "../cli/command-format.js";
 import { resolveArgentPackageRoot } from "../infra/argent-root.js";
+import { resolveHostedGitDirOverride } from "../infra/hosted-git-dir.js";
 import { checkUpdateStatus, type UpdateCheckResult } from "../infra/update-check.js";
 
 export async function getUpdateCheckResult(params: {
@@ -7,11 +8,13 @@ export async function getUpdateCheckResult(params: {
   fetchGit: boolean;
   includeRegistry: boolean;
 }): Promise<UpdateCheckResult> {
-  const root = await resolveArgentPackageRoot({
-    moduleUrl: import.meta.url,
-    argv1: process.argv[1],
-    cwd: process.cwd(),
-  });
+  const root =
+    resolveHostedGitDirOverride() ??
+    (await resolveArgentPackageRoot({
+      moduleUrl: import.meta.url,
+      argv1: process.argv[1],
+      cwd: process.cwd(),
+    }));
   return await checkUpdateStatus({
     root,
     timeoutMs: params.timeoutMs,

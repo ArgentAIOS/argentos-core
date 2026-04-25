@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 describe("createArgentTools public-core surface", () => {
-  it("keeps the core spine and removes business and hold tools by default", () => {
+  it("defaults to non-business Core tools and removes business tools", () => {
     const config = {
       distribution: {
         surfaceProfile: "public-core",
@@ -60,16 +60,19 @@ describe("createArgentTools public-core surface", () => {
     const toolNames = new Set(createArgentTools({ config }).map((tool) => tool.name));
 
     expect(toolNames.has("memory_recall")).toBe(true);
+    expect(toolNames.has("personal_skill")).toBe(true);
     expect(toolNames.has("tasks")).toBe(true);
     expect(toolNames.has("visual_presence")).toBe(true);
     expect(toolNames.has("intent_tool")).toBe(false);
     expect(toolNames.has("workforce_setup_tool")).toBe(false);
     expect(toolNames.has("jobs_tool")).toBe(false);
-    expect(toolNames.has("plugin_builder")).toBe(false);
-    expect(toolNames.has("service_keys")).toBe(false);
+    expect(toolNames.has("plugin_builder")).toBe(true);
+    expect(toolNames.has("marketplace")).toBe(true);
+    expect(toolNames.has("family")).toBe(true);
+    expect(toolNames.has("service_keys")).toBe(true);
   });
 
-  it("can opt power-user tools back in without re-enabling business tools", () => {
+  it("keeps legacy power-user flags harmless while business tools stay blocked", () => {
     const config = {
       distribution: {
         surfaceProfile: "public-core",

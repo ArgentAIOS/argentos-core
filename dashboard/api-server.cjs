@@ -122,14 +122,9 @@ app.use(
 );
 
 const PUBLIC_CORE_BLOCKED_API_PATTERNS = [
-  "/api/license/**",
   "/api/org/**",
   "/api/settings/intent/**",
   "/api/settings/knowledge/collections/grant",
-  "/api/settings/service-keys/policy",
-  "/api/settings/service-keys/grant",
-  "/api/settings/service-keys/revoke",
-  "/api/settings/service-keys/audit",
   "/api/system/open",
   "/api/lockscreen/emergency-unlock",
   "/api/logs/tail",
@@ -139,11 +134,8 @@ const PUBLIC_CORE_BLOCKED_API_PATTERNS = [
   "/api/settings/auth",
   "/api/settings/cors-allowlist/**",
   "/api/settings/filesystem-allowlist/**",
-  "/api/settings/gateway/**",
-  "/api/settings/database/**",
   "/api/settings/pairing",
   "/api/settings/load-profile",
-  "/api/settings/memory-v3/**",
   "/api/settings/aos-google/preflight",
   "/api/settings/aos-google/launch",
   "/api/settings/connectors/scaffold",
@@ -152,7 +144,7 @@ const PUBLIC_CORE_BLOCKED_API_PATTERNS = [
 ];
 
 function getDashboardSurfaceProfile(config) {
-  return config?.distribution?.surfaceProfile === "public-core" ? "public-core" : "full";
+  return config?.distribution?.surfaceProfile === "full" ? "full" : "public-core";
 }
 
 function normalizeSurfaceApiPath(req) {
@@ -8630,9 +8622,40 @@ const ENC_PREFIX = "enc:v1:";
 
 let _masterKeyCache = null;
 
+function readEncryptedServiceKeyValues() {
+  try {
+    const data = JSON.parse(fs.readFileSync(SERVICE_KEYS_PATH, "utf-8"));
+    return (data.keys || [])
+      .map((entry) => (typeof entry.value === "string" ? entry.value : ""))
+      .filter((value) => value.startsWith(ENC_PREFIX));
+  } catch {
+    return [];
+  }
+}
+
+function canDecryptSecretValue(value, key) {
+  const parts = value.slice(ENC_PREFIX.length).split(":");
+  if (parts.length !== 3) return false;
+  try {
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(parts[0], "hex"));
+    decipher.setAuthTag(Buffer.from(parts[1], "hex"));
+    decipher.update(parts[2], "hex", "utf8");
+    decipher.final("utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function canDecryptExistingSecrets(key) {
+  const encryptedValues = readEncryptedServiceKeyValues();
+  if (encryptedValues.length === 0) return true;
+  return encryptedValues.every((value) => canDecryptSecretValue(value, key));
+}
+
 function getMasterKey() {
   if (_masterKeyCache) return _masterKeyCache;
-  // Try macOS Keychain
+  let keychainKey = null;
   if (process.platform === "darwin") {
     try {
       const hex = execSync(
@@ -8641,24 +8664,48 @@ function getMasterKey() {
       ).trim();
       const buf = Buffer.from(hex, "hex");
       if (buf.length === 32) {
-        _masterKeyCache = buf;
-        return buf;
+        keychainKey = buf;
       }
     } catch {
       /* not found */
     }
   }
-  // Try file fallback
+  let fileKey = null;
   try {
     const hex = fs.readFileSync(MASTER_KEY_FILE, "utf-8").trim();
     const buf = Buffer.from(hex, "hex");
     if (buf.length === 32) {
-      _masterKeyCache = buf;
-      return buf;
+      fileKey = buf;
     }
   } catch {
     /* not found */
   }
+
+  if (readEncryptedServiceKeyValues().length > 0) {
+    if (keychainKey && canDecryptExistingSecrets(keychainKey)) {
+      _masterKeyCache = keychainKey;
+      return keychainKey;
+    }
+    if (fileKey && canDecryptExistingSecrets(fileKey)) {
+      _masterKeyCache = fileKey;
+      return fileKey;
+    }
+    if (keychainKey || fileKey) {
+      throw new Error(
+        "Master encryption key mismatch. Existing encrypted service keys cannot be decrypted.",
+      );
+    }
+  }
+
+  if (keychainKey) {
+    _masterKeyCache = keychainKey;
+    return keychainKey;
+  }
+  if (fileKey) {
+    _masterKeyCache = fileKey;
+    return fileKey;
+  }
+
   // Generate new key
   const key = crypto.randomBytes(32);
   if (process.platform === "darwin") {
@@ -9302,6 +9349,70 @@ function isEmbeddingOnlyModelId(value) {
   );
 }
 
+function resolveArgentAgentDirForModelCatalog() {
+  const override = String(
+    process.env.ARGENT_AGENT_DIR || process.env.PI_CODING_AGENT_DIR || "",
+  ).trim();
+  if (override) {
+    return override.replace(/^~(?=$|\/)/, process.env.HOME || "");
+  }
+  return path.join(process.env.HOME || "", ".argentos", "agents", "main", "agent");
+}
+
+let piModelCatalogPromise = null;
+let piModelCatalogLoggedError = false;
+let piModelCatalogLoadedAt = 0;
+const PI_MODEL_CATALOG_CACHE_MS = 60 * 1000;
+
+async function loadPiBackedModelCatalog() {
+  if (piModelCatalogPromise && Date.now() - piModelCatalogLoadedAt < PI_MODEL_CATALOG_CACHE_MS) {
+    return piModelCatalogPromise;
+  }
+
+  piModelCatalogLoadedAt = Date.now();
+  piModelCatalogPromise = (async () => {
+    try {
+      const { AuthStorage, ModelRegistry } = await import("@mariozechner/pi-coding-agent");
+      const agentDir = resolveArgentAgentDirForModelCatalog();
+      const authStorage = new AuthStorage(path.join(agentDir, "auth.json"));
+      const registry = new ModelRegistry(authStorage, path.join(agentDir, "models.json"));
+      const entries = Array.isArray(registry)
+        ? registry
+        : typeof registry.getAll === "function"
+          ? registry.getAll()
+          : [];
+      return entries
+        .map((entry) => {
+          const id = String(entry?.id || "").trim();
+          const provider = String(entry?.provider || "").trim();
+          if (!id || !provider) return null;
+          const name = String(entry?.name || id).trim() || id;
+          return {
+            id,
+            name,
+            provider,
+            contextWindow:
+              typeof entry?.contextWindow === "number" && entry.contextWindow > 0
+                ? entry.contextWindow
+                : undefined,
+            reasoning: typeof entry?.reasoning === "boolean" ? entry.reasoning : undefined,
+            input: Array.isArray(entry?.input) ? entry.input : undefined,
+          };
+        })
+        .filter(Boolean);
+    } catch (err) {
+      if (!piModelCatalogLoggedError) {
+        piModelCatalogLoggedError = true;
+        console.warn("[AvailableModels] Pi model catalog unavailable:", err?.message || err);
+      }
+      piModelCatalogPromise = null;
+      return [];
+    }
+  })();
+
+  return piModelCatalogPromise;
+}
+
 async function collectAvailableModelsCatalog(config) {
   const models = config.agents?.defaults?.models || {};
   const modelDefaults = config.agents?.defaults?.model || {};
@@ -9406,6 +9517,20 @@ async function collectAvailableModelsCatalog(config) {
         pushModel(`${providerId}/${modelId}`, alias);
       }
     }
+  }
+
+  const piCatalog = await loadPiBackedModelCatalog();
+  for (const entry of piCatalog) {
+    pushModel(
+      `${entry.provider}/${entry.id}`,
+      entry.name && entry.name !== entry.id ? entry.name : null,
+      {
+        source: "pi",
+        contextWindow: entry.contextWindow,
+        reasoning: entry.reasoning,
+        input: entry.input,
+      },
+    );
   }
 
   let authProfilesData = null;
@@ -11501,24 +11626,9 @@ app.patch("/api/settings/agent", (req, res) => {
           error: "Tool governance editing is not available in Public Core.",
         });
       }
-      if (req.body.kernel !== undefined) {
-        return res.status(403).json({
-          error: "Consciousness kernel controls are not available in Public Core.",
-        });
-      }
       if (updatingAgentOverride && req.body.executionWorker !== undefined) {
         return res.status(403).json({
           error: "Per-agent execution worker overrides are not available in Public Core.",
-        });
-      }
-      if (req.body.memory?.vault !== undefined || req.body.memory?.cognee !== undefined) {
-        return res.status(403).json({
-          error: "Memory admin controls are not available in Public Core.",
-        });
-      }
-      if (req.body.contemplation?.discoveryPhase !== undefined) {
-        return res.status(403).json({
-          error: "Discovery-phase contemplation controls are not available in Public Core.",
         });
       }
       if (
@@ -12378,6 +12488,73 @@ app.post("/api/settings/memory-v3/bootstrap-vault", (req, res) => {
   }
 });
 
+// POST /api/settings/memory-v3/choose-vault-folder — choose an existing markdown/Obsidian vault
+app.post("/api/settings/memory-v3/choose-vault-folder", (req, res) => {
+  try {
+    if (process.platform !== "darwin") {
+      return res.status(400).json({
+        ok: false,
+        error: "Folder picker is currently available on macOS only.",
+      });
+    }
+    const prompt =
+      typeof req.body?.prompt === "string" && req.body.prompt.trim()
+        ? req.body.prompt.trim()
+        : "Choose an Obsidian or markdown vault folder for Argent Memory V3";
+    const script = `POSIX path of (choose folder with prompt ${appleScriptStringLiteral(prompt)})`;
+    const selected = execFileSync("osascript", ["-e", script], {
+      encoding: "utf8",
+      timeout: 120000,
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+    if (!selected) {
+      return res.status(400).json({ ok: false, error: "No folder selected." });
+    }
+    const normalized = path.resolve(selected);
+    const stat = fs.statSync(normalized);
+    if (!stat.isDirectory()) {
+      return res.status(400).json({ ok: false, error: "Selected path is not a directory." });
+    }
+
+    const bind = req.body?.bind !== false;
+    if (bind) {
+      const config = readArgentConfig();
+      if (!config.memory) config.memory = {};
+      if (!config.memory.vault || typeof config.memory.vault !== "object") config.memory.vault = {};
+      config.memory.vault.path = normalized;
+      config.memory.vault.enabled = true;
+      if (!config.memory.vault.knowledgeCollection) {
+        config.memory.vault.knowledgeCollection = "vault-knowledge";
+      }
+      if (!config.memory.vault.ingest || typeof config.memory.vault.ingest !== "object") {
+        config.memory.vault.ingest = {};
+      }
+      if (config.memory.vault.ingest.enabled === undefined) {
+        config.memory.vault.ingest.enabled = false;
+      }
+      writeArgentConfig(config);
+      return res.json({
+        ok: true,
+        path: normalized,
+        boundToConfig: true,
+        status: getMemoryV3StatusPayload(readArgentConfig()),
+      });
+    }
+
+    return res.json({ ok: true, path: normalized, boundToConfig: false });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/user canceled/i.test(message)) {
+      return res.status(400).json({ ok: false, error: "Folder selection cancelled." });
+    }
+    return res.status(500).json({
+      ok: false,
+      error: "Failed to choose vault folder",
+      details: message,
+    });
+  }
+});
+
 // POST /api/settings/aos-google/preflight — run imported GWS readiness preflight
 app.post("/api/settings/aos-google/preflight", (req, res) => {
   try {
@@ -12656,14 +12833,26 @@ function resolveAgentDocsDir(agentName) {
   return path.join(AGENTS_DIR, agentName, "agent");
 }
 
+function resolveAlignmentMainAgentLabel(config) {
+  const defaultAgentId = resolveDefaultAgentId(config);
+  const mainAgent = findConfigAgent(config, "main") || findConfigAgent(config, defaultAgentId);
+  const identityName =
+    mainAgent?.identity && typeof mainAgent.identity.name === "string"
+      ? mainAgent.identity.name.trim()
+      : "";
+  const agentName = typeof mainAgent?.name === "string" ? mainAgent.name.trim() : "";
+  return agentName || identityName || defaultAgentId || "main";
+}
+
 // GET /api/settings/alignment — List agents and their docs
 app.get("/api/settings/alignment", (req, res) => {
   try {
+    const config = readArgentConfig();
     const agents = [];
 
     // Always include the main agent if workspace-main exists
     if (fs.existsSync(WORKSPACE_MAIN)) {
-      agents.push({ id: "__main__", label: "Argent ★ (main)" });
+      agents.push({ id: "__main__", label: resolveAlignmentMainAgentLabel(config) });
     }
 
     // Add named agents from agents/ directory
@@ -13854,6 +14043,19 @@ app.get("/api/settings/provider-models", async (req, res) => {
       }
     }
 
+    const piCatalog = await loadPiBackedModelCatalog();
+    for (const entry of piCatalog) {
+      if (
+        String(entry.provider || "")
+          .trim()
+          .toLowerCase() !== provider
+      )
+        continue;
+      pushRow(entry.id, entry.name && entry.name !== entry.id ? entry.name : null, {
+        source: "pi",
+      });
+    }
+
     // Provider-specific curated models not in the registry
     const extraCuratedByProvider = {
       openai: ["gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.2", "gpt-5.2-codex"],
@@ -14624,11 +14826,14 @@ function resolveHeartbeatWorkspaceContext() {
   const agentHeartbeat =
     agentEntry?.heartbeat && typeof agentEntry.heartbeat === "object" ? agentEntry.heartbeat : {};
   const heartbeat = { ...defaultsHeartbeat, ...agentHeartbeat };
+  const heartbeatEnabled = heartbeat?.enabled !== false;
   const heartbeatSession =
     typeof heartbeat?.session === "string" && heartbeat.session.trim()
       ? heartbeat.session.trim()
-      : "heartbeat";
-  const heartbeatEveryMs = parseHeartbeatEveryMs(heartbeat?.every);
+      : "main";
+  const heartbeatEveryMs = heartbeatEnabled
+    ? parseHeartbeatEveryMs(heartbeat?.every ?? "30m")
+    : null;
   return {
     config,
     defaultAgentId,
@@ -15132,6 +15337,13 @@ app.get("/api/journal/:date", (req, res) => {
 // ============================================
 // Channels endpoints
 // ============================================
+function normalizeAllowFromInput(value) {
+  if (value === undefined) return undefined;
+  const raw = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[\n,]+/) : [];
+  const entries = raw.map((entry) => String(entry).trim()).filter(Boolean);
+  return Array.from(new Set(entries));
+}
+
 app.get("/api/settings/channels", (req, res) => {
   const configPath = path.join(process.env.HOME, ".argentos", "argent.json");
   try {
@@ -15141,14 +15353,16 @@ app.get("/api/settings/channels", (req, res) => {
     // Build channel list with masked tokens
     const channelList = Object.entries(channels).map(([id, cfg]) => {
       const c = cfg;
+      const tokenValue = id === "telegram" ? c.botToken : c.token;
       return {
         id,
         configured: true,
-        token: c.token ? c.token.slice(0, 8) + "..." + c.token.slice(-4) : null,
+        token: tokenValue ? tokenValue.slice(0, 8) + "..." + tokenValue.slice(-4) : null,
         groupPolicy: c.groupPolicy || null,
         dmPolicy: c.dmPolicy || null,
         mentionGating: c.mentionGating !== undefined ? c.mentionGating : null,
         allowFrom: Array.isArray(c.allowFrom) ? c.allowFrom.length : 0,
+        allowFromEntries: Array.isArray(c.allowFrom) ? c.allowFrom : [],
         enabled: c.enabled !== false,
       };
     });
@@ -15174,9 +15388,22 @@ app.patch("/api/settings/channels/:id", (req, res) => {
         config.channels[channelId][key] = req.body[key];
       }
     }
+    const allowFrom = normalizeAllowFromInput(req.body.allowFrom);
+    if (allowFrom !== undefined) {
+      if (allowFrom.length > 0) {
+        config.channels[channelId].allowFrom = allowFrom;
+      } else {
+        delete config.channels[channelId].allowFrom;
+      }
+    }
     // Handle token separately (only if provided and non-empty)
     if (req.body.token && typeof req.body.token === "string" && req.body.token.trim()) {
-      config.channels[channelId].token = req.body.token.trim();
+      if (channelId === "telegram") {
+        config.channels[channelId].botToken = req.body.token.trim();
+        delete config.channels[channelId].token;
+      } else {
+        config.channels[channelId].token = req.body.token.trim();
+      }
     }
 
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
@@ -15205,8 +15432,13 @@ app.post("/api/settings/channels", (req, res) => {
     if (config.channels[provider]) {
       return res.status(409).json({ error: `Channel "${provider}" already exists` });
     }
-    config.channels[provider] = { token: token.trim() };
+    config.channels[provider] =
+      provider === "telegram" ? { botToken: token.trim() } : { token: token.trim() };
     if (dmPolicy) config.channels[provider].dmPolicy = dmPolicy;
+    const allowFrom = normalizeAllowFromInput(req.body.allowFrom);
+    if (allowFrom && allowFrom.length > 0) {
+      config.channels[provider].allowFrom = allowFrom;
+    }
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     res.json({ ok: true });
   } catch (err) {
@@ -15571,6 +15803,111 @@ function isLaunchctlIgnorableError(detail, mode) {
   return false;
 }
 
+function xmlEscape(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function resolveCargoCommand() {
+  const candidates = [
+    process.env.CARGO,
+    path.join(process.env.HOME || "", ".cargo", "bin", "cargo"),
+    "/opt/homebrew/bin/cargo",
+    "/usr/local/bin/cargo",
+    "cargo",
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    try {
+      if (candidate === "cargo") {
+        execFileSync("/usr/bin/env", ["cargo", "--version"], { stdio: "ignore", timeout: 3000 });
+        return "cargo";
+      }
+      if (fs.existsSync(candidate)) return candidate;
+    } catch {}
+  }
+  return null;
+}
+
+function ensureRustShadowLaunchAgent(service, repoRoot) {
+  const rustRoot = path.join(repoRoot, "rust");
+  const cargoToml = path.join(rustRoot, "Cargo.toml");
+  if (!fs.existsSync(cargoToml)) {
+    throw new Error(`Rust workspace missing at ${rustRoot}`);
+  }
+  const binaryPath = path.join(
+    rustRoot,
+    "target",
+    "debug",
+    process.platform === "win32" ? `${service.binary}.exe` : service.binary,
+  );
+  if (!fs.existsSync(binaryPath)) {
+    const cargo = resolveCargoCommand();
+    if (!cargo) {
+      throw new Error("Cargo is required to build Rust shadow services but was not found");
+    }
+    const cargoCommand = cargo === "cargo" ? "/usr/bin/env" : cargo;
+    const cargoArgs =
+      cargo === "cargo"
+        ? ["cargo", "build", "-p", service.package]
+        : ["build", "-p", service.package];
+    execFileSync(cargoCommand, cargoArgs, {
+      cwd: rustRoot,
+      stdio: "pipe",
+      timeout: 120000,
+      env: { ...process.env, HOME: process.env.HOME || os.homedir() },
+    });
+  }
+  if (!fs.existsSync(binaryPath)) {
+    throw new Error(`Rust shadow binary was not produced at ${binaryPath}`);
+  }
+
+  const logDir = path.join(process.env.HOME || os.homedir(), ".argent", "logs");
+  fs.mkdirSync(logDir, { recursive: true });
+  fs.mkdirSync(path.dirname(service.plistPath), { recursive: true });
+  const envLines = Object.entries({
+    HOME: process.env.HOME || os.homedir(),
+    RUST_BACKTRACE: "1",
+    ...(service.env || {}),
+  })
+    .map(
+      ([key, value]) => `
+    <key>${xmlEscape(key)}</key>
+    <string>${xmlEscape(value)}</string>`,
+    )
+    .join("");
+  const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${xmlEscape(service.label)}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${xmlEscape(binaryPath)}</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>${xmlEscape(rustRoot)}</string>
+  <key>EnvironmentVariables</key>
+  <dict>${envLines}
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>KeepAlive</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>${xmlEscape(path.join(logDir, `${service.label}.log`))}</string>
+  <key>StandardErrorPath</key>
+  <string>${xmlEscape(path.join(logDir, `${service.label}.err.log`))}</string>
+</dict>
+</plist>
+`;
+  fs.writeFileSync(service.plistPath, plistContent);
+  return { binaryPath, rustRoot };
+}
+
 app.get("/api/settings/gateway", async (req, res) => {
   const configPath = path.join(process.env.HOME, ".argentos", "argent.json");
   const gatewayPlistPath = path.join(
@@ -15655,6 +15992,38 @@ app.get("/api/settings/gateway", async (req, res) => {
       url: "http://127.0.0.1:19427/",
       description:
         "Experimental kernel-memory/curiosity dashboard. Not part of the normal chat surface.",
+    },
+    {
+      id: "rust-gateway-shadow",
+      label: "Rust Gateway Shadow",
+      launchdLabel: "ai.argent.rust-gateway-shadow",
+      plistPath: path.join(
+        process.env.HOME,
+        "Library",
+        "LaunchAgents",
+        "ai.argent.rust-gateway-shadow.plist",
+      ),
+      port: 18799,
+      experimental: true,
+      url: "http://127.0.0.1:18799/health",
+      description:
+        "Read-only Rust gateway shadow daemon. It is observable only and does not own live chat traffic.",
+    },
+    {
+      id: "rust-executive-shadow",
+      label: "Rust Executive Shadow",
+      launchdLabel: "ai.argent.rust-executive-shadow",
+      plistPath: path.join(
+        process.env.HOME,
+        "Library",
+        "LaunchAgents",
+        "ai.argent.rust-executive-shadow.plist",
+      ),
+      port: 18809,
+      experimental: true,
+      url: "http://127.0.0.1:18809/health",
+      description:
+        "Read-only Rust executive/kernel substrate shadow. It tracks durable state, lanes, ticks, and journal health without replacing the TypeScript kernel.",
     },
   ];
   try {
@@ -15907,6 +16276,34 @@ app.post("/api/settings/services/:serviceId/:action", async (req, res) => {
       ),
       port: 19427,
     },
+    "rust-gateway-shadow": {
+      label: "ai.argent.rust-gateway-shadow",
+      plistPath: path.join(
+        process.env.HOME,
+        "Library",
+        "LaunchAgents",
+        "ai.argent.rust-gateway-shadow.plist",
+      ),
+      port: 18799,
+      package: "argentd",
+      binary: "argentd",
+      env: { ARGENTD_BIND: "127.0.0.1:18799" },
+      rustShadow: true,
+    },
+    "rust-executive-shadow": {
+      label: "ai.argent.rust-executive-shadow",
+      plistPath: path.join(
+        process.env.HOME,
+        "Library",
+        "LaunchAgents",
+        "ai.argent.rust-executive-shadow.plist",
+      ),
+      port: 18809,
+      package: "argent-execd",
+      binary: "argent-execd",
+      env: { ARGENT_EXECD_BIND: "127.0.0.1:18809" },
+      rustShadow: true,
+    },
   };
   const service = serviceMap[req.params.serviceId];
   const action = String(req.params.action || "").trim();
@@ -15918,6 +16315,10 @@ app.post("/api/settings/services/:serviceId/:action", async (req, res) => {
   }
   try {
     let launchctlDetail = null;
+    const repoRoot = path.resolve(__dirname, "..");
+    if (service.rustShadow && (action === "start" || action === "restart")) {
+      ensureRustShadowLaunchAgent(service, repoRoot);
+    }
     if (action === "start") {
       try {
         execFileSync("/bin/launchctl", ["bootstrap", domain, service.plistPath], {
@@ -15967,7 +16368,7 @@ app.post("/api/settings/services/:serviceId/:action", async (req, res) => {
       });
       if (action === "stop") {
         if (!verified.loaded && verified.status === "stopped") break;
-      } else if (verified.loaded || verified.status === "running") {
+      } else if (verified.status === "running") {
         break;
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
@@ -15976,7 +16377,7 @@ app.post("/api/settings/services/:serviceId/:action", async (req, res) => {
     if (
       verified &&
       ((action === "stop" && (verified.loaded || verified.status !== "stopped")) ||
-        (action !== "stop" && !verified.loaded && verified.status !== "running"))
+        (action !== "stop" && verified.status !== "running"))
     ) {
       return res.status(500).json({
         error: "Service action did not reach the expected state",

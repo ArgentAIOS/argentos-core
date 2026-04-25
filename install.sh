@@ -52,6 +52,7 @@ PULL_OLLAMA_MODELS="${ARGENT_PULL_OLLAMA_MODELS:-1}"
 OLLAMA_MODELS="${ARGENT_OLLAMA_MODELS:-qwen3:30b-a3b,qwen3:1.7b}"
 SKIP_PROFILE_PATH="${ARGENT_SKIP_PROFILE_PATH:-0}"
 SKIP_APP_INSTALL="${ARGENT_SKIP_APP_INSTALL:-0}"
+SKIP_CORE_DOCS_VAULT="${ARGENT_SKIP_CORE_DOCS_VAULT:-0}"
 SKIP_DASHBOARD_DEPS="${ARGENT_SKIP_DASHBOARD_DEPS:-0}"
 SKIP_LAUNCH_AGENTS="${ARGENT_SKIP_LAUNCH_AGENTS:-0}"
 SKIP_SERVICE_START="${ARGENT_SKIP_SERVICE_START:-0}"
@@ -105,6 +106,19 @@ ok "State dir: $STATE_DIR"
 
 mkdir -p "$WORKSPACE_DIR/memory/journal"
 ok "Workspace: $WORKSPACE_DIR"
+
+CORE_DOCS_VAULT_SOURCE="$ARGENT_HOME/docs/obsidian-vault/ArgentOS Core Docs"
+CORE_DOCS_VAULT_DEST="$STATE_DIR/vaults/ArgentOS Core Docs"
+if is_truthy "$SKIP_CORE_DOCS_VAULT"; then
+  info "Skipping Core docs vault install (ARGENT_SKIP_CORE_DOCS_VAULT=1)"
+elif [[ -d "$CORE_DOCS_VAULT_SOURCE" ]]; then
+  mkdir -p "$(dirname "$CORE_DOCS_VAULT_DEST")"
+  rm -rf "$CORE_DOCS_VAULT_DEST"
+  cp -R "$CORE_DOCS_VAULT_SOURCE" "$CORE_DOCS_VAULT_DEST"
+  ok "Core docs vault: $CORE_DOCS_VAULT_DEST"
+else
+  warn "Core docs vault not found at $CORE_DOCS_VAULT_SOURCE"
+fi
 
 # ============================================================================
 # Step 2: Minimal config
@@ -235,8 +249,14 @@ elif [[ -n "$APP_SOURCE" ]]; then
   ok "Argent.app → $APP_DEST"
   # Launch it so it appears in menu bar
   open -a "$APP_DEST" 2>/dev/null || true
+elif [[ -f "$ARGENT_HOME/scripts/install-macos-app.sh" ]]; then
+  ARGENT_APP_DEST="$APP_DEST" \
+    ARGENT_APP_OPEN="${ARGENT_APP_OPEN:-1}" \
+    ARGENT_APP_RELEASE_CHANNEL="${ARGENT_APP_RELEASE_CHANNEL:-${ARGENTOS_INSTALL_CHANNEL:-${ARGENT_INSTALL_CHANNEL:-stable}}}" \
+    bash "$ARGENT_HOME/scripts/install-macos-app.sh" || \
+      warn "Could not install Argent.app from the public release manifest"
 else
-  warn "No macOS app bundle embedded in runtime — install Argent.app from DMG if needed"
+  warn "No embedded app bundle or release artifact installer found — download Argent.app later from https://argentos.ai"
 fi
 
 # ============================================================================

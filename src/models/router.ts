@@ -452,8 +452,9 @@ function applyTierFloor(
  * Route a request to the appropriate model tier.
  *
  * Returns the provider/model to use, plus metadata about the decision.
- * If routing is disabled or the user explicitly specified a model,
- * returns { routed: false } with the original provider/model.
+ * If routing is disabled, returns { routed: false } with the original
+ * provider/model. Explicit Deep Think requests still route to the active
+ * profile's powerful tier even when the session has a preselected model.
  */
 export function routeModel(params: {
   signals: ComplexitySignals;
@@ -477,18 +478,6 @@ export function routeModel(params: {
       tier: "powerful",
       score: 1,
       reason: "routing disabled",
-      routed: false,
-    };
-  }
-
-  // If user explicitly specified a model/provider, respect the override
-  if (params.requestedProvider || params.requestedModel) {
-    return {
-      provider: params.requestedProvider || defaultProvider,
-      model: params.requestedModel || defaultModel,
-      tier: "powerful",
-      score: 1,
-      reason: "user override",
       routed: false,
     };
   }
@@ -549,6 +538,19 @@ export function routeModel(params: {
       reason: "forceMaxTier (deep think)",
       routed: true,
       profile: profileName,
+    };
+  }
+
+  // If user explicitly specified a model/provider, respect the override after
+  // forceMaxTier has had a chance to promote the run to the profile's top tier.
+  if (params.requestedProvider || params.requestedModel) {
+    return {
+      provider: params.requestedProvider || defaultProvider,
+      model: params.requestedModel || defaultModel,
+      tier: "powerful",
+      score: 1,
+      reason: "user override",
+      routed: false,
     };
   }
 

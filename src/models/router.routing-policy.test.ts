@@ -80,4 +80,24 @@ describe("routeModel routing policy", () => {
     expect(withFloor.tier).toBe("balanced");
     expect(withFloor.reason).toContain("memory-likely floor");
   });
+
+  it("lets deep think force the powerful tier over a selected session model", () => {
+    const decision = routeModel({
+      signals: {
+        prompt: "Think through the hard path.",
+        sessionType: "main",
+        forceMaxTier: true,
+      },
+      config: makeConfig(),
+      requestedProvider: "test",
+      requestedModel: "fast-model",
+      defaultProvider: "fallback",
+      defaultModel: "fallback-model",
+    });
+
+    expect(decision.routed).toBe(true);
+    expect(decision.tier).toBe("powerful");
+    expect(decision.model).toBe("powerful-model");
+    expect(decision.reason).toBe("forceMaxTier (deep think)");
+  });
 });

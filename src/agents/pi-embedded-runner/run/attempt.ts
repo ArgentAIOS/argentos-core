@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import os from "node:os";
-import type { ImageContent } from "../../../agent-core/ai.js";
+import type { Api, ImageContent, Model } from "../../../agent-core/ai.js";
 import type { AgentMessage } from "../../../agent-core/core.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import {
@@ -37,6 +37,7 @@ import {
   ArgentSettingsManager,
   createArgentAgentSession,
 } from "../../../argent-agent/index.js";
+import { runWithPromptBudget } from "../../../argent-agent/prompt-budget.js";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
 import {
@@ -145,6 +146,7 @@ import {
 import { splitSdkTools } from "../tool-split.js";
 import { describeUnknownError, mapThinkingLevel } from "../utils.js";
 import { detectAndLoadPromptImages, modelSupportsImages } from "./images.js";
+import { sanitizeMessagesForModelAdapter } from "./message-sanitizer.js";
 import {
   buildCrossChannelContextBlock,
   buildSessionBootstrapBlock,
@@ -255,7 +257,46 @@ type OpenAICodexModelRegistryLike = {
 
 type AuthStorageWithRuntimeOverrides = {
   runtimeOverrides?: Map<string, string>;
+  getApiKey?: (
+    provider: string,
+    options?: { includeFallback?: boolean },
+  ) => Promise<string | undefined>;
 };
+
+export async function resolveRuntimeProviderApiKey(
+  authStorage: AuthStorageWithRuntimeOverrides,
+  provider: string,
+): Promise<string | undefined> {
+  const normalizedProvider = provider.trim();
+  if (!normalizedProvider) {
+    return undefined;
+  }
+
+  if (typeof authStorage.getApiKey === "function") {
+    const apiKey = await authStorage.getApiKey(normalizedProvider, { includeFallback: false });
+    if (apiKey) {
+      return apiKey;
+    }
+  }
+
+  return authStorage.runtimeOverrides?.get(normalizedProvider);
+}
+
+export function createPiStreamSimpleWithRuntimeApiKey(
+  streamFn: typeof streamSimple,
+  providerApiKey: string | undefined,
+): typeof streamSimple {
+  const hardened = hardenStreamSimple(streamFn);
+  if (!providerApiKey) {
+    return hardened;
+  }
+
+  return (model, context, options) =>
+    hardened(model, context, {
+      ...options,
+      apiKey: providerApiKey,
+    });
+}
 
 export function resolveOpenAICodexVisionModelId(params: {
   model: Pick<Model<Api>, "id" | "provider" | "input">;
@@ -296,9 +337,39 @@ export function resolveOpenAICodexVisionModelId(params: {
  * Resolve an Argent-native provider from a provider name string.
  * API keys are auto-loaded from the dashboard key store.
  */
+export function resolveArgentProviderBaseURL(
+  providerName: string,
+  baseURL?: string,
+): string | undefined {
+  const normalizedProvider = providerName.trim().toLowerCase();
+  const normalizedBaseURL = baseURL?.trim();
+  if (!normalizedBaseURL) {
+    return undefined;
+  }
+  if (
+    normalizedProvider === "minimax" &&
+    /^https:\/\/api\.minimax\.io\/anthropic\/?$/i.test(normalizedBaseURL)
+  ) {
+    return undefined;
+  }
+  return normalizedBaseURL;
+}
+
+export function resolveArgentProviderFallbackReason(providerName: string): string | undefined {
+  const normalizedProvider = providerName.trim().toLowerCase();
+  if (normalizedProvider === "minimax") {
+    return "MiniMax M2 uses the Pi Anthropic-compatible adapter until the native adapter reaches parity";
+  }
+  return undefined;
+}
+
 async function resolveArgentProvider(providerName: string, baseURL?: string, apiKey?: string) {
+  if (resolveArgentProviderFallbackReason(providerName)) {
+    return null;
+  }
+  const argentBaseURL = resolveArgentProviderBaseURL(providerName, baseURL);
   const opts: Record<string, unknown> = {
-    ...(baseURL ? { baseURL } : {}),
+    ...(argentBaseURL ? { baseURL: argentBaseURL } : {}),
     ...(apiKey ? { apiKey } : {}),
   };
   switch (providerName) {
@@ -773,13 +844,15 @@ export async function runEmbeddedAttempt(
         })
       : undefined;
 
-    const effectiveExtraSystemPrompt = [
-      params.extraSystemPrompt?.trim(),
-      intentPromptHint?.trim(),
-      crossChannelContextHint,
-      matchedPersonalSkillsContext,
-      executablePersonalSkillBlock,
-    ]
+    const extraSystemPromptParts: Array<{ name: string; value: string | undefined }> = [
+      { name: "caller-extra-system-prompt", value: params.extraSystemPrompt?.trim() },
+      { name: "intent-hint", value: intentPromptHint?.trim() },
+      { name: "cross-channel-context", value: crossChannelContextHint },
+      { name: "matched-personal-skills", value: matchedPersonalSkillsContext },
+      { name: "executable-personal-skill", value: executablePersonalSkillBlock },
+    ];
+    const effectiveExtraSystemPrompt = extraSystemPromptParts
+      .map((p) => p.value)
       .filter((entry): entry is string => Boolean(entry))
       .join("\n\n");
     const sandboxInfo = buildEmbeddedSandboxInfo(sandbox, params.bashElevated);
@@ -825,36 +898,85 @@ export async function runEmbeddedAttempt(
     const promptMode = isSubagentSessionKey(params.sessionKey) ? "subagent" : "full";
     const ttsHint = params.config ? buildTtsSystemPromptHint(params.config) : undefined;
 
-    const appendPrompt = await buildEmbeddedSystemPrompt({
-      workspaceDir: effectiveWorkspace,
-      defaultThinkLevel: params.thinkLevel,
-      reasoningLevel: params.reasoningLevel ?? "off",
-      extraSystemPrompt: effectiveExtraSystemPrompt || undefined,
-      ownerNumbers: params.ownerNumbers,
-      reasoningTagHint,
-      heartbeatPrompt: isDefaultAgent
-        ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
-        : undefined,
-      skillsPrompt,
-      docsPath: docsPath ?? undefined,
-      ttsHint,
-      workspaceNotes,
-      reactionGuidance,
-      promptMode,
-      runtimeInfo,
-      messageToolHints,
-      sandboxInfo,
-      tools,
-      modelAliasLines: buildModelAliasLines(params.config),
-      userTimezone,
-      userTime,
-      userTimeFormat,
-      contextFiles,
-      memoryCitationsMode: params.config?.memory?.citations,
-      sessionKey: params.sessionKey,
-    });
+    // Opt-in prompt budget audit — gated on ARGENT_PROMPT_BUDGET_LOG=1.
+    // See docs/argent/PROMPT_BUDGET.md. When disabled, runWithPromptBudget still
+    // runs the function but the inner tracker is inert (record() calls no-op).
+    const { result: appendPrompt, tracker: promptBudgetTracker } = await runWithPromptBudget(
+      async (tracker) => {
+        // Record each extraSystemPrompt contributor BEFORE buildEmbeddedSystemPrompt
+        // so the log reflects the actual upstream injectors, not the glued string.
+        for (const part of extraSystemPromptParts) {
+          tracker.record(`extra:${part.name}`, part.value);
+        }
+        tracker.record(
+          "workspace-notes",
+          (workspaceNotes ?? []).filter((n): n is string => Boolean(n)),
+        );
+        tracker.record("message-tool-hints", messageToolHints);
+        tracker.record(
+          "heartbeat-prompt-in",
+          isDefaultAgent
+            ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
+            : undefined,
+        );
+        tracker.record("skills-prompt-in", skillsPrompt);
+        tracker.record("tts-hint", ttsHint);
+        return buildEmbeddedSystemPrompt({
+          workspaceDir: effectiveWorkspace,
+          defaultThinkLevel: params.thinkLevel,
+          reasoningLevel: params.reasoningLevel ?? "off",
+          extraSystemPrompt: effectiveExtraSystemPrompt || undefined,
+          ownerNumbers: params.ownerNumbers,
+          reasoningTagHint,
+          heartbeatPrompt: isDefaultAgent
+            ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
+            : undefined,
+          skillsPrompt,
+          docsPath: docsPath ?? undefined,
+          ttsHint,
+          workspaceNotes,
+          reactionGuidance,
+          promptMode,
+          runtimeInfo,
+          messageToolHints,
+          sandboxInfo,
+          tools,
+          modelAliasLines: buildModelAliasLines(params.config),
+          userTimezone,
+          userTime,
+          userTimeFormat,
+          contextFiles,
+          memoryCitationsMode: params.config?.memory?.citations,
+          sessionKey: params.sessionKey,
+        });
+      },
+    );
     const systemPromptOverride = createSystemPromptOverride(appendPrompt);
     const systemPromptText = systemPromptOverride();
+
+    // Record tool JSON schemas — these are sent alongside the system prompt and
+    // can dominate the token count for tool-heavy configurations.
+    try {
+      let toolSchemaChars = 0;
+      for (const tool of tools) {
+        toolSchemaChars += tool.name?.length ?? 0;
+        toolSchemaChars += tool.description?.length ?? 0;
+        try {
+          toolSchemaChars += JSON.stringify(tool.parameters ?? {}).length;
+        } catch {
+          /* circular schemas would be unusual — skip silently */
+        }
+      }
+      promptBudgetTracker.recordChars(`tool-schemas(n=${tools.length})`, toolSchemaChars);
+    } catch {
+      /* instrumentation must never break the run */
+    }
+    // Emit the one-line per-run summary. Total = system prompt bytes (history is
+    // assembled later by the session; a fresh turn contributes only the user text).
+    promptBudgetTracker.logSummary({
+      model: `${params.provider}/${params.modelId}`,
+      totalChars: systemPromptText.length,
+    });
 
     const sessionLock = await acquireSessionWriteLock({
       sessionFile: params.sessionFile,
@@ -962,6 +1084,7 @@ export async function runEmbeddedAttempt(
           sessionManager: sessionManager as unknown as ArgentSessionManager,
           settingsManager: argentSettingsManager as ArgentSettingsManager,
           model: params.model,
+          config: params.config,
           thinkingLevel: mapThinkingLevel(params.thinkLevel),
           tools: tools,
         }));
@@ -1026,9 +1149,10 @@ export async function runEmbeddedAttempt(
       // streamSimpleOpenAICodexResponses (chatgpt.com/backend-api/codex/responses),
       // but it needs apiKey in options since getEnvApiKey has no mapping for openai-codex.
       // Wrap streamSimple to inject the OAuth JWT from authStorage.runtimeOverrides.
-      const runtimeOverrides = (params.authStorage as AuthStorageWithRuntimeOverrides)
-        .runtimeOverrides;
-      const providerApiKey = runtimeOverrides?.get(params.provider);
+      const providerApiKey = await resolveRuntimeProviderApiKey(
+        params.authStorage as AuthStorageWithRuntimeOverrides,
+        params.provider,
+      );
       if (params.provider === "openai-codex") {
         const codexApiKey = providerApiKey;
         if (codexApiKey) {
@@ -1079,9 +1203,13 @@ export async function runEmbeddedAttempt(
           } else {
             applyPiStreamFallbackPolicy(
               runtimePolicy.mode,
-              `No Argent provider for "${params.provider}"`,
+              resolveArgentProviderFallbackReason(params.provider) ??
+                `No Argent provider for "${params.provider}"`,
               () => {
-                activeSession.agent.streamFn = hardenStreamSimple(streamSimple);
+                activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
+                  streamSimple,
+                  providerApiKey,
+                );
               },
             );
           }
@@ -1090,13 +1218,19 @@ export async function runEmbeddedAttempt(
             runtimePolicy.mode,
             `Failed to create Argent provider for "${params.provider}"`,
             () => {
-              activeSession.agent.streamFn = hardenStreamSimple(streamSimple);
+              activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
+                streamSimple,
+                providerApiKey,
+              );
             },
             err,
           );
         }
       } else {
-        activeSession.agent.streamFn = hardenStreamSimple(streamSimple);
+        activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
+          streamSimple,
+          providerApiKey,
+        );
       }
 
       applyExtraParamsToAgent(
@@ -1149,6 +1283,8 @@ export async function runEmbeddedAttempt(
         const visionReady = await applyVisionFallbackToMessages(limited, {
           modelHasVision,
           minimaxBaseUrl: params.model.provider === "minimax" ? params.model.baseUrl : undefined,
+          cfg: params.config,
+          agentDir,
         });
 
         if (visionReady.length > 0) {
@@ -1374,6 +1510,20 @@ export async function runEmbeddedAttempt(
         promptStartMessageCount = activeSession.messages.length;
 
         try {
+          const sanitizedHistory = sanitizeMessagesForModelAdapter(activeSession.messages);
+          if (sanitizedHistory.changed) {
+            activeSession.agent.replaceMessages(sanitizedHistory.messages);
+            const onlySummaryNormalization = sanitizedHistory.repairs.every((repair) =>
+              repair.startsWith("normalized summary message role: "),
+            );
+            const logRepair = onlySummaryNormalization ? log.debug.bind(log) : log.warn.bind(log);
+            logRepair(
+              `repaired malformed transcript before model adapter: ` +
+                `runId=${params.runId} sessionId=${params.sessionId} ` +
+                `repairs=${sanitizedHistory.repairs.join("; ")}`,
+            );
+          }
+
           // Detect and load images referenced in the prompt for vision-capable models.
           // This eliminates the need for an explicit "view" tool call by injecting
           // images directly into the prompt when the model supports it.
