@@ -17,8 +17,14 @@ ArgentOS = CLAW + TARDIS, because every space lobster needs a time and space mac
 
 ## Core contributors
 
+- **Jason Brashear** ([@webdevtodayjason](https://github.com/webdevtodayjason), Web Dev Today) - Project stewardship, release direction, and Core product shaping
 - **Maxim Vovshin** (@Hyaxia, 36747317+Hyaxia@users.noreply.github.com) - Blogwatcher skill
 - **Nacho Iacovino** (@nachoiacovino, nacho.iacovino@gmail.com) - Location parsing (Telegram and WhatsApp)
+
+## AI contributors
+
+- **argentOS-OG** (<argent@argentos.ai>) - ArgentOS agent credit line and co-author identity
+- **Claude Code** - AI-assisted implementation, review, and release support
 
 ## License
 
