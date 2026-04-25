@@ -1,6 +1,6 @@
 {
   "name": "@argentos/memory-lancedb",
-  "version": "2026.4.25.1",
+  "version": "2026.4.25.2",
   "description": "ArgentOS LanceDB-backed long-term memory plugin with auto-recall/capture",
   "type": "module",
   "dependencies": {

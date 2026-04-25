@@ -10,6 +10,26 @@ function isMiniMaxM2Model(model: Model<Api>): boolean {
 
 const ZAI_CODING_CHAT_COMPLETIONS_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions";
 
+function normalizeZaiBaseUrl(model: Model<"openai-completions">): string {
+  const baseUrl = model.baseUrl?.trim() ?? "";
+  if (!baseUrl || baseUrl.includes("open.bigmodel.cn")) {
+    return ZAI_CODING_CHAT_COMPLETIONS_URL;
+  }
+  const withoutTrailingSlash = baseUrl.replace(/\/+$/, "");
+  if (withoutTrailingSlash.includes("api.z.ai")) {
+    if (withoutTrailingSlash.endsWith("/chat/completions")) {
+      return withoutTrailingSlash;
+    }
+    if (
+      withoutTrailingSlash.endsWith("/api/paas/v4") ||
+      withoutTrailingSlash.endsWith("/api/coding/paas/v4")
+    ) {
+      return `${withoutTrailingSlash}/chat/completions`;
+    }
+  }
+  return baseUrl;
+}
+
 export function normalizeModelCompat(model: Model<Api>): Model<Api> {
   if (isMiniMaxM2Model(model)) {
     return {
@@ -29,7 +49,7 @@ export function normalizeModelCompat(model: Model<Api>): Model<Api> {
   const openaiModel = model;
   const compat = openaiModel.compat ?? undefined;
   if (isZai) {
-    openaiModel.baseUrl = ZAI_CODING_CHAT_COMPLETIONS_URL;
+    openaiModel.baseUrl = normalizeZaiBaseUrl(openaiModel);
   }
   if (compat?.supportsDeveloperRole === false) {
     return openaiModel;

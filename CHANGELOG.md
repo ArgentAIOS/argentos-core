@@ -2,6 +2,14 @@
 
 Docs: https://docs.argentos.ai
 
+## 2026.4.25.2
+
+### Fixes
+
+- Models/docs: let operators select the Z.AI General or Coding subscription
+  endpoint with `models.providers.zai.baseUrl`, and document the correct public
+  setup for Coding-subscription keys.
+
 ## 2026.4.25.1
 
 ### Changes

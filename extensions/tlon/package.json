@@ -1,6 +1,6 @@
 {
   "name": "@argentos/tlon",
-  "version": "2026.4.25.1",
+  "version": "2026.4.25.2",
   "description": "ArgentOS Tlon/Urbit channel plugin",
   "type": "module",
   "dependencies": {

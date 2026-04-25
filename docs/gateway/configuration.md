@@ -2550,8 +2550,8 @@ Notes:
   `https://api.z.ai/api/coding/paas/v4` for Coding subscriptions. ArgentOS appends
   `/chat/completions` automatically when needed.
 - To select a lane for the built-in `zai` provider, set `models.providers.zai.baseUrl`
-  with `models: []`. That override applies to built-in catalog models such as
-  `zai/glm-5-turbo` and discovered models such as `zai/glm-5.1`.
+  with `models: []`. That override applies to built-in, fallback, and discovered
+  `zai/*` models, including discovered models such as `zai/glm-5.1`.
 
 ```json5
 {

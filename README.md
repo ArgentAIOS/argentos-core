@@ -28,7 +28,7 @@ ArgentOS is a personal AI operating system that runs on your hardware, speaks th
 
 ## Latest Update
 
-The April Core stabilization release is live on `main`: a month-long lane of install/update hardening, dashboard setup and model-routing polish, expanded public docs, the Cognee AOS connector, MCP exposure fixes, and the observable Rust executive shadow runtime. See [CHANGELOG.md](CHANGELOG.md) for the full release narrative.
+The April Core stabilization release is live on `main`: a month-long lane of install/update hardening, dashboard setup and model-routing polish, expanded public docs, the Cognee AOS connector, MCP exposure fixes, and the observable Rust executive shadow runtime. A supplemental patch documents and routes Z.AI Coding-subscription endpoints correctly. See [CHANGELOG.md](CHANGELOG.md) for the full release narrative.
 
 ## Install
 
