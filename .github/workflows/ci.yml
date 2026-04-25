@@ -10,6 +10,24 @@ permissions:
   contents: read
 
 jobs:
+  repo-lane:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          check-latest: true
+
+      - name: Verify repo lane
+        run: node scripts/check-repo-lane.mjs
+
   install-check:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
