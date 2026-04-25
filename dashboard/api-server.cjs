@@ -15246,6 +15246,13 @@ app.get("/api/journal/:date", (req, res) => {
 // ============================================
 // Channels endpoints
 // ============================================
+function normalizeAllowFromInput(value) {
+  if (value === undefined) return undefined;
+  const raw = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[\n,]+/) : [];
+  const entries = raw.map((entry) => String(entry).trim()).filter(Boolean);
+  return Array.from(new Set(entries));
+}
+
 app.get("/api/settings/channels", (req, res) => {
   const configPath = path.join(process.env.HOME, ".argentos", "argent.json");
   try {
@@ -15255,14 +15262,16 @@ app.get("/api/settings/channels", (req, res) => {
     // Build channel list with masked tokens
     const channelList = Object.entries(channels).map(([id, cfg]) => {
       const c = cfg;
+      const tokenValue = id === "telegram" ? c.botToken : c.token;
       return {
         id,
         configured: true,
-        token: c.token ? c.token.slice(0, 8) + "..." + c.token.slice(-4) : null,
+        token: tokenValue ? tokenValue.slice(0, 8) + "..." + tokenValue.slice(-4) : null,
         groupPolicy: c.groupPolicy || null,
         dmPolicy: c.dmPolicy || null,
         mentionGating: c.mentionGating !== undefined ? c.mentionGating : null,
         allowFrom: Array.isArray(c.allowFrom) ? c.allowFrom.length : 0,
+        allowFromEntries: Array.isArray(c.allowFrom) ? c.allowFrom : [],
         enabled: c.enabled !== false,
       };
     });
@@ -15288,9 +15297,22 @@ app.patch("/api/settings/channels/:id", (req, res) => {
         config.channels[channelId][key] = req.body[key];
       }
     }
+    const allowFrom = normalizeAllowFromInput(req.body.allowFrom);
+    if (allowFrom !== undefined) {
+      if (allowFrom.length > 0) {
+        config.channels[channelId].allowFrom = allowFrom;
+      } else {
+        delete config.channels[channelId].allowFrom;
+      }
+    }
     // Handle token separately (only if provided and non-empty)
     if (req.body.token && typeof req.body.token === "string" && req.body.token.trim()) {
-      config.channels[channelId].token = req.body.token.trim();
+      if (channelId === "telegram") {
+        config.channels[channelId].botToken = req.body.token.trim();
+        delete config.channels[channelId].token;
+      } else {
+        config.channels[channelId].token = req.body.token.trim();
+      }
     }
 
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
@@ -15319,8 +15341,13 @@ app.post("/api/settings/channels", (req, res) => {
     if (config.channels[provider]) {
       return res.status(409).json({ error: `Channel "${provider}" already exists` });
     }
-    config.channels[provider] = { token: token.trim() };
+    config.channels[provider] =
+      provider === "telegram" ? { botToken: token.trim() } : { token: token.trim() };
     if (dmPolicy) config.channels[provider].dmPolicy = dmPolicy;
+    const allowFrom = normalizeAllowFromInput(req.body.allowFrom);
+    if (allowFrom && allowFrom.length > 0) {
+      config.channels[provider].allowFrom = allowFrom;
+    }
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     res.json({ ok: true });
   } catch (err) {

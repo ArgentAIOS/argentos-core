@@ -118,6 +118,45 @@ const STORAGE_KEY = "argent-config";
 const AGENT_SETTINGS_DEFAULT_TARGET = "__defaults__";
 const AGENT_SETTINGS_TARGET_STORAGE_KEY = "argent-settings-agent-target-id";
 const CALENDAR_ACCOUNT_STORAGE_KEY = "argent-calendar-account";
+
+const CHANNEL_SETUP_GUIDES: Record<
+  string,
+  {
+    tokenPlaceholder: string;
+    allowPlaceholder: string;
+    guide: string;
+  }
+> = {
+  telegram: {
+    tokenPlaceholder: "Bot token from @BotFather",
+    allowPlaceholder: "Telegram user IDs, one per line",
+    guide:
+      "Create a bot with @BotFather, paste the bot token here, then add your numeric Telegram user ID to allow direct messages.",
+  },
+  discord: {
+    tokenPlaceholder: "Discord bot token",
+    allowPlaceholder: "Discord user IDs, one per line",
+    guide:
+      "Create a Discord application with a bot token, enable Message Content Intent, invite the bot to your server, then add trusted user IDs.",
+  },
+};
+
+const defaultChannelSetupGuide = {
+  tokenPlaceholder: "Bot token",
+  allowPlaceholder: "Allowed sender IDs, one per line",
+  guide: "Paste the provider token and add trusted sender IDs when using allowlist mode.",
+};
+
+function parseChannelAllowFrom(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(/[\n,]+/)
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ),
+  );
+}
 const WORKFORCE_HELP_DOCS: Array<{ label: string; href: string }> = [
   {
     label: "5-Minute Quick Start",
@@ -2875,12 +2914,16 @@ export function ConfigPanel({
   const [newChannelProvider, setNewChannelProvider] = useState("discord");
   const [newChannelToken, setNewChannelToken] = useState("");
   const [newChannelDmPolicy, setNewChannelDmPolicy] = useState("open");
+  const [newChannelAllowFrom, setNewChannelAllowFrom] = useState("");
   const [showChannelToken, setShowChannelToken] = useState(false);
   const [channelMessage, setChannelMessage] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
   const [editingChannelId, setEditingChannelId] = useState<string | null>(null);
+  const [editingChannelAllowFrom, setEditingChannelAllowFrom] = useState<Record<string, string>>(
+    {},
+  );
 
   // Agent tab state
   interface AgentSettings {
@@ -10624,6 +10667,7 @@ export function ConfigPanel({
                           setNewChannelProvider("discord");
                           setNewChannelToken("");
                           setNewChannelDmPolicy("open");
+                          setNewChannelAllowFrom("");
                           setShowChannelToken(false);
                         }}
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded-lg transition-all text-sm font-medium"
@@ -10662,7 +10706,10 @@ export function ConfigPanel({
                         <div className="text-white/70 text-sm font-medium">Add Channel</div>
                         <select
                           value={newChannelProvider}
-                          onChange={(e) => setNewChannelProvider(e.target.value)}
+                          onChange={(e) => {
+                            setNewChannelProvider(e.target.value);
+                            setNewChannelAllowFrom("");
+                          }}
                           className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white/90 focus:outline-none focus:border-purple-500/50"
                         >
                           <option value="discord" className="bg-gray-900">
@@ -10681,10 +10728,19 @@ export function ConfigPanel({
                             WhatsApp
                           </option>
                         </select>
+                        <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/50">
+                          {
+                            (CHANNEL_SETUP_GUIDES[newChannelProvider] ?? defaultChannelSetupGuide)
+                              .guide
+                          }
+                        </div>
                         <div className="relative">
                           <input
                             type={showChannelToken ? "text" : "password"}
-                            placeholder="Bot token"
+                            placeholder={
+                              (CHANNEL_SETUP_GUIDES[newChannelProvider] ?? defaultChannelSetupGuide)
+                                .tokenPlaceholder
+                            }
                             value={newChannelToken}
                             onChange={(e) => setNewChannelToken(e.target.value)}
                             className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 pr-10 text-sm text-white font-mono placeholder-white/30 focus:outline-none focus:border-purple-500/50"
@@ -10716,6 +10772,16 @@ export function ConfigPanel({
                             DM Policy: Allowlist
                           </option>
                         </select>
+                        <textarea
+                          value={newChannelAllowFrom}
+                          onChange={(e) => setNewChannelAllowFrom(e.target.value)}
+                          placeholder={
+                            (CHANNEL_SETUP_GUIDES[newChannelProvider] ?? defaultChannelSetupGuide)
+                              .allowPlaceholder
+                          }
+                          rows={3}
+                          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                        />
                         <div className="flex gap-2">
                           <button
                             onClick={() => setShowAddChannel(false)}
@@ -10734,6 +10800,7 @@ export function ConfigPanel({
                                     provider: newChannelProvider,
                                     token: newChannelToken.trim(),
                                     dmPolicy: newChannelDmPolicy,
+                                    allowFrom: parseChannelAllowFrom(newChannelAllowFrom),
                                   }),
                                 });
                                 if (resp.ok) {
@@ -10743,6 +10810,7 @@ export function ConfigPanel({
                                   });
                                   setShowAddChannel(false);
                                   setNewChannelToken("");
+                                  setNewChannelAllowFrom("");
                                   const data = await (await fetch("/api/settings/channels")).json();
                                   setChannelList(data.channels || []);
                                 } else {
@@ -10830,9 +10898,16 @@ export function ConfigPanel({
 
                               {/* Edit button */}
                               <button
-                                onClick={() =>
-                                  setEditingChannelId(editingChannelId === ch.id ? null : ch.id)
-                                }
+                                onClick={() => {
+                                  const nextEditing = editingChannelId === ch.id ? null : ch.id;
+                                  setEditingChannelId(nextEditing);
+                                  if (nextEditing) {
+                                    setEditingChannelAllowFrom((prev) => ({
+                                      ...prev,
+                                      [ch.id]: (ch.allowFromEntries || []).join("\n"),
+                                    }));
+                                  }
+                                }}
                                 className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white/70 transition-all"
                               >
                                 <Edit3 className="w-4 h-4" />
@@ -10972,6 +11047,81 @@ export function ConfigPanel({
                                       Open
                                     </option>
                                   </select>
+                                </div>
+
+                                {/* Allowed senders */}
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                      <span className="text-white/50 text-sm">Allowed IDs</span>
+                                      <div className="text-white/30 text-xs">
+                                        Numeric user IDs or provider-prefixed IDs; one per line.
+                                      </div>
+                                    </div>
+                                    {ch.dmPolicy === "allowlist" && ch.allowFrom === 0 && (
+                                      <span className="text-xs text-yellow-300 bg-yellow-500/10 border border-yellow-500/20 rounded px-2 py-1">
+                                        Empty allowlist blocks DMs
+                                      </span>
+                                    )}
+                                  </div>
+                                  <textarea
+                                    value={
+                                      editingChannelAllowFrom[ch.id] ??
+                                      (ch.allowFromEntries || []).join("\n")
+                                    }
+                                    onChange={(e) =>
+                                      setEditingChannelAllowFrom((prev) => ({
+                                        ...prev,
+                                        [ch.id]: e.target.value,
+                                      }))
+                                    }
+                                    rows={3}
+                                    placeholder={
+                                      (CHANNEL_SETUP_GUIDES[ch.id] ?? defaultChannelSetupGuide)
+                                        .allowPlaceholder
+                                    }
+                                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white font-mono placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                                  />
+                                  <div className="flex justify-end">
+                                    <button
+                                      onClick={async () => {
+                                        const allowFrom = parseChannelAllowFrom(
+                                          editingChannelAllowFrom[ch.id] ?? "",
+                                        );
+                                        setChannelList((prev) =>
+                                          prev.map((c) =>
+                                            c.id === ch.id
+                                              ? {
+                                                  ...c,
+                                                  allowFrom: allowFrom.length,
+                                                  allowFromEntries: allowFrom,
+                                                }
+                                              : c,
+                                          ),
+                                        );
+                                        try {
+                                          await fetch(`/api/settings/channels/${ch.id}`, {
+                                            method: "PATCH",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ allowFrom }),
+                                          });
+                                          setChannelMessage({
+                                            type: "success",
+                                            text: `${ch.id} allowlist saved`,
+                                          });
+                                        } catch {
+                                          setChannelMessage({
+                                            type: "error",
+                                            text: "Failed to save allowlist",
+                                          });
+                                        }
+                                        setTimeout(() => setChannelMessage(null), 3000);
+                                      }}
+                                      className="px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-sm font-medium"
+                                    >
+                                      Save IDs
+                                    </button>
+                                  </div>
                                 </div>
 
                                 {/* Mention Gating */}

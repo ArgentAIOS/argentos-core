@@ -56,6 +56,7 @@ import {
 import { buildInlineKeyboard } from "./send.js";
 
 const EMPTY_RESPONSE_FALLBACK = "No response generated. Please try again.";
+const TELEGRAM_COMMAND_MENU_LIMIT = 100;
 
 type TelegramNativeCommandContext = Context & { match?: string };
 
@@ -365,12 +366,18 @@ export const registerTelegramNativeCommands = ({
     ...pluginCommands,
     ...customCommands,
   ];
+  const commandMenuCommands = allCommands.slice(0, TELEGRAM_COMMAND_MENU_LIMIT);
+  if (allCommands.length > commandMenuCommands.length) {
+    runtime.log?.(
+      `telegram: command menu capped at ${TELEGRAM_COMMAND_MENU_LIMIT}; ${allCommands.length - commandMenuCommands.length} commands remain callable by text.`,
+    );
+  }
 
   if (allCommands.length > 0) {
     withTelegramApiErrorLogging({
       operation: "setMyCommands",
       runtime,
-      fn: () => bot.api.setMyCommands(allCommands),
+      fn: () => bot.api.setMyCommands(commandMenuCommands),
     }).catch(() => {});
 
     if (typeof (bot as unknown as { command?: unknown }).command !== "function") {
