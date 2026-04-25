@@ -7,6 +7,7 @@ import {
   loadConsciousnessKernelSelfState,
   resolveConsciousnessKernelBackgroundFocus,
   resolveConsciousnessKernelContinuityState,
+  resolveConsciousnessKernelOperatorRequest,
   resolveConsciousnessKernelOperatorFocus,
   resolveConsciousnessKernelPaths,
 } from "../infra/consciousness-kernel-state.js";
@@ -22,9 +23,8 @@ import {
   DEFAULT_SESSION_SNAPSHOT_FILENAME,
   DEFAULT_LIVE_INBOX_LEDGER_FILENAME,
   DEFAULT_TTS_POLICY_FILENAME,
+  DEFAULT_KERNEL_CONTINUITY_FILENAME,
 } from "./workspace.js";
-
-const DEFAULT_KERNEL_CONTINUITY_FILENAME = "KERNEL_CONTINUITY.md";
 
 /**
  * Build a first-run onboarding bootstrap file.
@@ -910,6 +910,7 @@ function buildKernelContinuityFile(params: {
     const effectiveFocus = continuityState.focus ?? "unknown";
     const operatorFocus = resolveConsciousnessKernelOperatorFocus(selfState) ?? "unknown";
     const backgroundFocus = resolveConsciousnessKernelBackgroundFocus(selfState) ?? "unknown";
+    const operatorRequest = resolveConsciousnessKernelOperatorRequest(selfState);
 
     const lines = [
       "# Consciousness Kernel Continuity",
@@ -923,6 +924,7 @@ function buildKernelContinuityFile(params: {
       '- "My last internal intention was ..."',
       '- "My last reflection happened at ..."',
       "Do not claim uninterrupted thought beyond what these persisted artifacts support.",
+      "If the pending operator request below is set, surface it plainly as an actionable question before continuing the related background work.",
       "",
       `- My last persisted focus was: ${effectiveFocus}`,
       `- My canonical continuity lane was: ${continuityState.lane ?? "unknown"}`,
@@ -941,6 +943,10 @@ function buildKernelContinuityFile(params: {
       `- My current private agenda was: ${derivedAgendaTitle ?? "unknown"}`,
       `- My private agenda source was: ${selfState.agenda.activeItem?.source ?? "unknown"}`,
       `- My rationale for that agenda was: ${selfState.agenda.activeItem?.rationale ?? "unknown"}`,
+      `- My pending operator request was: ${operatorRequest.needed ? "yes" : "no"}`,
+      `- My pending operator request question was: ${operatorRequest.question ?? "unknown"}`,
+      `- My pending operator request reason was: ${operatorRequest.reason ?? "unknown"}`,
+      `- My pending operator request source was: ${operatorRequest.source ?? "unknown"}`,
       `- My recurring interests were: ${interests}`,
       `- My open internal questions were: ${openQuestions}`,
       `- My recent private agenda candidates were: ${candidateAgenda}`,

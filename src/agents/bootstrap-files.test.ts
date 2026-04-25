@@ -152,6 +152,8 @@ describe("resolveBootstrapFilesForRun", () => {
       expect(kernelFile?.content).toContain(
         "My rationale for that agenda was: The carried launch thread is still the highest-value unresolved work.",
       );
+      expect(kernelFile?.content).toContain("My pending operator request was: no");
+      expect(kernelFile?.content).toContain("My pending operator request question was: unknown");
       expect(kernelFile?.content).toContain(
         "My recurring interests were: website launch resilience, host handshake integrity",
       );

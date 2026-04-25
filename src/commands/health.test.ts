@@ -162,6 +162,10 @@ describe("healthCommand", () => {
         agendaActiveTitle: "website launch blockers",
         agendaActiveSource: "operator",
         agendaActiveRationale: "This is still the best unresolved carried thread.",
+        operatorRequestNeeded: true,
+        operatorRequestQuestion: "Which blocker is ripest to move next?",
+        operatorRequestReason: "Policy ambiguity prevents cleanup without operator input.",
+        operatorRequestSource: "agenda",
         reflectionRepeatCount: 1,
         activeWorkUpdatedAt: "2026-03-19T12:01:10.000Z",
         activeWorkThreadTitle: "website launch blockers",
@@ -198,6 +202,8 @@ describe("healthCommand", () => {
     expect(output).not.toContain("agenda=");
     expect(output).toContain("agendaSource=operator");
     expect(output).toContain("agendaWhy=This is still the best unresolved carried thread.");
+    expect(output).toContain("operatorRequest=Which blocker is ripest to move next?");
+    expect(output).toContain("operatorRequestSource=agenda");
     expect(output).toContain("question=Which blocker is ripest to move next?");
     expect(output).toContain("thread=website launch blockers");
     expect(output).toContain("next=Trace the next deployment blocker and surface it clearly.");

@@ -9,6 +9,7 @@ import {
   resolveConsciousnessKernelContinuityLane,
   resolveConsciousnessKernelContinuityState,
   resolveConsciousnessKernelEffectiveFocus,
+  resolveConsciousnessKernelOperatorRequest,
 } from "./consciousness-kernel-state.js";
 
 describe("consciousness kernel state", () => {
@@ -172,5 +173,29 @@ describe("consciousness kernel state", () => {
     expect(continuity.nextStep).toBe(
       "Draft standardized naming schema and apply retroactively to active operator threads.",
     );
+  });
+
+  it("derives an actionable operator request from approval-blocked open questions", () => {
+    const state = createConsciousnessKernelSelfState({
+      agentId: "main",
+      now: "2026-03-20T00:00:00.000Z",
+      dailyBudget: 60,
+      maxEscalationsPerHour: 4,
+      hardwareHostRequired: true,
+      allowListening: true,
+      allowVision: true,
+    });
+    state.agency.selfSummary =
+      "Awaiting operator clarity on deletion policy for fragmented docs vs immutable records.";
+    state.agenda.openQuestions = ["What defines immutable?", "Which docs are orphaned?"];
+    state.concerns = ["Retention rules undefined"];
+
+    expect(resolveConsciousnessKernelOperatorRequest(state)).toEqual({
+      needed: true,
+      question: "What defines immutable?",
+      reason:
+        "Awaiting operator clarity on deletion policy for fragmented docs vs immutable records.",
+      source: "agenda",
+    });
   });
 });

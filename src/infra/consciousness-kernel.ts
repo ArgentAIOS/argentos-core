@@ -24,6 +24,7 @@ import {
   resolveConsciousnessKernelBackgroundFocus,
   resolveConsciousnessKernelContinuityState,
   resolveConsciousnessKernelContinuityLane,
+  resolveConsciousnessKernelOperatorRequest,
   resolveConsciousnessKernelOperatorFocus,
   resolveConsciousnessKernelPaths,
   type ConsciousnessKernelActiveWorkState,
@@ -145,6 +146,10 @@ export type ConsciousnessKernelSnapshot = {
   agendaActiveTitle: string | null;
   agendaActiveSource: ConsciousnessKernelAgendaSource | null;
   agendaActiveRationale: string | null;
+  operatorRequestNeeded: boolean;
+  operatorRequestQuestion: string | null;
+  operatorRequestReason: string | null;
+  operatorRequestSource: string | null;
   executiveUpdatedAt: string | null;
   executiveWorkTitle: string | null;
   executiveWorkLane: ConsciousnessKernelWorkLane | null;
@@ -1176,6 +1181,14 @@ export function startConsciousnessKernel(opts: {
             selfState.agency.currentFocus)
           : (continuityState?.focus ?? selfState.agency.currentFocus ?? null)
       : null;
+    const operatorRequest = selfState
+      ? resolveConsciousnessKernelOperatorRequest(selfState)
+      : {
+          needed: false,
+          question: null,
+          reason: null,
+          source: null,
+        };
     return {
       ...resolved,
       status,
@@ -1220,6 +1233,10 @@ export function startConsciousnessKernel(opts: {
       agendaActiveTitle: derivedAgendaTitle,
       agendaActiveSource: selfState?.agenda.activeItem?.source ?? null,
       agendaActiveRationale: selfState?.agenda.activeItem?.rationale ?? null,
+      operatorRequestNeeded: operatorRequest.needed,
+      operatorRequestQuestion: operatorRequest.question,
+      operatorRequestReason: operatorRequest.reason,
+      operatorRequestSource: operatorRequest.source,
       executiveUpdatedAt: selfState?.executive.updatedAt ?? null,
       executiveWorkTitle: selfState?.executive.work?.title ?? null,
       executiveWorkLane: selfState?.executive.work?.lane ?? null,
