@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ArgentPluginApi } from "../../../src/plugins/types.js";
 import type { CompleteFn } from "./summarize.js";
+import { BUILTIN_PROFILES, DEFAULT_TIER_MODELS } from "../../../src/models/builtin-profiles.js";
 
 type RunEmbeddedPiAgentFn = (params: Record<string, unknown>) => Promise<unknown>;
 
@@ -49,6 +50,16 @@ function collectText(payloads: Array<{ text?: string; isError?: boolean }> | und
     .trim();
 }
 
+function resolveFastTierModel(api: ArgentPluginApi): { provider?: string; model?: string } {
+  const router = api.config?.agents?.defaults?.modelRouter;
+  const activeProfileName = router?.activeProfile;
+  const activeProfile =
+    (activeProfileName ? router?.profiles?.[activeProfileName] : undefined) ??
+    (activeProfileName ? BUILTIN_PROFILES[activeProfileName] : undefined);
+  const mapping = activeProfile?.tiers?.fast ?? router?.tiers?.fast ?? DEFAULT_TIER_MODELS.fast;
+  return { provider: mapping.provider, model: mapping.model };
+}
+
 /**
  * Create a CompleteFn that routes through ArgentOS's agent infrastructure.
  *
@@ -64,8 +75,6 @@ export function createCompletionBridge(api: ArgentPluginApi): CompleteFn {
     | string
     | undefined;
 
-  // Resolve provider/model from config or fall back to agent primary
-  const primary = api.config?.agents?.defaults?.model?.primary;
   let provider: string | undefined;
   let model: string | undefined;
 
@@ -74,10 +83,11 @@ export function createCompletionBridge(api: ArgentPluginApi): CompleteFn {
     const parts = summaryModel.split("/");
     provider = parts[0];
     model = parts.slice(1).join("/");
-  } else if (typeof primary === "string") {
-    // Use agent's primary model
-    provider = primary.split("/")[0];
-    model = primary.split("/").slice(1).join("/");
+  } else {
+    // "auto" means fast-tier summarization, not the agent's primary model.
+    const fastTier = resolveFastTierModel(api);
+    provider = fastTier.provider;
+    model = fastTier.model;
   }
 
   let runAgent: RunEmbeddedPiAgentFn | null = null;
@@ -101,10 +111,14 @@ export function createCompletionBridge(api: ArgentPluginApi): CompleteFn {
         runId: `lcm-summary-${Date.now()}`,
         provider,
         model,
+        respectProvidedModel: true,
         disableTools: true,
+        thinkLevel: "off",
         streamParams: {
           temperature: opts.temperature,
           maxTokens: opts.maxTokens,
+          thinkingEnabled: false,
+          reasoning: "off",
         },
       });
 

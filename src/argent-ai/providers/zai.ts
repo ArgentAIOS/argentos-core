@@ -122,6 +122,28 @@ export class ZAIProvider implements Provider {
    * Execute a turn (non-streaming)
    */
   async execute(request: TurnRequest, modelConfig: ModelConfig): Promise<TurnResponse> {
+    const data = await this.fetchNonStreamResponse(request, modelConfig);
+    const response = this.convertNonStreamResponse(data, modelConfig);
+
+    if (this.shouldRetryReasoningOnlyResponse(response, modelConfig)) {
+      const retryConfig = { ...modelConfig, thinking: false };
+      const retryData = await this.fetchNonStreamResponse(request, retryConfig);
+      const retryResponse = this.convertNonStreamResponse(retryData, retryConfig);
+      if (!this.hasVisibleOutput(retryResponse)) {
+        throw new Error(
+          "Z.AI returned an empty assistant response after retrying without thinking.",
+        );
+      }
+      return retryResponse;
+    }
+
+    return response;
+  }
+
+  private async fetchNonStreamResponse(
+    request: TurnRequest,
+    modelConfig: ModelConfig,
+  ): Promise<ZAINonStreamResponse> {
     const body = this.buildRequestBody(request, modelConfig, false);
     const response = await fetch(this.getBaseURL(), {
       method: "POST",
@@ -134,8 +156,7 @@ export class ZAIProvider implements Provider {
       throw new Error(`Z.AI API error ${response.status}: ${errorText}`);
     }
 
-    const data = (await response.json()) as ZAINonStreamResponse;
-    return this.convertNonStreamResponse(data, modelConfig);
+    return (await response.json()) as ZAINonStreamResponse;
   }
 
   /**
@@ -313,6 +334,36 @@ export class ZAIProvider implements Provider {
         }
       }
 
+      if (this.shouldRetryReasoningOnlyResponse(partial, modelConfig)) {
+        if (thinkingStarted && partial.thinking) {
+          yield { type: "thinking_end", thinking: partial.thinking, partial };
+          thinkingStarted = false;
+        }
+
+        const recovered = await this.execute(request, { ...modelConfig, thinking: false });
+        if (!this.hasVisibleOutput(recovered)) {
+          throw new Error(
+            "Z.AI returned an empty assistant response after retrying without thinking.",
+          );
+        }
+
+        partial.text = recovered.text;
+        partial.toolCalls = recovered.toolCalls;
+        partial.usage = recovered.usage;
+        partial.stopReason = recovered.stopReason;
+        partial.errorMessage = recovered.errorMessage;
+
+        if (partial.text) {
+          yield { type: "text_start", partial };
+          yield { type: "text_delta", delta: partial.text, partial };
+          yield { type: "text_end", text: partial.text, partial };
+        }
+
+        for (const toolCall of partial.toolCalls) {
+          yield { type: "tool_call_end", toolCall, partial };
+        }
+      }
+
       yield { type: "done", response: partial };
     } catch (error) {
       partial.stopReason = "error";
@@ -447,6 +498,27 @@ export class ZAIProvider implements Provider {
       provider: this.name,
       model: modelConfig.id,
     };
+  }
+
+  private shouldRetryReasoningOnlyResponse(
+    response: TurnResponse,
+    modelConfig: ModelConfig,
+  ): boolean {
+    return (
+      modelConfig.thinking === true &&
+      !this.hasVisibleOutput(response) &&
+      typeof response.thinking === "string" &&
+      response.thinking.trim().length > 0 &&
+      response.stopReason === "stop"
+    );
+  }
+
+  private hasVisibleOutput(response: TurnResponse): boolean {
+    return (
+      response.text.trim().length > 0 ||
+      response.toolCalls.length > 0 ||
+      response.stopReason === "error"
+    );
   }
 
   private mapStopReason(reason: string): TurnResponse["stopReason"] {
