@@ -4,12 +4,7 @@ import type { MsgContext } from "../../auto-reply/templating.js";
 import type { GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
 import { CURRENT_SESSION_VERSION, SessionManager } from "../../agent-core/coding.js";
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
-import { ensureAuthProfileStore, listProfilesForProvider } from "../../agents/auth-profiles.js";
-import {
-  getCustomProviderApiKey,
-  resolveAwsSdkEnvVarName,
-  resolveEnvApiKey,
-} from "../../agents/model-auth.js";
+import { isModelProviderAvailableForAutomaticRouting } from "../../agents/model-auth.js";
 import {
   buildAllowedModelSet,
   modelKey,
@@ -214,29 +209,6 @@ function resolveRouterPowerfulModel(cfg: ReturnType<typeof loadSessionEntry>["cf
     return null;
   }
   return { provider, model };
-}
-
-function isAutomaticModelProviderAvailable(
-  cfg: ReturnType<typeof loadSessionEntry>["cfg"],
-  provider: string,
-) {
-  const normalizedProvider = normalizeProviderId(provider);
-  if (normalizedProvider === "lmstudio" || normalizedProvider === "ollama") {
-    return true;
-  }
-  if (listProfilesForProvider(ensureAuthProfileStore(), normalizedProvider).length > 0) {
-    return true;
-  }
-  if (resolveEnvApiKey(normalizedProvider)?.apiKey) {
-    return true;
-  }
-  if (getCustomProviderApiKey(cfg, normalizedProvider)) {
-    return true;
-  }
-  if (normalizedProvider === "amazon-bedrock") {
-    return Boolean(resolveAwsSdkEnvVarName());
-  }
-  return false;
 }
 
 function broadcastChatError(params: {
@@ -674,7 +646,10 @@ export const chatHandlers: GatewayRequestHandlers = {
           const routerPowerful = resolveRouterPowerfulModel(innerCfg);
           const best =
             routerPowerful &&
-            isAutomaticModelProviderAvailable(innerCfg, routerPowerful.provider) &&
+            isModelProviderAvailableForAutomaticRouting({
+              cfg: innerCfg,
+              provider: routerPowerful.provider,
+            }) &&
             (allowed.allowAny ||
               allowed.allowedKeys.has(modelKey(routerPowerful.provider, routerPowerful.model)))
               ? routerPowerful
@@ -683,7 +658,7 @@ export const chatHandlers: GatewayRequestHandlers = {
                   allowedKeys: allowed.allowedKeys,
                   allowAny: allowed.allowAny,
                   providerEligible: (provider) =>
-                    isAutomaticModelProviderAvailable(innerCfg, provider),
+                    isModelProviderAvailableForAutomaticRouting({ cfg: innerCfg, provider }),
                 });
           if (best) {
             modelOverridePrefix = `/model ${best.provider}/${best.model} `;

@@ -12,15 +12,13 @@ import {
   resolveAlignmentIntegrityMode,
   runAlignmentIntegrityStartupCheck,
 } from "../agents/alignment-integrity.js";
-import { ensureAuthProfileStore, listProfilesForProvider } from "../agents/auth-profiles.js";
 import { clearSessionAuthProfileOverride } from "../agents/auth-profiles/session-override.js";
 import { runCliAgent } from "../agents/cli-runner.js";
 import { getCliSessionId } from "../agents/cli-session.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
 import {
   getCustomProviderApiKey,
-  resolveAwsSdkEnvVarName,
-  resolveEnvApiKey,
+  isModelProviderAvailableForAutomaticRouting,
 } from "../agents/model-auth.js";
 import { loadModelCatalog } from "../agents/model-catalog.js";
 import { runWithModelFallback } from "../agents/model-fallback.js";
@@ -74,32 +72,6 @@ import { deliverAgentCommandResult } from "./agent/delivery.js";
 import { resolveAgentRunContext } from "./agent/run-context.js";
 import { updateSessionStoreAfterAgentRun } from "./agent/session-store.js";
 import { resolveSession } from "./agent/session.js";
-
-function isAutomaticModelProviderAvailable(params: {
-  cfg: Parameters<typeof getCustomProviderApiKey>[0];
-  provider: string;
-  agentDir?: string;
-}) {
-  const normalizedProvider = normalizeProviderId(params.provider);
-  if (normalizedProvider === "lmstudio" || normalizedProvider === "ollama") {
-    return true;
-  }
-  if (
-    listProfilesForProvider(ensureAuthProfileStore(params.agentDir), normalizedProvider).length > 0
-  ) {
-    return true;
-  }
-  if (resolveEnvApiKey(normalizedProvider)?.apiKey) {
-    return true;
-  }
-  if (getCustomProviderApiKey(params.cfg, normalizedProvider)) {
-    return true;
-  }
-  if (normalizedProvider === "amazon-bedrock") {
-    return Boolean(resolveAwsSdkEnvVarName());
-  }
-  return false;
-}
 
 function resolveRouterPowerfulModel(cfg: Parameters<typeof getCustomProviderApiKey>[0]) {
   const router = cfg?.agents?.defaults?.modelRouter;
@@ -375,7 +347,7 @@ export async function agentCommand(
       const routerPowerful = resolveRouterPowerfulModel(cfg);
       const bestReasoning =
         routerPowerful &&
-        isAutomaticModelProviderAvailable({
+        isModelProviderAvailableForAutomaticRouting({
           cfg,
           provider: routerPowerful.provider,
           agentDir,
@@ -388,7 +360,7 @@ export async function agentCommand(
               allowedKeys: allowed.allowedKeys,
               allowAny: allowed.allowAny,
               providerEligible: (candidateProvider) =>
-                isAutomaticModelProviderAvailable({
+                isModelProviderAvailableForAutomaticRouting({
                   cfg,
                   provider: candidateProvider,
                   agentDir,
