@@ -448,7 +448,7 @@ resolve_effective_version() {
   case "$CHANNEL" in
     stable) printf 'latest stable GitHub release tag\n' ;;
     beta) printf 'latest beta-or-stable GitHub release tag\n' ;;
-    dev) printf 'main\n' ;;
+    dev) printf 'dev\n' ;;
     *)
       err "Unsupported channel: $CHANNEL"
       exit 1
