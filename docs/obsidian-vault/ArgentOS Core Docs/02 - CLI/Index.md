@@ -1,0 +1,45 @@
+# CLI
+
+Command-line reference for `argent` and related Core operations.
+
+- [acp](<90 - Public Docs Mirror/docs/cli/acp.md>) - Run the ACP bridge for IDE integrations
+- [agent](<90 - Public Docs Mirror/docs/cli/agent.md>) - CLI reference for `argent agent` (send one agent turn via the Gateway)
+- [agents](<90 - Public Docs Mirror/docs/cli/agents.md>) - CLI reference for `argent agents` (list/add/delete/set identity)
+- [approvals](<90 - Public Docs Mirror/docs/cli/approvals.md>) - CLI reference for `argent approvals` (exec approvals for gateway or node hosts)
+- [browser](<90 - Public Docs Mirror/docs/cli/browser.md>) - CLI reference for `argent browser` (profiles, tabs, actions, extension relay)
+- [channels](<90 - Public Docs Mirror/docs/cli/channels.md>) - CLI reference for `argent channels` (accounts, status, login/logout, logs)
+- [config](<90 - Public Docs Mirror/docs/cli/config.md>) - CLI reference for `argent config` (get/set/unset config values)
+- [configure](<90 - Public Docs Mirror/docs/cli/configure.md>) - CLI reference for `argent configure` (interactive configuration prompts)
+- [cron](<90 - Public Docs Mirror/docs/cli/cron.md>) - CLI reference for `argent cron` (schedule and run background jobs)
+- [dashboard](<90 - Public Docs Mirror/docs/cli/dashboard.md>) - CLI reference for `argent dashboard` (open the Control UI)
+- [devices](<90 - Public Docs Mirror/docs/cli/devices.md>) - CLI reference for `argent devices` (device pairing + token rotation/revocation)
+- [directory](<90 - Public Docs Mirror/docs/cli/directory.md>) - CLI reference for `argent directory` (self, peers, groups)
+- [dns](<90 - Public Docs Mirror/docs/cli/dns.md>) - CLI reference for `argent dns` (wide-area discovery helpers)
+- [docs](<90 - Public Docs Mirror/docs/cli/docs.md>) - CLI reference for `argent docs` (search the live docs index)
+- [doctor](<90 - Public Docs Mirror/docs/cli/doctor.md>) - CLI reference for `argent doctor` (health checks + guided repairs)
+- [gateway](<90 - Public Docs Mirror/docs/cli/gateway.md>) - ArgentOS Gateway CLI (`argent gateway`) — run, query, and discover gateways
+- [health](<90 - Public Docs Mirror/docs/cli/health.md>) - CLI reference for `argent health` (gateway health endpoint via RPC)
+- [hooks](<90 - Public Docs Mirror/docs/cli/hooks.md>) - CLI reference for `argent hooks` (agent hooks)
+- [CLI Reference](<90 - Public Docs Mirror/docs/cli/index.md>) - ArgentOS CLI reference for `argent` commands, subcommands, and options
+- [logs](<90 - Public Docs Mirror/docs/cli/logs.md>) - CLI reference for `argent logs` (tail gateway logs via RPC)
+- [memory](<90 - Public Docs Mirror/docs/cli/memory.md>) - CLI reference for `argent memory` (status/index/search)
+- [message](<90 - Public Docs Mirror/docs/cli/message.md>) - CLI reference for `argent message` (send + channel actions)
+- [models](<90 - Public Docs Mirror/docs/cli/models.md>) - CLI reference for `argent models` (status/list/set/scan, aliases, fallbacks, auth)
+- [node](<90 - Public Docs Mirror/docs/cli/node.md>) - CLI reference for `argent node` (headless node host)
+- [nodes](<90 - Public Docs Mirror/docs/cli/nodes.md>) - CLI reference for `argent nodes` (list/status/approve/invoke, camera/canvas/screen)
+- [onboard](<90 - Public Docs Mirror/docs/cli/onboard.md>) - CLI reference for `argent onboard` (interactive onboarding wizard)
+- [pairing](<90 - Public Docs Mirror/docs/cli/pairing.md>) - CLI reference for `argent pairing` (approve/list pairing requests)
+- [plugins](<90 - Public Docs Mirror/docs/cli/plugins.md>) - CLI reference for `argent plugins` (list, install, enable/disable, doctor)
+- [reset](<90 - Public Docs Mirror/docs/cli/reset.md>) - CLI reference for `argent reset` (reset local state/config)
+- [Sandbox CLI](<90 - Public Docs Mirror/docs/cli/sandbox.md>) - Manage sandbox containers and inspect effective sandbox policy
+- [security](<90 - Public Docs Mirror/docs/cli/security.md>) - CLI reference for `argent security` (audit and fix common security footguns)
+- [sessions](<90 - Public Docs Mirror/docs/cli/sessions.md>) - CLI reference for `argent sessions` (list stored sessions + usage)
+- [setup](<90 - Public Docs Mirror/docs/cli/setup.md>) - CLI reference for `argent setup` (initialize config + workspace)
+- [skills](<90 - Public Docs Mirror/docs/cli/skills.md>) - CLI reference for `argent skills` (list/info/check) and skill eligibility
+- [status](<90 - Public Docs Mirror/docs/cli/status.md>) - CLI reference for `argent status` (diagnostics, probes, usage snapshots)
+- [system](<90 - Public Docs Mirror/docs/cli/system.md>) - CLI reference for `argent system` (system events, heartbeat, presence)
+- [tui](<90 - Public Docs Mirror/docs/cli/tui.md>) - CLI reference for `argent tui` (terminal UI connected to the Gateway)
+- [uninstall](<90 - Public Docs Mirror/docs/cli/uninstall.md>) - CLI reference for `argent uninstall` (remove gateway service + local data)
+- [update](<90 - Public Docs Mirror/docs/cli/update.md>) - CLI reference for `argent update` (safe-ish source update + gateway auto-restart)
+- [voicecall](<90 - Public Docs Mirror/docs/cli/voicecall.md>) - CLI reference for `argent voicecall` (voice-call plugin command surface)
+- [webhooks](<90 - Public Docs Mirror/docs/cli/webhooks.md>) - CLI reference for `argent webhooks` (webhook helpers + Gmail Pub/Sub)

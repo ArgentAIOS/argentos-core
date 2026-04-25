@@ -37,6 +37,7 @@ What it does (high level):
 - Use a compatible system Node when available, otherwise install a private Node 22 runtime.
 - Derive `npm` / `corepack pnpm` from the selected runtime instead of trusting whatever `node` is on `PATH`.
 - For git installs: clone/update the checkout, run `pnpm install`, `pnpm build`, and `pnpm rebuild better-sqlite3`, then write the `argent` wrapper against the selected runtime.
+- Install the generated public Core docs Obsidian vault at `~/.argentos/vaults/ArgentOS Core Docs` so the local operator agent has a clean docs source for setup and troubleshooting questions.
 
 If you _want_ `sharp` to link against a globally-installed libvips (or you’re debugging), set:
 
@@ -56,4 +57,16 @@ The repo-root `install.sh` is a different script with a different purpose:
 
 - macOS only
 - expects a built checkout or packaged runtime already present
-- installs the local runtime, dashboard services, wrappers, and optional `Argent.app`
+- installs the local runtime, dashboard services, wrappers, optional `Argent.app`, and the generated public Core docs Obsidian vault
+
+## Core docs vault
+
+The shipped Core docs vault is generated from public docs with:
+
+```bash
+pnpm docs:vault
+```
+
+The generator copies public Markdown and MDX docs into `docs/obsidian-vault/ArgentOS Core Docs`, builds Obsidian-friendly indexes, and excludes private/debug/agent-only material such as `CLAUDE.md`, `docs/debug`, archives, research dumps, and the generated vault itself.
+
+Set `ARGENT_SKIP_CORE_DOCS_VAULT=1` to skip installing the vault during installer automation.

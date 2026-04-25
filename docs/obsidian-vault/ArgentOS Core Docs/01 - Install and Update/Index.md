@@ -1,0 +1,47 @@
+# Install and Update
+
+Installer, update rail, migration, uninstall, and platform setup docs.
+
+- [Ansible](<90 - Public Docs Mirror/docs/install/ansible.md>) - Automated, hardened ArgentOS installation with Ansible, Tailscale VPN, and firewall isolation
+- [Bun (Experimental)](<90 - Public Docs Mirror/docs/install/bun.md>) - Bun workflow (experimental): installs and gotchas vs pnpm
+- [Development Channels](<90 - Public Docs Mirror/docs/install/development-channels.md>) - Stable, beta, and dev channels: semantics, switching, and tagging
+- [Docker](<90 - Public Docs Mirror/docs/install/docker.md>) - Optional Docker-based setup and onboarding for ArgentOS
+- [Install](<90 - Public Docs Mirror/docs/install/index.md>) - Install ArgentOS from the hosted git rail or from source
+- [Installer Internals](<90 - Public Docs Mirror/docs/install/installer.md>) - How the hosted installer and repo-root source installer work, plus flags and automation
+- [Migration Guide](<90 - Public Docs Mirror/docs/install/migrating.md>) - Move (migrate) a ArgentOS install from one machine to another
+- [Nix](<90 - Public Docs Mirror/docs/install/nix.md>) - Install ArgentOS declaratively with Nix
+- [Node.js + PATH sanity](<90 - Public Docs Mirror/docs/install/node.md>) - Node.js runtime sanity for hosted installs and source checkouts
+- [Partner RC Runbook](<90 - Public Docs Mirror/docs/install/partner-release-rc.md>) - Operator runbook for partner release-candidate install, update, rollback, and verification
+- [Uninstall](<90 - Public Docs Mirror/docs/install/uninstall.md>) - Uninstall ArgentOS completely (CLI, service, state, workspace)
+- [ArgentOS Update Distribution (Private Repo + Desktop App)](<90 - Public Docs Mirror/docs/install/update-distribution.md>)
+- [Updating](<90 - Public Docs Mirror/docs/install/updating.md>) - Updating ArgentOS safely on the git rail, plus rollback strategy
+- [Android App](<90 - Public Docs Mirror/docs/platforms/android.md>) - Android app (node): connection runbook + Canvas/Chat/Camera
+- [DigitalOcean](<90 - Public Docs Mirror/docs/platforms/digitalocean.md>) - ArgentOS on DigitalOcean (simple paid VPS option)
+- [exe.dev](<90 - Public Docs Mirror/docs/platforms/exe-dev.md>) - Run ArgentOS Gateway on exe.dev (VM + HTTPS proxy) for remote access
+- [Fly.io](<90 - Public Docs Mirror/docs/platforms/fly.md>)
+- [GCP](<90 - Public Docs Mirror/docs/platforms/gcp.md>) - Run ArgentOS Gateway 24/7 on a GCP Compute Engine VM (Docker) with durable state
+- [Hetzner](<90 - Public Docs Mirror/docs/platforms/hetzner.md>) - Run ArgentOS Gateway 24/7 on a cheap Hetzner VPS (Docker) with durable state and baked-in binaries
+- [Platforms](<90 - Public Docs Mirror/docs/platforms/index.md>) - Platform support overview (Gateway + companion apps)
+- [iOS App](<90 - Public Docs Mirror/docs/platforms/ios.md>) - iOS node app: connect to the Gateway, pairing, canvas, and troubleshooting
+- [Linux App](<90 - Public Docs Mirror/docs/platforms/linux.md>) - Linux support + companion app status
+- [Gateway on macOS](<90 - Public Docs Mirror/docs/platforms/mac/bundled-gateway.md>) - Gateway runtime on macOS (external launchd service)
+- [Canvas](<90 - Public Docs Mirror/docs/platforms/mac/canvas.md>) - Agent-controlled Canvas panel embedded via WKWebView + custom URL scheme
+- [Gateway Lifecycle](<90 - Public Docs Mirror/docs/platforms/mac/child-process.md>) - Gateway lifecycle on macOS (launchd)
+- [macOS Dev Setup](<90 - Public Docs Mirror/docs/platforms/mac/dev-setup.md>) - Setup guide for developers working on the ArgentOS macOS app
+- [Health Checks](<90 - Public Docs Mirror/docs/platforms/mac/health.md>) - How the macOS app reports gateway/Baileys health states
+- [Menu Bar Icon](<90 - Public Docs Mirror/docs/platforms/mac/icon.md>) - Menu bar icon states and animations for ArgentOS on macOS
+- [macOS Logging](<90 - Public Docs Mirror/docs/platforms/mac/logging.md>) - ArgentOS logging: rolling diagnostics file log + unified log privacy flags
+- [Menu Bar](<90 - Public Docs Mirror/docs/platforms/mac/menu-bar.md>) - Menu bar status logic and what is surfaced to users
+- [Peekaboo Bridge](<90 - Public Docs Mirror/docs/platforms/mac/peekaboo.md>) - PeekabooBridge integration for macOS UI automation
+- [macOS Permissions](<90 - Public Docs Mirror/docs/platforms/mac/permissions.md>) - macOS permission persistence (TCC) and signing requirements
+- [Remote Control](<90 - Public Docs Mirror/docs/platforms/mac/remote.md>) - macOS app flow for controlling a remote ArgentOS gateway over SSH
+- [Skills](<90 - Public Docs Mirror/docs/platforms/mac/skills.md>) - macOS Skills settings UI and gateway-backed status
+- [Voice Overlay](<90 - Public Docs Mirror/docs/platforms/mac/voice-overlay.md>) - Voice overlay lifecycle when wake-word and push-to-talk overlap
+- [Voice Wake](<90 - Public Docs Mirror/docs/platforms/mac/voicewake.md>) - Voice wake and push-to-talk modes plus routing details in the mac app
+- [WebChat](<90 - Public Docs Mirror/docs/platforms/mac/webchat.md>) - How the mac app embeds the gateway WebChat and how to debug it
+- [macOS IPC](<90 - Public Docs Mirror/docs/platforms/mac/xpc.md>) - macOS IPC architecture for ArgentOS app, gateway node transport, and PeekabooBridge
+- [macOS VMs](<90 - Public Docs Mirror/docs/platforms/macos-vm.md>) - Run ArgentOS in a sandboxed macOS VM (local or hosted) when you need isolation or iMessage
+- [macOS App](<90 - Public Docs Mirror/docs/platforms/macos.md>) - ArgentOS macOS companion app (menu bar + gateway broker)
+- [Oracle Cloud](<90 - Public Docs Mirror/docs/platforms/oracle.md>) - ArgentOS on Oracle Cloud (Always Free ARM)
+- [Raspberry Pi](<90 - Public Docs Mirror/docs/platforms/raspberry-pi.md>) - ArgentOS on Raspberry Pi (budget self-hosted setup)
+- [Windows (WSL2)](<90 - Public Docs Mirror/docs/platforms/windows.md>) - Windows (WSL2) support + companion app status

@@ -1,0 +1,46 @@
+# Workflows
+
+Operator workflows, automation, hooks, plugins, skills, and connectors.
+
+- [Auth Monitoring](<90 - Public Docs Mirror/docs/automation/auth-monitoring.md>) - Monitor OAuth expiry for model providers
+- [Cron Jobs](<90 - Public Docs Mirror/docs/automation/cron-jobs.md>) - Cron jobs + wakeups for the Gateway scheduler
+- [Cron vs Heartbeat](<90 - Public Docs Mirror/docs/automation/cron-vs-heartbeat.md>) - Guidance for choosing between heartbeat and cron jobs for automation
+- [Gmail PubSub](<90 - Public Docs Mirror/docs/automation/gmail-pubsub.md>) - Gmail Pub/Sub push wired into ArgentOS webhooks via gogcli
+- [Polls](<90 - Public Docs Mirror/docs/automation/poll.md>) - Poll sending via gateway + CLI
+- [Webhooks](<90 - Public Docs Mirror/docs/automation/webhook.md>) - Webhook ingress for wake and isolated agent runs
+- [Hooks](<90 - Public Docs Mirror/docs/hooks.md>) - Hooks: event-driven automation for commands and lifecycle events
+- [SOUL Evil Hook](<90 - Public Docs Mirror/docs/hooks/soul-evil.md>) - SOUL Evil hook (swap SOUL.md with SOUL_EVIL.md)
+- [Plugins](<90 - Public Docs Mirror/docs/plugin.md>) - ArgentOS plugins/extensions: discovery, config, and safety
+- [Plugin Agent Tools](<90 - Public Docs Mirror/docs/plugins/agent-tools.md>) - Write agent tools in a plugin (schemas, optional tools, allowlists)
+- [Plugin Manifest](<90 - Public Docs Mirror/docs/plugins/manifest.md>) - Plugin manifest + JSON schema requirements (strict config validation)
+- [Voice Call Plugin](<90 - Public Docs Mirror/docs/plugins/voice-call.md>) - Voice Call plugin: outbound + inbound calls via Twilio/Telnyx/Plivo (plugin install + config + CLI)
+- [Zalo Personal Plugin](<90 - Public Docs Mirror/docs/plugins/zalouser.md>) - Zalo Personal plugin: QR login + messaging via zca-cli (plugin install + channel config + CLI + tool)
+- [Agent Send](<90 - Public Docs Mirror/docs/tools/agent-send.md>) - Direct `argent agent` CLI runs (with optional delivery)
+- [apply_patch Tool](<90 - Public Docs Mirror/docs/tools/apply-patch.md>) - Apply multi-file patches with the apply_patch tool
+- [Browser Troubleshooting](<90 - Public Docs Mirror/docs/tools/browser-linux-troubleshooting.md>) - Fix Chrome/Brave/Edge/Chromium CDP startup issues for ArgentOS browser control on Linux
+- [Browser Login](<90 - Public Docs Mirror/docs/tools/browser-login.md>) - Manual logins for browser automation + X/Twitter posting
+- [Browser (ArgentOS-managed)](<90 - Public Docs Mirror/docs/tools/browser.md>) - Integrated browser control service + action commands
+- [Chrome Extension](<90 - Public Docs Mirror/docs/tools/chrome-extension.md>) - Chrome extension: let ArgentOS drive your existing Chrome tab
+- [ClawHub](<90 - Public Docs Mirror/docs/tools/clawhub.md>) - ClawHub guide: public skills registry + CLI workflows
+- [Creating Skills](<90 - Public Docs Mirror/docs/tools/creating-skills.md>)
+- [Elevated Mode](<90 - Public Docs Mirror/docs/tools/elevated.md>) - Elevated exec mode and /elevated directives
+- [Exec Approvals](<90 - Public Docs Mirror/docs/tools/exec-approvals.md>) - Exec approvals, allowlists, and sandbox escape prompts
+- [Exec Tool](<90 - Public Docs Mirror/docs/tools/exec.md>) - Exec tool usage, stdin modes, and TTY support
+- [Firecrawl](<90 - Public Docs Mirror/docs/tools/firecrawl.md>) - Firecrawl fallback for web_fetch (anti-bot + cached extraction)
+- [Tools](<90 - Public Docs Mirror/docs/tools/index.md>) - Agent tool surface for ArgentOS (browser, canvas, nodes, message, cron) replacing legacy `argent-*` skills
+- [LLM Task](<90 - Public Docs Mirror/docs/tools/llm-task.md>) - JSON-only LLM tasks for workflows (optional plugin tool)
+- [Lobster](<90 - Public Docs Mirror/docs/tools/lobster.md>) - Typed workflow runtime for ArgentOS with resumable approval gates.
+- [Reactions](<90 - Public Docs Mirror/docs/tools/reactions.md>) - Reaction semantics shared across channels
+- [Skills Config](<90 - Public Docs Mirror/docs/tools/skills-config.md>) - Skills config schema and examples
+- [Skills](<90 - Public Docs Mirror/docs/tools/skills.md>) - Skills: managed vs workspace, gating rules, and config/env wiring
+- [Slash Commands](<90 - Public Docs Mirror/docs/tools/slash-commands.md>) - Slash commands: text vs native, config, and supported commands
+- [Sub-Agents](<90 - Public Docs Mirror/docs/tools/subagents.md>) - Sub-agents: spawning isolated agent runs that announce results back to the requester chat
+- [Thinking Levels](<90 - Public Docs Mirror/docs/tools/thinking.md>) - Directive syntax for /think + /verbose and how they affect model reasoning
+- [Web Tools](<90 - Public Docs Mirror/docs/tools/web.md>) - Web search + fetch tools (Brave Search API, Perplexity direct/OpenRouter)
+- [Approval Gates](<90 - Public Docs Mirror/docs/workflows/approval-gates.md>) - Add human review to your AI workflows
+- [Building Blocks](<90 - Public Docs Mirror/docs/workflows/building-blocks.md>) - The 5 building blocks of every workflow
+- [Connectors](<90 - Public Docs Mirror/docs/workflows/connectors.md>) - Connect your favorite apps to AI workflows
+- [Getting Started](<90 - Public Docs Mirror/docs/workflows/getting-started.md>) - Build your first AI workflow in 5 minutes
+- [Workflows](<90 - Public Docs Mirror/docs/workflows/index.md>) - Build visual AI-powered automations with drag-and-drop
+- [Templates](<90 - Public Docs Mirror/docs/workflows/templates.md>) - Start with pre-built AI workflow templates
+- [Schedules & Triggers](<90 - Public Docs Mirror/docs/workflows/triggers.md>) - Set up schedules and triggers for your workflows
