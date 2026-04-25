@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.4.25.1
+
+### Changes
+
+- Version alignment with core ArgentOS release numbers.
+
 ## 2026.4.24-dev.0
 
 ### Changes

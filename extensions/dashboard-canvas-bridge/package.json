@@ -1,6 +1,6 @@
 {
   "name": "@argentos/dashboard-canvas-bridge",
-  "version": "2026.4.24-dev.0",
+  "version": "2026.4.25.1",
   "description": "Bridges ArgentOS agent with Argent Dashboard canvas system",
   "license": "MIT",
   "author": "Titanium Computing",

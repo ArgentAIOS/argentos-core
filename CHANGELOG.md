@@ -2,7 +2,7 @@
 
 Docs: https://docs.argentos.ai
 
-## 2026.4.25-dev.0
+## 2026.4.25.1
 
 ### Changes
 
