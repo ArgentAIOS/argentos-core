@@ -151,11 +151,15 @@ function sectionIndex(files, title, description, prefixes) {
 
 function generatedAtForDocs() {
   try {
-    const value = execFileSync("git", ["log", "-1", "--format=%cI", "--", "docs"], {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
+    const value = execFileSync(
+      "git",
+      ["log", "-1", "--format=%cI", "--", "docs", ":(exclude)docs/obsidian-vault"],
+      {
+        cwd: root,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    ).trim();
     if (value) {
       return value;
     }
@@ -165,27 +169,52 @@ function generatedAtForDocs() {
   return "1970-01-01T00:00:00.000Z";
 }
 
+function compactJsonArray(array) {
+  return `[${array.map((entry) => JSON.stringify(entry)).join(", ")}]`;
+}
+
+function replacePrettyArray(json, key, array) {
+  const prettyArray = JSON.stringify(array, null, 2)
+    .split("\n")
+    .map((line) => `    ${line}`)
+    .join("\n");
+  return json.replace(
+    `    "${key}": ${prettyArray.trimStart()}`,
+    `    "${key}": ${compactJsonArray(array)}`,
+  );
+}
+
+function formatManifest(manifest) {
+  let json = JSON.stringify(manifest, null, 2);
+  json = replacePrettyArray(json, "directories", manifest.excludes.directories);
+  json = replacePrettyArray(json, "files", manifest.excludes.files);
+  json = replacePrettyArray(json, "prefixes", manifest.excludes.prefixes);
+  return json;
+}
+
 function compareDirs(actualRoot, expectedRoot) {
   const actualFiles = new Set(walkAllFiles(actualRoot));
   const expectedFiles = new Set(walkAllFiles(expectedRoot));
   const diffs = [];
 
   for (const relPath of expectedFiles) {
-    const actualPath = path.join(actualRoot, relPath);
-    const expectedPath = path.join(expectedRoot, relPath);
+    const relativePath = String(relPath);
+    const actualPath = path.join(actualRoot, relativePath);
+    const expectedPath = path.join(expectedRoot, relativePath);
     if (!actualFiles.has(relPath)) {
-      diffs.push(`missing ${relPath}`);
+      diffs.push(`missing ${relativePath}`);
       continue;
     }
     const actual = fs.readFileSync(actualPath, "utf8");
     const expected = fs.readFileSync(expectedPath, "utf8");
     if (actual !== expected) {
-      diffs.push(`changed ${relPath}`);
+      diffs.push(`changed ${relativePath}`);
     }
   }
   for (const relPath of actualFiles) {
+    const relativePath = String(relPath);
     if (!expectedFiles.has(relPath)) {
-      diffs.push(`extra ${relPath}`);
+      diffs.push(`extra ${relativePath}`);
     }
   }
 
@@ -357,23 +386,19 @@ for (const section of sections) {
 
 writeFile(
   path.join(vaultRoot, "manifest.json"),
-  JSON.stringify(
-    {
-      name: "ArgentOS Core Docs",
-      generatedBy: "scripts/build-core-docs-vault.mjs",
-      source: "docs/",
-      generatedAt: generatedAtForDocs(docs),
-      documents: docs.size,
-      excludes: {
-        directories: [...EXCLUDED_DIRS].toSorted(),
-        files: [...EXCLUDED_FILES].toSorted(),
-        paths: [...EXCLUDED_PATHS].toSorted(),
-        prefixes: [...EXCLUDED_PREFIXES].toSorted(),
-      },
+  formatManifest({
+    name: "ArgentOS Core Docs",
+    generatedBy: "scripts/build-core-docs-vault.mjs",
+    source: "docs/",
+    generatedAt: generatedAtForDocs(docs),
+    documents: docs.size,
+    excludes: {
+      directories: [...EXCLUDED_DIRS].toSorted(),
+      files: [...EXCLUDED_FILES].toSorted(),
+      paths: [...EXCLUDED_PATHS].toSorted(),
+      prefixes: [...EXCLUDED_PREFIXES].toSorted(),
     },
-    null,
-    2,
-  ),
+  }),
 );
 
 console.log(`docs:vault: generated ${docs.size} docs at ${path.relative(root, vaultRoot)}`);
