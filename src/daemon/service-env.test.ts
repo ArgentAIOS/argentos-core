@@ -241,6 +241,7 @@ describe("buildServiceEnvironment", () => {
     }
     expect(env.ARGENT_GATEWAY_PORT).toBe("18789");
     expect(env.ARGENT_GATEWAY_TOKEN).toBe("secret");
+    expect(env.ARGENT_RUNTIME_MODE).toBe("argent_with_fallback");
     expect(env.ARGENT_SERVICE_MARKER).toBe("argent");
     expect(env.ARGENT_SERVICE_KIND).toBe("gateway");
     expect(typeof env.ARGENT_SERVICE_VERSION).toBe("string");
@@ -259,6 +260,14 @@ describe("buildServiceEnvironment", () => {
     if (process.platform === "darwin") {
       expect(env.ARGENT_LAUNCHD_LABEL).toBe("ai.argent.work");
     }
+  });
+
+  it("preserves explicit runtime mode overrides", () => {
+    const env = buildServiceEnvironment({
+      env: { HOME: "/home/user", ARGENT_RUNTIME_MODE: "pi_only" },
+      port: 18789,
+    });
+    expect(env.ARGENT_RUNTIME_MODE).toBe("pi_only");
   });
 });
 
