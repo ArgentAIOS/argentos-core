@@ -50,4 +50,29 @@ describe("sanitizeMessagesForModelAdapter", () => {
     expect(result.messages).toHaveLength(0);
     expect(result.repairs).toContain("dropped tool result with missing toolCallId");
   });
+
+  it("normalizes compaction summaries into user context messages", () => {
+    const result = sanitizeMessagesForModelAdapter([
+      {
+        role: "compactionSummary",
+        summary: "The operator configured Telegram and needs the final verification step.",
+      },
+    ] as unknown as AgentMessage[]);
+
+    expect(result.changed).toBe(true);
+    expect(result.repairs).toContain("normalized summary message role: compactionSummary");
+    expect(result.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text:
+              "Previous conversation summary:\n\n" +
+              "The operator configured Telegram and needs the final verification step.",
+          },
+        ],
+      },
+    ]);
+  });
 });

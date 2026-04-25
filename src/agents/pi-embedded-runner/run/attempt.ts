@@ -1433,7 +1433,11 @@ export async function runEmbeddedAttempt(
           const sanitizedHistory = sanitizeMessagesForModelAdapter(activeSession.messages);
           if (sanitizedHistory.changed) {
             activeSession.agent.replaceMessages(sanitizedHistory.messages);
-            log.warn(
+            const onlySummaryNormalization = sanitizedHistory.repairs.every((repair) =>
+              repair.startsWith("normalized summary message role: "),
+            );
+            const logRepair = onlySummaryNormalization ? log.debug.bind(log) : log.warn.bind(log);
+            logRepair(
               `repaired malformed transcript before model adapter: ` +
                 `runId=${params.runId} sessionId=${params.sessionId} ` +
                 `repairs=${sanitizedHistory.repairs.join("; ")}`,
