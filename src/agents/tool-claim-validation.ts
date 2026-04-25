@@ -136,6 +136,9 @@ const STRUCTURED_ACTION_CONTROL_KEYS = new Set([
   "url",
   "path",
 ]);
+const PSEUDO_TOOL_CALL_BLOCK_RE = /\[TOOL_CALL\]([\s\S]{0,2400}?)\[\/TOOL_CALL\]/gi;
+const PSEUDO_TOOL_NAME_RE =
+  /\btool\s*(?::|=>)\s*(?:"([^"]+)"|'([^']+)'|`([^`]+)`|([A-Za-z0-9_-]+))/i;
 
 const DIRECT_ACTION_PREFIX = String.raw`(?:I(?:['’]m| am)?\s+(?:going to\s+)?|I(?:['’]ll| will)\s+|let me\s+|next thing I(?:['’]m| am)\s+(?:doing|going to do)\s+is\s+)`;
 const RESEARCH_TARGET_FRAGMENT = String.raw`(?:docs?|documentation|readme|spec(?:ification)?|repo(?:sitory)?|file|files|source|code|codebase)`;
@@ -600,6 +603,22 @@ function isLikelyStandaloneToolActionJson(responseText: string): boolean {
 
 function extractStructuredClaims(responseText: string): StructuredClaimMention[] {
   const out: StructuredClaimMention[] = [];
+  let pseudoMatch: RegExpExecArray | null;
+  const pseudoRegex = new RegExp(PSEUDO_TOOL_CALL_BLOCK_RE.source, PSEUDO_TOOL_CALL_BLOCK_RE.flags);
+  while ((pseudoMatch = pseudoRegex.exec(responseText)) !== null) {
+    const block = pseudoMatch[1] ?? "";
+    const toolMatch = PSEUDO_TOOL_NAME_RE.exec(block);
+    const rawTool = toolMatch?.[1] ?? toolMatch?.[2] ?? toolMatch?.[3] ?? toolMatch?.[4];
+    const canonical = rawTool ? canonicalizeToolName(rawTool) : null;
+    out.push({
+      tool:
+        canonical && MONITORED_CLAIM_TOOLS.includes(canonical as MonitoredClaimTool)
+          ? (canonical as MonitoredClaimTool)
+          : "tool_json",
+      claimText: pseudoMatch[0].trim().slice(0, 240),
+      highConfidence: true,
+    });
+  }
   if (
     BROWSER_ACTION_JSON_RE.test(responseText) &&
     BROWSER_REQUEST_KIND_JSON_RE.test(responseText)

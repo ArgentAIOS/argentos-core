@@ -513,6 +513,22 @@ describe("validateToolClaims", () => {
     expect(result.highConfidenceMissingClaims).toContain("tool_json");
   });
 
+  it("flags fake TOOL_CALL marketplace blocks as high-confidence missing tool use", () => {
+    const result = validateToolClaims({
+      responseText: `[TOOL_CALL]
+{tool => "marketplace", args => {
+--action "search"
+--query ""
+}}
+[/TOOL_CALL]`,
+      executedToolNames: [],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.missingClaims).toContain("marketplace");
+    expect(result.structuredClaims).toContain("marketplace");
+    expect(result.highConfidenceMissingClaims).toContain("marketplace");
+  });
+
   it("does not misclassify unrelated JSON payloads as browser tool claims", () => {
     const result = validateToolClaims({
       responseText: '{"action":"handle","message":"continue"}',
