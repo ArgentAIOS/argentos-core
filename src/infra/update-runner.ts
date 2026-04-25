@@ -1010,7 +1010,7 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
     const doctorStep = await runStep(
       step(
         "argent doctor",
-        managerScriptArgs(manager, "argent", ["doctor", "--non-interactive"]),
+        managerScriptArgs(manager, "argent", ["doctor", "--non-interactive", "--repair"]),
         gitRoot,
         { ARGENT_UPDATE_IN_PROGRESS: "1" },
       ),

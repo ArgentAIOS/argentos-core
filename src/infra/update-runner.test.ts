@@ -346,7 +346,7 @@ describe("runGatewayUpdate", () => {
       "pnpm ui:build": { stdout: "" },
       [`git -C ${tempDir} checkout -- dist/control-ui/`]: { stdout: "" },
       "pnpm argent setup": { stdout: "" },
-      "pnpm argent doctor --non-interactive": { stdout: "" },
+      "pnpm argent doctor --non-interactive --repair": { stdout: "" },
     });
 
     const result = await runGatewayUpdate({
@@ -361,7 +361,7 @@ describe("runGatewayUpdate", () => {
     expect(calls).not.toContain(`git -C ${tempDir} checkout --detach ${betaTag}`);
     expect(calls).toContain("pnpm argent setup");
     expect(calls.indexOf("pnpm argent setup")).toBeLessThan(
-      calls.indexOf("pnpm argent doctor --non-interactive"),
+      calls.indexOf("pnpm argent doctor --non-interactive --repair"),
     );
   });
 

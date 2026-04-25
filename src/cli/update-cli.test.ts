@@ -651,7 +651,7 @@ describe("update-cli", () => {
 
       expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
         expect.any(String),
-        [path.join(tempRoot, "argent.mjs"), "doctor", "--non-interactive"],
+        [path.join(tempRoot, "argent.mjs"), "doctor", "--non-interactive", "--repair"],
         expect.objectContaining({
           cwd: tempRoot,
           stdio: "inherit",

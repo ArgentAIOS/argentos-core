@@ -277,7 +277,12 @@ async function runPostUpdateDoctor(params: {
 
   const result = spawnSync(
     resolveNodeRunner(),
-    [cliPath, "doctor", ...(params.interactive ? [] : ["--non-interactive"])],
+    [
+      cliPath,
+      "doctor",
+      ...(params.interactive ? [] : ["--non-interactive"]),
+      ...(params.interactive ? [] : ["--repair"]),
+    ],
     {
       cwd: params.root,
       env: { ...process.env, ARGENT_UPDATE_IN_PROGRESS: "1" },
@@ -996,7 +1001,7 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
       if (await pathExists(entryPath)) {
         const doctorStep = await runUpdateStep({
           name: `${CLI_NAME} doctor`,
-          argv: [resolveNodeRunner(), entryPath, "doctor", "--non-interactive"],
+          argv: [resolveNodeRunner(), entryPath, "doctor", "--non-interactive", "--repair"],
           timeoutMs: timeoutMs ?? 20 * 60_000,
           progress,
         });
