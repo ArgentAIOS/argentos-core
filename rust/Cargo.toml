@@ -1,0 +1,3 @@
+[workspace]
+members = ["argentd", "argent-execd"]
+resolver = "2"

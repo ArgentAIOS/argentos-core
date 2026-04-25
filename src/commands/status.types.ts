@@ -30,7 +30,42 @@ export type HeartbeatStatus = {
   everyMs: number | null;
 };
 
+export type ExecutiveShadowStatus = {
+  reachable: boolean;
+  activeLane: string | null;
+  tickCount: number | null;
+  bootCount: number | null;
+  journalEventCount: number | null;
+  nextTickDueAtMs: number | null;
+  laneCounts: { idle: number; pending: number; active: number } | null;
+  highestPendingPriority: number | null;
+  nextLeaseExpiryAtMs: number | null;
+  lastEventSummary: string | null;
+  lastEventType: string | null;
+  stateDir: string | null;
+  error: string | null;
+};
+
+export type ExecutiveShadowKernelInspectionStatus = {
+  kernelAvailable: boolean;
+  executiveReachable: boolean;
+  comparable: boolean;
+  laneMatch: boolean | null;
+  kernelActiveLane: string | null;
+  executiveActiveLane: string | null;
+  kernelFocus: string | null;
+  executiveLastEventSummary: string | null;
+  notes: string[];
+};
+
 export type StatusSummary = {
+  shadowReplay?: {
+    enabled: boolean;
+    connected: boolean;
+    queued: number;
+    replayed: number;
+    replayErrors: number;
+  };
   linkChannel?: {
     id: ChannelId;
     label: string;
@@ -41,6 +76,8 @@ export type StatusSummary = {
     defaultAgentId: string;
     agents: HeartbeatStatus[];
   };
+  executiveShadow?: ExecutiveShadowStatus;
+  executiveShadowKernelInspection?: ExecutiveShadowKernelInspectionStatus;
   channelSummary: string[];
   queuedSystemEvents: string[];
   sessions: {

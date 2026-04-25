@@ -280,6 +280,36 @@ vi.mock("../daemon/node-service.js", () => ({
 vi.mock("../security/audit.js", () => ({
   runSecurityAudit: mocks.runSecurityAudit,
 }));
+vi.mock("./status.executive-shadow.js", () => ({
+  getExecutiveShadowSummary: vi.fn().mockResolvedValue({
+    reachable: true,
+    activeLane: "operator",
+    tickCount: 4,
+    bootCount: 2,
+    journalEventCount: 8,
+    nextTickDueAtMs: 12345,
+    laneCounts: { idle: 1, pending: 2, active: 1 },
+    highestPendingPriority: 50,
+    nextLeaseExpiryAtMs: 12456,
+    lastEventSummary: "lane operator activated (lease expires at 13000)",
+    lastEventType: "lane_activated",
+    stateDir: "/tmp/executive",
+    error: null,
+  }),
+}));
+vi.mock("../infra/executive-shadow-kernel-inspector.js", () => ({
+  inspectExecutiveShadowAgainstKernel: vi.fn().mockResolvedValue({
+    kernelAvailable: true,
+    executiveReachable: true,
+    comparable: true,
+    laneMatch: true,
+    kernelActiveLane: "operator",
+    executiveActiveLane: "operator",
+    kernelFocus: "stabilize substrate",
+    executiveLastEventSummary: "lane operator activated (lease expires at 13000)",
+    notes: ["active lane aligned"],
+  }),
+}));
 
 import { statusCommand } from "./status.js";
 
@@ -308,6 +338,10 @@ describe("statusCommand", () => {
     expect(payload.securityAudit.summary.warn).toBe(1);
     expect(payload.gatewayService.label).toBe("LaunchAgent");
     expect(payload.nodeService.label).toBe("LaunchAgent");
+    expect(payload.executiveShadow.reachable).toBe(true);
+    expect(payload.executiveShadow.activeLane).toBe("operator");
+    expect(payload.executiveShadow.laneCounts.pending).toBe(2);
+    expect(payload.executiveShadowKernelInspection.laneMatch).toBe(true);
   });
 
   it("prints formatted lines otherwise", async () => {
@@ -322,6 +356,9 @@ describe("statusCommand", () => {
     expect(logs.some((l) => l.includes("Dashboard"))).toBe(true);
     expect(logs.some((l) => l.includes("macos 14.0 (arm64)"))).toBe(true);
     expect(logs.some((l) => l.includes("Memory"))).toBe(true);
+    expect(logs.some((l) => l.includes("Executive shadow"))).toBe(true);
+    expect(logs.some((l) => l.includes("Exec inspect"))).toBe(true);
+    expect(logs.some((l) => l.includes("pending 2"))).toBe(true);
     expect(logs.some((l) => l.includes("Channels"))).toBe(true);
     expect(logs.some((l) => l.includes("WhatsApp"))).toBe(true);
     expect(logs.some((l) => l.includes("Sessions"))).toBe(true);

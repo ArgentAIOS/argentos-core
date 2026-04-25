@@ -15803,6 +15803,111 @@ function isLaunchctlIgnorableError(detail, mode) {
   return false;
 }
 
+function xmlEscape(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function resolveCargoCommand() {
+  const candidates = [
+    process.env.CARGO,
+    path.join(process.env.HOME || "", ".cargo", "bin", "cargo"),
+    "/opt/homebrew/bin/cargo",
+    "/usr/local/bin/cargo",
+    "cargo",
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    try {
+      if (candidate === "cargo") {
+        execFileSync("/usr/bin/env", ["cargo", "--version"], { stdio: "ignore", timeout: 3000 });
+        return "cargo";
+      }
+      if (fs.existsSync(candidate)) return candidate;
+    } catch {}
+  }
+  return null;
+}
+
+function ensureRustShadowLaunchAgent(service, repoRoot) {
+  const rustRoot = path.join(repoRoot, "rust");
+  const cargoToml = path.join(rustRoot, "Cargo.toml");
+  if (!fs.existsSync(cargoToml)) {
+    throw new Error(`Rust workspace missing at ${rustRoot}`);
+  }
+  const binaryPath = path.join(
+    rustRoot,
+    "target",
+    "debug",
+    process.platform === "win32" ? `${service.binary}.exe` : service.binary,
+  );
+  if (!fs.existsSync(binaryPath)) {
+    const cargo = resolveCargoCommand();
+    if (!cargo) {
+      throw new Error("Cargo is required to build Rust shadow services but was not found");
+    }
+    const cargoCommand = cargo === "cargo" ? "/usr/bin/env" : cargo;
+    const cargoArgs =
+      cargo === "cargo"
+        ? ["cargo", "build", "-p", service.package]
+        : ["build", "-p", service.package];
+    execFileSync(cargoCommand, cargoArgs, {
+      cwd: rustRoot,
+      stdio: "pipe",
+      timeout: 120000,
+      env: { ...process.env, HOME: process.env.HOME || os.homedir() },
+    });
+  }
+  if (!fs.existsSync(binaryPath)) {
+    throw new Error(`Rust shadow binary was not produced at ${binaryPath}`);
+  }
+
+  const logDir = path.join(process.env.HOME || os.homedir(), ".argent", "logs");
+  fs.mkdirSync(logDir, { recursive: true });
+  fs.mkdirSync(path.dirname(service.plistPath), { recursive: true });
+  const envLines = Object.entries({
+    HOME: process.env.HOME || os.homedir(),
+    RUST_BACKTRACE: "1",
+    ...(service.env || {}),
+  })
+    .map(
+      ([key, value]) => `
+    <key>${xmlEscape(key)}</key>
+    <string>${xmlEscape(value)}</string>`,
+    )
+    .join("");
+  const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${xmlEscape(service.label)}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${xmlEscape(binaryPath)}</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>${xmlEscape(rustRoot)}</string>
+  <key>EnvironmentVariables</key>
+  <dict>${envLines}
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>KeepAlive</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>${xmlEscape(path.join(logDir, `${service.label}.log`))}</string>
+  <key>StandardErrorPath</key>
+  <string>${xmlEscape(path.join(logDir, `${service.label}.err.log`))}</string>
+</dict>
+</plist>
+`;
+  fs.writeFileSync(service.plistPath, plistContent);
+  return { binaryPath, rustRoot };
+}
+
 app.get("/api/settings/gateway", async (req, res) => {
   const configPath = path.join(process.env.HOME, ".argentos", "argent.json");
   const gatewayPlistPath = path.join(
@@ -15887,6 +15992,38 @@ app.get("/api/settings/gateway", async (req, res) => {
       url: "http://127.0.0.1:19427/",
       description:
         "Experimental kernel-memory/curiosity dashboard. Not part of the normal chat surface.",
+    },
+    {
+      id: "rust-gateway-shadow",
+      label: "Rust Gateway Shadow",
+      launchdLabel: "ai.argent.rust-gateway-shadow",
+      plistPath: path.join(
+        process.env.HOME,
+        "Library",
+        "LaunchAgents",
+        "ai.argent.rust-gateway-shadow.plist",
+      ),
+      port: 18799,
+      experimental: true,
+      url: "http://127.0.0.1:18799/health",
+      description:
+        "Read-only Rust gateway shadow daemon. It is observable only and does not own live chat traffic.",
+    },
+    {
+      id: "rust-executive-shadow",
+      label: "Rust Executive Shadow",
+      launchdLabel: "ai.argent.rust-executive-shadow",
+      plistPath: path.join(
+        process.env.HOME,
+        "Library",
+        "LaunchAgents",
+        "ai.argent.rust-executive-shadow.plist",
+      ),
+      port: 18809,
+      experimental: true,
+      url: "http://127.0.0.1:18809/health",
+      description:
+        "Read-only Rust executive/kernel substrate shadow. It tracks durable state, lanes, ticks, and journal health without replacing the TypeScript kernel.",
     },
   ];
   try {
@@ -16139,6 +16276,34 @@ app.post("/api/settings/services/:serviceId/:action", async (req, res) => {
       ),
       port: 19427,
     },
+    "rust-gateway-shadow": {
+      label: "ai.argent.rust-gateway-shadow",
+      plistPath: path.join(
+        process.env.HOME,
+        "Library",
+        "LaunchAgents",
+        "ai.argent.rust-gateway-shadow.plist",
+      ),
+      port: 18799,
+      package: "argentd",
+      binary: "argentd",
+      env: { ARGENTD_BIND: "127.0.0.1:18799" },
+      rustShadow: true,
+    },
+    "rust-executive-shadow": {
+      label: "ai.argent.rust-executive-shadow",
+      plistPath: path.join(
+        process.env.HOME,
+        "Library",
+        "LaunchAgents",
+        "ai.argent.rust-executive-shadow.plist",
+      ),
+      port: 18809,
+      package: "argent-execd",
+      binary: "argent-execd",
+      env: { ARGENT_EXECD_BIND: "127.0.0.1:18809" },
+      rustShadow: true,
+    },
   };
   const service = serviceMap[req.params.serviceId];
   const action = String(req.params.action || "").trim();
@@ -16150,6 +16315,10 @@ app.post("/api/settings/services/:serviceId/:action", async (req, res) => {
   }
   try {
     let launchctlDetail = null;
+    const repoRoot = path.resolve(__dirname, "..");
+    if (service.rustShadow && (action === "start" || action === "restart")) {
+      ensureRustShadowLaunchAgent(service, repoRoot);
+    }
     if (action === "start") {
       try {
         execFileSync("/bin/launchctl", ["bootstrap", domain, service.plistPath], {

@@ -819,6 +819,7 @@
                 "group": "Fundamentals",
                 "pages": [
                   "concepts/architecture",
+                  "concepts/rust-shadow-runtime",
                   "concepts/agent",
                   "concepts/agent-loop",
                   "concepts/system-prompt",

@@ -36,6 +36,7 @@
     "argent.mjs",
     "README-header.png",
     "README.md",
+    "rust/",
     "skills/",
     "tools/aos/"
   ],
@@ -92,8 +93,9 @@
     "plugins:sync": "node --import tsx scripts/sync-plugin-versions.ts",
     "prepack": "pnpm build && pnpm ui:build",
     "prepare": "command -v git >/dev/null 2>&1 && git config core.hooksPath git-hooks || exit 0",
-    "protocol:check": "pnpm protocol:gen && pnpm protocol:gen:swift && git diff --exit-code -- dist/protocol.schema.json apps/macos/Sources/ArgentProtocol/GatewayModels.swift",
+    "protocol:check": "pnpm protocol:gen && pnpm protocol:gen:swift && pnpm protocol:gen:executive-shadow && git diff --exit-code -- dist/protocol.schema.json dist/executive-shadow.protocol.schema.json rust/argent-execd/executive-shadow.protocol.schema.json apps/macos/Sources/ArgentProtocol/GatewayModels.swift",
     "protocol:gen": "node --import tsx scripts/protocol-gen.ts",
+    "protocol:gen:executive-shadow": "node --import tsx scripts/executive-shadow-protocol-gen.ts",
     "protocol:gen:swift": "node --import tsx scripts/protocol-gen-swift.ts",
     "release:check": "node --import tsx scripts/release-check.ts",
     "stack:reset": "bash scripts/dev/reset-stack.sh",
