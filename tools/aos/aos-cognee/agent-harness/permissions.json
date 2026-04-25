@@ -1,0 +1,15 @@
+{
+  "tool": "aos-cognee",
+  "backend": "cognee",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "config.show": "readonly",
+    "search": "readonly",
+    "ingest-vault": "write",
+    "cognify": "full",
+    "memify": "full",
+    "prune": "admin"
+  }
+}

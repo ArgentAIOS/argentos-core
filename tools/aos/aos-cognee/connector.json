@@ -1,0 +1,191 @@
+{
+  "tool": "aos-cognee",
+  "backend": "cognee",
+  "manifest_schema_version": "1.0.0",
+  "connector": {
+    "label": "Cognee",
+    "category": "knowledge-graph",
+    "categories": ["knowledge-graph", "memory", "vault", "rag"],
+    "resources": ["vault", "dataset", "graph", "memory"]
+  },
+  "delivery_model": "local-cli",
+  "risk_tier": "bounded-write",
+  "scope": {
+    "kind": "memory-graph",
+    "surface": "vault-knowledge-graph",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "workerFields": ["query", "search_mode", "vault_path", "dataset", "limit"],
+    "worker_visible_actions": ["search", "ingest-vault", "cognify", "memify"],
+    "fields": [
+      {
+        "id": "query",
+        "label": "Query",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["search"],
+        "placeholder": "How does this concept connect to that project?",
+        "description": "Question or structural query to run against the Cognee graph."
+      },
+      {
+        "id": "search_mode",
+        "label": "Search Mode",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "applies_to": ["search"],
+        "options": [
+          { "value": "GRAPH_COMPLETION", "label": "Graph Completion" },
+          { "value": "INSIGHTS", "label": "Insights" },
+          { "value": "SIMILARITY", "label": "Similarity" },
+          { "value": "CHUNKS", "label": "Chunks" },
+          { "value": "SUMMARIES", "label": "Summaries" }
+        ],
+        "description": "Cognee retrieval strategy. Graph Completion is the default relationship-aware mode."
+      },
+      {
+        "id": "vault_path",
+        "label": "Vault Path",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["ingest-vault"],
+        "placeholder": "~/.argentos/vault",
+        "description": "Markdown or Obsidian vault folder to ingest."
+      },
+      {
+        "id": "dataset",
+        "label": "Dataset",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["search", "ingest-vault", "cognify", "memify"],
+        "placeholder": "vault-knowledge",
+        "description": "Cognee dataset/node-set name used for Argent vault memory."
+      },
+      {
+        "id": "limit",
+        "label": "Limit",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "applies_to": ["search", "ingest-vault"],
+        "placeholder": "10",
+        "description": "Maximum search results or ingest files for one run."
+      }
+    ],
+    "commandDefaults": {
+      "search": {
+        "search_mode": "GRAPH_COMPLETION",
+        "limit": 10
+      },
+      "ingest-vault": {
+        "vault_path": "~/.argentos/vault",
+        "dataset": "vault-knowledge"
+      },
+      "cognify": {
+        "dataset": "vault-knowledge"
+      },
+      "memify": {
+        "dataset": "vault-knowledge"
+      }
+    }
+  },
+  "auth": {
+    "kind": "local-runtime",
+    "required": false,
+    "service_keys": [],
+    "interactive_setup": [
+      "Install the Python harness in this connector's agent-harness directory.",
+      "Configure Cognee's normal LLM/vector provider environment if your Cognee pipeline requires it.",
+      "Bind memory.vault.path in ArgentOS settings or set AOS_COGNEE_VAULT_PATH."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "List Cognee connector capabilities",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Check Cognee runtime readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run Cognee runtime diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show Cognee connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "search",
+      "summary": "Search the Cognee graph for vault and memory relationships",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "graph",
+      "action_class": "read"
+    },
+    {
+      "id": "ingest-vault",
+      "summary": "Add markdown vault files to Cognee",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "vault",
+      "action_class": "write"
+    },
+    {
+      "id": "cognify",
+      "summary": "Run Cognee graph extraction over ingested data",
+      "required_mode": "full",
+      "supports_json": true,
+      "resource": "graph",
+      "action_class": "write"
+    },
+    {
+      "id": "memify",
+      "summary": "Run Cognee memory optimization",
+      "required_mode": "full",
+      "supports_json": true,
+      "resource": "memory",
+      "action_class": "write"
+    },
+    {
+      "id": "prune",
+      "summary": "Delete Cognee data after explicit confirmation",
+      "required_mode": "admin",
+      "supports_json": true,
+      "resource": "graph",
+      "action_class": "destructive"
+    }
+  ]
+}
