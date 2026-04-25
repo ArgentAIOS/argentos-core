@@ -43,6 +43,13 @@ title: "ArgentOS"
 
 ArgentOS connects chat apps to coding agents like Pi through a single Gateway process. It powers the ArgentOS assistant and supports local or remote setups.
 
+## April Core update
+
+The current Core release lane brings the public `main` branch up to the active
+development line: install/update hardening, dashboard setup and model routing
+polish, expanded gateway/channel/provider docs, Cognee connector packaging, MCP
+exposure fixes, and the observable Rust executive shadow runtime.
+
 ## How it works
 
 ```mermaid
