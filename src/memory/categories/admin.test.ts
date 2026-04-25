@@ -55,8 +55,8 @@ function makeMemory() {
     ["other", category("other", "Deployment Notes")],
   ]);
   const categoryItems = new Map<string, MemoryItem[]>([
-    ["clean", [item("a"), item("b")]],
-    ["variant", [item("c")]],
+    ["clean", [item("a"), item("b"), item("c"), item("d")]],
+    ["variant", [item("e")]],
     ["empty", []],
     ["other", [item("d"), item("e"), item("f")]],
   ]);
@@ -99,7 +99,7 @@ describe("memory category admin", () => {
       limit: 2,
     });
 
-    expect(rows.map((row) => row.name)).toEqual(["11 Labs V3 2026 2026", "11 Labs V3"]);
+    expect(rows.map((row) => row.name)).toEqual(["11 Labs V3 2026 2026", "Deployment Notes"]);
   });
 
   it("renames a category without touching links", async () => {
@@ -123,7 +123,7 @@ describe("memory category admin", () => {
     });
 
     expect(result.totalLinkedItems).toBe(1);
-    expect(linked).toEqual([["c", "clean"]]);
+    expect(linked).toEqual([["e", "clean"]]);
     expect(memory.deleteCategory).toHaveBeenCalledWith("variant");
   });
 
@@ -178,5 +178,24 @@ describe("memory category admin", () => {
         reason: "subset",
       }),
     );
+  });
+
+  it("does not auto-merge low-count sprawl into low-count targets", async () => {
+    const categories = new Map<string, MemoryCategory>([
+      ["source", category("source", "Atera Integration 11 Labs V3")],
+      ["tiny-target", category("tiny-target", "Atera Integration")],
+    ]);
+    const categoryItems = new Map<string, MemoryItem[]>([
+      ["source", items("source", 1)],
+      ["tiny-target", items("tiny-target", 2)],
+    ]);
+    const memory = {
+      listCategories: vi.fn(async () => Array.from(categories.values())),
+      getCategoryItemCount: vi.fn(async (id: string) => categoryItems.get(id)?.length ?? 0),
+    } as unknown as MemoryAdapter;
+
+    const plan = await planMemoryCategoryCleanup(memory, { dryRun: true });
+
+    expect(plan.merges).toEqual([]);
   });
 });

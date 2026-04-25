@@ -28,10 +28,11 @@ MemU category administration is exposed through four tools:
 ```
 
 The cleanup pass removes empty category shells when applying changes, and plans conservative merges
-from low-count sprawl categories into higher-count targets. By default, only source categories with
-three or fewer linked items are eligible for automated merging, so established categories such as
-`11 Labs V3 Audio Tags` and `11 Labs V3 Voice Model` stay out of the automated merge set. The merge
-target is the category with the most linked items, with shorter names winning ties.
+from low-count sprawl categories into established targets. By default, only source categories with
+three or fewer linked items are eligible for automated merging, and targets must have more than
+three linked items, so established categories such as `11 Labs V3 Audio Tags` and
+`11 Labs V3 Voice Model` stay out of the automated merge set. The merge target is the category with
+the most linked items, with shorter names winning ties.
 
 Manual merge example:
 

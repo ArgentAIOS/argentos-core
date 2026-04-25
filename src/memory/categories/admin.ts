@@ -299,7 +299,7 @@ export async function planMemoryCategoryCleanup(
         if (target.id === source.id) {
           continue;
         }
-        if (target.itemCount <= source.itemCount) {
+        if (target.itemCount <= maxMergeSourceItems) {
           continue;
         }
         const targetNormalized = normalizeCategoryName(target.name);
