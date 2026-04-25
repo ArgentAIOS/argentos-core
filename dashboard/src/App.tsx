@@ -5390,7 +5390,7 @@ function App() {
                     isProcessingSpeech={speech.isProcessing}
                     speechError={effectiveSpeechError}
                     deepThinkMode={deepThinkMode}
-                    onToggleDeepThink={() => setDeepThinkMode(!deepThinkMode)}
+                    onToggleDeepThink={() => setDeepThinkMode((enabled) => !enabled)}
                     deepResearchMode={deepResearchMode}
                     onToggleDeepResearch={() => setDeepResearchMode(!deepResearchMode)}
                     canvasOpen={canvasOpen}
@@ -5501,7 +5501,7 @@ function App() {
                   isProcessingSpeech={speech.isProcessing}
                   speechError={effectiveSpeechError}
                   deepThinkMode={deepThinkMode}
-                  onToggleDeepThink={() => setDeepThinkMode(!deepThinkMode)}
+                  onToggleDeepThink={() => setDeepThinkMode((enabled) => !enabled)}
                   deepResearchMode={deepResearchMode}
                   onToggleDeepResearch={() => setDeepResearchMode(!deepResearchMode)}
                   canvasOpen={canvasOpen}

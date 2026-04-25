@@ -55,7 +55,7 @@ const minimaxBase = {
 const zaiBase = {
   api: "openai-completions" as const,
   provider: "zai" as const,
-  baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+  baseUrl: "https://api.z.ai/api/coding/paas/v4/chat/completions",
   input: ["text"] as ("text" | "image")[],
 };
 

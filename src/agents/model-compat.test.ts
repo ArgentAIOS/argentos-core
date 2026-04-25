@@ -24,6 +24,17 @@ describe("normalizeModelCompat", () => {
     expect(normalized.compat?.supportsDeveloperRole).toBe(false);
   });
 
+  it("moves stale z.ai catalog entries to the coding endpoint", () => {
+    const model = {
+      ...baseModel(),
+      baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+    };
+
+    const normalized = normalizeModelCompat(model);
+
+    expect(normalized.baseUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
+  });
+
   it("leaves non-zai models untouched", () => {
     const model = {
       ...baseModel(),
