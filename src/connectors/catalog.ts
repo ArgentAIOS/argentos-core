@@ -931,7 +931,7 @@ export function discoverConnectorRuntimeCatalogSync(
         requiresPython: repoMetadata?.requiresPython,
         sources: [...(repo ? (["repo"] as const) : []), ...(binaryPath ? (["path"] as const) : [])],
       },
-      auth: undefined,
+      auth: repoMetadata?.auth,
     } satisfies ConnectorCatalogEntry;
   });
 

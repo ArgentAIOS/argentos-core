@@ -3,7 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ArgentConfig } from "../config/config.js";
-import { connectorCommandToolName, createConnectorTools, getConnectorToolMeta } from "./tools.js";
+import {
+  connectorCommandToolName,
+  createConnectorTools,
+  getConnectorToolMeta,
+  resolveConnectorServiceKeyEnv,
+} from "./tools.js";
 
 const tempDirs: string[] = [];
 
@@ -18,6 +23,7 @@ function writeRepoFixture(params: {
   tool: string;
   description?: string;
   permissions: Record<string, string>;
+  connectorMeta?: Record<string, unknown>;
 }) {
   const repoDir = path.join(params.root, params.tool);
   const harnessDir = path.join(repoDir, "agent-harness");
@@ -48,6 +54,12 @@ function writeRepoFixture(params: {
       2,
     ),
   );
+  if (params.connectorMeta) {
+    fs.writeFileSync(
+      path.join(repoDir, "connector.json"),
+      JSON.stringify(params.connectorMeta, null, 2),
+    );
+  }
 }
 
 function writeBinaryFixture(params: { binDir: string; tool: string }) {
@@ -270,5 +282,72 @@ describe("createConnectorTools", () => {
         envValue: "scoped-default",
       },
     });
+  });
+
+  it("resolves declared connector service keys for subprocess env injection", () => {
+    vi.stubEnv("CONNECTOR_TEST_SECRET", "service-secret");
+
+    const env = resolveConnectorServiceKeyEnv({
+      connector: {
+        tool: "aos-queue",
+        auth: {
+          kind: "service-key",
+          required: true,
+          serviceKeys: ["CONNECTOR_TEST_SECRET"],
+        },
+      },
+    });
+
+    expect(env).toEqual({
+      CONNECTOR_TEST_SECRET: "service-secret",
+    });
+  });
+
+  it("reports connector service key injection without exposing secret values", async () => {
+    const root = makeTempDir("connector-tools-root-");
+    const binDir = makeTempDir("connector-tools-bin-");
+    writeRepoFixture({
+      root,
+      tool: "aos-queue",
+      permissions: {
+        "queue.list": "readonly",
+      },
+      connectorMeta: {
+        auth: {
+          kind: "service-key",
+          required: true,
+          service_keys: ["CONNECTOR_TEST_ENV"],
+        },
+        commands: [
+          {
+            id: "queue.list",
+            required_mode: "readonly",
+            supports_json: true,
+          },
+        ],
+      },
+    });
+    writeBinaryFixture({ binDir, tool: "aos-queue" });
+    vi.stubEnv("ARGENT_CONNECTOR_REPOS", root);
+    vi.stubEnv("PATH", binDir);
+    vi.stubEnv("CONNECTOR_TEST_ENV", "service-secret");
+
+    const tool = createConnectorTools().find(
+      (entry) => entry.name === connectorCommandToolName("aos-queue", "queue.list"),
+    );
+    expect(tool).toBeDefined();
+
+    const result = await tool!.execute("call-4", {});
+
+    expect(result.details).toMatchObject({
+      ok: true,
+      requested: {
+        serviceKeys: [{ variable: "CONNECTOR_TEST_ENV", injected: true }],
+      },
+      data: {
+        envValue: "service-secret",
+      },
+    });
+    expect(JSON.stringify(result.details.requested)).not.toContain("service-secret");
   });
 });
