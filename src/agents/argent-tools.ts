@@ -95,6 +95,7 @@ import { createVipEmailTool } from "./tools/vip-email-tool.js";
 import { createVisualPresenceTool } from "./tools/visual-presence-tool.js";
 import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
 import { createWidgetBuilderTool } from "./tools/widget-builder-tool.js";
+import { createWorkflowBuilderTool } from "./tools/workflow-builder-tool.js";
 import { createYoutubeMetadataTool } from "./tools/youtube-metadata-tool.js";
 import { createYoutubeNotebookLmTool } from "./tools/youtube-notebooklm-tool.js";
 import { createYoutubeThumbnailTool } from "./tools/youtube-thumbnail-tool.js";
@@ -349,6 +350,7 @@ export function createArgentTools(options?: {
     createDocPanelGetTool({ agentSessionKey: options?.agentSessionKey }),
     createPluginBuilderTool({ config: options?.config }),
     createWidgetBuilderTool(),
+    createWorkflowBuilderTool({ agentSessionKey: options?.agentSessionKey }),
     // Media generation tools
     createImageGenerationTool(),
     createVideoGenerationTool(),

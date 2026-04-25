@@ -16,6 +16,7 @@ export interface ForgeApp {
   lastOpenedAt?: string;
   openCount: number;
   pinned: boolean;
+  metadata?: Record<string, unknown>;
 }
 
 interface UseAppsReturn {
@@ -28,6 +29,7 @@ interface UseAppsReturn {
     description?: string;
     icon?: string;
     code: string;
+    metadata?: Record<string, unknown>;
   }) => Promise<ForgeApp | null>;
   updateApp: (appId: string, updates: Partial<ForgeApp>) => Promise<ForgeApp | null>;
   deleteApp: (appId: string) => Promise<boolean>;
@@ -181,6 +183,7 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
       description?: string;
       icon?: string;
       code: string;
+      metadata?: Record<string, unknown>;
     }): Promise<ForgeApp | null> => {
       try {
         const res = await fetchLocalApi(`${API_BASE}/apps`, {
@@ -241,13 +244,14 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
       setError(null);
       return true;
     } catch (err) {
-      if (isAbortLikeError(err)) {
+      let deleteErr = err;
+      if (isAbortLikeError(deleteErr)) {
         try {
           await sendXhrRequest("POST", `${API_BASE}/apps/${appId}/delete`);
           setError(null);
           return true;
         } catch (xhrErr) {
-          err = xhrErr;
+          deleteErr = xhrErr;
         }
       }
 
@@ -262,8 +266,8 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
         setApps(previousApps);
       }
 
-      console.error("[useApps] Error deleting app:", err);
-      setError(err instanceof Error ? err.message : "Failed to delete app");
+      console.error("[useApps] Error deleting app:", deleteErr);
+      setError(deleteErr instanceof Error ? deleteErr.message : "Failed to delete app");
       return false;
     }
   }, []);

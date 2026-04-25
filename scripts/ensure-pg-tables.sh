@@ -482,6 +482,29 @@ CREATE TABLE IF NOT EXISTS "workflow_step_runs" (
 	"approval_note" text,
 	"edited_output" jsonb
 );
+CREATE TABLE IF NOT EXISTS "workflow_approvals" (
+	"id" text PRIMARY KEY NOT NULL,
+	"run_id" text NOT NULL,
+	"workflow_id" text NOT NULL,
+	"node_id" text NOT NULL,
+	"workflow_name" text,
+	"node_label" text,
+	"message" text NOT NULL,
+	"side_effect_class" text,
+	"previous_output_preview" jsonb,
+	"approve_action" jsonb DEFAULT '{}'::jsonb,
+	"deny_action" jsonb DEFAULT '{}'::jsonb,
+	"timeout_at" timestamp with time zone,
+	"timeout_action" text DEFAULT 'deny',
+	"status" text DEFAULT 'pending',
+	"requested_at" timestamp with time zone DEFAULT now(),
+	"resolved_at" timestamp with time zone,
+	"resolved_by" text,
+	"resolution_note" text,
+	"notification_status" text DEFAULT 'pending',
+	"notification_error" text,
+	"metadata" jsonb DEFAULT '{}'::jsonb
+);
 CREATE TABLE IF NOT EXISTS "workflow_versions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"workflow_id" text NOT NULL,
@@ -550,6 +573,8 @@ ALTER TABLE "tasks" ADD CONSTRAINT "tasks_agent_id_agents_id_fk" FOREIGN KEY ("a
 ALTER TABLE "team_members" ADD CONSTRAINT "team_members_team_id_teams_id_fk" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "workflow_runs" ADD CONSTRAINT "workflow_runs_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "public"."workflows"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "workflow_step_runs" ADD CONSTRAINT "workflow_step_runs_run_id_workflow_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."workflow_runs"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "workflow_approvals" ADD CONSTRAINT "workflow_approvals_run_id_workflow_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."workflow_runs"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "workflow_approvals" ADD CONSTRAINT "workflow_approvals_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "public"."workflows"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "workflow_versions" ADD CONSTRAINT "workflow_versions_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "public"."workflows"("id") ON DELETE cascade ON UPDATE no action;
 CREATE INDEX "idx_agents_status" ON "agents" USING btree ("status");
 CREATE UNIQUE INDEX "idx_auth_credentials_profile" ON "auth_credentials" USING btree ("profile_id");
@@ -719,6 +744,10 @@ CREATE INDEX "idx_wfruns_started" ON "workflow_runs" USING btree ("started_at");
 CREATE INDEX "idx_stepruns_run" ON "workflow_step_runs" USING btree ("run_id");
 CREATE INDEX "idx_stepruns_status" ON "workflow_step_runs" USING btree ("status");
 CREATE UNIQUE INDEX "idx_stepruns_idempotency" ON "workflow_step_runs" USING btree ("idempotency_key");
+CREATE UNIQUE INDEX "idx_workflow_approvals_run_node" ON "workflow_approvals" USING btree ("run_id","node_id");
+CREATE INDEX "idx_workflow_approvals_run" ON "workflow_approvals" USING btree ("run_id");
+CREATE INDEX "idx_workflow_approvals_workflow" ON "workflow_approvals" USING btree ("workflow_id","requested_at");
+CREATE INDEX "idx_workflow_approvals_status" ON "workflow_approvals" USING btree ("status");
 CREATE UNIQUE INDEX "idx_workflow_versions_unique" ON "workflow_versions" USING btree ("workflow_id","version");
 CREATE INDEX "idx_workflow_versions_workflow" ON "workflow_versions" USING btree ("workflow_id");
 CREATE INDEX "idx_workflows_trigger" ON "workflows" USING btree ("trigger_type");

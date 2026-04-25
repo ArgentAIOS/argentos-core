@@ -62,6 +62,13 @@ export interface ApprovalRequest {
   requestedAt: number;
 }
 
+export interface WorkflowResumeOptions {
+  afterNodeId: string;
+  history: StepRecord[];
+  trigger?: TriggerOutput;
+  variables?: Record<string, unknown>;
+}
+
 /**
  * Action executors — real delivery functions provided by the gateway.
  * If not provided, actions log a warning and return { executed: false }.
@@ -123,10 +130,18 @@ export interface ExecuteWorkflowParams {
   /** PG sql instance for persisting approval state */
   pgSql?: PgSqlInstance | null;
   redis?: Redis | null;
+  resume?: WorkflowResumeOptions;
 }
 
 export interface WorkflowRunResult {
-  status: "completed" | "failed" | "cancelled" | "budget_exceeded" | "waiting_approval";
+  status:
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "budget_exceeded"
+    | "waiting_approval"
+    | "waiting_event"
+    | "waiting_duration";
   steps: StepRecord[];
   totalTokens: number;
   totalCostUsd: number;
@@ -206,30 +221,35 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
   });
 
   // 2. Initialize pipeline context
-  const triggerOutput: TriggerOutput = {
+  const triggerOutput: TriggerOutput = params.resume?.trigger ?? {
     triggerType: "manual",
     firedAt: Date.now(),
     payload: params.triggerPayload ?? {},
     source: params.triggerSource,
   };
+  const resumedHistory = params.resume?.history ?? [];
+  const resumedTokens = resumedHistory.reduce((sum, step) => sum + (step.tokensUsed ?? 0), 0);
+  const resumedCost = resumedHistory.reduce((sum, step) => sum + (step.costUsd ?? 0), 0);
 
   const context: PipelineContext = {
     workflowId: workflow.id,
     workflowName: workflow.name,
     runId,
     currentNodeId: "",
-    currentStepIndex: 0,
+    currentStepIndex: resumedHistory.length,
     totalSteps: executionOrder.length,
     trigger: triggerOutput,
-    history: [],
-    variables: {},
-    totalTokensUsed: 0,
-    totalCostUsd: 0,
-    budgetRemainingUsd: workflow.maxRunCostUsd,
+    history: [...resumedHistory],
+    variables: { ...(params.resume?.variables ?? {}) },
+    totalTokensUsed: resumedTokens,
+    totalCostUsd: resumedCost,
+    budgetRemainingUsd:
+      workflow.maxRunCostUsd === undefined ? undefined : workflow.maxRunCostUsd - resumedCost,
   };
 
   // 3. Execute each node
   let finalStatus: WorkflowRunResult["status"] = "completed";
+  let waitingNodeId: string | undefined;
 
   // Build skip sets for nodes inside parallel branches — they are executed
   // by executeParallelSegment when we encounter their parent parallel gate.
@@ -240,7 +260,12 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
   // Edge routing: nodes skipped because a gate selected a different branch
   const edgeRoutingSkipIds = new Set<string>();
 
-  for (let i = 0; i < executionOrder.length; i++) {
+  const resumeAfterIndex = params.resume
+    ? executionOrder.findIndex((node) => node.id === params.resume?.afterNodeId)
+    : -1;
+  const startIndex = resumeAfterIndex >= 0 ? resumeAfterIndex + 1 : 0;
+
+  for (let i = startIndex; i < executionOrder.length; i++) {
     const node = executionOrder[i];
 
     // Skip nodes owned by a parallel segment — already executed by fan-out.
@@ -414,13 +439,24 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
       if (params.pgSql) {
         try {
           const pgStatus = decision.approved ? "approved" : "denied";
+          const approvalRecordStatus = decision.reason === "Timed out" ? "timed_out" : pgStatus;
           await params.pgSql`
             UPDATE workflow_step_runs SET
               approval_status = ${pgStatus},
               approval_note = ${decision.reason ?? null},
               ended_at = NOW(),
               status = 'completed'
-            WHERE id = ${`step-${runId}-${node.id}`}
+              WHERE id = ${`step-${runId}-${node.id}`}
+          `;
+          await params.pgSql`
+            UPDATE workflow_approvals SET
+              status = ${approvalRecordStatus},
+              resolved_at = NOW(),
+              resolved_by = 'operator',
+              resolution_note = ${decision.reason ?? null}
+            WHERE run_id = ${runId}
+              AND node_id = ${node.id}
+              AND status = 'pending'
           `;
           if (decision.approved) {
             await params.pgSql`
@@ -483,21 +519,21 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
       if (params.pgSql) {
         try {
           await params.pgSql`
-            UPDATE workflow_runs SET status = 'waiting', current_node_id = ${node.id}
+            UPDATE workflow_runs SET status = 'waiting_duration', current_node_id = ${node.id}
             WHERE id = ${runId}
           `;
           await params.pgSql`
             INSERT INTO workflow_step_runs (
               id, run_id, node_id, node_kind,
-              status, started_at, metadata
+              status, started_at, input_context
             ) VALUES (
               ${`step-${runId}-${node.id}`}, ${runId}, ${node.id}, 'gate',
-              'waiting',
+              'running',
               ${new Date().toISOString()}::timestamptz,
               ${JSON.stringify({ waitResumeAt: resumeAt, durationMs })}::jsonb
             )
-            ON CONFLICT (id) DO UPDATE SET status = 'waiting',
-              metadata = ${JSON.stringify({ waitResumeAt: resumeAt, durationMs })}::jsonb
+            ON CONFLICT (id) DO UPDATE SET status = 'running',
+              input_context = ${JSON.stringify({ waitResumeAt: resumeAt, durationMs })}::jsonb
           `;
         } catch (err) {
           log.warn("failed to persist wait state", { error: String(err) });
@@ -547,39 +583,97 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
           nodeId: node.id,
           resumeAt,
         });
-        // For now, we block anyway (the workflow is async).
-        // TODO: For true async resume, return here and let a cron pick it up.
-        await new Promise<void>((resolve) => setTimeout(resolve, durationMs));
-
-        if (params.pgSql) {
-          try {
-            await params.pgSql`
-              UPDATE workflow_runs SET status = 'running', current_node_id = NULL
-              WHERE id = ${runId}
-            `;
-            await params.pgSql`
-              UPDATE workflow_step_runs SET status = 'completed', ended_at = NOW()
-              WHERE id = ${`step-${runId}-${node.id}`}
-            `;
-          } catch (err) {
-            log.warn("failed to update long wait completion in PG", { error: String(err) });
-          }
-        }
-
+        finalStatus = "waiting_duration";
+        waitingNodeId = node.id;
         stepResult = {
           items: [
             {
               json: {
                 gateType: "wait_duration",
                 durationMs,
-                waited: true,
-                resumedAt: new Date().toISOString(),
+                waiting: true,
+                resumeAt,
               },
-              text: `Wait complete — resumed after ${durationMs}ms`,
+              text: `Wait persisted until ${resumeAt}`,
             },
           ],
         };
       }
+    }
+
+    // ── Wait event gate pause ───────────────────────────────────────
+    // Persist and return. A gateway/AppForge/local event resumes later.
+    const isEventPending = stepResult.items[0]?.json?.__eventPending === true;
+    if (isEventPending) {
+      const eventJson = stepResult.items[0].json as Record<string, unknown>;
+      const eventType = typeof eventJson.eventType === "string" ? eventJson.eventType : "";
+      const eventFilter =
+        eventJson.eventFilter && typeof eventJson.eventFilter === "object"
+          ? (eventJson.eventFilter as Record<string, unknown>)
+          : {};
+      const eventTimeoutMs =
+        typeof eventJson.timeoutMs === "number" && eventJson.timeoutMs > 0
+          ? eventJson.timeoutMs
+          : undefined;
+      const waitResumeAt = eventTimeoutMs
+        ? new Date(Date.now() + eventTimeoutMs).toISOString()
+        : undefined;
+      if (params.pgSql) {
+        try {
+          await params.pgSql`
+            UPDATE workflow_runs SET status = 'waiting_event', current_node_id = ${node.id}
+            WHERE id = ${runId}
+          `;
+          await params.pgSql`
+            INSERT INTO workflow_step_runs (
+              id, run_id, node_id, node_kind,
+              status, started_at, input_context
+            ) VALUES (
+              ${`step-${runId}-${node.id}`}, ${runId}, ${node.id}, 'gate',
+              'running',
+              ${new Date().toISOString()}::timestamptz,
+              ${JSON.stringify({
+                eventType,
+                eventFilter,
+                timeoutMs: eventJson.timeoutMs,
+                timeoutAction: eventJson.timeoutAction,
+                waitResumeAt,
+              })}::jsonb
+            )
+            ON CONFLICT (id) DO UPDATE SET status = 'running',
+              input_context = ${JSON.stringify({
+                eventType,
+                eventFilter,
+                timeoutMs: eventJson.timeoutMs,
+                timeoutAction: eventJson.timeoutAction,
+                waitResumeAt,
+              })}::jsonb
+          `;
+        } catch (err) {
+          log.warn("failed to persist wait_event state", { error: String(err) });
+        }
+      }
+
+      log.info("wait_event: persisted for event resume", {
+        runId,
+        nodeId: node.id,
+        eventType,
+      });
+      finalStatus = "waiting_event";
+      waitingNodeId = node.id;
+      stepResult = {
+        items: [
+          {
+            json: {
+              gateType: "wait_event",
+              waiting: true,
+              eventType,
+              eventFilter,
+            },
+            text: `Waiting for event ${eventType || "workflow.event"}`,
+          },
+        ],
+      };
     }
 
     // ── Sub-workflow gate execution ──────────────────────────────────
@@ -602,14 +696,34 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
       if (params.pgSql) {
         try {
           const rows = await params.pgSql`
-            SELECT definition FROM workflows WHERE id = ${subWorkflowId} LIMIT 1
+            SELECT * FROM workflows WHERE id = ${subWorkflowId} LIMIT 1
           `;
-          if (rows.length > 0 && rows[0].definition) {
-            const subDef = rows[0].definition as WorkflowDefinition;
+          if (rows.length > 0) {
+            const subRow = rows[0] as Record<string, unknown>;
+            const subDef: WorkflowDefinition = {
+              id: subRow.id as string,
+              name: subRow.name as string,
+              description: subRow.description as string | undefined,
+              nodes: (Array.isArray(subRow.nodes) ? subRow.nodes : []) as WorkflowNode[],
+              edges: (Array.isArray(subRow.edges) ? subRow.edges : []) as WorkflowEdge[],
+              defaultOnError: (subRow.default_on_error as WorkflowDefinition["defaultOnError"]) ?? {
+                strategy: "fail",
+                notifyOnError: true,
+              },
+              maxRunDurationMs:
+                typeof subRow.max_run_duration_ms === "number"
+                  ? (subRow.max_run_duration_ms as number)
+                  : undefined,
+              maxRunCostUsd:
+                typeof subRow.max_run_cost_usd === "number"
+                  ? (subRow.max_run_cost_usd as number)
+                  : undefined,
+            };
 
             // Execute the sub-workflow recursively
-            const subRunResult = await executeWorkflow(subDef, {
+            const subRunResult = await executeWorkflow({
               ...params,
+              workflow: subDef,
               triggerPayload: subInput,
             });
 
@@ -737,6 +851,10 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
       break;
     }
 
+    if (finalStatus === "waiting_duration" || finalStatus === "waiting_event") {
+      break;
+    }
+
     // Abort on failed step (unless already handled)
     if (stepStatus === "failed" && finalStatus === "failed") {
       break;
@@ -749,6 +867,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
     totalTokens: context.totalTokensUsed,
     totalCostUsd: context.totalCostUsd,
     durationMs: Date.now() - runStart,
+    waitingNodeId,
   };
 
   params.onRunComplete?.(result.status, result.steps);
@@ -869,13 +988,32 @@ async function executeAgentNode(
         const cfg = sourceNode.config as Record<string, unknown>;
         if (cfg.nodeType === "tool_grant" || cfg.grantType) {
           const grantType = (cfg.grantType as string) || "connector";
-          const id = (cfg.connectorId as string) || (cfg.toolName as string) || "";
+          const source = typeof cfg.source === "string" ? cfg.source : undefined;
+          const id =
+            (cfg.connectorId as string) ||
+            (cfg.toolName as string) ||
+            (cfg.capabilityId as string) ||
+            "";
           if (id) {
+            const type =
+              grantType === "connector" || source === "connector"
+                ? "connector"
+                : grantType === "appforge_app" || source === "appforge"
+                  ? "appforge"
+                  : source === "plugin"
+                    ? "plugin"
+                    : source === "skill"
+                      ? "skill"
+                      : source === "promoted-cli"
+                        ? "promoted_cli"
+                        : "builtin";
             toolGrants.push({
-              type: grantType === "builtin_tool" ? "builtin" : "connector",
+              type,
               id,
+              name: typeof cfg.name === "string" ? cfg.name : undefined,
               credentialId: typeof cfg.credentialId === "string" ? cfg.credentialId : undefined,
               permissions: (cfg.permissions as "readonly" | "readwrite") || "readonly",
+              source: source as ToolGrantEntry["source"],
             });
             log.info("sub-port: tool grant resolved", {
               nodeId: node.id,
@@ -889,7 +1027,9 @@ async function executeAgentNode(
   }
 
   // Build TOON-encoded prompt with pipeline context
-  const prompt = buildAgentStepPrompt(node.config, context);
+  const prompt =
+    buildAgentStepPrompt(node.config, context) +
+    formatWorkflowCapabilityContext(toolGrants, memoryContext, modelOverride);
 
   // Dispatch to agent with sub-port overrides
   const result = await dispatcher.dispatch(node.config.agentId, prompt, {
@@ -903,6 +1043,34 @@ async function executeAgentNode(
   });
 
   return result;
+}
+
+function formatWorkflowCapabilityContext(
+  toolGrants: ToolGrantEntry[],
+  memoryContext: MemoryContextConfig | undefined,
+  modelOverride: ModelOverrideConfig | undefined,
+): string {
+  if (!toolGrants.length && !memoryContext && !modelOverride) {
+    return "";
+  }
+  const lines = ["", "", "workflow_capability_context:"];
+  if (modelOverride) {
+    lines.push(`- model_override: ${modelOverride.provider}/${modelOverride.model}`);
+  }
+  if (memoryContext) {
+    lines.push(
+      `- memory_context: collections=${memoryContext.collections.join(",") || "default"} maxItems=${memoryContext.maxItems ?? "default"}`,
+    );
+    if (memoryContext.searchQuery) {
+      lines.push(`- memory_query: ${memoryContext.searchQuery}`);
+    }
+  }
+  for (const grant of toolGrants) {
+    lines.push(
+      `- tool_grant: id=${grant.id} type=${grant.type} permissions=${grant.permissions} source=${grant.source ?? "runtime"}`,
+    );
+  }
+  return lines.join("\n");
 }
 
 /**
@@ -1668,17 +1836,20 @@ async function executeAction(
               : {};
           if (scope.scaffold_only === true || scope.live_backend_available === false) {
             return {
-              text: `Connector "${connectorId}" is manifest-only — no runtime harness available. This connector cannot be executed until a Python CLI harness is implemented.`,
-              json: {
-                connectorId,
-                operation,
-                status: "blocked",
-                reason: "manifest_only_no_runtime",
-              },
+              items: [
+                {
+                  text: `Connector "${connectorId}" is manifest-only — no runtime harness available. This connector cannot be executed until a Python CLI harness is implemented.`,
+                  json: {
+                    connectorId,
+                    operation,
+                    status: "blocked",
+                    reason: "manifest_only_no_runtime",
+                  },
+                },
+              ],
             };
           }
         }
-
         // 3. Resolve credential secrets from pg-secret-store
         let secretsEnv: Record<string, string> = {};
         if (credentialId) {
@@ -2071,22 +2242,23 @@ function executeGate(node: GateNode, context: PipelineContext, _edges: WorkflowE
     }
 
     case "wait_event":
-      // wait_event requires external event delivery (webhooks/streams).
-      // Log and pass through — full implementation needs event subscription system.
-      log.info("wait_event gate — not yet implemented, passing through", {
+      log.info("wait_event gate — pausing execution", {
         nodeId: node.id,
         eventType: config.eventType,
+        eventFilter: config.eventFilter,
       });
       return {
         items: [
           {
             json: {
               gateType: "wait_event",
+              __eventPending: true,
               eventType: config.eventType,
-              passThrough: true,
-              reason: "Event subscription system not yet implemented",
+              eventFilter: config.eventFilter,
+              timeoutMs: config.timeoutMs,
+              timeoutAction: config.timeoutAction,
             },
-            text: `wait_event: ${config.eventType ?? "unknown"} (pass-through — not yet implemented)`,
+            text: `Waiting for event: ${config.eventType ?? "unknown"}`,
           },
         ],
       };
@@ -2512,6 +2684,9 @@ export class CoreAgentDispatcher implements AgentDispatcher {
       modelTierHint?: ModelTier | string;
       toolsAllow?: string[];
       toolsDeny?: string[];
+      modelOverride?: ModelOverrideConfig;
+      memoryContext?: MemoryContextConfig;
+      toolGrants?: ToolGrantEntry[];
     },
   ): Promise<ItemSet> {
     const startMs = Date.now();
@@ -2531,6 +2706,9 @@ export class CoreAgentDispatcher implements AgentDispatcher {
 
       // Resolve model from tier hint when present
       const resolved = resolveModelFromTier(config.modelTierHint as ModelTier | undefined);
+      const modelBinding = config.modelOverride
+        ? { provider: config.modelOverride.provider, model: config.modelOverride.model }
+        : resolved;
 
       // Each workflow step gets an isolated session key.
       const sessionKey = `workflow:${agentId}:${Date.now()}`;
@@ -2538,13 +2716,13 @@ export class CoreAgentDispatcher implements AgentDispatcher {
 
       const result = await agentCommand(
         {
-          message: prompt,
+          message: prompt + formatWorkflowAgentDispatchContext(config),
           agentId,
           sessionKey,
           timeout: String(timeoutSeconds),
           lane: "workflow",
-          providerOverride: resolved?.provider,
-          modelOverride: resolved?.model,
+          providerOverride: modelBinding?.provider,
+          modelOverride: modelBinding?.model,
           extraSystemPrompt:
             "You are executing a step in an automated workflow pipeline. " +
             "Follow the TOON-encoded pipeline context in the message precisely. " +
@@ -2626,6 +2804,39 @@ export class CoreAgentDispatcher implements AgentDispatcher {
       throw err;
     }
   }
+}
+
+function formatWorkflowAgentDispatchContext(config: {
+  toolsAllow?: string[];
+  toolsDeny?: string[];
+  modelOverride?: ModelOverrideConfig;
+  memoryContext?: MemoryContextConfig;
+  toolGrants?: ToolGrantEntry[];
+}): string {
+  const lines: string[] = [];
+  if (config.toolsAllow?.length) {
+    lines.push(`- tools_allow: ${config.toolsAllow.join(", ")}`);
+  }
+  if (config.toolsDeny?.length) {
+    lines.push(`- tools_deny: ${config.toolsDeny.join(", ")}`);
+  }
+  if (config.modelOverride) {
+    lines.push(`- model_binding: ${config.modelOverride.provider}/${config.modelOverride.model}`);
+  }
+  if (config.memoryContext) {
+    lines.push(
+      `- memory_binding: ${config.memoryContext.collections.join(",") || "default"} query=${config.memoryContext.searchQuery ?? "default"}`,
+    );
+  }
+  for (const grant of config.toolGrants ?? []) {
+    lines.push(
+      `- capability_grant: ${grant.id} type=${grant.type} permissions=${grant.permissions} source=${grant.source ?? "runtime"}`,
+    );
+  }
+  if (!lines.length) {
+    return "";
+  }
+  return `\n\nworkflow_runtime_bindings:\n${lines.join("\n")}`;
 }
 
 // ── Parallel / Join Execution ─────────────────────────────────────

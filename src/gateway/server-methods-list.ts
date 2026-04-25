@@ -144,6 +144,8 @@ const BASE_METHODS = [
   "specforge.kickoff",
   // Intent
   "intent.simulate",
+  // Workflows
+  "workflows.emitAppForgeEvent",
 ];
 
 export function listGatewayMethods(): string[] {

@@ -31,6 +31,7 @@ export type TriggerType =
   | "appointment_booked"
   | "ticket_created"
   | "timer_elapsed"
+  | "appforge_event"
   // Connector-driven triggers (AOS Canvas Node)
   | "connector_event";
 
@@ -59,6 +60,11 @@ export interface TriggerConfig {
   // Agent event
   agentId?: string;
   eventType?: string;
+
+  // AppForge local event
+  appId?: string;
+  capabilityId?: string;
+  eventFilter?: Record<string, unknown>;
 
   // Workflow done
   sourceWorkflowId?: string;
@@ -530,7 +536,7 @@ export interface MemorySourceNodeConfig {
 /** Tool Grant — grants a connector or builtin tool to an agent step */
 export interface ToolGrantNodeConfig {
   nodeType: "tool_grant";
-  grantType: "connector" | "builtin_tool" | "tool_set";
+  grantType: "connector" | "builtin_tool" | "tool_set" | "appforge_app";
   connectorId?: string;
   toolName?: string;
   toolSetPreset?: "web_search" | "code_execution" | "file_management";
@@ -566,8 +572,10 @@ export interface MemoryContextConfig {
 
 /** Individual tool grant entry */
 export interface ToolGrantEntry {
-  type: "connector" | "builtin";
+  type: "connector" | "builtin" | "plugin" | "skill" | "promoted_cli" | "appforge";
   id: string;
+  name?: string;
   credentialId?: string;
   permissions: "readonly" | "readwrite";
+  source?: "core" | "plugin" | "connector" | "skill" | "promoted-cli" | "appforge";
 }

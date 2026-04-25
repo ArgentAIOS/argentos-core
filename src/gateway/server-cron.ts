@@ -8,6 +8,7 @@ import {
 } from "../agents/tools/audio-alert-tool.js";
 import { createSlackSignalMonitorTool } from "../agents/tools/slack-signal-monitor-tool.js";
 import { createVipEmailTool } from "../agents/tools/vip-email-tool.js";
+import { createOutboundSendDeps } from "../cli/deps.js";
 import { agentCommand } from "../commands/agent.js";
 import { loadConfig } from "../config/config.js";
 import {
@@ -462,6 +463,27 @@ export function buildGatewayCronService(params: {
           status: "error" as const,
           error: err instanceof Error ? err.message : String(err),
         };
+      }
+    },
+    resumeDueWorkflowWaits: async ({ nowMs }) => {
+      const postgres = (await import("postgres")).default;
+      const { resolvePostgresUrl } = await import("../data/storage-resolver.js");
+      const { resumeDueWorkflowWaits } = await import("../infra/workflow-execution-service.js");
+      const sql = postgres(resolvePostgresUrl(), {
+        max: 2,
+        idle_timeout: 10,
+        connect_timeout: 5,
+        prepare: false,
+      });
+      try {
+        return await resumeDueWorkflowWaits({
+          sql,
+          now: new Date(nowMs),
+          broadcast: params.broadcast,
+          outboundDeps: createOutboundSendDeps(params.deps),
+        });
+      } finally {
+        await sql.end();
       }
     },
     log: getChildLogger({ module: "cron", storePath }),

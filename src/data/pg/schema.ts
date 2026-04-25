@@ -1231,3 +1231,40 @@ export const workflowStepRuns = pgTable(
     uniqueIndex("idx_stepruns_idempotency").on(t.idempotencyKey),
   ],
 );
+
+export const workflowApprovals = pgTable(
+  "workflow_approvals",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade" }),
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    nodeId: text("node_id").notNull(),
+    workflowName: text("workflow_name"),
+    nodeLabel: text("node_label"),
+    message: text("message").notNull(),
+    sideEffectClass: text("side_effect_class"),
+    previousOutputPreview: jsonb("previous_output_preview"),
+    approveAction: jsonb("approve_action").default(sql`'{}'::jsonb`),
+    denyAction: jsonb("deny_action").default(sql`'{}'::jsonb`),
+    timeoutAt: timestamp("timeout_at", { withTimezone: true }),
+    timeoutAction: text("timeout_action").$type<"approve" | "deny">().default("deny"),
+    status: text("status").$type<WorkflowApprovalStatus>().default("pending"),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: text("resolved_by"),
+    resolutionNote: text("resolution_note"),
+    notificationStatus: text("notification_status").default("pending"),
+    notificationError: text("notification_error"),
+    metadata: jsonb("metadata").default(sql`'{}'::jsonb`),
+  },
+  (t) => [
+    uniqueIndex("idx_workflow_approvals_run_node").on(t.runId, t.nodeId),
+    index("idx_workflow_approvals_run").on(t.runId),
+    index("idx_workflow_approvals_workflow").on(t.workflowId, t.requestedAt),
+    index("idx_workflow_approvals_status").on(t.status),
+  ],
+);

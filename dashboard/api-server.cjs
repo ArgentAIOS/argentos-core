@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
 const net = require("net");
+const os = require("os");
 const { execSync, execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -47,6 +48,112 @@ function readRuntimeBuildInfo(baseDir) {
     builtAt: null,
     source: null,
   };
+}
+
+function resolveGatewayAuthToken(config = readArgentConfig()) {
+  let gwToken = config.gateway?.auth?.token || "";
+  if (!gwToken) {
+    try {
+      const plistPath = path.join(os.homedir(), "Library/LaunchAgents/ai.argent.gateway.plist");
+      if (fs.existsSync(plistPath)) {
+        const plistRaw = fs.readFileSync(plistPath, "utf-8");
+        const match = plistRaw.match(
+          /<key>ARGENT_GATEWAY_TOKEN<\/key>\s*<string>([^<]+)<\/string>/,
+        );
+        if (match?.[1]) gwToken = match[1].trim();
+      }
+    } catch {}
+  }
+  if (!gwToken) {
+    try {
+      gwToken = require("child_process")
+        .execSync("/bin/launchctl getenv ARGENT_GATEWAY_TOKEN 2>/dev/null || true", {
+          timeout: 2000,
+        })
+        .toString()
+        .trim();
+    } catch {}
+  }
+  if (!gwToken) gwToken = process.env.ARGENT_GATEWAY_TOKEN || "";
+  return gwToken;
+}
+
+function sendGatewayRpcFireAndForget(method, params, options = {}) {
+  try {
+    const WebSocket = require("ws");
+    const config = readArgentConfig();
+    const gwPort = config.gateway?.port || 18789;
+    const gwToken = resolveGatewayAuthToken(config);
+    const ws = new WebSocket(`ws://127.0.0.1:${gwPort}`);
+    const connectId = `dashboard-api-connect-${crypto.randomUUID()}`;
+    const requestId = `dashboard-api-rpc-${crypto.randomUUID()}`;
+    const timeout = setTimeout(
+      () => {
+        try {
+          ws.close();
+        } catch {}
+      },
+      Number(options.timeoutMs) || 3000,
+    );
+    if (typeof timeout.unref === "function") timeout.unref();
+
+    function cleanup() {
+      clearTimeout(timeout);
+      try {
+        ws.close();
+      } catch {}
+    }
+
+    ws.on("open", () => {
+      ws.send(
+        JSON.stringify({
+          type: "req",
+          id: connectId,
+          method: "connect",
+          params: {
+            minProtocol: 3,
+            maxProtocol: 3,
+            client: {
+              id: "dashboard-api",
+              version: "1.0.0",
+              platform: "node",
+              mode: "api",
+            },
+            caps: [],
+            auth: gwToken ? { token: gwToken } : undefined,
+          },
+        }),
+      );
+    });
+    ws.on("message", (raw) => {
+      let msg = null;
+      try {
+        msg = JSON.parse(String(raw));
+      } catch {
+        return;
+      }
+      if (msg?.type !== "res") return;
+      if (msg.id === connectId) {
+        if (!msg.ok) {
+          cleanup();
+          return;
+        }
+        ws.send(JSON.stringify({ type: "req", id: requestId, method, params }));
+        return;
+      }
+      if (msg.id === requestId) cleanup();
+    });
+    ws.on("error", (err) => {
+      if (options.logErrors) {
+        console.warn(`[GatewayRPC] ${method} failed:`, err.message);
+      }
+      cleanup();
+    });
+  } catch (err) {
+    if (options.logErrors) {
+      console.warn(`[GatewayRPC] ${method} unavailable:`, err.message);
+    }
+  }
 }
 
 // API responses should never rely on browser cache revalidation.
@@ -7091,6 +7198,82 @@ function broadcastAppsEvent(event) {
   }
 }
 
+function emitAppForgeWorkflowEvent(event) {
+  if (process.env.ARGENT_DISABLE_APPFORGE_WORKFLOW_EVENTS === "1" || process.env.API_PORT === "0") {
+    return;
+  }
+  sendGatewayRpcFireAndForget("workflows.emitAppForgeEvent", {
+    emittedAt: new Date().toISOString(),
+    ...event,
+    payload: {
+      ...(event.payload && typeof event.payload === "object" ? event.payload : {}),
+      source: "dashboard-api",
+    },
+  });
+}
+
+function appForgeRecordPayload(app, action) {
+  return {
+    eventType: `forge.record.${action}`,
+    appId: app.id,
+    tableId: "dashboard_apps",
+    recordId: app.id,
+    payload: {
+      app: {
+        id: app.id,
+        name: app.name,
+        description: app.description,
+        creator: app.creator,
+        version: app.version,
+        metadata: app.metadata,
+      },
+    },
+  };
+}
+
+function appForgeRuntimeEventPayload(app, eventType, body = {}, extraPayload = {}) {
+  const payload = body && typeof body.payload === "object" && body.payload ? body.payload : {};
+  return {
+    ...body,
+    eventType,
+    appId: app.id,
+    capabilityId:
+      typeof body.capabilityId === "string" && body.capabilityId.trim()
+        ? body.capabilityId.trim()
+        : undefined,
+    workflowRunId:
+      typeof body.workflowRunId === "string" && body.workflowRunId.trim()
+        ? body.workflowRunId.trim()
+        : typeof body.runId === "string" && body.runId.trim()
+          ? body.runId.trim()
+          : undefined,
+    nodeId: typeof body.nodeId === "string" && body.nodeId.trim() ? body.nodeId.trim() : undefined,
+    reviewId:
+      typeof body.reviewId === "string" && body.reviewId.trim() ? body.reviewId.trim() : undefined,
+    decision:
+      typeof body.decision === "string" && body.decision.trim() ? body.decision.trim() : undefined,
+    payload: {
+      ...payload,
+      ...extraPayload,
+      app: { id: app.id, name: app.name, metadata: app.metadata },
+    },
+  };
+}
+
+async function emitAppForgeRuntimeEvent(req, res, eventType, extraPayload = {}) {
+  try {
+    const app = await appsDb.getApp(req.params.id);
+    if (!app) {
+      return res.status(404).json({ error: "App not found" });
+    }
+    emitAppForgeWorkflowEvent(appForgeRuntimeEventPayload(app, eventType, req.body, extraPayload));
+    res.status(202).json({ ok: true, eventType, appId: app.id });
+  } catch (err) {
+    console.error(`Error emitting ${eventType}:`, err);
+    res.status(500).json({ error: "Failed to emit app workflow event" });
+  }
+}
+
 // GET /api/apps/search - Search apps (must be before /:id)
 app.get("/api/apps/search", async (req, res) => {
   const { q, limit = 20 } = req.query;
@@ -7137,7 +7320,7 @@ app.get("/api/apps/:id", async (req, res) => {
 
 // POST /api/apps - Create app
 app.post("/api/apps", async (req, res) => {
-  const { name, description, icon, code, creator } = req.body;
+  const { name, description, icon, code, creator, metadata } = req.body;
 
   if (!name || !name.trim()) {
     return res.status(400).json({ error: "Name is required" });
@@ -7153,8 +7336,10 @@ app.post("/api/apps", async (req, res) => {
       icon,
       code,
       creator: creator || "ai",
+      metadata,
     });
     broadcastAppsEvent({ type: "app_created", app: { id: app.id, name: app.name } });
+    emitAppForgeWorkflowEvent(appForgeRecordPayload(app, "created"));
     res.status(201).json({ app });
   } catch (err) {
     console.error("Error creating app:", err);
@@ -7170,6 +7355,7 @@ app.patch("/api/apps/:id", async (req, res) => {
       return res.status(404).json({ error: "App not found" });
     }
     broadcastAppsEvent({ type: "app_updated", app: { id: app.id, name: app.name } });
+    emitAppForgeWorkflowEvent(appForgeRecordPayload(app, "updated"));
     res.json({ app });
   } catch (err) {
     console.error("Error updating app:", err);
@@ -7185,6 +7371,12 @@ app.delete("/api/apps/:id", async (req, res) => {
       return res.status(404).json({ error: "App not found" });
     }
     broadcastAppsEvent({ type: "app_deleted", appId: req.params.id });
+    emitAppForgeWorkflowEvent({
+      eventType: "forge.record.deleted",
+      appId: req.params.id,
+      tableId: "dashboard_apps",
+      recordId: req.params.id,
+    });
     res.json({ success: true });
   } catch (err) {
     console.error("Error deleting app:", err);
@@ -7200,11 +7392,76 @@ app.post("/api/apps/:id/delete", async (req, res) => {
       return res.status(404).json({ error: "App not found" });
     }
     broadcastAppsEvent({ type: "app_deleted", appId: req.params.id });
+    emitAppForgeWorkflowEvent({
+      eventType: "forge.record.deleted",
+      appId: req.params.id,
+      tableId: "dashboard_apps",
+      recordId: req.params.id,
+    });
     res.json({ success: true });
   } catch (err) {
     console.error("Error deleting app:", err);
     res.status(500).json({ error: "Failed to delete app" });
   }
+});
+
+// POST /api/apps/:id/workflow-event - Emit an AppForge workflow event
+app.post("/api/apps/:id/workflow-event", async (req, res) => {
+  try {
+    const app = await appsDb.getApp(req.params.id);
+    if (!app) {
+      return res.status(404).json({ error: "App not found" });
+    }
+    const eventType = String(req.body?.eventType || req.body?.type || "").trim();
+    if (!eventType) {
+      return res.status(400).json({ error: "eventType is required" });
+    }
+    emitAppForgeWorkflowEvent({
+      ...req.body,
+      eventType,
+      appId: app.id,
+      payload: {
+        ...(req.body?.payload && typeof req.body.payload === "object" ? req.body.payload : {}),
+        app: { id: app.id, name: app.name, metadata: app.metadata },
+      },
+    });
+    res.status(202).json({ ok: true });
+  } catch (err) {
+    console.error("Error emitting app workflow event:", err);
+    res.status(500).json({ error: "Failed to emit app workflow event" });
+  }
+});
+
+// POST /api/apps/:id/reviews/request - Emit a review requested AppForge event
+app.post("/api/apps/:id/reviews/request", async (req, res) => {
+  await emitAppForgeRuntimeEvent(req, res, "forge.review.requested", {
+    reviewState: "requested",
+  });
+});
+
+// POST /api/apps/:id/reviews/complete - Emit a review completed AppForge event
+app.post("/api/apps/:id/reviews/complete", async (req, res) => {
+  await emitAppForgeRuntimeEvent(req, res, "forge.review.completed", {
+    reviewState: "completed",
+  });
+});
+
+// POST /api/apps/:id/capabilities/:capabilityId/complete - Emit a capability completed event
+app.post("/api/apps/:id/capabilities/:capabilityId/complete", async (req, res) => {
+  await emitAppForgeRuntimeEvent(
+    {
+      params: req.params,
+      body: {
+        ...req.body,
+        capabilityId: req.body?.capabilityId || req.params.capabilityId,
+      },
+    },
+    res,
+    "forge.capability.completed",
+    {
+      capabilityState: "completed",
+    },
+  );
 });
 
 // POST /api/apps/:id/open - Record open

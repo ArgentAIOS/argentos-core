@@ -6,7 +6,7 @@
  * and merge strategies (via parallel segments).
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type {
   TriggerNode,
   AgentNode,
@@ -16,7 +16,6 @@ import type {
   WorkflowEdge,
   WorkflowDefinition,
   AgentDispatcher,
-  ItemSet,
 } from "./workflow-types.js";
 
 // Mock redis-client to avoid real Redis connections in tests
@@ -307,7 +306,9 @@ describe("executeWorkflow", () => {
     let callCount = 0;
     const failingDispatcher = makeMockDispatcher(async () => {
       callCount++;
-      if (callCount < 3) throw new Error("temporary failure");
+      if (callCount < 3) {
+        throw new Error("temporary failure");
+      }
       return { items: [{ json: {}, text: "success after retry" }] };
     });
 
@@ -419,13 +420,87 @@ describe("executeWorkflow", () => {
     expect(capturedPrompt).toContain("PIPELINE_CONTEXT");
     expect(capturedPrompt).toContain("Worker");
   });
+
+  it("resumes after an approved gate without rerunning prior steps", async () => {
+    const trigger = makeTrigger();
+    const approval: GateNode = {
+      kind: "gate",
+      id: "approval-1",
+      label: "Approve Send",
+      config: {
+        gateType: "approval",
+        approvers: ["operator"],
+        channels: ["dashboard"],
+        message: "Approve send?",
+        showPreviousOutput: true,
+        allowEdit: false,
+        timeoutAction: "deny",
+      },
+    };
+    const agent = makeAgent("agent-1", "Worker");
+    const output = makeOutput();
+    const dispatch = vi.fn(async () => ({
+      items: [{ json: { resumed: true }, text: "resumed agent step" }],
+    }));
+
+    const workflow = makeWorkflow(
+      [trigger, approval, agent, output],
+      [edge(trigger.id, approval.id), edge(approval.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-resume-approval",
+      dispatcher: makeMockDispatcher(dispatch),
+      resume: {
+        afterNodeId: approval.id,
+        history: [
+          {
+            nodeId: trigger.id,
+            nodeKind: "trigger",
+            nodeLabel: trigger.id,
+            stepIndex: 0,
+            status: "completed",
+            durationMs: 1,
+            output: { items: [{ json: { triggerType: "manual" }, text: "triggered" }] },
+            startedAt: 1,
+            endedAt: 2,
+          },
+          {
+            nodeId: approval.id,
+            nodeKind: "gate",
+            nodeLabel: approval.label,
+            stepIndex: 1,
+            status: "completed",
+            durationMs: 1,
+            output: { items: [{ json: { approved: true }, text: "approved" }] },
+            startedAt: 2,
+            endedAt: 3,
+          },
+        ],
+        trigger: {
+          triggerType: "manual",
+          firedAt: 1,
+          payload: { source: "test" },
+          source: "resume-test",
+        },
+      },
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.steps.map((step) => step.nodeId)).toEqual([
+      trigger.id,
+      approval.id,
+      agent.id,
+      output.id,
+    ]);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ── Condition Evaluation (via gate execution) ─────────────────────
 
 describe("condition evaluation via gates", () => {
-  const mockDispatcher = makeMockDispatcher();
-
   it("evaluates equals condition from previous step output", async () => {
     const trigger = makeTrigger();
 
@@ -675,6 +750,43 @@ describe("condition evaluation via gates", () => {
     const gateStep = result.steps.find((s) => s.nodeKind === "gate");
     expect(gateStep!.output.items[0].json.result).toBe(true);
   });
+
+  it("persists wait_event gates and returns waiting_event", async () => {
+    const trigger = makeTrigger();
+    const gate: GateNode = {
+      kind: "gate",
+      id: "wait-event-1",
+      label: "Wait For AppForge Approval",
+      config: {
+        gateType: "wait_event",
+        eventType: "app.asset.approved",
+        eventFilter: { appId: "app-1", capabilityId: "campaign_review" },
+        timeoutAction: "fail",
+      },
+    };
+    const output = makeOutput();
+    const pgSql = vi.fn(async () => []);
+
+    const result = await executeWorkflow({
+      workflow: makeWorkflow(
+        [trigger, gate, output],
+        [edge(trigger.id, gate.id), edge(gate.id, output.id)],
+      ),
+      runId: "run-wait-event",
+      dispatcher: makeMockDispatcher(),
+      pgSql,
+    });
+
+    expect(result.status).toBe("waiting_event");
+    expect(result.waitingNodeId).toBe(gate.id);
+    expect(result.steps.at(-1)?.output.items[0].json).toMatchObject({
+      gateType: "wait_event",
+      waiting: true,
+      eventType: "app.asset.approved",
+      eventFilter: { appId: "app-1", capabilityId: "campaign_review" },
+    });
+    expect(pgSql.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
 });
 
 // ── Merge Strategies (via parallel gate segments) ─────────────────
@@ -718,9 +830,7 @@ describe("merge strategies via parallel segments", () => {
       edge(joinGate.id, output.id),
     ];
 
-    let callIdx = 0;
     const branchDispatcher = makeMockDispatcher(async (agentId) => {
-      callIdx++;
       return {
         items: [
           {

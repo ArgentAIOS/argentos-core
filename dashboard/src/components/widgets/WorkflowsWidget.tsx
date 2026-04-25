@@ -66,7 +66,8 @@ type TriggerTypeValue =
   | "task_completed"
   | "workflow_done"
   | "agent_event"
-  | "timer_elapsed";
+  | "timer_elapsed"
+  | "appforge_event";
 
 interface TriggerNodeData {
   label: string;
@@ -168,29 +169,117 @@ interface WorkflowDefinition {
   edges: Edge[];
   createdAt: string;
   updatedAt: string;
+  definition?: unknown;
+  canvasLayout?: { nodes?: Node[]; edges?: Edge[]; [key: string]: unknown };
+  validation?: { ok: boolean; issues?: unknown[] };
+}
+
+interface WorkflowValidationIssue {
+  severity: "error" | "warning";
+  code?: string;
+  message: string;
+  nodeId?: string;
+  edgeId?: string;
+}
+
+function normalizeValidationIssue(raw: unknown): WorkflowValidationIssue | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const issue = raw as Record<string, unknown>;
+  const severity = issue.severity === "warning" ? "warning" : "error";
+  const message = typeof issue.message === "string" ? issue.message : "";
+  if (!message) {
+    return null;
+  }
+  return {
+    severity,
+    code: typeof issue.code === "string" ? issue.code : undefined,
+    message,
+    nodeId: typeof issue.nodeId === "string" ? issue.nodeId : undefined,
+    edgeId: typeof issue.edgeId === "string" ? issue.edgeId : undefined,
+  };
+}
+
+function normalizeValidationIssues(raw: unknown): WorkflowValidationIssue[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((issue) => normalizeValidationIssue(issue))
+    .filter((issue): issue is WorkflowValidationIssue => Boolean(issue));
 }
 
 // ── Run History Types ────────────────────────────────────────────────
 
-type RunStatus = "running" | "completed" | "failed" | "cancelled" | "waiting_approval";
+type RunStatus =
+  | "created"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "waiting_approval"
+  | "waiting_event"
+  | "waiting_duration";
 type StepStatus = "pending" | "running" | "completed" | "failed" | "skipped";
 
 interface RunStepRecord {
+  id?: string;
   nodeId: string;
   nodeName: string;
+  nodeKind?: string;
   status: StepStatus;
+  startedAt?: string;
+  endedAt?: string;
   durationMs: number;
   error?: string;
+  tokensUsed?: number;
+  costUsd?: number;
+  retryCount?: number;
+  approvalStatus?: string;
+  approvalNote?: string;
+  input?: unknown;
+  output?: unknown;
 }
 
 interface RunRecord {
+  id?: string;
   runId: string;
   workflowId: string;
+  workflowName?: string;
+  workflowVersion?: number;
   status: RunStatus;
+  triggerType?: string;
+  triggerPayload?: unknown;
+  currentNodeId?: string;
   startedAt: string;
+  endedAt?: string;
   finishedAt?: string;
   durationMs: number;
+  totalTokensUsed?: number;
+  totalCostUsd?: number;
+  error?: string;
   steps: RunStepRecord[];
+  approvals?: Array<{
+    approvalId: string;
+    nodeId: string;
+    nodeLabel?: string;
+    message: string;
+    status: string;
+    sideEffectClass?: string;
+    requestedAt?: string;
+    resolvedAt?: string;
+    notificationStatus?: string;
+  }>;
+  timeline?: Array<{
+    at?: string;
+    type?: string;
+    nodeId?: string;
+    label?: string;
+    status?: string;
+    error?: string;
+    note?: string;
+  }>;
 }
 
 // ── Node Execution State (for highlighting) ─────────────────────────
@@ -279,6 +368,192 @@ function formatDuration(ms: number): string {
   return rem > 0 ? `${m}m ${rem}s` : `${m}m`;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function normalizeRunStepRecord(raw: unknown): RunStepRecord | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  const nodeId =
+    typeof raw.nodeId === "string"
+      ? raw.nodeId
+      : typeof raw.node_id === "string"
+        ? raw.node_id
+        : undefined;
+  if (!nodeId) {
+    return null;
+  }
+  const durationMs =
+    typeof raw.durationMs === "number"
+      ? raw.durationMs
+      : typeof raw.duration_ms === "number"
+        ? raw.duration_ms
+        : 0;
+  return {
+    id: typeof raw.id === "string" ? raw.id : undefined,
+    nodeId,
+    nodeName:
+      typeof raw.nodeName === "string"
+        ? raw.nodeName
+        : typeof raw.node_name === "string"
+          ? raw.node_name
+          : nodeId,
+    nodeKind:
+      typeof raw.nodeKind === "string"
+        ? raw.nodeKind
+        : typeof raw.node_kind === "string"
+          ? raw.node_kind
+          : undefined,
+    status: String(raw.status ?? "pending") as StepStatus,
+    startedAt:
+      typeof raw.startedAt === "string"
+        ? raw.startedAt
+        : typeof raw.started_at === "string"
+          ? raw.started_at
+          : undefined,
+    endedAt:
+      typeof raw.endedAt === "string"
+        ? raw.endedAt
+        : typeof raw.ended_at === "string"
+          ? raw.ended_at
+          : undefined,
+    durationMs,
+    error: typeof raw.error === "string" ? raw.error : undefined,
+    tokensUsed:
+      typeof raw.tokensUsed === "number"
+        ? raw.tokensUsed
+        : typeof raw.tokens_used === "number"
+          ? raw.tokens_used
+          : undefined,
+    costUsd:
+      typeof raw.costUsd === "number"
+        ? raw.costUsd
+        : typeof raw.cost_usd === "number"
+          ? raw.cost_usd
+          : undefined,
+    retryCount:
+      typeof raw.retryCount === "number"
+        ? raw.retryCount
+        : typeof raw.retry_count === "number"
+          ? raw.retry_count
+          : undefined,
+    approvalStatus:
+      typeof raw.approvalStatus === "string"
+        ? raw.approvalStatus
+        : typeof raw.approval_status === "string"
+          ? raw.approval_status
+          : undefined,
+    approvalNote:
+      typeof raw.approvalNote === "string"
+        ? raw.approvalNote
+        : typeof raw.approval_note === "string"
+          ? raw.approval_note
+          : undefined,
+    input: raw.input ?? raw.input_context,
+    output: raw.output ?? raw.output_items,
+  };
+}
+
+function normalizeRunRecord(raw: unknown): RunRecord | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  const runId =
+    typeof raw.runId === "string" ? raw.runId : typeof raw.id === "string" ? raw.id : undefined;
+  const workflowId =
+    typeof raw.workflowId === "string"
+      ? raw.workflowId
+      : typeof raw.workflow_id === "string"
+        ? raw.workflow_id
+        : undefined;
+  if (!runId || !workflowId) {
+    return null;
+  }
+  return {
+    id: typeof raw.id === "string" ? raw.id : runId,
+    runId,
+    workflowId,
+    workflowName:
+      typeof raw.workflowName === "string"
+        ? raw.workflowName
+        : typeof raw.workflow_name === "string"
+          ? raw.workflow_name
+          : undefined,
+    workflowVersion:
+      typeof raw.workflowVersion === "number"
+        ? raw.workflowVersion
+        : typeof raw.workflow_version === "number"
+          ? raw.workflow_version
+          : undefined,
+    status: String(raw.status ?? "created") as RunStatus,
+    triggerType:
+      typeof raw.triggerType === "string"
+        ? raw.triggerType
+        : typeof raw.trigger_type === "string"
+          ? raw.trigger_type
+          : undefined,
+    triggerPayload: raw.triggerPayload ?? raw.trigger_payload,
+    currentNodeId:
+      typeof raw.currentNodeId === "string"
+        ? raw.currentNodeId
+        : typeof raw.current_node_id === "string"
+          ? raw.current_node_id
+          : undefined,
+    startedAt:
+      typeof raw.startedAt === "string"
+        ? raw.startedAt
+        : typeof raw.started_at === "string"
+          ? raw.started_at
+          : "",
+    endedAt:
+      typeof raw.endedAt === "string"
+        ? raw.endedAt
+        : typeof raw.ended_at === "string"
+          ? raw.ended_at
+          : undefined,
+    finishedAt:
+      typeof raw.finishedAt === "string"
+        ? raw.finishedAt
+        : typeof raw.ended_at === "string"
+          ? raw.ended_at
+          : undefined,
+    durationMs:
+      typeof raw.durationMs === "number"
+        ? raw.durationMs
+        : typeof raw.duration_ms === "number"
+          ? raw.duration_ms
+          : 0,
+    totalTokensUsed:
+      typeof raw.totalTokensUsed === "number"
+        ? raw.totalTokensUsed
+        : typeof raw.total_tokens_used === "number"
+          ? raw.total_tokens_used
+          : undefined,
+    totalCostUsd:
+      typeof raw.totalCostUsd === "number"
+        ? raw.totalCostUsd
+        : typeof raw.total_cost_usd === "number"
+          ? raw.total_cost_usd
+          : undefined,
+    error: typeof raw.error === "string" ? raw.error : undefined,
+    steps: Array.isArray(raw.steps)
+      ? raw.steps
+          .map((step) => normalizeRunStepRecord(step))
+          .filter((step): step is RunStepRecord => Boolean(step))
+      : [],
+    approvals: Array.isArray(raw.approvals) ? (raw.approvals as RunRecord["approvals"]) : undefined,
+    timeline: Array.isArray(raw.timeline) ? (raw.timeline as RunRecord["timeline"]) : undefined,
+  };
+}
+
+function normalizeRunRecords(raw: unknown[] | undefined): RunRecord[] {
+  return (raw ?? [])
+    .map((run) => normalizeRunRecord(run))
+    .filter((run): run is RunRecord => Boolean(run));
+}
+
 // ── Exec State Helpers ──────────────────────────────────────────────
 
 function execStateClass(state?: NodeExecState): string {
@@ -287,6 +562,12 @@ function execStateClass(state?: NodeExecState): string {
   if (state === "completed") return "wf-node-completed";
   if (state === "failed") return "wf-node-failed";
   return "";
+}
+
+function stripExecState(data: Node["data"] | undefined): Record<string, unknown> {
+  const cleanData = { ...((data ?? {}) as Record<string, unknown>) };
+  delete cleanData.execState;
+  return cleanData;
 }
 
 function ExecOverlay({ state }: { state?: NodeExecState }) {
@@ -348,7 +629,7 @@ function HelpTip({ text }: { text: string }) {
 
 // ── Tool Picker Component ───────────────────────────────────────────
 
-const AVAILABLE_TOOLS = [
+const AVAILABLE_TOOLS: readonly ToolPaletteEntry[] = [
   { id: "web_search", name: "Web Search", desc: "Search the internet", category: "Research" },
   {
     id: "web_fetch",
@@ -417,19 +698,124 @@ const AVAILABLE_TOOLS = [
   { id: "browser", name: "Browse Web", desc: "Control a web browser", category: "System" },
 ] as const;
 
+interface ToolPaletteEntry {
+  id: string;
+  name: string;
+  desc?: string;
+  category: string;
+  source?: "core" | "plugin" | "connector" | "skill" | "promoted-cli" | "appforge";
+}
+
+type ToolCapabilitySource = NonNullable<ToolPaletteEntry["source"]>;
+
+interface AppForgeEventOption {
+  value: string;
+  label: string;
+  appId?: string;
+  capabilityId?: string;
+}
+
+function toolCapabilitySourceLabel(source?: ToolPaletteEntry["source"]): string {
+  switch (source) {
+    case "connector":
+      return "Connector";
+    case "plugin":
+      return "Plugin";
+    case "skill":
+      return "Skill";
+    case "promoted-cli":
+      return "Custom Tool";
+    case "appforge":
+      return "AppForge";
+    case "core":
+      return "Built-in";
+    default:
+      return "Primitive";
+  }
+}
+
+function toolCapabilitySourceClass(source?: ToolPaletteEntry["source"]): string {
+  switch (source) {
+    case "connector":
+      return "border-cyan-400/30 bg-cyan-400/10 text-cyan-200";
+    case "plugin":
+      return "border-violet-400/30 bg-violet-400/10 text-violet-200";
+    case "skill":
+      return "border-emerald-400/30 bg-emerald-400/10 text-emerald-200";
+    case "promoted-cli":
+      return "border-amber-400/30 bg-amber-400/10 text-amber-200";
+    case "appforge":
+      return "border-fuchsia-400/30 bg-fuchsia-400/10 text-fuchsia-200";
+    case "core":
+      return "border-sky-400/30 bg-sky-400/10 text-sky-200";
+    default:
+      return "border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 text-[hsl(var(--muted-foreground))]";
+  }
+}
+
+function CapabilitySourceBadge({
+  source,
+  className = "",
+}: {
+  source?: ToolPaletteEntry["source"];
+  className?: string;
+}) {
+  return (
+    <span
+      className={`shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none tracking-wide ${toolCapabilitySourceClass(
+        source,
+      )} ${className}`}
+    >
+      {toolCapabilitySourceLabel(source)}
+    </span>
+  );
+}
+
+function groupToolsBySource(tools: ToolPaletteEntry[]): Array<{
+  source?: ToolPaletteEntry["source"];
+  label: string;
+  tools: ToolPaletteEntry[];
+}> {
+  const order: Array<ToolPaletteEntry["source"]> = [
+    "appforge",
+    "promoted-cli",
+    "skill",
+    "plugin",
+    "core",
+    undefined,
+  ];
+  const grouped = new Map<ToolPaletteEntry["source"], ToolPaletteEntry[]>();
+  for (const tool of tools) {
+    const source = tool.source ?? undefined;
+    const bucket = grouped.get(source) ?? [];
+    bucket.push(tool);
+    grouped.set(source, bucket);
+  }
+  return order
+    .filter((source) => grouped.has(source))
+    .map((source) => ({
+      source,
+      label: toolCapabilitySourceLabel(source),
+      tools: [...(grouped.get(source) ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+    }));
+}
+
 function ToolPicker({
   selected,
   onChange,
   mode,
+  tools,
 }: {
   selected: string[];
   onChange: (tools: string[]) => void;
   mode: "allow" | "deny";
+  tools?: ToolPaletteEntry[];
 }) {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
+  const palette = tools && tools.length > 0 ? tools : AVAILABLE_TOOLS;
 
-  const filtered = AVAILABLE_TOOLS.filter(
+  const filtered = palette.filter(
     (t) =>
       !selected.includes(t.id) &&
       (t.name.toLowerCase().includes(search.toLowerCase()) || t.id.includes(search.toLowerCase())),
@@ -452,13 +838,14 @@ function ToolPicker({
       {selected.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {selected.map((id) => {
-            const tool = AVAILABLE_TOOLS.find((t) => t.id === id);
+            const tool = palette.find((t) => t.id === id);
             return (
               <span
                 key={id}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))] border border-[hsl(var(--primary))]/30"
               >
                 {tool?.name ?? id}
+                <CapabilitySourceBadge source={tool?.source} className="ml-0.5" />
                 <button
                   onClick={() => onChange(selected.filter((s) => s !== id))}
                   className="hover:text-red-400"
@@ -496,8 +883,13 @@ function ToolPicker({
               }}
               className="w-full text-left px-3 py-2 text-xs hover:bg-[hsl(var(--muted))] transition-colors"
             >
-              <span className="font-medium text-[hsl(var(--foreground))]">{t.name}</span>
-              <span className="text-[hsl(var(--muted-foreground))] ml-2">{t.desc}</span>
+              <span className="flex items-center justify-between gap-2">
+                <span className="min-w-0">
+                  <span className="font-medium text-[hsl(var(--foreground))]">{t.name}</span>
+                  <span className="text-[hsl(var(--muted-foreground))] ml-2">{t.desc}</span>
+                </span>
+                <CapabilitySourceBadge source={t.source} />
+              </span>
             </button>
           ))}
         </div>
@@ -524,6 +916,7 @@ const TRIGGER_TYPES: Array<{ value: TriggerTypeValue; label: string; icon: strin
   { value: "task_completed", label: "Task Completed", icon: "\u2705" },
   { value: "workflow_done", label: "Another Workflow Finished", icon: "\uD83D\uDD17" },
   { value: "agent_event", label: "Agent Had an Insight", icon: "\uD83D\uDCA1" },
+  { value: "appforge_event", label: "AppForge Event", icon: "\uD83E\uDDE9" },
   { value: "timer_elapsed", label: "Time Since Last Event", icon: "\u23F3" },
 ];
 
@@ -803,7 +1196,7 @@ function AgentStepNode({ data, selected }: NodeProps<Node<AgentStepNodeData>>) {
 
 // ── Sub-Port Node Types (Model / Memory / Tool) ──────────────────
 
-interface SubPortNodeData {
+interface SubPortNodeData extends Record<string, unknown> {
   subPortType: "model_provider" | "memory_source" | "tool_grant";
   label: string;
   config: Record<string, unknown>;
@@ -1371,11 +1764,13 @@ function TriggerForm({
   onUpdate,
   nodeId,
   gateway,
+  appForgeEventOptions,
 }: {
   data: TriggerNodeData;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
   nodeId: string;
   gateway: ReturnType<typeof useGateway>;
+  appForgeEventOptions: AppForgeEventOption[];
 }) {
   const update = (field: string, value: unknown) => {
     onUpdate(nodeId, { ...data, [field]: value });
@@ -1702,6 +2097,59 @@ function TriggerForm({
         </div>
       )}
 
+      {data.triggerType === "appforge_event" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>App ID</label>
+            <input
+              className={DOCK_INPUT}
+              value={((data as Record<string, unknown>).appId as string) || ""}
+              onChange={(e) => update("appId", e.target.value)}
+              placeholder="app_..."
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Capability ID</label>
+            <input
+              className={DOCK_INPUT}
+              value={((data as Record<string, unknown>).capabilityId as string) || ""}
+              onChange={(e) => update("capabilityId", e.target.value)}
+              placeholder="Optional"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Event Type</label>
+            <input
+              className={DOCK_INPUT}
+              list="workflow-appforge-trigger-events"
+              value={((data as Record<string, unknown>).eventType as string) || ""}
+              onChange={(e) => update("eventType", e.target.value)}
+              placeholder="forge.review.completed"
+            />
+            <datalist id="workflow-appforge-trigger-events">
+              {appForgeEventOptions.map((event) => (
+                <option
+                  key={`${event.value}:${event.appId ?? ""}:${event.capabilityId ?? ""}`}
+                  value={event.value}
+                >
+                  {event.label}
+                </option>
+              ))}
+            </datalist>
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Event Filter (JSON)</label>
+            <textarea
+              className={DOCK_INPUT + " font-mono text-[11px] resize-y"}
+              rows={3}
+              value={((data as Record<string, unknown>).eventFilterJson as string) || ""}
+              onChange={(e) => update("eventFilterJson", e.target.value)}
+              placeholder='{"decision":"approved"}'
+            />
+          </div>
+        </>
+      )}
+
       {data.triggerType === "timer_elapsed" && (
         <div className="space-y-1.5">
           <label className={DOCK_LABEL}>Time Since Last Event (minutes)</label>
@@ -1720,7 +2168,8 @@ function TriggerForm({
       {resolvedConnectorId &&
         data.triggerType !== "schedule" &&
         data.triggerType !== "manual" &&
-        data.triggerType !== "webhook" && (
+        data.triggerType !== "webhook" &&
+        data.triggerType !== "appforge_event" && (
           <div className="space-y-1.5">
             <CredentialSelector
               connectorId={resolvedConnectorId}
@@ -1901,12 +2350,14 @@ function TriggerForm({
 function AgentForm({
   data,
   agents,
+  availableTools,
   onUpdate,
   nodeId,
   gateway,
 }: {
   data: AgentStepNodeData;
   agents: FamilyMember[];
+  availableTools: ToolPaletteEntry[];
   onUpdate: (id: string, data: Record<string, unknown>) => void;
   nodeId: string;
   gateway: ReturnType<typeof useGateway>;
@@ -2059,12 +2510,14 @@ function AgentForm({
         selected={toolsAllow}
         onChange={(tools) => update("toolsAllow", tools)}
         mode="allow"
+        tools={availableTools}
       />
 
       <ToolPicker
         selected={toolsDeny}
         onChange={(tools) => update("toolsDeny", tools)}
         mode="deny"
+        tools={availableTools}
       />
 
       <div className="flex items-center gap-2.5">
@@ -2102,6 +2555,10 @@ function ActionForm({
     onUpdate(nodeId, { ...data, [field]: value });
   };
   const cfg = (data.config ?? {}) as Record<string, unknown>;
+  const cfgValue = (field: string, fallback: string | number = ""): string | number => {
+    const value = cfg[field];
+    return typeof value === "string" || typeof value === "number" ? value : fallback;
+  };
   const cfgUpdate = (field: string, value: unknown) => {
     update("config", { ...cfg, [field]: value });
   };
@@ -2145,7 +2602,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Channel Type</label>
             <select
               className={DOCK_INPUT}
-              value={cfg.channelType || "internal_chat"}
+              value={cfgValue("channelType", "internal_chat")}
               onChange={(e) => cfgUpdate("channelType", e.target.value)}
             >
               <option value="internal_chat">Internal Chat</option>
@@ -2173,7 +2630,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Channel ID</label>
             <input
               className={DOCK_INPUT}
-              value={cfg.channelId || ""}
+              value={cfgValue("channelId")}
               onChange={(e) => cfgUpdate("channelId", e.target.value)}
               placeholder="#channel-name or ID"
             />
@@ -2183,7 +2640,7 @@ function ActionForm({
             <textarea
               className={DOCK_INPUT + " resize-y"}
               rows={3}
-              value={cfg.template || ""}
+              value={cfgValue("template")}
               onChange={(e) => cfgUpdate("template", e.target.value)}
               placeholder="Hello {{ $json.name }}!"
             />
@@ -2197,7 +2654,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Provider</label>
             <select
               className={DOCK_INPUT}
-              value={cfg.provider || "resend"}
+              value={cfgValue("provider", "resend")}
               onChange={(e) => cfgUpdate("provider", e.target.value)}
             >
               <option value="resend">Resend</option>
@@ -2224,7 +2681,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>To</label>
             <input
               className={DOCK_INPUT}
-              value={cfg.to || ""}
+              value={cfgValue("to")}
               onChange={(e) => cfgUpdate("to", e.target.value)}
               placeholder="user@example.com"
             />
@@ -2233,7 +2690,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Subject</label>
             <input
               className={DOCK_INPUT}
-              value={cfg.subject || ""}
+              value={cfgValue("subject")}
               onChange={(e) => cfgUpdate("subject", e.target.value)}
               placeholder="Re: {{ $json.topic }}"
             />
@@ -2243,7 +2700,7 @@ function ActionForm({
             <textarea
               className={DOCK_INPUT + " resize-y"}
               rows={4}
-              value={cfg.bodyTemplate || ""}
+              value={cfgValue("bodyTemplate")}
               onChange={(e) => cfgUpdate("bodyTemplate", e.target.value)}
               placeholder="Email body (supports {{ expressions }})"
             />
@@ -2257,7 +2714,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Title</label>
             <input
               className={DOCK_INPUT}
-              value={cfg.title || ""}
+              value={cfgValue("title")}
               onChange={(e) => cfgUpdate("title", e.target.value)}
               placeholder="Follow up with {{ $json.name }}"
             />
@@ -2267,7 +2724,7 @@ function ActionForm({
             <textarea
               className={DOCK_INPUT + " resize-y"}
               rows={3}
-              value={cfg.description || ""}
+              value={cfgValue("description")}
               onChange={(e) => cfgUpdate("description", e.target.value)}
               placeholder="Task details..."
             />
@@ -2276,7 +2733,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Assignee</label>
             <input
               className={DOCK_INPUT}
-              value={cfg.assignee || ""}
+              value={cfgValue("assignee")}
               onChange={(e) => cfgUpdate("assignee", e.target.value)}
               placeholder="Agent ID or name"
             />
@@ -2285,7 +2742,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Priority</label>
             <select
               className={DOCK_INPUT}
-              value={cfg.priority || "normal"}
+              value={cfgValue("priority", "normal")}
               onChange={(e) => cfgUpdate("priority", e.target.value)}
             >
               <option value="urgent">Urgent</option>
@@ -2298,7 +2755,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Project</label>
             <input
               className={DOCK_INPUT}
-              value={cfg.project || ""}
+              value={cfgValue("project")}
               onChange={(e) => cfgUpdate("project", e.target.value)}
               placeholder="Project name"
             />
@@ -2313,7 +2770,7 @@ function ActionForm({
             <textarea
               className={DOCK_INPUT + " resize-y"}
               rows={4}
-              value={cfg.content || ""}
+              value={cfgValue("content")}
               onChange={(e) => cfgUpdate("content", e.target.value)}
               placeholder="Memory content or {{ $json.summary }}"
             />
@@ -2322,7 +2779,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Memory Type</label>
             <select
               className={DOCK_INPUT}
-              value={cfg.memoryType || "observation"}
+              value={cfgValue("memoryType", "observation")}
               onChange={(e) => cfgUpdate("memoryType", e.target.value)}
             >
               <option value="observation">Observation</option>
@@ -2336,7 +2793,7 @@ function ActionForm({
             <input
               type="number"
               className={DOCK_INPUT}
-              value={cfg.significance ?? 5}
+              value={cfgValue("significance", 5)}
               onChange={(e) => cfgUpdate("significance", Number(e.target.value))}
               min={1}
               max={10}
@@ -2351,7 +2808,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Collection ID</label>
             <input
               className={DOCK_INPUT}
-              value={cfg.collectionId || ""}
+              value={cfgValue("collectionId")}
               onChange={(e) => cfgUpdate("collectionId", e.target.value)}
               placeholder="collection-name"
             />
@@ -2361,7 +2818,7 @@ function ActionForm({
             <textarea
               className={DOCK_INPUT + " resize-y"}
               rows={4}
-              value={cfg.content || ""}
+              value={cfgValue("content")}
               onChange={(e) => cfgUpdate("content", e.target.value)}
               placeholder="Knowledge to store..."
             />
@@ -2376,7 +2833,7 @@ function ActionForm({
             <textarea
               className={DOCK_INPUT + " resize-y"}
               rows={3}
-              value={cfg.prompt || ""}
+              value={cfgValue("prompt")}
               onChange={(e) => cfgUpdate("prompt", e.target.value)}
               placeholder="A futuristic city skyline at sunset"
             />
@@ -2385,7 +2842,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Model</label>
             <select
               className={DOCK_INPUT}
-              value={cfg.model || "dall-e-3"}
+              value={cfgValue("model", "dall-e-3")}
               onChange={(e) => cfgUpdate("model", e.target.value)}
             >
               <option value="dall-e-3">DALL-E 3</option>
@@ -2396,7 +2853,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Size</label>
             <select
               className={DOCK_INPUT}
-              value={cfg.size || "1024x1024"}
+              value={cfgValue("size", "1024x1024")}
               onChange={(e) => cfgUpdate("size", e.target.value)}
             >
               <option value="1024x1024">1024 x 1024</option>
@@ -2408,7 +2865,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Style</label>
             <select
               className={DOCK_INPUT}
-              value={cfg.style || "vivid"}
+              value={cfgValue("style", "vivid")}
               onChange={(e) => cfgUpdate("style", e.target.value)}
             >
               <option value="vivid">Vivid</option>
@@ -2419,7 +2876,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Quality</label>
             <select
               className={DOCK_INPUT}
-              value={cfg.quality || "standard"}
+              value={cfgValue("quality", "standard")}
               onChange={(e) => cfgUpdate("quality", e.target.value)}
             >
               <option value="standard">Standard</option>
@@ -2436,7 +2893,7 @@ function ActionForm({
             <textarea
               className={DOCK_INPUT + " resize-y"}
               rows={3}
-              value={cfg.text || ""}
+              value={cfgValue("text")}
               onChange={(e) => cfgUpdate("text", e.target.value)}
               placeholder="Text to speak..."
             />
@@ -2445,7 +2902,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Voice</label>
             <input
               className={DOCK_INPUT}
-              value={cfg.voice || ""}
+              value={cfgValue("voice")}
               onChange={(e) => cfgUpdate("voice", e.target.value)}
               placeholder="Jessica, Lily, alloy..."
             />
@@ -2454,7 +2911,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Output Format</label>
             <select
               className={DOCK_INPUT}
-              value={cfg.format || "mp3"}
+              value={cfgValue("format", "mp3")}
               onChange={(e) => cfgUpdate("format", e.target.value)}
             >
               <option value="mp3">MP3</option>
@@ -2471,7 +2928,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Title</label>
             <input
               className={DOCK_INPUT}
-              value={cfg.title || ""}
+              value={cfgValue("title")}
               onChange={(e) => cfgUpdate("title", e.target.value)}
               placeholder="Document title"
             />
@@ -2481,7 +2938,7 @@ function ActionForm({
             <textarea
               className={DOCK_INPUT + " resize-y"}
               rows={4}
-              value={cfg.content || ""}
+              value={cfgValue("content")}
               onChange={(e) => cfgUpdate("content", e.target.value)}
               placeholder="Document content or {{ $json.report }}"
             />
@@ -2490,7 +2947,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Format</label>
             <select
               className={DOCK_INPUT}
-              value={cfg.format || "markdown"}
+              value={cfgValue("format", "markdown")}
               onChange={(e) => cfgUpdate("format", e.target.value)}
             >
               <option value="markdown">Markdown</option>
@@ -2507,7 +2964,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Method</label>
             <select
               className={DOCK_INPUT}
-              value={cfg.method || "POST"}
+              value={cfgValue("method", "POST")}
               onChange={(e) => cfgUpdate("method", e.target.value)}
             >
               <option value="GET">GET</option>
@@ -2521,7 +2978,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>URL</label>
             <input
               className={DOCK_INPUT}
-              value={cfg.url || cfg.endpoint || ""}
+              value={cfgValue("url", cfgValue("endpoint"))}
               onChange={(e) =>
                 cfgUpdate(data.actionType === "webhook_call" ? "url" : "endpoint", e.target.value)
               }
@@ -2533,7 +2990,7 @@ function ActionForm({
             <textarea
               className={DOCK_INPUT + " font-mono text-[11px] resize-y"}
               rows={3}
-              value={cfg.headers || ""}
+              value={cfgValue("headers")}
               onChange={(e) => cfgUpdate("headers", e.target.value)}
               placeholder='{"Content-Type": "application/json"}'
             />
@@ -2543,7 +3000,7 @@ function ActionForm({
             <textarea
               className={DOCK_INPUT + " font-mono text-[11px] resize-y"}
               rows={4}
-              value={cfg.body || ""}
+              value={cfgValue("body")}
               onChange={(e) => cfgUpdate("body", e.target.value)}
               placeholder='{"key": "{{ $json.value }}"}'
             />
@@ -2552,7 +3009,7 @@ function ActionForm({
             <label className={DOCK_LABEL}>Auth Type</label>
             <select
               className={DOCK_INPUT}
-              value={cfg.authType || "none"}
+              value={cfgValue("authType", "none")}
               onChange={(e) => cfgUpdate("authType", e.target.value)}
             >
               <option value="none">None</option>
@@ -2568,7 +3025,7 @@ function ActionForm({
               </label>
               <input
                 className={DOCK_INPUT}
-                value={cfg.authValue || ""}
+                value={cfgValue("authValue")}
                 onChange={(e) => cfgUpdate("authValue", e.target.value)}
                 placeholder={cfg.authType === "basic" ? "user:password" : "sk-..."}
               />
@@ -2584,7 +3041,7 @@ function ActionForm({
             <textarea
               className={DOCK_INPUT + " font-mono text-[11px] resize-y"}
               rows={3}
-              value={cfg.command || ""}
+              value={cfgValue("command")}
               onChange={(e) => cfgUpdate("command", e.target.value)}
               placeholder="node script.js"
             />
@@ -2628,10 +3085,12 @@ function GateForm({
   data,
   onUpdate,
   nodeId,
+  appForgeEventOptions,
 }: {
   data: GateNodeData;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
   nodeId: string;
+  appForgeEventOptions: AppForgeEventOption[];
 }) {
   const update = (field: string, value: unknown) => {
     onUpdate(nodeId, { ...data, [field]: value });
@@ -2760,6 +3219,69 @@ function GateForm({
         </div>
       )}
 
+      {/* Wait event config */}
+      {data.gateType === "wait_event" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Event Type</label>
+            <input
+              className={DOCK_INPUT}
+              list="workflow-appforge-wait-events"
+              value={((data as Record<string, unknown>).eventType as string) || "workflow.event"}
+              onChange={(e) => update("eventType", e.target.value)}
+              placeholder="appforge.review.completed"
+            />
+            <datalist id="workflow-appforge-wait-events">
+              {appForgeEventOptions.map((event) => (
+                <option
+                  key={`${event.value}:${event.appId ?? ""}:${event.capabilityId ?? ""}`}
+                  value={event.value}
+                >
+                  {event.label}
+                </option>
+              ))}
+            </datalist>
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Event Filter (JSON)</label>
+            <textarea
+              className={DOCK_INPUT + " font-mono text-[11px] resize-y"}
+              rows={3}
+              value={((data as Record<string, unknown>).eventFilterJson as string) || ""}
+              onChange={(e) => update("eventFilterJson", e.target.value)}
+              placeholder='{"status":"approved"}'
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Timeout (minutes, 0 = no timeout)</label>
+            <input
+              type="number"
+              className={DOCK_INPUT}
+              value={data.timeoutMinutes || 0}
+              onChange={(e) => update("timeoutMinutes", Math.max(0, parseInt(e.target.value) || 0))}
+              min={0}
+              max={1440}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>On Timeout</label>
+            <select
+              className={DOCK_INPUT}
+              value={
+                (((data as Record<string, unknown>).timeoutAction as string) || "fail") ===
+                "continue"
+                  ? "continue"
+                  : "fail"
+              }
+              onChange={(e) => update("timeoutAction", e.target.value)}
+            >
+              <option value="fail">Fail workflow</option>
+              <option value="continue">Continue anyway</option>
+            </select>
+          </div>
+        </>
+      )}
+
       {/* Approval gate config */}
       {data.gateType === "approval" && (
         <>
@@ -2838,7 +3360,9 @@ function OutputForm({
           <option value="discord">Discord</option>
           <option value="email">Email</option>
           <option value="webhook">Webhook</option>
-          <option value="variable">Variable</option>
+          <option value="variable" disabled>
+            Variable (coming soon)
+          </option>
         </select>
       </div>
 
@@ -3077,15 +3601,56 @@ function ToolGrantForm({
   onUpdate,
   nodeId,
   connectors,
+  availableTools,
 }: {
   data: SubPortNodeData;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
   nodeId: string;
   connectors: ConnectorEntry[];
+  availableTools: ToolPaletteEntry[];
 }) {
   const cfg = data.config ?? {};
+  const runnableTools = availableTools.filter((tool) => tool.source !== "connector");
+  const groupedRunnableTools = groupToolsBySource(runnableTools);
+  const selectedConnector = connectors.find((connector) => connector.id === cfg.connectorId);
+  const selectedTool = runnableTools.find((tool) => tool.id === cfg.toolName);
   const update = (field: string, value: unknown) => {
     onUpdate(nodeId, { ...data, config: { ...cfg, [field]: value } });
+  };
+  const updateGrantType = (grantType: string) => {
+    onUpdate(nodeId, {
+      ...data,
+      config: {
+        grantType,
+        permissions: cfg.permissions ?? "readonly",
+      },
+    });
+  };
+  const updateConnectorGrant = (connectorId: string) => {
+    const connector = connectors.find((entry) => entry.id === connectorId);
+    onUpdate(nodeId, {
+      ...data,
+      config: {
+        ...cfg,
+        connectorId,
+        capabilityId: connectorId,
+        name: connector?.name ?? connectorId,
+        source: "connector",
+      },
+    });
+  };
+  const updateToolGrant = (toolName: string) => {
+    const tool = runnableTools.find((entry) => entry.id === toolName);
+    onUpdate(nodeId, {
+      ...data,
+      config: {
+        ...cfg,
+        toolName,
+        capabilityId: toolName,
+        name: tool?.name ?? toolName,
+        source: tool?.source ?? "core",
+      },
+    });
   };
   return (
     <>
@@ -3094,10 +3659,10 @@ function ToolGrantForm({
         <select
           className={DOCK_INPUT}
           value={(cfg.grantType as string) || "connector"}
-          onChange={(e) => update("grantType", e.target.value)}
+          onChange={(e) => updateGrantType(e.target.value)}
         >
-          <option value="connector">Connector</option>
-          <option value="builtin_tool">Built-in Tool</option>
+          <option value="connector">Connector Action</option>
+          <option value="builtin_tool">Agent Tool</option>
           <option value="tool_set">Tool Set Preset</option>
         </select>
       </div>
@@ -3107,28 +3672,69 @@ function ToolGrantForm({
           <select
             className={DOCK_INPUT}
             value={(cfg.connectorId as string) || ""}
-            onChange={(e) => update("connectorId", e.target.value)}
+            onChange={(e) => updateConnectorGrant(e.target.value)}
           >
             <option value="">Select connector...</option>
             {connectors
               .filter((c) => !c.scaffoldOnly)
               .map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name}
+                  {c.name} ({c.category})
                 </option>
               ))}
           </select>
+          {selectedConnector && (
+            <div className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20 px-2 py-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-[11px] font-medium text-[hsl(var(--foreground))]">
+                  {selectedConnector.name}
+                </span>
+                <CapabilitySourceBadge source="connector" />
+              </div>
+              <div className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">
+                {selectedConnector.category}
+                {selectedConnector.readinessState === "setup_required" && " · needs setup"}
+                {selectedConnector.scaffoldOnly && " · contract only"}
+              </div>
+            </div>
+          )}
         </div>
       )}
       {cfg.grantType === "builtin_tool" && (
         <div className="space-y-1.5">
           <label className={DOCK_LABEL}>Tool Name</label>
-          <input
+          <select
             className={DOCK_INPUT}
             value={(cfg.toolName as string) || ""}
-            onChange={(e) => update("toolName", e.target.value)}
-            placeholder="web_search"
-          />
+            onChange={(e) => updateToolGrant(e.target.value)}
+          >
+            <option value="">Select tool...</option>
+            {groupedRunnableTools.map((group) => (
+              <optgroup key={group.label} label={group.label}>
+                {group.tools.map((tool) => (
+                  <option key={tool.id} value={tool.id}>
+                    {tool.name}
+                    {tool.desc ? ` — ${tool.desc}` : ""}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          {selectedTool && (
+            <div className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20 px-2 py-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-[11px] font-medium text-[hsl(var(--foreground))]">
+                  {selectedTool.name}
+                </span>
+                <CapabilitySourceBadge source={selectedTool.source} />
+              </div>
+              {selectedTool.desc && (
+                <div className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">
+                  {selectedTool.desc}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
       {cfg.grantType === "tool_set" && (
@@ -3241,10 +3847,12 @@ function Sidebar({
           const imported: WorkflowDefinition = {
             id: `wf-${Date.now()}`,
             name: `${data.workflow.name} (imported)`,
-            nodes: data.workflow.nodes ?? [],
-            edges: data.workflow.edges ?? [],
+            nodes: data.workflow.canvasLayout?.nodes ?? data.workflow.nodes ?? [],
+            edges: data.workflow.canvasLayout?.edges ?? data.workflow.edges ?? [],
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
+            definition: data.workflow.definition,
+            canvasLayout: data.workflow.canvasLayout,
           };
           onImportWorkflow(imported);
         } catch {
@@ -3277,8 +3885,11 @@ function Sidebar({
     >
       {/* Node palette */}
       <div className="p-3 border-b border-[hsl(var(--border))]">
-        <div className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider mb-2">
-          Nodes
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">
+            Nodes
+          </div>
+          <CapabilitySourceBadge />
         </div>
         <div className="flex flex-col gap-1.5">
           {paletteItems.map((item) => (
@@ -3303,8 +3914,13 @@ function Sidebar({
 
       {/* Configuration — sub-port nodes for Agent */}
       <div className="p-3 border-b border-[hsl(var(--border))]">
-        <div className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider mb-2">
-          Configuration
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">
+            Configuration
+          </div>
+          <span className="text-[9px] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+            Agent bindings
+          </span>
         </div>
         <div className="flex flex-col gap-1.5">
           {subPortPaletteItems.map((item) => (
@@ -3330,8 +3946,11 @@ function Sidebar({
       {/* Connectors — auto-populated from catalog */}
       {connectors.length > 0 && (
         <div className="p-3 border-b border-[hsl(var(--border))]">
-          <div className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider mb-2">
-            Connectors
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">
+              Connectors
+            </div>
+            <CapabilitySourceBadge source="connector" />
           </div>
           <div className="flex flex-col gap-1">
             {connectors.map((c) => {
@@ -3532,6 +4151,50 @@ function Sidebar({
                             })}
                           </div>
                         )}
+                        {isExpanded && (
+                          <div className="ml-4 pl-2 border-l border-[hsl(var(--border))] mb-2 space-y-1">
+                            {(run.totalTokensUsed ?? 0) > 0 || (run.totalCostUsd ?? 0) > 0 ? (
+                              <div className="text-[9px] text-[hsl(var(--muted-foreground))]">
+                                {run.totalTokensUsed ?? 0} tokens
+                                {(run.totalCostUsd ?? 0) > 0
+                                  ? ` \u2022 $${(run.totalCostUsd ?? 0).toFixed(4)}`
+                                  : ""}
+                              </div>
+                            ) : null}
+                            {run.error && (
+                              <div className="text-[9px] text-red-400 truncate" title={run.error}>
+                                {run.error}
+                              </div>
+                            )}
+                            {run.approvals && run.approvals.length > 0 && (
+                              <div className="space-y-0.5">
+                                {run.approvals.map((approval) => (
+                                  <div
+                                    key={approval.approvalId}
+                                    className="text-[9px] text-amber-300/90 truncate"
+                                    title={approval.message}
+                                  >
+                                    Approval: {approval.nodeLabel ?? approval.nodeId} —{" "}
+                                    {approval.status}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {run.timeline && run.timeline.length > 0 && (
+                              <div className="space-y-0.5 pt-1">
+                                {run.timeline.slice(-4).map((event, index) => (
+                                  <div
+                                    key={`${run.runId}-event-${index}`}
+                                    className="text-[9px] text-[hsl(var(--muted-foreground))] truncate"
+                                    title={event.label}
+                                  >
+                                    {event.label ?? event.type}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })
@@ -3616,7 +4279,7 @@ export function WorkflowsWidget() {
   useEffect(() => {
     if (!gateway.connected) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await gateway.request<{ workflows?: WorkflowDefinition[] }>(
           "workflows.list",
@@ -3670,12 +4333,16 @@ export function WorkflowsWidget() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await gateway.request<{ runs?: RunRecord[] }>("workflows.runs.list", {
+        const res = await gateway.request<{ runs?: unknown[] }>("workflows.runs.list", {
           workflowId: activeWorkflowId,
         });
-        if (!cancelled && res?.runs) setRuns(res.runs);
+        if (!cancelled && res?.runs) {
+          setRuns(normalizeRunRecords(res.runs));
+        }
       } catch {
-        if (!cancelled) setRuns([]);
+        if (!cancelled) {
+          setRuns([]);
+        }
       }
     })();
     return () => {
@@ -3763,15 +4430,23 @@ export function WorkflowsWidget() {
 
   // Retry a workflow from a specific failed step
   const handleRetryFromStep = useCallback(
-    async (workflowId: string, _runId: string, fromStepNodeId: string) => {
-      if (!gateway.connected) return;
+    async (workflowId: string, runId: string, fromStepNodeId: string) => {
+      if (!gateway.connected) {
+        return;
+      }
       try {
-        await gateway.request("workflows.run", { workflowId, fromStepId: fromStepNodeId });
+        await gateway.request("workflows.run", {
+          workflowId,
+          sourceRunId: runId,
+          fromStepId: fromStepNodeId,
+        });
         // Refresh run history after retry
-        const res = await gateway.request<{ runs?: RunRecord[] }>("workflows.runs.list", {
+        const res = await gateway.request<{ runs?: unknown[] }>("workflows.runs.list", {
           workflowId,
         });
-        if (res?.runs) setRuns(res.runs);
+        if (res?.runs) {
+          setRuns(normalizeRunRecords(res.runs));
+        }
       } catch (err) {
         console.error("[Workflows] Retry from step failed:", err);
       }
@@ -3800,6 +4475,31 @@ export function WorkflowsWidget() {
     [workflows, persistWorkflows, gateway, setWorkflows],
   );
 
+  const handleSelectRun = useCallback(
+    (run: RunRecord) => {
+      setReplayRun(run);
+      if (!gateway.connected) {
+        return;
+      }
+      void gateway
+        .request<{ run?: unknown }>("workflows.runs.get", { runId: run.runId })
+        .then((res) => {
+          const detail = normalizeRunRecord(res?.run);
+          if (!detail) {
+            return;
+          }
+          setReplayRun(detail);
+          setRuns((prev) =>
+            prev.map((candidate) => (candidate.runId === detail.runId ? detail : candidate)),
+          );
+        })
+        .catch((err) => {
+          console.warn("[Workflows] Run detail unavailable:", err);
+        });
+    },
+    [gateway],
+  );
+
   return (
     <div className="flex-1 min-h-0 flex overflow-hidden">
       <NewWorkflowModal
@@ -3817,7 +4517,7 @@ export function WorkflowsWidget() {
           onDeleteWorkflow={handleDelete}
           onImportWorkflow={handleImportWorkflow}
           runs={runs}
-          onSelectRun={setReplayRun}
+          onSelectRun={handleSelectRun}
           onRetryFromStep={handleRetryFromStep}
           connectors={connectors}
         />
@@ -3825,6 +4525,8 @@ export function WorkflowsWidget() {
           activeWorkflowId={activeWorkflowId}
           workflows={workflows}
           setWorkflows={setWorkflows}
+          connectors={connectors}
+          setConnectors={setConnectors}
           replayRun={replayRun}
           onRunsChanged={setRuns}
         />
@@ -3839,12 +4541,16 @@ function WorkflowCanvasInner({
   activeWorkflowId,
   workflows,
   setWorkflows,
+  connectors,
+  setConnectors,
   replayRun,
   onRunsChanged,
 }: {
   activeWorkflowId: string | null;
   workflows: WorkflowDefinition[];
   setWorkflows: React.Dispatch<React.SetStateAction<WorkflowDefinition[]>>;
+  connectors: ConnectorEntry[];
+  setConnectors: React.Dispatch<React.SetStateAction<ConnectorEntry[]>>;
   replayRun: RunRecord | null;
   onRunsChanged: (runs: RunRecord[]) => void;
 }) {
@@ -3855,24 +4561,293 @@ function WorkflowCanvasInner({
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [agents, setAgents] = useState<FamilyMember[]>([]);
+  const [availableTools, setAvailableTools] = useState<ToolPaletteEntry[]>([...AVAILABLE_TOOLS]);
+  const [appForgeEventOptions, setAppForgeEventOptions] = useState<AppForgeEventOption[]>([]);
 
   // ── Run State ─────────────────────────────────────────────────────
   const [running, setRunning] = useState(false);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
-  const [completedNodeIds, setCompletedNodeIds] = useState<Set<string>>(new Set());
-  const [failedNodeIds, setFailedNodeIds] = useState<Set<string>>(new Set());
+  const [, setCompletedNodeIds] = useState<Set<string>>(new Set());
+  const [, setFailedNodeIds] = useState<Set<string>>(new Set());
 
   // ── Approval State ─────────────────────────────────────────────────
   interface PendingApproval {
+    approvalId?: string;
     runId: string;
     nodeId: string;
+    workflowName?: string;
+    nodeLabel?: string;
+    sideEffectClass?: string;
     message: string;
     previousOutput?: { text?: string; json?: Record<string, unknown>; nodeLabel?: string };
     timeoutMs?: number;
+    timeoutAt?: string;
     timeoutAction?: string;
     requestedAt: number;
   }
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
+  const [validationIssues, setValidationIssues] = useState<WorkflowValidationIssue[]>([]);
+  const [validationCheckedAt, setValidationCheckedAt] = useState<string | null>(null);
+  const [validationStatus, setValidationStatus] = useState<"idle" | "checking" | "error">("idle");
+
+  const normalizePendingApproval = useCallback(
+    (raw: Record<string, unknown>): PendingApproval | null => {
+      const runId = typeof raw.runId === "string" ? raw.runId : (raw.run_id as string | undefined);
+      const nodeId =
+        typeof raw.nodeId === "string"
+          ? raw.nodeId
+          : ((raw.node_id ?? raw.current_node_id) as string | undefined);
+      if (!runId || !nodeId) {
+        return null;
+      }
+
+      const preview = (raw.previousOutputPreview ?? raw.previous_output_preview) as
+        | Record<string, unknown>
+        | undefined;
+      const text = typeof preview?.text === "string" ? preview.text : undefined;
+      const nodeLabel =
+        typeof preview?.nodeLabel === "string"
+          ? preview.nodeLabel
+          : typeof preview?.node_id === "string"
+            ? preview.node_id
+            : undefined;
+
+      return {
+        approvalId:
+          typeof raw.approvalId === "string"
+            ? raw.approvalId
+            : typeof raw.id === "string"
+              ? raw.id
+              : undefined,
+        runId,
+        nodeId,
+        workflowName:
+          typeof raw.workflowName === "string"
+            ? raw.workflowName
+            : typeof raw.workflow_name === "string"
+              ? raw.workflow_name
+              : undefined,
+        nodeLabel:
+          typeof raw.nodeLabel === "string"
+            ? raw.nodeLabel
+            : typeof raw.node_label === "string"
+              ? raw.node_label
+              : undefined,
+        sideEffectClass:
+          typeof raw.sideEffectClass === "string"
+            ? raw.sideEffectClass
+            : typeof raw.side_effect_class === "string"
+              ? raw.side_effect_class
+              : undefined,
+        message:
+          typeof raw.message === "string" ? raw.message : "Review required before continuing",
+        previousOutput: preview
+          ? {
+              text,
+              json:
+                preview.json && typeof preview.json === "object"
+                  ? (preview.json as Record<string, unknown>)
+                  : undefined,
+              nodeLabel,
+            }
+          : undefined,
+        timeoutMs: typeof raw.timeoutMs === "number" ? raw.timeoutMs : undefined,
+        timeoutAt:
+          typeof raw.timeoutAt === "string"
+            ? raw.timeoutAt
+            : typeof raw.timeout_at === "string"
+              ? raw.timeout_at
+              : undefined,
+        timeoutAction:
+          typeof raw.timeoutAction === "string"
+            ? raw.timeoutAction
+            : typeof raw.timeout_action === "string"
+              ? raw.timeout_action
+              : undefined,
+        requestedAt:
+          typeof raw.requestedAt === "number"
+            ? raw.requestedAt
+            : typeof raw.requested_at === "string"
+              ? Date.parse(raw.requested_at)
+              : Date.now(),
+      };
+    },
+    [],
+  );
+
+  const refreshPendingApprovals = useCallback(async () => {
+    if (!gateway.connected) {
+      return;
+    }
+    try {
+      const res = await gateway.request<{ approvals?: Record<string, unknown>[] }>(
+        "workflows.pendingApprovals",
+        activeWorkflowId ? { workflowId: activeWorkflowId } : {},
+      );
+      setPendingApprovals(
+        (res?.approvals ?? [])
+          .map((approval) => normalizePendingApproval(approval))
+          .filter((approval): approval is PendingApproval => Boolean(approval)),
+      );
+    } catch (err) {
+      console.warn("[Workflows] Pending approvals unavailable:", err);
+    }
+  }, [activeWorkflowId, gateway, normalizePendingApproval]);
+
+  useEffect(() => {
+    void refreshPendingApprovals();
+    if (!gateway.connected) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void refreshPendingApprovals();
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [gateway.connected, refreshPendingApprovals]);
+
+  useEffect(() => {
+    if (!gateway.connected) {
+      setAvailableTools([...AVAILABLE_TOOLS]);
+      setAppForgeEventOptions([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const merged = new Map<string, ToolPaletteEntry>();
+      for (const tool of AVAILABLE_TOOLS) {
+        merged.set(tool.id, tool);
+      }
+      try {
+        const capabilities = await gateway.request<{
+          tools?: Array<{
+            name: string;
+            label?: string;
+            description?: string;
+            source?: ToolCapabilitySource;
+          }>;
+          appForgeCapabilities?: Array<{
+            label?: string;
+            appId?: string;
+            appName?: string;
+            capabilityId?: string;
+            eventTypes?: string[];
+          }>;
+          connectors?: ConnectorEntry[];
+        }>("workflows.capabilities", {});
+        if (capabilities?.connectors) {
+          setConnectors(capabilities.connectors);
+        }
+        const appForgeEvents = new Map<string, AppForgeEventOption>();
+        for (const capability of capabilities?.appForgeCapabilities ?? []) {
+          for (const eventType of capability.eventTypes ?? []) {
+            if (!eventType) {
+              continue;
+            }
+            const key = `${eventType}:${capability.appId ?? ""}:${capability.capabilityId ?? ""}`;
+            appForgeEvents.set(key, {
+              value: eventType,
+              label: [eventType, capability.appName, capability.label ?? capability.capabilityId]
+                .filter(Boolean)
+                .join(" / "),
+              appId: capability.appId,
+              capabilityId: capability.capabilityId,
+            });
+          }
+        }
+        setAppForgeEventOptions(
+          [...appForgeEvents.values()].sort((a, b) => a.label.localeCompare(b.label)),
+        );
+        for (const tool of capabilities?.tools ?? []) {
+          merged.set(tool.name, {
+            id: tool.name,
+            name: tool.label ?? tool.name,
+            desc: tool.description,
+            category:
+              tool.source === "connector"
+                ? "Connector"
+                : tool.source === "plugin"
+                  ? "Plugin"
+                  : tool.source === "appforge"
+                    ? "AppForge"
+                    : "Core",
+            source: tool.source,
+          });
+        }
+      } catch {
+        try {
+          const status = await gateway.request<{
+            tools?: Array<{
+              name: string;
+              label?: string;
+              description?: string;
+              source?: ToolCapabilitySource;
+            }>;
+          }>("tools.status", {});
+          for (const tool of status?.tools ?? []) {
+            merged.set(tool.name, {
+              id: tool.name,
+              name: tool.label ?? tool.name,
+              desc: tool.description,
+              category:
+                tool.source === "connector"
+                  ? "Connector"
+                  : tool.source === "plugin"
+                    ? "Plugin"
+                    : tool.source === "appforge"
+                      ? "AppForge"
+                      : "Core",
+              source: tool.source,
+            });
+          }
+        } catch {
+          /* Dynamic capability status unavailable; keep static defaults. */
+        }
+      }
+      try {
+        const personal = await gateway.request<{
+          rows?: Array<{
+            id: string;
+            title: string;
+            summary?: string;
+            state?: string;
+            executionReady?: boolean;
+            relatedTools?: string[];
+          }>;
+        }>("skills.personal", {});
+        for (const skill of personal?.rows ?? []) {
+          if (skill.state !== "promoted" || !skill.executionReady) {
+            continue;
+          }
+          merged.set(`skill:${skill.id}`, {
+            id: `skill:${skill.id}`,
+            name: skill.title,
+            desc: skill.summary,
+            category: "Skill",
+            source: "skill",
+          });
+          for (const relatedTool of skill.relatedTools ?? []) {
+            if (!merged.has(relatedTool)) {
+              merged.set(relatedTool, {
+                id: relatedTool,
+                name: relatedTool,
+                desc: "Promoted operator tool",
+                category: "Promoted",
+                source: "promoted-cli",
+              });
+            }
+          }
+        }
+      } catch {
+        /* Personal skills unavailable; keep discovered tools. */
+      }
+      if (!cancelled) {
+        setAvailableTools([...merged.values()].sort((a, b) => a.name.localeCompare(b.name)));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gateway.connected, gateway.request]);
 
   const handleApprove = useCallback(
     async (runId: string, nodeId: string) => {
@@ -4005,9 +4980,11 @@ function WorkflowCanvasInner({
       // Refresh run history
       if (activeWorkflowId) {
         gateway
-          .request<{ runs?: RunRecord[] }>("workflows.runs.list", { workflowId: activeWorkflowId })
+          .request<{ runs?: unknown[] }>("workflows.runs.list", { workflowId: activeWorkflowId })
           .then((res) => {
-            if (res?.runs) onRunsChanged(res.runs);
+            if (res?.runs) {
+              onRunsChanged(normalizeRunRecords(res.runs));
+            }
           })
           .catch(() => {});
       }
@@ -4015,9 +4992,14 @@ function WorkflowCanvasInner({
 
     const unsubApprovalRequested = gateway.on("workflow.approval.requested", (payload: unknown) => {
       const p = payload as {
+        approvalId?: string;
         runId?: string;
+        workflowName?: string;
         nodeId?: string;
+        nodeLabel?: string;
+        sideEffectClass?: string;
         message?: string;
+        previousOutputPreview?: Record<string, unknown>;
         previousOutput?: {
           output?: { items?: Array<{ text?: string; json?: Record<string, unknown> }> };
           nodeLabel?: string;
@@ -4038,16 +5020,37 @@ function WorkflowCanvasInner({
       setPendingApprovals((prev) => [
         ...prev.filter((a) => !(a.runId === p.runId && a.nodeId === p.nodeId)),
         {
+          approvalId: p.approvalId,
           runId: p.runId!,
           nodeId: p.nodeId!,
+          workflowName: p.workflowName,
+          nodeLabel: p.nodeLabel,
+          sideEffectClass: p.sideEffectClass,
           message: p.message || "Review required before continuing",
-          previousOutput: p.previousOutput
+          previousOutput: p.previousOutputPreview
             ? {
-                text: p.previousOutput.output?.items?.[0]?.text,
-                json: p.previousOutput.output?.items?.[0]?.json,
-                nodeLabel: p.previousOutput.nodeLabel,
+                text:
+                  typeof p.previousOutputPreview.text === "string"
+                    ? p.previousOutputPreview.text
+                    : undefined,
+                json:
+                  p.previousOutputPreview.json && typeof p.previousOutputPreview.json === "object"
+                    ? (p.previousOutputPreview.json as Record<string, unknown>)
+                    : undefined,
+                nodeLabel:
+                  typeof p.previousOutputPreview.nodeLabel === "string"
+                    ? p.previousOutputPreview.nodeLabel
+                    : typeof p.previousOutputPreview.nodeId === "string"
+                      ? p.previousOutputPreview.nodeId
+                      : undefined,
               }
-            : undefined,
+            : p.previousOutput
+              ? {
+                  text: p.previousOutput.output?.items?.[0]?.text,
+                  json: p.previousOutput.output?.items?.[0]?.json,
+                  nodeLabel: p.previousOutput.nodeLabel,
+                }
+              : undefined,
           timeoutMs: p.timeoutMs,
           timeoutAction: p.timeoutAction,
           requestedAt: p.requestedAt || Date.now(),
@@ -4101,6 +5104,52 @@ function WorkflowCanvasInner({
     applyExecState(null, newCompleted, newFailed);
   }, [replayRun, running, clearExecState, applyExecState]);
 
+  const cleanWorkflowNodes = useCallback(
+    () =>
+      nodes.map((n) => {
+        if (n.data?.execState) {
+          return { ...n, data: stripExecState(n.data) };
+        }
+        return n;
+      }),
+    [nodes],
+  );
+
+  const validateCurrentWorkflow = useCallback(async (): Promise<boolean> => {
+    if (!activeWorkflowId || !gateway.connected) {
+      setValidationIssues([]);
+      setValidationCheckedAt(null);
+      return true;
+    }
+    setValidationStatus("checking");
+    try {
+      const workflow = workflows.find((candidate) => candidate.id === activeWorkflowId);
+      const res = await gateway.request<{ ok?: boolean; issues?: unknown[] }>(
+        "workflows.validate",
+        {
+          name: workflow?.name ?? "Untitled workflow",
+          canvasData: { nodes: cleanWorkflowNodes(), edges },
+        },
+      );
+      const issues = normalizeValidationIssues(res?.issues);
+      setValidationIssues(issues);
+      setValidationCheckedAt(new Date().toISOString());
+      setValidationStatus("idle");
+      return res?.ok !== false && !issues.some((issue) => issue.severity === "error");
+    } catch (err) {
+      setValidationStatus("error");
+      setValidationCheckedAt(new Date().toISOString());
+      setValidationIssues([
+        {
+          severity: "error",
+          code: "validation_unavailable",
+          message: `Could not validate workflow: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      ]);
+      return false;
+    }
+  }, [activeWorkflowId, cleanWorkflowNodes, edges, gateway, workflows]);
+
   // ── Run Handler ───────────────────────────────────────────────────
 
   const handleRun = useCallback(async () => {
@@ -4108,6 +5157,11 @@ function WorkflowCanvasInner({
     try {
       setRunning(true);
       clearExecState();
+      const valid = await validateCurrentWorkflow();
+      if (!valid) {
+        setRunning(false);
+        return;
+      }
       const result = await gateway.request("workflows.run", { workflowId: activeWorkflowId });
       console.log("[Workflows] Run started:", result);
       // Subscribe to live updates
@@ -4116,7 +5170,7 @@ function WorkflowCanvasInner({
       console.error("[Workflows] Run failed:", err);
       setRunning(false);
     }
-  }, [activeWorkflowId, running, gateway, clearExecState]);
+  }, [activeWorkflowId, running, gateway, clearExecState, validateCurrentWorkflow]);
 
   // Load active workflow into canvas
   const activeWorkflow = useMemo(
@@ -4154,13 +5208,7 @@ function WorkflowCanvasInner({
       // PG sync (fire and forget)
       if (gateway.connected) {
         // Strip execState from nodes before persisting
-        const cleanNodes = nodes.map((n) => {
-          if (n.data?.execState) {
-            const { execState: _, ...rest } = n.data as Record<string, unknown>;
-            return { ...n, data: rest };
-          }
-          return n;
-        });
+        const cleanNodes = cleanWorkflowNodes();
         gateway
           .request("workflows.update", {
             workflowId: activeWorkflowId,
@@ -4174,7 +5222,7 @@ function WorkflowCanvasInner({
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [nodes, edges, activeWorkflowId, setWorkflows, gateway]);
+  }, [nodes, edges, activeWorkflowId, setWorkflows, gateway, cleanWorkflowNodes]);
 
   // Connect edges
   const onConnect: OnConnect = useCallback(
@@ -4366,6 +5414,13 @@ function WorkflowCanvasInner({
     setEditingName(false);
   };
 
+  const validationErrorCount = validationIssues.filter(
+    (issue) => issue.severity === "error",
+  ).length;
+  const validationWarningCount = validationIssues.filter(
+    (issue) => issue.severity === "warning",
+  ).length;
+
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       {/* Toolbar */}
@@ -4401,17 +5456,21 @@ function WorkflowCanvasInner({
         </div>
         <div className="flex items-center gap-2">
           <button
+            disabled={!activeWorkflowId || !gateway.connected || validationStatus === "checking"}
+            onClick={() => {
+              void validateCurrentWorkflow();
+            }}
+            className="px-3 py-1 rounded text-[11px] font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] disabled:opacity-40 transition-colors"
+            title="Validate workflow"
+          >
+            {validationStatus === "checking" ? "Checking..." : "Validate"}
+          </button>
+          <button
             disabled={!activeWorkflowId}
             onClick={() => {
               if (!activeWorkflowId) return;
               // Immediate save to PG + localStorage
-              const cleanNodes = nodes.map((n) => {
-                if (n.data?.execState) {
-                  const { execState: _, ...rest } = n.data as Record<string, unknown>;
-                  return { ...n, data: rest };
-                }
-                return n;
-              });
+              const cleanNodes = cleanWorkflowNodes();
               if (gateway.connected) {
                 gateway
                   .request("workflows.update", {
@@ -4429,6 +5488,7 @@ function WorkflowCanvasInner({
                 saveWorkflowsLocal(next);
                 return next;
               });
+              void validateCurrentWorkflow();
             }}
             className="px-3 py-1 rounded text-[11px] font-medium bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/25 disabled:opacity-40 transition-colors"
             title="Save workflow"
@@ -4446,9 +5506,14 @@ function WorkflowCanvasInner({
                 workflow: {
                   name: activeWorkflow.name,
                   description: "",
+                  definition: activeWorkflow.definition,
+                  canvasLayout: {
+                    ...(activeWorkflow.canvasLayout ?? {}),
+                    nodes,
+                    edges,
+                  },
                   nodes: nodes.map((n) => {
-                    const { execState: _, ...rest } = (n.data ?? {}) as Record<string, unknown>;
-                    return { ...n, position: n.position, data: rest };
+                    return { ...n, position: n.position, data: stripExecState(n.data) };
                   }),
                   edges: edges.map((e) => ({
                     id: e.id,
@@ -4496,6 +5561,56 @@ function WorkflowCanvasInner({
         </div>
       </div>
 
+      {(validationIssues.length > 0 || validationStatus === "error") && (
+        <div
+          className={`flex-shrink-0 border-b px-4 py-2 ${
+            validationErrorCount > 0
+              ? "border-red-500/30 bg-red-500/10"
+              : "border-amber-500/30 bg-amber-500/10"
+          }`}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div
+                className={`text-xs font-semibold ${
+                  validationErrorCount > 0 ? "text-red-300" : "text-amber-300"
+                }`}
+              >
+                {validationErrorCount > 0
+                  ? `${validationErrorCount} workflow error${validationErrorCount === 1 ? "" : "s"}`
+                  : `${validationWarningCount} workflow warning${validationWarningCount === 1 ? "" : "s"}`}
+              </div>
+              {validationCheckedAt && (
+                <div className="mt-0.5 text-[10px] text-[hsl(var(--muted-foreground))]">
+                  Checked {new Date(validationCheckedAt).toLocaleTimeString()}
+                </div>
+              )}
+            </div>
+            <div className="flex-1 min-w-0 space-y-1">
+              {validationIssues.slice(0, 4).map((issue, index) => (
+                <div
+                  key={`${issue.code ?? "issue"}-${issue.nodeId ?? issue.edgeId ?? index}`}
+                  className="truncate text-[11px] text-[hsl(var(--foreground))]"
+                  title={issue.message}
+                >
+                  {issue.nodeId && (
+                    <span className="mr-1 font-mono text-[hsl(var(--muted-foreground))]">
+                      {issue.nodeId}
+                    </span>
+                  )}
+                  {issue.message}
+                </div>
+              ))}
+              {validationIssues.length > 4 && (
+                <div className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                  +{validationIssues.length - 4} more
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Canvas + Right Dock */}
       <div className="flex-1 min-h-0 relative">
         {/* Approval Request Banner */}
@@ -4508,6 +5623,16 @@ function WorkflowCanvasInner({
               >
                 <div className="text-sm font-semibold text-amber-400 mb-2">
                   Pipeline Paused -- Review Required
+                </div>
+                <div className="text-[11px] text-[hsl(var(--muted-foreground))] mb-2">
+                  {approval.workflowName && <span>{approval.workflowName}</span>}
+                  {approval.workflowName && approval.nodeLabel && <span> / </span>}
+                  {approval.nodeLabel && <span>{approval.nodeLabel}</span>}
+                  {approval.sideEffectClass && (
+                    <span className="ml-2 rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[9px] uppercase text-amber-300">
+                      {approval.sideEffectClass}
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs text-[hsl(var(--foreground))] mb-3">{approval.message}</div>
                 {approval.previousOutput &&
@@ -4540,6 +5665,11 @@ function WorkflowCanvasInner({
                   <div className="text-[10px] text-[hsl(var(--muted-foreground))] mt-2">
                     Auto-{approval.timeoutAction || "deny"} in{" "}
                     {Math.round(approval.timeoutMs / 60000)}m
+                  </div>
+                )}
+                {!approval.timeoutMs && approval.timeoutAt && (
+                  <div className="text-[10px] text-[hsl(var(--muted-foreground))] mt-2">
+                    Timeout: {new Date(approval.timeoutAt).toLocaleString()}
                   </div>
                 )}
               </div>
@@ -4665,12 +5795,14 @@ function WorkflowCanvasInner({
                         onUpdate={onUpdateNodeData}
                         nodeId={selectedNode.id}
                         gateway={gateway}
+                        appForgeEventOptions={appForgeEventOptions}
                       />
                     )}
                     {selectedNode.type === "agentStep" && (
                       <AgentForm
                         data={selectedNode.data as unknown as AgentStepNodeData}
                         agents={agents}
+                        availableTools={availableTools}
                         onUpdate={onUpdateNodeData}
                         nodeId={selectedNode.id}
                         gateway={gateway}
@@ -4689,6 +5821,7 @@ function WorkflowCanvasInner({
                         data={selectedNode.data as unknown as GateNodeData}
                         onUpdate={onUpdateNodeData}
                         nodeId={selectedNode.id}
+                        appForgeEventOptions={appForgeEventOptions}
                       />
                     )}
                     {selectedNode.type === "output" && (
@@ -4718,6 +5851,7 @@ function WorkflowCanvasInner({
                         onUpdate={onUpdateNodeData}
                         nodeId={selectedNode.id}
                         connectors={connectors}
+                        availableTools={availableTools}
                       />
                     )}
                   </div>
