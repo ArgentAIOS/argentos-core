@@ -282,6 +282,22 @@ export async function resolveRuntimeProviderApiKey(
   return authStorage.runtimeOverrides?.get(normalizedProvider);
 }
 
+export function createPiStreamSimpleWithRuntimeApiKey(
+  streamFn: typeof streamSimple,
+  providerApiKey: string | undefined,
+): typeof streamSimple {
+  const hardened = hardenStreamSimple(streamFn);
+  if (!providerApiKey) {
+    return hardened;
+  }
+
+  return (model, context, options) =>
+    hardened(model, context, {
+      ...options,
+      apiKey: providerApiKey,
+    });
+}
+
 export function resolveOpenAICodexVisionModelId(params: {
   model: Pick<Model<Api>, "id" | "provider" | "input">;
   context: { messages?: unknown[] } | undefined;
@@ -1159,7 +1175,10 @@ export async function runEmbeddedAttempt(
               runtimePolicy.mode,
               `No Argent provider for "${params.provider}"`,
               () => {
-                activeSession.agent.streamFn = hardenStreamSimple(streamSimple);
+                activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
+                  streamSimple,
+                  providerApiKey,
+                );
               },
             );
           }
@@ -1168,13 +1187,19 @@ export async function runEmbeddedAttempt(
             runtimePolicy.mode,
             `Failed to create Argent provider for "${params.provider}"`,
             () => {
-              activeSession.agent.streamFn = hardenStreamSimple(streamSimple);
+              activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
+                streamSimple,
+                providerApiKey,
+              );
             },
             err,
           );
         }
       } else {
-        activeSession.agent.streamFn = hardenStreamSimple(streamSimple);
+        activeSession.agent.streamFn = createPiStreamSimpleWithRuntimeApiKey(
+          streamSimple,
+          providerApiKey,
+        );
       }
 
       applyExtraParamsToAgent(

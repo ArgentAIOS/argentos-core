@@ -3,6 +3,7 @@ import type { ImageContent } from "../../../agent-core/ai.js";
 import type { AgentMessage } from "../../../agent-core/core.js";
 import {
   applyPiStreamFallbackPolicy,
+  createPiStreamSimpleWithRuntimeApiKey,
   injectHistoryImagesIntoMessages,
   resolveRuntimeProviderApiKey,
   resolveOpenAICodexTransport,
@@ -84,6 +85,23 @@ describe("embedded runtime policy wiring", () => {
     };
 
     await expect(resolveRuntimeProviderApiKey(authStorage, "minimax")).resolves.toBe("runtime-key");
+  });
+
+  it("injects auth profile keys into Pi stream fallbacks", () => {
+    let capturedOptions: { apiKey?: string; temperature?: number } | undefined;
+    const streamFn = ((_model, _context, options) => {
+      capturedOptions = options;
+      return {} as ReturnType<typeof createPiStreamSimpleWithRuntimeApiKey>;
+    }) as Parameters<typeof createPiStreamSimpleWithRuntimeApiKey>[0];
+
+    const wrapped = createPiStreamSimpleWithRuntimeApiKey(streamFn, "profile-key");
+    wrapped(
+      { id: "MiniMax-M2.7", provider: "minimax", api: "openai-completions" } as never,
+      { messages: [] },
+      { temperature: 0.2 },
+    );
+
+    expect(capturedOptions).toEqual({ temperature: 0.2, apiKey: "profile-key" });
   });
 
   it("resolves legacy ARGENT_RUNTIME=true to fallback mode", () => {
