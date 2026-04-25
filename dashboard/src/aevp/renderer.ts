@@ -6,12 +6,12 @@
  */
 
 import type { AEVPRenderState } from "./types";
-import { getFrameIntervalMs } from "./pi-profile";
 import {
   ParticleSystem,
   type ParticleFormationRequest,
   type ParticleSymbolExpressionRequest,
 } from "./particles";
+import { getFrameIntervalMs } from "./pi-profile";
 import ambientFrag from "./shaders/ambient.frag?raw";
 // Vite raw imports for GLSL sources
 import ambientVert from "./shaders/ambient.vert?raw";

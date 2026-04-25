@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -5,6 +6,13 @@ import { executiveShadowProtocolJsonSchema } from "../src/infra/executive-shadow
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
+
+function formatSchemaArtifacts(paths: string[]) {
+  execFileSync("oxfmt", ["--write", ...paths], {
+    cwd: repoRoot,
+    stdio: "ignore",
+  });
+}
 
 async function writeSchemaArtifacts() {
   const schemaString = `${JSON.stringify(executiveShadowProtocolJsonSchema, null, 2)}\n`;
@@ -21,6 +29,7 @@ async function writeSchemaArtifacts() {
     "executive-shadow.protocol.schema.json",
   );
   await fs.writeFile(repoNativePath, schemaString, "utf8");
+  formatSchemaArtifacts([distPath, repoNativePath]);
 
   console.log(`wrote ${distPath}`);
   console.log(`wrote ${repoNativePath}`);

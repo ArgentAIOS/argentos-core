@@ -9,8 +9,8 @@
 
 import type { EmotionalState, ActivityStateName } from "../types/agentState";
 import type { AgentVisualIdentity, AEVPRenderState } from "./types";
-import { classifyTool, getResonanceTargets } from "./toolCategories";
 import { getMaxParticlesCap, getDensityScale } from "./pi-profile";
+import { classifyTool, getResonanceTargets } from "./toolCategories";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -449,10 +449,7 @@ export function computeRenderState(
   // Pi profile: scale density + apply a hard cap on top of identity preset.
   const piCap = getMaxParticlesCap();
   const piScale = getDensityScale();
-  const maxParticles = Math.min(
-    piCap,
-    Math.round(100 * presence.particleDensity * piScale),
-  );
+  const maxParticles = Math.min(piCap, Math.round(100 * presence.particleDensity * piScale));
   let particleCount = Math.round(
     clamp(
       maxParticles * (0.3 + moodVis.brightness * 0.4 + arousal * 0.3) * energyMul,

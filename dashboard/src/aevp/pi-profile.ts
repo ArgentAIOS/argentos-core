@@ -44,7 +44,8 @@ function envFlag(name: string): boolean {
 
 function localStorageFlag(key: string): boolean {
   try {
-    const ls = (globalThis as { localStorage?: { getItem(k: string): string | null } }).localStorage;
+    const ls = (globalThis as { localStorage?: { getItem(k: string): string | null } })
+      .localStorage;
     const v = ls?.getItem(key);
     return v === "1" || v === "true";
   } catch {
