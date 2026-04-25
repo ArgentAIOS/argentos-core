@@ -49,6 +49,17 @@ Please include in your PR:
 
 AI PRs are first-class citizens here. We just want transparency so reviewers know what to look for.
 
+For commits where OpenAI Codex materially contributed to the diff, add:
+
+```text
+Co-authored-by: argentOS-OG <argent@argentos.ai>
+AI-Agent: OpenAI Codex
+```
+
+Do not add this trailer for passive review, search, explanation, or changes where Codex did not materially shape the committed work.
+
+The local commit-message hook enforces that the Codex co-author trailer and `AI-Agent: OpenAI Codex` trailer appear together.
+
 ## Current Focus & Roadmap
 
 We are currently prioritizing:

@@ -1,0 +1,27 @@
+#!/bin/sh
+
+set -eu
+
+message_file=${1:-}
+if [ -z "$message_file" ] || [ ! -f "$message_file" ]; then
+  exit 0
+fi
+
+codex_agent='AI-Agent: OpenAI Codex'
+codex_coauthor='Co-authored-by: argentOS-OG <argent@argentos.ai>'
+
+has_line() {
+  grep -Fqx "$1" "$message_file"
+}
+
+if has_line "$codex_agent" && ! has_line "$codex_coauthor"; then
+  printf >&2 '%s\n' "Error: Codex-attributed commits must include:"
+  printf >&2 '%s\n' "$codex_coauthor"
+  exit 1
+fi
+
+if has_line "$codex_coauthor" && ! has_line "$codex_agent"; then
+  printf >&2 '%s\n' "Error: Codex co-author commits must include:"
+  printf >&2 '%s\n' "$codex_agent"
+  exit 1
+fi
