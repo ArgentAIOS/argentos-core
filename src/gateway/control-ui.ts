@@ -277,6 +277,10 @@ export function handleControlUiHttpRequest(
     }
   }
 
+  if (!basePath && (pathname === "/.well-known" || pathname.startsWith("/.well-known/"))) {
+    return false;
+  }
+
   applyControlUiSecurityHeaders(res);
 
   const rootState = opts?.root;

@@ -41,4 +41,25 @@ describe("handleControlUiHttpRequest", () => {
       await fs.rm(tmp, { recursive: true, force: true });
     }
   });
+
+  it("does not claim well-known discovery routes when mounted at root", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "argent-ui-"));
+    try {
+      await fs.writeFile(path.join(tmp, "index.html"), "<html></html>\n");
+      const { res, setHeader, end } = makeResponse();
+      const handled = handleControlUiHttpRequest(
+        { url: "/.well-known/oauth-authorization-server/mcp", method: "GET" } as IncomingMessage,
+        res,
+        {
+          root: { kind: "resolved", path: tmp },
+        },
+      );
+
+      expect(handled).toBe(false);
+      expect(setHeader).not.toHaveBeenCalled();
+      expect(end).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  });
 });
