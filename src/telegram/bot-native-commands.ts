@@ -306,6 +306,12 @@ export const registerTelegramNativeCommands = ({
         provider: "telegram",
       })
     : [];
+  const nativeMenuCommands = nativeEnabled
+    ? listNativeCommandSpecsForConfig(cfg, {
+        skillCommands: [],
+        provider: "telegram",
+      })
+    : [];
   const reservedCommands = new Set(
     listNativeCommandSpecs().map((command) => command.name.toLowerCase()),
   );
@@ -359,7 +365,7 @@ export const registerTelegramNativeCommands = ({
     pluginCommands.push({ command: normalized, description });
   }
   const allCommands: Array<{ command: string; description: string }> = [
-    ...nativeCommands.map((command) => ({
+    ...nativeMenuCommands.map((command) => ({
       command: command.name,
       description: command.description,
     })),

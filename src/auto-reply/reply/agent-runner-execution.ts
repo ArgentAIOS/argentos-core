@@ -10,8 +10,13 @@ import { resolveAgentModelFallbacksOverride } from "../../agents/agent-scope.js"
 import { resolveCliBackendConfig } from "../../agents/cli-backends.js";
 import { runCliAgent } from "../../agents/cli-runner.js";
 import { getCliSessionId } from "../../agents/cli-session.js";
+import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../../agents/defaults.js";
 import { runWithModelFallback } from "../../agents/model-fallback.js";
-import { isCliProvider } from "../../agents/model-selection.js";
+import {
+  isCliProvider,
+  normalizeProviderId,
+  resolveConfiguredModelRef,
+} from "../../agents/model-selection.js";
 import {
   isCompactionFailureError,
   isContextOverflowError,
@@ -86,6 +91,34 @@ export type AgentRunLoopResult =
       directlySentBlockKeys?: Set<string>;
     }
   | { kind: "final"; payload: ReplyPayload };
+
+export function shouldLetEmbeddedRouterSelectDefault(params: {
+  cfg: ArgentConfig | undefined;
+  provider: string;
+  model: string;
+  sessionEntry?: SessionEntry;
+  authProfileId?: string;
+}): boolean {
+  const router = params.cfg?.agents?.defaults?.modelRouter;
+  if (!router?.enabled) {
+    return false;
+  }
+  if (params.authProfileId?.trim()) {
+    return false;
+  }
+  if (params.sessionEntry?.modelOverride?.trim()) {
+    return false;
+  }
+  const configured = resolveConfiguredModelRef({
+    cfg: params.cfg ?? {},
+    defaultProvider: DEFAULT_PROVIDER,
+    defaultModel: DEFAULT_MODEL,
+  });
+  return (
+    normalizeProviderId(configured.provider) === normalizeProviderId(params.provider) &&
+    configured.model.trim() === params.model.trim()
+  );
+}
 
 export async function runAgentTurnWithFallback(params: {
   commandBody: string;
@@ -295,6 +328,13 @@ export async function runAgentTurnWithFallback(params: {
             provider === params.followupRun.run.provider
               ? params.followupRun.run.authProfileId
               : undefined;
+          const allowEmbeddedRouter = shouldLetEmbeddedRouterSelectDefault({
+            cfg: runConfig,
+            provider,
+            model,
+            sessionEntry: params.getActiveSessionEntry(),
+            authProfileId,
+          });
           return runEmbeddedPiAgent({
             sessionId: params.followupRun.run.sessionId,
             sessionKey: params.sessionKey,
@@ -327,7 +367,7 @@ export async function runAgentTurnWithFallback(params: {
             enforceFinalTag: resolveEnforceFinalTag(params.followupRun.run, provider),
             provider,
             model,
-            preselectedModel: true,
+            preselectedModel: !allowEmbeddedRouter,
             authProfileId,
             authProfileIdSource: authProfileId
               ? params.followupRun.run.authProfileIdSource

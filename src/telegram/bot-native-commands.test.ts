@@ -78,4 +78,26 @@ describe("registerTelegramNativeCommands", () => {
 
     expect(listSkillCommandsForAgents).toHaveBeenCalledWith({ cfg });
   });
+
+  it("keeps skill slash handlers callable without publishing them to the Telegram command menu", () => {
+    const cfg: ArgentConfig = {};
+    listSkillCommandsForAgents.mockReturnValue([
+      {
+        name: "personal_skill",
+        skillName: "Personal Skill",
+        description: "Runs a personal skill",
+      },
+    ]);
+    const params = buildParams(cfg);
+
+    registerTelegramNativeCommands(params);
+
+    const registeredMenu = (params.bot.api.setMyCommands as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[0] as Array<{ command: string; description: string }>;
+    expect(registeredMenu).not.toContainEqual({
+      command: "personal_skill",
+      description: "Runs a personal skill",
+    });
+    expect(params.bot.command).toHaveBeenCalledWith("personal_skill", expect.any(Function));
+  });
 });
