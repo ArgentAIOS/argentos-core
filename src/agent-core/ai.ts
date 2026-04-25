@@ -38,13 +38,49 @@ export {
    */
   getProviders,
   /**
+   * @deprecated Prefer Argent-native `argentCalculateCost` from this module.
+   */
+  calculateCost,
+  /**
+   * @deprecated Prefer Argent-native `argentSupportsXhigh` from this module.
+   */
+  supportsXhigh,
+  /**
+   * @deprecated Prefer Argent-native `argentModelsAreEqual` from this module.
+   */
+  modelsAreEqual,
+  /**
    * @deprecated Prefer Argent-native `argentGetEnvApiKey` from this module.
    */
   getEnvApiKey,
   /**
+   * @deprecated Prefer Argent-native `argentRegisterApiProvider` from this module.
+   */
+  registerApiProvider,
+  /**
+   * @deprecated Prefer Argent-native `argentGetApiProvider` from this module.
+   */
+  getApiProvider,
+  /**
+   * @deprecated Prefer Argent-native `argentGetApiProviders` from this module.
+   */
+  getApiProviders,
+  /**
+   * @deprecated Prefer Argent-native `argentUnregisterApiProviders` from this module.
+   */
+  unregisterApiProviders,
+  /**
+   * @deprecated Prefer Argent-native `argentClearApiProviders` from this module.
+   */
+  clearApiProviders,
+  /**
    * @deprecated Kept for Pi-compat stream wrappers and tests.
    */
   AssistantMessageEventStream,
+  /**
+   * @deprecated Kept for Pi-compat stream wrappers and tests.
+   */
+  createAssistantMessageEventStream,
 } from "@mariozechner/pi-ai";
 export type {
   /**
@@ -363,6 +399,7 @@ export {
   supportsXhigh as argentSupportsXhigh,
   modelsAreEqual as argentModelsAreEqual,
   MODELS as ARGENT_MODELS,
+  MODELS,
 } from "../argent-ai/models-db.js";
 
 /**

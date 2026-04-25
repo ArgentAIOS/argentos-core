@@ -11,10 +11,6 @@ export {
    */
   AgentSession,
   /**
-   * @deprecated Prefer Argent-native `createArgentAgentSession`.
-   */
-  createAgentSession,
-  /**
    * @deprecated Prefer `ArgentSessionManager`.
    */
   SessionManager,
@@ -39,17 +35,17 @@ export {
    */
   createEditTool,
   /**
-   * @deprecated Prefer `argentCodingTools`.
+   * @deprecated Prefer `argentCreateBashTool`.
    */
-  codingTools,
-  /**
-   * @deprecated Prefer `argentReadTool`.
-   */
-  readTool,
+  createBashTool,
   /**
    * @deprecated Prefer `argentLoadSkillsFromDir`.
    */
   loadSkillsFromDir,
+  /**
+   * @deprecated Prefer `argentLoadSkills`.
+   */
+  loadSkills,
   /**
    * @deprecated Prefer `argentFormatSkillsForPrompt`.
    */
@@ -62,6 +58,10 @@ export {
    * @deprecated Prefer Argent-native compaction/summary path.
    */
   generateSummary,
+  /**
+   * @deprecated Prefer `argentBuildSessionContext`.
+   */
+  buildSessionContext,
 } from "@mariozechner/pi-coding-agent";
 export type {
   /**
@@ -190,6 +190,14 @@ export {
 } from "../argent-agent/file-tools.js";
 
 /**
+ * Legacy Pi-compatible default tool exports.
+ *
+ * Pi 0.70 replaced the old prebuilt defaults with `createCodingTools(cwd)`.
+ * Keep Argent's public seam stable by exposing our equivalent defaults here.
+ */
+export { codingTools, readTool } from "../argent-agent/file-tools.js";
+
+/**
  * Argent-native settings manager.
  * Two-layer config persistence (global + project) with type-safe getters/setters.
  */
@@ -232,4 +240,7 @@ export type {
  * Argent-native createAgentSession factory.
  * Bootstraps a full AgentSession by wiring agent loop + session + tools + events.
  */
-export { createArgentAgentSession } from "../argent-agent/create-agent-session.js";
+export {
+  createArgentAgentSession,
+  createArgentAgentSession as createAgentSession,
+} from "../argent-agent/create-agent-session.js";
