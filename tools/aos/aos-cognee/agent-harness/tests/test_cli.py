@@ -31,6 +31,7 @@ def test_search_uses_cognee_and_emits_aos_envelope(monkeypatch) -> None:
         GRAPH_COMPLETION = "GRAPH_COMPLETION"
 
     async def search(query_text: str, query_type: str, top_k: int):
+        print("noisy cognee startup")
         assert query_text == "How does A connect to B?"
         assert query_type == "GRAPH_COMPLETION"
         assert top_k == 3
@@ -55,9 +56,10 @@ def test_search_uses_cognee_and_emits_aos_envelope(monkeypatch) -> None:
         ],
     )
     assert result.exit_code == 0, result.output
-    payload = parse_json(result.output)
+    payload = parse_json(result.stdout)
     assert payload["ok"] is True
     assert payload["data"]["results"][0]["summary"] == "A connects to B through C"
+    assert "noisy cognee startup" not in result.stdout
 
 
 def test_write_command_requires_write_mode() -> None:

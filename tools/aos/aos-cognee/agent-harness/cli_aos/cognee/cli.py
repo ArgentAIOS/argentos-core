@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from contextlib import nullcontext, redirect_stdout
+import sys
 import time
+from typing import Callable, TypeVar
 
 import click
 
@@ -20,6 +23,8 @@ from .runtime import (
     prune_result,
     search_result,
 )
+
+T = TypeVar("T")
 
 
 class AosGroup(click.Group):
@@ -52,6 +57,17 @@ class AosGroup(click.Group):
 
 def _set_command(ctx: click.Context, command_id: str) -> None:
     ctx.obj["_command_id"] = command_id
+
+
+def _runtime_stdout_context(ctx: click.Context):
+    if ctx.obj.get("json"):
+        return redirect_stdout(sys.__stderr__ or sys.stderr)
+    return nullcontext()
+
+
+def _compute_runtime_data(ctx: click.Context, factory: Callable[[], T]) -> T:
+    with _runtime_stdout_context(ctx):
+        return factory()
 
 
 def _emit_success(ctx: click.Context, command_id: str, data: dict) -> None:
@@ -107,7 +123,7 @@ def config_show(ctx: click.Context) -> None:
 def health(ctx: click.Context) -> None:
     _set_command(ctx, "health")
     require_mode(ctx.obj["mode"], "health")
-    _emit_success(ctx, "health", health_snapshot(ctx.obj))
+    _emit_success(ctx, "health", _compute_runtime_data(ctx, lambda: health_snapshot(ctx.obj)))
 
 
 @cli.command("doctor")
@@ -115,7 +131,7 @@ def health(ctx: click.Context) -> None:
 def doctor(ctx: click.Context) -> None:
     _set_command(ctx, "doctor")
     require_mode(ctx.obj["mode"], "doctor")
-    _emit_success(ctx, "doctor", doctor_snapshot(ctx.obj))
+    _emit_success(ctx, "doctor", _compute_runtime_data(ctx, lambda: doctor_snapshot(ctx.obj)))
 
 
 @cli.command("search")
@@ -127,15 +143,18 @@ def doctor(ctx: click.Context) -> None:
 def search(ctx: click.Context, query: str, search_mode: str, limit: int, dataset: str) -> None:
     _set_command(ctx, "search")
     require_mode(ctx.obj["mode"], "search")
-    cfg = read_argent_config()
+    cfg = _compute_runtime_data(ctx, read_argent_config)
     _emit_success(
         ctx,
         "search",
-        search_result(
-            query=query,
-            search_mode=search_mode,
-            limit=max(1, limit),
-            dataset=dataset_name(cfg, dataset),
+        _compute_runtime_data(
+            ctx,
+            lambda: search_result(
+                query=query,
+                search_mode=search_mode,
+                limit=max(1, limit),
+                dataset=dataset_name(cfg, dataset),
+            ),
         ),
     )
 
@@ -148,14 +167,17 @@ def search(ctx: click.Context, query: str, search_mode: str, limit: int, dataset
 def ingest_vault(ctx: click.Context, path_value: str, dataset: str, limit: int) -> None:
     _set_command(ctx, "ingest-vault")
     require_mode(ctx.obj["mode"], "ingest-vault")
-    cfg = read_argent_config()
+    cfg = _compute_runtime_data(ctx, read_argent_config)
     _emit_success(
         ctx,
         "ingest-vault",
-        ingest_vault_result(
-            path_value=vault_path(cfg, path_value),
-            dataset=dataset_name(cfg, dataset),
-            limit=limit if limit > 0 else None,
+        _compute_runtime_data(
+            ctx,
+            lambda: ingest_vault_result(
+                path_value=vault_path(cfg, path_value),
+                dataset=dataset_name(cfg, dataset),
+                limit=limit if limit > 0 else None,
+            ),
         ),
     )
 
@@ -166,8 +188,12 @@ def ingest_vault(ctx: click.Context, path_value: str, dataset: str, limit: int) 
 def cognify(ctx: click.Context, dataset: str) -> None:
     _set_command(ctx, "cognify")
     require_mode(ctx.obj["mode"], "cognify")
-    cfg = read_argent_config()
-    _emit_success(ctx, "cognify", cognify_result(dataset_name(cfg, dataset)))
+    cfg = _compute_runtime_data(ctx, read_argent_config)
+    _emit_success(
+        ctx,
+        "cognify",
+        _compute_runtime_data(ctx, lambda: cognify_result(dataset_name(cfg, dataset))),
+    )
 
 
 @cli.command("memify")
@@ -176,8 +202,12 @@ def cognify(ctx: click.Context, dataset: str) -> None:
 def memify(ctx: click.Context, dataset: str) -> None:
     _set_command(ctx, "memify")
     require_mode(ctx.obj["mode"], "memify")
-    cfg = read_argent_config()
-    _emit_success(ctx, "memify", memify_result(dataset_name(cfg, dataset)))
+    cfg = _compute_runtime_data(ctx, read_argent_config)
+    _emit_success(
+        ctx,
+        "memify",
+        _compute_runtime_data(ctx, lambda: memify_result(dataset_name(cfg, dataset))),
+    )
 
 
 @cli.command("prune")
@@ -193,7 +223,7 @@ def prune(ctx: click.Context, yes: bool) -> None:
             exit_code=4,
             details={},
         )
-    _emit_success(ctx, "prune", prune_result())
+    _emit_success(ctx, "prune", _compute_runtime_data(ctx, prune_result))
 
 
 if __name__ == "__main__":
