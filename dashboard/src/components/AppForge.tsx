@@ -12,7 +12,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { ForgeApp } from "../hooks/useApps";
+import type { AppForgeWorkflowEventRequest, ForgeApp } from "../hooks/useApps";
 import type { AppWindowState } from "../hooks/useAppWindows";
 import { AppDock } from "./AppDock";
 
@@ -27,7 +27,14 @@ interface AppForgeProps {
   onNewApp: (name: string, description: string) => void;
   onRestoreApp: (appId: string) => void;
   onFocusApp: (appId: string) => void;
+  onEmitWorkflowEvent?: (appId: string, event: AppForgeWorkflowEventRequest) => Promise<boolean>;
 }
+
+type WorkflowEventStatus = {
+  kind: "pending" | "success" | "error";
+  appId: string;
+  message: string;
+};
 
 function sanitizeSvg(svg: string): string {
   return svg
@@ -47,6 +54,43 @@ function hashString(str: string): number {
   return Math.abs(hash);
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function firstString(values: unknown): string | undefined {
+  if (!Array.isArray(values)) return undefined;
+  return values.find(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+}
+
+function appWorkflowCapability(app: ForgeApp): { id?: string; eventType?: string } {
+  const metadata = asRecord(app.metadata);
+  const workflow = asRecord(metadata?.workflow);
+  const appForge = asRecord(metadata?.appForge);
+  const candidates = [
+    metadata?.workflowCapabilities,
+    workflow?.capabilities,
+    appForge?.workflowCapabilities,
+  ];
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) continue;
+    const capability = candidate.find(asRecord);
+    if (!capability) continue;
+    return {
+      id:
+        typeof capability.id === "string" && capability.id.trim()
+          ? capability.id.trim()
+          : undefined,
+      eventType: firstString(capability.eventTypes),
+    };
+  }
+  return {};
+}
+
 export function AppForge({
   isOpen,
   apps,
@@ -58,6 +102,7 @@ export function AppForge({
   onNewApp,
   onRestoreApp,
   onFocusApp,
+  onEmitWorkflowEvent,
 }: AppForgeProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [contextMenu, setContextMenu] = useState<{ appId: string; x: number; y: number } | null>(
@@ -71,6 +116,7 @@ export function AppForge({
   const [building, setBuilding] = useState(false);
   const [newAppName, setNewAppName] = useState("");
   const [newAppDescription, setNewAppDescription] = useState("");
+  const [workflowEventStatus, setWorkflowEventStatus] = useState<WorkflowEventStatus | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const appCountAtBuild = useRef(0);
@@ -90,6 +136,7 @@ export function AppForge({
       setNewAppName("");
       setNewAppDescription("");
       setBuilding(false);
+      setWorkflowEventStatus(null);
     }
   }, [isOpen]);
 
@@ -190,6 +237,43 @@ export function AppForge({
     setDeleteError(`Failed to delete ${pendingDeleteApp.name}.`);
   }, [pendingDeleteApp, deletingAppId, onDeleteApp]);
 
+  const emitTestWorkflowEvent = useCallback(
+    async (appId: string) => {
+      if (!onEmitWorkflowEvent) return;
+      const app = apps.find((candidate) => candidate.id === appId);
+      if (!app) return;
+
+      const capability = appWorkflowCapability(app);
+      const eventType = capability.eventType ?? "forge.review.completed";
+      setWorkflowEventStatus({
+        kind: "pending",
+        appId,
+        message: `Emitting ${eventType} for ${app.name}...`,
+      });
+
+      const ok = await onEmitWorkflowEvent(appId, {
+        eventType,
+        capabilityId: capability.id,
+        decision: "approved",
+        reviewId: `manual-${Date.now()}`,
+        payload: {
+          decision: "approved",
+          emittedBy: "app-forge",
+          manualTest: true,
+        },
+      });
+
+      setWorkflowEventStatus({
+        kind: ok ? "success" : "error",
+        appId,
+        message: ok
+          ? `Emitted ${eventType} for ${app.name}.`
+          : `Failed to emit ${eventType} for ${app.name}.`,
+      });
+    },
+    [apps, onEmitWorkflowEvent],
+  );
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -242,6 +326,32 @@ export function AppForge({
 
           {/* App Grid */}
           <div className="flex-1 overflow-auto px-8 pb-16">
+            <AnimatePresence>
+              {workflowEventStatus && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className={`mx-auto mb-4 flex max-w-3xl items-center justify-between rounded-xl border px-4 py-3 text-sm ${
+                    workflowEventStatus.kind === "error"
+                      ? "border-red-400/30 bg-red-500/10 text-red-200"
+                      : workflowEventStatus.kind === "success"
+                        ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                        : "border-purple-400/30 bg-purple-500/10 text-purple-200"
+                  }`}
+                >
+                  <span>{workflowEventStatus.message}</span>
+                  <button
+                    onClick={() => setWorkflowEventStatus(null)}
+                    className="rounded-md p-1 text-white/45 transition-colors hover:bg-white/10 hover:text-white"
+                    title="Dismiss"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 max-w-6xl mx-auto">
               {filteredApps.map((app, index) => (
                 <motion.div
@@ -523,6 +633,18 @@ export function AppForge({
                 >
                   <Pin className="w-3.5 h-3.5" /> Toggle Pin
                 </button>
+                {onEmitWorkflowEvent && (
+                  <button
+                    onClick={() => {
+                      void emitTestWorkflowEvent(contextMenu.appId);
+                      setContextMenu(null);
+                    }}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+                    data-testid="appforge-emit-workflow-event"
+                  >
+                    <Send className="w-3.5 h-3.5" /> Emit Test Event
+                  </button>
+                )}
                 <div className="border-t border-white/10 my-1" />
                 <button
                   onClick={() => {

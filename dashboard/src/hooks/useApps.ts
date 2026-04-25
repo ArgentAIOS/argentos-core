@@ -19,6 +19,22 @@ export interface ForgeApp {
   metadata?: Record<string, unknown>;
 }
 
+export interface AppForgeWorkflowEventRequest {
+  eventType?: string;
+  type?: string;
+  action?: string;
+  capabilityId?: string;
+  workflowRunId?: string;
+  runId?: string;
+  nodeId?: string;
+  tableId?: string;
+  viewId?: string;
+  recordId?: string;
+  reviewId?: string;
+  decision?: string;
+  payload?: Record<string, unknown>;
+}
+
 interface UseAppsReturn {
   apps: ForgeApp[];
   loading: boolean;
@@ -37,6 +53,7 @@ interface UseAppsReturn {
   recordOpen: (appId: string) => Promise<void>;
   pinApp: (appId: string) => Promise<ForgeApp | null>;
   searchApps: (query: string) => Promise<ForgeApp[]>;
+  emitWorkflowEvent: (appId: string, event: AppForgeWorkflowEventRequest) => Promise<boolean>;
   refreshApps: () => Promise<void>;
 }
 
@@ -317,6 +334,31 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
     }
   }, []);
 
+  const emitWorkflowEvent = useCallback(
+    async (appId: string, event: AppForgeWorkflowEventRequest): Promise<boolean> => {
+      try {
+        const res = await fetchLocalApi(`${API_BASE}/apps/${appId}/workflow-event`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(event),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(
+            typeof data.error === "string" ? data.error : "Failed to emit workflow event",
+          );
+        }
+        setError(null);
+        return true;
+      } catch (err) {
+        console.error("[useApps] Error emitting workflow event:", err);
+        setError(err instanceof Error ? err.message : "Failed to emit workflow event");
+        return false;
+      }
+    },
+    [],
+  );
+
   return {
     apps,
     loading,
@@ -329,6 +371,7 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
     recordOpen,
     pinApp,
     searchApps,
+    emitWorkflowEvent,
     refreshApps,
   };
 }

@@ -1583,6 +1583,7 @@ function App() {
     getApp: getForgeApp,
     recordOpen: recordForgeOpen,
     pinApp: pinForgeApp,
+    emitWorkflowEvent: emitForgeWorkflowEvent,
     refreshApps: refreshForgeApps,
   } = useApps({
     enabled: backgroundPollingEnabled,
@@ -1726,6 +1727,12 @@ function App() {
     [deleteForgeApp, appWindows.closeApp],
   );
 
+  const handleEmitForgeWorkflowEvent = useCallback(
+    async (appId: string, event: Parameters<typeof emitForgeWorkflowEvent>[1]) =>
+      emitForgeWorkflowEvent(appId, event),
+    [emitForgeWorkflowEvent],
+  );
+
   // Expose app functions globally
   useEffect(() => {
     (window as any).argentApps = {
@@ -1733,9 +1740,17 @@ function App() {
       open: handleOpenForgeApp,
       create: createForgeApp,
       delete: handleDeleteForgeApp,
+      emitWorkflowEvent: handleEmitForgeWorkflowEvent,
       refresh: refreshForgeApps,
     };
-  }, [forgeApps, handleOpenForgeApp, createForgeApp, handleDeleteForgeApp, refreshForgeApps]);
+  }, [
+    forgeApps,
+    handleOpenForgeApp,
+    createForgeApp,
+    handleDeleteForgeApp,
+    handleEmitForgeWorkflowEvent,
+    refreshForgeApps,
+  ]);
 
   const [logs, setLogs] = useState<LogEntry[]>(initialLogs);
   const [operatorDisplayName, setOperatorDisplayName] = useState<string | null>(null);
@@ -5993,6 +6008,7 @@ function App() {
         onNewApp={handleNewForgeApp}
         onRestoreApp={appWindows.restoreApp}
         onFocusApp={appWindows.focusApp}
+        onEmitWorkflowEvent={handleEmitForgeWorkflowEvent}
       />
 
       {/* App Windows (rendered outside forge so they persist when forge closes) */}
