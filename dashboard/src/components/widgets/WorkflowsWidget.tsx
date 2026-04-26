@@ -1900,12 +1900,14 @@ function TriggerForm({
   nodeId,
   gateway,
   appForgeEventOptions,
+  workflows,
 }: {
   data: TriggerNodeData;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
   nodeId: string;
   gateway: ReturnType<typeof useGateway>;
   appForgeEventOptions: AppForgeEventOption[];
+  workflows: WorkflowDefinition[];
 }) {
   const update = (field: string, value: unknown) => {
     onUpdate(nodeId, { ...data, [field]: value });
@@ -2221,15 +2223,13 @@ function TriggerForm({
       )}
 
       {data.triggerType === "workflow_done" && (
-        <div className="space-y-1.5">
-          <label className={DOCK_LABEL}>Upstream Workflow ID</label>
-          <input
-            className={DOCK_INPUT}
-            value={((data as Record<string, unknown>).upstreamWorkflowId as string) || ""}
-            onChange={(e) => update("upstreamWorkflowId", e.target.value)}
-            placeholder="wf-1234567890"
-          />
-        </div>
+        <WorkflowPicker
+          label="Upstream workflow"
+          value={((data as Record<string, unknown>).upstreamWorkflowId as string) || ""}
+          onChange={(value) => update("upstreamWorkflowId", value)}
+          workflows={workflows}
+          placeholder="Select workflow..."
+        />
       )}
 
       {data.triggerType === "appforge_event" && (
@@ -2695,6 +2695,7 @@ function ActionForm({
   gateway,
   connectors,
   knowledgeCollections,
+  agents,
 }: {
   data: ActionNodeData;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
@@ -2702,6 +2703,7 @@ function ActionForm({
   gateway: ReturnType<typeof useGateway>;
   connectors: ConnectorEntry[];
   knowledgeCollections: KnowledgeCollectionOption[];
+  agents: FamilyMember[];
 }) {
   const update = (field: string, value: unknown) => {
     onUpdate(nodeId, { ...data, [field]: value });
@@ -2935,15 +2937,13 @@ function ActionForm({
               placeholder="Task details..."
             />
           </div>
-          <div className="space-y-1.5">
-            <label className={DOCK_LABEL}>Assignee</label>
-            <input
-              className={DOCK_INPUT}
-              value={cfgValue("assignee")}
-              onChange={(e) => cfgUpdate("assignee", e.target.value)}
-              placeholder="Agent ID or name"
-            />
-          </div>
+          <AgentPicker
+            label="Assignee"
+            value={String(cfgValue("assignee"))}
+            onChange={(value) => cfgUpdate("assignee", value)}
+            agents={agents}
+            placeholder="Select assignee..."
+          />
           <div className="space-y-1.5">
             <label className={DOCK_LABEL}>Priority</label>
             <select
@@ -3713,6 +3713,123 @@ function KnowledgeCollectionPicker({
   );
 }
 
+function AgentPicker({
+  label,
+  value,
+  onChange,
+  agents,
+  placeholder = "Select agent...",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  agents: FamilyMember[];
+  placeholder?: string;
+}) {
+  const [customValue, setCustomValue] = useState<string | null>(null);
+  const selectedKnown = agents.some((agent) => agent.id === value);
+  const customMode = customValue !== null && customValue === value;
+  const selectValue = customMode || (value && !selectedKnown) ? "__custom" : value;
+  const showCustomInput = customMode || selectValue === "__custom" || agents.length === 0;
+
+  return (
+    <div className="space-y-1.5">
+      <label className={DOCK_LABEL}>{label}</label>
+      <select
+        className={DOCK_INPUT}
+        value={selectValue}
+        onChange={(event) => {
+          if (event.target.value === "__custom") {
+            setCustomValue(value);
+            return;
+          }
+          setCustomValue(null);
+          onChange(event.target.value);
+        }}
+      >
+        <option value="">{placeholder}</option>
+        {agents.map((agent) => (
+          <option key={agent.id} value={agent.id}>
+            {agent.name}
+            {agent.role ? ` (${agent.role})` : ""}
+          </option>
+        ))}
+        {value && !selectedKnown && <option value="__custom">Saved custom: {value}</option>}
+        <option value="__custom">Custom agent...</option>
+      </select>
+      {showCustomInput && (
+        <input
+          className={DOCK_INPUT}
+          value={value}
+          onChange={(event) => {
+            setCustomValue(event.target.value);
+            onChange(event.target.value);
+          }}
+          placeholder="agent name or id"
+        />
+      )}
+    </div>
+  );
+}
+
+function WorkflowPicker({
+  label,
+  value,
+  onChange,
+  workflows,
+  placeholder = "Select workflow...",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  workflows: WorkflowDefinition[];
+  placeholder?: string;
+}) {
+  const [customValue, setCustomValue] = useState<string | null>(null);
+  const selectedKnown = workflows.some((workflow) => workflow.id === value);
+  const customMode = customValue !== null && customValue === value;
+  const selectValue = customMode || (value && !selectedKnown) ? "__custom" : value;
+  const showCustomInput = customMode || selectValue === "__custom" || workflows.length === 0;
+
+  return (
+    <div className="space-y-1.5">
+      <label className={DOCK_LABEL}>{label}</label>
+      <select
+        className={DOCK_INPUT}
+        value={selectValue}
+        onChange={(event) => {
+          if (event.target.value === "__custom") {
+            setCustomValue(value);
+            return;
+          }
+          setCustomValue(null);
+          onChange(event.target.value);
+        }}
+      >
+        <option value="">{placeholder}</option>
+        {workflows.map((workflow) => (
+          <option key={workflow.id} value={workflow.id}>
+            {workflow.name || workflow.id}
+          </option>
+        ))}
+        {value && !selectedKnown && <option value="__custom">Saved custom: {value}</option>}
+        <option value="__custom">Custom workflow...</option>
+      </select>
+      {showCustomInput && (
+        <input
+          className={DOCK_INPUT}
+          value={value}
+          onChange={(event) => {
+            setCustomValue(event.target.value);
+            onChange(event.target.value);
+          }}
+          placeholder="workflow id"
+        />
+      )}
+    </div>
+  );
+}
+
 function outputSideEffectLabel(target: OutputNodeData["target"]): string {
   switch (target) {
     case "channel":
@@ -3740,6 +3857,7 @@ function OutputForm({
   nodes,
   connectors,
   knowledgeCollections,
+  workflows,
 }: {
   data: OutputNodeData;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
@@ -3748,6 +3866,7 @@ function OutputForm({
   nodes: Node[];
   connectors: ConnectorEntry[];
   knowledgeCollections: KnowledgeCollectionOption[];
+  workflows: WorkflowDefinition[];
 }) {
   const update = (field: string, value: unknown) => {
     onUpdate(nodeId, { ...data, [field]: value });
@@ -4273,15 +4392,12 @@ function OutputForm({
 
       {data.target === "next_workflow" && (
         <>
-          <div className="space-y-1.5">
-            <label className={DOCK_LABEL}>Workflow ID</label>
-            <input
-              className={DOCK_INPUT}
-              value={(record.workflowId as string) || ""}
-              onChange={(e) => update("workflowId", e.target.value)}
-              placeholder="workflow id"
-            />
-          </div>
+          <WorkflowPicker
+            label="Workflow"
+            value={(record.workflowId as string) || ""}
+            onChange={(value) => update("workflowId", value)}
+            workflows={workflows}
+          />
           <div className="space-y-1.5">
             <label className={DOCK_LABEL + " flex items-center gap-1"}>
               Input mapping
@@ -4463,11 +4579,13 @@ function MemorySourceForm({
   onUpdate,
   nodeId,
   knowledgeCollections,
+  agents,
 }: {
   data: SubPortNodeData;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
   nodeId: string;
   knowledgeCollections: KnowledgeCollectionOption[];
+  agents: FamilyMember[];
 }) {
   const cfg = data.config ?? {};
   const update = (field: string, value: unknown) => {
@@ -4498,15 +4616,12 @@ function MemorySourceForm({
         />
       )}
       {cfg.sourceType === "agent_memory" && (
-        <div className="space-y-1.5">
-          <label className={DOCK_LABEL}>Agent ID</label>
-          <input
-            className={DOCK_INPUT}
-            value={(cfg.agentId as string) || ""}
-            onChange={(e) => update("agentId", e.target.value)}
-            placeholder="main"
-          />
-        </div>
+        <AgentPicker
+          label="Agent"
+          value={(cfg.agentId as string) || ""}
+          onChange={(value) => update("agentId", value)}
+          agents={agents}
+        />
       )}
       <div className="space-y-1.5">
         <label className={DOCK_LABEL}>Search Query</label>
@@ -6960,6 +7075,7 @@ function WorkflowCanvasInner({
                         nodeId={selectedNode.id}
                         gateway={gateway}
                         appForgeEventOptions={appForgeEventOptions}
+                        workflows={workflows}
                       />
                     )}
                     {selectedNode.type === "agentStep" && (
@@ -6980,6 +7096,7 @@ function WorkflowCanvasInner({
                         gateway={gateway}
                         connectors={connectors}
                         knowledgeCollections={knowledgeCollections}
+                        agents={agents}
                       />
                     )}
                     {selectedNode.type === "gate" && (
@@ -6999,6 +7116,7 @@ function WorkflowCanvasInner({
                         nodes={nodes}
                         connectors={connectors}
                         knowledgeCollections={knowledgeCollections}
+                        workflows={workflows}
                       />
                     )}
                     {selectedNode.type === "modelProvider" && (
@@ -7014,6 +7132,7 @@ function WorkflowCanvasInner({
                         onUpdate={onUpdateNodeData}
                         nodeId={selectedNode.id}
                         knowledgeCollections={knowledgeCollections}
+                        agents={agents}
                       />
                     )}
                     {selectedNode.type === "toolGrant" && (
