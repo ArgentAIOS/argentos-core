@@ -16,6 +16,10 @@ Don't start from scratch. Import a template and customize it for your business.
 
 ## Available Templates
 
+For owner-operator and small-business examples, see
+[Owner-Operator Scenarios](./owner-operator-scenarios.md). That catalog includes marketing, sales,
+HR, finance, support, and operations workflows designed for JSON/YAML import with pinned test data.
+
 ### Weekly Article Pipeline
 
 **What it does:** AI writes a blog post, reviews it for SEO, creates images and social media posts.

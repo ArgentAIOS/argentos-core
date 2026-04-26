@@ -69,6 +69,7 @@ Bus docs: `ops/threadmaster-bus/README.md`.
 - Workflows -> AppForge: metadata/capability discovery only. Do not couple to AppForge UI internals.
 - AOS connectors -> Workflows/AppForge: connector manifests, permissions, and capabilities are the source of truth.
 - Workflow output channels: advertised choices should reflect real configured operator channels or explicit manual endpoints, not hard-coded wishful options.
+- Workflow import/export: canonical Argent workflow packages are executable definition first, canvas layout second, with credentials/dependencies and pinned test fixtures declared explicitly.
 - External writes/outbound delivery: default posture remains operator approval unless explicitly trusted.
 - AppForge is still single-operator safe, not multi-user write-safe, until the permission/actor/audit seam is enforced.
 
@@ -198,6 +199,13 @@ The workflow canvas should consume connector manifests/capabilities rather than 
 ### 2026-04-26 — Workflows General
 
 Before touching shared files, update this board. The goal is to make lane drift visible in the repo before it becomes visible in the product.
+
+### 2026-04-26 — Workflows Import/Template Harness
+
+Workflows added the first owner-operator import/export harness: `src/infra/workflow-package.ts`, `src/infra/workflow-owner-operator-templates.ts`, `src/infra/workflow-package.test.ts`, and `docs/workflows/owner-operator-scenarios.md`.
+The new contract imports/exports canonical JSON/YAML workflow packages with executable workflow definition, separate canvas layout, credential/dependency declarations, and n8n-style pinned test fixtures.
+The initial library has 20 marketing/sales/HR/finance/support/operations templates for solo operators and SMBs.
+Templates import in `simulate` stage by default; live promotion must still validate real credentials, configured channels/connectors, and approval posture.
 
 ### 2026-04-26 — AOS Connectors to Workflows/AppForge/AOU
 
