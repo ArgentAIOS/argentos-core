@@ -9472,6 +9472,9 @@ app.get("/api/settings/service-keys/audit", async (req, res) => {
 
 const ARGENT_CONFIG_PATH = path.join(process.env.HOME, ".argentos", "argent.json");
 const REDACTED_CONFIG_SECRET = "__REDACTED__";
+const DEFAULT_IMAGE_ANALYSIS_MODEL = "google/gemini-3-flash-preview";
+const DEFAULT_IMAGE_ANALYSIS_FALLBACKS = ["anthropic/claude-sonnet-4-6"];
+const DEFAULT_IMAGE_ANALYSIS_TIMEOUT_SECONDS = 60;
 const LOAD_PROFILE_PRESETS = {
   desktop: {
     id: "desktop",
@@ -10183,6 +10186,110 @@ function readArgentConfig() {
 
 function writeArgentConfig(config) {
   fs.writeFileSync(ARGENT_CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+}
+
+function normalizeImageAnalysisConfig(config) {
+  const rawImageModel = config?.agents?.defaults?.imageModel;
+  const primary =
+    typeof rawImageModel === "string"
+      ? rawImageModel.trim()
+      : typeof rawImageModel?.primary === "string"
+        ? rawImageModel.primary.trim()
+        : "";
+  const fallbacks =
+    rawImageModel && typeof rawImageModel === "object" && Array.isArray(rawImageModel.fallbacks)
+      ? rawImageModel.fallbacks
+          .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+          .map((entry) => entry.trim())
+      : [];
+  const mediaImage = config?.tools?.media?.image || {};
+  const timeoutSeconds =
+    typeof mediaImage.timeoutSeconds === "number" &&
+    Number.isFinite(mediaImage.timeoutSeconds) &&
+    mediaImage.timeoutSeconds > 0
+      ? Math.floor(mediaImage.timeoutSeconds)
+      : DEFAULT_IMAGE_ANALYSIS_TIMEOUT_SECONDS;
+  const configuredModels = Array.isArray(mediaImage.models)
+    ? mediaImage.models
+        .map((entry) => {
+          const provider = typeof entry?.provider === "string" ? entry.provider.trim() : "";
+          const model = typeof entry?.model === "string" ? entry.model.trim() : "";
+          return provider && model ? { provider, model } : null;
+        })
+        .filter(Boolean)
+    : [];
+  const resolvedPrimary = primary || DEFAULT_IMAGE_ANALYSIS_MODEL;
+  const resolvedFallbacks = fallbacks.length > 0 ? fallbacks : DEFAULT_IMAGE_ANALYSIS_FALLBACKS;
+  const resolvedModels =
+    configuredModels.length > 0
+      ? configuredModels
+      : [resolvedPrimary, ...resolvedFallbacks]
+          .map(parseProviderModelRef)
+          .filter(Boolean)
+          .map((entry) => ({ provider: entry.provider, model: entry.model }));
+
+  return {
+    primary: resolvedPrimary,
+    fallbacks: resolvedFallbacks,
+    timeoutSeconds,
+    models: resolvedModels,
+  };
+}
+
+function applyImageAnalysisConfigPatch(config, patch) {
+  if (!patch || typeof patch !== "object") return;
+  if (!config.agents || typeof config.agents !== "object") config.agents = {};
+  if (!config.agents.defaults || typeof config.agents.defaults !== "object") {
+    config.agents.defaults = {};
+  }
+  if (!config.tools || typeof config.tools !== "object") config.tools = {};
+  if (!config.tools.media || typeof config.tools.media !== "object") config.tools.media = {};
+  if (!config.tools.media.image || typeof config.tools.media.image !== "object") {
+    config.tools.media.image = {};
+  }
+
+  const primary =
+    typeof patch.primary === "string" && patch.primary.trim().length > 0
+      ? patch.primary.trim()
+      : DEFAULT_IMAGE_ANALYSIS_MODEL;
+  const fallbacks = Array.isArray(patch.fallbacks)
+    ? patch.fallbacks
+        .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+        .map((entry) => entry.trim())
+    : [];
+  const resolvedFallbacks = fallbacks.length > 0 ? fallbacks : DEFAULT_IMAGE_ANALYSIS_FALLBACKS;
+
+  config.agents.defaults.imageModel = {
+    primary,
+    fallbacks: resolvedFallbacks,
+  };
+
+  const timeoutSeconds =
+    typeof patch.timeoutSeconds === "number" &&
+    Number.isFinite(patch.timeoutSeconds) &&
+    patch.timeoutSeconds > 0
+      ? Math.max(1, Math.floor(patch.timeoutSeconds))
+      : DEFAULT_IMAGE_ANALYSIS_TIMEOUT_SECONDS;
+
+  const configuredModels = Array.isArray(patch.models)
+    ? patch.models
+        .map((entry) => {
+          const provider = typeof entry?.provider === "string" ? entry.provider.trim() : "";
+          const model = typeof entry?.model === "string" ? entry.model.trim() : "";
+          return provider && model ? { provider, model } : null;
+        })
+        .filter(Boolean)
+    : [];
+  const resolvedModels =
+    configuredModels.length > 0
+      ? configuredModels
+      : [primary, ...resolvedFallbacks]
+          .map(parseProviderModelRef)
+          .filter(Boolean)
+          .map((entry) => ({ provider: entry.provider, model: entry.model }));
+
+  config.tools.media.image.timeoutSeconds = timeoutSeconds;
+  config.tools.media.image.models = resolvedModels;
 }
 
 const DASHBOARD_REPO_ROOT = path.resolve(path.join(__dirname, ".."));
@@ -11845,6 +11952,7 @@ app.get("/api/settings/agent", (req, res) => {
           ? toolsScope.deny.filter((entry) => typeof entry === "string")
           : [],
       },
+      imageAnalysis: normalizeImageAnalysisConfig(config),
       backgroundModels: {
         kernel: kernelBackgroundSelection,
         contemplation: contemplationSelection,
@@ -12394,6 +12502,9 @@ app.patch("/api/settings/agent", (req, res) => {
           delete config.agents.defaults.contemplation.discoveryPhase.maxDurationMs;
         }
       }
+    }
+    if (req.body.imageAnalysis !== undefined) {
+      applyImageAnalysisConfigPatch(config, req.body.imageAnalysis);
     }
     if (req.body.tools !== undefined && typeof req.body.tools === "object") {
       if (!config.tools || typeof config.tools !== "object") config.tools = {};

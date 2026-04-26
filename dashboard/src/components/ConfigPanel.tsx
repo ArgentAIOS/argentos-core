@@ -147,6 +147,48 @@ const defaultChannelSetupGuide = {
   guide: "Paste the provider token and add trusted sender IDs when using allowlist mode.",
 };
 
+const VISION_MODEL_OPTIONS = [
+  {
+    ref: "google/gemini-3-flash-preview",
+    label: "Gemini 3 Flash Preview",
+    provider: "google",
+    model: "gemini-3-flash-preview",
+  },
+  {
+    ref: "google/gemini-3-pro-preview",
+    label: "Gemini 3 Pro Preview",
+    provider: "google",
+    model: "gemini-3-pro-preview",
+  },
+  {
+    ref: "anthropic/claude-sonnet-4-6",
+    label: "Claude Sonnet 4.6",
+    provider: "anthropic",
+    model: "claude-sonnet-4-6",
+  },
+  {
+    ref: "anthropic/claude-haiku-4-5",
+    label: "Claude Haiku 4.5",
+    provider: "anthropic",
+    model: "claude-haiku-4-5",
+  },
+  {
+    ref: "anthropic/claude-opus-4-6",
+    label: "Claude Opus 4.6",
+    provider: "anthropic",
+    model: "claude-opus-4-6",
+  },
+  { ref: "openai/gpt-4o", label: "GPT-4o", provider: "openai", model: "gpt-4o" },
+  { ref: "openai/gpt-5.4", label: "GPT-5.4", provider: "openai", model: "gpt-5.4" },
+  { ref: "xai/grok-4", label: "Grok 4", provider: "xai", model: "grok-4" },
+  {
+    ref: "minimax/MiniMax-VL-01",
+    label: "MiniMax VL-01",
+    provider: "minimax",
+    model: "MiniMax-VL-01",
+  },
+] as const;
+
 function parseChannelAllowFrom(value: string): string[] {
   return Array.from(
     new Set(
@@ -3024,6 +3066,12 @@ export function ConfigPanel({
       alsoAllow?: string[];
       deny?: string[];
     };
+    imageAnalysis?: {
+      primary?: string;
+      fallbacks?: string[];
+      timeoutSeconds?: number;
+      models?: Array<{ provider: string; model: string }>;
+    };
   }
   interface MemoryV3StatusResponse {
     ok: boolean;
@@ -3259,6 +3307,16 @@ export function ConfigPanel({
   });
   const [defaultAgentId, setDefaultAgentId] = useState("main");
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([]);
+  const [imagePrimaryRef, setImagePrimaryRef] = useState("google/gemini-3-flash-preview");
+  const [imageFallbackRefsDraft, setImageFallbackRefsDraft] = useState(
+    "anthropic/claude-sonnet-4-6",
+  );
+  const [imageTimeoutDraft, setImageTimeoutDraft] = useState("60");
+  const [imageAnalysisSaving, setImageAnalysisSaving] = useState(false);
+  const [imageAnalysisMessage, setImageAnalysisMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
   const [hasExecutionWorkerOverride, setHasExecutionWorkerOverride] = useState(false);
   useEffect(() => {
     if (!isPublicCoreSurface) return;
@@ -4237,6 +4295,28 @@ export function ConfigPanel({
               : [],
           );
           setHasExecutionWorkerOverride(Boolean(agentData.hasExecutionWorkerOverride));
+          setImagePrimaryRef(
+            typeof agentData?.imageAnalysis?.primary === "string" &&
+              agentData.imageAnalysis.primary.trim()
+              ? agentData.imageAnalysis.primary.trim()
+              : "google/gemini-3-flash-preview",
+          );
+          setImageFallbackRefsDraft(
+            Array.isArray(agentData?.imageAnalysis?.fallbacks) &&
+              agentData.imageAnalysis.fallbacks.length > 0
+              ? agentData.imageAnalysis.fallbacks
+                  .filter((entry: unknown) => typeof entry === "string" && entry.trim())
+                  .join("\n")
+              : "anthropic/claude-sonnet-4-6",
+          );
+          setImageTimeoutDraft(
+            String(
+              typeof agentData?.imageAnalysis?.timeoutSeconds === "number" &&
+                Number.isFinite(agentData.imageAnalysis.timeoutSeconds)
+                ? Math.max(1, Math.floor(agentData.imageAnalysis.timeoutSeconds))
+                : 60,
+            ),
+          );
           const timeoutMs = agentData?.memory?.memu?.llm?.timeoutMs;
           if (typeof timeoutMs === "number" && Number.isFinite(timeoutMs)) {
             setMemoryTimeoutDraft(String(Math.max(1, Math.floor(timeoutMs))));
@@ -5948,7 +6028,7 @@ export function ConfigPanel({
 
   const parseFallbackList = (value: string): string[] => {
     return String(value ?? "")
-      .split(",")
+      .split(/[,\n]+/)
       .map((entry) => entry.trim())
       .filter(Boolean);
   };
@@ -6174,6 +6254,106 @@ export function ConfigPanel({
         return "Low confidence";
       default:
         return "";
+    }
+  };
+
+  const visionModelOptions = (() => {
+    const seen = new Set<string>();
+    const rows: Array<{ ref: string; label: string; provider: string; model: string }> = [];
+    const push = (ref: string, label?: string) => {
+      const parsed = parseModelRef(ref);
+      if (!parsed || seen.has(ref)) return;
+      seen.add(ref);
+      rows.push({
+        ref,
+        label: label || `${ref} (custom)`,
+        provider: parsed.provider,
+        model: parsed.model,
+      });
+    };
+    for (const option of VISION_MODEL_OPTIONS) {
+      push(option.ref, `${option.ref} (${option.label})`);
+    }
+    push(imagePrimaryRef);
+    for (const fallback of parseFallbackList(imageFallbackRefsDraft)) {
+      push(fallback);
+    }
+    return rows;
+  })();
+
+  const saveImageAnalysisSettings = async () => {
+    const primary = imagePrimaryRef.trim();
+    const parsedPrimary = parseModelRef(primary);
+    if (!primary || !parsedPrimary) {
+      setImageAnalysisMessage({
+        type: "error",
+        text: "Choose a primary image model in provider/model format.",
+      });
+      return;
+    }
+    const fallbacks = parseFallbackList(imageFallbackRefsDraft).filter((ref) => ref !== primary);
+    const invalidFallback = fallbacks.find((ref) => !parseModelRef(ref));
+    if (invalidFallback) {
+      setImageAnalysisMessage({
+        type: "error",
+        text: `Fallback "${invalidFallback}" is not in provider/model format.`,
+      });
+      return;
+    }
+    const timeoutSeconds = Math.max(1, Math.floor(Number(imageTimeoutDraft) || 60));
+    const models = [primary, ...fallbacks]
+      .map((ref) => parseModelRef(ref))
+      .filter((entry): entry is { provider: string; model: string } => Boolean(entry));
+
+    setImageAnalysisSaving(true);
+    setImageAnalysisMessage(null);
+    try {
+      const response = await fetch("/api/settings/agent", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageAnalysis: {
+            primary,
+            fallbacks,
+            timeoutSeconds,
+            models,
+          },
+        }),
+      });
+      if (!response.ok) {
+        const details = await response.json().catch(() => ({}));
+        throw new Error(
+          typeof details?.error === "string" ? details.error : `HTTP ${response.status}`,
+        );
+      }
+      setAgentSettings((prev) =>
+        prev
+          ? {
+              ...prev,
+              imageAnalysis: {
+                primary,
+                fallbacks,
+                timeoutSeconds,
+                models,
+              },
+            }
+          : prev,
+      );
+      setImageTimeoutDraft(String(timeoutSeconds));
+      setImageAnalysisMessage({
+        type: "success",
+        text: "Image analysis model routing saved.",
+      });
+    } catch (err) {
+      console.error("[Agent] Failed to save image analysis config:", err);
+      setImageAnalysisMessage({
+        type: "error",
+        text: `Failed to save image analysis config: ${
+          err instanceof Error ? err.message : "request failed"
+        }`,
+      });
+    } finally {
+      setImageAnalysisSaving(false);
     }
   };
 
@@ -14426,6 +14606,100 @@ export function ConfigPanel({
                               </span>{" "}
                               provider/model lane so it stays aligned with the other background
                               model selectors.
+                            </div>
+                            <div className="rounded-lg border border-sky-400/25 bg-sky-500/5 p-3 space-y-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-start gap-2">
+                                  <Eye className="w-4 h-4 mt-0.5 text-sky-300" />
+                                  <div>
+                                    <div className="text-white/85 text-sm font-medium">
+                                      Image Analysis
+                                    </div>
+                                    <div className="text-white/45 text-xs">
+                                      Global vision fallback for screenshots and image tools when
+                                      the primary chat model cannot see images.
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="rounded-full border border-sky-400/25 bg-sky-400/10 px-2 py-0.5 text-[10px] font-medium text-sky-200">
+                                  VLM
+                                </div>
+                              </div>
+                              {imageAnalysisMessage && (
+                                <div
+                                  className={`rounded-lg border px-3 py-2 text-xs ${
+                                    imageAnalysisMessage.type === "success"
+                                      ? "border-green-500/30 bg-green-500/10 text-green-300"
+                                      : "border-red-500/30 bg-red-500/10 text-red-300"
+                                  }`}
+                                >
+                                  {imageAnalysisMessage.text}
+                                </div>
+                              )}
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="md:col-span-2">
+                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                    Primary image model
+                                  </label>
+                                  <select
+                                    value={imagePrimaryRef}
+                                    onChange={(e) => setImagePrimaryRef(e.target.value)}
+                                    className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-sky-500/50 outline-none font-mono"
+                                  >
+                                    {visionModelOptions.map((entry) => (
+                                      <option key={`vision-primary-${entry.ref}`} value={entry.ref}>
+                                        {entry.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                    Timeout seconds
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={imageTimeoutDraft}
+                                    onChange={(e) => setImageTimeoutDraft(e.target.value)}
+                                    className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-sky-500/50 outline-none font-mono"
+                                  />
+                                </div>
+                                <div className="md:col-span-3">
+                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                    Fallback models
+                                  </label>
+                                  <textarea
+                                    value={imageFallbackRefsDraft}
+                                    onChange={(e) => setImageFallbackRefsDraft(e.target.value)}
+                                    rows={2}
+                                    className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-sky-500/50 outline-none font-mono"
+                                    placeholder="anthropic/claude-sonnet-4-6"
+                                    spellCheck={false}
+                                  />
+                                  <div className="mt-1 text-white/35 text-[11px]">
+                                    One provider/model per line. These also seed the media image
+                                    pipeline order.
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div className="text-white/45 text-xs">
+                                  Current pipeline:{" "}
+                                  <span className="font-mono text-white/65">
+                                    {[imagePrimaryRef, ...parseFallbackList(imageFallbackRefsDraft)]
+                                      .filter(Boolean)
+                                      .join(" -> ")}
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={() => void saveImageAnalysisSettings()}
+                                  disabled={imageAnalysisSaving}
+                                  className="px-3 py-2 bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 rounded-lg transition-all text-xs font-medium disabled:opacity-50"
+                                >
+                                  {imageAnalysisSaving ? "Saving..." : "Save Image Routing"}
+                                </button>
+                              </div>
                             </div>
                             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
                               {(
