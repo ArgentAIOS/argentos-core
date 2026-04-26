@@ -2328,6 +2328,25 @@ const nodeTypes: NodeTypes = {
   toolGrant: ToolGrantNode,
 };
 
+const WORKFLOW_DEFAULT_EDGE_OPTIONS = {
+  style: { stroke: "hsl(var(--primary))", strokeWidth: 2 },
+  animated: true,
+};
+
+const WORKFLOW_REACT_FLOW_STYLE = { background: "hsl(var(--background))" };
+const WORKFLOW_MINIMAP_STYLE = {
+  backgroundColor: "hsl(var(--background))",
+  border: "1px solid hsl(var(--border))",
+  borderRadius: 8,
+};
+const WORKFLOW_CONTROLS_STYLE = {
+  background: "hsl(var(--card))",
+  border: "1px solid hsl(var(--border))",
+  borderRadius: 8,
+};
+const WORKFLOW_MINIMAP_NODE_COLOR = () => "hsl(var(--primary))";
+const WORKFLOW_PRO_OPTIONS = { hideAttribution: true };
+
 // ── Node Kind Label ──────────────────────────────────────────────────
 
 function nodeKindLabel(node: Node): string {
@@ -7003,7 +7022,9 @@ export function WorkflowsWidget() {
     return () => {
       cancelled = true;
     };
-  }, [gateway.connected, gateway.request]);
+    // Gateway request identity can change during handshake; reload on connection changes only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gateway.connected]);
 
   // Load tested owner-operator workflow packages for the template gallery.
   useEffect(() => {
@@ -7032,7 +7053,9 @@ export function WorkflowsWidget() {
     return () => {
       cancelled = true;
     };
-  }, [gateway.connected, gateway.request]);
+    // Gateway request identity can change during handshake; reload on connection changes only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gateway.connected]);
 
   // Load run history when active workflow changes
   useEffect(() => {
@@ -7058,7 +7081,9 @@ export function WorkflowsWidget() {
     return () => {
       cancelled = true;
     };
-  }, [gateway.connected, gateway.request, activeWorkflowId]);
+    // Gateway request identity can change during handshake; run history reloads on connection/workflow changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gateway.connected, activeWorkflowId]);
 
   const persistWorkflows = useCallback((next: WorkflowDefinition[]) => {
     saveWorkflowsLocal(next);
@@ -7694,7 +7719,9 @@ function WorkflowCanvasInner({
     return () => {
       cancelled = true;
     };
-  }, [gateway.connected, gateway.request]);
+    // Gateway request identity can change during handshake; capability discovery reloads on connection changes only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gateway.connected]);
 
   useEffect(() => {
     if (!gateway.connected) {
@@ -7718,7 +7745,9 @@ function WorkflowCanvasInner({
     return () => {
       cancelled = true;
     };
-  }, [gateway.connected, gateway]);
+    // Gateway object identity is unstable while connecting; collections reload on connection changes only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gateway.connected]);
 
   const handleApprove = useCallback(
     async (runId: string, nodeId: string) => {
@@ -7767,7 +7796,9 @@ function WorkflowCanvasInner({
     return () => {
       cancelled = true;
     };
-  }, [gateway.connected, gateway.request]);
+    // Gateway request identity can change during handshake; agent discovery reloads on connection changes only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gateway.connected]);
 
   // ── Apply exec state to nodes ──────────────────────────────────────
 
@@ -9127,12 +9158,9 @@ function WorkflowCanvasInner({
             onPaneClick={onPaneClick}
             nodeTypes={nodeTypes}
             fitView
-            defaultEdgeOptions={{
-              style: { stroke: "hsl(var(--primary))", strokeWidth: 2 },
-              animated: true,
-            }}
-            proOptions={{ hideAttribution: true }}
-            style={{ background: "hsl(var(--background))" }}
+            defaultEdgeOptions={WORKFLOW_DEFAULT_EDGE_OPTIONS}
+            proOptions={WORKFLOW_PRO_OPTIONS}
+            style={WORKFLOW_REACT_FLOW_STYLE}
           >
             <Background
               variant={BackgroundVariant.Dots}
@@ -9142,22 +9170,11 @@ function WorkflowCanvasInner({
             />
             <MiniMap
               nodeStrokeColor="hsl(var(--border))"
-              nodeColor={() => "hsl(var(--primary))"}
+              nodeColor={WORKFLOW_MINIMAP_NODE_COLOR}
               maskColor="rgba(0, 0, 0, 0.5)"
-              style={{
-                backgroundColor: "hsl(var(--background))",
-                border: "1px solid hsl(var(--border))",
-                borderRadius: 8,
-              }}
+              style={WORKFLOW_MINIMAP_STYLE}
             />
-            <Controls
-              showInteractive={false}
-              style={{
-                background: "hsl(var(--card))",
-                border: "1px solid hsl(var(--border))",
-                borderRadius: 8,
-              }}
-            />
+            <Controls showInteractive={false} style={WORKFLOW_CONTROLS_STYLE} />
           </ReactFlow>
           {!activeWorkflowId && (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-[hsl(var(--background))]/65 backdrop-blur-[1px]">
