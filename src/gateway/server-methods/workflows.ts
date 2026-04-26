@@ -178,6 +178,72 @@ function optionalString(params: Record<string, unknown>, key: string): string | 
   return trimmed || undefined;
 }
 
+export async function resolveRunnableWorkflowRow(
+  sql: ReturnType<typeof postgres>,
+  params: Record<string, unknown>,
+): Promise<
+  | { ok: true; workflowId: string; workflowRow: WorkflowRow; resolvedBy: "id" | "name" }
+  | { ok: false; error: string }
+> {
+  const requestedId = optionalString(params, "workflowId") ?? optionalString(params, "id");
+  const requestedName =
+    optionalString(params, "workflowName") ??
+    optionalString(params, "name") ??
+    optionalString(params, "workflow");
+
+  if (!requestedId && !requestedName) {
+    return { ok: false, error: "workflowId or workflowName is required" };
+  }
+
+  if (requestedId) {
+    const [byId] = await sql`
+      SELECT * FROM workflows WHERE id = ${requestedId} AND is_active = true LIMIT 1
+    `;
+    if (byId) {
+      return {
+        ok: true,
+        workflowId: String(byId.id),
+        workflowRow: byId as unknown as WorkflowRow,
+        resolvedBy: "id",
+      };
+    }
+  }
+
+  const candidateName = requestedName ?? requestedId;
+  if (!candidateName) {
+    return { ok: false, error: "Workflow not found or inactive" };
+  }
+
+  const rows = await sql`
+    SELECT * FROM workflows
+    WHERE lower(name) = lower(${candidateName}) AND is_active = true
+    ORDER BY updated_at DESC
+    LIMIT 2
+  `;
+  if (rows.length > 1) {
+    return {
+      ok: false,
+      error: `Multiple active workflows are named "${candidateName}". Use a workflow ID.`,
+    };
+  }
+  const [byName] = rows;
+  if (byName) {
+    return {
+      ok: true,
+      workflowId: String(byName.id),
+      workflowRow: byName as unknown as WorkflowRow,
+      resolvedBy: "name",
+    };
+  }
+
+  return {
+    ok: false,
+    error: requestedName
+      ? `Workflow named "${candidateName}" was not found or is inactive`
+      : "Workflow not found or inactive",
+  };
+}
+
 function optionalNumber(params: Record<string, unknown>, key: string): number | undefined {
   const v = params[key];
   if (v === undefined || v === null) {
@@ -1513,22 +1579,16 @@ export const workflowsHandlers: GatewayRequestHandlers = {
   "workflows.run": async ({ params, respond, context }) => {
     try {
       const sql = await getSql();
-      const workflowId = requireString(params, "workflowId");
+      const resolution = await resolveRunnableWorkflowRow(sql, params);
+      if (resolution.ok === false) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, resolution.error));
+        return;
+      }
+      const workflowId = resolution.workflowId;
+      const wf = resolution.workflowRow;
       const triggerPayload = optionalObject(params, "triggerPayload") ?? {};
       const fromStepId = optionalString(params, "fromStepId");
       const sourceRunId = optionalString(params, "sourceRunId");
-
-      const [wf] = await sql`
-        SELECT * FROM workflows WHERE id = ${workflowId} AND is_active = true
-      `;
-      if (!wf) {
-        respond(
-          false,
-          undefined,
-          errorShape(ErrorCodes.INVALID_REQUEST, "Workflow not found or inactive"),
-        );
-        return;
-      }
 
       let resume;
       if (fromStepId) {
@@ -1540,7 +1600,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           );
           return;
         }
-        const { workflow, issues } = workflowFromRow(wf as unknown as WorkflowRow);
+        const { workflow, issues } = workflowFromRow(wf);
         if (hasBlockingWorkflowIssues(issues)) {
           respond(
             false,
@@ -1565,7 +1625,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       }
 
       const runTriggerPayload = {
-        ...(triggerPayload as Record<string, unknown>),
+        ...triggerPayload,
         ...(fromStepId && sourceRunId ? { retry: { sourceRunId, fromStepId } } : {}),
       };
 
