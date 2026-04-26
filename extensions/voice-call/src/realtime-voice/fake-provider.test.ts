@@ -119,6 +119,67 @@ describe("FakeRealtimeVoiceProvider", () => {
     expect(onClose).toHaveBeenCalledWith("error");
   });
 
+  it("waits for async tool calls before advancing to a scripted close", async () => {
+    const events: string[] = [];
+    const toolEvent = { itemId: "item-1", callId: "call-1", name: "lookup", args: { q: "x" } };
+    const provider = createFakeRealtimeVoiceProvider();
+    const onClose = vi.fn((reason) => events.push(`close:${reason}`));
+    const session = createRealtimeVoiceBridgeSession({
+      provider,
+      providerConfig: {
+        script: [
+          { type: "toolCall", event: toolEvent },
+          { type: "close", reason: "completed" },
+        ],
+      },
+      audioSink: { sendAudio: vi.fn() },
+      onToolCall: async (_event, activeSession) => {
+        await Promise.resolve();
+        activeSession.submitToolResult("call-1", { ok: true });
+        events.push("tool-result");
+      },
+      onClose,
+    });
+
+    await session.connect();
+
+    expect(events).toEqual(["tool-result", "close:completed"]);
+    expect(latestBridge(provider).state.toolResults).toEqual([
+      { callId: "call-1", result: { ok: true } },
+    ]);
+  });
+
+  it("keeps async tool failures from being overwritten by a following scripted close", async () => {
+    const onError = vi.fn();
+    const onClose = vi.fn();
+    const provider = createFakeRealtimeVoiceProvider();
+    const session = createRealtimeVoiceBridgeSession({
+      provider,
+      providerConfig: {
+        script: [
+          {
+            type: "toolCall",
+            event: { itemId: "item-1", callId: "call-1", name: "lookup", args: {} },
+          },
+          { type: "close", reason: "completed" },
+        ],
+      },
+      audioSink: { sendAudio: vi.fn() },
+      onToolCall: async () => {
+        await Promise.resolve();
+        throw new Error("async tool failed");
+      },
+      onError,
+      onClose,
+    });
+
+    await session.connect();
+
+    expect(onError.mock.calls[0]?.[0]).toMatchObject({ message: "async tool failed" });
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onClose).toHaveBeenCalledWith("error");
+  });
+
   it("fails provider resolution when fake provider is explicitly unconfigured", () => {
     expect(() =>
       resolveConfiguredRealtimeVoiceProvider({
@@ -153,7 +214,7 @@ describe("FakeRealtimeVoiceProvider", () => {
 
     await session.connect();
     const bridge = latestBridge(provider);
-    bridge.emit({ type: "audio", audio: [1, 2, 3] });
+    await bridge.emit({ type: "audio", audio: [1, 2, 3] });
 
     expect(audio).toEqual([Buffer.from([1, 2, 3])]);
     expect(bridge).toBeInstanceOf(FakeRealtimeVoiceBridge);

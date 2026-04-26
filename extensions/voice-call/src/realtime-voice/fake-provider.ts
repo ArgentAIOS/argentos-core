@@ -68,7 +68,7 @@ export class FakeRealtimeVoiceBridge implements RealtimeVoiceBridge {
     const script =
       this.config.script ?? (this.config.autoReady === false ? [] : [{ type: "ready" }]);
     for (const event of script) {
-      this.emit(event);
+      await this.emit(event);
     }
   }
 
@@ -104,7 +104,7 @@ export class FakeRealtimeVoiceBridge implements RealtimeVoiceBridge {
     return this.state.connected;
   }
 
-  emit(event: FakeRealtimeVoiceScriptEvent): void {
+  async emit(event: FakeRealtimeVoiceScriptEvent): Promise<void> {
     if (this.closed && event.type !== "close") {
       return;
     }
@@ -125,7 +125,7 @@ export class FakeRealtimeVoiceBridge implements RealtimeVoiceBridge {
         this.request.onTranscript?.(event.role, event.text, event.isFinal ?? false);
         return;
       case "toolCall":
-        this.request.onToolCall?.(event.event);
+        await this.request.onToolCall?.(event.event);
         return;
       case "error":
         this.request.onError?.(new Error(event.message));
