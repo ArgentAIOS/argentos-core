@@ -2342,6 +2342,42 @@ const OUTPUT_TEMPLATE_TOKENS = [
   { label: "Workflow", value: "{{workflow.name}}" },
 ] as const;
 
+type OutputPayloadPreset = {
+  id: string;
+  label: string;
+  template: string;
+  targets: OutputNodeData["target"][];
+};
+
+const OUTPUT_PAYLOAD_PRESETS: OutputPayloadPreset[] = [
+  {
+    id: "brief",
+    label: "Brief",
+    template: "## {{workflow.name}}\n\n{{previous.text}}\n\nRun: {{run.id}}",
+    targets: ["doc_panel", "knowledge", "email", "channel"],
+  },
+  {
+    id: "approval-summary",
+    label: "Approval summary",
+    template:
+      "Review the workflow output from {{source.label}}:\n\n{{previous.text}}\n\nApprove or deny before delivery.",
+    targets: ["doc_panel", "email", "channel"],
+  },
+  {
+    id: "webhook-json",
+    label: "Webhook JSON",
+    template:
+      '{\n  "workflow": "{{workflow.name}}",\n  "runId": "{{run.id}}",\n  "payload": {{previous.json}}\n}',
+    targets: ["webhook", "connector_action"],
+  },
+  {
+    id: "task-note",
+    label: "Task note",
+    template: "Workflow {{workflow.name}} completed from {{source.label}}.\n\n{{previous.text}}",
+    targets: ["task_update", "next_workflow"],
+  },
+];
+
 type ScheduleType = "daily" | "weekly" | "monthly" | "custom";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -4203,6 +4239,10 @@ function appendOutputToken(current: string, token: string): string {
   return `${current}${separator}${token}`;
 }
 
+function outputPayloadPresets(target: OutputNodeData["target"]) {
+  return OUTPUT_PAYLOAD_PRESETS.filter((preset) => preset.targets.includes(target));
+}
+
 function outputSourceLabel(
   sourceMode: string,
   selectedSourceNodeId: string,
@@ -5158,9 +5198,17 @@ function OutputForm({
     selectedSourceNodeId,
     sourceNodeOptions,
   );
+  const sourceStepTokens =
+    sourceMode === "node" && selectedSourceNodeId
+      ? [
+          { label: "Source text", value: `{{steps.${selectedSourceNodeId}.text}}` },
+          { label: "Source JSON", value: `{{steps.${selectedSourceNodeId}.json}}` },
+        ]
+      : [];
   const selectedDestinationLabel = outputDestinationLabel(data, selectedChannel);
   const previewText = outputPreviewText(payloadValue, sourceMode, selectedSourceLabel);
   const sideEffectLabel = outputSideEffectLabel(data.target);
+  const payloadPresets = outputPayloadPresets(data.target);
   const activeChannelSummary =
     outputChannels.length > 0
       ? outputChannels.map((channel) => channel.label).join(", ")
@@ -5617,8 +5665,27 @@ function OutputForm({
           Payload template
           <HelpTip text="This is the actual content delivered by the output node. Use {{previous.text}} for the prior step or choose a source above." />
         </label>
+        {payloadPresets.length > 0 && (
+          <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15 p-2">
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+              Payload presets
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {payloadPresets.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className="rounded-md border border-cyan-400/25 bg-cyan-400/5 px-2 py-1 text-[10px] font-medium text-cyan-200 hover:bg-cyan-400/10"
+                  onClick={() => updatePayload(preset.template)}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap gap-1.5">
-          {OUTPUT_TEMPLATE_TOKENS.map((token) => (
+          {[...OUTPUT_TEMPLATE_TOKENS, ...sourceStepTokens].map((token) => (
             <button
               key={token.value}
               type="button"
