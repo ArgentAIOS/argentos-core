@@ -1036,10 +1036,11 @@ function NewWorkflowModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onCreateBlank: () => void;
+  onCreateBlank: (name?: string) => void;
   onSelectTemplate: (template: WorkflowTemplate) => void;
 }) {
   const [showTemplates, setShowTemplates] = useState(false);
+  const [workflowName, setWorkflowName] = useState("Untitled workflow");
 
   if (!open) return null;
 
@@ -1061,10 +1062,27 @@ function NewWorkflowModal({
           </button>
         </div>
 
+        <div className="mb-4 space-y-1.5">
+          <label className={DOCK_LABEL}>Workflow name</label>
+          <input
+            autoFocus
+            className={DOCK_INPUT}
+            value={workflowName}
+            onChange={(event) => setWorkflowName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                onCreateBlank(workflowName);
+                setShowTemplates(false);
+              }
+            }}
+            placeholder="Daily research summary"
+          />
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
           <button
             onClick={() => {
-              onCreateBlank();
+              onCreateBlank(workflowName);
               setShowTemplates(false);
             }}
             className="p-6 rounded-xl border border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/50 transition-colors text-left"
@@ -1169,6 +1187,12 @@ function TriggerNode({ data, selected }: NodeProps<Node<TriggerNodeData>>) {
 
 function AgentStepNode({ data, selected }: NodeProps<Node<AgentStepNodeData>>) {
   const color = data.agentColor || "hsl(var(--primary))";
+  const stepLabel =
+    data.label && data.label !== "Agent Step"
+      ? data.label
+      : data.rolePrompt?.trim()
+        ? "Instructions configured"
+        : "Add instructions";
   return (
     <div
       className={`relative px-4 py-3 rounded-lg border min-w-[180px] transition-shadow ${execStateClass(data.execState)} ${
@@ -1194,11 +1218,9 @@ function AgentStepNode({ data, selected }: NodeProps<Node<AgentStepNodeData>>) {
           {data.agentName || "Select Agent"}
         </span>
       </div>
-      {data.rolePrompt && (
-        <div className="text-[10px] text-[hsl(var(--muted-foreground))] line-clamp-2">
-          {data.rolePrompt}
-        </div>
-      )}
+      <div className="max-w-[220px] truncate text-[10px] text-[hsl(var(--muted-foreground))]">
+        {stepLabel}
+      </div>
       {data.evidenceRequired && (
         <div className="text-[10px] text-amber-400 mt-1">Evidence required</div>
       )}
@@ -2514,6 +2536,19 @@ function AgentForm({
 
   return (
     <>
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL + " flex items-center gap-1"}>
+          Step label
+          <HelpTip text="Short name shown on the canvas. Keep the full prompt below." />
+        </label>
+        <input
+          className={DOCK_INPUT}
+          value={data.label || ""}
+          onChange={(e) => update("label", e.target.value)}
+          placeholder="Research summary, Draft email, Review lead"
+        />
+      </div>
+
       <div className="space-y-1.5">
         <label className={DOCK_LABEL + " flex items-center gap-1"}>
           Agent
@@ -5228,9 +5263,13 @@ export function WorkflowsWidget() {
     setNewWorkflowModalOpen(true);
   }, []);
 
-  const handleCreateBlank = useCallback(() => {
-    createWorkflow(`Workflow ${workflows.length + 1}`);
-  }, [createWorkflow, workflows.length]);
+  const handleCreateBlank = useCallback(
+    (name?: string) => {
+      const trimmed = name?.trim();
+      createWorkflow(trimmed || `Workflow ${workflows.length + 1}`);
+    },
+    [createWorkflow, workflows.length],
+  );
 
   const handleSelectTemplate = useCallback(
     (template: WorkflowTemplate) => {
@@ -5360,6 +5399,7 @@ export function WorkflowsWidget() {
           activeWorkflowId={activeWorkflowId}
           workflows={workflows}
           setWorkflows={setWorkflows}
+          onNewWorkflow={handleNew}
           connectors={connectors}
           setConnectors={setConnectors}
           replayRun={replayRun}
@@ -5376,6 +5416,7 @@ function WorkflowCanvasInner({
   activeWorkflowId,
   workflows,
   setWorkflows,
+  onNewWorkflow,
   connectors,
   setConnectors,
   replayRun,
@@ -5384,6 +5425,7 @@ function WorkflowCanvasInner({
   activeWorkflowId: string | null;
   workflows: WorkflowDefinition[];
   setWorkflows: React.Dispatch<React.SetStateAction<WorkflowDefinition[]>>;
+  onNewWorkflow: () => void;
   connectors: ConnectorEntry[];
   setConnectors: React.Dispatch<React.SetStateAction<ConnectorEntry[]>>;
   replayRun: RunRecord | null;
@@ -6182,6 +6224,10 @@ function WorkflowCanvasInner({
   const onDrop = useCallback(
     (event: DragEvent) => {
       event.preventDefault();
+      if (!activeWorkflowId) {
+        onNewWorkflow();
+        return;
+      }
       const type = event.dataTransfer.getData("application/reactflow");
       if (!type) return;
 
@@ -6269,7 +6315,7 @@ function WorkflowCanvasInner({
 
       setNodes((nds) => [...nds, { id: `${type}-${Date.now()}`, type, position, data }]);
     },
-    [screenToFlowPosition, setNodes],
+    [activeWorkflowId, onNewWorkflow, screenToFlowPosition, setNodes],
   );
 
   // Selection
@@ -6327,6 +6373,17 @@ function WorkflowCanvasInner({
         saveWorkflowsLocal(next);
         return next;
       });
+      if (gateway.connected) {
+        gateway
+          .request("workflows.update", {
+            workflowId: activeWorkflowId,
+            name: draftName.trim(),
+            changeSummary: "Renamed workflow from canvas toolbar",
+          })
+          .catch(() => {
+            /* localStorage is already updated */
+          });
+      }
     }
     setEditingName(false);
   };
@@ -6357,34 +6414,45 @@ function WorkflowCanvasInner({
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b border-[hsl(var(--border))]">
         <div className="flex items-center gap-3">
           {activeWorkflow ? (
-            editingName ? (
-              <input
-                autoFocus
-                className="px-2 py-0.5 text-sm font-semibold rounded bg-[hsl(var(--background))] border border-[hsl(var(--primary))] text-[hsl(var(--foreground))] focus:outline-none"
-                value={draftName}
-                onChange={(e) => setDraftName(e.target.value)}
-                onBlur={commitRename}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commitRename();
-                  if (e.key === "Escape") setEditingName(false);
-                }}
-              />
-            ) : (
-              <span
-                className="text-sm font-semibold text-[hsl(var(--foreground))] cursor-pointer hover:text-[hsl(var(--primary))]"
-                onDoubleClick={startRename}
-                title="Double-click to rename"
-              >
-                {activeWorkflow.name}
-              </span>
-            )
+            <input
+              className="min-w-[220px] max-w-[360px] rounded border border-transparent bg-transparent px-2 py-1 text-sm font-semibold text-[hsl(var(--foreground))] outline-none hover:border-[hsl(var(--border))] focus:border-[hsl(var(--primary))] focus:bg-[hsl(var(--background))]"
+              value={editingName ? draftName : activeWorkflow.name}
+              onFocus={startRename}
+              onChange={(e) => {
+                if (!editingName) setEditingName(true);
+                setDraftName(e.target.value);
+              }}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.currentTarget.blur();
+                }
+                if (e.key === "Escape") {
+                  setEditingName(false);
+                  setDraftName(activeWorkflow.name);
+                  e.currentTarget.blur();
+                }
+              }}
+              aria-label="Workflow name"
+              title="Workflow name"
+            />
           ) : (
-            <span className="text-sm text-[hsl(var(--muted-foreground))]">
-              Select or create a workflow
-            </span>
+            <button
+              onClick={onNewWorkflow}
+              className="rounded-lg border border-[hsl(var(--primary))]/40 bg-[hsl(var(--primary))]/10 px-3 py-1.5 text-sm font-semibold text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/20"
+            >
+              New workflow
+            </button>
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={onNewWorkflow}
+            className="px-3 py-1 rounded text-[11px] font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] transition-colors"
+            title="Create workflow"
+          >
+            New
+          </button>
           <button
             disabled={!activeWorkflowId || !gateway.connected || validationStatus === "checking"}
             onClick={() => {
@@ -6405,7 +6473,9 @@ function WorkflowCanvasInner({
                 gateway
                   .request("workflows.update", {
                     workflowId: activeWorkflowId,
+                    name: activeWorkflow?.name,
                     canvasData: { nodes: cleanNodes, edges },
+                    changeSummary: "Saved workflow from canvas toolbar",
                   })
                   .catch(() => {});
               }
@@ -6656,6 +6726,24 @@ function WorkflowCanvasInner({
               }}
             />
           </ReactFlow>
+          {!activeWorkflowId && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-[hsl(var(--background))]/65 backdrop-blur-[1px]">
+              <div className="max-w-[360px] rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5 text-center shadow-2xl">
+                <div className="text-sm font-semibold text-[hsl(var(--foreground))]">
+                  Create a workflow to start building
+                </div>
+                <div className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+                  Workflows need a name before nodes can be saved, validated, or run.
+                </div>
+                <button
+                  onClick={onNewWorkflow}
+                  className="mt-4 rounded-lg bg-[hsl(var(--primary))]/15 px-4 py-2 text-xs font-semibold text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/25"
+                >
+                  New workflow
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right dock — slides out when a node is selected */}
