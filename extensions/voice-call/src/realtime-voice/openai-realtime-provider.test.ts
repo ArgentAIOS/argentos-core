@@ -154,18 +154,14 @@ describe("OpenAiRealtimeVoiceProvider", () => {
     expect(parseSent(sockets[0] ?? new MockRealtimeWebSocket())[0]).toMatchObject({
       type: "session.update",
       session: {
-        type: "realtime",
         model: "gpt-realtime",
         instructions: "Be brief.",
-        output_modalities: ["audio"],
-        audio: {
-          input: {
-            format: { type: "audio/pcm", rate: 24000 },
-            transcription: { model: "gpt-4o-transcribe" },
-            turn_detection: { type: "server_vad" },
-          },
-          output: { format: { type: "audio/pcm", rate: 24000 }, voice: "marin" },
-        },
+        modalities: ["audio", "text"],
+        voice: "marin",
+        input_audio_format: "pcm16",
+        output_audio_format: "pcm16",
+        input_audio_transcription: { model: "gpt-4o-transcribe" },
+        turn_detection: { type: "server_vad" },
       },
     });
   });
