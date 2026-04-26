@@ -1370,6 +1370,8 @@ function OutputNode({ data, selected }: NodeProps<Node<OutputNodeData>>) {
     webhook: "Webhook",
     variable: "Variable",
     knowledge: "Knowledge",
+    task_update: "Task Manager",
+    next_workflow: "Next Workflow",
   };
   const channelType =
     typeof data.channelType === "string" && data.channelType.trim()
@@ -2642,11 +2644,13 @@ function ActionForm({
   onUpdate,
   nodeId,
   gateway,
+  connectors,
 }: {
   data: ActionNodeData;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
   nodeId: string;
   gateway: ReturnType<typeof useGateway>;
+  connectors: ConnectorEntry[];
 }) {
   const update = (field: string, value: unknown) => {
     onUpdate(nodeId, { ...data, [field]: value });
@@ -2673,6 +2677,20 @@ function ActionForm({
     "generate_image",
     "generate_audio",
   ];
+  const runnableConnectors = connectors.filter((connector) => !connector.scaffoldOnly);
+  const selectConnectorAction = (connectorId: string) => {
+    const connector = runnableConnectors.find((entry) => entry.id === connectorId);
+    onUpdate(nodeId, {
+      ...data,
+      label: connector?.name ?? data.label,
+      actionType: "connector_action",
+      config: {
+        connectorId,
+        connectorName: connector?.name ?? connectorId,
+        connectorCategory: connector?.category ?? "general",
+      },
+    });
+  };
   return (
     <>
       <div className="space-y-1.5">
@@ -2707,9 +2725,28 @@ function ActionForm({
       </div>
 
       {data.actionType === "connector_action" && !cfg.connectorId && (
-        <div className="rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-100">
-          Choose a connector from the left rail and drag it onto the canvas, or use a Tool binding
-          to grant connector access to an agent step.
+        <div className="space-y-2 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-3 py-2">
+          <div className="text-xs text-cyan-100">
+            Choose a connector to turn this into a manifest-driven connector action.
+          </div>
+          <select
+            className={DOCK_INPUT}
+            value=""
+            onChange={(e) => selectConnectorAction(e.target.value)}
+          >
+            <option value="">Select connector...</option>
+            {runnableConnectors.map((connector) => (
+              <option key={connector.id} value={connector.id}>
+                {connector.name} ({connector.category})
+                {connector.readinessState === "setup_required" ? " - needs setup" : ""}
+              </option>
+            ))}
+          </select>
+          {runnableConnectors.length === 0 && (
+            <div className="text-[10px] text-cyan-100/70">
+              No runnable connector manifests are available yet.
+            </div>
+          )}
         </div>
       )}
 
@@ -6556,6 +6593,7 @@ function WorkflowCanvasInner({
                         onUpdate={onUpdateNodeData}
                         nodeId={selectedNode.id}
                         gateway={gateway}
+                        connectors={connectors}
                       />
                     )}
                     {selectedNode.type === "gate" && (
