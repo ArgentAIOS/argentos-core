@@ -2696,6 +2696,7 @@ function ActionForm({
   connectors,
   knowledgeCollections,
   agents,
+  outputChannels,
 }: {
   data: ActionNodeData;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
@@ -2704,6 +2705,7 @@ function ActionForm({
   connectors: ConnectorEntry[];
   knowledgeCollections: KnowledgeCollectionOption[];
   agents: FamilyMember[];
+  outputChannels: OutputChannelOption[];
 }) {
   const update = (field: string, value: unknown) => {
     onUpdate(nodeId, { ...data, [field]: value });
@@ -2731,6 +2733,23 @@ function ActionForm({
     "generate_audio",
   ];
   const runnableConnectors = connectors.filter((connector) => !connector.scaffoldOnly);
+  const selectedActionChannelType = String(cfgValue("channelType", "internal_chat"));
+  const selectedActionChannel = outputChannels.find(
+    (channel) => channel.id === selectedActionChannelType,
+  );
+  const selectedActionChannelTargets = selectedActionChannel?.targets ?? [];
+  const selectedActionChannelTargetIds = new Set(
+    selectedActionChannelTargets.map((target) => target.id),
+  );
+  const selectedActionTargetValue =
+    typeof cfg.channelId === "string" && selectedActionChannelTargetIds.has(cfg.channelId)
+      ? cfg.channelId
+      : "__custom";
+  const legacyActionChannelSelected = Boolean(
+    selectedActionChannelType &&
+    selectedActionChannelType !== "internal_chat" &&
+    !selectedActionChannel,
+  );
   const selectConnectorAction = (connectorId: string) => {
     const connector = runnableConnectors.find((entry) => entry.id === connectorId);
     onUpdate(nodeId, {
@@ -2807,24 +2826,38 @@ function ActionForm({
       {data.actionType === "send_message" && (
         <>
           <div className="space-y-1.5">
-            <label className={DOCK_LABEL}>Channel Type</label>
+            <label className={DOCK_LABEL}>Channel</label>
             <select
               className={DOCK_INPUT}
-              value={cfgValue("channelType", "internal_chat")}
+              value={selectedActionChannelType}
               onChange={(e) => cfgUpdate("channelType", e.target.value)}
             >
               <option value="internal_chat">Internal Chat</option>
-              <option value="slack">Slack</option>
-              <option value="discord">Discord</option>
-              <option value="telegram">Telegram</option>
+              {outputChannels.map((channel) => (
+                <option key={channel.id} value={channel.id}>
+                  {channel.label}
+                  {channel.configured === false ? " (needs setup)" : ""}
+                </option>
+              ))}
+              {legacyActionChannelSelected && (
+                <option value={selectedActionChannelType}>
+                  {selectedActionChannelType} (not configured)
+                </option>
+              )}
             </select>
           </div>
+          {outputChannels.length === 0 && selectedActionChannelType !== "internal_chat" && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              No configured chat channels were discovered. Pick Internal Chat or configure a channel
+              before sending externally.
+            </div>
+          )}
           {/* Credential for external channels */}
-          {cfg.channelType && cfg.channelType !== "internal_chat" && (
+          {selectedActionChannelType !== "internal_chat" && (
             <CredentialSelector
               connectorId={
-                TRIGGER_PROVIDER_CONNECTOR_MAP[cfg.channelType as string] ||
-                `aos-${cfg.channelType}`
+                TRIGGER_PROVIDER_CONNECTOR_MAP[selectedActionChannelType] ||
+                `aos-${selectedActionChannelType}`
               }
               authKind="service-key"
               requiredSecrets={[]}
@@ -2834,15 +2867,39 @@ function ActionForm({
               gatewayConnected={gateway.connected}
             />
           )}
-          <div className="space-y-1.5">
-            <label className={DOCK_LABEL}>Channel ID</label>
-            <input
-              className={DOCK_INPUT}
-              value={cfgValue("channelId")}
-              onChange={(e) => cfgUpdate("channelId", e.target.value)}
-              placeholder="#channel-name or ID"
-            />
-          </div>
+          {selectedActionChannelTargets.length > 0 && (
+            <div className="space-y-1.5">
+              <label className={DOCK_LABEL}>Destination</label>
+              <select
+                className={DOCK_INPUT}
+                value={selectedActionTargetValue}
+                onChange={(e) => {
+                  if (e.target.value !== "__custom") {
+                    cfgUpdate("channelId", e.target.value);
+                  }
+                }}
+              >
+                {selectedActionChannelTargets.map((target) => (
+                  <option key={`${target.kind ?? "target"}:${target.id}`} value={target.id}>
+                    {target.label}
+                  </option>
+                ))}
+                <option value="__custom">Custom destination...</option>
+              </select>
+            </div>
+          )}
+          {(selectedActionChannelTargets.length === 0 ||
+            selectedActionTargetValue === "__custom") && (
+            <div className="space-y-1.5">
+              <label className={DOCK_LABEL}>Destination</label>
+              <input
+                className={DOCK_INPUT}
+                value={cfgValue("channelId")}
+                onChange={(e) => cfgUpdate("channelId", e.target.value)}
+                placeholder="chat id, channel id, @handle, or configured alias"
+              />
+            </div>
+          )}
           <div className="space-y-1.5">
             <label className={DOCK_LABEL}>Message Template</label>
             <textarea
@@ -7097,6 +7154,7 @@ function WorkflowCanvasInner({
                         connectors={connectors}
                         knowledgeCollections={knowledgeCollections}
                         agents={agents}
+                        outputChannels={outputChannels}
                       />
                     )}
                     {selectedNode.type === "gate" && (
