@@ -34,6 +34,7 @@ describe("workflow-normalize", () => {
               operation: "message.send",
               chat_id: "operator",
               text: "{{previous.text}}",
+              outputMapping: '{"messageId":"json.id","status":"json.status"}',
             },
           },
         },
@@ -65,6 +66,7 @@ describe("workflow-normalize", () => {
         resource: "message",
         operation: "message.send",
         parameters: { chat_id: "operator", text: "{{previous.text}}" },
+        outputMapping: { messageId: "json.id", status: "json.status" },
       });
     }
     expect(result.canvasLayout.nodes).toHaveLength(5);

@@ -22,6 +22,7 @@ const DOCK_INPUT =
 const DOCK_LABEL =
   "text-xs font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wider";
 const DOCK_SECTION = "space-y-1.5";
+const OUTPUT_MAPPING_PLACEHOLDER = '{\n  "summary": "text",\n  "id": "json.id"\n}';
 
 // ── Types (from AOS_CANVAS_NODE_SPEC_FINAL.md Section 2) ────────────────────
 
@@ -127,6 +128,12 @@ export function ConnectorNodePanel({
   const credentialId = (nodeConfig.credentialId as string) ?? "";
   const selectedResource = (nodeConfig.resource as string) ?? "";
   const selectedOperation = (nodeConfig.operation as string) ?? "";
+  const outputMappingValue =
+    typeof nodeConfig.outputMapping === "string"
+      ? nodeConfig.outputMapping
+      : nodeConfig.outputMapping && typeof nodeConfig.outputMapping === "object"
+        ? JSON.stringify(nodeConfig.outputMapping, null, 2)
+        : "";
 
   // ── Load manifest ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -483,6 +490,37 @@ export function ConnectorNodePanel({
                 }
               />
             )}
+
+            {currentOp && (
+              <div className={DOCK_SECTION}>
+                <label className={DOCK_LABEL}>Output mapping</label>
+                <div className="text-[10px] text-[hsl(var(--muted-foreground))] -mt-0.5">
+                  Optional JSON map that copies connector result paths into named output fields.
+                </div>
+                <textarea
+                  className={DOCK_INPUT + " font-mono text-[11px] resize-y"}
+                  rows={4}
+                  value={outputMappingValue}
+                  onChange={(e) => updateConfig("outputMapping", e.target.value)}
+                  placeholder={OUTPUT_MAPPING_PLACEHOLDER}
+                  onBlur={(e) => {
+                    const raw = e.target.value.trim();
+                    if (!raw) {
+                      updateConfig("outputMapping", "");
+                      return;
+                    }
+                    try {
+                      const parsed = JSON.parse(raw) as unknown;
+                      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                        updateConfig("outputMapping", JSON.stringify(parsed, null, 2));
+                      }
+                    } catch {
+                      // Leave invalid JSON visible; workflow validation reports the issue.
+                    }
+                  }}
+                />
+              </div>
+            )}
           </>
         )}
       </div>
@@ -520,6 +558,7 @@ function buildConnectorCommandArgs(nodeConfig: Record<string, unknown>): string[
     "credentialId",
     "resource",
     "operation",
+    "outputMapping",
   ]);
   const args: string[] = [];
   for (const [key, value] of Object.entries(nodeConfig)) {

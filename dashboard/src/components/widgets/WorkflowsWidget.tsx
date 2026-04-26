@@ -115,6 +115,7 @@ interface OutputNodeData {
 }
 
 type ActionTypeValue =
+  | "connector_action"
   | "send_message"
   | "send_email"
   | "save_to_docpanel"
@@ -1409,6 +1410,7 @@ function OutputNode({ data, selected }: NodeProps<Node<OutputNodeData>>) {
 }
 
 const ACTION_ICONS: Record<ActionTypeValue, string> = {
+  connector_action: "\uD83D\uDD0C",
   send_message: "\uD83D\uDCAC",
   send_email: "\u2709\uFE0F",
   save_to_docpanel: "\uD83D\uDCC4",
@@ -1423,6 +1425,7 @@ const ACTION_ICONS: Record<ActionTypeValue, string> = {
 };
 
 const ACTION_LABELS: Record<ActionTypeValue, string> = {
+  connector_action: "Connector Action",
   send_message: "Send Message",
   send_email: "Send Email",
   save_to_docpanel: "Save to DocPanel",
@@ -1437,8 +1440,22 @@ const ACTION_LABELS: Record<ActionTypeValue, string> = {
 };
 
 function ActionNode({ data, selected }: NodeProps<Node<ActionNodeData>>) {
-  const icon = ACTION_ICONS[data.actionType] || "\u2699\uFE0F";
-  const label = ACTION_LABELS[data.actionType] || data.actionType;
+  const cfg = data.config ?? {};
+  const connectorId = typeof cfg.connectorId === "string" ? cfg.connectorId : "";
+  const connectorName = typeof cfg.connectorName === "string" ? cfg.connectorName : connectorId;
+  const connectorCategory =
+    typeof cfg.connectorCategory === "string" ? cfg.connectorCategory : "general";
+  const connectorOperation = typeof cfg.operation === "string" ? cfg.operation : "";
+  const isConnectorAction = Boolean(connectorId) || data.actionType === "connector_action";
+  const icon = isConnectorAction
+    ? connectorIcon(connectorCategory)
+    : ACTION_ICONS[data.actionType] || "\u2699\uFE0F";
+  const label = isConnectorAction
+    ? connectorName || "Connector Action"
+    : ACTION_LABELS[data.actionType] || data.actionType;
+  const detail = isConnectorAction
+    ? connectorOperation || "Select operation"
+    : ACTION_LABELS[data.actionType] || data.actionType;
   return (
     <div
       className={`relative px-4 py-3 rounded-lg border min-w-[170px] transition-shadow ${execStateClass(data.execState)} ${
@@ -1460,9 +1477,13 @@ function ActionNode({ data, selected }: NodeProps<Node<ActionNodeData>>) {
       />
       <div className="flex items-center gap-2 mb-1">
         <span className="text-sm">{icon}</span>
-        <span className="text-xs font-semibold text-[hsl(var(--foreground))]">Action</span>
+        <span className="text-xs font-semibold text-[hsl(var(--foreground))]">
+          {isConnectorAction ? "Connector" : "Action"}
+        </span>
+        {isConnectorAction && <CapabilitySourceBadge source="connector" />}
       </div>
-      <div className="text-[10px] text-[#ffab00] font-medium">{label}</div>
+      <div className="text-[11px] text-[#ffab00] font-medium truncate">{label}</div>
+      <div className="text-[9px] text-[hsl(var(--muted-foreground))] truncate">{detail}</div>
       <Handle
         type="source"
         position={Position.Bottom}
@@ -2639,6 +2660,7 @@ function ActionForm({
     update("config", { ...cfg, [field]: value });
   };
   const actionTypes: ActionTypeValue[] = [
+    "connector_action",
     "send_message",
     "send_email",
     "save_to_docpanel",
@@ -2661,7 +2683,20 @@ function ActionForm({
         <select
           className={DOCK_INPUT}
           value={data.actionType}
-          onChange={(e) => update("actionType", e.target.value)}
+          onChange={(e) => {
+            const actionType = e.target.value as ActionTypeValue;
+            if (actionType === "connector_action") {
+              onUpdate(nodeId, {
+                ...data,
+                actionType,
+                config: {
+                  connectorId: (data.config?.connectorId as string | undefined) ?? "",
+                },
+              });
+              return;
+            }
+            update("actionType", actionType);
+          }}
         >
           {actionTypes.map((t) => (
             <option key={t} value={t}>
@@ -2670,6 +2705,13 @@ function ActionForm({
           ))}
         </select>
       </div>
+
+      {data.actionType === "connector_action" && !cfg.connectorId && (
+        <div className="rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-100">
+          Choose a connector from the left rail and drag it onto the canvas, or use a Tool binding
+          to grant connector access to an agent step.
+        </div>
+      )}
 
       {/* Type-specific config fields — matches what workflow-runner.ts reads from node.config */}
       {data.actionType === "send_message" && (
@@ -5948,7 +5990,7 @@ function WorkflowCanvasInner({
           };
           const data: ActionNodeData = {
             label: connector.name,
-            actionType: "api_call",
+            actionType: "connector_action",
             config: {
               connectorId: connector.id,
               connectorName: connector.name,

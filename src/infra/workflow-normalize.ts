@@ -234,9 +234,9 @@ function normalizeActionType(
       resource: asString(config.resource),
       operation: asString(config.operation),
       parameters,
-      outputMapping: isRecord(config.outputMapping)
-        ? (config.outputMapping as Record<string, string>)
-        : undefined,
+      outputMapping:
+        parseStringRecord(config.outputMapping, issues, nodeId, "Connector output mapping") ??
+        undefined,
     };
   }
 
