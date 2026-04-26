@@ -327,14 +327,30 @@ export interface GateNode {
 
 // ── Output ───────────────────────────────────────────────────────
 
-export type OutputConfig =
-  | { outputType: "docpanel"; title: string; format?: string }
-  | { outputType: "channel"; channelType: string; channelId: string; template: string }
-  | { outputType: "email"; to: string; subject: string; bodyTemplate: string }
-  | { outputType: "webhook"; url: string; method: string; bodyTemplate: string }
-  | { outputType: "knowledge"; collectionId: string; metadata?: Record<string, unknown> }
-  | { outputType: "task_update"; taskId: string; status: string; evidence?: string }
-  | { outputType: "next_workflow"; workflowId: string; inputMapping?: Record<string, string> };
+export type OutputSourceMode = "previous" | "node" | "summary" | "custom";
+
+export type OutputPayloadConfig = {
+  /** Which upstream data should be treated as the source payload for this output. */
+  sourceMode?: OutputSourceMode;
+  /** Node id used when sourceMode="node". */
+  sourceNodeId?: string;
+  /**
+   * Optional human-authored template for the output payload. Supports the same
+   * {{previous.*}} expressions as action templates.
+   */
+  contentTemplate?: string;
+};
+
+export type OutputConfig = OutputPayloadConfig &
+  (
+    | { outputType: "docpanel"; title: string; format?: string }
+    | { outputType: "channel"; channelType: string; channelId: string; template: string }
+    | { outputType: "email"; to: string; subject: string; bodyTemplate: string }
+    | { outputType: "webhook"; url: string; method: string; bodyTemplate: string }
+    | { outputType: "knowledge"; collectionId: string; metadata?: Record<string, unknown> }
+    | { outputType: "task_update"; taskId: string; status: string; evidence?: string }
+    | { outputType: "next_workflow"; workflowId: string; inputMapping?: Record<string, string> }
+  );
 
 export interface OutputNode {
   kind: "output";

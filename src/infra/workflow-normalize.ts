@@ -3,6 +3,7 @@ import type {
   ErrorConfig,
   GateConfig,
   OutputConfig,
+  OutputSourceMode,
   ConditionExpr,
   TriggerType,
   WorkflowDefinition,
@@ -476,15 +477,37 @@ function normalizeOutputConfig(
   nodeId: string,
 ): OutputConfig {
   const config = asRecord(data.config);
+  const sourceModeRaw = asString(config.sourceMode ?? data.sourceMode, "previous");
+  const sourceMode: OutputSourceMode =
+    sourceModeRaw === "node" || sourceModeRaw === "summary" || sourceModeRaw === "custom"
+      ? sourceModeRaw
+      : "previous";
+  const source = {
+    sourceMode,
+    sourceNodeId: asString(config.sourceNodeId ?? data.sourceNodeId) || undefined,
+    contentTemplate:
+      asString(
+        config.contentTemplate ??
+          data.contentTemplate ??
+          config.payloadTemplate ??
+          data.payloadTemplate,
+      ) || undefined,
+  };
   const outputType = asString(data.outputType ?? config.outputType ?? data.target, "docpanel");
   switch (outputType) {
     case "email":
       return {
+        ...source,
         outputType: "email",
         to: asString(config.to ?? data.to ?? data.recipient),
         subject: asString(config.subject ?? data.subject, "Workflow output"),
         bodyTemplate: asString(
-          config.bodyTemplate ?? config.body ?? data.bodyTemplate ?? data.body,
+          config.bodyTemplate ??
+            config.contentTemplate ??
+            config.body ??
+            data.bodyTemplate ??
+            data.contentTemplate ??
+            data.body,
           "{{previous.text}}",
         ),
       };
@@ -492,32 +515,44 @@ function normalizeOutputConfig(
     case "discord":
     case "telegram":
       return {
+        ...source,
         outputType: "channel",
         channelType:
           outputType === "channel"
             ? asString(config.channelType ?? data.channelType, "telegram")
             : outputType,
         channelId: asString(config.channelId ?? config.to ?? data.channelId),
-        template: asString(config.template ?? data.template, "{{previous.text}}"),
+        template: asString(
+          config.template ?? config.contentTemplate ?? data.template ?? data.contentTemplate,
+          "{{previous.text}}",
+        ),
       };
     case "webhook":
       return {
+        ...source,
         outputType: "webhook",
         url: asString(config.url ?? data.webhookUrl ?? data.url),
         method: asString(config.method ?? data.method, "POST").toUpperCase(),
         bodyTemplate: asString(
-          config.bodyTemplate ?? config.body ?? data.bodyTemplate ?? data.body,
+          config.bodyTemplate ??
+            config.contentTemplate ??
+            config.body ??
+            data.bodyTemplate ??
+            data.contentTemplate ??
+            data.body,
           "{{previous.json}}",
         ),
       };
     case "knowledge":
       return {
+        ...source,
         outputType: "knowledge",
         collectionId: asString(config.collectionId ?? data.collectionId),
         metadata: isRecord(config.metadata) ? config.metadata : undefined,
       };
     case "task_update":
       return {
+        ...source,
         outputType: "task_update",
         taskId: asString(config.taskId),
         status: asString(config.status, "done"),
@@ -525,6 +560,7 @@ function normalizeOutputConfig(
       };
     case "next_workflow":
       return {
+        ...source,
         outputType: "next_workflow",
         workflowId: asString(config.workflowId ?? data.workflowId),
         inputMapping: isRecord(config.inputMapping)
@@ -539,6 +575,7 @@ function normalizeOutputConfig(
         message: "Variable output is not executable yet and was mapped to DocPanel output.",
       });
       return {
+        ...source,
         outputType: "docpanel",
         title: asString(config.title ?? data.title ?? data.label, "Workflow output"),
         format: asString(config.format ?? data.format) || undefined,
@@ -547,6 +584,7 @@ function normalizeOutputConfig(
     case "docpanel":
     default:
       return {
+        ...source,
         outputType: "docpanel",
         title: asString(config.title ?? data.title ?? data.label, "Workflow output"),
         format: asString(config.format ?? data.format) || undefined,

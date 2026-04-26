@@ -545,15 +545,30 @@ async function buildWorkflowOutputChannels(): Promise<
     defaultAccountId: string;
     accountIds: string[];
     deliveryMode: "direct" | "gateway" | "hybrid";
+    configured: boolean;
+    statusLabel?: string;
   }>
 > {
-  const [{ loadConfig }, { listChannelPlugins }, { DEFAULT_ACCOUNT_ID }] = await Promise.all([
-    import("../../config/config.js"),
-    import("../../channels/plugins/index.js"),
-    import("../../routing/session-key.js"),
-  ]);
+  const [{ loadConfig }, { listChannelPlugins }, { listChatChannels }, { DEFAULT_ACCOUNT_ID }] =
+    await Promise.all([
+      import("../../config/config.js"),
+      import("../../channels/plugins/index.js"),
+      import("../../channels/registry.js"),
+      import("../../routing/session-key.js"),
+    ]);
   const cfg = loadConfig();
-  const outputChannels = [];
+  const outputChannels = new Map<
+    string,
+    {
+      id: string;
+      label: string;
+      defaultAccountId: string;
+      accountIds: string[];
+      deliveryMode: "direct" | "gateway" | "hybrid";
+      configured: boolean;
+      statusLabel?: string;
+    }
+  >();
 
   for (const plugin of listChannelPlugins()) {
     const outbound = plugin.outbound;
@@ -588,16 +603,41 @@ async function buildWorkflowOutputChannels(): Promise<
       continue;
     }
 
-    outputChannels.push({
+    outputChannels.set(plugin.id, {
       id: plugin.id,
       label: plugin.meta.selectionLabel ?? plugin.meta.label ?? plugin.id,
       defaultAccountId,
       accountIds: configuredAccountIds,
       deliveryMode: outbound.deliveryMode,
+      configured: true,
+      statusLabel: "Configured",
     });
   }
 
-  return outputChannels;
+  const channelsConfig =
+    cfg.channels && typeof cfg.channels === "object"
+      ? (cfg.channels as Record<string, unknown>)
+      : {};
+  for (const channel of listChatChannels()) {
+    if (outputChannels.has(channel.id)) {
+      continue;
+    }
+    const channelConfig = channelsConfig[channel.id];
+    if (!channelConfig || typeof channelConfig !== "object") {
+      continue;
+    }
+    outputChannels.set(channel.id, {
+      id: channel.id,
+      label: channel.selectionLabel ?? channel.label ?? channel.id,
+      defaultAccountId: DEFAULT_ACCOUNT_ID,
+      accountIds: [],
+      deliveryMode: "direct",
+      configured: true,
+      statusLabel: "Configured in channel settings",
+    });
+  }
+
+  return [...outputChannels.values()];
 }
 
 export async function startAppForgeEventTriggeredWorkflows(opts: {

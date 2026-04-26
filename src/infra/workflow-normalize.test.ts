@@ -394,6 +394,41 @@ describe("workflow-normalize", () => {
     expect(result.issues.filter((issue) => issue.severity === "error")).toEqual([]);
   });
 
+  it("normalizes output source and payload template fields", () => {
+    const result = normalizeWorkflow({
+      id: "wf-output-source",
+      name: "Output Source",
+      deploymentStage: "draft",
+      nodes: [
+        { id: "trigger", type: "trigger", data: { triggerType: "manual" } },
+        {
+          id: "out",
+          type: "output",
+          data: {
+            target: "doc_panel",
+            title: "Operator Brief",
+            sourceMode: "summary",
+            sourceNodeId: "agent-1",
+            contentTemplate: "Summary: {{previous.text}}",
+          },
+        },
+      ],
+      edges: [{ id: "e1", source: "trigger", target: "out" }],
+    });
+
+    const output = result.workflow.nodes.find((node) => node.id === "out");
+    expect(output?.kind).toBe("output");
+    if (output?.kind === "output") {
+      expect(output.config).toMatchObject({
+        outputType: "docpanel",
+        title: "Operator Brief",
+        sourceMode: "summary",
+        sourceNodeId: "agent-1",
+        contentTemplate: "Summary: {{previous.text}}",
+      });
+    }
+  });
+
   it("parses action JSON fields from the canvas form", () => {
     const result = normalizeWorkflow({
       id: "wf-action-json",

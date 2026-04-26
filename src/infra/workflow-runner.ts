@@ -1151,6 +1151,65 @@ function resolveMemorySignificance(
   }
 }
 
+function resolveOutputPayload(
+  config: { contentTemplate?: string; sourceMode?: string; sourceNodeId?: string },
+  context: PipelineContext,
+): string {
+  if (config.contentTemplate?.trim()) {
+    return resolveTemplate(config.contentTemplate, context);
+  }
+  if (config.sourceMode === "custom") {
+    return "";
+  }
+  if (config.sourceMode === "summary") {
+    return context.history
+      .map((step) => {
+        const output = step.output;
+        const text =
+          output.items
+            .map((item) => item.text)
+            .filter(Boolean)
+            .join("\n")
+            .trim() || JSON.stringify(output.items.map((item) => item.json));
+        return `## ${step.nodeLabel || step.nodeId}\n${text}`;
+      })
+      .join("\n\n")
+      .trim();
+  }
+  if (config.sourceMode === "node" && config.sourceNodeId?.trim()) {
+    const selected = context.history.find((step) => step.nodeId === config.sourceNodeId?.trim());
+    if (selected) {
+      return (
+        selected.output.items
+          .map((item) => item.text)
+          .filter(Boolean)
+          .join("\n")
+          .trim() || JSON.stringify(selected.output.items.map((item) => item.json))
+      );
+    }
+  }
+  const lastOutput = getLastOutput(context);
+  return lastOutput.text ? stringifyWorkflowValue(lastOutput.text) : JSON.stringify(lastOutput);
+}
+
+function stringifyWorkflowValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint" ||
+    typeof value === "symbol"
+  ) {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
 async function sendWorkflowMessage(
   channel: string,
   to: string,
@@ -2281,7 +2340,8 @@ async function executeOutput(node: OutputNode, context: PipelineContext): Promis
   log.info("executing output", { nodeId: node.id, outputType });
 
   switch (outputType) {
-    case "docpanel":
+    case "docpanel": {
+      const content = resolveOutputPayload(config, context);
       log.warn("docpanel output not yet wired — returning mock", {
         nodeId: node.id,
         title: config.title,
@@ -2289,8 +2349,8 @@ async function executeOutput(node: OutputNode, context: PipelineContext): Promis
       return {
         items: [
           {
-            json: { outputType: "docpanel", title: config.title },
-            text: `DocPanel document created: ${config.title}`,
+            json: { outputType: "docpanel", title: config.title, content },
+            text: content,
             artifacts: [
               {
                 type: "docpanel",
@@ -2301,13 +2361,16 @@ async function executeOutput(node: OutputNode, context: PipelineContext): Promis
           },
         ],
       };
+    }
 
     case "channel": {
       const content = config.template
         ? resolveTemplate(config.template, context)
-        : lastOutput.text
-          ? String(lastOutput.text)
-          : JSON.stringify(lastOutput);
+        : config.contentTemplate
+          ? resolveTemplate(config.contentTemplate, context)
+          : lastOutput.text
+            ? stringifyWorkflowValue(lastOutput.text)
+            : JSON.stringify(lastOutput);
       const result = await sendWorkflowMessage(
         config.channelType,
         config.channelId,
@@ -2377,19 +2440,44 @@ async function executeOutput(node: OutputNode, context: PipelineContext): Promis
       };
     }
 
-    case "knowledge":
-      log.warn("knowledge output not yet wired — returning mock", {
+    case "knowledge": {
+      const content = resolveOutputPayload(config, context);
+      const collectionId =
+        resolveTemplate(config.collectionId || "workflow-output", context).trim() ||
+        "workflow-output";
+      log.info("knowledge output storing rendered payload", {
         nodeId: node.id,
-        collectionId: config.collectionId,
+        collectionId,
+      });
+      const { getStorageAdapter } = await import("../data/storage-factory.js");
+      const adapter = await getStorageAdapter();
+      const item = await adapter.memory.createItem({
+        memoryType: "knowledge",
+        summary: content,
+        significance: 0.6,
+        extra: {
+          ...config.metadata,
+          collection: collectionId,
+          source: "workflow_output",
+          workflowId: context.workflowId,
+          workflowRunId: context.runId,
+          outputNodeId: node.id,
+        },
       });
       return {
         items: [
           {
-            json: { outputType: "knowledge", collectionId: config.collectionId },
-            text: `Output stored to knowledge collection ${config.collectionId}`,
+            json: {
+              outputType: "knowledge",
+              stored: true,
+              collectionId,
+              memoryId: item.id,
+            },
+            text: content,
           },
         ],
       };
+    }
 
     case "task_update": {
       const { getStorageAdapter } = await import("../data/storage-factory.js");
@@ -3325,6 +3413,7 @@ function getLastOutput(context: PipelineContext): Record<string, unknown> {
   const item = lastStep.output.items[0];
   return {
     ...item.json,
+    json: item.json,
     text: item.text,
     status: lastStep.status,
     nodeId: lastStep.nodeId,
@@ -3374,6 +3463,13 @@ function resolveTemplate(template: string, context: PipelineContext): string {
         return val !== undefined ? String(val) : "";
       }
       return "";
+    }
+
+    // {{previous.text}} or {{previous.json.field}} — previous node output
+    if (path.startsWith("previous.")) {
+      const subPath = path.slice("previous.".length);
+      const val = resolveFieldPath(getLastOutput(context), subPath);
+      return val !== undefined ? String(val) : "";
     }
 
     // {{trigger.payload.field}} — trigger data

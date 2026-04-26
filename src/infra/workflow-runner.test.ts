@@ -18,9 +18,27 @@ import type {
   AgentDispatcher,
 } from "./workflow-types.js";
 
+const storageMocks = vi.hoisted(() => ({
+  createMemoryItem: vi.fn(async (item: { summary?: string }) => ({
+    id: "mem-workflow-output",
+    ...item,
+  })),
+}));
+
 // Mock redis-client to avoid real Redis connections in tests
 vi.mock("../data/redis-client.js", () => ({
   refreshPresence: vi.fn(),
+}));
+
+vi.mock("../data/storage-factory.js", () => ({
+  getStorageAdapter: vi.fn(async () => ({
+    memory: {
+      createItem: storageMocks.createMemoryItem,
+    },
+    tasks: {
+      update: vi.fn(),
+    },
+  })),
 }));
 
 // Mock subsystem logger
@@ -213,6 +231,91 @@ describe("executeWorkflow", () => {
     expect(result.steps[0].nodeKind).toBe("trigger");
     expect(result.steps[1].nodeKind).toBe("agent");
     expect(result.steps[2].nodeKind).toBe("output");
+    expect(result.steps[2].output.items[0].text).toBe("Agent completed the task.");
+  });
+
+  it("renders DocPanel output from an explicit payload template", async () => {
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output: OutputNode = {
+      ...makeOutput(),
+      config: {
+        outputType: "docpanel",
+        title: "Brief",
+        sourceMode: "previous",
+        contentTemplate: "Rendered: {{previous.result}}",
+      },
+    };
+
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-output-template",
+      dispatcher: mockDispatcher,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.steps[2].output.items[0]).toMatchObject({
+      text: "Rendered: mock output",
+      json: {
+        outputType: "docpanel",
+        title: "Brief",
+        content: "Rendered: mock output",
+      },
+    });
+  });
+
+  it("stores Knowledge output with the rendered payload", async () => {
+    storageMocks.createMemoryItem.mockClear();
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output: OutputNode = {
+      ...makeOutput(),
+      config: {
+        outputType: "knowledge",
+        collectionId: "briefs",
+        sourceMode: "previous",
+        contentTemplate: "Store: {{previous.result}}",
+      },
+    };
+
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-knowledge-output",
+      dispatcher: mockDispatcher,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(storageMocks.createMemoryItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        memoryType: "knowledge",
+        summary: "Store: mock output",
+        extra: expect.objectContaining({
+          collection: "briefs",
+          source: "workflow_output",
+          workflowRunId: "run-knowledge-output",
+          outputNodeId: output.id,
+        }),
+      }),
+    );
+    expect(result.steps[2].output.items[0]).toMatchObject({
+      text: "Store: mock output",
+      json: {
+        outputType: "knowledge",
+        stored: true,
+        collectionId: "briefs",
+        memoryId: "mem-workflow-output",
+      },
+    });
   });
 
   it("tracks step callbacks", async () => {
