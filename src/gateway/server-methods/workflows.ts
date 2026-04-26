@@ -57,6 +57,11 @@ import {
   normalizeWorkflow,
   type WorkflowIssue,
 } from "../../infra/workflow-normalize.js";
+import {
+  importWorkflowPackage,
+  parseWorkflowPackageText,
+  type WorkflowPackageFormat,
+} from "../../infra/workflow-package.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { dashboardApiHeaders } from "../../utils/dashboard-api.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
@@ -308,6 +313,19 @@ function optionalArray(params: Record<string, unknown>, key: string): unknown[] 
   }
   if (!Array.isArray(v)) {
     throw new Error(`${key} must be an array`);
+  }
+  return v;
+}
+
+function optionalWorkflowPackageFormat(
+  params: Record<string, unknown>,
+): WorkflowPackageFormat | undefined {
+  const v = optionalString(params, "format");
+  if (!v) {
+    return undefined;
+  }
+  if (v !== "json" && v !== "yaml") {
+    throw new Error('format must be "json" or "yaml"');
   }
   return v;
 }
@@ -1241,6 +1259,30 @@ export async function startAppForgeEventTriggeredWorkflows(opts: {
 // ── Handlers ────────────────────────────────────────────────────────────────
 
 export const workflowsHandlers: GatewayRequestHandlers = {
+  // ── Import / Export ───────────────────────────────────────────────────────
+
+  "workflows.importPreview": async ({ params, respond }) => {
+    try {
+      const text = requireString(params, "text");
+      const format = optionalWorkflowPackageFormat(params);
+      const workflowPackage = parseWorkflowPackageText(text, format);
+      const imported = importWorkflowPackage(workflowPackage);
+      respond(true, {
+        package: workflowPackage,
+        workflow: imported.normalized.workflow,
+        canvasLayout: imported.normalized.canvasLayout,
+        readiness: imported.readiness,
+        validation: {
+          ok: imported.readiness.okForImport,
+          issues: imported.normalized.issues,
+        },
+      });
+    } catch (err) {
+      log.warn(`workflows.importPreview failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
   // ── CRUD ──────────────────────────────────────────────────────────────────
 
   "workflows.create": async ({ params, respond }) => {
@@ -1267,6 +1309,14 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       };
       const maxRunDurationMs = optionalNumber(params, "maxRunDurationMs") ?? 3600000;
       const maxRunCostUsd = optionalNumber(params, "maxRunCostUsd") ?? null;
+      const deploymentStageRaw = optionalString(params, "deploymentStage");
+      const deploymentStage =
+        deploymentStageRaw === "simulate" ||
+        deploymentStageRaw === "shadow" ||
+        deploymentStageRaw === "limited_live" ||
+        deploymentStageRaw === "live"
+          ? deploymentStageRaw
+          : "live";
       const normalized = normalizeWorkflow({
         id,
         name,
@@ -1278,7 +1328,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           defaultOnError as unknown as import("../../infra/workflow-types.js").ErrorConfig,
         maxRunDurationMs,
         maxRunCostUsd: maxRunCostUsd ?? undefined,
-        deploymentStage: "live",
+        deploymentStage,
       });
 
       const [row] = await sql`
@@ -1294,7 +1344,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           ${JSON.stringify(normalized.canvasLayout)}::jsonb,
           ${JSON.stringify(defaultOnError)}::jsonb, ${maxRunDurationMs},
           ${maxRunCostUsd}, ${triggerType}, ${triggerConfig ? JSON.stringify(triggerConfig) : null}::jsonb,
-          'live'
+          ${deploymentStage}
         )
         RETURNING *
       `;

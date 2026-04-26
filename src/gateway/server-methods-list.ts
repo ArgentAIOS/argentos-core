@@ -159,6 +159,7 @@ const BASE_METHODS = [
   "intent.simulate",
   // Workflows
   "workflows.emitAppForgeEvent",
+  "workflows.importPreview",
 ];
 
 export function listGatewayMethods(): string[] {

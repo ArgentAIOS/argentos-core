@@ -127,6 +127,7 @@ const READ_METHODS = new Set([
   "workflows.runs.get",
   "workflows.subscribe",
   "workflows.pendingApprovals",
+  "workflows.importPreview",
   "workflows.validate",
   "workflows.draft",
   "workflows.capabilities",

@@ -184,6 +184,7 @@ interface WorkflowDefinition {
   definition?: unknown;
   canvasLayout?: { nodes?: Node[]; edges?: Edge[]; [key: string]: unknown };
   validation?: { ok: boolean; issues?: unknown[] };
+  importReport?: WorkflowImportReport;
 }
 
 interface WorkflowValidationIssue {
@@ -192,6 +193,28 @@ interface WorkflowValidationIssue {
   message: string;
   nodeId?: string;
   edgeId?: string;
+}
+
+interface WorkflowImportReport {
+  packageName: string;
+  packageSlug?: string;
+  okForImport: boolean;
+  okForPinnedTestRun: boolean;
+  liveRequirements: string[];
+  blockers: WorkflowValidationIssue[];
+}
+
+interface WorkflowImportPreviewResponse {
+  package?: unknown;
+  workflow?: unknown;
+  canvasLayout?: { nodes?: unknown[]; edges?: unknown[]; [key: string]: unknown };
+  readiness?: {
+    okForImport?: boolean;
+    okForPinnedTestRun?: boolean;
+    liveRequirements?: unknown[];
+    blockers?: unknown[];
+  };
+  validation?: { ok?: boolean; issues?: unknown[] };
 }
 
 interface WorkflowCronJob {
@@ -230,6 +253,246 @@ function normalizeValidationIssues(raw: unknown): WorkflowValidationIssue[] {
   return raw
     .map((issue) => normalizeValidationIssue(issue))
     .filter((issue): issue is WorkflowValidationIssue => Boolean(issue));
+}
+
+function stringValue(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
+function objectArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is Record<string, unknown> => isRecord(entry))
+    : [];
+}
+
+function safeJson(value: unknown, fallback = "{}"): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value ?? {}, null, 2);
+  } catch {
+    return fallback;
+  }
+}
+
+function compactWorkflowId(value: string): string {
+  return value
+    .replace(/[^a-zA-Z0-9-_]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function importedNodeType(node: Record<string, unknown>): string {
+  const kind = stringValue(node.kind);
+  if (kind === "agent") {
+    return "agentStep";
+  }
+  if (kind === "gate") {
+    const config = isRecord(node.config) ? node.config : {};
+    const gateType = stringValue(config.gateType);
+    return gateType === "approval" ? "approval" : gateType || "gate";
+  }
+  return kind || "action";
+}
+
+function importedNodeLabel(node: Record<string, unknown>): string {
+  const config = isRecord(node.config) ? node.config : {};
+  return stringValue(node.label ?? config.title ?? config.subject, stringValue(node.id, "Node"));
+}
+
+function importedNodeData(node: Record<string, unknown>): Record<string, unknown> {
+  const kind = stringValue(node.kind);
+  const config = isRecord(node.config) ? node.config : {};
+  const label = importedNodeLabel(node);
+  if (kind === "trigger") {
+    return {
+      ...createDefaultTriggerData(),
+      ...config,
+      label,
+      triggerType: stringValue(node.triggerType ?? config.triggerType, "manual"),
+      cronExpression: stringValue(config.cronExpr ?? config.cronExpression),
+    };
+  }
+  if (kind === "agent") {
+    return {
+      ...createDefaultAgentStepData(),
+      label,
+      agentId: stringValue(config.agentId, "argent"),
+      agentName: stringValue(config.agentName ?? config.agentId, "Argent"),
+      rolePrompt: stringValue(config.rolePrompt, "Complete this workflow step."),
+      timeout: Math.max(1, Math.round(numberValue(config.timeoutMs, 300_000) / 60_000)),
+      evidenceRequired: Boolean(config.evidenceRequired),
+      toolsAllow: stringArray(config.toolsAllow),
+      toolsDeny: stringArray(config.toolsDeny),
+      modelTier: stringValue(config.modelTierHint),
+    };
+  }
+  if (kind === "action") {
+    const actionType = isRecord(config.actionType) ? config.actionType : {};
+    return {
+      ...createDefaultActionData(),
+      label,
+      actionType: stringValue(actionType.type, "api_call"),
+      timeoutMs: numberValue(config.timeoutMs, 30_000),
+      config: {
+        ...actionType,
+        ...(isRecord(actionType.parameters) ? actionType.parameters : {}),
+        parametersJson: safeJson(actionType.parameters),
+      },
+    };
+  }
+  if (kind === "gate") {
+    const gateType = stringValue(config.gateType, "condition");
+    const expression = isRecord(config.expression) ? config.expression : {};
+    return {
+      ...createDefaultGateData(),
+      ...config,
+      label,
+      gateType,
+      conditionField: stringValue(expression.field, ""),
+      conditionOperator: stringValue(expression.operator, "=="),
+      conditionValue:
+        expression.value === undefined || expression.value === null ? "" : String(expression.value),
+      approvalMessage: stringValue(config.message ?? config.approvalMessage),
+      timeoutMinutes: Math.max(0, Math.round(numberValue(config.timeoutMs, 0) / 60_000)),
+    };
+  }
+  if (kind === "output") {
+    const outputType = stringValue(config.outputType, "docpanel");
+    const target = outputType === "docpanel" ? "doc_panel" : outputType;
+    return {
+      ...createDefaultOutputData(),
+      ...config,
+      label,
+      target,
+      format: stringValue(config.format, "markdown"),
+      title: stringValue(config.title, label),
+      recipient: stringValue(config.to),
+      webhookUrl: stringValue(config.url),
+      parametersJson: safeJson(config.parameters, '{\n  "text": "{{previous.text}}"\n}'),
+      parameters: safeJson(config.parameters, '{\n  "text": "{{previous.text}}"\n}'),
+    };
+  }
+  return { label };
+}
+
+function importedCanvasNodes(workflow: unknown, canvasLayout: unknown): Node[] {
+  const workflowRecord = isRecord(workflow) ? workflow : {};
+  const layout = isRecord(canvasLayout) ? canvasLayout : {};
+  const layoutById = new Map(
+    objectArray(layout.nodes).map((node) => [stringValue(node.id), node] as const),
+  );
+  return objectArray(workflowRecord.nodes).map((node, index) => {
+    const id = stringValue(node.id, `node-${index + 1}`);
+    const layoutNode = layoutById.get(id) ?? {};
+    const position = isRecord(layoutNode.position)
+      ? {
+          x: numberValue(layoutNode.position.x, 140 + index * 320),
+          y: numberValue(layoutNode.position.y, 140),
+        }
+      : { x: 140 + (index % 4) * 320, y: 140 + Math.floor(index / 4) * 220 };
+    return {
+      id,
+      type: stringValue(layoutNode.type, importedNodeType(node)),
+      position,
+      data: {
+        ...(isRecord(layoutNode.data) ? layoutNode.data : {}),
+        ...importedNodeData(node),
+      },
+    };
+  });
+}
+
+function importedCanvasEdges(workflow: unknown, canvasLayout: unknown): Edge[] {
+  const workflowRecord = isRecord(workflow) ? workflow : {};
+  const layout = isRecord(canvasLayout) ? canvasLayout : {};
+  const sourceEdges = objectArray(layout.edges).length
+    ? objectArray(layout.edges)
+    : objectArray(workflowRecord.edges);
+  return sourceEdges.map((edge, index) => {
+    const source = stringValue(edge.source);
+    const target = stringValue(edge.target);
+    return {
+      id: stringValue(edge.id, source && target ? `${source}->${target}` : `edge-${index + 1}`),
+      source,
+      target,
+      sourceHandle: typeof edge.sourceHandle === "string" ? edge.sourceHandle : undefined,
+      targetHandle: typeof edge.targetHandle === "string" ? edge.targetHandle : undefined,
+    };
+  });
+}
+
+function importReportFromPreview(response: WorkflowImportPreviewResponse): WorkflowImportReport {
+  const pkg = isRecord(response.package) ? response.package : {};
+  const readiness = response.readiness ?? {};
+  return {
+    packageName: stringValue(pkg.name, "Imported workflow"),
+    packageSlug: stringValue(pkg.slug) || undefined,
+    okForImport: readiness.okForImport !== false,
+    okForPinnedTestRun: readiness.okForPinnedTestRun !== false,
+    liveRequirements: Array.isArray(readiness.liveRequirements)
+      ? readiness.liveRequirements.map((entry) => String(entry))
+      : [],
+    blockers: normalizeValidationIssues(readiness.blockers),
+  };
+}
+
+function workflowFromImportPreview(response: WorkflowImportPreviewResponse): WorkflowDefinition {
+  const pkg = isRecord(response.package) ? response.package : {};
+  const workflow = isRecord(response.workflow) ? response.workflow : {};
+  const id = stringValue(workflow.id, `wf-import-${Date.now()}`);
+  const nodes = importedCanvasNodes(workflow, response.canvasLayout);
+  const edges = importedCanvasEdges(workflow, response.canvasLayout);
+  return {
+    id,
+    name: `${stringValue(workflow.name ?? pkg.name, "Imported workflow")} (imported)`,
+    nodes,
+    edges,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    definition: workflow,
+    canvasLayout: { ...(response.canvasLayout ?? {}), nodes, edges },
+    validation: response.validation
+      ? { ok: response.validation.ok !== false, issues: response.validation.issues }
+      : undefined,
+    importReport: importReportFromPreview(response),
+  };
+}
+
+function legacyWorkflowFromJson(text: string): WorkflowDefinition {
+  const data = JSON.parse(text) as unknown;
+  if (!isRecord(data) || data.format !== "argent-workflow") {
+    throw new Error("Invalid workflow file format");
+  }
+  const workflow = isRecord(data.workflow) ? data.workflow : {};
+  const layout = isRecord(workflow.canvasLayout) ? workflow.canvasLayout : {};
+  const nodes = objectArray(layout.nodes).length
+    ? (objectArray(layout.nodes) as unknown as Node[])
+    : (objectArray(workflow.nodes) as unknown as Node[]);
+  const edges = objectArray(layout.edges).length
+    ? (objectArray(layout.edges) as unknown as Edge[])
+    : (objectArray(workflow.edges) as unknown as Edge[]);
+  return {
+    id: `wf-${Date.now()}`,
+    name: `${stringValue(workflow.name, "Imported workflow")} (imported)`,
+    nodes,
+    edges,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    definition: workflow.definition,
+    canvasLayout: workflow.canvasLayout as WorkflowDefinition["canvasLayout"],
+  };
 }
 
 // ── Run History Types ────────────────────────────────────────────────
@@ -5235,7 +5498,7 @@ interface SidebarProps {
   onSelectWorkflow: (id: string) => void;
   onNewWorkflow: () => void;
   onDeleteWorkflow: (id: string) => void;
-  onImportWorkflow: (wf: WorkflowDefinition) => void;
+  onImportWorkflowFile: (file: File) => void | Promise<void>;
   runs: RunRecord[];
   onSelectRun: (run: RunRecord) => void;
   onRetryFromStep?: (workflowId: string, runId: string, fromStepNodeId: string) => void;
@@ -5248,7 +5511,7 @@ function Sidebar({
   onSelectWorkflow,
   onNewWorkflow,
   onDeleteWorkflow,
-  onImportWorkflow,
+  onImportWorkflowFile,
   runs,
   onSelectRun,
   onRetryFromStep,
@@ -5264,34 +5527,12 @@ function Sidebar({
   const handleImport = () => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".json,.argent-workflow.json";
+    input.accept =
+      ".json,.yaml,.yml,.argent-workflow.json,.argent-workflow.yaml,.argent-workflow.yml";
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        try {
-          const data = JSON.parse(ev.target?.result as string);
-          if (data.format !== "argent-workflow") {
-            alert("Invalid workflow file format");
-            return;
-          }
-          const imported: WorkflowDefinition = {
-            id: `wf-${Date.now()}`,
-            name: `${data.workflow.name} (imported)`,
-            nodes: data.workflow.canvasLayout?.nodes ?? data.workflow.nodes ?? [],
-            edges: data.workflow.canvasLayout?.edges ?? data.workflow.edges ?? [],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            definition: data.workflow.definition,
-            canvasLayout: data.workflow.canvasLayout,
-          };
-          onImportWorkflow(imported);
-        } catch {
-          alert("Failed to parse workflow file");
-        }
-      };
-      reader.readAsText(file);
+      void onImportWorkflowFile(file);
     };
     input.click();
   };
@@ -5303,6 +5544,7 @@ function Sidebar({
     { type: "gate", icon: "\u25C6", label: "Gate", desc: "Control flow" },
     { type: "output", icon: "\uD83D\uDCE4", label: "Output", desc: "Deliver results" },
   ];
+  const activeWorkflow = workflows.find((workflow) => workflow.id === activeWorkflowId);
 
   const subPortPaletteItems = [
     { type: "modelProvider", icon: "\uD83E\uDDE0", label: "Model", desc: "Override LLM model" },
@@ -5490,6 +5732,47 @@ function Sidebar({
                 </button>
               </div>
             ))}
+          </div>
+        )}
+
+        {activeWorkflow?.importReport && (
+          <div className="mt-3 rounded-md border border-cyan-400/25 bg-cyan-400/5 p-2 text-[10px] text-[hsl(var(--muted-foreground))]">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="font-semibold uppercase tracking-wide text-cyan-200">Import</span>
+              <span
+                className={
+                  activeWorkflow.importReport.okForPinnedTestRun
+                    ? "text-emerald-300"
+                    : "text-amber-300"
+                }
+              >
+                {activeWorkflow.importReport.okForPinnedTestRun ? "Fixture-ready" : "Needs setup"}
+              </span>
+            </div>
+            <div className="truncate font-medium text-[hsl(var(--foreground))]">
+              {activeWorkflow.importReport.packageName}
+            </div>
+            {activeWorkflow.importReport.blockers.length > 0 && (
+              <div className="mt-1 space-y-0.5">
+                {activeWorkflow.importReport.blockers.slice(0, 3).map((blocker, index) => (
+                  <div key={`${blocker.code ?? "blocker"}-${index}`} className="text-red-300">
+                    {blocker.message}
+                  </div>
+                ))}
+              </div>
+            )}
+            {activeWorkflow.importReport.liveRequirements.length > 0 && (
+              <div className="mt-1">
+                <div className="font-medium text-amber-200">Live requirements</div>
+                <div
+                  className="truncate"
+                  title={activeWorkflow.importReport.liveRequirements.join(", ")}
+                >
+                  {activeWorkflow.importReport.liveRequirements.slice(0, 3).join(", ")}
+                  {activeWorkflow.importReport.liveRequirements.length > 3 ? "..." : ""}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -5943,7 +6226,7 @@ export function WorkflowsWidget() {
     [gateway],
   );
 
-  const handleImportWorkflow = useCallback(
+  const saveImportedWorkflow = useCallback(
     async (imported: WorkflowDefinition) => {
       const next = [...workflows, imported];
       setWorkflows(next);
@@ -5954,7 +6237,33 @@ export function WorkflowsWidget() {
           await gateway.request("workflows.create", {
             name: imported.name,
             workflowId: imported.id,
-            canvasData: { nodes: imported.nodes, edges: imported.edges },
+            description:
+              isRecord(imported.definition) && typeof imported.definition.description === "string"
+                ? imported.definition.description
+                : undefined,
+            nodes:
+              isRecord(imported.definition) && Array.isArray(imported.definition.nodes)
+                ? imported.definition.nodes
+                : imported.nodes,
+            edges:
+              isRecord(imported.definition) && Array.isArray(imported.definition.edges)
+                ? imported.definition.edges
+                : imported.edges,
+            canvasLayout: imported.canvasLayout ?? { nodes: imported.nodes, edges: imported.edges },
+            deploymentStage:
+              isRecord(imported.definition) &&
+              typeof imported.definition.deploymentStage === "string"
+                ? imported.definition.deploymentStage
+                : "simulate",
+            maxRunDurationMs:
+              isRecord(imported.definition) &&
+              typeof imported.definition.maxRunDurationMs === "number"
+                ? imported.definition.maxRunDurationMs
+                : undefined,
+            maxRunCostUsd:
+              isRecord(imported.definition) && typeof imported.definition.maxRunCostUsd === "number"
+                ? imported.definition.maxRunCostUsd
+                : undefined,
           });
         } catch {
           /* localStorage fallback already saved */
@@ -5962,6 +6271,30 @@ export function WorkflowsWidget() {
       }
     },
     [workflows, persistWorkflows, gateway, setWorkflows],
+  );
+
+  const handleImportWorkflowFile = useCallback(
+    async (file: File) => {
+      try {
+        const text = await file.text();
+        let imported: WorkflowDefinition;
+        if (gateway.connected) {
+          const format = /\.(ya?ml|argent-workflow\.ya?ml)$/i.test(file.name) ? "yaml" : "json";
+          const preview = await gateway.request<WorkflowImportPreviewResponse>(
+            "workflows.importPreview",
+            { text, format },
+          );
+          imported = workflowFromImportPreview(preview);
+        } else {
+          imported = legacyWorkflowFromJson(text);
+        }
+        await saveImportedWorkflow(imported);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        alert(`Failed to import workflow: ${message}`);
+      }
+    },
+    [gateway, saveImportedWorkflow],
   );
 
   const handleSelectRun = useCallback(
@@ -6005,7 +6338,7 @@ export function WorkflowsWidget() {
           onSelectWorkflow={setActiveWorkflowId}
           onNewWorkflow={handleNew}
           onDeleteWorkflow={handleDelete}
-          onImportWorkflow={handleImportWorkflow}
+          onImportWorkflowFile={handleImportWorkflowFile}
           runs={runs}
           onSelectRun={handleSelectRun}
           onRetryFromStep={handleRetryFromStep}
@@ -6020,6 +6353,7 @@ export function WorkflowsWidget() {
           setConnectors={setConnectors}
           replayRun={replayRun}
           onRunsChanged={setRuns}
+          onImportWorkflowFile={handleImportWorkflowFile}
         />
       </ReactFlowProvider>
     </div>
@@ -6037,6 +6371,7 @@ function WorkflowCanvasInner({
   setConnectors,
   replayRun,
   onRunsChanged,
+  onImportWorkflowFile,
 }: {
   activeWorkflowId: string | null;
   workflows: WorkflowDefinition[];
@@ -6046,6 +6381,7 @@ function WorkflowCanvasInner({
   setConnectors: React.Dispatch<React.SetStateAction<ConnectorEntry[]>>;
   replayRun: RunRecord | null;
   onRunsChanged: (runs: RunRecord[]) => void;
+  onImportWorkflowFile: (file: File) => void | Promise<void>;
 }) {
   const gateway = useGateway();
   const { screenToFlowPosition, setCenter } = useReactFlow();
@@ -7044,18 +7380,25 @@ function WorkflowCanvasInner({
   // Drop from palette
   const onDragOver = useCallback((event: DragEvent) => {
     event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
+    event.dataTransfer.dropEffect = event.dataTransfer.types.includes("Files") ? "copy" : "move";
   }, []);
 
   const onDrop = useCallback(
     (event: DragEvent) => {
       event.preventDefault();
+      const file = event.dataTransfer.files?.[0];
+      if (file) {
+        void onImportWorkflowFile(file);
+        return;
+      }
       if (!activeWorkflowId) {
         onNewWorkflow();
         return;
       }
       const type = event.dataTransfer.getData("application/reactflow");
-      if (!type) return;
+      if (!type) {
+        return;
+      }
 
       let position: { x: number; y: number };
       try {
@@ -7141,7 +7484,7 @@ function WorkflowCanvasInner({
 
       setNodes((nds) => [...nds, { id: `${type}-${Date.now()}`, type, position, data }]);
     },
-    [activeWorkflowId, onNewWorkflow, screenToFlowPosition, setNodes],
+    [activeWorkflowId, onImportWorkflowFile, onNewWorkflow, screenToFlowPosition, setNodes],
   );
 
   // Selection
@@ -7315,30 +7658,56 @@ function WorkflowCanvasInner({
             disabled={!activeWorkflowId}
             onClick={() => {
               if (!activeWorkflow) return;
+              const cleanNodes = nodes.map((n) => ({
+                ...n,
+                position: n.position,
+                data: stripExecState(n.data),
+              }));
+              const cleanEdges = edges.map((e) => ({
+                id: e.id,
+                source: e.source,
+                target: e.target,
+                sourceHandle: e.sourceHandle,
+                targetHandle: e.targetHandle,
+              }));
+              const workflowDefinition = isRecord(activeWorkflow.definition)
+                ? activeWorkflow.definition
+                : {
+                    id: activeWorkflow.id,
+                    name: activeWorkflow.name,
+                    description: "",
+                    nodes: cleanNodes,
+                    edges: cleanEdges,
+                    defaultOnError: { strategy: "fail", notifyOnError: true },
+                    deploymentStage: "simulate",
+                  };
               const exportData = {
-                format: "argent-workflow" as const,
-                version: 1,
-                exportedAt: new Date().toISOString(),
-                workflow: {
-                  name: activeWorkflow.name,
-                  description: "",
-                  definition: activeWorkflow.definition,
-                  canvasLayout: {
-                    ...(activeWorkflow.canvasLayout ?? {}),
-                    nodes,
-                    edges,
-                  },
-                  nodes: nodes.map((n) => {
-                    return { ...n, position: n.position, data: stripExecState(n.data) };
-                  }),
-                  edges: edges.map((e) => ({
-                    id: e.id,
-                    source: e.source,
-                    target: e.target,
-                    sourceHandle: e.sourceHandle,
-                    targetHandle: e.targetHandle,
-                  })),
+                kind: "argent.workflow.package" as const,
+                schemaVersion: 1,
+                id: `pkg-${activeWorkflow.id}`,
+                slug: compactWorkflowId(activeWorkflow.name.toLowerCase()) || activeWorkflow.id,
+                name: activeWorkflow.name,
+                description:
+                  typeof workflowDefinition.description === "string"
+                    ? workflowDefinition.description
+                    : "",
+                scenario: {
+                  audience: "both",
+                  department: "operations",
+                  runPattern: "manual",
+                  summary: "Exported from the ArgentOS workflow canvas.",
                 },
+                workflow: {
+                  ...workflowDefinition,
+                  id: activeWorkflow.id,
+                  name: activeWorkflow.name,
+                },
+                canvasLayout: {
+                  ...(activeWorkflow.canvasLayout ?? {}),
+                  nodes: cleanNodes,
+                  edges: cleanEdges,
+                },
+                notes: ["Exported from the ArgentOS workflow canvas."],
               };
               const blob = new Blob([JSON.stringify(exportData, null, 2)], {
                 type: "application/json",
