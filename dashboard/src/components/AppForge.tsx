@@ -1,15 +1,27 @@
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  X,
-  Search,
-  Plus,
-  Pin,
-  Trash2,
+  Activity,
   Boxes,
+  ChevronDown,
+  Ellipsis,
   ExternalLink,
-  Send,
-  Sparkles,
+  Lock,
   Loader2,
+  Monitor,
+  PanelsTopLeft,
+  Pin,
+  Plus,
+  Puzzle,
+  Search,
+  Send,
+  Settings,
+  Share2,
+  Sparkles,
+  Star,
+  Table2,
+  Trash2,
+  X,
+  Zap,
 } from "lucide-react";
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { AppForgeWorkflowEventRequest, ForgeApp } from "../hooks/useApps";
@@ -93,6 +105,38 @@ function appWorkflowCapability(app: ForgeApp): { id?: string; eventType?: string
   return {};
 }
 
+function formatAppDate(value?: string): string {
+  if (!value) return "Not opened";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function appStatus(app: ForgeApp, running: boolean): { label: string; className: string } {
+  if (running) {
+    return { label: "Running", className: "bg-blue-500/20 text-blue-200" };
+  }
+  if (app.pinned) {
+    return { label: "Pinned", className: "bg-amber-500/20 text-amber-200" };
+  }
+  if (appWorkflowCapability(app).id) {
+    return { label: "Review", className: "bg-emerald-500/20 text-emerald-200" };
+  }
+  return { label: "Ready", className: "bg-white/10 text-white/65" };
+}
+
+const APP_FORGE_NAV = [
+  { id: "desktop", label: "Desktop", icon: Monitor },
+  { id: "bases", label: "Bases", icon: Boxes },
+  { id: "tables", label: "Tables", icon: Table2 },
+  { id: "interfaces", label: "Interfaces", icon: PanelsTopLeft },
+  { id: "automations", label: "Automations", icon: Zap },
+  { id: "connectors", label: "Connectors", icon: Puzzle },
+  { id: "permissions", label: "Permissions", icon: Lock },
+  { id: "activity", label: "Activity", icon: Activity },
+  { id: "settings", label: "Settings", icon: Settings },
+] as const;
+
 export function AppForge({
   isOpen,
   apps,
@@ -120,6 +164,8 @@ export function AppForge({
   const [newAppDescription, setNewAppDescription] = useState("");
   const [workflowEventStatus, setWorkflowEventStatus] = useState<WorkflowEventStatus | null>(null);
   const [activeFilter, setActiveFilter] = useState<AppFilter>("all");
+  const [activeSection, setActiveSection] =
+    useState<(typeof APP_FORGE_NAV)[number]["id"]>("desktop");
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -142,6 +188,7 @@ export function AppForge({
       setBuilding(false);
       setWorkflowEventStatus(null);
       setActiveFilter("all");
+      setActiveSection("desktop");
       setSelectedAppId(null);
     }
   }, [isOpen]);
@@ -215,6 +262,10 @@ export function AppForge({
   const selectedWindow = selectedApp
     ? windows.find((window) => window.appId === selectedApp.id)
     : undefined;
+  const selectedCapability = selectedApp ? appWorkflowCapability(selectedApp) : {};
+  const selectedStatus = selectedApp ? appStatus(selectedApp, !!selectedWindow) : null;
+  const shortcutApps = filteredApps.slice(0, 5);
+  const capabilityCount = apps.filter((app) => appWorkflowCapability(app).id).length;
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, appId: string) => {
@@ -307,9 +358,16 @@ export function AppForge({
           style={{ background: "rgba(0, 0, 0, 0.85)", backdropFilter: "blur(20px)" }}
         >
           {/* Header */}
-          <div className="relative flex items-center justify-end px-8 py-5 shrink-0">
-            <h1 className="absolute left-1/2 -translate-x-1/2 text-xl font-light text-white/80 tracking-wide">
-              App Forge
+          <div className="relative flex items-center justify-between px-8 py-5 shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="h-3 w-3 rounded-full bg-red-400" />
+              <span className="h-3 w-3 rounded-full bg-amber-300" />
+              <span className="h-3 w-3 rounded-full bg-emerald-400" />
+            </div>
+
+            <h1 className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 text-sm font-medium text-white/75">
+              <Boxes className="h-4 w-4 text-white/45" />
+              Projects — AppForge Workspace
             </h1>
 
             <div className="flex items-center gap-3">
@@ -337,6 +395,24 @@ export function AppForge({
                 <Trash2 className="w-4 h-4" />
               </button>
               <button
+                className="p-2 rounded-lg border border-white/10 bg-white/5 text-white/50 hover:bg-white/10 hover:text-white transition-colors"
+                title="Share"
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
+              <button
+                className="p-2 rounded-lg border border-white/10 bg-white/5 text-white/50 hover:bg-white/10 hover:text-white transition-colors"
+                title="Favorite"
+              >
+                <Star className="w-4 h-4" />
+              </button>
+              <button
+                className="p-2 rounded-lg border border-white/10 bg-white/5 text-white/50 hover:bg-white/10 hover:text-white transition-colors"
+                title="More"
+              >
+                <Ellipsis className="w-4 h-4" />
+              </button>
+              <button
                 onClick={onClose}
                 className="p-2 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-colors"
                 title="Close"
@@ -349,44 +425,53 @@ export function AppForge({
           {/* Desktop Shell */}
           <div className="flex-1 min-h-0 px-6 pb-6">
             <div className="grid h-full min-h-0 grid-cols-1 gap-4 lg:grid-cols-[220px_minmax(0,1fr)_280px]">
-              <aside className="hidden min-h-0 rounded-2xl border border-white/10 bg-black/35 p-3 lg:block">
-                <div className="mb-3 px-2 text-xs uppercase tracking-[0.18em] text-white/30">
-                  Desktop
+              <aside className="hidden min-h-0 rounded-2xl border border-white/10 bg-black/45 p-3 lg:flex lg:flex-col">
+                <div className="mb-8 flex items-center gap-3 px-2 pt-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-sky-400/25 bg-sky-400/10">
+                    <Boxes className="h-5 w-5 text-sky-300" />
+                  </div>
+                  <div className="text-sm font-semibold text-white/85">AppForge 2.0</div>
                 </div>
-                {[
-                  { id: "all" as const, label: "All Apps", count: apps.length, icon: Boxes },
-                  {
-                    id: "pinned" as const,
-                    label: "Pinned",
-                    count: apps.filter((app) => app.pinned).length,
-                    icon: Pin,
-                  },
-                  {
-                    id: "running" as const,
-                    label: "Running",
-                    count: windows.length,
-                    icon: ExternalLink,
-                  },
-                ].map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => setActiveFilter(item.id)}
-                      className={`mb-1 flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition-colors ${
-                        activeFilter === item.id
-                          ? "bg-white/10 text-white"
-                          : "text-white/55 hover:bg-white/5 hover:text-white/80"
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <Icon className="h-4 w-4" />
+                <div className="space-y-2">
+                  {APP_FORGE_NAV.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          setActiveSection(item.id);
+                          if (
+                            item.id === "desktop" ||
+                            item.id === "bases" ||
+                            item.id === "tables"
+                          ) {
+                            setActiveFilter("all");
+                          }
+                        }}
+                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm transition-colors ${
+                          activeSection === item.id
+                            ? "bg-sky-500/15 text-sky-100"
+                            : "text-white/58 hover:bg-white/5 hover:text-white/85"
+                        }`}
+                      >
+                        <Icon className="h-5 w-5" />
                         {item.label}
-                      </span>
-                      <span className="text-xs text-white/35">{item.count}</span>
-                    </button>
-                  );
-                })}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-auto border-t border-white/10 px-2 pt-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-sm font-medium text-white/75">
+                      AV
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm text-white/70">Avery Vargas</div>
+                      <div className="truncate text-xs text-white/35">operator@appforge.io</div>
+                    </div>
+                    <ChevronDown className="ml-auto h-4 w-4 text-white/35" />
+                  </div>
+                </div>
               </aside>
 
               <main className="min-h-0 overflow-auto rounded-2xl border border-white/10 bg-black/25 p-4">
@@ -416,132 +501,321 @@ export function AppForge({
                   )}
                 </AnimatePresence>
 
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
-                  {filteredApps.map((app, index) => (
-                    <motion.div
-                      key={app.id}
-                      layout
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={
-                        deleteMode
-                          ? {
-                              scale: 1,
-                              opacity: 1,
-                              rotate: [-1.2, 1.2, -1.2],
-                            }
-                          : { scale: 1, opacity: 1, rotate: 0 }
-                      }
-                      transition={
-                        deleteMode
-                          ? {
-                              duration: 0.22,
-                              ease: "easeInOut",
-                              repeat: Infinity,
-                              repeatType: "reverse",
-                              delay: (index % 6) * 0.03,
-                            }
-                          : { duration: 0.2 }
-                      }
-                      className="group relative"
-                      onContextMenu={(e) => handleContextMenu(e, app.id)}
-                      onMouseEnter={() => setSelectedAppId(app.id)}
-                    >
-                      <div
-                        role="button"
-                        tabIndex={deleteMode ? -1 : 0}
-                        onClick={() => {
-                          if (deleteMode) return;
-                          setSelectedAppId(app.id);
-                          onOpenApp(app.id);
-                        }}
-                        onKeyDown={(e) => {
-                          if (deleteMode) return;
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            setSelectedAppId(app.id);
-                            onOpenApp(app.id);
-                          }
-                        }}
-                        className={`w-full flex flex-col items-center gap-3 rounded-xl p-4 transition-colors ${
-                          selectedApp?.id === app.id ? "bg-white/10" : ""
-                        } ${deleteMode ? "cursor-default" : "cursor-pointer hover:bg-white/5"}`}
-                      >
-                        {/* Icon */}
-                        <div className="relative h-16 w-16">
-                          <div className="h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-white/5 transition-colors group-hover:border-purple-500/30 flex items-center justify-center">
-                            {app.icon ? (
-                              <div
-                                className="w-10 h-10"
-                                dangerouslySetInnerHTML={{ __html: sanitizeSvg(app.icon) }}
-                              />
-                            ) : (
-                              <div
-                                className="w-full h-full rounded-2xl flex items-center justify-center"
-                                style={{
-                                  backgroundColor: `hsl(${hashString(app.name) % 360}, 50%, 25%)`,
-                                }}
-                              >
-                                <Boxes className="w-8 h-8 text-white/60" />
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Pin indicator */}
-                          {app.pinned && (
-                            <Pin className="absolute top-1 right-1 w-3 h-3 text-purple-400" />
-                          )}
-
-                          <AnimatePresence>
-                            {deleteMode && (
-                              <motion.button
-                                initial={{ scale: 0.7, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                exit={{ scale: 0.7, opacity: 0 }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  requestDeleteApp(app.id);
-                                }}
-                                className="absolute -top-1 -right-1 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-red-500 text-white shadow-lg transition-colors hover:bg-red-400"
-                                title={`Delete ${app.name}`}
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </motion.button>
-                            )}
-                          </AnimatePresence>
-                        </div>
-
-                        {/* Name */}
-                        <span className="text-sm text-white/70 text-center truncate w-full">
-                          {app.name}
+                <section className="relative overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_75%_5%,rgba(73,117,135,0.26),transparent_34%),linear-gradient(180deg,rgba(18,28,32,0.74),rgba(6,8,10,0.88))] p-5">
+                  <div className="absolute inset-x-0 top-0 h-40 bg-white/[0.03]" />
+                  <div className="relative">
+                    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+                      <div>
+                        <h2 className="text-xl font-semibold text-white/90">Desktop</h2>
+                        <p className="mt-1 text-sm text-white/52">All your bases at a glance</p>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-white/42">
+                        <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-emerald-200">
+                          {windows.length} running
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1">
+                          {capabilityCount} workflow capabilities
                         </span>
                       </div>
-                    </motion.div>
-                  ))}
+                    </div>
 
-                  {/* New App tile */}
-                  <motion.div
-                    layout
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                  >
-                    <button
-                      onClick={() => {
-                        if (deleteMode) return;
-                        setShowNewAppInput(true);
-                      }}
-                      className={`w-full flex flex-col items-center gap-3 p-4 rounded-xl transition-colors border border-dashed ${
-                        deleteMode
-                          ? "opacity-35 cursor-default border-white/10"
-                          : "hover:bg-white/5 border-white/10 hover:border-purple-500/30"
-                      }`}
-                    >
-                      <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-purple-500/10 border border-purple-500/20">
-                        <Plus className="w-8 h-8 text-purple-400" />
+                    <div className="mb-7 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+                      {shortcutApps.map((app, index) => {
+                        const running = runningAppIds.has(app.id);
+                        return (
+                          <motion.button
+                            key={app.id}
+                            layout
+                            initial={{ scale: 0.92, opacity: 0 }}
+                            animate={
+                              deleteMode
+                                ? {
+                                    scale: 1,
+                                    opacity: 1,
+                                    rotate: [-1.1, 1.1, -1.1],
+                                  }
+                                : { scale: 1, opacity: 1, rotate: 0 }
+                            }
+                            transition={
+                              deleteMode
+                                ? {
+                                    duration: 0.22,
+                                    ease: "easeInOut",
+                                    repeat: Infinity,
+                                    repeatType: "reverse",
+                                    delay: (index % 6) * 0.03,
+                                  }
+                                : { duration: 0.18 }
+                            }
+                            onClick={() => {
+                              if (deleteMode) {
+                                requestDeleteApp(app.id);
+                                return;
+                              }
+                              setSelectedAppId(app.id);
+                            }}
+                            onDoubleClick={() => {
+                              if (!deleteMode) onOpenApp(app.id);
+                            }}
+                            onContextMenu={(e) => handleContextMenu(e, app.id)}
+                            onMouseEnter={() => setSelectedAppId(app.id)}
+                            className={`group relative flex min-h-[112px] flex-col items-center justify-center gap-3 rounded-xl border p-3 transition-colors ${
+                              selectedApp?.id === app.id
+                                ? "border-sky-400/30 bg-sky-400/10"
+                                : "border-white/10 bg-white/[0.04] hover:border-white/18 hover:bg-white/[0.07]"
+                            }`}
+                          >
+                            <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/25">
+                              {app.icon ? (
+                                <div
+                                  className="h-9 w-9"
+                                  dangerouslySetInnerHTML={{ __html: sanitizeSvg(app.icon) }}
+                                />
+                              ) : (
+                                <div
+                                  className="flex h-full w-full items-center justify-center"
+                                  style={{
+                                    backgroundColor: `hsl(${hashString(app.name) % 360}, 42%, 26%)`,
+                                  }}
+                                >
+                                  <Boxes className="h-7 w-7 text-white/62" />
+                                </div>
+                              )}
+                              {running && (
+                                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-emerald-300" />
+                              )}
+                              {app.pinned && (
+                                <Pin className="absolute bottom-1 right-1 h-3 w-3 text-amber-200" />
+                              )}
+                            </div>
+                            <div className="w-full min-w-0 text-center">
+                              <div className="truncate text-sm font-medium text-white/78">
+                                {app.name}
+                              </div>
+                              <div className="mt-0.5 text-xs text-white/38">
+                                {appWorkflowCapability(app).id ? "Review table" : "Base"}
+                              </div>
+                            </div>
+                          </motion.button>
+                        );
+                      })}
+
+                      <button
+                        onClick={() => {
+                          if (deleteMode) return;
+                          setShowNewAppInput(true);
+                        }}
+                        className={`flex min-h-[112px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-3 transition-colors ${
+                          deleteMode
+                            ? "cursor-default border-white/10 opacity-35"
+                            : "border-white/16 bg-black/15 hover:border-sky-300/35 hover:bg-white/[0.05]"
+                        }`}
+                      >
+                        <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-white/12 bg-white/[0.04]">
+                          <Plus className="h-7 w-7 text-white/45" />
+                        </div>
+                        <span className="text-sm text-white/48">New Base</span>
+                      </button>
+                    </div>
+
+                    <div className="overflow-hidden rounded-2xl border border-white/12 bg-[#0e1316]/90 shadow-2xl">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <Boxes className="h-5 w-5 text-white/55" />
+                          <button className="flex items-center gap-1 text-sm font-medium text-white/82">
+                            {selectedApp?.name ?? "Projects"}
+                            <ChevronDown className="h-4 w-4 text-white/35" />
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-4 text-sm text-white/48">
+                          {["Grid", "Kanban", "Form", "Review"].map((view, index) => (
+                            <button
+                              key={view}
+                              className={`border-b-2 py-1 transition-colors ${
+                                index === 0
+                                  ? "border-sky-400 text-sky-200"
+                                  : "border-transparent hover:text-white/76"
+                              }`}
+                            >
+                              {view}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-3 text-sm text-white/45">
+                          <button className="hover:text-white/75">Filter</button>
+                          <button className="hover:text-white/75">Sort</button>
+                          <button className="hover:text-white/75">Group</button>
+                        </div>
                       </div>
-                      <span className="text-sm text-white/50">New App</span>
-                    </button>
-                  </motion.div>
-                </div>
+
+                      <div className="grid min-h-[390px] grid-cols-[210px_minmax(560px,1fr)] overflow-auto xl:grid-cols-[230px_minmax(640px,1fr)]">
+                        <div className="border-r border-white/10 bg-black/18 p-3">
+                          <div className="mb-3 flex items-center justify-between text-sm text-white/72">
+                            <span>Tables</span>
+                            <Plus className="h-4 w-4 text-white/38" />
+                          </div>
+                          <div className="space-y-1">
+                            {[
+                              ["Apps", apps.length],
+                              ["Workflow Capabilities", capabilityCount],
+                              ["Events", windows.length],
+                              ["Activity Log", filteredApps.length],
+                            ].map(([label, count], index) => (
+                              <button
+                                key={label}
+                                onClick={() => {
+                                  if (index === 0) setActiveFilter("all");
+                                  if (index === 1) setActiveSection("automations");
+                                  if (index === 2) setActiveFilter("running");
+                                }}
+                                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                                  index === 0
+                                    ? "bg-sky-500/14 text-sky-100"
+                                    : "text-white/55 hover:bg-white/[0.05] hover:text-white/78"
+                                }`}
+                              >
+                                <span className="flex min-w-0 items-center gap-2">
+                                  <Table2 className="h-4 w-4 shrink-0" />
+                                  <span className="truncate">{label}</span>
+                                </span>
+                                <span className="text-xs text-white/34">{count}</span>
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => setShowNewAppInput(true)}
+                            className="mt-5 flex items-center gap-2 px-3 text-sm text-white/48 transition-colors hover:text-white/75"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add or import table
+                          </button>
+                        </div>
+
+                        <div className="overflow-auto">
+                          <table className="w-full min-w-[780px] border-collapse text-left text-sm">
+                            <thead className="sticky top-0 z-10 bg-[#11171a] text-xs font-medium uppercase tracking-[0.08em] text-white/38">
+                              <tr>
+                                <th className="w-12 border-b border-r border-white/10 px-3 py-3">
+                                  <span className="block h-4 w-4 rounded border border-white/22" />
+                                </th>
+                                <th className="w-14 border-b border-r border-white/10 px-3 py-3">
+                                  #
+                                </th>
+                                <th className="border-b border-r border-white/10 px-4 py-3">
+                                  App Name
+                                </th>
+                                <th className="w-36 border-b border-r border-white/10 px-4 py-3">
+                                  Status
+                                </th>
+                                <th className="w-36 border-b border-r border-white/10 px-4 py-3">
+                                  Creator
+                                </th>
+                                <th className="w-36 border-b border-r border-white/10 px-4 py-3">
+                                  Last Opened
+                                </th>
+                                <th className="w-48 border-b border-white/10 px-4 py-3">
+                                  Capability
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredApps.map((app, index) => {
+                                const running = runningAppIds.has(app.id);
+                                const status = appStatus(app, running);
+                                const capability = appWorkflowCapability(app);
+                                return (
+                                  <tr
+                                    key={app.id}
+                                    onClick={() => setSelectedAppId(app.id)}
+                                    onDoubleClick={() => onOpenApp(app.id)}
+                                    onContextMenu={(e) => handleContextMenu(e, app.id)}
+                                    className={`group cursor-pointer border-b border-white/[0.07] transition-colors ${
+                                      selectedApp?.id === app.id
+                                        ? "bg-sky-500/10"
+                                        : "hover:bg-white/[0.04]"
+                                    }`}
+                                  >
+                                    <td className="border-r border-white/[0.07] px-3 py-2">
+                                      <span className="block h-4 w-4 rounded border border-white/20 group-hover:border-white/38" />
+                                    </td>
+                                    <td className="border-r border-white/[0.07] px-3 py-2 text-white/42">
+                                      {index + 1}
+                                    </td>
+                                    <td className="border-r border-white/[0.07] px-4 py-2">
+                                      <div className="flex min-w-0 items-center gap-3">
+                                        <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/[0.04]">
+                                          {app.icon ? (
+                                            <div
+                                              className="h-5 w-5"
+                                              dangerouslySetInnerHTML={{
+                                                __html: sanitizeSvg(app.icon),
+                                              }}
+                                            />
+                                          ) : (
+                                            <Boxes className="h-4 w-4 text-white/48" />
+                                          )}
+                                        </div>
+                                        <span className="truncate text-white/78">{app.name}</span>
+                                      </div>
+                                    </td>
+                                    <td className="border-r border-white/[0.07] px-4 py-2">
+                                      <span
+                                        className={`inline-flex rounded-md px-2 py-1 text-xs font-medium ${status.className}`}
+                                      >
+                                        {status.label}
+                                      </span>
+                                    </td>
+                                    <td className="border-r border-white/[0.07] px-4 py-2">
+                                      <div className="flex items-center gap-2">
+                                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/25 text-[10px] text-emerald-100">
+                                          {app.creator.slice(0, 2).toUpperCase()}
+                                        </span>
+                                        <span className="truncate text-white/58">
+                                          {app.creator}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="border-r border-white/[0.07] px-4 py-2 text-white/56">
+                                      {formatAppDate(app.lastOpenedAt)}
+                                    </td>
+                                    <td className="px-4 py-2 text-white/56">
+                                      {capability.id ? (
+                                        <span className="truncate">{capability.id}</span>
+                                      ) : (
+                                        <span className="text-white/28">None</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                              {filteredApps.length === 0 && (
+                                <tr>
+                                  <td colSpan={7} className="px-4 py-16 text-center text-white/35">
+                                    {searchQuery
+                                      ? `No apps matching "${searchQuery}"`
+                                      : deleteMode
+                                        ? "No apps left to delete"
+                                        : "No apps yet"}
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                          <div className="flex items-center justify-between border-t border-white/10 px-4 py-3 text-sm text-white/45">
+                            <button
+                              onClick={() => setShowNewAppInput(true)}
+                              className="flex items-center gap-2 transition-colors hover:text-white/75"
+                            >
+                              <Plus className="h-4 w-4" />
+                              Add record
+                            </button>
+                            <span>{filteredApps.length} records</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
 
                 {/* New App Form */}
                 <AnimatePresence>
@@ -635,40 +909,9 @@ export function AppForge({
                     </motion.div>
                   )}
                 </AnimatePresence>
-
-                {/* Empty state */}
-                {filteredApps.length === 0 && searchQuery && (
-                  <div className="text-center py-16 text-white/30">
-                    <Search className="w-8 h-8 mx-auto mb-3 opacity-50" />
-                    <p className="text-sm">No apps matching "{searchQuery}"</p>
-                  </div>
-                )}
-
-                {filteredApps.length === 0 && !searchQuery && !showNewAppInput && (
-                  <div className="text-center py-16 text-white/30">
-                    <Boxes className="w-12 h-12 mx-auto mb-4 opacity-30" />
-                    {deleteMode ? (
-                      <>
-                        <p className="text-lg mb-2">No apps left to delete</p>
-                        <p className="text-sm">Click the trash can again to leave delete mode.</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-lg mb-2">No apps yet</p>
-                        <p className="text-sm">Describe an app and the AI will build it for you.</p>
-                        <button
-                          onClick={() => setShowNewAppInput(true)}
-                          className="mt-4 px-4 py-2 bg-purple-600/50 hover:bg-purple-600/70 rounded-lg text-sm text-white/80 transition-colors"
-                        >
-                          Build your first app
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
               </main>
 
-              <aside className="hidden min-h-0 rounded-2xl border border-white/10 bg-black/35 p-4 lg:flex lg:flex-col">
+              <aside className="hidden min-h-0 overflow-auto rounded-2xl border border-white/10 bg-black/35 p-4 lg:flex lg:flex-col">
                 {selectedApp ? (
                   <>
                     <div className="mb-5 flex items-center gap-3">
@@ -690,34 +933,103 @@ export function AppForge({
                       </div>
                     </div>
 
-                    <div className="space-y-3 text-sm">
+                    <div className="mb-4 grid grid-cols-2 border-b border-white/10 text-sm">
+                      <button className="border-b-2 border-sky-400 px-3 py-2 text-sky-200">
+                        Field
+                      </button>
+                      <button className="border-b-2 border-transparent px-3 py-2 text-white/45 hover:text-white/70">
+                        Table
+                      </button>
+                    </div>
+
+                    <div className="space-y-5 text-sm">
+                      <label className="block">
+                        <span className="mb-2 block text-xs text-white/38">Field name</span>
+                        <input
+                          readOnly
+                          value="Status"
+                          className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-2 block text-xs text-white/38">Field type</span>
+                        <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72">
+                          <span className="flex items-center gap-2">
+                            <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
+                            Single select
+                          </span>
+                          <ChevronDown className="h-4 w-4 text-white/35" />
+                        </div>
+                      </label>
+
                       <div>
-                        <div className="mb-1 text-xs uppercase tracking-[0.16em] text-white/25">
-                          Description
+                        <div className="mb-2 text-xs text-white/38">Options</div>
+                        <div className="space-y-2">
+                          {[
+                            ["Ready", "bg-white/40"],
+                            ["Review", "bg-emerald-400"],
+                            ["Pinned", "bg-amber-300"],
+                            ["Running", "bg-blue-400"],
+                          ].map(([label, dot]) => (
+                            <div
+                              key={label}
+                              className="flex items-center justify-between rounded-lg bg-white/[0.05] px-3 py-2 text-white/65"
+                            >
+                              <span className="flex items-center gap-2">
+                                <span className={`h-3 w-3 rounded-full ${dot}`} />
+                                {label}
+                              </span>
+                              <Ellipsis className="h-4 w-4 text-white/30" />
+                            </div>
+                          ))}
                         </div>
-                        <p className="line-clamp-4 text-white/55">
-                          {selectedApp.description || "No description"}
-                        </p>
+                        <button className="mt-3 flex items-center gap-2 text-sm text-sky-300/80 hover:text-sky-200">
+                          <Plus className="h-4 w-4" />
+                          Add option
+                        </button>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 border-t border-white/10 pt-3">
-                        <div>
-                          <div className="text-xs text-white/30">Creator</div>
-                          <div className="truncate text-white/60">{selectedApp.creator}</div>
+
+                      <div className="border-t border-white/10 pt-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="text-xs text-white/38">Current value</span>
+                          {selectedStatus && (
+                            <span
+                              className={`rounded-md px-2 py-1 text-xs font-medium ${selectedStatus.className}`}
+                            >
+                              {selectedStatus.label}
+                            </span>
+                          )}
                         </div>
-                        <div>
-                          <div className="text-xs text-white/30">Opened</div>
-                          <div className="text-white/60">{selectedApp.openCount}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-white/30">Pinned</div>
-                          <div className="text-white/60">{selectedApp.pinned ? "Yes" : "No"}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-white/30">State</div>
-                          <div className="text-white/60">
-                            {selectedWindow ? "Running" : "Closed"}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <div className="text-xs text-white/30">Creator</div>
+                            <div className="truncate text-white/60">{selectedApp.creator}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-white/30">Opened</div>
+                            <div className="text-white/60">{selectedApp.openCount}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-white/30">Capability</div>
+                            <div className="truncate text-white/60">
+                              {selectedCapability.id ?? "None"}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-white/30">State</div>
+                            <div className="text-white/60">
+                              {selectedWindow ? "Running" : "Closed"}
+                            </div>
                           </div>
                         </div>
+                      </div>
+
+                      <div>
+                        <div className="mb-2 text-xs text-white/38">Description</div>
+                        <p className="line-clamp-5 rounded-lg border border-white/10 bg-black/18 p-3 text-white/55">
+                          {selectedApp.description || "No description"}
+                        </p>
                       </div>
                     </div>
 
