@@ -215,6 +215,14 @@ Owned files/directories: `tools/aos/**`, with active connector ownership over Ai
 Shared contract changes: connector manifests, permissions, and command capability declarations remain the public contract; operator-controlled service keys are the key source for linked external systems. Klaviyo is now a truthful live read connector and does not advertise mutation/write actions until those are implemented.
 Workflows/AppForge/AOU reaction: consume manifests/capabilities only; do not infer private connector internals or assume scaffolded writes exist. AOU Stub Finder should treat Klaviyo at `ad3fb0b9` as a real read-only baseline and track future mutation work separately.
 
+### 2026-04-26 — AOS PayPunch Connector
+
+Lane: `AOS PayPunch connector`
+Branch/commit: `codex/aos-paypunch-loop` in progress.
+Owned files/directories: `tools/aos/aos-paypunch/**` plus this coordination note.
+Shared contract changes: PayPunch is being converted from a scaffold/full-write overclaim to a truthful live-read-only AOS CLI connector. Required operator-controlled service keys are `PAYPUNCH_API_KEY` and `PAYPUNCH_API_BASE_URL`; optional scope keys are tenant/company/employee/timesheet/pay-period defaults. `write_bridge_available=false` and no PayPunch mutation commands are advertised until a real write bridge is implemented and verified.
+Workflows/AppForge/AOU reaction: consume PayPunch manifest/capabilities only; do not expose PayPunch as an output destination or write-capable app from this slice.
+
 ### 2026-04-26 — Master Threadmaster Roster
 
 Current active core threadmasters: AppForge 2.0, Work flow building master, AOU Stub Finder, and Compare OpenClaw 4.24 features. Treat the Workflows threadmaster as the master coordinator for cross-project lane awareness while it continues implementing the workflow canvas/runtime.
