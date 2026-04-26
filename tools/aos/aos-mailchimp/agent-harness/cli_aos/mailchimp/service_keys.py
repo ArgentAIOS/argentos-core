@@ -7,7 +7,13 @@ from pathlib import Path
 
 
 ARGENTOS_ROOT = Path(__file__).resolve().parents[6]
-SERVICE_KEY_VARIABLES = {"MAILCHIMP_API_KEY", "MAILCHIMP_SERVER_PREFIX"}
+SERVICE_KEY_VARIABLES = {
+    "MAILCHIMP_API_KEY",
+    "MAILCHIMP_SERVER_PREFIX",
+    "MAILCHIMP_AUDIENCE_ID",
+    "MAILCHIMP_CAMPAIGN_ID",
+    "MAILCHIMP_MEMBER_EMAIL",
+}
 
 
 @lru_cache(maxsize=64)
@@ -45,3 +51,14 @@ def service_key_env(variable: str, default: str | None = None) -> str | None:
     if value is not None:
         return value
     return default
+
+
+def service_key_source(variable: str) -> str | None:
+    if variable in SERVICE_KEY_VARIABLES:
+        value = resolve_service_key(variable)
+        if value:
+            return "service-keys"
+    value = os.getenv(variable)
+    if value:
+        return "process.env"
+    return None

@@ -85,18 +85,24 @@ def invoke_json(args: list[str]) -> dict[str, Any]:
     return json.loads(result.output)
 
 
-def invoke_json_with_mode(mode: str, args: list[str]) -> dict[str, Any]:
-    result = CliRunner().invoke(cli, ["--json", "--mode", mode, *args])
-    assert result.exit_code == 0, result.output
-    return json.loads(result.output)
-
-
 def test_manifest_and_permissions_are_in_sync():
     manifest = json.loads(CONNECTOR_PATH.read_text())
     permissions = json.loads(PERMISSIONS_PATH.read_text())["permissions"]
     command_ids = [command["id"] for command in manifest["commands"]]
     assert set(command_ids) == set(permissions.keys())
     assert manifest["scope"]["kind"] == "email-marketing"
+    assert manifest["scope"]["write_bridge_available"] is False
+    assert all(command["required_mode"] == "readonly" for command in manifest["commands"])
+    assert not any(command["action_class"] == "write" for command in manifest["commands"])
+    assert "MAILCHIMP_AUDIENCE_ID" in manifest["auth"]["service_keys"]
+
+
+def test_manifest_field_applicability_matches_commands():
+    manifest = json.loads(CONNECTOR_PATH.read_text())
+    command_ids = {command["id"] for command in manifest["commands"]}
+    for field in manifest["scope"]["fields"]:
+        assert set(field["applies_to"]).issubset(command_ids)
+    assert set(manifest["scope"]["commandDefaults"]).issubset(command_ids)
 
 
 def test_capabilities_exposes_manifest():
@@ -105,6 +111,7 @@ def test_capabilities_exposes_manifest():
     assert payload["data"]["backend"] == "mailchimp-marketing-api"
     assert "account.read" in json.dumps(payload["data"])
     assert "campaign.read" in json.dumps(payload["data"])
+    assert payload["data"]["write_support"] == {}
 
 
 def test_account_read_returns_picker_metadata(monkeypatch):
@@ -137,6 +144,12 @@ def test_runtime_prefers_operator_service_keys_for_auth(monkeypatch):
             return "service-eu2"
         if name == "MAILCHIMP_SERVER_PREFIX":
             return "eu9"
+        if name == "MAILCHIMP_AUDIENCE_ID":
+            return "service-audience"
+        if name == "MAILCHIMP_CAMPAIGN_ID":
+            return "service-campaign"
+        if name == "MAILCHIMP_MEMBER_EMAIL":
+            return "service@example.com"
         return default
 
     monkeypatch.setattr(config, "service_key_env", fake_service_key_env)
@@ -144,6 +157,9 @@ def test_runtime_prefers_operator_service_keys_for_auth(monkeypatch):
     assert runtime_values["api_key"] == "service-eu2"
     assert runtime_values["server_prefix"] == "eu9"
     assert runtime_values["configured_server_prefix"] == "eu9"
+    assert runtime_values["audience_id"] == "service-audience"
+    assert runtime_values["campaign_id"] == "service-campaign"
+    assert runtime_values["member_email"] == "service@example.com"
 
 
 def test_runtime_infers_server_prefix_from_api_key_suffix(monkeypatch):
@@ -181,7 +197,9 @@ def test_config_show_redacts_and_surfaces_scope(monkeypatch):
     data = payload["data"]
     assert "secret-us1" not in json.dumps(data)
     assert data["scope"]["audience_id"] == "aud1"
-    assert data["runtime"]["implementation_mode"] == "live_read_with_scaffolded_writes"
+    assert data["runtime"]["implementation_mode"] == "live_read_only"
+    assert data["write_support"] == {}
+    assert "MAILCHIMP_AUDIENCE_ID" in data["auth"]["operator_service_keys"]
     assert data["runtime"]["command_defaults"]["account.read"]["selection_surface"] == "account"
     assert data["runtime"]["picker_scopes"]["audience"]["pickers"]["audience"]["command"] == "audience.list"
     assert data["runtime"]["picker_scopes"]["campaign"]["pickers"]["campaign"]["command"] == "campaign.list"
@@ -235,12 +253,19 @@ def test_report_list_returns_live_read(monkeypatch):
     assert payload["data"]["scope_preview"]["selection_surface"] == "campaign"
 
 
-def test_scaffold_write_commands_do_not_execute_live_mutations(monkeypatch):
+def test_removed_write_commands_are_not_exposed(monkeypatch):
     monkeypatch.setenv("MAILCHIMP_API_KEY", "abc-us1")
     monkeypatch.setenv("MAILCHIMP_SERVER_PREFIX", "us1")
-    payload = invoke_json_with_mode("write", ["campaign", "create-draft", "Spring launch"])
-    assert payload["data"]["status"] == "scaffold_write_only"
-    assert payload["data"]["command"] == "campaign.create_draft"
+    commands = [
+        ["campaign", "create-draft", "Spring launch"],
+        ["member", "upsert", "aud1", "contact@example.com"],
+    ]
+    for command in commands:
+        result = CliRunner().invoke(cli, ["--json", "--mode", "write", *command])
+        payload = json.loads(result.output)
+        assert result.exit_code == 2
+        assert payload["ok"] is False
+        assert payload["error"]["code"] == "INVALID_USAGE"
 
 
 def test_member_read_requires_scope_when_missing(monkeypatch):

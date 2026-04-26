@@ -11,7 +11,7 @@ from .constants import (
     MAILCHIMP_MEMBER_EMAIL_ENV,
     MAILCHIMP_SERVER_PREFIX_ENV,
 )
-from .service_keys import service_key_env
+from .service_keys import SERVICE_KEY_VARIABLES, service_key_env, service_key_source
 
 
 def _mask(value: str | None) -> str | None:
@@ -126,6 +126,8 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "audience_id_present": bool(audience_id),
         "campaign_id_present": bool(campaign_id),
         "member_email_present": bool(member_email),
+        "service_keys": sorted(SERVICE_KEY_VARIABLES),
+        "sources": {key: service_key_source(key) for key in sorted(SERVICE_KEY_VARIABLES)},
     }
 
 
@@ -300,7 +302,7 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "summary": "Mailchimp connector configuration snapshot.",
         "backend": BACKEND_NAME,
         "runtime": {
-            "implementation_mode": "live_read_with_scaffolded_writes",
+            "implementation_mode": "live_read_only",
             "live_read_available": runtime["api_key_present"] and runtime["server_prefix_present"],
             "write_bridge_available": False,
             "command_defaults": command_defaults,
@@ -312,8 +314,13 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "api_key_preview": _mask(runtime["api_key"]),
             "server_prefix_env": runtime["server_prefix_env"],
             "server_prefix": runtime["server_prefix"] or None,
-            "server_prefix_source": "env" if runtime["configured_server_prefix"] else ("api_key_suffix" if runtime["server_prefix"] else None),
+            "server_prefix_source": service_key_source(runtime["server_prefix_env"])
+            or ("api_key_suffix" if runtime["server_prefix"] else None),
             "server_prefix_present": runtime["server_prefix_present"],
+            "service_keys": sorted(SERVICE_KEY_VARIABLES),
+            "operator_service_keys": sorted(SERVICE_KEY_VARIABLES),
+            "sources": {key: service_key_source(key) for key in sorted(SERVICE_KEY_VARIABLES)},
+            "development_fallback": sorted(SERVICE_KEY_VARIABLES),
         },
         "scope": {
             "workerFields": ["account", "audience_id", "campaign_id", "member_email"],
@@ -362,9 +369,5 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "report.list": True,
             "report.read": True,
         },
-        "write_support": {
-            "campaign.create_draft": "scaffold_only",
-            "member.upsert": "scaffold_only",
-            "scaffold_only": True,
-        },
+        "write_support": {},
     }

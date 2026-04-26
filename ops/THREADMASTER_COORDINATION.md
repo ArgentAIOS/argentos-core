@@ -211,6 +211,15 @@ Workflows/AppForge/AOU reaction: consume manifests/capabilities only; do not inf
 
 Current active core threadmasters: AppForge 2.0, Work flow building master, AOU Stub Finder, and Compare OpenClaw 4.24 features. Treat the Workflows threadmaster as the master coordinator for cross-project lane awareness while it continues implementing the workflow canvas/runtime.
 
+### 2026-04-26 — AOS Mailchimp Connector Slice
+
+Lane: `AOS Mailchimp connector`
+Branch/status: `codex/aos-mailchimp-loop` in progress.
+Owned files/directories: `tools/aos/aos-mailchimp/**` plus this coordination note.
+Shared contract change: Mailchimp public AOS surface is being narrowed to truthful live read-only commands only: `account.read`, `audience.list`, `audience.read`, `member.list`, `member.read`, `campaign.list`, `campaign.read`, `report.list`, `report.read`, and connector utility commands. Campaign draft creation and member upsert are not advertised until approval, compliance, and campaign safety rules are verified.
+Operator key contract: `MAILCHIMP_API_KEY`, `MAILCHIMP_SERVER_PREFIX`, `MAILCHIMP_AUDIENCE_ID`, `MAILCHIMP_CAMPAIGN_ID`, and `MAILCHIMP_MEMBER_EMAIL` resolve from operator service keys before local environment fallback.
+Workflows/AppForge/AOU reaction: consume Mailchimp manifest/capabilities only; treat Mailchimp as live read-only and do not present it as an output/write destination.
+
 ### 2026-04-26 — OpenClaw 4.24 Comparison Lane
 
 Lane: OpenClaw 4.24 realtime/browser/marketplace comparison. Branch/commit: `codex/aos-next-connector-wave` at `ad3fb0b9`. Owned files/directories for this lane: `ops/THREADMASTER_COORDINATION.md` for coordination updates; future comparison artifacts under `ops/**` only unless the board is updated first. Shared contract changes: none yet. Workflows/AppForge/AOU reaction: proposed direction is browser harness first, provider-neutral realtime voice substrate second, then Google Meet as a marketplace-distributed capability plugin; no implementation dependency is active until a follow-up plan claims specific files/contracts.

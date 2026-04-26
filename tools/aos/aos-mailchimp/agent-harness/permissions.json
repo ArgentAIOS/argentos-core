@@ -14,8 +14,6 @@
     "campaign.list": "readonly",
     "campaign.read": "readonly",
     "report.list": "readonly",
-    "report.read": "readonly",
-    "campaign.create_draft": "write",
-    "member.upsert": "write"
+    "report.read": "readonly"
   }
 }
