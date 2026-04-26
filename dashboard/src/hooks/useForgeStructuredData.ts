@@ -391,6 +391,14 @@ function storedFieldSelectionKey(appId: string, tableId: string): string {
   return `argent.appForge.selectedField.${appId}.${tableId}`;
 }
 
+export const forgeStructuredDataTestUtils = {
+  coerceValueForField,
+  defaultBase,
+  defaultValueForField,
+  metadataWithBase,
+  normalizeBase,
+};
+
 export function useForgeStructuredData({
   apps,
   selectedAppId,

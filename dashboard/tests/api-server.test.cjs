@@ -206,6 +206,21 @@ describe("Apps", () => {
     assert.strictEqual(res.data.ok, true);
   });
 
+  it("POST /api/apps/:id/workflow-event rejects missing event type", async () => {
+    const res = await api("POST", `/api/apps/${appId}/workflow-event`, {
+      payload: { reviewId: "review-1" },
+    });
+    assert.strictEqual(res.status, 400);
+    assert.match(res.data.error, /eventType/i);
+  });
+
+  it("POST /api/apps/:id/workflow-event returns 404 for unknown apps", async () => {
+    const res = await api("POST", "/api/apps/missing-app/workflow-event", {
+      eventType: "forge.review.requested",
+    });
+    assert.strictEqual(res.status, 404);
+  });
+
   it("POST /api/apps/:id/reviews/request emits review requested events", async () => {
     const res = await api("POST", `/api/apps/${appId}/reviews/request`, {
       capabilityId: "review",
