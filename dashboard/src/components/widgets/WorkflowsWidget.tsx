@@ -1476,6 +1476,7 @@ function NewWorkflowModal({
   onClose,
   onCreateBlank,
   onCreateFromIntent,
+  onImportWorkflowText,
   onSelectTemplate,
   packageTemplates,
   packageTemplatesLoading,
@@ -1485,16 +1486,21 @@ function NewWorkflowModal({
   onClose: () => void;
   onCreateBlank: (name?: string) => void;
   onCreateFromIntent: (intent: string, name?: string) => Promise<void>;
+  onImportWorkflowText: (text: string, name?: string) => Promise<void>;
   onSelectTemplate: (template: WorkflowTemplate) => void;
   packageTemplates: WorkflowPackageTemplateSummary[];
   packageTemplatesLoading: boolean;
   onSelectPackageTemplate: (template: WorkflowPackageTemplateSummary) => Promise<void>;
 }) {
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [workflowName, setWorkflowName] = useState("Untitled workflow");
   const [intent, setIntent] = useState("");
+  const [importText, setImportText] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const [selectedPackageSlug, setSelectedPackageSlug] = useState<string | null>(null);
 
   if (!open) return null;
@@ -1516,9 +1522,28 @@ function NewWorkflowModal({
     }
   };
 
+  const importPastedWorkflow = async () => {
+    if (!importText.trim() || importing) {
+      return;
+    }
+    setImporting(true);
+    setImportError(null);
+    try {
+      await onImportWorkflowText(importText.trim(), workflowName.trim() || undefined);
+      setImportText("");
+      setShowImport(false);
+      setShowTemplates(false);
+      onClose();
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-[500px] bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl p-6 shadow-2xl">
+      <div className="max-h-[92vh] w-[min(560px,94vw)] overflow-y-auto bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl p-6 shadow-2xl">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold text-[hsl(var(--foreground))]">
             Create New Workflow
@@ -1527,6 +1552,7 @@ function NewWorkflowModal({
             onClick={() => {
               onClose();
               setShowTemplates(false);
+              setShowImport(false);
             }}
             className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
           >
@@ -1619,6 +1645,52 @@ function NewWorkflowModal({
               Import a tested owner-operator workflow and customize it
             </div>
           </button>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))]/60 p-3">
+          <button
+            type="button"
+            onClick={() => {
+              setShowImport(!showImport);
+              setShowTemplates(false);
+            }}
+            className="flex w-full items-center justify-between text-left"
+          >
+            <span>
+              <span className="block text-sm font-semibold text-[hsl(var(--foreground))]">
+                Import JSON/YAML
+              </span>
+              <span className="block text-xs text-[hsl(var(--muted-foreground))]">
+                Paste an Argent workflow package or legacy workflow export
+              </span>
+            </span>
+            <span className="text-xs text-cyan-200">{showImport ? "Hide" : "Paste"}</span>
+          </button>
+          {showImport && (
+            <div className="mt-3 space-y-2">
+              <textarea
+                className={DOCK_INPUT + " min-h-[130px] resize-y font-mono text-[11px]"}
+                value={importText}
+                onChange={(event) => setImportText(event.target.value)}
+                placeholder={'{\n  "kind": "argent.workflow.package",\n  ...\n}'}
+              />
+              {importError && (
+                <div className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-xs text-red-200">
+                  {importError}
+                </div>
+              )}
+              <button
+                type="button"
+                disabled={!importText.trim() || importing}
+                onClick={() => {
+                  void importPastedWorkflow();
+                }}
+                className="w-full rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-400/20 disabled:opacity-40"
+              >
+                {importing ? "Importing..." : "Import pasted workflow"}
+              </button>
+            </div>
+          )}
         </div>
 
         {showTemplates && (
@@ -7300,28 +7372,59 @@ export function WorkflowsWidget() {
     [workflows, persistWorkflows, gateway, setWorkflows],
   );
 
+  const importWorkflowText = useCallback(
+    async (text: string, options: { displayName?: string; name?: string } = {}) => {
+      const trimmed = text.trim();
+      if (!trimmed) {
+        throw new Error("Workflow import text is empty.");
+      }
+      let imported: WorkflowDefinition;
+      if (gateway.connected) {
+        const label = options.displayName ?? "";
+        const format =
+          /\.(ya?ml|argent-workflow\.ya?ml)$/i.test(label) || !trimmed.startsWith("{")
+            ? "yaml"
+            : "json";
+        const preview = await gateway.request<WorkflowImportPreviewResponse>(
+          "workflows.importPreview",
+          { text: trimmed, format },
+        );
+        imported = workflowFromImportPreview(preview);
+      } else {
+        imported = legacyWorkflowFromJson(trimmed);
+      }
+      const requestedName = options.name?.trim();
+      await saveImportedWorkflow(
+        requestedName
+          ? {
+              ...imported,
+              name: requestedName,
+              updatedAt: new Date().toISOString(),
+            }
+          : imported,
+      );
+    },
+    [gateway, saveImportedWorkflow],
+  );
+
   const handleImportWorkflowFile = useCallback(
     async (file: File) => {
       try {
         const text = await file.text();
-        let imported: WorkflowDefinition;
-        if (gateway.connected) {
-          const format = /\.(ya?ml|argent-workflow\.ya?ml)$/i.test(file.name) ? "yaml" : "json";
-          const preview = await gateway.request<WorkflowImportPreviewResponse>(
-            "workflows.importPreview",
-            { text, format },
-          );
-          imported = workflowFromImportPreview(preview);
-        } else {
-          imported = legacyWorkflowFromJson(text);
-        }
-        await saveImportedWorkflow(imported);
+        await importWorkflowText(text, { displayName: file.name });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         alert(`Failed to import workflow: ${message}`);
       }
     },
-    [gateway, saveImportedWorkflow],
+    [importWorkflowText],
+  );
+
+  const handleImportWorkflowText = useCallback(
+    async (text: string, name?: string) => {
+      await importWorkflowText(text, { name });
+    },
+    [importWorkflowText],
   );
 
   const handleSelectPackageTemplate = useCallback(
@@ -7370,6 +7473,7 @@ export function WorkflowsWidget() {
         onClose={() => setNewWorkflowModalOpen(false)}
         onCreateBlank={handleCreateBlank}
         onCreateFromIntent={handleCreateFromIntent}
+        onImportWorkflowText={handleImportWorkflowText}
         onSelectTemplate={handleSelectTemplate}
         packageTemplates={packageTemplates}
         packageTemplatesLoading={packageTemplatesLoading}
