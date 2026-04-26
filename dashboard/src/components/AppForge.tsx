@@ -26,6 +26,7 @@ import {
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { AppForgeWorkflowEventRequest, ForgeApp } from "../hooks/useApps";
 import type { AppWindowState } from "../hooks/useAppWindows";
+import { useForgeStructuredData } from "../hooks/useForgeStructuredData";
 import { AppDock } from "./AppDock";
 
 interface AppForgeProps {
@@ -49,6 +50,12 @@ type WorkflowEventStatus = {
 };
 
 type AppFilter = "all" | "pinned" | "running";
+
+type EditingCell = {
+  recordId: string;
+  fieldId: string;
+  value: string;
+};
 
 function sanitizeSvg(svg: string): string {
   return svg
@@ -105,26 +112,6 @@ function appWorkflowCapability(app: ForgeApp): { id?: string; eventType?: string
   return {};
 }
 
-function formatAppDate(value?: string): string {
-  if (!value) return "Not opened";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown";
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
-
-function appStatus(app: ForgeApp, running: boolean): { label: string; className: string } {
-  if (running) {
-    return { label: "Running", className: "bg-blue-500/20 text-blue-200" };
-  }
-  if (app.pinned) {
-    return { label: "Pinned", className: "bg-amber-500/20 text-amber-200" };
-  }
-  if (appWorkflowCapability(app).id) {
-    return { label: "Review", className: "bg-emerald-500/20 text-emerald-200" };
-  }
-  return { label: "Ready", className: "bg-white/10 text-white/65" };
-}
-
 const APP_FORGE_NAV = [
   { id: "desktop", label: "Desktop", icon: Monitor },
   { id: "bases", label: "Bases", icon: Boxes },
@@ -167,6 +154,7 @@ export function AppForge({
   const [activeSection, setActiveSection] =
     useState<(typeof APP_FORGE_NAV)[number]["id"]>("desktop");
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const appCountAtBuild = useRef(0);
@@ -190,6 +178,7 @@ export function AppForge({
       setActiveFilter("all");
       setActiveSection("desktop");
       setSelectedAppId(null);
+      setEditingCell(null);
     }
   }, [isOpen]);
 
@@ -263,9 +252,15 @@ export function AppForge({
     ? windows.find((window) => window.appId === selectedApp.id)
     : undefined;
   const selectedCapability = selectedApp ? appWorkflowCapability(selectedApp) : {};
-  const selectedStatus = selectedApp ? appStatus(selectedApp, !!selectedWindow) : null;
   const shortcutApps = filteredApps.slice(0, 5);
   const capabilityCount = apps.filter((app) => appWorkflowCapability(app).id).length;
+  const structured = useForgeStructuredData({
+    apps: filteredApps,
+    selectedAppId,
+    onSelectApp: setSelectedAppId,
+    emitWorkflowEvent: onEmitWorkflowEvent,
+  });
+  const visibleFields = structured.activeTable?.fields.slice(0, 6) ?? [];
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, appId: string) => {
@@ -345,6 +340,21 @@ export function AppForge({
     },
     [apps, onEmitWorkflowEvent],
   );
+
+  const commitEditingCell = useCallback(async () => {
+    if (!editingCell) return;
+    const field = structured.activeTable?.fields.find(
+      (candidate) => candidate.id === editingCell.fieldId,
+    );
+    const nextValue =
+      field?.type === "number"
+        ? Number(editingCell.value) || 0
+        : field?.type === "checkbox"
+          ? editingCell.value === "true"
+          : editingCell.value;
+    setEditingCell(null);
+    await structured.updateCell(editingCell.recordId, editingCell.fieldId, nextValue);
+  }, [editingCell, structured]);
 
   return (
     <AnimatePresence>
@@ -618,12 +628,18 @@ export function AppForge({
                       </button>
                     </div>
 
+                    {structured.error && (
+                      <div className="mb-3 rounded-xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                        {structured.error}
+                      </div>
+                    )}
+
                     <div className="overflow-hidden rounded-2xl border border-white/12 bg-[#0e1316]/90 shadow-2xl">
                       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
                         <div className="flex min-w-0 items-center gap-3">
                           <Boxes className="h-5 w-5 text-white/55" />
                           <button className="flex items-center gap-1 text-sm font-medium text-white/82">
-                            {selectedApp?.name ?? "Projects"}
+                            {structured.activeBase?.name ?? "Projects"}
                             <ChevronDown className="h-4 w-4 text-white/35" />
                           </button>
                         </div>
@@ -642,6 +658,7 @@ export function AppForge({
                           ))}
                         </div>
                         <div className="flex items-center gap-3 text-sm text-white/45">
+                          {structured.saving && <span className="text-sky-200">Saving...</span>}
                           <button className="hover:text-white/75">Filter</button>
                           <button className="hover:text-white/75">Sort</button>
                           <button className="hover:text-white/75">Group</button>
@@ -652,38 +669,37 @@ export function AppForge({
                         <div className="border-r border-white/10 bg-black/18 p-3">
                           <div className="mb-3 flex items-center justify-between text-sm text-white/72">
                             <span>Tables</span>
-                            <Plus className="h-4 w-4 text-white/38" />
+                            <button
+                              onClick={() => void structured.addTable()}
+                              className="rounded p-1 text-white/38 transition-colors hover:bg-white/10 hover:text-white/75"
+                              title="Add table"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </button>
                           </div>
                           <div className="space-y-1">
-                            {[
-                              ["Apps", apps.length],
-                              ["Workflow Capabilities", capabilityCount],
-                              ["Events", windows.length],
-                              ["Activity Log", filteredApps.length],
-                            ].map(([label, count], index) => (
+                            {(structured.activeBase?.tables ?? []).map((table) => (
                               <button
-                                key={label}
-                                onClick={() => {
-                                  if (index === 0) setActiveFilter("all");
-                                  if (index === 1) setActiveSection("automations");
-                                  if (index === 2) setActiveFilter("running");
-                                }}
+                                key={table.id}
+                                onClick={() => void structured.selectTable(table.id)}
                                 className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
-                                  index === 0
+                                  structured.activeTable?.id === table.id
                                     ? "bg-sky-500/14 text-sky-100"
                                     : "text-white/55 hover:bg-white/[0.05] hover:text-white/78"
                                 }`}
                               >
                                 <span className="flex min-w-0 items-center gap-2">
                                   <Table2 className="h-4 w-4 shrink-0" />
-                                  <span className="truncate">{label}</span>
+                                  <span className="truncate">{table.name}</span>
                                 </span>
-                                <span className="text-xs text-white/34">{count}</span>
+                                <span className="text-xs text-white/34">
+                                  {table.records.length}
+                                </span>
                               </button>
                             ))}
                           </div>
                           <button
-                            onClick={() => setShowNewAppInput(true)}
+                            onClick={() => void structured.addTable()}
                             className="mt-5 flex items-center gap-2 px-3 text-sm text-white/48 transition-colors hover:text-white/75"
                           >
                             <Plus className="h-4 w-4" />
@@ -701,96 +717,104 @@ export function AppForge({
                                 <th className="w-14 border-b border-r border-white/10 px-3 py-3">
                                   #
                                 </th>
-                                <th className="border-b border-r border-white/10 px-4 py-3">
-                                  App Name
-                                </th>
-                                <th className="w-36 border-b border-r border-white/10 px-4 py-3">
-                                  Status
-                                </th>
-                                <th className="w-36 border-b border-r border-white/10 px-4 py-3">
-                                  Creator
-                                </th>
-                                <th className="w-36 border-b border-r border-white/10 px-4 py-3">
-                                  Last Opened
-                                </th>
-                                <th className="w-48 border-b border-white/10 px-4 py-3">
-                                  Capability
+                                {visibleFields.map((field) => (
+                                  <th
+                                    key={field.id}
+                                    onClick={() => structured.selectField(field.id)}
+                                    className="min-w-36 cursor-pointer border-b border-r border-white/10 px-4 py-3 hover:text-white/62"
+                                  >
+                                    {field.name}
+                                  </th>
+                                ))}
+                                <th className="w-12 border-b border-white/10 px-3 py-3">
+                                  <button
+                                    onClick={() => void structured.addField()}
+                                    className="rounded p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white"
+                                    title="Add field"
+                                  >
+                                    <Plus className="h-4 w-4" />
+                                  </button>
                                 </th>
                               </tr>
                             </thead>
                             <tbody>
-                              {filteredApps.map((app, index) => {
-                                const running = runningAppIds.has(app.id);
-                                const status = appStatus(app, running);
-                                const capability = appWorkflowCapability(app);
-                                return (
-                                  <tr
-                                    key={app.id}
-                                    onClick={() => setSelectedAppId(app.id)}
-                                    onDoubleClick={() => onOpenApp(app.id)}
-                                    onContextMenu={(e) => handleContextMenu(e, app.id)}
-                                    className={`group cursor-pointer border-b border-white/[0.07] transition-colors ${
-                                      selectedApp?.id === app.id
-                                        ? "bg-sky-500/10"
-                                        : "hover:bg-white/[0.04]"
-                                    }`}
-                                  >
-                                    <td className="border-r border-white/[0.07] px-3 py-2">
-                                      <span className="block h-4 w-4 rounded border border-white/20 group-hover:border-white/38" />
-                                    </td>
-                                    <td className="border-r border-white/[0.07] px-3 py-2 text-white/42">
-                                      {index + 1}
-                                    </td>
-                                    <td className="border-r border-white/[0.07] px-4 py-2">
-                                      <div className="flex min-w-0 items-center gap-3">
-                                        <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/[0.04]">
-                                          {app.icon ? (
-                                            <div
-                                              className="h-5 w-5"
-                                              dangerouslySetInnerHTML={{
-                                                __html: sanitizeSvg(app.icon),
-                                              }}
-                                            />
-                                          ) : (
-                                            <Boxes className="h-4 w-4 text-white/48" />
-                                          )}
-                                        </div>
-                                        <span className="truncate text-white/78">{app.name}</span>
-                                      </div>
-                                    </td>
-                                    <td className="border-r border-white/[0.07] px-4 py-2">
-                                      <span
-                                        className={`inline-flex rounded-md px-2 py-1 text-xs font-medium ${status.className}`}
+                              {(structured.activeTable?.records ?? []).map((record, index) => (
+                                <tr
+                                  key={record.id}
+                                  className="group border-b border-white/[0.07] transition-colors hover:bg-white/[0.04]"
+                                >
+                                  <td className="border-r border-white/[0.07] px-3 py-2">
+                                    <button
+                                      onClick={() => void structured.deleteRecord(record.id)}
+                                      className="block h-4 w-4 rounded border border-white/20 transition-colors group-hover:border-red-300/70"
+                                      title="Delete record"
+                                    />
+                                  </td>
+                                  <td className="border-r border-white/[0.07] px-3 py-2 text-white/42">
+                                    {index + 1}
+                                  </td>
+                                  {visibleFields.map((field) => {
+                                    const rawValue = record.values[field.id];
+                                    const value =
+                                      rawValue === null || rawValue === undefined
+                                        ? ""
+                                        : String(rawValue);
+                                    const isEditing =
+                                      editingCell?.recordId === record.id &&
+                                      editingCell.fieldId === field.id;
+                                    return (
+                                      <td
+                                        key={field.id}
+                                        onClick={() => structured.selectField(field.id)}
+                                        onDoubleClick={() =>
+                                          setEditingCell({
+                                            recordId: record.id,
+                                            fieldId: field.id,
+                                            value,
+                                          })
+                                        }
+                                        className="border-r border-white/[0.07] px-4 py-2 text-white/66"
                                       >
-                                        {status.label}
-                                      </span>
-                                    </td>
-                                    <td className="border-r border-white/[0.07] px-4 py-2">
-                                      <div className="flex items-center gap-2">
-                                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/25 text-[10px] text-emerald-100">
-                                          {app.creator.slice(0, 2).toUpperCase()}
-                                        </span>
-                                        <span className="truncate text-white/58">
-                                          {app.creator}
-                                        </span>
-                                      </div>
-                                    </td>
-                                    <td className="border-r border-white/[0.07] px-4 py-2 text-white/56">
-                                      {formatAppDate(app.lastOpenedAt)}
-                                    </td>
-                                    <td className="px-4 py-2 text-white/56">
-                                      {capability.id ? (
-                                        <span className="truncate">{capability.id}</span>
-                                      ) : (
-                                        <span className="text-white/28">None</span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                              {filteredApps.length === 0 && (
+                                        {isEditing ? (
+                                          <input
+                                            autoFocus
+                                            value={editingCell.value}
+                                            onChange={(event) =>
+                                              setEditingCell({
+                                                ...editingCell,
+                                                value: event.target.value,
+                                              })
+                                            }
+                                            onBlur={() => void commitEditingCell()}
+                                            onKeyDown={(event) => {
+                                              if (event.key === "Enter") {
+                                                void commitEditingCell();
+                                              }
+                                              if (event.key === "Escape") {
+                                                setEditingCell(null);
+                                              }
+                                            }}
+                                            className="w-full rounded-md border border-sky-400/40 bg-black/45 px-2 py-1 text-sm text-white outline-none"
+                                          />
+                                        ) : field.type === "single_select" && value ? (
+                                          <span className="inline-flex rounded-md bg-emerald-500/18 px-2 py-1 text-xs font-medium text-emerald-100">
+                                            {value}
+                                          </span>
+                                        ) : (
+                                          <span className="truncate">{value || " "}</span>
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                  <td className="px-3 py-2" />
+                                </tr>
+                              ))}
+                              {(structured.activeTable?.records.length ?? 0) === 0 && (
                                 <tr>
-                                  <td colSpan={7} className="px-4 py-16 text-center text-white/35">
+                                  <td
+                                    colSpan={visibleFields.length + 3}
+                                    className="px-4 py-16 text-center text-white/35"
+                                  >
                                     {searchQuery
                                       ? `No apps matching "${searchQuery}"`
                                       : deleteMode
@@ -803,13 +827,13 @@ export function AppForge({
                           </table>
                           <div className="flex items-center justify-between border-t border-white/10 px-4 py-3 text-sm text-white/45">
                             <button
-                              onClick={() => setShowNewAppInput(true)}
+                              onClick={() => void structured.addRecord()}
                               className="flex items-center gap-2 transition-colors hover:text-white/75"
                             >
                               <Plus className="h-4 w-4" />
                               Add record
                             </button>
-                            <span>{filteredApps.length} records</span>
+                            <span>{structured.activeTable?.records.length ?? 0} records</span>
                           </div>
                         </div>
                       </div>
@@ -946,69 +970,111 @@ export function AppForge({
                       <label className="block">
                         <span className="mb-2 block text-xs text-white/38">Field name</span>
                         <input
-                          readOnly
-                          value="Status"
+                          value={structured.selectedField?.name ?? ""}
+                          onChange={(event) => {
+                            if (!structured.selectedField) return;
+                            void structured.updateField(structured.selectedField.id, {
+                              name: event.target.value,
+                            });
+                          }}
                           className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
                         />
                       </label>
 
                       <label className="block">
                         <span className="mb-2 block text-xs text-white/38">Field type</span>
-                        <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72">
-                          <span className="flex items-center gap-2">
-                            <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
-                            Single select
-                          </span>
-                          <ChevronDown className="h-4 w-4 text-white/35" />
-                        </div>
+                        <select
+                          value={structured.selectedField?.type ?? "text"}
+                          onChange={(event) => {
+                            if (!structured.selectedField) return;
+                            void structured.updateField(structured.selectedField.id, {
+                              type: event.target.value as
+                                | "text"
+                                | "single_select"
+                                | "number"
+                                | "date"
+                                | "checkbox",
+                            });
+                          }}
+                          className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
+                        >
+                          <option value="text">Text</option>
+                          <option value="single_select">Single select</option>
+                          <option value="number">Number</option>
+                          <option value="date">Date</option>
+                          <option value="checkbox">Checkbox</option>
+                        </select>
                       </label>
 
-                      <div>
-                        <div className="mb-2 text-xs text-white/38">Options</div>
-                        <div className="space-y-2">
-                          {[
-                            ["Ready", "bg-white/40"],
-                            ["Review", "bg-emerald-400"],
-                            ["Pinned", "bg-amber-300"],
-                            ["Running", "bg-blue-400"],
-                          ].map(([label, dot]) => (
-                            <div
-                              key={label}
-                              className="flex items-center justify-between rounded-lg bg-white/[0.05] px-3 py-2 text-white/65"
-                            >
-                              <span className="flex items-center gap-2">
-                                <span className={`h-3 w-3 rounded-full ${dot}`} />
-                                {label}
-                              </span>
-                              <Ellipsis className="h-4 w-4 text-white/30" />
-                            </div>
-                          ))}
+                      {structured.selectedField?.type === "single_select" && (
+                        <div>
+                          <div className="mb-2 text-xs text-white/38">Options</div>
+                          <div className="space-y-2">
+                            {(structured.selectedField.options ?? []).map((label, index) => (
+                              <div
+                                key={`${label}-${index}`}
+                                className="flex items-center justify-between rounded-lg bg-white/[0.05] px-3 py-2 text-white/65"
+                              >
+                                <span className="flex items-center gap-2">
+                                  <span className="h-3 w-3 rounded-full bg-emerald-400" />
+                                  {label}
+                                </span>
+                                <Ellipsis className="h-4 w-4 text-white/30" />
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => {
+                              if (!structured.selectedField) return;
+                              void structured.updateField(structured.selectedField.id, {
+                                options: [
+                                  ...(structured.selectedField.options ?? []),
+                                  `Option ${(structured.selectedField.options ?? []).length + 1}`,
+                                ],
+                              });
+                            }}
+                            className="mt-3 flex items-center gap-2 text-sm text-sky-300/80 hover:text-sky-200"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add option
+                          </button>
                         </div>
-                        <button className="mt-3 flex items-center gap-2 text-sm text-sky-300/80 hover:text-sky-200">
-                          <Plus className="h-4 w-4" />
-                          Add option
-                        </button>
-                      </div>
+                      )}
+
+                      <label className="block">
+                        <span className="mb-2 block text-xs text-white/38">Description</span>
+                        <textarea
+                          value={structured.selectedField?.description ?? ""}
+                          onChange={(event) => {
+                            if (!structured.selectedField) return;
+                            void structured.updateField(structured.selectedField.id, {
+                              description: event.target.value,
+                            });
+                          }}
+                          rows={3}
+                          className="w-full resize-none rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
+                        />
+                      </label>
 
                       <div className="border-t border-white/10 pt-4">
                         <div className="mb-3 flex items-center justify-between">
-                          <span className="text-xs text-white/38">Current value</span>
-                          {selectedStatus && (
-                            <span
-                              className={`rounded-md px-2 py-1 text-xs font-medium ${selectedStatus.className}`}
-                            >
-                              {selectedStatus.label}
-                            </span>
-                          )}
+                          <span className="text-xs text-white/38">Current table</span>
+                          <span className="rounded-md bg-white/10 px-2 py-1 text-xs font-medium text-white/65">
+                            {structured.activeTable?.name ?? "No table"}
+                          </span>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <div className="text-xs text-white/30">Creator</div>
-                            <div className="truncate text-white/60">{selectedApp.creator}</div>
+                            <div className="text-xs text-white/30">Records</div>
+                            <div className="truncate text-white/60">
+                              {structured.activeTable?.records.length ?? 0}
+                            </div>
                           </div>
                           <div>
-                            <div className="text-xs text-white/30">Opened</div>
-                            <div className="text-white/60">{selectedApp.openCount}</div>
+                            <div className="text-xs text-white/30">Fields</div>
+                            <div className="text-white/60">
+                              {structured.activeTable?.fields.length ?? 0}
+                            </div>
                           </div>
                           <div>
                             <div className="text-xs text-white/30">Capability</div>
@@ -1025,12 +1091,20 @@ export function AppForge({
                         </div>
                       </div>
 
-                      <div>
-                        <div className="mb-2 text-xs text-white/38">Description</div>
-                        <p className="line-clamp-5 rounded-lg border border-white/10 bg-black/18 p-3 text-white/55">
-                          {selectedApp.description || "No description"}
-                        </p>
-                      </div>
+                      <label className="flex items-center justify-between border-t border-white/10 pt-4">
+                        <span className="text-sm text-white/55">Required</span>
+                        <input
+                          type="checkbox"
+                          checked={!!structured.selectedField?.required}
+                          onChange={(event) => {
+                            if (!structured.selectedField) return;
+                            void structured.updateField(structured.selectedField.id, {
+                              required: event.target.checked,
+                            });
+                          }}
+                          className="h-4 w-4 accent-sky-400"
+                        />
+                      </label>
                     </div>
 
                     <div className="mt-auto grid gap-2 pt-5">
