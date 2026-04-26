@@ -110,7 +110,20 @@ describe("AppForge gateway handlers", () => {
     const respond = await invokeAppForgeHandler("appforge.bases.list", { appId: "app-1" });
     expect(respond).toHaveBeenCalledWith(
       true,
-      { bases: [expect.objectContaining({ id: "base-1", appId: "app-1" })] },
+      {
+        bases: [
+          expect.objectContaining({
+            id: "base-1",
+            name: "Campaign Review",
+            appId: "app-1",
+            revision: 1,
+            description: "Review workspace",
+            activeTableId: "table-1",
+            updatedAt: "2026-04-25T20:00:00.000Z",
+            tableCount: 1,
+          }),
+        ],
+      },
       undefined,
     );
 
@@ -234,7 +247,18 @@ describe("AppForge gateway handlers", () => {
     const listRespond = await invokeAppForgeHandler("appforge.tables.list", { baseId: "base-1" });
     expect(listRespond).toHaveBeenCalledWith(
       true,
-      { tables: [expect.objectContaining({ id: "table-1" })] },
+      {
+        tables: [
+          expect.objectContaining({
+            id: "table-1",
+            name: "Reviews",
+            fields: [{ id: "name", name: "Name", type: "text", required: true }],
+            revision: 1,
+            fieldCount: 1,
+            recordCount: 0,
+          }),
+        ],
+      },
       undefined,
     );
 
@@ -291,6 +315,91 @@ describe("AppForge gateway handlers", () => {
       {
         base: expect.objectContaining({ revision: 3 }),
         table: expect.objectContaining({ id: "table-2", revision: 2 }),
+      },
+      undefined,
+    );
+  });
+
+  it("exposes durable store-backed base and table picker data after writes", async () => {
+    const baseWrite = await invokeAppForgeHandler("appforge.bases.put", {
+      base: base({
+        id: "base-picker",
+        appId: "app-picker",
+        name: "Workflow Picker Base",
+        description: "Base selected by a workflow binding wizard",
+        activeTableId: "table-picker",
+        revision: 0,
+        tables: [
+          {
+            id: "table-picker",
+            name: "Picker Table",
+            revision: 0,
+            fields: [
+              { id: "title", name: "Title", type: "text", required: true },
+              {
+                id: "status",
+                name: "Status",
+                type: "single_select",
+                options: ["Open", "Closed"],
+              },
+            ],
+            records: [record({ id: "record-picker", values: { title: "Asset", status: "Open" } })],
+          },
+        ],
+      }),
+      expectedRevision: 0,
+    });
+    expect(baseWrite).toHaveBeenCalledWith(
+      true,
+      { base: expect.objectContaining({ id: "base-picker", revision: 1 }) },
+      undefined,
+    );
+
+    const basesRespond = await invokeAppForgeHandler("appforge.bases.list", {
+      appId: "app-picker",
+    });
+    expect(basesRespond).toHaveBeenCalledWith(
+      true,
+      {
+        bases: [
+          expect.objectContaining({
+            id: "base-picker",
+            name: "Workflow Picker Base",
+            appId: "app-picker",
+            revision: 1,
+            description: "Base selected by a workflow binding wizard",
+            activeTableId: "table-picker",
+            tableCount: 1,
+          }),
+        ],
+      },
+      undefined,
+    );
+
+    const tablesRespond = await invokeAppForgeHandler("appforge.tables.list", {
+      baseId: "base-picker",
+    });
+    expect(tablesRespond).toHaveBeenCalledWith(
+      true,
+      {
+        tables: [
+          expect.objectContaining({
+            id: "table-picker",
+            name: "Picker Table",
+            fields: [
+              expect.objectContaining({ id: "title", name: "Title", type: "text", required: true }),
+              expect.objectContaining({
+                id: "status",
+                name: "Status",
+                type: "single_select",
+                options: ["Open", "Closed"],
+              }),
+            ],
+            revision: 0,
+            fieldCount: 2,
+            recordCount: 1,
+          }),
+        ],
       },
       undefined,
     );
