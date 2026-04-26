@@ -1,0 +1,21 @@
+[
+  {
+    "id": "task-20260426121910-vnvz5n",
+    "createdAt": "2026-04-26T12:19:10.606Z",
+    "updatedAt": "2026-04-26T12:19:10.935Z",
+    "from": "master",
+    "owner": "workflows",
+    "title": "Bus task smoke test",
+    "body": "Verify task-add, task-list, task-update, and status work for the master threadmaster bus.",
+    "status": "done",
+    "priority": "normal",
+    "branch": "codex/aos-next-connector-wave",
+    "notes": [
+      {
+        "at": "2026-04-26T12:19:10.934Z",
+        "lane": "workflows",
+        "note": "Smoke test completed."
+      }
+    ]
+  }
+]
