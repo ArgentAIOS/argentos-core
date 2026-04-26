@@ -206,6 +206,8 @@ interface WorkflowImportReport {
   bindings?: Record<string, WorkflowBindingValue>;
 }
 
+type WorkflowDeploymentStage = "simulate" | "shadow" | "limited_live" | "live";
+
 type WorkflowBindingRequirementKind =
   | "credential"
   | "connector"
@@ -575,6 +577,26 @@ function workflowFromImportPreview(response: WorkflowImportPreviewResponse): Wor
       ? { ok: response.validation.ok !== false, issues: response.validation.issues }
       : undefined,
     importReport: importReportFromPreview(response),
+  };
+}
+
+function workflowDeploymentStage(workflow: WorkflowDefinition | null): WorkflowDeploymentStage {
+  const definition = isRecord(workflow?.definition) ? workflow.definition : {};
+  const stage = stringValue(definition.deploymentStage);
+  return stage === "simulate" || stage === "shadow" || stage === "limited_live" || stage === "live"
+    ? stage
+    : "live";
+}
+
+function withWorkflowDeploymentStage(
+  workflow: WorkflowDefinition,
+  stage: WorkflowDeploymentStage,
+): WorkflowDefinition {
+  const definition = isRecord(workflow.definition) ? workflow.definition : {};
+  return {
+    ...workflow,
+    definition: { ...definition, deploymentStage: stage },
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -7689,6 +7711,7 @@ function WorkflowCanvasInner({
             workflowId: activeWorkflowId,
             name: workflow?.name,
             canvasData: { nodes: cleanNodes, edges },
+            deploymentStage: workflowDeploymentStage(workflow ?? null),
             changeSummary,
           });
         }
@@ -7720,6 +7743,7 @@ function WorkflowCanvasInner({
         {
           name: workflow?.name ?? "Untitled workflow",
           canvasData: { nodes: cleanWorkflowNodes(), edges },
+          deploymentStage: workflowDeploymentStage(workflow ?? null),
         },
       );
       const issues = normalizeValidationIssues(res?.issues);
@@ -7912,6 +7936,19 @@ function WorkflowCanvasInner({
     activeWorkflow?.importReport?.requirements.filter(
       (requirement) => activeWorkflow.importReport?.bindings?.[requirement.key]?.value,
     ).length ?? 0;
+  const activeDeploymentStage = workflowDeploymentStage(activeWorkflow);
+  const requiredLiveBindings =
+    activeWorkflow?.importReport?.requirements.filter(
+      (requirement) => requirement.requiredForLive,
+    ) ?? [];
+  const missingLiveBindings = requiredLiveBindings.filter(
+    (requirement) => !activeWorkflow?.importReport?.bindings?.[requirement.key]?.value,
+  );
+  const importedFixtureReady = activeWorkflow?.importReport?.okForPinnedTestRun === true;
+  const livePromotionReady =
+    Boolean(activeWorkflow?.importReport) &&
+    activeWorkflow.importReport?.okForImport !== false &&
+    missingLiveBindings.length === 0;
 
   const applyWorkflowBindings = useCallback(
     (bindings: Record<string, WorkflowBindingValue>) => {
@@ -7961,6 +7998,59 @@ function WorkflowCanvasInner({
       setBindingWizardOpen(false);
     },
     [activeWorkflow, edges, nodes, setNodes, setWorkflows],
+  );
+
+  const setWorkflowDeploymentStage = useCallback(
+    async (stage: WorkflowDeploymentStage) => {
+      if (!activeWorkflow || !activeWorkflowId) {
+        return;
+      }
+      if (stage === "live" && missingLiveBindings.length > 0) {
+        setBindingWizardOpen(true);
+        setLastSaveStatus(`Bind ${missingLiveBindings.length} required item(s) before live`);
+        return;
+      }
+      const cleanNodes = cleanWorkflowNodes();
+      const nextWorkflow = withWorkflowDeploymentStage(
+        { ...activeWorkflow, nodes: cleanNodes, edges },
+        stage,
+      );
+      setWorkflows((prev) => {
+        const next = prev.map((workflow) =>
+          workflow.id === activeWorkflowId ? nextWorkflow : workflow,
+        );
+        saveWorkflowsLocal(next);
+        return next;
+      });
+      setLastSaveStatus(
+        stage === "live"
+          ? "Live mode selected"
+          : stage === "simulate"
+            ? "Fixture mode selected"
+            : `${stage.replace("_", " ")} mode selected`,
+      );
+      if (gateway.connected) {
+        await gateway.request("workflows.update", {
+          workflowId: activeWorkflowId,
+          canvasData: { nodes: cleanNodes, edges },
+          deploymentStage: stage,
+          changeSummary: `Set workflow deployment stage to ${stage}`,
+        });
+      }
+      if (stage === "live") {
+        void validateCurrentWorkflow();
+      }
+    },
+    [
+      activeWorkflow,
+      activeWorkflowId,
+      cleanWorkflowNodes,
+      edges,
+      gateway,
+      missingLiveBindings.length,
+      setWorkflows,
+      validateCurrentWorkflow,
+    ],
   );
 
   useEffect(() => {
@@ -8416,7 +8506,7 @@ function WorkflowCanvasInner({
             }`}
             title={running ? "Workflow running..." : "Run workflow"}
           >
-            {running ? "Running..." : "Run"}
+            {running ? "Running..." : activeDeploymentStage === "simulate" ? "Run fixture" : "Run"}
           </button>
           <button
             disabled={!activeWorkflowId || scheduling || !gateway.connected}
@@ -8430,6 +8520,79 @@ function WorkflowCanvasInner({
           </button>
         </div>
       </div>
+
+      {activeWorkflow?.importReport && (
+        <div className="flex-shrink-0 border-b border-cyan-400/20 bg-cyan-400/5 px-4 py-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`rounded px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                    activeDeploymentStage === "live"
+                      ? "bg-emerald-500/15 text-emerald-300"
+                      : "bg-cyan-500/15 text-cyan-300"
+                  }`}
+                >
+                  {activeDeploymentStage === "simulate" ? "fixture mode" : activeDeploymentStage}
+                </span>
+                <span className="truncate text-xs font-semibold text-[hsl(var(--foreground))]">
+                  {activeWorkflow.importReport.packageName}
+                </span>
+                {importedFixtureReady && activeDeploymentStage !== "live" && (
+                  <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300">
+                    safe test data pinned
+                  </span>
+                )}
+              </div>
+              <div className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">
+                {activeDeploymentStage === "live"
+                  ? "Live runs use configured credentials, channels, and connectors."
+                  : "Fixture runs use pinned sample data so no external side effects fire while you configure the workflow."}
+                {missingLiveBindings.length > 0
+                  ? ` ${missingLiveBindings.length} required binding${missingLiveBindings.length === 1 ? "" : "s"} still needed for live.`
+                  : " Required live bindings are complete."}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setBindingWizardOpen(true)}
+                className="rounded border border-cyan-400/30 px-2.5 py-1 text-[11px] font-medium text-cyan-200 hover:bg-cyan-400/10"
+              >
+                Bind {boundRequirementCount}/{bindingRequirementCount}
+              </button>
+              {activeDeploymentStage !== "simulate" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void setWorkflowDeploymentStage("simulate");
+                  }}
+                  className="rounded border border-[hsl(var(--border))] px-2.5 py-1 text-[11px] font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]"
+                >
+                  Back to fixture
+                </button>
+              )}
+              {activeDeploymentStage !== "live" && (
+                <button
+                  type="button"
+                  disabled={!gateway.connected || !livePromotionReady}
+                  onClick={() => {
+                    void setWorkflowDeploymentStage("live");
+                  }}
+                  className="rounded bg-emerald-500/15 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-40"
+                  title={
+                    livePromotionReady
+                      ? "Promote this workflow to live execution"
+                      : "Complete required bindings before live promotion"
+                  }
+                >
+                  Promote live
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {runError && (
         <div className="flex-shrink-0 border-b border-red-500/30 bg-red-500/10 px-4 py-2">

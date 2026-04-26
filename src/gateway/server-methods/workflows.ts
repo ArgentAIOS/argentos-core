@@ -333,6 +333,17 @@ function optionalWorkflowPackageFormat(
   return v;
 }
 
+function optionalDeploymentStage(params: Record<string, unknown>) {
+  const stage = optionalString(params, "deploymentStage");
+  if (!stage) {
+    return undefined;
+  }
+  if (stage === "simulate" || stage === "shadow" || stage === "limited_live" || stage === "live") {
+    return stage;
+  }
+  throw new Error("deploymentStage must be simulate, shadow, limited_live, or live");
+}
+
 function workflowTemplateSummary(workflowPackage: WorkflowPackage) {
   const imported = importWorkflowPackage(workflowPackage);
   return {
@@ -1397,14 +1408,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       };
       const maxRunDurationMs = optionalNumber(params, "maxRunDurationMs") ?? 3600000;
       const maxRunCostUsd = optionalNumber(params, "maxRunCostUsd") ?? null;
-      const deploymentStageRaw = optionalString(params, "deploymentStage");
-      const deploymentStage =
-        deploymentStageRaw === "simulate" ||
-        deploymentStageRaw === "shadow" ||
-        deploymentStageRaw === "limited_live" ||
-        deploymentStageRaw === "live"
-          ? deploymentStageRaw
-          : "live";
+      const deploymentStage = optionalDeploymentStage(params) ?? "live";
       const normalized = normalizeWorkflow({
         id,
         name,
@@ -1499,6 +1503,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       const defaultOnError = optionalObject(params, "defaultOnError");
       const maxRunDurationMs = optionalNumber(params, "maxRunDurationMs");
       const maxRunCostUsd = optionalNumber(params, "maxRunCostUsd");
+      const deploymentStage = optionalDeploymentStage(params);
       const isActive = optionalBoolean(params, "isActive");
       const nextFireAt = optionalString(params, "nextFireAt");
 
@@ -1520,7 +1525,11 @@ export const workflowsHandlers: GatewayRequestHandlers = {
                 (typeof existing.max_run_cost_usd === "number"
                   ? existing.max_run_cost_usd
                   : undefined),
-              deploymentStage: "live",
+              deploymentStage:
+                deploymentStage ??
+                (typeof existing.deployment_stage === "string"
+                  ? existing.deployment_stage
+                  : "live"),
             })
           : null;
 
@@ -1537,6 +1546,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           default_on_error = COALESCE(${defaultOnError ? JSON.stringify(defaultOnError) : null}::jsonb, default_on_error),
           max_run_duration_ms = COALESCE(${maxRunDurationMs ?? null}, max_run_duration_ms),
           max_run_cost_usd = COALESCE(${maxRunCostUsd ?? null}, max_run_cost_usd),
+          deployment_stage = COALESCE(${deploymentStage ?? null}, deployment_stage),
           is_active = COALESCE(${isActive ?? null}, is_active),
           next_fire_at = COALESCE(${nextFireAt ?? null}::timestamptz, next_fire_at),
           updated_at = NOW()
@@ -1740,7 +1750,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         nodes,
         edges,
         canvasLayout,
-        deploymentStage: "live",
+        deploymentStage: optionalDeploymentStage(params) ?? "live",
       });
       const runtimeIssues = await validateWorkflowRuntimeCapabilities(normalized.workflow);
       const issues = [...normalized.issues, ...runtimeIssues];
