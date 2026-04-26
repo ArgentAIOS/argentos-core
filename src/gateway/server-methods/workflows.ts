@@ -90,6 +90,22 @@ type WorkflowOutputChannelOption = {
   targets?: WorkflowOutputChannelTarget[];
 };
 
+type WorkflowConnectorCapability = {
+  id: string;
+  name: string;
+  category: string;
+  categories: string[] | undefined;
+  commands: Array<{
+    id: string;
+    summary: string | undefined;
+    actionClass: string | undefined;
+  }>;
+  installState: string;
+  statusOk: boolean;
+  scaffoldOnly: boolean;
+  readinessState: "blocked" | "setup_required" | "write_ready";
+};
+
 // ── Postgres connection (lazy singleton) ────────────────────────────────────
 
 let _sql: ReturnType<typeof postgres> | null = null;
@@ -809,6 +825,60 @@ export async function buildWorkflowOutputChannels(): Promise<WorkflowOutputChann
   }
 
   return [...outputChannels.values()];
+}
+
+export async function buildWorkflowConnectorCapabilities(): Promise<WorkflowConnectorCapability[]> {
+  const catalog = await discoverConnectorCatalog();
+  return catalog.connectors.map((c: ConnectorCatalogEntry) => {
+    let scaffoldOnly = false;
+    for (const root of defaultRepoRoots()) {
+      const mPath = path.join(root, c.tool, "connector.json");
+      if (fs.existsSync(mPath)) {
+        try {
+          const raw = JSON.parse(fs.readFileSync(mPath, "utf-8")) as Record<string, unknown>;
+          const scope =
+            raw.scope && typeof raw.scope === "object"
+              ? (raw.scope as Record<string, unknown>)
+              : {};
+          scaffoldOnly = scope.scaffold_only === true;
+        } catch {
+          /* ignore */
+        }
+        break;
+      }
+    }
+    const isBlocked = scaffoldOnly || c.installState === "repo-only";
+    return {
+      id: c.tool,
+      name: c.label || c.tool.replace(/^aos-/, "").replace(/-/g, " "),
+      category: c.category ?? "general",
+      categories: c.categories,
+      commands: c.commands.map((cmd) => ({
+        id: cmd.id,
+        summary: cmd.summary,
+        actionClass: cmd.actionClass,
+      })),
+      installState: c.installState,
+      statusOk: c.status.ok,
+      scaffoldOnly,
+      readinessState: isBlocked
+        ? "blocked"
+        : c.installState === "ready"
+          ? "write_ready"
+          : "setup_required",
+    };
+  });
+}
+
+export async function buildWorkflowConnectorCapabilitiesSafely(): Promise<
+  WorkflowConnectorCapability[]
+> {
+  try {
+    return await buildWorkflowConnectorCapabilities();
+  } catch (err) {
+    log.warn(`workflow connector capabilities unavailable: ${String(err)}`);
+    return [];
+  }
 }
 
 export async function startAppForgeEventTriggeredWorkflows(opts: {
@@ -1714,46 +1784,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         log.warn(`workflow output channel capabilities unavailable: ${String(err)}`);
         return [];
       });
-      const catalog = await discoverConnectorCatalog();
-      const connectors = catalog.connectors.map((c: ConnectorCatalogEntry) => {
-        let scaffoldOnly = false;
-        for (const root of defaultRepoRoots()) {
-          const mPath = path.join(root, c.tool, "connector.json");
-          if (fs.existsSync(mPath)) {
-            try {
-              const raw = JSON.parse(fs.readFileSync(mPath, "utf-8")) as Record<string, unknown>;
-              const scope =
-                raw.scope && typeof raw.scope === "object"
-                  ? (raw.scope as Record<string, unknown>)
-                  : {};
-              scaffoldOnly = scope.scaffold_only === true;
-            } catch {
-              /* ignore */
-            }
-            break;
-          }
-        }
-        const isBlocked = scaffoldOnly || c.installState === "repo-only";
-        return {
-          id: c.tool,
-          name: c.label || c.tool.replace(/^aos-/, "").replace(/-/g, " "),
-          category: c.category ?? "general",
-          categories: c.categories,
-          commands: c.commands.map((cmd) => ({
-            id: cmd.id,
-            summary: cmd.summary,
-            actionClass: cmd.actionClass,
-          })),
-          installState: c.installState,
-          statusOk: c.status.ok,
-          scaffoldOnly,
-          readinessState: isBlocked
-            ? "blocked"
-            : c.installState === "ready"
-              ? "write_ready"
-              : "setup_required",
-        };
-      });
+      const connectors = await buildWorkflowConnectorCapabilitiesSafely();
       const toolsByName = new Map<string, unknown>();
       for (const tool of toolStatus.tools) {
         toolsByName.set(tool.name, tool);

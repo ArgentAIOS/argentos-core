@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgentConfig } from "../../config/config.js";
-import { buildWorkflowOutputChannels } from "./workflows.js";
+import {
+  buildWorkflowConnectorCapabilities,
+  buildWorkflowConnectorCapabilitiesSafely,
+  buildWorkflowOutputChannels,
+} from "./workflows.js";
 
 const mocks = vi.hoisted(() => ({
   config: {} as ArgentConfig,
+  discoverConnectorCatalog: vi.fn(),
 }));
 
 vi.mock("../../config/config.js", async (importOriginal) => {
@@ -18,9 +23,19 @@ vi.mock("../../channels/plugins/index.js", () => ({
   listChannelPlugins: () => [],
 }));
 
+vi.mock("../../connectors/catalog.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../connectors/catalog.js")>();
+  return {
+    ...actual,
+    discoverConnectorCatalog: mocks.discoverConnectorCatalog,
+  };
+});
+
 describe("buildWorkflowOutputChannels", () => {
   beforeEach(() => {
     mocks.config = {};
+    mocks.discoverConnectorCatalog.mockReset();
+    mocks.discoverConnectorCatalog.mockResolvedValue({ connectors: [] });
   });
 
   it("surfaces configured core chat channels without the heavy plugin registry", async () => {
@@ -72,5 +87,51 @@ describe("buildWorkflowOutputChannels", () => {
     const channels = await buildWorkflowOutputChannels();
 
     expect(channels.some((channel) => channel.id === "discord")).toBe(false);
+  });
+
+  it("builds workflow connector capabilities from the connector catalog", async () => {
+    mocks.discoverConnectorCatalog.mockResolvedValue({
+      connectors: [
+        {
+          tool: "aos-slack",
+          label: "Slack",
+          category: "messaging",
+          categories: ["messaging"],
+          commands: [{ id: "message.send", summary: "Send message", actionClass: "write" }],
+          installState: "ready",
+          status: { ok: true },
+        },
+        {
+          tool: "aos-placeholder",
+          label: "Placeholder",
+          category: "general",
+          categories: ["general"],
+          commands: [],
+          installState: "repo-only",
+          status: { ok: false },
+        },
+      ],
+    });
+
+    const connectors = await buildWorkflowConnectorCapabilities();
+
+    expect(connectors).toEqual([
+      expect.objectContaining({
+        id: "aos-slack",
+        name: "Slack",
+        readinessState: "write_ready",
+        commands: [expect.objectContaining({ id: "message.send", actionClass: "write" })],
+      }),
+      expect.objectContaining({
+        id: "aos-placeholder",
+        readinessState: "blocked",
+      }),
+    ]);
+  });
+
+  it("keeps workflow capabilities alive when connector discovery fails", async () => {
+    mocks.discoverConnectorCatalog.mockRejectedValue(new Error("catalog unavailable"));
+
+    await expect(buildWorkflowConnectorCapabilitiesSafely()).resolves.toEqual([]);
   });
 });

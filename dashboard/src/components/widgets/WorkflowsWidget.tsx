@@ -3721,6 +3721,14 @@ function OutputForm({
   const selectedDestinationLabel = outputDestinationLabel(data, selectedChannel);
   const previewText = outputPreviewText(payloadValue, sourceMode, selectedSourceLabel);
   const sideEffectLabel = outputSideEffectLabel(data.target);
+  const activeChannelSummary =
+    outputChannels.length > 0
+      ? outputChannels.map((channel) => channel.label).join(", ")
+      : "No active chat channels detected";
+  const connectorDestinationSummary =
+    runnableConnectors.length > 0
+      ? `${runnableConnectors.length} connector${runnableConnectors.length === 1 ? "" : "s"} available`
+      : "No connector action destinations";
   const updatePayload = (value: string) => {
     if (data.target === "connector_action") {
       onUpdate(nodeId, { ...data, parametersJson: value, parameters: value });
@@ -3794,6 +3802,14 @@ function OutputForm({
           </span>
           <span className="text-[hsl(var(--muted-foreground))]">Policy</span>
           <span className="font-medium text-amber-200">{sideEffectLabel}</span>
+          <span className="text-[hsl(var(--muted-foreground))]">Active channels</span>
+          <span className="truncate font-medium text-[hsl(var(--foreground))]">
+            {activeChannelSummary}
+          </span>
+          <span className="text-[hsl(var(--muted-foreground))]">Connector actions</span>
+          <span className="truncate font-medium text-[hsl(var(--foreground))]">
+            {connectorDestinationSummary}
+          </span>
         </div>
       </div>
 
