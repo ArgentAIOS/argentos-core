@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -24,9 +25,9 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     event_type_uuid_env = ctx_obj.get("event_type_uuid_env") or CALENDLY_EVENT_TYPE_UUID_ENV
     event_uuid_env = ctx_obj.get("event_uuid_env") or CALENDLY_EVENT_UUID_ENV
 
-    api_key = (os.getenv(api_key_env) or "").strip()
-    event_type_uuid = (os.getenv(event_type_uuid_env) or "").strip()
-    event_uuid = (os.getenv(event_uuid_env) or "").strip()
+    api_key = (service_key_env(api_key_env) or "").strip()
+    event_type_uuid = (service_key_env(event_type_uuid_env) or "").strip()
+    event_uuid = (service_key_env(event_uuid_env) or "").strip()
 
     return {
         "backend": BACKEND_NAME,

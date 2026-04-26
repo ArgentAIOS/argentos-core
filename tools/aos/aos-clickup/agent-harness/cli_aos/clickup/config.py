@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+from .service_keys import service_key_env
 from typing import Iterable
 
 from .constants import (
@@ -33,7 +34,7 @@ class ClickUpConnectorContext:
 
 def first_configured_value(names: Iterable[str]) -> str | None:
     for name in names:
-        value = os.getenv(name)
+        value = service_key_env(name)
         if value:
             return value
     return None
@@ -42,11 +43,11 @@ def first_configured_value(names: Iterable[str]) -> str | None:
 def resolve_config() -> ClickUpConfig:
     return ClickUpConfig(
         api_token=first_configured_value([ENV_API_TOKEN, ENV_ACCESS_TOKEN]),
-        base_url=os.getenv(ENV_BASE_URL, DEFAULT_BASE_URL),
-        workspace_id=os.getenv(ENV_WORKSPACE_ID),
-        space_id=os.getenv(ENV_SPACE_ID),
-        list_id=os.getenv(ENV_LIST_ID),
-        task_id=os.getenv(ENV_TASK_ID),
+        base_url=service_key_env(ENV_BASE_URL, DEFAULT_BASE_URL),
+        workspace_id=service_key_env(ENV_WORKSPACE_ID),
+        space_id=service_key_env(ENV_SPACE_ID),
+        list_id=service_key_env(ENV_LIST_ID),
+        task_id=service_key_env(ENV_TASK_ID),
     )
 
 

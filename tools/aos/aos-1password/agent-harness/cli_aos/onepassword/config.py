@@ -62,8 +62,9 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     field_env = ctx_obj.get("field_env") or FIELD_ENV
 
     account = (os.getenv(account_env) or os.getenv(OP_ACCOUNT_ENV) or "").strip()
+    service_account_token_from_service_keys = resolve_service_key(SERVICE_ACCOUNT_TOKEN_ENV) or ""
     service_account_token_from_env = (os.getenv(SERVICE_ACCOUNT_TOKEN_ENV) or "").strip()
-    service_account_token = service_account_token_from_env or resolve_service_key(SERVICE_ACCOUNT_TOKEN_ENV) or ""
+    service_account_token = service_account_token_from_service_keys or service_account_token_from_env
 
     return {
         "backend": BACKEND_NAME,
@@ -78,10 +79,10 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "service_account_token_preview": _mask(service_account_token),
         "service_account_token": service_account_token,
         "service_account_token_source": (
-            "process.env"
+            "service-keys"
+            if service_account_token_from_service_keys
+            else "process.env"
             if service_account_token_from_env
-            else "service-keys"
-            if service_account_token
             else None
         ),
         "vault_env": vault_env,

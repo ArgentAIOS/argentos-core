@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -43,9 +44,9 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     api_key_env = (ctx_obj.get("api_key_env") or MAKE_API_KEY_ENV).strip() or MAKE_API_KEY_ENV
     webhook_base_url_env = (ctx_obj.get("webhook_base_url_env") or MAKE_WEBHOOK_BASE_URL_ENV).strip() or MAKE_WEBHOOK_BASE_URL_ENV
 
-    api_url = os.getenv(api_url_env)
-    api_key = os.getenv(api_key_env)
-    webhook_base_url = os.getenv(webhook_base_url_env)
+    api_url = service_key_env(api_url_env)
+    api_key = service_key_env(api_key_env)
+    webhook_base_url = service_key_env(webhook_base_url_env)
 
     return {
         "backend": BACKEND_NAME,
@@ -61,17 +62,17 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "webhook_base_url": webhook_base_url,
         "webhook_base_url_present": _present(webhook_base_url),
         "webhook_base_url_redacted": _redact(webhook_base_url),
-        "organization_id": (os.getenv(MAKE_ORGANIZATION_ID_ENV) or "").strip() or None,
-        "organization_name": (os.getenv(MAKE_ORGANIZATION_NAME_ENV) or "").strip() or None,
-        "team_id": (os.getenv(MAKE_TEAM_ID_ENV) or "").strip() or None,
-        "team_name": (os.getenv(MAKE_TEAM_NAME_ENV) or "").strip() or None,
-        "scenario_id": (os.getenv(MAKE_SCENARIO_ID_ENV) or "").strip() or None,
-        "scenario_name": (os.getenv(MAKE_SCENARIO_NAME_ENV) or "").strip() or None,
-        "scenario_status": (os.getenv(MAKE_SCENARIO_STATUS_ENV) or "").strip() or None,
-        "connection_id": (os.getenv(MAKE_CONNECTION_ID_ENV) or "").strip() or None,
-        "connection_name": (os.getenv(MAKE_CONNECTION_NAME_ENV) or "").strip() or None,
-        "execution_id": (os.getenv(MAKE_EXECUTION_ID_ENV) or "").strip() or None,
-        "run_id": (os.getenv(MAKE_RUN_ID_ENV) or "").strip() or None,
+        "organization_id": (service_key_env(MAKE_ORGANIZATION_ID_ENV) or "").strip() or None,
+        "organization_name": (service_key_env(MAKE_ORGANIZATION_NAME_ENV) or "").strip() or None,
+        "team_id": (service_key_env(MAKE_TEAM_ID_ENV) or "").strip() or None,
+        "team_name": (service_key_env(MAKE_TEAM_NAME_ENV) or "").strip() or None,
+        "scenario_id": (service_key_env(MAKE_SCENARIO_ID_ENV) or "").strip() or None,
+        "scenario_name": (service_key_env(MAKE_SCENARIO_NAME_ENV) or "").strip() or None,
+        "scenario_status": (service_key_env(MAKE_SCENARIO_STATUS_ENV) or "").strip() or None,
+        "connection_id": (service_key_env(MAKE_CONNECTION_ID_ENV) or "").strip() or None,
+        "connection_name": (service_key_env(MAKE_CONNECTION_NAME_ENV) or "").strip() or None,
+        "execution_id": (service_key_env(MAKE_EXECUTION_ID_ENV) or "").strip() or None,
+        "run_id": (service_key_env(MAKE_RUN_ID_ENV) or "").strip() or None,
         "verbose": bool(ctx_obj.get("verbose")),
     }
 

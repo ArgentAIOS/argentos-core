@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -56,20 +57,20 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     output_file_env = ctx_obj.get("output_file_env") or DROPBOX_OUTPUT_FILE_ENV
     limit_env = ctx_obj.get("limit_env") or DROPBOX_LIMIT_ENV
 
-    app_key = (os.getenv(app_key_env) or "").strip()
-    app_secret = (os.getenv(app_secret_env) or "").strip()
-    refresh_token = (os.getenv(refresh_token_env) or "").strip()
-    base_url = (os.getenv(base_url_env) or DEFAULT_API_BASE_URL).strip().rstrip("/")
-    content_url = (os.getenv(content_url_env) or DEFAULT_CONTENT_BASE_URL).strip().rstrip("/")
-    path = (os.getenv(path_env) or "").strip()
-    file_id = (os.getenv(file_id_env) or "").strip()
-    query = (os.getenv(query_env) or "").strip()
-    cursor = (os.getenv(cursor_env) or "").strip()
-    shared_link_settings = (os.getenv(shared_link_settings_env) or "").strip()
-    source_file = (os.getenv(source_file_env) or "").strip()
-    dest_path = (os.getenv(dest_path_env) or "").strip()
-    output_file = (os.getenv(output_file_env) or "").strip()
-    limit = _int_or_none(os.getenv(limit_env))
+    app_key = (service_key_env(app_key_env) or "").strip()
+    app_secret = (service_key_env(app_secret_env) or "").strip()
+    refresh_token = (service_key_env(refresh_token_env) or "").strip()
+    base_url = (service_key_env(base_url_env) or DEFAULT_API_BASE_URL).strip().rstrip("/")
+    content_url = (service_key_env(content_url_env) or DEFAULT_CONTENT_BASE_URL).strip().rstrip("/")
+    path = (service_key_env(path_env) or "").strip()
+    file_id = (service_key_env(file_id_env) or "").strip()
+    query = (service_key_env(query_env) or "").strip()
+    cursor = (service_key_env(cursor_env) or "").strip()
+    shared_link_settings = (service_key_env(shared_link_settings_env) or "").strip()
+    source_file = (service_key_env(source_file_env) or "").strip()
+    dest_path = (service_key_env(dest_path_env) or "").strip()
+    output_file = (service_key_env(output_file_env) or "").strip()
+    limit = _int_or_none(service_key_env(limit_env))
 
     return {
         "backend": BACKEND_NAME,

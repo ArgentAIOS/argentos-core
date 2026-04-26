@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -55,24 +56,24 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     reminder_time_env = ctx_obj.get("reminder_time_env") or SLACK_REMINDER_TIME_ENV
     reminder_user_env = ctx_obj.get("reminder_user_env") or SLACK_REMINDER_USER_ENV
 
-    bot_token = (os.getenv(bot_token_env) or "").strip()
-    app_token = (os.getenv(app_token_env) or "").strip()
-    base_url = (os.getenv(base_url_env) or DEFAULT_BASE_URL).strip().rstrip("/")
-    channel_id = (os.getenv(channel_id_env) or "").strip()
-    thread_ts = (os.getenv(thread_ts_env) or "").strip()
-    text = (os.getenv(text_env) or "").strip()
-    emoji = (os.getenv(emoji_env) or "").strip()
-    user_id = (os.getenv(user_id_env) or "").strip()
-    channel_name = (os.getenv(channel_name_env) or "").strip()
-    canvas_id = (os.getenv(canvas_id_env) or "").strip()
-    canvas_title = (os.getenv(canvas_title_env) or "").strip()
-    canvas_content = (os.getenv(canvas_content_env) or "").strip()
-    canvas_changes = (os.getenv(canvas_changes_env) or "").strip()
-    file_path = (os.getenv(file_path_env) or "").strip()
-    file_title = (os.getenv(file_title_env) or "").strip()
-    reminder_text = (os.getenv(reminder_text_env) or "").strip()
-    reminder_time = (os.getenv(reminder_time_env) or "").strip()
-    reminder_user = (os.getenv(reminder_user_env) or "").strip()
+    bot_token = (service_key_env(bot_token_env) or "").strip()
+    app_token = (service_key_env(app_token_env) or "").strip()
+    base_url = (service_key_env(base_url_env) or DEFAULT_BASE_URL).strip().rstrip("/")
+    channel_id = (service_key_env(channel_id_env) or "").strip()
+    thread_ts = (service_key_env(thread_ts_env) or "").strip()
+    text = (service_key_env(text_env) or "").strip()
+    emoji = (service_key_env(emoji_env) or "").strip()
+    user_id = (service_key_env(user_id_env) or "").strip()
+    channel_name = (service_key_env(channel_name_env) or "").strip()
+    canvas_id = (service_key_env(canvas_id_env) or "").strip()
+    canvas_title = (service_key_env(canvas_title_env) or "").strip()
+    canvas_content = (service_key_env(canvas_content_env) or "").strip()
+    canvas_changes = (service_key_env(canvas_changes_env) or "").strip()
+    file_path = (service_key_env(file_path_env) or "").strip()
+    file_title = (service_key_env(file_title_env) or "").strip()
+    reminder_text = (service_key_env(reminder_text_env) or "").strip()
+    reminder_time = (service_key_env(reminder_time_env) or "").strip()
+    reminder_user = (service_key_env(reminder_user_env) or "").strip()
 
     return {
         "backend": BACKEND_NAME,

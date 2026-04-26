@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -49,19 +50,19 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     channel_name_env = _resolve_env(ctx_obj, "channel_name_env", DISCORD_CHANNEL_NAME_ENV)
     reaction_env = _resolve_env(ctx_obj, "reaction_env", DISCORD_REACTION_ENV)
 
-    bot_token = (os.getenv(bot_token_env) or "").strip()
-    api_base_url = (os.getenv(api_base_url_env) or DEFAULT_API_BASE_URL).strip().rstrip("/")
-    guild_id = (os.getenv(guild_id_env) or "").strip()
-    channel_id = (os.getenv(channel_id_env) or "").strip()
-    message_id = (os.getenv(message_id_env) or "").strip()
-    webhook_url = (os.getenv(webhook_url_env) or "").strip()
-    content = (os.getenv(content_env) or "").strip()
-    embed_json = (os.getenv(embed_json_env) or "").strip()
-    role_id = (os.getenv(role_id_env) or "").strip()
-    member_id = (os.getenv(member_id_env) or "").strip()
-    thread_name = (os.getenv(thread_name_env) or "").strip()
-    channel_name = (os.getenv(channel_name_env) or "").strip()
-    reaction = (os.getenv(reaction_env) or "").strip()
+    bot_token = (service_key_env(bot_token_env) or "").strip()
+    api_base_url = (service_key_env(api_base_url_env) or DEFAULT_API_BASE_URL).strip().rstrip("/")
+    guild_id = (service_key_env(guild_id_env) or "").strip()
+    channel_id = (service_key_env(channel_id_env) or "").strip()
+    message_id = (service_key_env(message_id_env) or "").strip()
+    webhook_url = (service_key_env(webhook_url_env) or "").strip()
+    content = (service_key_env(content_env) or "").strip()
+    embed_json = (service_key_env(embed_json_env) or "").strip()
+    role_id = (service_key_env(role_id_env) or "").strip()
+    member_id = (service_key_env(member_id_env) or "").strip()
+    thread_name = (service_key_env(thread_name_env) or "").strip()
+    channel_name = (service_key_env(channel_name_env) or "").strip()
+    reaction = (service_key_env(reaction_env) or "").strip()
 
     return {
         "backend": BACKEND_NAME,

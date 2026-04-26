@@ -9,6 +9,7 @@ from typing import Any
 from urllib import error, parse, request
 
 from . import __version__
+from .service_keys import service_key_env
 
 TOOL_NAME = "aos-quickbooks"
 CONNECTOR_LABEL = "QuickBooks Online"
@@ -312,8 +313,12 @@ class ConnectorError(Exception):
         return payload
 
 
-def _env_present(name: str) -> bool:
-    return bool(os.environ.get(name, "").strip())
+def _env(name: str, default: str = "") -> str:
+    return (service_key_env(name, default) or "").strip()
+
+
+def _realm_id() -> str:
+    return _env("QBO_REALM_ID")
 
 
 def _redact(value: str | None, *, keep: int = 4) -> str:
@@ -356,11 +361,11 @@ def _canonical_entity_name(value: str | None) -> str | None:
 
 
 def runtime_config() -> dict[str, Any]:
-    api_base_url = os.environ.get("QBO_API_BASE_URL", DEFAULT_API_BASE_URL).rstrip("/")
-    token_url = os.environ.get("QBO_TOKEN_URL", DEFAULT_TOKEN_URL).rstrip("/")
-    minor_version = _parse_int(os.environ.get("QBO_MINOR_VERSION"), DEFAULT_MINOR_VERSION)
-    timeout_seconds = _parse_float(os.environ.get("QBO_HTTP_TIMEOUT_SECONDS"), DEFAULT_TIMEOUT_SECONDS)
-    env_values = {key: os.environ.get(key, "") for key in READ_ONLY_KEYS}
+    api_base_url = _env("QBO_API_BASE_URL", DEFAULT_API_BASE_URL).rstrip("/")
+    token_url = _env("QBO_TOKEN_URL", DEFAULT_TOKEN_URL).rstrip("/")
+    minor_version = _parse_int(_env("QBO_MINOR_VERSION"), DEFAULT_MINOR_VERSION)
+    timeout_seconds = _parse_float(_env("QBO_HTTP_TIMEOUT_SECONDS"), DEFAULT_TIMEOUT_SECONDS)
+    env_values = {key: _env(key) for key in READ_ONLY_KEYS}
     configured = {key: bool(value.strip()) for key, value in env_values.items()}
     missing_keys = [key for key, ok in configured.items() if not ok]
     auth_ready = not missing_keys
@@ -394,9 +399,10 @@ def runtime_config() -> dict[str, Any]:
             "sandbox": "sandbox-quickbooks.api.intuit.com" in api_base_url,
             "auth_ready": auth_ready,
             "read_only_ready": auth_ready,
-            "write_paths_implemented": False,
+            "write_paths_implemented": True,
             "write_paths_permission_gated": True,
-            "write_paths_scaffolded": sorted(WRITE_COMMAND_IDS),
+            "write_paths_scaffolded": [],
+            "write_paths_live": sorted(WRITE_COMMAND_IDS),
         },
     }
 
@@ -467,9 +473,10 @@ def _connector_status(
             "name": "write_paths",
             "ok": True,
             "details": {
-                "implemented": False,
+                "implemented": True,
                 "permission_gated": True,
-                "scaffolded": sorted(WRITE_COMMAND_IDS),
+                "scaffolded": [],
+                "live": sorted(WRITE_COMMAND_IDS),
             },
         },
     ]
@@ -521,8 +528,8 @@ def health_snapshot() -> dict[str, Any]:
 def doctor_snapshot() -> dict[str, Any]:
     snapshot = health_snapshot()
     recommendations: list[str] = [
-        "Keep write modes disabled until invoice.create_draft and bill.create_draft are implemented.",
-        "Use readonly mode for live QuickBooks reads while the write paths remain scaffolded.",
+        "Keep write mode scoped to sandbox or narrow company/account contexts until QuickBooks write behavior is validated.",
+        "Use invoice.create_draft only with an explicit item_id; QuickBooks Online requires a sales item on invoice lines.",
     ]
     if snapshot["status"] == "needs_setup":
         recommendations.insert(0, "Set the required QuickBooks service keys before running live read commands.")
@@ -592,8 +599,8 @@ def _request_json(
 
 
 def _token_headers(config: dict[str, Any]) -> dict[str, str]:
-    client_id = os.environ["QBO_CLIENT_ID"]
-    client_secret = os.environ["QBO_CLIENT_SECRET"]
+    client_id = _env("QBO_CLIENT_ID")
+    client_secret = _env("QBO_CLIENT_SECRET")
     credentials = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("ascii")
     return {
         "Authorization": f"Basic {credentials}",
@@ -613,7 +620,7 @@ def refresh_access_token(config: dict[str, Any]) -> dict[str, Any]:
     payload = parse.urlencode(
         {
             "grant_type": "refresh_token",
-            "refresh_token": os.environ["QBO_REFRESH_TOKEN"],
+            "refresh_token": _env("QBO_REFRESH_TOKEN"),
         }
     ).encode("utf-8")
     req = request.Request(
@@ -668,7 +675,7 @@ def _authorized_request(config: dict[str, Any], method: str, path: str) -> dict[
 
 
 def _company_info_path(config: dict[str, Any]) -> str:
-    realm_id = os.environ.get("QBO_REALM_ID", "")
+    realm_id = _realm_id()
     params = parse.urlencode({"minorversion": str(config["runtime"]["minor_version"])})
     return f"/v3/company/{realm_id}/companyinfo/{realm_id}?{params}"
 
@@ -700,7 +707,7 @@ def probe_runtime(config: dict[str, Any]) -> dict[str, Any]:
         "code": "OK",
         "message": "QuickBooks API and company info probe succeeded.",
         "details": {
-            "realm_id": os.environ.get("QBO_REALM_ID", ""),
+            "realm_id": _realm_id(),
             "company_name": company_info.get("CompanyName"),
             "company_id": company_info.get("Id"),
             "api_base_url": config["runtime"]["api_base_url"],
@@ -748,7 +755,7 @@ def _read_company(config: dict[str, Any]) -> dict[str, Any]:
 
 def _scope_base(config: dict[str, Any], *, company_name: str | None = None) -> dict[str, Any]:
     return {
-        "realm_id": os.environ.get("QBO_REALM_ID", ""),
+        "realm_id": _realm_id(),
         "company_name": company_name,
         "api_base_url": config["runtime"]["api_base_url"],
     }
@@ -937,7 +944,7 @@ def _transaction_narrowing(
     options: dict[str, str],
     results: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    realm_id = os.environ.get("QBO_REALM_ID", "")
+    realm_id = _realm_id()
     company_name = options.get("company") or options.get("company_name")
     company_candidate = _company_scope_candidate(realm_id=realm_id, company_name=company_name)
     date_window = _date_window(options)
@@ -1056,7 +1063,7 @@ def _scope_preview(
         "command_id": command_id,
         "resource": resource,
         "operation": operation,
-        "realm_id": os.environ.get("QBO_REALM_ID", ""),
+        "realm_id": _realm_id(),
         "api_base_url": config["runtime"]["api_base_url"],
     }
     if picker_options is not None:
@@ -1244,7 +1251,7 @@ def _build_like_clause(fields: list[str], terms: list[str]) -> str:
 
 
 def _query_endpoint(config: dict[str, Any], entity: str, query: str) -> dict[str, Any]:
-    realm_id = os.environ.get("QBO_REALM_ID", "")
+    realm_id = _realm_id()
     params = {
         "query": query,
         "minorversion": str(config["runtime"]["minor_version"]),
@@ -1253,21 +1260,35 @@ def _query_endpoint(config: dict[str, Any], entity: str, query: str) -> dict[str
     return _authorized_request_with_token(config, "GET", url)
 
 
-def _authorized_request_with_token(config: dict[str, Any], method: str, url: str) -> dict[str, Any]:
+def _authorized_request_with_token(
+    config: dict[str, Any],
+    method: str,
+    url: str,
+    *,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     token = refresh_access_token(config)
     return _request_json(
         method,
         url,
         headers={"Authorization": f"Bearer {token['access_token']}"},
+        payload=payload,
         timeout_seconds=config["runtime"]["timeout_seconds"],
     )
 
 
 def _read_entity(config: dict[str, Any], entity: str, object_id: str) -> dict[str, Any]:
-    realm_id = os.environ.get("QBO_REALM_ID", "")
+    realm_id = _realm_id()
     params = parse.urlencode({"minorversion": str(config["runtime"]["minor_version"])})
     path = f"/v3/company/{realm_id}/{entity}/{object_id}?{params}"
     return _authorized_request_with_token(config, "GET", f"{config['runtime']['api_base_url']}{path}")
+
+
+def _post_entity(config: dict[str, Any], entity: str, payload: dict[str, Any]) -> dict[str, Any]:
+    realm_id = _realm_id()
+    params = parse.urlencode({"minorversion": str(config["runtime"]["minor_version"])})
+    path = f"/v3/company/{realm_id}/{entity.lower()}?{params}"
+    return _authorized_request_with_token(config, "POST", f"{config['runtime']['api_base_url']}{path}", payload=payload)
 
 
 def _normalize_query_response(entity: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1554,17 +1575,127 @@ def run_read_command(command_id: str, items: tuple[str, ...]) -> dict[str, Any]:
     raise ConnectorError("QBO_INVALID_USAGE", f"Unknown command: {command_id}", 2)
 
 
-def scaffold_write_command(command_id: str, items: tuple[str, ...]) -> dict[str, Any]:
-    resource = command_id.split(".", 1)[0]
-    return {
-        "status": "scaffold",
-        "scaffold_only": True,
-        "executed": False,
-        "backend": "quickbooks-online",
-        "resource": resource,
-        "operation": command_id.split(".", 1)[1],
-        "command_id": command_id,
-        "inputs": {"items": list(items)},
-        "side_effects_possible": True,
-        "next_step": "Wire this command to the live QuickBooks Online write-path once approval and validation are implemented.",
+def _required_option(options: dict[str, str], *names: str) -> str:
+    for name in names:
+        value = options.get(name)
+        if value:
+            return value
+    raise ConnectorError(
+        "QBO_INVALID_USAGE",
+        f"Missing required option: {names[0]}",
+        2,
+        {"accepted_keys": list(names)},
+    )
+
+
+def _amount_option(options: dict[str, str]) -> float:
+    raw = _required_option(options, "amount", "total")
+    try:
+        amount = float(raw)
+    except ValueError as exc:
+        raise ConnectorError("QBO_INVALID_USAGE", "amount must be a number.", 2, {"amount": raw}) from exc
+    if amount <= 0:
+        raise ConnectorError("QBO_INVALID_USAGE", "amount must be greater than zero.", 2, {"amount": raw})
+    return round(amount, 2)
+
+
+def _invoice_payload(options: dict[str, str]) -> dict[str, Any]:
+    customer_id = _required_option(options, "customer_id", "customer")
+    item_id = _required_option(options, "item_id", "item", "product_id", "service_item_id")
+    amount = _amount_option(options)
+    line: dict[str, Any] = {
+        "Amount": amount,
+        "DetailType": "SalesItemLineDetail",
+        "SalesItemLineDetail": {"ItemRef": {"value": item_id}},
     }
+    description = options.get("description") or options.get("memo")
+    if description:
+        line["Description"] = description
+    payload: dict[str, Any] = {
+        "CustomerRef": {"value": customer_id},
+        "Line": [line],
+    }
+    due_date = options.get("due_date") or options.get("duedate")
+    if due_date:
+        payload["DueDate"] = due_date
+    private_note = options.get("private_note") or options.get("memo")
+    if private_note:
+        payload["PrivateNote"] = private_note
+    doc_number = options.get("doc_number") or options.get("docnumber")
+    if doc_number:
+        payload["DocNumber"] = doc_number
+    return payload
+
+
+def _bill_payload(options: dict[str, str]) -> dict[str, Any]:
+    vendor_id = _required_option(options, "vendor_id", "vendor")
+    account_id = _required_option(options, "account_id", "account")
+    amount = _amount_option(options)
+    line: dict[str, Any] = {
+        "Amount": amount,
+        "DetailType": "AccountBasedExpenseLineDetail",
+        "AccountBasedExpenseLineDetail": {"AccountRef": {"value": account_id}},
+    }
+    description = options.get("description") or options.get("memo")
+    if description:
+        line["Description"] = description
+    payload: dict[str, Any] = {
+        "VendorRef": {"value": vendor_id},
+        "Line": [line],
+    }
+    due_date = options.get("due_date") or options.get("duedate")
+    if due_date:
+        payload["DueDate"] = due_date
+    private_note = options.get("private_note") or options.get("memo")
+    if private_note:
+        payload["PrivateNote"] = private_note
+    doc_number = options.get("doc_number") or options.get("docnumber")
+    if doc_number:
+        payload["DocNumber"] = doc_number
+    return payload
+
+
+def _create_draft(config: dict[str, Any], resource: str, options: dict[str, str]) -> dict[str, Any]:
+    if resource == "invoice":
+        entity = "Invoice"
+        payload = _invoice_payload(options)
+    elif resource == "bill":
+        entity = "Bill"
+        payload = _bill_payload(options)
+    else:
+        raise ConnectorError("QBO_INVALID_USAGE", f"Unknown write resource: {resource}", 2)
+
+    response = _post_entity(config, entity, payload)
+    result = response.get(entity) if isinstance(response.get(entity), dict) else response
+    if not isinstance(result, dict):
+        raise ConnectorError(
+            "QBO_RESPONSE_ERROR",
+            f"QuickBooks {resource} create returned an unexpected payload.",
+            10,
+            {"body": response},
+        )
+    picker_options = _picker_options(resource, [result], selected_id=result.get("Id"))
+    return _decorate_live_result(
+        config=config,
+        resource=resource,
+        operation="create_draft",
+        data={
+            "status": "ok",
+            "resource": resource,
+            "operation": "create_draft",
+            "result": result,
+            "request": {"payload": payload},
+        },
+        picker_options=picker_options,
+        object_id=result.get("Id"),
+        count=1,
+    )
+
+
+def run_write_command(command_id: str, items: tuple[str, ...]) -> dict[str, Any]:
+    config = runtime_config()
+    options, _terms = _parse_inputs(items)
+    resource, operation = command_id.split(".", 1)
+    if operation == "create_draft":
+        return _create_draft(config, resource, options)
+    raise ConnectorError("QBO_INVALID_USAGE", f"Unknown write command: {command_id}", 2)

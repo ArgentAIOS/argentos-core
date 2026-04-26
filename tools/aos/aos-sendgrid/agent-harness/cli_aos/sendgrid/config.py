@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -26,10 +27,10 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     template_id_env = ctx_obj.get("template_id_env") or SENDGRID_TEMPLATE_ID_ENV
     list_id_env = ctx_obj.get("list_id_env") or SENDGRID_LIST_ID_ENV
 
-    api_key = (os.getenv(api_key_env) or "").strip()
-    from_email = (os.getenv(from_email_env) or "").strip()
-    template_id = (os.getenv(template_id_env) or "").strip()
-    list_id = (os.getenv(list_id_env) or "").strip()
+    api_key = (service_key_env(api_key_env) or "").strip()
+    from_email = (service_key_env(from_email_env) or "").strip()
+    template_id = (service_key_env(template_id_env) or "").strip()
+    list_id = (service_key_env(list_id_env) or "").strip()
 
     return {
         "backend": BACKEND_NAME,

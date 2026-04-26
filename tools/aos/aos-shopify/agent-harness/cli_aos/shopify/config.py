@@ -10,14 +10,26 @@ from .constants import (
     CONNECTOR_RESOURCES,
     CONNECTOR_SCOPE,
     LIVE_READ_COMMANDS,
+    LIVE_WRITE_COMMANDS,
     REQUIRED_ENV,
     SCAFFOLDED_COMMANDS,
     TOOL_NAME,
 )
+from .service_keys import resolve_service_key
 
 
 def _env(name: str) -> str:
     return os.getenv(name, "").strip()
+
+
+def _resolved_env(name: str) -> tuple[str, str | None]:
+    service_value = (resolve_service_key(name) or "").strip()
+    if service_value:
+        return service_value, "service-keys"
+    env_value = _env(name)
+    if env_value:
+        return env_value, "process.env"
+    return "", None
 
 
 def _redact(value: str | None, *, keep: int = 4) -> str:
@@ -29,8 +41,8 @@ def _redact(value: str | None, *, keep: int = 4) -> str:
 
 
 def runtime_config() -> dict[str, Any]:
-    shop_domain = _env("SHOPIFY_SHOP_DOMAIN")
-    access_token = _env("SHOPIFY_ADMIN_ACCESS_TOKEN")
+    shop_domain, shop_domain_source = _resolved_env("SHOPIFY_SHOP_DOMAIN")
+    access_token, access_token_source = _resolved_env("SHOPIFY_ADMIN_ACCESS_TOKEN")
     api_version_env = _env("SHOPIFY_API_VERSION")
     api_version = api_version_env or "latest"
     app_name = _env("SHOPIFY_APP_NAME")
@@ -40,7 +52,11 @@ def runtime_config() -> dict[str, Any]:
     created_after = _env("SHOPIFY_CREATED_AFTER")
     created_before = _env("SHOPIFY_CREATED_BEFORE")
 
-    configured = {name: bool(_env(name)) for name in REQUIRED_ENV}
+    resolved_required = {
+        "SHOPIFY_SHOP_DOMAIN": shop_domain,
+        "SHOPIFY_ADMIN_ACCESS_TOKEN": access_token,
+    }
+    configured = {name: bool(resolved_required.get(name, "")) for name in REQUIRED_ENV}
     missing_keys = [name for name, present in configured.items() if not present]
     live_reads_enabled = not missing_keys
     scope = {
@@ -75,17 +91,23 @@ def runtime_config() -> dict[str, Any]:
         "scope": CONNECTOR_SCOPE,
         "capabilities": {
             "live_read_commands": LIVE_READ_COMMANDS,
+            "live_write_commands": LIVE_WRITE_COMMANDS,
             "scaffolded_commands": SCAFFOLDED_COMMANDS,
             "live_reads_enabled": live_reads_enabled,
-            "live_writes_enabled": False,
+            "live_writes_enabled": live_reads_enabled,
             "command_defaults": command_defaults,
         },
         "auth": {
             "kind": "service-key",
             "required": True,
             "service_keys": list(REQUIRED_ENV),
+            "operator_service_keys": list(REQUIRED_ENV),
             "configured": configured,
             "missing_keys": missing_keys,
+            "sources": {
+                "SHOPIFY_SHOP_DOMAIN": shop_domain_source,
+                "SHOPIFY_ADMIN_ACCESS_TOKEN": access_token_source,
+            },
             "redacted": {
                 "SHOPIFY_SHOP_DOMAIN": _redact(shop_domain),
                 "SHOPIFY_ADMIN_ACCESS_TOKEN": _redact(access_token),
@@ -94,7 +116,9 @@ def runtime_config() -> dict[str, Any]:
         "runtime": {
             "shop_domain": shop_domain,
             "shop_domain_present": bool(shop_domain),
+            "shop_domain_source": shop_domain_source,
             "access_token_present": bool(access_token),
+            "access_token_source": access_token_source,
             "api_version": api_version,
             "api_version_present": bool(api_version_env),
             "api_version_source": "env" if api_version_env else "default",
@@ -102,8 +126,8 @@ def runtime_config() -> dict[str, Any]:
             "scaffold_only": False,
             "live_backend_available": live_reads_enabled,
             "live_reads_enabled": live_reads_enabled,
-            "live_writes_enabled": False,
-            "live_backend_mode": "read-only",
+            "live_writes_enabled": live_reads_enabled,
+            "live_backend_mode": "read-write",
             "scope": scope,
             "command_defaults": command_defaults,
         },
@@ -125,6 +149,6 @@ def redacted_config_snapshot() -> dict[str, Any]:
         "runtime": config["runtime"],
         "runtime_ready": not config["auth"]["missing_keys"],
         "live_reads_enabled": not config["auth"]["missing_keys"],
-        "live_writes_enabled": False,
+        "live_writes_enabled": not config["auth"]["missing_keys"],
         "scaffold_only": False,
     }

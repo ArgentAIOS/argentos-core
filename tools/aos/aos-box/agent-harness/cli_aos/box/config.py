@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -50,22 +51,22 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     metadata_template_env = ctx_obj.get("metadata_template_env") or BOX_METADATA_TEMPLATE_ENV
     metadata_json_env = ctx_obj.get("metadata_json_env") or BOX_METADATA_JSON_ENV
 
-    access_token = (os.getenv(access_token_env) or "").strip()
-    client_id = (os.getenv(client_id_env) or "").strip()
-    client_secret = (os.getenv(client_secret_env) or "").strip()
-    jwt_config = (os.getenv(jwt_config_env) or "").strip()
-    folder_id = (os.getenv(folder_id_env) or "0").strip()
-    file_id = (os.getenv(file_id_env) or "").strip()
-    parent_id = (os.getenv(parent_id_env) or "0").strip()
-    file_name = (os.getenv(file_name_env) or "").strip()
-    file_path = (os.getenv(file_path_env) or "").strip()
-    query = (os.getenv(query_env) or "").strip()
-    collaboration_email = (os.getenv(collaboration_email_env) or "").strip()
-    collaboration_role = (os.getenv(collaboration_role_env) or "editor").strip()
-    shared_link_access = (os.getenv(shared_link_access_env) or "open").strip()
-    metadata_scope = (os.getenv(metadata_scope_env) or "global").strip()
-    metadata_template = (os.getenv(metadata_template_env) or "properties").strip()
-    metadata_json = (os.getenv(metadata_json_env) or "{}").strip()
+    access_token = (service_key_env(access_token_env) or "").strip()
+    client_id = (service_key_env(client_id_env) or "").strip()
+    client_secret = (service_key_env(client_secret_env) or "").strip()
+    jwt_config = (service_key_env(jwt_config_env) or "").strip()
+    folder_id = (service_key_env(folder_id_env) or "0").strip()
+    file_id = (service_key_env(file_id_env) or "").strip()
+    parent_id = (service_key_env(parent_id_env) or "0").strip()
+    file_name = (service_key_env(file_name_env) or "").strip()
+    file_path = (service_key_env(file_path_env) or "").strip()
+    query = (service_key_env(query_env) or "").strip()
+    collaboration_email = (service_key_env(collaboration_email_env) or "").strip()
+    collaboration_role = (service_key_env(collaboration_role_env) or "editor").strip()
+    shared_link_access = (service_key_env(shared_link_access_env) or "open").strip()
+    metadata_scope = (service_key_env(metadata_scope_env) or "global").strip()
+    metadata_template = (service_key_env(metadata_template_env) or "properties").strip()
+    metadata_json = (service_key_env(metadata_json_env) or "{}").strip()
 
     return {
         "backend": BACKEND_NAME,

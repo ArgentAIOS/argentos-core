@@ -180,3 +180,22 @@ class TrelloClient:
 
     def read_card(self, card_id: str) -> dict[str, Any]:
         return _normalize_card(_dict_or_empty(self._request("GET", f"/cards/{card_id}", params={"fields": "all"})))
+
+    def create_card(self, *, list_id: str, name: str, desc: str = "") -> dict[str, Any]:
+        return _normalize_card(
+            _dict_or_empty(
+                self._request(
+                    "POST",
+                    "/cards",
+                    params={
+                        "idList": list_id,
+                        "name": name,
+                        "desc": desc,
+                    },
+                )
+            )
+        )
+
+    def update_card(self, card_id: str, *, name: str | None = None, desc: str | None = None) -> dict[str, Any]:
+        params = {key: value for key, value in {"name": name, "desc": desc}.items() if value is not None}
+        return _normalize_card(_dict_or_empty(self._request("PUT", f"/cards/{card_id}", params=params)))

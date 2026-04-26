@@ -92,7 +92,7 @@ def test_missing_cognee_dependency_is_reported(monkeypatch) -> None:
     assert payload["error"]["code"] == "DEPENDENCY_MISSING"
 
 
-def test_search_sets_openai_api_key_from_config_before_import(monkeypatch) -> None:
+def test_search_sets_openai_api_key_from_service_key_before_import(monkeypatch) -> None:
     from cli_aos.cognee import config, runtime
 
     fake = types.ModuleType("cognee")
@@ -101,7 +101,7 @@ def test_search_sets_openai_api_key_from_config_before_import(monkeypatch) -> No
         GRAPH_COMPLETION = "GRAPH_COMPLETION"
 
     async def search(query_text: str, query_type: str, top_k: int):
-        assert os.environ["OPENAI_API_KEY"] == "sk-config-123"
+        assert os.environ["OPENAI_API_KEY"] == "sk-service-key-123"
         assert query_text == "How does A connect to B?"
         assert query_type == "GRAPH_COMPLETION"
         assert top_k == 2
@@ -109,7 +109,7 @@ def test_search_sets_openai_api_key_from_config_before_import(monkeypatch) -> No
 
     def fake_import(name: str):
         if name == "cognee":
-            assert os.environ["OPENAI_API_KEY"] == "sk-config-123"
+            assert os.environ["OPENAI_API_KEY"] == "sk-service-key-123"
             return fake
         return __import__(name)
 
@@ -117,7 +117,11 @@ def test_search_sets_openai_api_key_from_config_before_import(monkeypatch) -> No
     fake.search = search
 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr(config, "read_argent_config", lambda: {"env": {"vars": {"OPENAI_API_KEY": "sk-config-123"}}})
+    monkeypatch.setattr(
+        config,
+        "service_key_env",
+        lambda variable, default=None: "sk-service-key-123" if variable == "OPENAI_API_KEY" else default,
+    )
     monkeypatch.setattr(runtime.importlib, "import_module", fake_import)
 
     result = CliRunner().invoke(

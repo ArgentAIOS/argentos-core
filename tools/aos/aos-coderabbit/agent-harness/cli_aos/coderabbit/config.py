@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from pathlib import Path
 from typing import Any
 
@@ -43,8 +44,8 @@ def _resolve_path(value: str | None, fallback_name: str) -> Path:
 
 
 def _resolve_date_range(ctx_obj: dict[str, Any]) -> tuple[str, str]:
-    end_date = (ctx_obj.get("report_end_date") or os.getenv(CODERABBIT_REPORT_END_DATE_ENV) or "").strip()
-    start_date = (ctx_obj.get("report_start_date") or os.getenv(CODERABBIT_REPORT_START_DATE_ENV) or "").strip()
+    end_date = (ctx_obj.get("report_end_date") or service_key_env(CODERABBIT_REPORT_END_DATE_ENV) or "").strip()
+    start_date = (ctx_obj.get("report_start_date") or service_key_env(CODERABBIT_REPORT_START_DATE_ENV) or "").strip()
     if start_date and end_date:
         return start_date, end_date
 
@@ -71,20 +72,20 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     review_kind_env = ctx_obj.get("review_kind_env") or CODERABBIT_REVIEW_KIND_ENV
     config_content_env = ctx_obj.get("config_content_env") or CODERABBIT_CONFIG_CONTENT_ENV
 
-    api_key = (os.getenv(api_key_env) or "").strip()
-    base_url = (os.getenv(base_url_env) or DEFAULT_BASE_URL).strip().rstrip("/")
-    repo = (ctx_obj.get("repo") or os.getenv(repo_env) or "").strip()
-    pr_number = (ctx_obj.get("pr_number") or os.getenv(pr_number_env) or "").strip()
-    review_id = (ctx_obj.get("review_id") or os.getenv(review_id_env) or "").strip()
-    config_path = _resolve_path(ctx_obj.get("config_path") or os.getenv(config_path_env), DEFAULT_CONFIG_FILENAME)
-    state_path = _resolve_path(ctx_obj.get("state_path") or os.getenv(state_path_env), DEFAULT_STATE_FILENAME)
+    api_key = (service_key_env(api_key_env) or "").strip()
+    base_url = (service_key_env(base_url_env) or DEFAULT_BASE_URL).strip().rstrip("/")
+    repo = (ctx_obj.get("repo") or service_key_env(repo_env) or "").strip()
+    pr_number = (ctx_obj.get("pr_number") or service_key_env(pr_number_env) or "").strip()
+    review_id = (ctx_obj.get("review_id") or service_key_env(review_id_env) or "").strip()
+    config_path = _resolve_path(ctx_obj.get("config_path") or service_key_env(config_path_env), DEFAULT_CONFIG_FILENAME)
+    state_path = _resolve_path(ctx_obj.get("state_path") or service_key_env(state_path_env), DEFAULT_STATE_FILENAME)
     report_start_date, report_end_date = _resolve_date_range(ctx_obj)
-    report_limit_raw = ctx_obj.get("report_limit") or os.getenv(report_limit_env) or "1000"
-    report_cursor = (ctx_obj.get("report_cursor") or os.getenv(report_cursor_env) or "").strip()
-    report_template = (ctx_obj.get("report_template") or os.getenv(report_template_env) or "").strip()
-    report_prompt = (ctx_obj.get("report_prompt") or os.getenv(report_prompt_env) or "").strip()
-    review_kind = (ctx_obj.get("review_kind") or os.getenv(review_kind_env) or "incremental").strip()
-    config_content = (ctx_obj.get("config_content") or os.getenv(config_content_env) or "").strip()
+    report_limit_raw = ctx_obj.get("report_limit") or service_key_env(report_limit_env) or "1000"
+    report_cursor = (ctx_obj.get("report_cursor") or service_key_env(report_cursor_env) or "").strip()
+    report_template = (ctx_obj.get("report_template") or service_key_env(report_template_env) or "").strip()
+    report_prompt = (ctx_obj.get("report_prompt") or service_key_env(report_prompt_env) or "").strip()
+    review_kind = (ctx_obj.get("review_kind") or service_key_env(review_kind_env) or "incremental").strip()
+    config_content = (ctx_obj.get("config_content") or service_key_env(config_content_env) or "").strip()
 
     try:
         report_limit = max(1, int(str(report_limit_raw)))

@@ -53,8 +53,8 @@ def runtime_config(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
     ctx_obj = ctx_obj or {}
     api_key = (
         (ctx_obj.get("api_key_override") or "").strip()
-        or os.getenv(DEFAULT_LINEAR_API_KEY_ENV, "").strip()
         or resolve_service_key(DEFAULT_LINEAR_API_KEY_ENV)
+        or os.getenv(DEFAULT_LINEAR_API_KEY_ENV, "").strip()
         or ""
     )
     team_key = (
@@ -79,10 +79,10 @@ def runtime_config(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
         "api_key_source": (
             "cli-override"
             if (ctx_obj.get("api_key_override") or "").strip()
+            else "service-keys"
+            if resolve_service_key(DEFAULT_LINEAR_API_KEY_ENV)
             else "process.env"
             if os.getenv(DEFAULT_LINEAR_API_KEY_ENV, "").strip()
-            else "service-keys"
-            if api_key
             else None
         ),
         "team_key": team_key,

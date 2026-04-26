@@ -15,6 +15,7 @@ from .runtime import (
     board_list_result,
     board_read_result,
     capabilities_snapshot,
+    create_card_result,
     card_list_result,
     card_read_result,
     config_snapshot,
@@ -24,7 +25,7 @@ from .runtime import (
     list_read_result,
     member_list_result,
     member_read_result,
-    scaffold_result,
+    update_card_result,
 )
 
 
@@ -197,24 +198,14 @@ def _write_command(
     ctx: click.Context,
     *,
     command_id: str,
-    resource: str,
-    operation: str,
-    inputs: dict[str, Any],
-    consequential: bool = False,
+    runner,
 ) -> None:
     _set_command(ctx, command_id)
     require_mode(ctx, command_id)
     payload = success(
         tool=TOOL_NAME,
         command=command_id,
-        data=scaffold_result(
-            ctx.obj,
-            command_id=command_id,
-            resource=resource,
-            operation=operation,
-            inputs=inputs,
-            consequential=consequential,
-        ),
+        data=runner(ctx.obj),
         started=ctx.obj["started"],
         mode=ctx.obj["mode"],
         version=ctx.obj["version"],
@@ -382,10 +373,7 @@ def card_create_draft(ctx: click.Context, list_id: str | None, name: str, desc: 
     _write_command(
         ctx,
         command_id="card.create_draft",
-        resource="card",
-        operation="create_draft",
-        inputs={"list_id": list_id, "name": name, "desc": desc},
-        consequential=True,
+        runner=lambda ctx_obj: create_card_result(ctx_obj, list_id=list_id, name=name, desc=desc),
     )
 
 
@@ -398,8 +386,5 @@ def card_update_draft(ctx: click.Context, card_id: str | None, name: str | None,
     _write_command(
         ctx,
         command_id="card.update_draft",
-        resource="card",
-        operation="update_draft",
-        inputs={"card_id": card_id, "name": name, "desc": desc},
-        consequential=True,
+        runner=lambda ctx_obj: update_card_result(ctx_obj, card_id=card_id, name=name, desc=desc),
     )

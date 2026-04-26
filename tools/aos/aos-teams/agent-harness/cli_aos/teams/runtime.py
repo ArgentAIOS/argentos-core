@@ -1,13 +1,36 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import json
-import os
 from typing import Any
 
 from .client import GraphApiError, TeamsClient
 from .config import config_snapshot, runtime_config
 from .constants import BACKEND_NAME, CONNECTOR_AUTH, CONNECTOR_CATEGORY, CONNECTOR_CATEGORIES, CONNECTOR_LABEL, CONNECTOR_PATH, CONNECTOR_RESOURCES, MANIFEST_SCHEMA_VERSION, PERMISSIONS_PATH, TOOL_NAME
 from .errors import CliError
+from .service_keys import service_key_env
+
+SUPPORTED_WRITE_COMMANDS = {"channel.create", "meeting.create"}
+LIMITED_WRITE_COMMANDS = {
+    "message.send": (
+        "Microsoft Graph channel message send only supports application permissions for migration scenarios, "
+        "so message.send stays disabled for client-credentials auth."
+    ),
+    "message.reply": (
+        "Microsoft Graph channel message replies only support application permissions for migration scenarios, "
+        "so message.reply stays disabled for client-credentials auth."
+    ),
+    "chat.send": (
+        "Microsoft Graph chat message send requires delegated auth or migration-only application permissions, "
+        "so chat.send stays disabled for this connector."
+    ),
+    "file.upload": (
+        "file.upload remains disabled until the AOS surface can pass an actual file/blob payload instead of tuple strings."
+    ),
+    "adaptive_card.send": (
+        "Adaptive Card delivery in Teams requires a bot/app installation flow rather than a plain Graph client-credentials call."
+    ),
+}
 
 
 def _load_manifest() -> dict[str, Any]:
@@ -30,6 +53,44 @@ def _require_arg(value: str | None, *, code: str, message: str, detail_key: str,
     if resolved:
         return resolved
     raise CliError(code=code, message=message, exit_code=4, details={detail_key: detail_value})
+
+
+def _parse_json_argument(raw: str, *, code: str, message: str) -> Any:
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise CliError(code=code, message=message, exit_code=4, details={"raw": raw[:500]}) from exc
+
+
+def _parse_datetime_input(value: str, *, field_name: str) -> datetime:
+    normalized = value.strip()
+    if not normalized:
+        raise CliError(code="INVALID_ARGUMENT", message=f"{field_name} is required", exit_code=4, details={})
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise CliError(
+            code="INVALID_ARGUMENT",
+            message=f"{field_name} must be a valid ISO 8601 datetime",
+            exit_code=4,
+            details={"field": field_name, "value": value},
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _normalize_meeting_times(start_time: str, end_time: str | None) -> tuple[str, str]:
+    start_dt = _parse_datetime_input(start_time, field_name="start_time")
+    end_dt = _parse_datetime_input(end_time, field_name="end_time") if end_time else start_dt + timedelta(minutes=30)
+    if end_dt <= start_dt:
+        raise CliError(code="INVALID_ARGUMENT", message="end_time must be later than start_time", exit_code=4, details={})
+    return (
+        start_dt.isoformat(timespec="seconds").replace("+00:00", "Z"),
+        end_dt.isoformat(timespec="seconds").replace("+00:00", "Z"),
+    )
 
 
 def capabilities_snapshot() -> dict[str, Any]:
@@ -64,9 +125,9 @@ def create_client(ctx_obj: dict[str, Any] | None = None) -> TeamsClient:
             details={"missing_keys": auth["missing_keys"]},
         )
     return TeamsClient(
-        tenant_id=os.getenv("TEAMS_TENANT_ID", ""),
-        client_id=os.getenv("TEAMS_CLIENT_ID", ""),
-        client_secret=os.getenv("TEAMS_CLIENT_SECRET", ""),
+        tenant_id=service_key_env("TEAMS_TENANT_ID", "") or "",
+        client_id=service_key_env("TEAMS_CLIENT_ID", "") or "",
+        client_secret=service_key_env("TEAMS_CLIENT_SECRET", "") or "",
         graph_base_url=runtime["graph_base_url"],
         token_url=runtime["token_url"] or None,
         timeout_seconds=runtime["timeout_seconds"],
@@ -134,8 +195,8 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
             "backend": BACKEND_NAME,
             "live_backend_available": bool(probe.get("ok")),
             "live_read_available": bool(probe.get("ok")),
-            "write_bridge_available": False,
-            "scaffold_only": True,
+            "write_bridge_available": True,
+            "scaffold_only": False,
         },
         "auth": config["auth"],
         "runtime": runtime,
@@ -149,8 +210,8 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
 def doctor_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
     snapshot = health_snapshot(ctx_obj)
     recommendations = [
-        "Keep write commands scaffolded until a real Graph mutation bridge exists.",
-        "Use readonly mode for live Teams reads.",
+        "Use readonly mode for live Teams reads and write mode only for supported Graph mutations.",
+        "message.send, message.reply, chat.send, and adaptive_card.send remain disabled because Graph app-only auth does not support the operator-driven scenario.",
     ]
     if snapshot["status"] == "needs_setup":
         recommendations.insert(0, "Set the Teams auth service keys before assigning this connector.")
@@ -165,24 +226,17 @@ def doctor_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
         "recommendations": recommendations,
         "config": config_snapshot(),
         "supported_read_commands": ["team.list", "channel.list", "meeting.list"],
-        "supported_write_commands": [
-            "message.send",
-            "message.reply",
-            "channel.create",
-            "chat.send",
-            "meeting.create",
-            "file.upload",
-            "adaptive_card.send",
-        ],
+        "supported_write_commands": sorted(SUPPORTED_WRITE_COMMANDS),
+        "limited_write_commands": LIMITED_WRITE_COMMANDS,
         "command_readiness": {
             "team.list": snapshot["runtime"]["team_ready"],
             "channel.list": snapshot["runtime"]["channel_ready"],
             "meeting.list": snapshot["runtime"]["meeting_ready"],
             "message.send": False,
             "message.reply": False,
-            "channel.create": False,
+            "channel.create": snapshot["runtime"]["channel_ready"],
             "chat.send": False,
-            "meeting.create": False,
+            "meeting.create": snapshot["runtime"]["meeting_ready"],
             "file.upload": False,
             "adaptive_card.send": False,
         },
@@ -252,6 +306,117 @@ def meeting_list_result(ctx_obj: dict[str, Any], *, user_id: str | None, limit: 
     }
 
 
+def _parse_channel_create_items(items: tuple[str, ...], runtime: dict[str, Any]) -> dict[str, str]:
+    if len(items) == 1 and items[0].lstrip().startswith("{"):
+        payload = _parse_json_argument(
+            items[0],
+            code="INVALID_ARGUMENT",
+            message="channel.create expected a JSON object.",
+        )
+        if not isinstance(payload, dict):
+            raise CliError(code="INVALID_ARGUMENT", message="channel.create JSON input must be an object", exit_code=4, details={})
+        team_id = str(payload.get("team_id") or runtime["runtime"]["team_id"] or "").strip()
+        display_name = str(payload.get("display_name") or payload.get("channel_name") or "").strip()
+        description = str(payload.get("description") or payload.get("channel_description") or "").strip()
+    else:
+        if len(items) < 2:
+            raise CliError(
+                code="ARGUMENT_REQUIRED",
+                message="channel.create requires <team_id> <display_name> [description] or a single JSON object argument",
+                exit_code=4,
+                details={},
+            )
+        team_id = items[0].strip()
+        display_name = items[1].strip()
+        description = " ".join(items[2:]).strip()
+    if not team_id or not display_name:
+        raise CliError(code="ARGUMENT_REQUIRED", message="channel.create requires team_id and display_name", exit_code=4, details={})
+    return {"team_id": team_id, "display_name": display_name, "description": description}
+
+
+def _parse_meeting_create_items(items: tuple[str, ...], runtime: dict[str, Any]) -> dict[str, str]:
+    if len(items) == 1 and items[0].lstrip().startswith("{"):
+        payload = _parse_json_argument(
+            items[0],
+            code="INVALID_ARGUMENT",
+            message="meeting.create expected a JSON object.",
+        )
+        if not isinstance(payload, dict):
+            raise CliError(code="INVALID_ARGUMENT", message="meeting.create JSON input must be an object", exit_code=4, details={})
+        user_id = str(payload.get("user_id") or runtime["runtime"]["user_id"] or "").strip()
+        subject = str(payload.get("subject") or payload.get("meeting_subject") or "").strip()
+        start_time = str(payload.get("start_time") or runtime["runtime"]["start_time"] or "").strip()
+        end_time = str(payload.get("end_time") or "").strip()
+    else:
+        user_id = (runtime["runtime"]["user_id"] or "").strip()
+        if len(items) < 2:
+            raise CliError(
+                code="ARGUMENT_REQUIRED",
+                message="meeting.create requires <subject> <start_time> [end_time] or a single JSON object argument",
+                exit_code=4,
+                details={},
+            )
+        subject = items[0].strip()
+        start_time = items[1].strip()
+        end_time = items[2].strip() if len(items) >= 3 else ""
+    if not user_id:
+        raise CliError(code="TEAMS_USER_ID_REQUIRED", message="user_id is required", exit_code=4, details={"env": "TEAMS_USER_ID"})
+    if not subject or not start_time:
+        raise CliError(code="ARGUMENT_REQUIRED", message="meeting.create requires subject and start_time", exit_code=4, details={})
+    normalized_start, normalized_end = _normalize_meeting_times(start_time, end_time or None)
+    return {"user_id": user_id, "subject": subject, "start_time": normalized_start, "end_time": normalized_end}
+
+
+def channel_create_result(ctx_obj: dict[str, Any], *, items: tuple[str, ...]) -> dict[str, Any]:
+    runtime = runtime_config()
+    parsed = _parse_channel_create_items(items, runtime)
+    client = create_client(ctx_obj)
+    channel = client.create_channel(
+        team_id=parsed["team_id"],
+        display_name=parsed["display_name"],
+        description=parsed["description"] or None,
+    )
+    return {
+        "status": "live_write",
+        "backend": BACKEND_NAME,
+        "summary": f"Created channel {channel.get('displayName') or parsed['display_name']}.",
+        "channel": channel,
+        "scope_preview": _scope_preview(
+            "channel.create",
+            "channel",
+            {"team_id": parsed["team_id"], "display_name": parsed["display_name"]},
+        ),
+    }
+
+
+def meeting_create_result(ctx_obj: dict[str, Any], *, items: tuple[str, ...]) -> dict[str, Any]:
+    runtime = runtime_config()
+    parsed = _parse_meeting_create_items(items, runtime)
+    client = create_client(ctx_obj)
+    meeting = client.create_online_meeting(
+        user_id=parsed["user_id"],
+        subject=parsed["subject"],
+        start_iso=parsed["start_time"],
+        end_iso=parsed["end_time"],
+    )
+    return {
+        "status": "live_write",
+        "backend": BACKEND_NAME,
+        "summary": f"Created online meeting {meeting.get('id') or parsed['subject']}.",
+        "meeting": meeting,
+        "scope_preview": _scope_preview(
+            "meeting.create",
+            "meeting",
+            {
+                "user_id": parsed["user_id"],
+                "subject": parsed["subject"],
+                "start_time": parsed["start_time"],
+                "end_time": parsed["end_time"],
+            },
+        ),
+    }
+
+
 def scaffold_write_command(command_id: str, items: tuple[str, ...]) -> dict[str, Any]:
     return {
         "command_id": command_id,
@@ -259,4 +424,20 @@ def scaffold_write_command(command_id: str, items: tuple[str, ...]) -> dict[str,
         "scaffold_only": True,
         "backend": BACKEND_NAME,
         "available": False,
+        "limitation": LIMITED_WRITE_COMMANDS.get(command_id),
     }
+
+
+def run_write_command(ctx_obj: dict[str, Any], command_id: str, items: tuple[str, ...]) -> dict[str, Any]:
+    if command_id == "channel.create":
+        return channel_create_result(ctx_obj, items=items)
+    if command_id == "meeting.create":
+        return meeting_create_result(ctx_obj, items=items)
+    if command_id in LIMITED_WRITE_COMMANDS:
+        raise CliError(
+            code="NOT_IMPLEMENTED",
+            message=LIMITED_WRITE_COMMANDS[command_id],
+            exit_code=10,
+            details=scaffold_write_command(command_id, items),
+        )
+    raise CliError(code="UNKNOWN_COMMAND", message=f"Unknown command: {command_id}", exit_code=2, details={})

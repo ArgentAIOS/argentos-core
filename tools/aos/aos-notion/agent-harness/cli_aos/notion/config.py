@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from .constants import DEFAULT_NOTION_VERSION, NOTION_TOKEN_ENV, NOTION_VERSION_ENV, NOTION_WORKSPACE_ENV
+from .service_keys import service_key_env
 
 
 def _present(value: str | None) -> bool:
@@ -26,9 +26,9 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     version_env = ctx_obj.get("version_env") or NOTION_VERSION_ENV
     workspace_env = ctx_obj.get("workspace_env") or NOTION_WORKSPACE_ENV
 
-    token = os.getenv(token_env)
-    notion_version = os.getenv(version_env) or DEFAULT_NOTION_VERSION
-    workspace_id = os.getenv(workspace_env)
+    token = service_key_env(token_env)
+    notion_version = service_key_env(version_env, DEFAULT_NOTION_VERSION) or DEFAULT_NOTION_VERSION
+    workspace_id = service_key_env(workspace_env)
 
     return {
         "backend": "notion-api",
@@ -39,7 +39,7 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "token_present": _present(token),
         "token_redacted": _redact(token),
         "version": notion_version,
-        "version_present": _present(os.getenv(version_env)),
+        "version_present": _present(service_key_env(version_env)),
         "workspace_id": workspace_id.strip() if workspace_id and workspace_id.strip() else None,
         "workspace_id_present": _present(workspace_id),
         "verbose": bool(ctx_obj.get("verbose")),

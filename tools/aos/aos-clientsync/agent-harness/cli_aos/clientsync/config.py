@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -35,14 +36,14 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     sla_id_env = ctx_obj.get("sla_id_env") or CLIENTSYNC_SLA_ID_ENV
     report_type_env = ctx_obj.get("report_type_env") or CLIENTSYNC_REPORT_TYPE_ENV
 
-    api_key = (os.getenv(api_key_env) or "").strip()
-    api_url = (os.getenv(api_url_env) or DEFAULT_API_URL).strip() or DEFAULT_API_URL
-    client_id = (os.getenv(client_id_env) or "").strip()
-    ticket_id = (os.getenv(ticket_id_env) or "").strip()
-    technician_id = (os.getenv(technician_id_env) or "").strip()
-    compliance_id = (os.getenv(compliance_id_env) or "").strip()
-    sla_id = (os.getenv(sla_id_env) or "").strip()
-    report_type = (os.getenv(report_type_env) or "").strip()
+    api_key = (service_key_env(api_key_env) or "").strip()
+    api_url = (service_key_env(api_url_env) or DEFAULT_API_URL).strip() or DEFAULT_API_URL
+    client_id = (service_key_env(client_id_env) or "").strip()
+    ticket_id = (service_key_env(ticket_id_env) or "").strip()
+    technician_id = (service_key_env(technician_id_env) or "").strip()
+    compliance_id = (service_key_env(compliance_id_env) or "").strip()
+    sla_id = (service_key_env(sla_id_env) or "").strip()
+    report_type = (service_key_env(report_type_env) or "").strip()
 
     return {
         "backend": BACKEND_NAME,
@@ -63,7 +64,7 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "sla_id": sla_id,
         "report_type": report_type,
         "api_key_present": bool(api_key),
-        "api_url_source": "env" if os.getenv(api_url_env) else "default",
+        "api_url_source": "env" if service_key_env(api_url_env) else "default",
         "client_id_present": bool(client_id),
         "ticket_id_present": bool(ticket_id),
         "technician_id_present": bool(technician_id),

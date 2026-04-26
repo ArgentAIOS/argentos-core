@@ -16,13 +16,14 @@ from .constants import (
     LEGACY_PORTAL_ID_ENV,
     LEGACY_WEBHOOK_SECRET_ENV,
 )
+from .service_keys import service_key_env
 
 
 def _first_present_env(*names: str) -> tuple[str | None, str | None]:
     for name in names:
         if not name:
             continue
-        value = os.getenv(name, "").strip()
+        value = (service_key_env(name) or "").strip()
         if value:
             return name, value
     return None, None

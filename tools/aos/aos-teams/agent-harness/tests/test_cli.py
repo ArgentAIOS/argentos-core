@@ -32,6 +32,15 @@ class FakeTeamsClient:
         ]
         return {"items": meetings[:limit], "count": min(limit, len(meetings)), "raw": {}}
 
+    def create_channel(self, *, team_id: str, display_name: str, description: str | None = None) -> dict[str, Any]:
+        return {
+            "id": "channel-new",
+            "displayName": display_name,
+            "description": description,
+            "membershipType": "standard",
+            "team_id": team_id,
+        }
+
 
 def invoke_json(args: list[str]) -> dict[str, Any]:
     result = CliRunner().invoke(cli, ["--json", *args])
@@ -111,15 +120,17 @@ def test_channel_create_requires_write_mode(monkeypatch):
     assert "PERMISSION_DENIED" in result.output
 
 
-def test_channel_create_stays_scaffolded_in_write_mode(monkeypatch):
+def test_channel_create_executes_live_write_in_write_mode(monkeypatch):
     monkeypatch.setenv("TEAMS_TENANT_ID", "tenant")
     monkeypatch.setenv("TEAMS_CLIENT_ID", "client")
     monkeypatch.setenv("TEAMS_CLIENT_SECRET", "secret")
-    result = invoke_json_with_mode("write", ["channel", "create", "New Channel"])
-    assert result.exit_code == 10
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj=None: FakeTeamsClient())
+    result = invoke_json_with_mode("write", ["channel", "create", "team-1", "New Channel"])
+    assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["error"]["code"] == "NOT_IMPLEMENTED"
-    assert payload["error"]["details"]["command_id"] == "channel.create"
+    assert payload["data"]["status"] == "live_write"
+    assert payload["data"]["channel"]["displayName"] == "New Channel"
+    assert payload["data"]["scope_preview"]["team_id"] == "team-1"
 
 
 def test_meeting_list_uses_user_scope(monkeypatch):

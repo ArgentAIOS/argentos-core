@@ -22,11 +22,12 @@ from .constants import (
     DEFAULT_TOKEN_ENV,
     TOOL_NAME,
 )
+from .service_keys import service_key_env
 
 
 def _env(*names: str) -> str:
     for name in names:
-        value = os.getenv(name, "").strip()
+        value = (service_key_env(name) or "").strip()
         if value:
             return value
     return ""
@@ -147,8 +148,8 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "card.read": auth_ready and bool(card_id),
     }
     write_support = {
-        "card.create_draft": False,
-        "card.update_draft": False,
+        "card.create_draft": auth_ready and bool(list_id),
+        "card.update_draft": auth_ready and bool(card_id),
     }
 
     return {
@@ -181,7 +182,7 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "auth_ready": auth_ready,
             "live_backend_ready": live_backend_ready,
             "live_read_ready": live_backend_ready,
-            "implementation_mode": "live_read_first_with_scaffolded_writes" if auth_ready else "configuration_only",
+            "implementation_mode": "live_read_with_live_writes" if auth_ready else "configuration_only",
             "board_id": board_id,
             "board_id_present": bool(board_id),
             "member_id": member_id,

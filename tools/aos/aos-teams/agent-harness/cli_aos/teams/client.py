@@ -60,13 +60,17 @@ def _channel_preview(raw: dict[str, Any]) -> dict[str, Any]:
 def _meeting_preview(raw: dict[str, Any]) -> dict[str, Any]:
     start = raw.get("start") if isinstance(raw.get("start"), dict) else {}
     end = raw.get("end") if isinstance(raw.get("end"), dict) else {}
+    if not start and raw.get("startDateTime"):
+        start = {"dateTime": raw.get("startDateTime")}
+    if not end and raw.get("endDateTime"):
+        end = {"dateTime": raw.get("endDateTime")}
     return {
         "id": raw.get("id"),
         "label": _compact(raw.get("subject")) or _compact(raw.get("id")) or "(no subject)",
         "subtitle": _compact(raw.get("location", {}).get("displayName") if isinstance(raw.get("location"), dict) else None),
         "start": start,
         "end": end,
-        "url": _compact(raw.get("webLink")),
+        "url": _compact(raw.get("webLink")) or _compact(raw.get("joinWebUrl")),
         "raw": raw,
     }
 
@@ -198,3 +202,30 @@ class TeamsClient:
         )
         items = [_meeting_preview(item) for item in _list_or_empty(payload.get("value")) if isinstance(item, dict)]
         return {"items": items, "count": len(items), "raw": payload}
+
+    def create_channel(self, *, team_id: str, display_name: str, description: str | None = None) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "displayName": display_name,
+            "membershipType": "standard",
+        }
+        if description:
+            payload["description"] = description
+        return self._graph("POST", f"/teams/{parse.quote(team_id, safe='')}/channels", payload=payload)
+
+    def create_online_meeting(
+        self,
+        *,
+        user_id: str,
+        subject: str,
+        start_iso: str,
+        end_iso: str,
+    ) -> dict[str, Any]:
+        return self._graph(
+            "POST",
+            f"/users/{parse.quote(user_id, safe='')}/onlineMeetings",
+            payload={
+                "subject": subject,
+                "startDateTime": start_iso,
+                "endDateTime": end_iso,
+            },
+        )

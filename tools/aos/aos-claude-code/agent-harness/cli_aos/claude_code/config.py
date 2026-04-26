@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -28,18 +29,18 @@ def _mask(value: str | None) -> str | None:
 
 
 def resolve_runtime_values(_ctx_obj: dict[str, Any]) -> dict[str, Any]:
-    api_key = os.getenv(ANTHROPIC_API_KEY_ENV, "").strip()
-    project_dir = os.getenv(PROJECT_DIR_ENV, "").strip()
-    model = os.getenv(MODEL_ENV, "").strip()
-    session_id = os.getenv(SESSION_ID_ENV, "").strip()
-    hook_event = os.getenv(HOOK_EVENT_ENV, "").strip()
-    hook_matcher = os.getenv(HOOK_MATCHER_ENV, "").strip()
-    hook_command = os.getenv(HOOK_COMMAND_ENV, "").strip()
-    config_key = os.getenv(CONFIG_KEY_ENV, "").strip()
-    config_value = os.getenv(CONFIG_VALUE_ENV, "").strip()
-    mcp_server = os.getenv(MCP_SERVER_ENV, "").strip()
-    mcp_tool = os.getenv(MCP_TOOL_ENV, "").strip()
-    mcp_input_json = os.getenv(MCP_INPUT_JSON_ENV, "").strip()
+    api_key = service_key_env(ANTHROPIC_API_KEY_ENV, "").strip()
+    project_dir = service_key_env(PROJECT_DIR_ENV, "").strip()
+    model = service_key_env(MODEL_ENV, "").strip()
+    session_id = service_key_env(SESSION_ID_ENV, "").strip()
+    hook_event = service_key_env(HOOK_EVENT_ENV, "").strip()
+    hook_matcher = service_key_env(HOOK_MATCHER_ENV, "").strip()
+    hook_command = service_key_env(HOOK_COMMAND_ENV, "").strip()
+    config_key = service_key_env(CONFIG_KEY_ENV, "").strip()
+    config_value = service_key_env(CONFIG_VALUE_ENV, "").strip()
+    mcp_server = service_key_env(MCP_SERVER_ENV, "").strip()
+    mcp_tool = service_key_env(MCP_TOOL_ENV, "").strip()
+    mcp_input_json = service_key_env(MCP_INPUT_JSON_ENV, "").strip()
     return {
         "api_key": api_key,
         "api_key_present": bool(api_key),

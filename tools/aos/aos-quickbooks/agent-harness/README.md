@@ -33,4 +33,9 @@ Optional runtime controls:
 ## Notes
 
 Readonly commands now use live QuickBooks Online API calls.
-Write paths remain scaffolded and are blocked by the permission model until they are implemented.
+Write commands now use live QuickBooks Online API calls and remain blocked unless the connector runs in `write` mode or higher.
+
+Write command arguments use `key=value` pairs:
+
+- `invoice create_draft customer_id=<id> item_id=<sales item id> amount=<amount>`
+- `bill create_draft vendor_id=<id> account_id=<account id> amount=<amount>`

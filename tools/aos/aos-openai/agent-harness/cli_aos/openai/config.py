@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -61,20 +62,20 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     audio_file_env = ctx_obj.get("audio_file_env") or OPENAI_AUDIO_FILE_ENV
     voice_env = ctx_obj.get("voice_env") or OPENAI_VOICE_ENV
 
-    api_key = (os.getenv(api_key_env) or "").strip()
-    org_id = (os.getenv(org_id_env) or "").strip()
-    project_id = (os.getenv(project_id_env) or "").strip()
-    base_url = (os.getenv(base_url_env) or DEFAULT_BASE_URL).strip().rstrip("/")
-    model = (os.getenv(model_env) or "").strip()
-    prompt = (os.getenv(prompt_env) or "").strip()
-    messages_json = (os.getenv(messages_json_env) or "").strip()
-    image_prompt = (os.getenv(image_prompt_env) or "").strip()
-    image_size = (os.getenv(image_size_env) or "").strip()
-    image_file = (os.getenv(image_file_env) or "").strip()
-    audio_file = (os.getenv(audio_file_env) or "").strip()
-    voice = (os.getenv(voice_env) or "").strip()
-    max_tokens = _int_or_none(os.getenv(max_tokens_env))
-    temperature = _float_or_none(os.getenv(temperature_env))
+    api_key = (service_key_env(api_key_env) or "").strip()
+    org_id = (service_key_env(org_id_env) or "").strip()
+    project_id = (service_key_env(project_id_env) or "").strip()
+    base_url = (service_key_env(base_url_env) or DEFAULT_BASE_URL).strip().rstrip("/")
+    model = (service_key_env(model_env) or "").strip()
+    prompt = (service_key_env(prompt_env) or "").strip()
+    messages_json = (service_key_env(messages_json_env) or "").strip()
+    image_prompt = (service_key_env(image_prompt_env) or "").strip()
+    image_size = (service_key_env(image_size_env) or "").strip()
+    image_file = (service_key_env(image_file_env) or "").strip()
+    audio_file = (service_key_env(audio_file_env) or "").strip()
+    voice = (service_key_env(voice_env) or "").strip()
+    max_tokens = _int_or_none(service_key_env(max_tokens_env))
+    temperature = _float_or_none(service_key_env(temperature_env))
 
     return {
         "backend": BACKEND_NAME,

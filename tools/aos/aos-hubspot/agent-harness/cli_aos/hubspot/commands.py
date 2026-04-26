@@ -4,11 +4,23 @@ from typing import Any
 
 import click
 
-from .bridge import config_snapshot, health_snapshot, scaffold_result
+from .bridge import config_snapshot, health_snapshot
 from .constants import AUTH_DESCRIPTOR, CONNECTOR_DESCRIPTOR, MANIFEST_SCHEMA_VERSION, MODE_ORDER, WORKER_COMMANDS
 from .errors import CliError
 from .permissions import require_mode
-from .runtime import list_objects, list_owners, list_pipelines, read_object, search_objects
+from .runtime import (
+    assign_owner,
+    create_note,
+    create_object,
+    list_objects,
+    list_owners,
+    list_pipelines,
+    read_object,
+    search_objects,
+    update_deal_stage,
+    update_object,
+    update_ticket_status,
+)
 
 
 def _set_result(ctx: click.Context, command_id: str, data: dict[str, Any]) -> None:
@@ -38,29 +50,6 @@ def _parse_properties(values: tuple[str, ...], *, flag_name: str) -> dict[str, s
             )
         parsed[key] = value
     return parsed
-
-
-def _scaffold(
-    ctx: click.Context,
-    *,
-    command_id: str,
-    resource: str,
-    operation: str,
-    inputs: dict[str, Any],
-    consequential: bool = False,
-) -> None:
-    _set_result(
-        ctx,
-        command_id,
-        scaffold_result(
-            ctx.obj,
-            command_id=command_id,
-            resource=resource,
-            operation=operation,
-            inputs=inputs,
-            consequential=consequential,
-        ),
-    )
 
 
 @click.group("owner")
@@ -96,13 +85,15 @@ def owner_list(ctx: click.Context, team_id: str, email: str, limit: int, after: 
 @click.pass_context
 def owner_assign(ctx: click.Context, record_type: str, record_id: str, owner_id: str) -> None:
     require_mode(ctx.obj["mode"], "owner.assign")
-    _scaffold(
+    _set_result(
         ctx,
-        command_id="owner.assign",
-        resource="owner",
-        operation="assign",
-        inputs={"record_type": record_type, "record_id": record_id, "owner_id": owner_id},
-        consequential=True,
+        "owner.assign",
+        assign_owner(
+            ctx.obj,
+            record_type=record_type,
+            record_id=record_id,
+            owner_id=owner_id,
+        ),
     )
 
 
@@ -178,13 +169,15 @@ def contact_read(ctx: click.Context, contact_id: str, properties: tuple[str, ...
 @click.pass_context
 def contact_create(ctx: click.Context, properties: tuple[str, ...]) -> None:
     require_mode(ctx.obj["mode"], "contact.create")
-    _scaffold(
+    _set_result(
         ctx,
-        command_id="contact.create",
-        resource="contact",
-        operation="create",
-        inputs={"properties": _parse_properties(properties, flag_name="--property")},
-        consequential=True,
+        "contact.create",
+        create_object(
+            ctx.obj,
+            resource="contact",
+            properties=_parse_properties(properties, flag_name="--property"),
+            command_id="contact.create",
+        ),
     )
 
 
@@ -194,13 +187,16 @@ def contact_create(ctx: click.Context, properties: tuple[str, ...]) -> None:
 @click.pass_context
 def contact_update(ctx: click.Context, contact_id: str, properties: tuple[str, ...]) -> None:
     require_mode(ctx.obj["mode"], "contact.update")
-    _scaffold(
+    _set_result(
         ctx,
-        command_id="contact.update",
-        resource="contact",
-        operation="update",
-        inputs={"contact_id": contact_id, "properties": _parse_properties(properties, flag_name="--property")},
-        consequential=True,
+        "contact.update",
+        update_object(
+            ctx.obj,
+            resource="contact",
+            object_id=contact_id,
+            properties=_parse_properties(properties, flag_name="--property"),
+            command_id="contact.update",
+        ),
     )
 
 
@@ -263,13 +259,15 @@ def company_read(ctx: click.Context, company_id: str, properties: tuple[str, ...
 @click.pass_context
 def company_create(ctx: click.Context, properties: tuple[str, ...]) -> None:
     require_mode(ctx.obj["mode"], "company.create")
-    _scaffold(
+    _set_result(
         ctx,
-        command_id="company.create",
-        resource="company",
-        operation="create",
-        inputs={"properties": _parse_properties(properties, flag_name="--property")},
-        consequential=True,
+        "company.create",
+        create_object(
+            ctx.obj,
+            resource="company",
+            properties=_parse_properties(properties, flag_name="--property"),
+            command_id="company.create",
+        ),
     )
 
 
@@ -279,13 +277,16 @@ def company_create(ctx: click.Context, properties: tuple[str, ...]) -> None:
 @click.pass_context
 def company_update(ctx: click.Context, company_id: str, properties: tuple[str, ...]) -> None:
     require_mode(ctx.obj["mode"], "company.update")
-    _scaffold(
+    _set_result(
         ctx,
-        command_id="company.update",
-        resource="company",
-        operation="update",
-        inputs={"company_id": company_id, "properties": _parse_properties(properties, flag_name="--property")},
-        consequential=True,
+        "company.update",
+        update_object(
+            ctx.obj,
+            resource="company",
+            object_id=company_id,
+            properties=_parse_properties(properties, flag_name="--property"),
+            command_id="company.update",
+        ),
     )
 
 
@@ -360,13 +361,15 @@ def deal_read(ctx: click.Context, deal_id: str, properties: tuple[str, ...]) -> 
 @click.pass_context
 def deal_create(ctx: click.Context, properties: tuple[str, ...]) -> None:
     require_mode(ctx.obj["mode"], "deal.create")
-    _scaffold(
+    _set_result(
         ctx,
-        command_id="deal.create",
-        resource="deal",
-        operation="create",
-        inputs={"properties": _parse_properties(properties, flag_name="--property")},
-        consequential=True,
+        "deal.create",
+        create_object(
+            ctx.obj,
+            resource="deal",
+            properties=_parse_properties(properties, flag_name="--property"),
+            command_id="deal.create",
+        ),
     )
 
 
@@ -377,13 +380,15 @@ def deal_create(ctx: click.Context, properties: tuple[str, ...]) -> None:
 @click.pass_context
 def deal_update_stage(ctx: click.Context, deal_id: str, stage_id: str, pipeline_id: str) -> None:
     require_mode(ctx.obj["mode"], "deal.update_stage")
-    _scaffold(
+    _set_result(
         ctx,
-        command_id="deal.update_stage",
-        resource="deal",
-        operation="update_stage",
-        inputs={"deal_id": deal_id, "stage_id": stage_id, "pipeline_id": pipeline_id or None},
-        consequential=True,
+        "deal.update_stage",
+        update_deal_stage(
+            ctx.obj,
+            deal_id=deal_id,
+            stage_id=stage_id,
+            pipeline_id=pipeline_id or None,
+        ),
     )
 
 
@@ -462,13 +467,15 @@ def ticket_read(ctx: click.Context, ticket_id: str, properties: tuple[str, ...])
 @click.pass_context
 def ticket_create(ctx: click.Context, properties: tuple[str, ...]) -> None:
     require_mode(ctx.obj["mode"], "ticket.create")
-    _scaffold(
+    _set_result(
         ctx,
-        command_id="ticket.create",
-        resource="ticket",
-        operation="create",
-        inputs={"properties": _parse_properties(properties, flag_name="--property")},
-        consequential=True,
+        "ticket.create",
+        create_object(
+            ctx.obj,
+            resource="ticket",
+            properties=_parse_properties(properties, flag_name="--property"),
+            command_id="ticket.create",
+        ),
     )
 
 
@@ -479,13 +486,15 @@ def ticket_create(ctx: click.Context, properties: tuple[str, ...]) -> None:
 @click.pass_context
 def ticket_update_status(ctx: click.Context, ticket_id: str, stage_id: str, pipeline_id: str) -> None:
     require_mode(ctx.obj["mode"], "ticket.update_status")
-    _scaffold(
+    _set_result(
         ctx,
-        command_id="ticket.update_status",
-        resource="ticket",
-        operation="update_status",
-        inputs={"ticket_id": ticket_id, "stage_id": stage_id, "pipeline_id": pipeline_id or None},
-        consequential=True,
+        "ticket.update_status",
+        update_ticket_status(
+            ctx.obj,
+            ticket_id=ticket_id,
+            stage_id=stage_id,
+            pipeline_id=pipeline_id or None,
+        ),
     )
 
 
@@ -506,13 +515,15 @@ def note_group() -> None:
 @click.pass_context
 def note_create(ctx: click.Context, object_type: str, object_id: str, body: str) -> None:
     require_mode(ctx.obj["mode"], "note.create")
-    _scaffold(
+    _set_result(
         ctx,
-        command_id="note.create",
-        resource="note",
-        operation="create",
-        inputs={"object_type": object_type, "object_id": object_id, "body": body},
-        consequential=True,
+        "note.create",
+        create_note(
+            ctx.obj,
+            object_type=object_type,
+            object_id=object_id,
+            body=body,
+        ),
     )
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -24,14 +25,14 @@ def _mask(value: str | None) -> str | None:
 
 
 def resolve_runtime_values(_ctx_obj: dict[str, Any]) -> dict[str, Any]:
-    api_key = os.getenv(API_KEY_ENV, "").strip()
-    base_url = os.getenv(BASE_URL_ENV, "https://api.lion.report").strip()
-    report_id = os.getenv(REPORT_ID_ENV, "").strip()
-    report_type = os.getenv(REPORT_TYPE_ENV, "").strip()
-    date_range = os.getenv(DATE_RANGE_ENV, "").strip()
-    data_source = os.getenv(DATA_SOURCE_ENV, "").strip()
-    template_id = os.getenv(TEMPLATE_ID_ENV, "").strip()
-    recipient_email = os.getenv(RECIPIENT_EMAIL_ENV, "").strip()
+    api_key = service_key_env(API_KEY_ENV, "").strip()
+    base_url = service_key_env(BASE_URL_ENV, "https://api.lion.report").strip()
+    report_id = service_key_env(REPORT_ID_ENV, "").strip()
+    report_type = service_key_env(REPORT_TYPE_ENV, "").strip()
+    date_range = service_key_env(DATE_RANGE_ENV, "").strip()
+    data_source = service_key_env(DATA_SOURCE_ENV, "").strip()
+    template_id = service_key_env(TEMPLATE_ID_ENV, "").strip()
+    recipient_email = service_key_env(RECIPIENT_EMAIL_ENV, "").strip()
     return {
         "api_key": api_key,
         "api_key_present": bool(api_key),

@@ -234,6 +234,7 @@ OBJECT_ENDPOINTS = {
     "contact": "contacts",
     "company": "companies",
     "deal": "deals",
+    "note": "notes",
     "ticket": "tickets",
 }
 
@@ -242,4 +243,11 @@ DEFAULT_PROPERTIES = {
     "company": ["name", "domain", "phone", "city", "state", "country", "hs_object_id"],
     "deal": ["dealname", "dealstage", "pipeline", "amount", "closedate", "hubspot_owner_id"],
     "ticket": ["subject", "hs_pipeline", "hs_pipeline_stage", "hubspot_owner_id", "content"],
+}
+
+NOTE_ASSOCIATION_TYPE_IDS = {
+    "contact": 202,
+    "company": 190,
+    "deal": 214,
+    "ticket": 228,
 }

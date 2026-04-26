@@ -8,7 +8,7 @@
     "scaffold_only": false,
     "live_backend_available": true,
     "live_read_available": true,
-    "write_bridge_available": false,
+    "write_bridge_available": true,
     "workerFields": ["account", "member_id", "board_id", "list_id", "card_id"],
     "worker_visible_actions": [
       "account.read",
@@ -19,7 +19,9 @@
       "list.list",
       "list.read",
       "card.list",
-      "card.read"
+      "card.read",
+      "card.create_draft",
+      "card.update_draft"
     ],
     "fields": [
       {
@@ -176,10 +178,10 @@
     "service_keys": ["TRELLO_API_KEY", "TRELLO_TOKEN"],
     "interactive_setup": [
       "Create a Trello API key and user token for the workspace you want this worker to use.",
-      "Add TRELLO_API_KEY and TRELLO_TOKEN in API Keys before enabling live reads.",
+      "Add TRELLO_API_KEY and TRELLO_TOKEN in API Keys before enabling live reads and writes.",
       "Optionally set TRELLO_BOARD_ID, TRELLO_LIST_ID, TRELLO_CARD_ID, and TRELLO_MEMBER_ID to give worker flows stable scope defaults.",
-      "Keep card.create_draft and card.update_draft scaffolded until a live Trello write bridge is implemented.",
-      "The connector is live-read-first and reports Trello API failures instead of masking them."
+      "The existing card.create_draft and card.update_draft command IDs now execute live Trello card writes.",
+      "The connector reports Trello API failures instead of masking them."
     ]
   },
   "commands": [
@@ -289,7 +291,7 @@
     },
     {
       "id": "card.create_draft",
-      "summary": "Create a draft card payload",
+      "summary": "Create a Trello card",
       "required_mode": "write",
       "supports_json": true,
       "resource": "card",
@@ -297,7 +299,7 @@
     },
     {
       "id": "card.update_draft",
-      "summary": "Update a draft card payload",
+      "summary": "Update a Trello card",
       "required_mode": "write",
       "supports_json": true,
       "resource": "card",

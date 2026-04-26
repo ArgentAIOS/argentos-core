@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+from .service_keys import service_key_env
 
 from .constants import (
     DEFAULT_BASE_URL,
@@ -29,11 +30,11 @@ class DartConnectorContext:
 
 def resolve_config() -> DartConfig:
     return DartConfig(
-        api_key=os.getenv(ENV_API_KEY),
-        base_url=os.getenv(ENV_BASE_URL, DEFAULT_BASE_URL),
-        dartboard_id=os.getenv(ENV_DARTBOARD_ID),
-        task_id=os.getenv(ENV_TASK_ID),
-        doc_id=os.getenv(ENV_DOC_ID),
+        api_key=service_key_env(ENV_API_KEY),
+        base_url=service_key_env(ENV_BASE_URL, DEFAULT_BASE_URL),
+        dartboard_id=service_key_env(ENV_DARTBOARD_ID),
+        task_id=service_key_env(ENV_TASK_ID),
+        doc_id=service_key_env(ENV_DOC_ID),
     )
 
 

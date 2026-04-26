@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+from .service_keys import service_key_env
 
 from .constants import (
     API_VERSION,
@@ -47,19 +48,19 @@ class WooCommerceConnectorContext:
 
 
 def resolve_config() -> WooCommerceConfig:
-    store_url = os.getenv(ENV_STORE_URL)
+    store_url = service_key_env(ENV_STORE_URL)
     base_url = f"{store_url.rstrip('/')}/wp-json/{API_VERSION}" if store_url else None
     return WooCommerceConfig(
-        consumer_key=os.getenv(ENV_CONSUMER_KEY),
-        consumer_secret=os.getenv(ENV_CONSUMER_SECRET),
+        consumer_key=service_key_env(ENV_CONSUMER_KEY),
+        consumer_secret=service_key_env(ENV_CONSUMER_SECRET),
         store_url=store_url,
         base_url=base_url,
-        order_id=os.getenv(ENV_ORDER_ID),
-        product_id=os.getenv(ENV_PRODUCT_ID),
-        customer_id=os.getenv(ENV_CUSTOMER_ID),
-        order_status=os.getenv(ENV_ORDER_STATUS),
-        product_status=os.getenv(ENV_PRODUCT_STATUS),
-        sku=os.getenv(ENV_SKU),
+        order_id=service_key_env(ENV_ORDER_ID),
+        product_id=service_key_env(ENV_PRODUCT_ID),
+        customer_id=service_key_env(ENV_CUSTOMER_ID),
+        order_status=service_key_env(ENV_ORDER_STATUS),
+        product_status=service_key_env(ENV_PRODUCT_STATUS),
+        sku=service_key_env(ENV_SKU),
     )
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -32,13 +33,13 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     board_id_env = ctx_obj.get("board_id_env") or JIRA_BOARD_ID_ENV
     sprint_id_env = ctx_obj.get("sprint_id_env") or JIRA_SPRINT_ID_ENV
 
-    base_url = (os.getenv(base_url_env) or "").strip()
-    email = (os.getenv(email_env) or "").strip()
-    api_token = (os.getenv(api_token_env) or "").strip()
-    project_key = (os.getenv(project_key_env) or "").strip()
-    issue_key = (os.getenv(issue_key_env) or "").strip()
-    board_id = (os.getenv(board_id_env) or "").strip()
-    sprint_id = (os.getenv(sprint_id_env) or "").strip()
+    base_url = (service_key_env(base_url_env) or "").strip()
+    email = (service_key_env(email_env) or "").strip()
+    api_token = (service_key_env(api_token_env) or "").strip()
+    project_key = (service_key_env(project_key_env) or "").strip()
+    issue_key = (service_key_env(issue_key_env) or "").strip()
+    board_id = (service_key_env(board_id_env) or "").strip()
+    sprint_id = (service_key_env(sprint_id_env) or "").strip()
 
     return {
         "backend": BACKEND_NAME,

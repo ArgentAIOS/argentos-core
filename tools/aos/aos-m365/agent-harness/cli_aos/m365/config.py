@@ -5,6 +5,7 @@ from typing import Any
 
 from . import __version__
 from .constants import CONNECTOR_AUTH, CONNECTOR_CATEGORY, CONNECTOR_CATEGORIES, CONNECTOR_LABEL, CONNECTOR_RESOURCES, TOOL_NAME
+from .service_keys import resolve_service_key, service_key_env
 
 REQUIRED_AUTH_KEYS = ["M365_TENANT_ID", "M365_CLIENT_ID", "M365_CLIENT_SECRET"]
 
@@ -97,9 +98,19 @@ def _scope_picker_preview(
 
 
 def runtime_config() -> dict[str, Any]:
-    env_values = {key: _env(key) for key in REQUIRED_AUTH_KEYS}
+    env_values = {key: (service_key_env(key, "") or "").strip() for key in REQUIRED_AUTH_KEYS}
     configured = {key: bool(value) for key, value in env_values.items()}
     missing_keys = [key for key, present in configured.items() if not present]
+    auth_sources = {
+        key: (
+            "service-keys"
+            if resolve_service_key(key)
+            else "process.env"
+            if _env(key)
+            else None
+        )
+        for key in REQUIRED_AUTH_KEYS
+    }
 
     tenant_id = env_values["M365_TENANT_ID"]
     target_user = _env("M365_TARGET_USER")
@@ -246,8 +257,10 @@ def runtime_config() -> dict[str, Any]:
             "kind": CONNECTOR_AUTH["kind"],
             "required": CONNECTOR_AUTH["required"],
             "service_keys": list(CONNECTOR_AUTH["service_keys"]),
+            "operator_service_keys": list(CONNECTOR_AUTH["service_keys"]),
             "configured": configured,
             "missing_keys": missing_keys,
+            "sources": auth_sources,
             "redacted": {
                 "M365_TENANT_ID": _redact(tenant_id),
                 "M365_CLIENT_ID": _redact(env_values["M365_CLIENT_ID"]),

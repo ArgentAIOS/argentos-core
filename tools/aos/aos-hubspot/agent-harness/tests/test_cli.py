@@ -4,6 +4,7 @@ from click.testing import CliRunner
 
 import cli_aos.hubspot.bridge as bridge
 import cli_aos.hubspot.commands as commands
+import cli_aos.hubspot.config as config
 import cli_aos.hubspot.runtime as runtime
 from cli_aos.hubspot.cli import cli
 
@@ -68,6 +69,27 @@ def test_config_show_redacts_token_value(monkeypatch):
     assert '"auth_ready": true' in result.output
     assert '"runtime_ready": true' in result.output
     assert 'probe ok' in result.output
+
+
+def test_config_show_uses_service_key_resolver_when_env_missing(monkeypatch):
+    monkeypatch.delenv("HUBSPOT_PORTAL_ID", raising=False)
+    monkeypatch.delenv("HUBSPOT_ACCESS_TOKEN", raising=False)
+    monkeypatch.setattr(
+        config,
+        "service_key_env",
+        lambda name, default=None: {"HUBSPOT_PORTAL_ID": "123", "HUBSPOT_ACCESS_TOKEN": "service-token"}.get(name, default),
+    )
+    monkeypatch.setattr(
+        bridge,
+        "probe_api",
+        lambda _ctx: {"ok": True, "code": "OK", "message": "probe ok", "details": {"portal_id": "123"}},
+    )
+
+    result = CliRunner().invoke(cli, ["--json", "config", "show"])
+    assert result.exit_code == 0
+    assert '"portal_id": "123"' in result.output
+    assert '"access_token_present": true' in result.output
+    assert '"auth_ready": true' in result.output
 
 
 def test_contact_list_uses_runtime(monkeypatch):
@@ -291,14 +313,116 @@ def test_company_read_uses_runtime(monkeypatch):
     assert '"id": "3"' in result.output
 
 
-def test_write_command_stays_stubbed():
+def test_contact_create_executes_live_write(monkeypatch):
+    def fake_request_json(_ctx_obj, method, path, *, query=None, payload=None):
+        assert method == "POST"
+        assert path == "/crm/v3/objects/contacts"
+        assert payload == {"properties": {"email": "test@example.com", "firstname": "Ada"}}
+        return {
+            "id": "contact-1",
+            "createdAt": "2026-03-18T00:00:00Z",
+            "updatedAt": "2026-03-18T00:00:00Z",
+            "properties": {"email": "test@example.com", "firstname": "Ada"},
+        }
+
+    monkeypatch.setattr(runtime, "_request_json", fake_request_json)
+
     result = CliRunner().invoke(
         cli,
-        ["--json", "--mode", "write", "ticket", "create", "--property", "subject=Need help"],
+        [
+            "--json",
+            "--mode",
+            "write",
+            "contact",
+            "create",
+            "--property",
+            "email=test@example.com",
+            "--property",
+            "firstname=Ada",
+        ],
     )
     assert result.exit_code == 0
-    assert '"status": "scaffold"' in result.output
-    assert '"executed": false' in result.output
+    assert '"command_id": "contact.create"' in result.output
+    assert '"executed": true' in result.output
+    assert '"id": "contact-1"' in result.output
+
+
+def test_owner_assign_executes_live_write(monkeypatch):
+    def fake_request_json(_ctx_obj, method, path, *, query=None, payload=None):
+        assert method == "PATCH"
+        assert path == "/crm/v3/objects/deals/deal-42"
+        assert payload == {"properties": {"hubspot_owner_id": "11"}}
+        return {
+            "id": "deal-42",
+            "createdAt": "2026-03-18T00:00:00Z",
+            "updatedAt": "2026-03-18T00:00:00Z",
+            "properties": {"dealname": "Renewal", "hubspot_owner_id": "11"},
+        }
+
+    monkeypatch.setattr(runtime, "_request_json", fake_request_json)
+
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--mode", "write", "owner", "assign", "deal", "deal-42", "--owner-id", "11"],
+    )
+    assert result.exit_code == 0
+    assert '"command_id": "owner.assign"' in result.output
+    assert '"record_type": "deal"' in result.output
+    assert '"owner_id": "11"' in result.output
+
+
+def test_note_create_executes_live_write_and_association(monkeypatch):
+    calls: list[dict] = []
+
+    def fake_request_json(_ctx_obj, method, path, *, query=None, payload=None):
+        calls.append({"method": method, "path": path, "query": query, "payload": payload})
+        if method == "POST":
+            return {
+                "id": "note-9",
+                "createdAt": "2026-03-18T00:00:00Z",
+                "updatedAt": "2026-03-18T00:00:00Z",
+                "properties": {
+                    "hs_note_body": "Followed up",
+                    "hs_timestamp": "2026-03-18T00:00:00.000Z",
+                },
+            }
+        return {}
+
+    monkeypatch.setattr(runtime, "_request_json", fake_request_json)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "--mode",
+            "write",
+            "note",
+            "create",
+            "--object-type",
+            "contact",
+            "--object-id",
+            "123",
+            "--body",
+            "Followed up",
+        ],
+    )
+    assert result.exit_code == 0
+    assert calls[0]["method"] == "POST"
+    assert calls[0]["path"] == "/crm/v3/objects/notes"
+    assert calls[0]["payload"]["properties"]["hs_note_body"] == "Followed up"
+    assert calls[1]["method"] == "PUT"
+    assert calls[1]["path"] == "/crm/v3/objects/notes/note-9/associations/contact/123/202"
+    assert '"command_id": "note.create"' in result.output
+    assert '"association_type_id": 202' in result.output
+
+
+def test_deal_update_stage_requires_full_mode():
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--mode", "write", "deal", "update-stage", "deal-42", "--stage-id", "closedwon"],
+    )
+    assert result.exit_code == 3
+    assert "PERMISSION_DENIED" in result.output
 
 
 def test_runtime_list_encodes_properties_as_csv(monkeypatch):

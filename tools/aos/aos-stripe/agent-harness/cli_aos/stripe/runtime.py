@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, timezone
 from typing import Any
 from urllib import error, parse, request
 
 from .config import resolve_runtime_values
-from .constants import DEFAULT_API_BASE_URL
+from .constants import BACKEND_NAME, DEFAULT_API_BASE_URL
 from .errors import CliError
 
 API_TIMEOUT_SECONDS = 20
 USER_AGENT = "aos-stripe/0.1.0"
+SUPPORTED_PAYMENT_METHOD_TYPES = {"card", "us_bank_account"}
 
 
 def _clean_dict(values: dict[str, Any]) -> dict[str, Any]:
@@ -25,15 +25,48 @@ def _clean_dict(values: dict[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
+def _stringify_form_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _flatten_form(key: str, value: Any) -> list[tuple[str, str]]:
+    if value is None:
+        return []
+    if isinstance(value, dict):
+        flattened: list[tuple[str, str]] = []
+        for child_key, child_value in value.items():
+            flattened.extend(_flatten_form(f"{key}[{child_key}]", child_value))
+        return flattened
+    if isinstance(value, (list, tuple)):
+        flattened = []
+        for index, child_value in enumerate(value):
+            flattened.extend(_flatten_form(f"{key}[{index}]", child_value))
+        return flattened
+    return [(key, _stringify_form_value(value))]
+
+
+def _form_payload(values: dict[str, Any] | None) -> bytes | None:
+    if not values:
+        return None
+    flattened: list[tuple[str, str]] = []
+    for key, value in values.items():
+        flattened.extend(_flatten_form(key, value))
+    if not flattened:
+        return None
+    return parse.urlencode(flattened).encode("utf-8")
+
+
 def _resolve_secret_key(ctx_obj: dict[str, Any]) -> str | None:
     runtime = resolve_runtime_values(ctx_obj)
-    secret_key = runtime.get("secret_key") or os.getenv(runtime["secret_key_env"])
-    if secret_key:
+    secret_key = runtime.get("secret_key")
+    if isinstance(secret_key, str) and secret_key.strip():
         return secret_key.strip()
     return None
 
 
-def _headers(ctx_obj: dict[str, Any]) -> dict[str, str]:
+def _headers(ctx_obj: dict[str, Any], *, has_form: bool = False) -> dict[str, str]:
     runtime = resolve_runtime_values(ctx_obj)
     secret_key = _resolve_secret_key(ctx_obj)
     if not secret_key:
@@ -49,6 +82,8 @@ def _headers(ctx_obj: dict[str, Any]) -> dict[str, str]:
         "Accept": "application/json",
         "User-Agent": USER_AGENT,
     }
+    if has_form:
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
     account_id = runtime.get("account_id")
     if account_id:
         headers["Stripe-Account"] = account_id
@@ -66,12 +101,19 @@ def _request_json(
     path: str,
     *,
     query: dict[str, Any] | None = None,
+    form: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     url = f"{_base_url(ctx_obj)}{path}"
     if query:
         url = f"{url}?{parse.urlencode(_clean_dict(query), doseq=True)}"
 
-    req = request.Request(url, method=method.upper(), headers=_headers(ctx_obj))
+    payload = _form_payload(form)
+    req = request.Request(
+        url,
+        data=payload,
+        method=method.upper(),
+        headers=_headers(ctx_obj, has_form=payload is not None),
+    )
     try:
         with request.urlopen(req, timeout=API_TIMEOUT_SECONDS) as response:
             charset = response.headers.get_content_charset("utf-8")
@@ -82,18 +124,21 @@ def _request_json(
         details: dict[str, Any] = {"status": exc.code, "url": url}
         message = body or str(exc)
         try:
-            payload = json.loads(body) if body else {}
+            response_payload = json.loads(body) if body else {}
         except json.JSONDecodeError:
-            payload = {}
-        if isinstance(payload, dict) and payload:
-            details["response"] = payload
-            error_payload = payload.get("error")
+            response_payload = {}
+        if isinstance(response_payload, dict) and response_payload:
+            details["response"] = response_payload
+            error_payload = response_payload.get("error")
             if isinstance(error_payload, dict):
                 message = str(error_payload.get("message") or error_payload.get("type") or message)
+                error_code = error_payload.get("code")
+                if error_code:
+                    details["stripe_code"] = error_code
             elif error_payload:
                 message = str(error_payload)
             else:
-                message = str(payload.get("message") or message)
+                message = str(response_payload.get("message") or message)
         if exc.code in {401, 403}:
             code = "STRIPE_AUTH_ERROR"
             exit_code = 4
@@ -118,7 +163,7 @@ def _request_json(
     if not body:
         return {}
     try:
-        payload = json.loads(body)
+        response_payload = json.loads(body)
     except json.JSONDecodeError as exc:
         raise CliError(
             code="STRIPE_BAD_JSON",
@@ -126,26 +171,23 @@ def _request_json(
             exit_code=5,
             details={"url": url, "body": body[:2000]},
         ) from exc
-    if not isinstance(payload, dict):
+    if not isinstance(response_payload, dict):
         raise CliError(
             code="STRIPE_BAD_JSON",
             message="Stripe returned an unexpected payload",
             exit_code=5,
             details={"url": url},
         )
-    return payload
+    return response_payload
 
 
 def _scope(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
-    customer_focus = runtime.get("customer_focus")
     return {
         "account_id": runtime.get("account_id"),
-        "account_alias": runtime.get("account_alias"),
-        "customer_focus": customer_focus,
-        "invoice_status": runtime.get("invoice_status"),
-        "created_after": runtime.get("created_after"),
-        "created_before": runtime.get("created_before"),
+        "customer_id": runtime.get("customer_id"),
+        "subscription_id": runtime.get("subscription_id"),
+        "invoice_id": runtime.get("invoice_id"),
     }
 
 
@@ -158,7 +200,7 @@ def _collection_result(
 ) -> dict[str, Any]:
     return {
         "status": "ok",
-        "backend": "stripe",
+        "backend": BACKEND_NAME,
         "resource": resource,
         "operation": operation,
         "scope": _scope(ctx_obj),
@@ -178,12 +220,76 @@ def _single_result(
 ) -> dict[str, Any]:
     return {
         "status": "ok",
-        "backend": "stripe",
+        "backend": BACKEND_NAME,
         "resource": resource,
         "operation": operation,
         "scope": _scope(ctx_obj),
         result_key: response,
     }
+
+
+def _write_result(
+    resource: str,
+    operation: str,
+    ctx_obj: dict[str, Any],
+    response: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "status": "live_write",
+        "backend": BACKEND_NAME,
+        "resource": resource,
+        "operation": operation,
+        "scope": _scope(ctx_obj),
+        "result": response,
+    }
+
+
+def _parse_metadata_json(raw: str | None) -> dict[str, str]:
+    if not raw or not raw.strip():
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise CliError(
+            code="INVALID_METADATA_JSON",
+            message="metadata_json must be valid JSON",
+            exit_code=2,
+            details={"value": raw},
+        ) from exc
+    if not isinstance(payload, dict):
+        raise CliError(
+            code="INVALID_METADATA_JSON",
+            message="metadata_json must be a JSON object",
+            exit_code=2,
+            details={"value": raw},
+        )
+    metadata: dict[str, str] = {}
+    for key, value in payload.items():
+        metadata[str(key)] = "" if value is None else str(value)
+    return metadata
+
+
+def _resolve_identifier(
+    value: str | None,
+    *,
+    runtime_key: str,
+    env_key: str,
+    label: str,
+    ctx_obj: dict[str, Any],
+) -> str:
+    cleaned = str(value or "").strip()
+    if cleaned:
+        return cleaned
+    runtime = resolve_runtime_values(ctx_obj)
+    fallback = str(runtime.get(runtime_key) or "").strip()
+    if fallback:
+        return fallback
+    raise CliError(
+        code="MISSING_ARGUMENT",
+        message=f"{label} is required",
+        exit_code=2,
+        details={"env": env_key},
+    )
 
 
 def _normalize_customer(customer: dict[str, Any]) -> dict[str, Any]:
@@ -192,6 +298,7 @@ def _normalize_customer(customer: dict[str, Any]) -> dict[str, Any]:
         "object": customer.get("object"),
         "email": customer.get("email"),
         "name": customer.get("name"),
+        "description": customer.get("description"),
         "phone": customer.get("phone"),
         "livemode": customer.get("livemode"),
         "created": customer.get("created"),
@@ -204,36 +311,12 @@ def _normalize_customer(customer: dict[str, Any]) -> dict[str, Any]:
 def _customer_option(customer: dict[str, Any]) -> dict[str, Any]:
     label = customer.get("name") or customer.get("email") or customer.get("id")
     subtitle = customer.get("email") or customer.get("name")
-    option = {
-        "value": customer.get("id"),
-        "label": label,
-    }
+    option = {"value": customer.get("id"), "label": label}
     if subtitle and subtitle != label:
         option["subtitle"] = subtitle
-    if customer.get("name"):
-        option["name"] = customer.get("name")
     if customer.get("email"):
         option["email"] = customer.get("email")
     return option
-
-
-def _normalize_account(account: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": account.get("id"),
-        "object": account.get("object"),
-        "business_profile": account.get("business_profile") or {},
-        "charges_enabled": account.get("charges_enabled"),
-        "country": account.get("country"),
-        "default_currency": account.get("default_currency"),
-        "details_submitted": account.get("details_submitted"),
-        "display_name": account.get("display_name"),
-        "email": account.get("email"),
-        "livemode": account.get("livemode"),
-        "metadata": account.get("metadata") or {},
-        "payouts_enabled": account.get("payouts_enabled"),
-        "requirements": account.get("requirements") or {},
-        "type": account.get("type"),
-    }
 
 
 def _normalize_payment_intent(payment: dict[str, Any]) -> dict[str, Any]:
@@ -249,9 +332,68 @@ def _normalize_payment_intent(payment: dict[str, Any]) -> dict[str, Any]:
         "created": payment.get("created"),
         "latest_charge": payment.get("latest_charge"),
         "payment_method": payment.get("payment_method"),
-        "capture_method": payment.get("capture_method"),
+        "payment_method_types": payment.get("payment_method_types") or [],
+        "automatic_payment_methods": payment.get("automatic_payment_methods") or {},
         "metadata": payment.get("metadata") or {},
     }
+
+
+def _payment_option(payment: dict[str, Any]) -> dict[str, Any]:
+    label = payment.get("id")
+    subtitle = payment.get("status")
+    option = {"value": payment.get("id"), "label": label}
+    if subtitle:
+        option["subtitle"] = subtitle
+    if payment.get("amount") is not None:
+        option["amount"] = payment.get("amount")
+    if payment.get("currency"):
+        option["currency"] = payment.get("currency")
+    return option
+
+
+def _normalize_subscription_item(item: dict[str, Any]) -> dict[str, Any]:
+    price = item.get("price") if isinstance(item.get("price"), dict) else {}
+    return {
+        "id": item.get("id"),
+        "quantity": item.get("quantity"),
+        "price_id": price.get("id"),
+        "product": price.get("product"),
+        "currency": price.get("currency"),
+        "unit_amount": price.get("unit_amount"),
+        "recurring": price.get("recurring") or {},
+    }
+
+
+def _normalize_subscription(subscription: dict[str, Any]) -> dict[str, Any]:
+    items_block = subscription.get("items") if isinstance(subscription.get("items"), dict) else {}
+    items = items_block.get("data") if isinstance(items_block.get("data"), list) else []
+    return {
+        "id": subscription.get("id"),
+        "object": subscription.get("object"),
+        "customer": subscription.get("customer"),
+        "status": subscription.get("status"),
+        "cancel_at_period_end": subscription.get("cancel_at_period_end"),
+        "canceled_at": subscription.get("canceled_at"),
+        "current_period_start": subscription.get("current_period_start"),
+        "current_period_end": subscription.get("current_period_end"),
+        "collection_method": subscription.get("collection_method"),
+        "latest_invoice": subscription.get("latest_invoice"),
+        "livemode": subscription.get("livemode"),
+        "created": subscription.get("created"),
+        "metadata": subscription.get("metadata") or {},
+        "items": [_normalize_subscription_item(item) for item in items if isinstance(item, dict)],
+    }
+
+
+def _subscription_option(subscription: dict[str, Any]) -> dict[str, Any]:
+    label = subscription.get("id")
+    subtitle = subscription.get("status")
+    option = {"value": subscription.get("id"), "label": label}
+    if subtitle:
+        option["subtitle"] = subtitle
+    if subscription.get("customer"):
+        option["customer"] = subscription.get("customer")
+    return option
 
 
 def _normalize_invoice(invoice: dict[str, Any]) -> dict[str, Any]:
@@ -262,9 +404,12 @@ def _normalize_invoice(invoice: dict[str, Any]) -> dict[str, Any]:
         "status": invoice.get("status"),
         "currency": invoice.get("currency"),
         "customer": invoice.get("customer"),
+        "customer_email": invoice.get("customer_email"),
+        "subscription": invoice.get("subscription"),
         "amount_due": invoice.get("amount_due"),
         "amount_paid": invoice.get("amount_paid"),
         "amount_remaining": invoice.get("amount_remaining"),
+        "collection_method": invoice.get("collection_method"),
         "livemode": invoice.get("livemode"),
         "created": invoice.get("created"),
         "due_date": invoice.get("due_date"),
@@ -272,6 +417,17 @@ def _normalize_invoice(invoice: dict[str, Any]) -> dict[str, Any]:
         "invoice_pdf": invoice.get("invoice_pdf"),
         "metadata": invoice.get("metadata") or {},
     }
+
+
+def _invoice_option(invoice: dict[str, Any]) -> dict[str, Any]:
+    label = invoice.get("number") or invoice.get("id")
+    subtitle = invoice.get("status")
+    option = {"value": invoice.get("id"), "label": label}
+    if subtitle:
+        option["subtitle"] = subtitle
+    if invoice.get("customer"):
+        option["customer"] = invoice.get("customer")
+    return option
 
 
 def _normalize_balance_entry(entry: dict[str, Any]) -> dict[str, Any]:
@@ -301,7 +457,12 @@ def _parse_timestamp(value: str | None) -> int | None:
     try:
         parsed = datetime.fromisoformat(normalized)
     except ValueError:
-        return None
+        raise CliError(
+            code="INVALID_DATE_FILTER",
+            message=f"Invalid timestamp or ISO-8601 value: {raw}",
+            exit_code=2,
+            details={"value": raw},
+        ) from None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return int(parsed.timestamp())
@@ -358,21 +519,28 @@ def probe_runtime(ctx_obj: dict[str, Any]) -> dict[str, Any]:
 
 def read_balance(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     response = _request_json(ctx_obj, "GET", "/v1/balance")
-    return _single_result("balance", "read", ctx_obj, _normalize_balance(response))
+    return _single_result("balance", "get", ctx_obj, _normalize_balance(response))
 
 
 def read_account(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     response = _request_json(ctx_obj, "GET", "/v1/account")
-    return _single_result("account", "read", ctx_obj, _normalize_account(response))
+    return _single_result("account", "read", ctx_obj, response)
 
 
-def list_customers(ctx_obj: dict[str, Any], *, limit: int, email: str | None = None) -> dict[str, Any]:
+def list_customers(
+    ctx_obj: dict[str, Any],
+    *,
+    limit: int,
+    email: str | None = None,
+    starting_after: str | None = None,
+) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
-    focus = runtime.get("customer_focus")
-    effective_email = email or (focus if isinstance(focus, str) and "@" in focus else None)
-    query = {"limit": limit}
+    query: dict[str, Any] = {"limit": max(1, min(limit, 100))}
+    effective_email = str(email or runtime.get("customer_email") or "").strip() or None
     if effective_email:
         query["email"] = effective_email
+    if starting_after:
+        query["starting_after"] = starting_after
     response = _request_json(ctx_obj, "GET", "/v1/customers", query=query)
     customers = [_normalize_customer(item) for item in response.get("data", []) if isinstance(item, dict)]
     result = _collection_result("customer", "list", ctx_obj, response, customers)
@@ -380,22 +548,45 @@ def list_customers(ctx_obj: dict[str, Any], *, limit: int, email: str | None = N
     return result
 
 
-def search_customers(ctx_obj: dict[str, Any], *, query_text: str) -> dict[str, Any]:
-    response = _request_json(
-        ctx_obj,
-        "GET",
-        "/v1/customers/search",
-        query={"query": query_text, "limit": 10},
+def read_customer(ctx_obj: dict[str, Any], *, customer_id: str | None) -> dict[str, Any]:
+    resolved_customer_id = _resolve_identifier(
+        customer_id,
+        runtime_key="customer_id",
+        env_key="STRIPE_CUSTOMER_ID",
+        label="customer_id",
+        ctx_obj=ctx_obj,
     )
-    customers = [_normalize_customer(item) for item in response.get("data", []) if isinstance(item, dict)]
-    result = _collection_result("customer", "search", ctx_obj, response, customers)
-    result["options"] = [_customer_option(customer) for customer in customers if customer.get("id")]
-    return result
+    response = _request_json(ctx_obj, "GET", f"/v1/customers/{parse.quote(resolved_customer_id, safe='')}")
+    return _single_result("customer", "get", ctx_obj, _normalize_customer(response))
 
 
-def read_customer(ctx_obj: dict[str, Any], *, customer_id: str) -> dict[str, Any]:
-    response = _request_json(ctx_obj, "GET", f"/v1/customers/{parse.quote(customer_id, safe='')}")
-    return _single_result("customer", "read", ctx_obj, _normalize_customer(response))
+def create_customer(
+    ctx_obj: dict[str, Any],
+    *,
+    email: str | None,
+    name: str | None,
+    description: str | None,
+    metadata_json: str | None,
+) -> dict[str, Any]:
+    metadata = _parse_metadata_json(metadata_json)
+    effective_email = str(email or resolve_runtime_values(ctx_obj).get("customer_email") or "").strip() or None
+    if not any([effective_email, name, description, metadata]):
+        raise CliError(
+            code="MISSING_ARGUMENT",
+            message="Provide at least one of email, name, description, or metadata_json",
+            exit_code=2,
+            details={},
+        )
+    form = _clean_dict(
+        {
+            "email": effective_email,
+            "name": name,
+            "description": description,
+            "metadata": metadata or None,
+        }
+    )
+    response = _request_json(ctx_obj, "POST", "/v1/customers", form=form)
+    return _write_result("customer", "create", ctx_obj, _normalize_customer(response))
 
 
 def list_payments(
@@ -405,36 +596,160 @@ def list_payments(
     customer_id: str | None = None,
     created_after: str | None = None,
     created_before: str | None = None,
+    starting_after: str | None = None,
 ) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
-    focus = runtime.get("customer_focus")
-    effective_customer_id = customer_id or (
-        focus if isinstance(focus, str) and focus.startswith("cus_") else None
-    )
-    effective_created_after = created_after or runtime.get("created_after")
-    effective_created_before = created_before or runtime.get("created_before")
-    query: dict[str, Any] = {"limit": limit}
+    effective_customer_id = str(customer_id or runtime.get("customer_id") or "").strip() or None
+    query: dict[str, Any] = {"limit": max(1, min(limit, 100))}
     if effective_customer_id:
         query["customer"] = effective_customer_id
-    query.update(
-        _build_created_filters(
-            created_after=effective_created_after,
-            created_before=effective_created_before,
-        ),
+    if starting_after:
+        query["starting_after"] = starting_after
+    query.update(_build_created_filters(created_after=created_after, created_before=created_before))
+    response = _request_json(ctx_obj, "GET", "/v1/payment_intents", query=query)
+    payments = [_normalize_payment_intent(item) for item in response.get("data", []) if isinstance(item, dict)]
+    result = _collection_result("payment", "list", ctx_obj, response, payments)
+    result["options"] = [_payment_option(payment) for payment in payments if payment.get("id")]
+    return result
+
+
+def read_payment(ctx_obj: dict[str, Any], *, payment_id: str | None) -> dict[str, Any]:
+    resolved_payment_id = _resolve_identifier(
+        payment_id,
+        runtime_key="payment_intent_id",
+        env_key="STRIPE_PAYMENT_INTENT_ID",
+        label="payment_intent_id",
+        ctx_obj=ctx_obj,
+    )
+    response = _request_json(ctx_obj, "GET", f"/v1/payment_intents/{parse.quote(resolved_payment_id, safe='')}")
+    return _single_result("payment", "get", ctx_obj, _normalize_payment_intent(response))
+
+
+def create_payment(
+    ctx_obj: dict[str, Any],
+    *,
+    amount: int,
+    currency: str,
+    customer_id: str | None,
+    payment_method: str | None,
+    description: str | None,
+    metadata_json: str | None,
+) -> dict[str, Any]:
+    runtime = resolve_runtime_values(ctx_obj)
+    effective_customer_id = str(customer_id or runtime.get("customer_id") or "").strip() or None
+    metadata = _parse_metadata_json(metadata_json)
+    method = str(payment_method or "").strip() or None
+    if method == "bank_transfer":
+        raise CliError(
+            code="UNSUPPORTED_OPTION",
+            message="payment_method=bank_transfer is intentionally blocked until the connector can collect the additional Stripe customer_balance fields safely",
+            exit_code=2,
+            details={"payment_method": method},
+        )
+    if method and method not in SUPPORTED_PAYMENT_METHOD_TYPES:
+        raise CliError(
+            code="UNSUPPORTED_OPTION",
+            message=f"Unsupported payment_method: {method}",
+            exit_code=2,
+            details={"payment_method": method},
+        )
+    form: dict[str, Any] = {
+        "amount": amount,
+        "currency": currency.lower(),
+        "customer": effective_customer_id,
+        "description": description,
+        "metadata": metadata or None,
+    }
+    if method:
+        form["payment_method_types"] = [method]
+    else:
+        # Keep writes conservative: create the PaymentIntent without confirming it.
+        form["automatic_payment_methods"] = {"enabled": True}
+    response = _request_json(ctx_obj, "POST", "/v1/payment_intents", form=form)
+    return _write_result("payment", "create", ctx_obj, _normalize_payment_intent(response))
+
+
+def list_subscriptions(
+    ctx_obj: dict[str, Any],
+    *,
+    limit: int,
+    customer_id: str | None = None,
+    starting_after: str | None = None,
+) -> dict[str, Any]:
+    runtime = resolve_runtime_values(ctx_obj)
+    effective_customer_id = str(customer_id or runtime.get("customer_id") or "").strip() or None
+    query: dict[str, Any] = {"limit": max(1, min(limit, 100))}
+    if effective_customer_id:
+        query["customer"] = effective_customer_id
+    if starting_after:
+        query["starting_after"] = starting_after
+    response = _request_json(ctx_obj, "GET", "/v1/subscriptions", query=query)
+    subscriptions = [_normalize_subscription(item) for item in response.get("data", []) if isinstance(item, dict)]
+    result = _collection_result("subscription", "list", ctx_obj, response, subscriptions)
+    result["options"] = [_subscription_option(item) for item in subscriptions if item.get("id")]
+    return result
+
+
+def read_subscription(ctx_obj: dict[str, Any], *, subscription_id: str | None) -> dict[str, Any]:
+    resolved_subscription_id = _resolve_identifier(
+        subscription_id,
+        runtime_key="subscription_id",
+        env_key="STRIPE_SUBSCRIPTION_ID",
+        label="subscription_id",
+        ctx_obj=ctx_obj,
+    )
+    response = _request_json(ctx_obj, "GET", f"/v1/subscriptions/{parse.quote(resolved_subscription_id, safe='')}")
+    return _single_result("subscription", "get", ctx_obj, _normalize_subscription(response))
+
+
+def create_subscription(
+    ctx_obj: dict[str, Any],
+    *,
+    customer_id: str | None,
+    price_id: str | None,
+    metadata_json: str | None,
+) -> dict[str, Any]:
+    resolved_customer_id = _resolve_identifier(
+        customer_id,
+        runtime_key="customer_id",
+        env_key="STRIPE_CUSTOMER_ID",
+        label="customer_id",
+        ctx_obj=ctx_obj,
+    )
+    resolved_price_id = _resolve_identifier(
+        price_id,
+        runtime_key="price_id",
+        env_key="STRIPE_PRICE_ID",
+        label="price_id",
+        ctx_obj=ctx_obj,
+    )
+    metadata = _parse_metadata_json(metadata_json)
+    form = _clean_dict(
+        {
+            "customer": resolved_customer_id,
+            "payment_behavior": "default_incomplete",
+            "items": [{"price": resolved_price_id}],
+            "metadata": metadata or None,
+        }
+    )
+    response = _request_json(ctx_obj, "POST", "/v1/subscriptions", form=form)
+    return _write_result("subscription", "create", ctx_obj, _normalize_subscription(response))
+
+
+def cancel_subscription(ctx_obj: dict[str, Any], *, subscription_id: str | None) -> dict[str, Any]:
+    resolved_subscription_id = _resolve_identifier(
+        subscription_id,
+        runtime_key="subscription_id",
+        env_key="STRIPE_SUBSCRIPTION_ID",
+        label="subscription_id",
+        ctx_obj=ctx_obj,
     )
     response = _request_json(
         ctx_obj,
-        "GET",
-        "/v1/payment_intents",
-        query=query,
+        "DELETE",
+        f"/v1/subscriptions/{parse.quote(resolved_subscription_id, safe='')}",
     )
-    payments = [_normalize_payment_intent(item) for item in response.get("data", []) if isinstance(item, dict)]
-    return _collection_result("payment", "list", ctx_obj, response, payments)
-
-
-def read_payment(ctx_obj: dict[str, Any], *, payment_id: str) -> dict[str, Any]:
-    response = _request_json(ctx_obj, "GET", f"/v1/payment_intents/{parse.quote(payment_id, safe='')}")
-    return _single_result("payment", "read", ctx_obj, _normalize_payment_intent(response))
+    return _write_result("subscription", "cancel", ctx_obj, _normalize_subscription(response))
 
 
 def list_invoices(
@@ -445,88 +760,48 @@ def list_invoices(
     status: str | None = None,
     created_after: str | None = None,
     created_before: str | None = None,
+    starting_after: str | None = None,
 ) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
-    focus = runtime.get("customer_focus")
-    effective_customer_id = customer_id or (
-        focus if isinstance(focus, str) and focus.startswith("cus_") else None
-    )
-    effective_status = status or runtime.get("invoice_status")
-    effective_created_after = created_after or runtime.get("created_after")
-    effective_created_before = created_before or runtime.get("created_before")
-    query: dict[str, Any] = {"limit": limit}
+    effective_customer_id = str(customer_id or runtime.get("customer_id") or "").strip() or None
+    query: dict[str, Any] = {"limit": max(1, min(limit, 100))}
     if effective_customer_id:
         query["customer"] = effective_customer_id
-    if effective_status:
-        query["status"] = effective_status
-    query.update(
-        _build_created_filters(
-            created_after=effective_created_after,
-            created_before=effective_created_before,
-        ),
-    )
+    if status:
+        query["status"] = status
+    if starting_after:
+        query["starting_after"] = starting_after
+    query.update(_build_created_filters(created_after=created_after, created_before=created_before))
     response = _request_json(ctx_obj, "GET", "/v1/invoices", query=query)
     invoices = [_normalize_invoice(item) for item in response.get("data", []) if isinstance(item, dict)]
-    return _collection_result("invoice", "list", ctx_obj, response, invoices)
+    result = _collection_result("invoice", "list", ctx_obj, response, invoices)
+    result["options"] = [_invoice_option(item) for item in invoices if item.get("id")]
+    return result
 
 
-def read_invoice(ctx_obj: dict[str, Any], *, invoice_id: str) -> dict[str, Any]:
-    response = _request_json(ctx_obj, "GET", f"/v1/invoices/{parse.quote(invoice_id, safe='')}")
-    return _single_result("invoice", "read", ctx_obj, _normalize_invoice(response))
-
-
-def run_read_command(ctx_obj: dict[str, Any], command_id: str, inputs: dict[str, Any]) -> dict[str, Any]:
-    if command_id == "account.read":
-        return read_account(ctx_obj)
-    if command_id == "balance.read":
-        return read_balance(ctx_obj)
-    if command_id == "customer.list":
-        return list_customers(
-            ctx_obj,
-            limit=int(inputs.get("limit") or 10),
-            email=str(inputs.get("email") or "").strip() or None,
-        )
-    if command_id == "customer.search":
-        return search_customers(ctx_obj, query_text=str(inputs["query"]))
-    if command_id == "customer.read":
-        return read_customer(ctx_obj, customer_id=str(inputs["customer_id"]))
-    if command_id == "payment.list":
-        return list_payments(
-            ctx_obj,
-            limit=int(inputs.get("limit") or 10),
-            customer_id=str(inputs.get("customer_id") or "").strip() or None,
-            created_after=str(inputs.get("created_after") or "").strip() or None,
-            created_before=str(inputs.get("created_before") or "").strip() or None,
-        )
-    if command_id == "payment.read":
-        return read_payment(ctx_obj, payment_id=str(inputs["payment_id"]))
-    if command_id == "invoice.list":
-        return list_invoices(
-            ctx_obj,
-            limit=int(inputs.get("limit") or 10),
-            customer_id=str(inputs.get("customer_id") or "").strip() or None,
-            status=str(inputs.get("status") or "").strip() or None,
-            created_after=str(inputs.get("created_after") or "").strip() or None,
-            created_before=str(inputs.get("created_before") or "").strip() or None,
-        )
-    if command_id == "invoice.read":
-        return read_invoice(ctx_obj, invoice_id=str(inputs["invoice_id"]))
-
-    raise CliError(
-        code="NOT_IMPLEMENTED",
-        message=f"{command_id} is not implemented",
-        exit_code=10,
-        details={"command_id": command_id, "inputs": inputs},
+def read_invoice(ctx_obj: dict[str, Any], *, invoice_id: str | None) -> dict[str, Any]:
+    resolved_invoice_id = _resolve_identifier(
+        invoice_id,
+        runtime_key="invoice_id",
+        env_key="STRIPE_INVOICE_ID",
+        label="invoice_id",
+        ctx_obj=ctx_obj,
     )
+    response = _request_json(ctx_obj, "GET", f"/v1/invoices/{parse.quote(resolved_invoice_id, safe='')}")
+    return _single_result("invoice", "get", ctx_obj, _normalize_invoice(response))
 
 
-def scaffold_write_command(command_id: str, inputs: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "status": "not_implemented",
-        "scaffold_only": True,
-        "executed": False,
-        "implemented": False,
-        "command_id": command_id,
-        "inputs": inputs,
-        "next_step": "Implement the live Stripe write path once write safety rules are defined.",
-    }
+def send_invoice(ctx_obj: dict[str, Any], *, invoice_id: str | None) -> dict[str, Any]:
+    resolved_invoice_id = _resolve_identifier(
+        invoice_id,
+        runtime_key="invoice_id",
+        env_key="STRIPE_INVOICE_ID",
+        label="invoice_id",
+        ctx_obj=ctx_obj,
+    )
+    response = _request_json(
+        ctx_obj,
+        "POST",
+        f"/v1/invoices/{parse.quote(resolved_invoice_id, safe='')}/send",
+    )
+    return _write_result("invoice", "send", ctx_obj, _normalize_invoice(response))

@@ -6,6 +6,7 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from cli_aos.notion.cli import cli
+import cli_aos.notion.config as config
 import cli_aos.notion.runtime as runtime
 
 
@@ -237,6 +238,28 @@ def test_config_show_redacts_token_values(monkeypatch):
     assert '"token_present": true' in result.output
     assert '"runtime_ready": true' in result.output
     assert '"scaffold_only": false' in result.output
+
+
+def test_runtime_config_prefers_operator_service_key(monkeypatch):
+    monkeypatch.setenv("NOTION_TOKEN", "env-token")
+    monkeypatch.setenv("NOTION_VERSION", "2022-06-28")
+    monkeypatch.setenv("NOTION_WORKSPACE_ID", "env-workspace")
+
+    def fake_service_key_env(name: str, default=None):
+        overrides = {
+            "NOTION_TOKEN": "service-token",
+            "NOTION_VERSION": "2025-02-22",
+            "NOTION_WORKSPACE_ID": "service-workspace",
+        }
+        return overrides.get(name, default)
+
+    monkeypatch.setattr(config, "service_key_env", fake_service_key_env)
+    payload = config.resolve_runtime_values({})
+
+    assert payload["token"] == "service-token"
+    assert payload["token_redacted"] == "ser...ken"
+    assert payload["version"] == "2025-02-22"
+    assert payload["workspace_id"] == "service-workspace"
 
 
 def test_permission_gate_blocks_write_for_readonly():

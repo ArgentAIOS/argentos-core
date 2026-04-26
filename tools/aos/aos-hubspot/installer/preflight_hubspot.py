@@ -4,7 +4,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 from dataclasses import asdict, dataclass
+from functools import lru_cache
+from pathlib import Path
+
+
+ARGENTOS_ROOT = Path(__file__).resolve().parents[4]
+SERVICE_KEY_VARIABLES = {"HUBSPOT_ACCESS_TOKEN", "HUBSPOT_PORTAL_ID"}
 
 
 @dataclass
@@ -14,9 +21,43 @@ class Check:
     details: dict
 
 
+@lru_cache(maxsize=32)
+def _resolve_service_key(variable: str) -> str | None:
+    command = [
+        "node",
+        "--import",
+        "tsx",
+        "-e",
+        (
+            "import { resolveServiceKey } from './src/infra/service-keys.ts';"
+            f" process.stdout.write(resolveServiceKey('{variable}') || '');"
+            " process.exit(0);"
+        ),
+    ]
+    result = subprocess.run(
+        command,
+        cwd=ARGENTOS_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def _service_key_env(variable: str) -> str | None:
+    if variable in SERVICE_KEY_VARIABLES:
+        value = _resolve_service_key(variable)
+        if value:
+            return value
+    return os.getenv(variable)
+
+
 def _first_present(*names: str) -> tuple[str | None, str | None]:
     for name in names:
-        value = os.getenv(name, "").strip()
+        value = (_service_key_env(name) or "").strip()
         if value:
             return name, value
     return None, None

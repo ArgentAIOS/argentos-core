@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -94,13 +95,13 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     voice_url_env = ctx_obj.get("voice_url_env") or TWILIO_VOICE_URL_ENV
     status_callback_env = ctx_obj.get("status_callback_env") or TWILIO_STATUS_CALLBACK_ENV
 
-    account_sid = (os.getenv(account_sid_env) or "").strip()
-    auth_token = (os.getenv(auth_token_env) or "").strip()
-    from_number = (os.getenv(from_number_env) or "").strip()
-    to_number = (os.getenv(to_number_env) or "").strip()
-    message = (os.getenv(message_env) or "").strip()
-    voice_url = (os.getenv(voice_url_env) or "").strip()
-    status_callback = (os.getenv(status_callback_env) or "").strip()
+    account_sid = (service_key_env(account_sid_env) or "").strip()
+    auth_token = (service_key_env(auth_token_env) or "").strip()
+    from_number = (service_key_env(from_number_env) or "").strip()
+    to_number = (service_key_env(to_number_env) or "").strip()
+    message = (service_key_env(message_env) or "").strip()
+    voice_url = (service_key_env(voice_url_env) or "").strip()
+    status_callback = (service_key_env(status_callback_env) or "").strip()
 
     return {
         "backend": BACKEND_NAME,

@@ -19,11 +19,14 @@ Implemented live reads:
 - `excel.read_rows` when workbook context is configured
 - `teams.list_messages` when team and channel IDs are configured
 
-Write paths remain scaffolded and return a truthful `NOT_IMPLEMENTED` error:
+Implemented permission-gated live writes:
 
 - `mail.reply`
 - `mail.send`
 - `calendar.create`
+
+Limited write paths still return a truthful `NOT_IMPLEMENTED` error because of Microsoft Graph application-permission constraints:
+
 - `excel.append_rows`
 - `teams.reply_message`
 
@@ -52,7 +55,6 @@ Write paths remain scaffolded and return a truthful `NOT_IMPLEMENTED` error:
 
 ## Next Steps
 
-1. Finish write-path implementations.
-2. Expand integration coverage against a live Microsoft Graph tenant.
-3. Create a venv and install with `pip install -e '.[dev]'`.
-4. Verify `capabilities`, `health`, `config show`, and `doctor` before assigning the connector to a worker.
+1. Expand integration coverage against a live Microsoft Graph tenant.
+2. Create a venv and install with `pip install -e '.[dev]'`.
+3. Verify `capabilities`, `health`, `config show`, and `doctor` before assigning the connector to a worker.

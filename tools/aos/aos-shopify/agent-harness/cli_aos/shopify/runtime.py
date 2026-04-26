@@ -4,7 +4,7 @@ from typing import Any
 
 from .client import ShopifyAdminClient, ShopifyApiError
 from .config import redacted_config_snapshot, runtime_config
-from .constants import LIVE_READ_COMMANDS, SCAFFOLDED_COMMANDS
+from .constants import LIVE_READ_COMMANDS, LIVE_WRITE_COMMANDS, SCAFFOLDED_COMMANDS
 from .errors import CliError
 
 
@@ -83,6 +83,10 @@ def _picker_subtitle(resource: str, record: dict[str, Any]) -> str | None:
     return " | ".join(str(part) for part in parts if part)
 
 
+def _order_label(order: dict[str, Any]) -> str:
+    return str(order.get("name") or order.get("order_number") or order.get("id") or "unknown")
+
+
 def _api_client() -> ShopifyAdminClient:
     config = runtime_config()
     missing = config["auth"]["missing_keys"]
@@ -135,6 +139,17 @@ def _list_summary(resource: str, count: int, limit: int, pagination: dict[str, A
     return summary
 
 
+def _write_summary(command_id: str, record: dict[str, Any], *, reason: str | None = None) -> str:
+    if command_id == "product.update":
+        return f"Updated product {record.get('id', 'unknown')}: {record.get('title') or 'untitled product'}"
+    if command_id == "order.cancel":
+        suffix = f" ({reason})" if reason else ""
+        return f"Cancelled order {_order_label(record)}{suffix}"
+    if command_id == "fulfillment.create":
+        return f"Created fulfillment {record.get('id', 'unknown')}"
+    return f"Executed {command_id}"
+
+
 def _live_payload(
     *,
     command_id: str,
@@ -173,6 +188,16 @@ def _live_payload(
     return payload
 
 
+def _eligible_fulfillment_orders(fulfillment_orders: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    eligible: list[dict[str, Any]] = []
+    for fulfillment_order in fulfillment_orders:
+        supported_actions = fulfillment_order.get("supported_actions")
+        if not isinstance(supported_actions, list) or "create_fulfillment" not in supported_actions:
+            continue
+        eligible.append(fulfillment_order)
+    return eligible
+
+
 def probe_runtime() -> dict[str, Any]:
     config = runtime_config()
     missing = config["auth"]["missing_keys"]
@@ -202,23 +227,24 @@ def probe_runtime() -> dict[str, Any]:
                 "probe_mode": "live_rest_admin",
                 "live_backend_available": False,
                 "live_reads_enabled": True,
-                "live_writes_enabled": False,
+                "live_writes_enabled": True,
             },
         }
 
     return {
         "ok": True,
         "code": "OK",
-        "message": "Shopify live read connector is ready",
+        "message": "Shopify live Admin connector is ready",
         "details": {
             "probe_mode": "live_rest_admin",
             "live_backend_available": True,
             "live_reads_enabled": True,
-            "live_writes_enabled": False,
+            "live_writes_enabled": True,
             "shop_domain": config["runtime"]["shop_domain"],
             "api_version": config["runtime"]["api_version"],
             "scope": config["runtime"]["scope"],
             "command_defaults": config["runtime"]["command_defaults"],
+            "write_probe": "skipped",
             "shop_id": shop.get("id"),
             "shop_name": shop.get("name"),
             "shop_owner": shop.get("shop_owner"),
@@ -270,21 +296,22 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     if missing:
         status = "needs_setup"
         next_steps = [
-            "Set SHOPIFY_SHOP_DOMAIN and SHOPIFY_ADMIN_ACCESS_TOKEN for the target store.",
-            "Grant read scopes for products, orders, and customers on the custom app.",
-            "Leave write scopes disabled until mutation commands are implemented.",
+            "Set SHOPIFY_SHOP_DOMAIN and SHOPIFY_ADMIN_ACCESS_TOKEN in operator service keys first; process env is only a fallback.",
+            "Grant the Shopify Admin read and write scopes needed for the commands you plan to expose.",
+            "Re-run doctor after the store app has both product/order read scopes and the needed mutation scopes.",
         ]
     elif probe["ok"]:
         status = "ready"
         next_steps = [
             "Use shop.read, product.list/read, order.list/read, and customer.list/read for live data.",
-            "Keep product.update, order.cancel, and fulfillment.create scaffolded until a write bridge exists.",
+            "Use product.update for title/status changes, order.cancel for conservative cancellations, and fulfillment.create for single eligible fulfillment orders.",
+            "If a write fails, verify the Shopify app has the corresponding Admin write scopes for that command.",
         ]
     else:
         status = "degraded"
         next_steps = [
             "Verify the access token can reach the Shopify Admin API from this host.",
-            "Confirm the app still has read scopes for products, orders, and customers.",
+            "Confirm the app still has the required Shopify Admin scopes for both reads and writes.",
             f"Check SHOPIFY_API_VERSION ({config['runtime']['api_version']}) and retry the live probe.",
         ]
     return {
@@ -296,6 +323,7 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "missing_keys": missing,
         "next_steps": next_steps,
         "supported_read_commands": LIVE_READ_COMMANDS,
+        "supported_write_commands": LIVE_WRITE_COMMANDS,
         "scaffolded_commands": SCAFFOLDED_COMMANDS,
         "probe": probe,
         "config": redacted_config_snapshot(),
@@ -476,31 +504,109 @@ def customer_read_snapshot(*, customer_id: str) -> dict[str, Any]:
     )
 
 
-def scaffold_result(
-    ctx_obj: dict[str, Any],
-    *,
-    command_id: str,
-    resource: str,
-    operation: str,
-    inputs: dict[str, Any],
-    consequential: bool = False,
-) -> dict[str, Any]:
-    config = runtime_config()
-    return {
-        "status": "scaffold",
-        "command_id": command_id,
-        "resource": resource,
-        "operation": operation,
-        "executed": False,
-        "scaffold_only": True,
-        "live_backend_available": False,
-        "consequential": consequential,
-        "inputs": inputs,
-        "setup": {
-            "configured": not config["auth"]["missing_keys"],
-            "missing_keys": config["auth"]["missing_keys"],
-            "shop_domain_present": config["runtime"]["shop_domain_present"],
-            "access_token_present": config["runtime"]["access_token_present"],
+def product_update_snapshot(*, product_id: str, title: str | None = None, status: str | None = None) -> dict[str, Any]:
+    client = _api_client()
+    try:
+        product = client.update_product(product_id, title=title, status=status)
+    except ShopifyApiError as err:
+        raise _live_error(err) from err
+    return _live_payload(
+        command_id="product.update",
+        resource="product",
+        operation="update",
+        inputs={"product_id": product_id, "title": title, "status": status},
+        result_key="record",
+        result_value=product,
+        summary=_write_summary("product.update", product),
+        extras={"consequential": True},
+    )
+
+
+def order_cancel_snapshot(*, order_id: str, reason: str | None = None) -> dict[str, Any]:
+    client = _api_client()
+    try:
+        order = client.cancel_order(order_id, reason=reason)
+    except ShopifyApiError as err:
+        raise _live_error(err) from err
+    normalized_reason = (reason or "other").strip().lower()
+    return _live_payload(
+        command_id="order.cancel",
+        resource="order",
+        operation="cancel",
+        inputs={"order_id": order_id, "reason": reason},
+        result_key="record",
+        result_value=order,
+        summary=_write_summary("order.cancel", order, reason=normalized_reason),
+        extras={"consequential": True, "reason_used": normalized_reason},
+    )
+
+
+def fulfillment_create_snapshot(*, order_id: str, tracking_number: str | None = None) -> dict[str, Any]:
+    client = _api_client()
+    try:
+        fulfillment_orders = client.fulfillment_orders(order_id)
+    except ShopifyApiError as err:
+        raise _live_error(err) from err
+
+    eligible = _eligible_fulfillment_orders(fulfillment_orders)
+    if not eligible:
+        raise CliError(
+            code="SHOPIFY_FULFILLMENT_NOT_READY",
+            message="No eligible fulfillment order is available for fulfillment.create",
+            exit_code=4,
+            details={
+                "order_id": order_id,
+                "fulfillment_orders": [
+                    {
+                        "id": item.get("id"),
+                        "status": item.get("status"),
+                        "request_status": item.get("request_status"),
+                        "supported_actions": item.get("supported_actions"),
+                    }
+                    for item in fulfillment_orders
+                ],
+            },
+        )
+    if len(eligible) > 1:
+        raise CliError(
+            code="SHOPIFY_FULFILLMENT_AMBIGUOUS",
+            message="Multiple fulfillment orders are eligible; fulfillment.create refuses to guess",
+            exit_code=4,
+            details={
+                "order_id": order_id,
+                "eligible_fulfillment_order_ids": [item.get("id") for item in eligible],
+                "eligible_fulfillment_orders": [
+                    {
+                        "id": item.get("id"),
+                        "status": item.get("status"),
+                        "request_status": item.get("request_status"),
+                        "supported_actions": item.get("supported_actions"),
+                    }
+                    for item in eligible
+                ],
+            },
+        )
+
+    selected = eligible[0]
+    selected_fulfillment_order_id = str(selected.get("id") or "")
+    try:
+        fulfillment = client.create_fulfillment(
+            fulfillment_order_id=selected_fulfillment_order_id,
+            tracking_number=tracking_number,
+        )
+    except ShopifyApiError as err:
+        raise _live_error(err) from err
+
+    return _live_payload(
+        command_id="fulfillment.create",
+        resource="fulfillment",
+        operation="create",
+        inputs={"order_id": order_id, "tracking_number": tracking_number},
+        result_key="record",
+        result_value=fulfillment,
+        summary=_write_summary("fulfillment.create", fulfillment),
+        extras={
+            "consequential": True,
+            "selected_fulfillment_order_id": selected_fulfillment_order_id or None,
         },
-        "summary": f"{command_id} is scaffold-only and does not perform live Shopify writes yet",
-    }
+    )

@@ -5,6 +5,7 @@ from typing import Any
 
 from . import __version__
 from .constants import BACKEND_NAME, CONNECTOR_AUTH, CONNECTOR_CATEGORY, CONNECTOR_CATEGORIES, CONNECTOR_LABEL, CONNECTOR_RESOURCES, MANIFEST_SCHEMA_VERSION, TOOL_NAME
+from .service_keys import resolve_service_key, service_key_env
 
 REQUIRED_AUTH_KEYS = ["TEAMS_TENANT_ID", "TEAMS_CLIENT_ID", "TEAMS_CLIENT_SECRET"]
 
@@ -32,9 +33,19 @@ def _parse_float(value: str | None, default: float) -> float:
 
 
 def runtime_config() -> dict[str, Any]:
-    env_values = {key: _env(key) for key in REQUIRED_AUTH_KEYS}
+    env_values = {key: (service_key_env(key, "") or "").strip() for key in REQUIRED_AUTH_KEYS}
     missing_keys = [key for key, value in env_values.items() if not value]
     auth_ready = not missing_keys
+    auth_sources = {
+        key: (
+            "service-keys"
+            if resolve_service_key(key)
+            else "process.env"
+            if _env(key)
+            else None
+        )
+        for key in REQUIRED_AUTH_KEYS
+    }
 
     tenant_id = env_values["TEAMS_TENANT_ID"]
     graph_base_url = _env("TEAMS_GRAPH_BASE_URL") or "https://graph.microsoft.com/v1.0"
@@ -79,10 +90,16 @@ def runtime_config() -> dict[str, Any]:
             "resources": CONNECTOR_RESOURCES,
         },
         "auth": {
+            "kind": CONNECTOR_AUTH["kind"],
+            "required": CONNECTOR_AUTH["required"],
             "required_keys": REQUIRED_AUTH_KEYS,
+            "service_keys": list(CONNECTOR_AUTH["service_keys"]),
+            "operator_service_keys": list(CONNECTOR_AUTH["service_keys"]),
             "configured": {key: bool(value) for key, value in env_values.items()},
             "missing_keys": missing_keys,
+            "sources": auth_sources,
             "redacted": {key: _redact(value) for key, value in env_values.items()},
+            "interactive_setup": list(CONNECTOR_AUTH["interactive_setup"]),
         },
         "runtime": runtime,
     }

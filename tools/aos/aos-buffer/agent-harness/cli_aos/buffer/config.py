@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+from .service_keys import service_key_env
 from typing import Iterable
 
 from .constants import (
@@ -48,7 +49,7 @@ class BufferConnectorContext:
 
 def first_configured_value(names: Iterable[str]) -> str | None:
     for name in names:
-        value = os.getenv(name)
+        value = service_key_env(name)
         if value:
             return value
     return None
@@ -57,13 +58,13 @@ def first_configured_value(names: Iterable[str]) -> str | None:
 def resolve_config() -> BufferConfig:
     return BufferConfig(
         api_key=first_configured_value(ENV_API_KEYS),
-        base_url=os.getenv(ENV_BASE_URL, DEFAULT_BASE_URL),
-        graphql_url=os.getenv(ENV_GRAPHQL_URL, DEFAULT_GRAPHQL_URL),
-        account_id=os.getenv(ENV_ACCOUNT_ID),
-        channel_id=os.getenv(ENV_CHANNEL_ID),
-        profile_id=os.getenv(ENV_PROFILE_ID),
-        post_id=os.getenv(ENV_POST_ID),
-        post_text=os.getenv(ENV_POST_TEXT),
+        base_url=service_key_env(ENV_BASE_URL, DEFAULT_BASE_URL),
+        graphql_url=service_key_env(ENV_GRAPHQL_URL, DEFAULT_GRAPHQL_URL),
+        account_id=service_key_env(ENV_ACCOUNT_ID),
+        channel_id=service_key_env(ENV_CHANNEL_ID),
+        profile_id=service_key_env(ENV_PROFILE_ID),
+        post_id=service_key_env(ENV_POST_ID),
+        post_text=service_key_env(ENV_POST_TEXT),
     )
 
 

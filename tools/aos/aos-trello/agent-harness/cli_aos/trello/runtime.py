@@ -19,6 +19,7 @@ from .constants import (
     TOOL_NAME,
 )
 from .errors import CliError
+from .service_keys import service_key_env
 
 
 def _load_manifest() -> dict[str, Any]:
@@ -44,7 +45,7 @@ def capabilities_snapshot() -> dict[str, Any]:
             if command["id"] not in {"capabilities", "config.show", "health", "doctor"}
         },
         "write_support": {
-            command["id"]: "scaffold_only"
+            command["id"]: True
             for command in manifest["commands"]
             if command["action_class"] == "write"
         },
@@ -57,8 +58,8 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
 
 def create_client(ctx_obj: dict[str, Any]) -> TrelloClient:
     runtime = resolve_runtime_values(ctx_obj)
-    api_key = os.getenv(DEFAULT_API_KEY_ENV, "").strip()
-    token = os.getenv(DEFAULT_TOKEN_ENV, "").strip()
+    api_key = (service_key_env(DEFAULT_API_KEY_ENV) or "").strip()
+    token = (service_key_env(DEFAULT_TOKEN_ENV) or "").strip()
     if not api_key or not token:
         raise CliError(
             code="TRELLO_SETUP_REQUIRED",
@@ -67,6 +68,22 @@ def create_client(ctx_obj: dict[str, Any]) -> TrelloClient:
             details={"missing_keys": list(runtime["auth"]["missing_keys"])},
         )
     return TrelloClient(api_key=api_key, token=token, base_url=runtime["runtime"]["api_base_url"])
+
+
+def _write_error(err: TrelloApiError, *, operation: str) -> CliError:
+    code = "TRELLO_AUTH_FAILED" if err.status_code in {401, 403} else "TRELLO_API_ERROR"
+    message = err.message if err.status_code not in {401, 403} else f"Trello {operation} failed because the integration lacks access"
+    return CliError(
+        code=code,
+        message=message,
+        exit_code=5 if err.status_code in {401, 403} else 4,
+        details={
+            "operation": operation,
+            "status_code": err.status_code,
+            "error_code": err.code,
+            "error_details": err.details or {},
+        },
+    )
 
 
 def _compact_labels(items: list[dict[str, Any]], *, limit: int = 3) -> str:
@@ -281,10 +298,10 @@ def _health_checks(config: dict[str, Any], probe: dict[str, Any]) -> list[dict[s
         },
         {
             "name": "write_bridge",
-            "ok": False,
+            "ok": runtime["auth_ready"],
             "details": {
-                "live_writes_enabled": False,
-                "scaffold_only": True,
+                "live_writes_enabled": runtime["auth_ready"],
+                "scaffold_only": False,
             },
         },
     ]
@@ -296,10 +313,10 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     auth_ready = config["runtime"]["auth_ready"]
     if not auth_ready:
         status = "needs_setup"
-        summary = "Trello live reads need TRELLO_API_KEY and TRELLO_TOKEN before any read path can run"
+        summary = "Trello live reads and writes need TRELLO_API_KEY and TRELLO_TOKEN before any command can run"
     elif probe["ok"]:
         status = "ready"
-        summary = "Trello live reads are ready; write commands remain scaffolded"
+        summary = "Trello live reads and the existing write command IDs are ready."
     else:
         status = "degraded"
         summary = probe["message"]
@@ -311,7 +328,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "backend": BACKEND_NAME,
             "live_backend_available": bool(probe.get("ok")),
             "live_read_available": bool(probe.get("ok")),
-            "write_bridge_available": False,
+            "write_bridge_available": auth_ready,
             "scaffold_only": False,
         },
         "auth": config["auth"],
@@ -326,13 +343,13 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "implementation_mode": config["runtime"]["implementation_mode"],
         "live_backend_available": bool(probe.get("ok")),
         "live_read_available": bool(probe.get("ok")),
-        "write_bridge_available": False,
+        "write_bridge_available": auth_ready,
         "runtime_ready": bool(probe.get("ok")),
         "probe": probe,
         "next_steps": [
             f"Set {DEFAULT_API_KEY_ENV} and {DEFAULT_TOKEN_ENV} in API Keys.",
             "Optionally pin board, list, card, and member ids to make worker defaults deterministic.",
-            "Keep card.create_draft and card.update_draft scaffolded until Trello write workflows are approved.",
+            "Run card.create_draft and card.update_draft in write mode; both command IDs now perform live Trello writes.",
         ],
     }
 
@@ -369,11 +386,11 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "card.list",
             "card.read",
         ],
-        "scaffolded_commands": ["card.create_draft", "card.update_draft"],
+        "supported_write_commands": ["card.create_draft", "card.update_draft"],
         "next_steps": [
             f"Set {DEFAULT_API_KEY_ENV} and {DEFAULT_TOKEN_ENV} in API Keys.",
             "Use account.read to confirm the connected member before choosing board, list, and card pickers.",
-            "Decide whether card.create_draft and card.update_draft should remain scaffold-only or gain a write bridge.",
+            "Use write mode when executing card.create_draft and card.update_draft; the legacy command IDs are preserved for compatibility.",
         ],
         "probe": probe,
     }
@@ -672,3 +689,96 @@ def scaffold_result(
         ),
     }
 
+
+def create_card_result(ctx_obj: dict[str, Any], *, list_id: str | None, name: str, desc: str) -> dict[str, Any]:
+    client = create_client(ctx_obj)
+    resolved_list_id = _list_id(ctx_obj, list_id)
+    try:
+        card = client.create_card(list_id=resolved_list_id, name=name, desc=desc)
+    except TrelloApiError as err:
+        raise _write_error(err, operation="card.create_draft") from err
+
+    card_name = card.get("name") or card.get("id") or name
+    return {
+        "status": "live_write",
+        "backend": BACKEND_NAME,
+        "command_id": "card.create_draft",
+        "resource": "card",
+        "operation": "create",
+        "executed": True,
+        "consequential": True,
+        "live_write_available": True,
+        "scaffold_only": False,
+        "inputs": {
+            "list_id": resolved_list_id,
+            "name": name,
+            "desc": desc,
+        },
+        "card": card,
+        "scope": {"kind": "list", "id": resolved_list_id, "selection_surface": "card"},
+        "scope_preview": _scope_preview(
+            command_id="card.create_draft",
+            selection_surface="card",
+            scope_id=resolved_list_id,
+            label=str(card_name),
+        ),
+        "picker": _picker(
+            [
+                _picker_item(card, kind="card", scope_kind="list", scope_preview=f"List {resolved_list_id}")
+            ],
+            kind="card",
+        ),
+        "summary": f"Created Trello card {card_name}.",
+    }
+
+
+def update_card_result(
+    ctx_obj: dict[str, Any],
+    *,
+    card_id: str | None,
+    name: str | None,
+    desc: str | None,
+) -> dict[str, Any]:
+    if name is None and desc is None:
+        raise CliError(
+            code="TRELLO_UPDATE_REQUIRED",
+            message="Provide at least one field to update",
+            exit_code=4,
+            details={"required_any_of": ["name", "desc"]},
+        )
+
+    client = create_client(ctx_obj)
+    resolved_card_id = _card_id(ctx_obj, card_id)
+    try:
+        card = client.update_card(resolved_card_id, name=name, desc=desc)
+    except TrelloApiError as err:
+        raise _write_error(err, operation="card.update_draft") from err
+
+    card_name = card.get("name") or card.get("id") or resolved_card_id
+    return {
+        "status": "live_write",
+        "backend": BACKEND_NAME,
+        "command_id": "card.update_draft",
+        "resource": "card",
+        "operation": "update",
+        "executed": True,
+        "consequential": True,
+        "live_write_available": True,
+        "scaffold_only": False,
+        "inputs": {"card_id": resolved_card_id, "name": name, "desc": desc},
+        "card": card,
+        "scope": {"kind": "card", "id": resolved_card_id, "selection_surface": "card"},
+        "scope_preview": _scope_preview(
+            command_id="card.update_draft",
+            selection_surface="card",
+            scope_id=resolved_card_id,
+            label=str(card_name),
+        ),
+        "picker": _picker(
+            [
+                _picker_item(card, kind="card", scope_kind="card", scope_preview=f"Card {resolved_card_id}")
+            ],
+            kind="card",
+        ),
+        "summary": f"Updated Trello card {card_name}.",
+    }

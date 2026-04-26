@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -41,17 +42,17 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     share_email_env = ctx_obj.get("share_email_env") or GOOGLE_DRIVE_SHARE_EMAIL_ENV
     permission_env = ctx_obj.get("permission_env") or GOOGLE_DRIVE_PERMISSION_ENV
 
-    base_url = (os.getenv(base_url_env) or DEFAULT_BASE_URL).strip().rstrip("/")
-    client_id = (os.getenv(client_id_env) or "").strip()
-    client_secret = (os.getenv(client_secret_env) or "").strip()
-    refresh_token = (os.getenv(refresh_token_env) or "").strip()
-    folder_id = (os.getenv(folder_id_env) or "").strip()
-    file_id = (os.getenv(file_id_env) or "").strip()
-    file_name = (os.getenv(file_name_env) or "").strip()
-    mime_type = (os.getenv(mime_type_env) or "").strip()
-    query = (os.getenv(query_env) or "").strip()
-    share_email = (os.getenv(share_email_env) or "").strip()
-    permission = (os.getenv(permission_env) or "").strip()
+    base_url = (service_key_env(base_url_env) or DEFAULT_BASE_URL).strip().rstrip("/")
+    client_id = (service_key_env(client_id_env) or "").strip()
+    client_secret = (service_key_env(client_secret_env) or "").strip()
+    refresh_token = (service_key_env(refresh_token_env) or "").strip()
+    folder_id = (service_key_env(folder_id_env) or "").strip()
+    file_id = (service_key_env(file_id_env) or "").strip()
+    file_name = (service_key_env(file_name_env) or "").strip()
+    mime_type = (service_key_env(mime_type_env) or "").strip()
+    query = (service_key_env(query_env) or "").strip()
+    share_email = (service_key_env(share_email_env) or "").strip()
+    permission = (service_key_env(permission_env) or "").strip()
 
     return {
         "backend": BACKEND_NAME,

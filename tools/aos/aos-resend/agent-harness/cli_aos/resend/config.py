@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -26,10 +27,10 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     audience_id_env = ctx_obj.get("audience_id_env") or RESEND_AUDIENCE_ID_ENV
     domain_id_env = ctx_obj.get("domain_id_env") or RESEND_DOMAIN_ID_ENV
 
-    api_key = (os.getenv(api_key_env) or "").strip()
-    from_email = (os.getenv(from_email_env) or "").strip()
-    audience_id = (os.getenv(audience_id_env) or "").strip()
-    domain_id = (os.getenv(domain_id_env) or "").strip()
+    api_key = (service_key_env(api_key_env) or "").strip()
+    from_email = (service_key_env(from_email_env) or "").strip()
+    audience_id = (service_key_env(audience_id_env) or "").strip()
+    domain_id = (service_key_env(domain_id_env) or "").strip()
 
     return {
         "backend": BACKEND_NAME,

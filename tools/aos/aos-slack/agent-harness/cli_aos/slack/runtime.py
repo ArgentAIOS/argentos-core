@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from .service_keys import service_key_env
 from typing import Any
 from urllib import error, parse, request
 
@@ -55,7 +56,7 @@ _BACKEND_ERROR_CODES = {
 
 def _resolve_env(*names: str) -> tuple[str | None, str | None]:
     for name in names:
-        value = os.getenv(name)
+        value = service_key_env(name)
         if value:
             return value, name
     return None, None

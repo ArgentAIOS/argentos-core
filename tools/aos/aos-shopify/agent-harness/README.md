@@ -1,6 +1,6 @@
 # aos-shopify agent harness
 
-Python Click harness for the Shopify connector scaffold.
+Python Click harness for the Shopify Admin connector.
 
 ## Install
 
@@ -16,13 +16,17 @@ aos-shopify --json doctor
 
 ## Runtime
 
-Required environment:
+Required service keys:
 
 - `SHOPIFY_SHOP_DOMAIN`
 - `SHOPIFY_ADMIN_ACCESS_TOKEN`
 
+Operator-controlled service keys are resolved first. Process env is only a fallback.
+
 The harness is setup-oriented and truthful:
 
-- `health` and `doctor` only report configuration readiness.
-- All worker-visible commands are scaffold-only.
-- No live Shopify writes are implemented yet.
+- `health` and `doctor` report live probe readiness and supported command surfaces.
+- Read commands execute live against the Shopify Admin REST API.
+- `product.update` only mutates `title` and `status`.
+- `order.cancel` only performs conservative cancellations.
+- `fulfillment.create` only executes when exactly one fulfillment order is eligible.

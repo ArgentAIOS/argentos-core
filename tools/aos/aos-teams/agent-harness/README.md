@@ -27,4 +27,4 @@ Optional read scopes:
 - `TEAMS_TEAM_ID` for `channel.list`
 - `TEAMS_USER_ID` for `meeting.list`
 
-Write commands are scaffolded and will return `NOT_IMPLEMENTED`.
+`channel.create` and `meeting.create` use live Microsoft Graph writes in `write` mode or higher. `message.send`, `message.reply`, `chat.send`, `file.upload`, and `adaptive_card.send` remain disabled with `NOT_IMPLEMENTED` because they require delegated, bot, migration-only, or file-payload flows outside this operator service-key connector.
