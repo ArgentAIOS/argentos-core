@@ -307,16 +307,10 @@ export function AppForge({
           style={{ background: "rgba(0, 0, 0, 0.85)", backdropFilter: "blur(20px)" }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-8 py-5 shrink-0">
-            <button
-              onClick={onClose}
-              className="p-2 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-colors"
-              title="Close"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <h1 className="text-xl font-light text-white/80 tracking-wide">App Forge</h1>
+          <div className="relative flex items-center justify-end px-8 py-5 shrink-0">
+            <h1 className="absolute left-1/2 -translate-x-1/2 text-xl font-light text-white/80 tracking-wide">
+              App Forge
+            </h1>
 
             <div className="flex items-center gap-3">
               <div className="relative">
@@ -341,6 +335,13 @@ export function AppForge({
                 aria-pressed={deleteMode}
               >
                 <Trash2 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={onClose}
+                className="p-2 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
               </button>
             </div>
           </div>
