@@ -6,6 +6,8 @@ let testPort = 0;
 let _cdpBaseUrl = "";
 let reachable = false;
 let cfgAttachOnly = false;
+let cfgLocalLaunchTimeoutMs: number | undefined;
+let cfgLocalCdpReadyTimeoutMs: number | undefined;
 let createTargetId: string | null = null;
 let prevGatewayPort: string | undefined;
 
@@ -93,6 +95,8 @@ vi.mock("../config/config.js", async (importOriginal) => {
         color: "#FF4500",
         attachOnly: cfgAttachOnly,
         headless: true,
+        localLaunchTimeoutMs: cfgLocalLaunchTimeoutMs,
+        localCdpReadyTimeoutMs: cfgLocalCdpReadyTimeoutMs,
         defaultProfile: "argent",
         profiles: {
           argent: { cdpPort: testPort + 1, color: "#FF4500" },
@@ -103,22 +107,42 @@ vi.mock("../config/config.js", async (importOriginal) => {
   };
 });
 
-const launchCalls = vi.hoisted(() => [] as Array<{ port: number }>);
+const launchCalls = vi.hoisted(
+  () =>
+    [] as Array<{
+      port: number;
+      localLaunchTimeoutMs?: number;
+      localCdpReadyTimeoutMs?: number;
+    }>,
+);
+const cdpReadyCalls = vi.hoisted(() => [] as Array<{ http?: number; ws?: number }>);
 vi.mock("./chrome.js", () => ({
-  isChromeCdpReady: vi.fn(async () => reachable),
-  isChromeReachable: vi.fn(async () => reachable),
-  launchArgentChrome: vi.fn(async (_resolved: unknown, profile: { cdpPort: number }) => {
-    launchCalls.push({ port: profile.cdpPort });
-    reachable = true;
-    return {
-      pid: 123,
-      exe: { kind: "chrome", path: "/fake/chrome" },
-      userDataDir: "/tmp/argent",
-      cdpPort: profile.cdpPort,
-      startedAt: Date.now(),
-      proc,
-    };
+  isChromeCdpReady: vi.fn(async (_cdpUrl: string, http?: number, ws?: number) => {
+    cdpReadyCalls.push({ http, ws });
+    return reachable;
   }),
+  isChromeReachable: vi.fn(async () => reachable),
+  launchArgentChrome: vi.fn(
+    async (
+      resolved: { localLaunchTimeoutMs?: number; localCdpReadyTimeoutMs?: number },
+      profile: { cdpPort: number },
+    ) => {
+      launchCalls.push({
+        port: profile.cdpPort,
+        localLaunchTimeoutMs: resolved.localLaunchTimeoutMs,
+        localCdpReadyTimeoutMs: resolved.localCdpReadyTimeoutMs,
+      });
+      reachable = true;
+      return {
+        pid: 123,
+        exe: { kind: "chrome", path: "/fake/chrome" },
+        userDataDir: "/tmp/argent",
+        cdpPort: profile.cdpPort,
+        startedAt: Date.now(),
+        proc,
+      };
+    },
+  ),
   resolveArgentUserDataDir: vi.fn(() => "/tmp/argent"),
   stopArgentChrome: vi.fn(async () => {
     reachable = false;
@@ -188,7 +212,11 @@ describe("browser control server", () => {
   beforeEach(async () => {
     reachable = false;
     cfgAttachOnly = false;
+    cfgLocalLaunchTimeoutMs = undefined;
+    cfgLocalCdpReadyTimeoutMs = undefined;
     createTargetId = null;
+    launchCalls.length = 0;
+    cdpReadyCalls.length = 0;
 
     cdpMocks.createTargetViaCdp.mockImplementation(async () => {
       if (createTargetId) {
@@ -275,6 +303,8 @@ describe("browser control server", () => {
   });
 
   it("serves status + starts browser when requested", async () => {
+    cfgLocalLaunchTimeoutMs = 12_345;
+    cfgLocalCdpReadyTimeoutMs = 90;
     const { startBrowserControlServerFromConfig } = await import("./server.js");
     const started = await startBrowserControlServerFromConfig();
     expect(started?.port).toBe(testPort);
@@ -297,6 +327,11 @@ describe("browser control server", () => {
     expect(s2.pid).toBe(123);
     expect(s2.chosenBrowser).toBe("chrome");
     expect(launchCalls.length).toBeGreaterThan(0);
+    expect(launchCalls.at(-1)).toMatchObject({
+      localLaunchTimeoutMs: 12_345,
+      localCdpReadyTimeoutMs: 90,
+    });
+    expect(cdpReadyCalls.some((call) => call.http !== undefined && call.http <= 90)).toBe(true);
   });
 
   it("handles tabs: list, open, focus conflict on ambiguous prefix", async () => {

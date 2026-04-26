@@ -215,6 +215,12 @@ Current active core threadmasters: AppForge 2.0, Work flow building master, AOU 
 
 Lane: OpenClaw 4.24 realtime/browser/marketplace comparison. Branch/commit: `codex/aos-next-connector-wave` at `ad3fb0b9`. Owned files/directories for this lane: `ops/THREADMASTER_COORDINATION.md` for coordination updates; future comparison artifacts under `ops/**` only unless the board is updated first. Shared contract changes: none yet. Workflows/AppForge/AOU reaction: proposed direction is browser harness first, provider-neutral realtime voice substrate second, then Google Meet as a marketplace-distributed capability plugin; no implementation dependency is active until a follow-up plan claims specific files/contracts.
 
+### 2026-04-26 — OpenClaw Browser Runtime Next Wave
+
+Lane: `openclaw`. Branch/commit: `codex/openclaw-browser-runtime` from `origin/dev` / `99a453b0`. Owned files for this slice: `src/browser/chrome.ts`, `src/browser/server-context.availability.ts`, `src/browser/routes/agent.act.ts`, and focused browser tests covering launch/readiness/action timeout behavior. Shared contract change: browser runtime now consumes the existing browser timeout/readiness config fields instead of leaving them manifest-only. Workflows/AppForge/AOU/AOS reaction: browser actions can rely on configured default action timeouts flowing into Playwright calls; no lane should import browser internals. Exclusions: no voice-call runtime promotion, no Google Meet live join/create/leave/recover, no Workflows/AppForge/AOS imports, and no `ops/threadmaster-bus/**` feature payload.
+
+Verification: focused browser tests passed (`config`, `chrome`, `server.agent-contract-snapshot-endpoints`, `server.agent-contract-form-layout-act-commands`, `server.serves-status-starts-browser-requested`), focused `oxlint --type-aware` passed on touched files, `git diff --check` passed, repo-lane passed, and live local Chrome endpoint smoke passed with `/start`, `/navigate`, `/act wait`, and `/act evaluate`. Full repo `tsc --noEmit` remains blocked by unrelated current-dev type errors outside the browser slice.
+
 ## Verification Snapshot
 
 Latest AppForge focused verification after rebase onto `origin/dev`:
