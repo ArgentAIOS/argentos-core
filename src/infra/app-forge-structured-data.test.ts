@@ -367,4 +367,15 @@ describe("forge structured data metadata", () => {
     expect(message).toContain("Reload AppForge");
     expect(forgeStructuredDataTestUtils.isRevisionConflictError(message)).toBe(true);
   });
+
+  it("formats timeout and abort save failures for operator recovery", () => {
+    expect(
+      forgeStructuredDataTestUtils.formatStructuredSaveError(
+        new Error("signal is aborted without reason"),
+      ),
+    ).toBe("Timed out while saving structured base changes. Try again.");
+    expect(
+      forgeStructuredDataTestUtils.formatStructuredSaveError(new Error("Request timeout")),
+    ).toBe("Timed out while saving structured base changes. Try again.");
+  });
 });

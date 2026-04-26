@@ -50,6 +50,7 @@ interface AppForgeProps {
   onNewApp: (name: string, description: string) => void;
   onRestoreApp: (appId: string) => void;
   onFocusApp: (appId: string) => void;
+  gatewayConnected?: boolean;
   gatewayRequest?: GatewayRequestFn;
   onEmitWorkflowEvent?: (appId: string, event: AppForgeWorkflowEventRequest) => Promise<boolean>;
 }
@@ -333,6 +334,7 @@ export function AppForge({
   onNewApp,
   onRestoreApp,
   onFocusApp,
+  gatewayConnected = false,
   gatewayRequest,
   onEmitWorkflowEvent,
 }: AppForgeProps) {
@@ -493,7 +495,7 @@ export function AppForge({
     apps: filteredApps,
     selectedAppId,
     onSelectApp: setSelectedAppId,
-    gatewayRequest,
+    gatewayRequest: gatewayConnected ? gatewayRequest : undefined,
     emitWorkflowEvent: onEmitWorkflowEvent,
   });
   const visibleFields = structured.activeTable?.fields.slice(0, 6) ?? [];

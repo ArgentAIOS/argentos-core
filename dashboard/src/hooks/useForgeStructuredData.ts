@@ -655,7 +655,157 @@ function formatStructuredSaveError(err: unknown): string {
   if (isRevisionConflictError(err)) {
     return `This table changed elsewhere. Reload AppForge and try again. ${message}`;
   }
+  if (/aborted|aborterror|request timeout|timed out/i.test(message)) {
+    return "Timed out while saving structured base changes. Try again.";
+  }
   return message || "Failed to save structured base";
+}
+
+async function fetchSameOriginLocalApi(
+  path: string,
+  init: RequestInit,
+  timeoutMs = 10_000,
+): Promise<Response> {
+  if (typeof window !== "undefined" && typeof window.XMLHttpRequest === "function") {
+    return xhrSameOriginLocalApi(path, init, timeoutMs);
+  }
+  if (!timeoutMs || timeoutMs <= 0) {
+    return fetch(path, init);
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(path, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function xhrSameOriginLocalApi(
+  path: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const xhr = new window.XMLHttpRequest();
+    xhr.open(init.method ?? "GET", path, true);
+    xhr.timeout = timeoutMs;
+    const headers = new Headers(init.headers ?? undefined);
+    headers.forEach((value, key) => xhr.setRequestHeader(key, value));
+    xhr.addEventListener("load", () => {
+      resolve(
+        new Response(xhr.responseText, {
+          status: xhr.status,
+          statusText: xhr.statusText,
+          headers: parseXhrHeaders(xhr.getAllResponseHeaders()),
+        }),
+      );
+    });
+    xhr.addEventListener("error", () =>
+      reject(new Error("Failed to save structured base metadata")),
+    );
+    xhr.addEventListener("timeout", () => reject(new Error("Request timeout")));
+    xhr.addEventListener("abort", () => reject(new Error("signal is aborted without reason")));
+    const body = typeof init.body === "string" ? init.body : null;
+    xhr.send(body);
+  });
+}
+
+function parseXhrHeaders(rawHeaders: string): Headers {
+  const headers = new Headers();
+  for (const line of rawHeaders.trim().split(/[\r\n]+/)) {
+    if (!line) {
+      continue;
+    }
+    const separator = line.indexOf(":");
+    if (separator <= 0) {
+      continue;
+    }
+    headers.append(line.slice(0, separator).trim(), line.slice(separator + 1).trim());
+  }
+  return headers;
+}
+
+function dashboardApiTokenFromUrl(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const params = new URLSearchParams(window.location.search);
+  return (params.get("api_token") ?? params.get("token"))?.trim() || null;
+}
+
+function directDashboardApiUrl(path: string): string | null {
+  if (typeof window === "undefined" || !path.startsWith("/")) {
+    return null;
+  }
+  return `http://${window.location.hostname}:9242${path}`;
+}
+
+async function patchStructuredMetadata(
+  app: ForgeApp,
+  base: ForgeStructuredBase,
+): Promise<Response> {
+  const payload = JSON.stringify({ metadata: metadataWithBase(app, base) });
+  const token = dashboardApiTokenFromUrl();
+  const patchInit = {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: payload,
+  };
+  const actionInit = {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=UTF-8",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: payload,
+  };
+  const actionPath = `/api/apps/${app.id}/appforge-metadata`;
+  const directActionUrl = directDashboardApiUrl(actionPath);
+  try {
+    const response = await fetchSameOriginLocalApi(
+      directActionUrl ?? actionPath,
+      actionInit,
+      6_000,
+    );
+    if (response.ok || (response.status !== 404 && response.status !== 405)) {
+      return response;
+    }
+  } catch (primaryErr) {
+    try {
+      return await fetchLocalApi(`/api/apps/${app.id}`, patchInit, 6_000);
+    } catch {
+      throw primaryErr;
+    }
+  }
+  return fetchLocalApi(`/api/apps/${app.id}`, patchInit, 6_000);
+}
+
+async function emitWorkflowEventBestEffort(
+  emitWorkflowEvent: UseForgeStructuredDataOptions["emitWorkflowEvent"],
+  appId: string,
+  event: Omit<AppForgeWorkflowEventRequest, "payload"> & {
+    payload?: Record<string, unknown>;
+  },
+): Promise<void> {
+  if (!emitWorkflowEvent) {
+    return;
+  }
+  try {
+    const emitted = await emitWorkflowEvent(appId, event);
+    if (!emitted) {
+      console.warn("[AppForge] Workflow event emit failed after structured save.", {
+        appId,
+        eventType: event.eventType,
+      });
+    }
+  } catch (err) {
+    console.warn("[AppForge] Workflow event emit failed after structured save.", {
+      appId,
+      eventType: event.eventType,
+      error: err,
+    });
+  }
 }
 
 async function mirrorGatewayMutation(
@@ -854,11 +1004,7 @@ export function useForgeStructuredData({
         }
 
         try {
-          const response = await fetchLocalApi(`/api/apps/${app.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ metadata: metadataWithBase(app, nextBase) }),
-          });
+          const response = await patchStructuredMetadata(app, nextBase);
           if (!response.ok) {
             throw new Error(`Failed to save structured base metadata (${response.status})`);
           }
@@ -877,10 +1023,10 @@ export function useForgeStructuredData({
           throw gatewayError ?? metadataError ?? new Error("Failed to save structured base");
         }
 
-        if (event && emitWorkflowEvent) {
-          await emitWorkflowEvent(app.id, event);
-        }
         setSaveStatus({ kind: "saved", message: "Saved", updatedAt: nowIso() });
+        if (event) {
+          void emitWorkflowEventBestEffort(emitWorkflowEvent, app.id, event);
+        }
       } catch (err) {
         const message = formatStructuredSaveError(err);
         setError(message);
