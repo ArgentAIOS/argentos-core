@@ -328,7 +328,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
             break;
 
           case "output":
-            stepResult = await executeOutput(node, context);
+            stepResult = await executeOutput(node, context, params.actions);
             break;
 
           default: {
@@ -2335,9 +2335,13 @@ function executeGate(node: GateNode, context: PipelineContext, _edges: WorkflowE
 
 /**
  * Execute an output node — delivers the pipeline result.
- * Sprint 2: stubs that log delivery and return confirmation.
+ * DocPanel persistence is injected by the gateway; standalone runs return rendered artifacts.
  */
-async function executeOutput(node: OutputNode, context: PipelineContext): Promise<ItemSet> {
+async function executeOutput(
+  node: OutputNode,
+  context: PipelineContext,
+  actions?: ActionExecutors,
+): Promise<ItemSet> {
   const config = node.config;
   const outputType = config.outputType;
   const lastOutput = getLastOutput(context);
@@ -2347,20 +2351,37 @@ async function executeOutput(node: OutputNode, context: PipelineContext): Promis
   switch (outputType) {
     case "docpanel": {
       const content = resolveOutputPayload(config, context);
-      log.warn("docpanel output not yet wired — returning mock", {
-        nodeId: node.id,
-        title: config.title,
-      });
+      const title = resolveTemplate(config.title, context);
+      const format = config.format ?? "markdown";
+      const saved = actions?.saveToDocPanel
+        ? await actions.saveToDocPanel(title, content, format)
+        : undefined;
+      if (!actions?.saveToDocPanel) {
+        log.warn("docpanel output has no persistence executor — returning rendered artifact", {
+          nodeId: node.id,
+          title,
+        });
+      }
+      if (saved && !saved.ok) {
+        throw new Error(`DocPanel save failed for output "${title}"`);
+      }
+      const docId = saved?.docId ?? `${context.runId}-${node.id}`;
       return {
         items: [
           {
-            json: { outputType: "docpanel", title: config.title, content },
+            json: {
+              outputType: "docpanel",
+              title,
+              content,
+              saved: Boolean(saved?.ok),
+              docId: saved?.docId,
+            },
             text: content,
             artifacts: [
               {
                 type: "docpanel",
-                id: `doc:${context.runId}-${node.id}`,
-                title: config.title,
+                id: `doc:${docId}`,
+                title,
               },
             ],
           },
@@ -2620,9 +2641,10 @@ function evaluateCondition(expr: ConditionExpr, data: Record<string, unknown>): 
     return !evaluateCondition(expr.not, data);
   }
   if ("evaluator" in expr) {
-    // Agent-evaluated condition — Sprint 3
-    log.warn("agent-evaluated condition not yet implemented, defaulting to true");
-    return true;
+    log.warn("agent-evaluated condition not yet implemented, failing closed", {
+      agentId: expr.agentId,
+    });
+    return false;
   }
 
   // Simple field comparison

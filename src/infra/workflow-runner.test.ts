@@ -269,6 +269,50 @@ describe("executeWorkflow", () => {
     });
   });
 
+  it("persists DocPanel output through the supplied action executor", async () => {
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output: OutputNode = {
+      ...makeOutput(),
+      config: {
+        outputType: "docpanel",
+        title: "Brief {{previous.result}}",
+        format: "markdown",
+        sourceMode: "previous",
+        contentTemplate: "Rendered: {{previous.result}}",
+      },
+    };
+    const saveToDocPanel = vi.fn(async () => ({ ok: true, docId: "doc-real-1" }));
+
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-output-save",
+      dispatcher: mockDispatcher,
+      actions: { saveToDocPanel },
+    });
+
+    expect(saveToDocPanel).toHaveBeenCalledWith(
+      "Brief mock output",
+      "Rendered: mock output",
+      "markdown",
+    );
+    expect(result.steps[2].output.items[0]).toMatchObject({
+      text: "Rendered: mock output",
+      json: {
+        outputType: "docpanel",
+        title: "Brief mock output",
+        saved: true,
+        docId: "doc-real-1",
+      },
+      artifacts: [{ type: "docpanel", id: "doc:doc-real-1", title: "Brief mock output" }],
+    });
+  });
+
   it("stores Knowledge output with the rendered payload", async () => {
     storageMocks.createMemoryItem.mockClear();
     const trigger = makeTrigger();
@@ -852,6 +896,43 @@ describe("condition evaluation via gates", () => {
 
     const gateStep = result.steps.find((s) => s.nodeKind === "gate");
     expect(gateStep!.output.items[0].json.result).toBe(true);
+  });
+
+  it("fails closed for agent-evaluated conditions until agent evaluation is implemented", async () => {
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const dispatcher = makeMockDispatcher(async () => ({
+      items: [{ json: { confidence: "unclear" }, text: "Needs judgment" }],
+    }));
+    const gate: GateNode = {
+      kind: "gate",
+      id: "gate-agent-eval",
+      label: "Agent Judgment",
+      config: {
+        gateType: "condition",
+        expression: {
+          evaluator: "agent",
+          agentId: "reviewer",
+          question: "Should this proceed?",
+        },
+        trueEdge: "e-pass",
+        falseEdge: "e-fail",
+      },
+    };
+    const output = makeOutput();
+
+    const result = await executeWorkflow({
+      workflow: makeWorkflow(
+        [trigger, agent, gate, output],
+        [edge(trigger.id, agent.id), edge(agent.id, gate.id), edge(gate.id, output.id)],
+      ),
+      runId: "run-agent-eval-fail-closed",
+      dispatcher,
+    });
+
+    const gateStep = result.steps.find((s) => s.nodeKind === "gate");
+    expect(gateStep!.output.items[0].json.result).toBe(false);
+    expect(gateStep!.output.items[0].json.selectedEdge).toBe("e-fail");
   });
 
   it("persists wait_event gates and returns waiting_event", async () => {
