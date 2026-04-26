@@ -24,4 +24,6 @@ The harness accepts these environment variables for live bridge configuration:
 - `ZAPIER_ZAP_NAME`
 - `ZAPIER_ZAP_STATUS`
 
+Operator-controlled API Keys are the primary source for `ZAPIER_API_URL`, `ZAPIER_API_KEY`, and `ZAPIER_WEBHOOK_BASE_URL`. Local environment variables are only a harness fallback when those operator-managed keys are unavailable.
+
 Read-style zap commands call the configured Zapier bridge when `ZAPIER_API_URL` and `ZAPIER_API_KEY` are set and reachable. Trigger execution uses the same bridge and is guarded by `write` mode.

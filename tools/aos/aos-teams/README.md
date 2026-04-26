@@ -1,6 +1,6 @@
 # aos-teams
 
-Agent-native Microsoft Teams workflow connector for messaging, meetings, and Adaptive Cards.
+Agent-native Microsoft Teams workflow connector for team discovery, channel management, and online meetings.
 
 ## Generated From ArgentOS
 
@@ -12,8 +12,9 @@ Agent-native Microsoft Teams workflow connector for messaging, meetings, and Ada
 ## Relationship to aos-m365
 
 `aos-m365` covers the full Microsoft 365 suite (mail, calendar, files, Excel, Teams basics).
-`aos-teams` is a dedicated Teams workflow connector with deeper coverage: meetings, 1:1 chats,
-Adaptive Cards, and channel management beyond what the M365 connector provides.
+`aos-teams` is the dedicated Teams slice for live team discovery, channel management, and
+online-meeting creation without pretending that delegated chat/card/file flows are available
+through the same app-only harness.
 
 ## Commands
 
@@ -21,16 +22,11 @@ Adaptive Cards, and channel management beyond what the M365 connector provides.
 - `health` (readonly)
 - `config.show` (readonly)
 - `doctor` (readonly)
-- `message.send` (write)
-- `message.reply` (write)
+- `team.list` (readonly)
 - `channel.list` (readonly)
 - `channel.create` (write)
-- `chat.send` (write)
-- `meeting.create` (write)
 - `meeting.list` (readonly)
-- `team.list` (readonly)
-- `file.upload` (write)
-- `adaptive_card.send` (write)
+- `meeting.create` (write)
 
 ## Auth
 
@@ -40,11 +36,19 @@ Adaptive Cards, and channel management beyond what the M365 connector provides.
   - TEAMS_TENANT_ID
   - TEAMS_CLIENT_ID
   - TEAMS_CLIENT_SECRET
-- Required Graph permissions: ChannelMessage.Send, Channel.ReadBasic.All, Team.ReadBasic.All, Chat.ReadWrite, OnlineMeetings.ReadWrite, Files.ReadWrite.All
+- Operator linking keys:
+  - TEAMS_TEAM_ID
+  - TEAMS_USER_ID
+- Required Graph permissions depend on the surfaced commands:
+  - `team.list`: `GroupMember.Read.All` (or broader group read permission)
+  - `channel.list`: `ChannelSettings.Read.Group` or `Channel.ReadBasic.All`
+  - `channel.create`: `Channel.Create.Group` or `Channel.Create`
+  - `meeting.list`: `Calendars.ReadBasic` or `Calendars.Read`
+  - `meeting.create`: `OnlineMeetings.ReadWrite.All` plus an application access policy for `TEAMS_USER_ID`
 
 ## Next Steps
 
 1. Run `aos-teams --json health` and `aos-teams --json doctor` against configured credentials.
 2. Verify `team.list` and `channel.list` with live Graph permissions.
-3. Test `message.send` and `chat.send` in a sandbox team.
-4. Verify `meeting.create` and `adaptive_card.send` with appropriate permissions.
+3. Set `TEAMS_TEAM_ID` before using `channel.create` without an explicit team ID argument.
+4. Set `TEAMS_USER_ID` and verify the application access policy before using `meeting.list` or `meeting.create`.

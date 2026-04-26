@@ -1,26 +1,62 @@
 import json
+from pathlib import Path
 
 from click.testing import CliRunner
+import pytest
 
 import cli_aos.hubspot.bridge as bridge
 import cli_aos.hubspot.commands as commands
-import cli_aos.hubspot.config as config
 import cli_aos.hubspot.runtime as runtime
+import cli_aos.hubspot.service_keys as service_keys
 from cli_aos.hubspot.cli import cli
 
 
+AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
+CONNECTOR_PATH = AGENT_HARNESS_ROOT.parent / "connector.json"
+PERMISSIONS_PATH = AGENT_HARNESS_ROOT / "permissions.json"
+
+
+def invoke_json(args: list[str]) -> dict:
+    result = CliRunner().invoke(cli, ["--json", *args])
+    assert result.exit_code == 0, result.output
+    return json.loads(result.output)
+
+
+def _service_key_map(values: dict[str, str]):
+    return lambda variable: values.get(variable)
+
+
+@pytest.fixture(autouse=True)
+def no_operator_service_keys_by_default(monkeypatch):
+    monkeypatch.setattr(service_keys, "resolve_service_key", lambda variable: None)
+
+
+def test_manifest_and_permissions_are_in_sync():
+    manifest = json.loads(CONNECTOR_PATH.read_text())
+    permissions = json.loads(PERMISSIONS_PATH.read_text())["permissions"]
+    manifest_command_ids = [command["id"] for command in manifest["commands"]]
+
+    assert "capabilities" in manifest_command_ids
+    assert "health" in manifest_command_ids
+    assert "config.show" in manifest_command_ids
+    assert "doctor" in manifest_command_ids
+    assert set(manifest_command_ids) == set(permissions.keys())
+
+
 def test_capabilities_json():
-    result = CliRunner().invoke(cli, ["--json", "capabilities"])
-    assert result.exit_code == 0
-    assert '"tool": "aos-hubspot"' in result.output
-    assert '"contact.list"' in result.output
-    assert '"manifest_schema_version": "1.0.0"' in result.output
+    payload = invoke_json(["capabilities"])
+    command_ids = {command["id"] for command in payload["data"]["commands"]}
+
+    assert payload["tool"] == "aos-hubspot"
+    assert payload["data"]["manifest_schema_version"] == "1.0.0"
+    assert "contact.list" in command_ids
+    assert "capabilities" in command_ids
+    assert "doctor" in command_ids
 
 
 def test_health_reports_needs_setup_without_env():
-    result = CliRunner().invoke(cli, ["--json", "health"])
-    assert result.exit_code == 0
-    assert '"status": "needs_setup"' in result.output
+    payload = invoke_json(["health"])
+    assert payload["data"]["status"] == "needs_setup"
 
 
 def test_health_reports_probe_failure(monkeypatch):
@@ -31,10 +67,10 @@ def test_health_reports_probe_failure(monkeypatch):
         "probe_api",
         lambda _ctx: {"ok": False, "code": "HUBSPOT_AUTH_ERROR", "message": "bad token", "details": {}},
     )
-    result = CliRunner().invoke(cli, ["--json", "health"])
-    assert result.exit_code == 0
-    assert '"status": "auth_error"' in result.output
-    assert 'bad token' in result.output
+    payload = invoke_json(["health"])
+    assert payload["data"]["status"] == "auth_error"
+    assert payload["data"]["checks"][2]["details"] == {}
+    assert "bad token" in payload["data"]["summary"]
 
 
 def test_permission_gate_blocks_write_for_readonly():
@@ -62,22 +98,22 @@ def test_config_show_redacts_token_value(monkeypatch):
         "probe_api",
         lambda _ctx: {"ok": True, "code": "OK", "message": "probe ok", "details": {"portal_id": "123"}},
     )
-    result = CliRunner().invoke(cli, ["--json", "config", "show"])
-    assert result.exit_code == 0
-    assert "super-secret-token" not in result.output
-    assert '"access_token_present": true' in result.output
-    assert '"auth_ready": true' in result.output
-    assert '"runtime_ready": true' in result.output
-    assert 'probe ok' in result.output
+    payload = invoke_json(["config", "show"])
+    serialized = json.dumps(payload)
+    assert "super-secret-token" not in serialized
+    assert payload["data"]["access_token_present"] is True
+    assert payload["data"]["auth_ready"] is True
+    assert payload["data"]["runtime_ready"] is True
+    assert payload["data"]["api_probe"]["message"] == "probe ok"
 
 
 def test_config_show_uses_service_key_resolver_when_env_missing(monkeypatch):
     monkeypatch.delenv("HUBSPOT_PORTAL_ID", raising=False)
     monkeypatch.delenv("HUBSPOT_ACCESS_TOKEN", raising=False)
     monkeypatch.setattr(
-        config,
-        "service_key_env",
-        lambda name, default=None: {"HUBSPOT_PORTAL_ID": "123", "HUBSPOT_ACCESS_TOKEN": "service-token"}.get(name, default),
+        service_keys,
+        "resolve_service_key",
+        _service_key_map({"HUBSPOT_PORTAL_ID": "123", "HUBSPOT_ACCESS_TOKEN": "service-token"}),
     )
     monkeypatch.setattr(
         bridge,
@@ -85,11 +121,35 @@ def test_config_show_uses_service_key_resolver_when_env_missing(monkeypatch):
         lambda _ctx: {"ok": True, "code": "OK", "message": "probe ok", "details": {"portal_id": "123"}},
     )
 
-    result = CliRunner().invoke(cli, ["--json", "config", "show"])
-    assert result.exit_code == 0
-    assert '"portal_id": "123"' in result.output
-    assert '"access_token_present": true' in result.output
-    assert '"auth_ready": true' in result.output
+    payload = invoke_json(["config", "show"])
+    assert payload["data"]["portal_id"] == "123"
+    assert payload["data"]["access_token_present"] is True
+    assert payload["data"]["auth_ready"] is True
+    assert payload["data"]["portal_id_source_kind"] == "service-keys"
+    assert payload["data"]["access_token_source_kind"] == "service-keys"
+
+
+def test_config_show_prefers_operator_service_keys_over_local_env(monkeypatch):
+    monkeypatch.setenv("HUBSPOT_PORTAL_ID", "env-portal")
+    monkeypatch.setenv("HUBSPOT_ACCESS_TOKEN", "env-token")
+    monkeypatch.setattr(
+        service_keys,
+        "resolve_service_key",
+        _service_key_map({"HUBSPOT_PORTAL_ID": "svc-portal", "HUBSPOT_ACCESS_TOKEN": "svc-token"}),
+    )
+    monkeypatch.setattr(
+        bridge,
+        "probe_api",
+        lambda _ctx: {"ok": True, "code": "OK", "message": "probe ok", "details": {"portal_id": "svc-portal"}},
+    )
+
+    payload = invoke_json(["config", "show"])
+    serialized = json.dumps(payload)
+    assert "svc-token" not in serialized
+    assert "env-token" not in serialized
+    assert payload["data"]["portal_id"] == "svc-portal"
+    assert payload["data"]["portal_id_source_kind"] == "service-keys"
+    assert payload["data"]["access_token_source_kind"] == "service-keys"
 
 
 def test_contact_list_uses_runtime(monkeypatch):

@@ -1,13 +1,24 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from click.testing import CliRunner
+import pytest
 
 import cli_aos.slack.runtime as runtime
+import cli_aos.slack.service_keys as service_keys
 from cli_aos.slack.cli import cli
 
 BOT_TOKEN = "xoxb-test-token"
+AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
+CONNECTOR_PATH = AGENT_HARNESS_ROOT.parent / "connector.json"
+PERMISSIONS_PATH = AGENT_HARNESS_ROOT / "permissions.json"
+
+
+@pytest.fixture(autouse=True)
+def no_operator_service_key_by_default(monkeypatch):
+    monkeypatch.setattr(service_keys, "resolve_service_key", lambda variable: None)
 
 
 def _set_bot_token(monkeypatch) -> None:
@@ -129,6 +140,22 @@ def _fake_slack_api(calls: list[tuple[str, dict[str, object]]]):
     return fake_request_json
 
 
+def _set_operator_service_keys(monkeypatch, values: dict[str, str]) -> None:
+    monkeypatch.setattr(service_keys, "resolve_service_key", lambda variable: values.get(variable))
+
+
+def test_manifest_and_permissions_are_in_sync():
+    manifest = json.loads(CONNECTOR_PATH.read_text())
+    permissions = json.loads(PERMISSIONS_PATH.read_text())
+    manifest_command_ids = [command["id"] for command in manifest["commands"]]
+
+    assert permissions["backend"] == manifest["backend"]
+    assert set(manifest_command_ids) == set(permissions["permissions"].keys())
+    assert manifest["scope"]["workerFields"] == ["channel", "message_text", "thread_ts", "user_id"]
+    assert manifest["scope"]["commandDefaults"]["message.reply"]["args"] == ["SLACK_CHANNEL_ID"]
+    assert manifest["scope"]["commandDefaults"]["people.list"]["options"]["user-id"] == "SLACK_USER_ID"
+
+
 def test_capabilities_json_includes_live_surface():
     result = CliRunner().invoke(cli, ["--json", "capabilities"])
     assert result.exit_code == 0
@@ -188,6 +215,40 @@ def test_config_show_redacts_token_and_reports_runtime_ready(monkeypatch):
     assert '"reaction.list"' in result.output
 
 
+def test_config_show_prefers_operator_service_keys_for_auth_and_scope(monkeypatch):
+    monkeypatch.setenv("SLACK_BOT_TOKEN", "env-token")
+    monkeypatch.setenv("SLACK_CHANNEL_ID", "CENV")
+    monkeypatch.setenv("SLACK_THREAD_TS", "111.222")
+    monkeypatch.setenv("SLACK_USER_ID", "UENV")
+    _set_operator_service_keys(
+        monkeypatch,
+        {
+            "SLACK_BOT_TOKEN": BOT_TOKEN,
+            "SLACK_CHANNEL_ID": "COPERATOR",
+            "SLACK_THREAD_TS": "123.456",
+            "SLACK_USER_ID": "UOPERATOR",
+            "SLACK_WORKSPACE": "Operator Workspace",
+            "SLACK_TEAM_ID": "TOPERATOR",
+        },
+    )
+    calls: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(runtime, "_request_json", _fake_slack_api(calls))
+
+    result = CliRunner().invoke(cli, ["--json", "config", "show"])
+    assert result.exit_code == 0
+    payload = _json_output(result)
+    data = payload["data"]["config"]
+    assert BOT_TOKEN not in result.output
+    assert "env-token" not in result.output
+    assert data["bot_token"]["source"] == "service-keys"
+    assert data["channel_id_hint"] == "COPERATOR"
+    assert data["thread_ts_hint"] == "123.456"
+    assert data["user_id_hint"] == "UOPERATOR"
+    assert data["workspace_hint"] == "Operator Workspace"
+    assert data["team_id_hint"] == "TOPERATOR"
+    assert data["resolution_order"] == ["service-keys", "process.env"]
+
+
 def test_doctor_includes_runtime_probes(monkeypatch):
     _set_bot_token(monkeypatch)
     calls: list[tuple[str, dict[str, object]]] = []
@@ -245,6 +306,22 @@ def test_people_list_uses_users_list_and_picker_metadata(monkeypatch):
     assert data["picker"]["items"][0]["scope_preview"] == "Example > Mention targets > @ada"
 
 
+def test_people_list_filters_to_operator_scoped_user_id(monkeypatch):
+    _set_bot_token(monkeypatch)
+    _set_operator_service_keys(monkeypatch, {"SLACK_USER_ID": "U234"})
+    calls: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(runtime, "_request_json", _fake_slack_api(calls))
+
+    result = CliRunner().invoke(cli, ["--json", "people", "list"])
+    assert result.exit_code == 0
+    payload = _json_output(result)
+    data = payload["data"]
+    assert data["count"] == 1
+    assert data["user_id"] == "U234"
+    assert data["people"][0]["id"] == "U234"
+    assert data["scope"]["user_id"] == "U234"
+
+
 def test_message_search_uses_search_messages(monkeypatch):
     _set_bot_token(monkeypatch)
     calls: list[tuple[str, dict[str, object]]] = []
@@ -283,6 +360,42 @@ def test_mention_scan_defaults_to_bot_user_id(monkeypatch):
     assert data["scope"]["bot_handle"] == "@agent-bot"
     assert data["picker"]["items"][0]["surface"] == "mention.scan"
     assert data["picker"]["items"][0]["label"] == "#general - Direct mention"
+
+
+def test_mention_scan_uses_scoped_user_id_override(monkeypatch):
+    _set_bot_token(monkeypatch)
+    _set_operator_service_keys(monkeypatch, {"SLACK_USER_ID": "U234"})
+    calls: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(runtime, "_request_json", _fake_slack_api(calls))
+
+    result = CliRunner().invoke(cli, ["--json", "mention", "scan"])
+    assert result.exit_code == 0
+    payload = _json_output(result)
+    data = payload["data"]
+    assert calls[1][1]["query"] == "<@U234>"
+    assert data["target_user_id"] == "U234"
+    assert data["scope"]["target_user_id"] == "U234"
+
+
+def test_message_reply_uses_scoped_channel_and_thread_defaults(monkeypatch):
+    _set_bot_token(monkeypatch)
+    _set_operator_service_keys(
+        monkeypatch,
+        {
+            "SLACK_CHANNEL_ID": "C123",
+            "SLACK_THREAD_TS": "1700000000.000000",
+        },
+    )
+    calls: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(runtime, "_request_json", _fake_slack_api(calls))
+
+    result = CliRunner().invoke(cli, ["--json", "--mode", "write", "message", "reply", "--text", "hello there"])
+    assert result.exit_code == 0
+    payload = _json_output(result)
+    assert calls[0][0] == "chat.postMessage"
+    assert calls[0][1]["channel"] == "C123"
+    assert calls[0][1]["thread_ts"] == "1700000000.000000"
+    assert payload["data"]["thread_ts"] == "1700000000.000000"
 
 
 def test_reaction_list_uses_reactions_list(monkeypatch):

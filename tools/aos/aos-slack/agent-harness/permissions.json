@@ -1,6 +1,6 @@
 {
   "tool": "aos-slack",
-  "backend": "slack-native",
+  "backend": "slack-web-api",
   "permissions": {
     "capabilities": "readonly",
     "health": "readonly",

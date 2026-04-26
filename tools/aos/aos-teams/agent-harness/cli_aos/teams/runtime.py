@@ -10,27 +10,8 @@ from .constants import BACKEND_NAME, CONNECTOR_AUTH, CONNECTOR_CATEGORY, CONNECT
 from .errors import CliError
 from .service_keys import service_key_env
 
-SUPPORTED_WRITE_COMMANDS = {"channel.create", "meeting.create"}
-LIMITED_WRITE_COMMANDS = {
-    "message.send": (
-        "Microsoft Graph channel message send only supports application permissions for migration scenarios, "
-        "so message.send stays disabled for client-credentials auth."
-    ),
-    "message.reply": (
-        "Microsoft Graph channel message replies only support application permissions for migration scenarios, "
-        "so message.reply stays disabled for client-credentials auth."
-    ),
-    "chat.send": (
-        "Microsoft Graph chat message send requires delegated auth or migration-only application permissions, "
-        "so chat.send stays disabled for this connector."
-    ),
-    "file.upload": (
-        "file.upload remains disabled until the AOS surface can pass an actual file/blob payload instead of tuple strings."
-    ),
-    "adaptive_card.send": (
-        "Adaptive Card delivery in Teams requires a bot/app installation flow rather than a plain Graph client-credentials call."
-    ),
-}
+SUPPORTED_READ_COMMANDS = ("team.list", "channel.list", "meeting.list")
+SUPPORTED_WRITE_COMMANDS = ("channel.create", "meeting.create")
 
 
 def _load_manifest() -> dict[str, Any]:
@@ -95,11 +76,7 @@ def _normalize_meeting_times(start_time: str, end_time: str | None) -> tuple[str
 
 def capabilities_snapshot() -> dict[str, Any]:
     manifest = _load_manifest()
-    read_support: dict[str, bool] = {}
-    write_support: dict[str, bool] = {}
-    for command in manifest["commands"]:
-        target = read_support if command["required_mode"] == "readonly" else write_support
-        target[command["id"]] = True
+    config = runtime_config()
     return {
         "tool": manifest["tool"],
         "backend": manifest["backend"],
@@ -108,8 +85,8 @@ def capabilities_snapshot() -> dict[str, Any]:
         "auth": manifest["auth"],
         "scope": manifest.get("scope", {}),
         "commands": manifest["commands"],
-        "read_support": read_support,
-        "write_support": write_support,
+        "read_support": config["read_support"],
+        "write_support": config["write_support"],
     }
 
 
@@ -199,7 +176,10 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
             "scaffold_only": False,
         },
         "auth": config["auth"],
+        "scope": config["scope"],
         "runtime": runtime,
+        "read_support": config["read_support"],
+        "write_support": config["write_support"],
         "checks": checks,
         "runtime_ready": bool(probe.get("ok")),
         "probe": probe,
@@ -210,8 +190,8 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
 def doctor_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
     snapshot = health_snapshot(ctx_obj)
     recommendations = [
-        "Use readonly mode for live Teams reads and write mode only for supported Graph mutations.",
-        "message.send, message.reply, chat.send, and adaptive_card.send remain disabled because Graph app-only auth does not support the operator-driven scenario.",
+        "Use readonly mode for live team/channel/meeting discovery and write mode only for channel.create or meeting.create.",
+        "meeting.create requires OnlineMeetings.ReadWrite.All plus an application access policy granted to the scoped TEAMS_USER_ID user.",
     ]
     if snapshot["status"] == "needs_setup":
         recommendations.insert(0, "Set the Teams auth service keys before assigning this connector.")
@@ -225,21 +205,9 @@ def doctor_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
         "runtime_ready": snapshot["status"] == "ready",
         "recommendations": recommendations,
         "config": config_snapshot(),
-        "supported_read_commands": ["team.list", "channel.list", "meeting.list"],
-        "supported_write_commands": sorted(SUPPORTED_WRITE_COMMANDS),
-        "limited_write_commands": LIMITED_WRITE_COMMANDS,
-        "command_readiness": {
-            "team.list": snapshot["runtime"]["team_ready"],
-            "channel.list": snapshot["runtime"]["channel_ready"],
-            "meeting.list": snapshot["runtime"]["meeting_ready"],
-            "message.send": False,
-            "message.reply": False,
-            "channel.create": snapshot["runtime"]["channel_ready"],
-            "chat.send": False,
-            "meeting.create": snapshot["runtime"]["meeting_ready"],
-            "file.upload": False,
-            "adaptive_card.send": False,
-        },
+        "supported_read_commands": list(SUPPORTED_READ_COMMANDS),
+        "supported_write_commands": list(SUPPORTED_WRITE_COMMANDS),
+        "command_readiness": dict(snapshot["runtime"]["command_readiness"]),
     }
 
 
@@ -319,16 +287,22 @@ def _parse_channel_create_items(items: tuple[str, ...], runtime: dict[str, Any])
         display_name = str(payload.get("display_name") or payload.get("channel_name") or "").strip()
         description = str(payload.get("description") or payload.get("channel_description") or "").strip()
     else:
-        if len(items) < 2:
+        default_team_id = str(runtime["runtime"]["team_id"] or "").strip()
+        if len(items) == 1 and default_team_id:
+            team_id = default_team_id
+            display_name = items[0].strip()
+            description = ""
+        elif len(items) >= 2:
+            team_id = items[0].strip()
+            display_name = items[1].strip()
+            description = " ".join(items[2:]).strip()
+        else:
             raise CliError(
                 code="ARGUMENT_REQUIRED",
                 message="channel.create requires <team_id> <display_name> [description] or a single JSON object argument",
                 exit_code=4,
                 details={},
             )
-        team_id = items[0].strip()
-        display_name = items[1].strip()
-        description = " ".join(items[2:]).strip()
     if not team_id or not display_name:
         raise CliError(code="ARGUMENT_REQUIRED", message="channel.create requires team_id and display_name", exit_code=4, details={})
     return {"team_id": team_id, "display_name": display_name, "description": description}
@@ -346,7 +320,7 @@ def _parse_meeting_create_items(items: tuple[str, ...], runtime: dict[str, Any])
         user_id = str(payload.get("user_id") or runtime["runtime"]["user_id"] or "").strip()
         subject = str(payload.get("subject") or payload.get("meeting_subject") or "").strip()
         start_time = str(payload.get("start_time") or runtime["runtime"]["start_time"] or "").strip()
-        end_time = str(payload.get("end_time") or "").strip()
+        end_time = str(payload.get("end_time") or runtime["runtime"]["end_time"] or "").strip()
     else:
         user_id = (runtime["runtime"]["user_id"] or "").strip()
         if len(items) < 2:
@@ -417,27 +391,9 @@ def meeting_create_result(ctx_obj: dict[str, Any], *, items: tuple[str, ...]) ->
     }
 
 
-def scaffold_write_command(command_id: str, items: tuple[str, ...]) -> dict[str, Any]:
-    return {
-        "command_id": command_id,
-        "arguments": list(items),
-        "scaffold_only": True,
-        "backend": BACKEND_NAME,
-        "available": False,
-        "limitation": LIMITED_WRITE_COMMANDS.get(command_id),
-    }
-
-
 def run_write_command(ctx_obj: dict[str, Any], command_id: str, items: tuple[str, ...]) -> dict[str, Any]:
     if command_id == "channel.create":
         return channel_create_result(ctx_obj, items=items)
     if command_id == "meeting.create":
         return meeting_create_result(ctx_obj, items=items)
-    if command_id in LIMITED_WRITE_COMMANDS:
-        raise CliError(
-            code="NOT_IMPLEMENTED",
-            message=LIMITED_WRITE_COMMANDS[command_id],
-            exit_code=10,
-            details=scaffold_write_command(command_id, items),
-        )
     raise CliError(code="UNKNOWN_COMMAND", message=f"Unknown command: {command_id}", exit_code=2, details={})

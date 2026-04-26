@@ -54,7 +54,6 @@ def require_mode(ctx: click.Context, command_id: str) -> None:
 def _emit_success(ctx: click.Context, command: str, data: Any) -> None:
     payload = success(
         tool=TOOL_NAME,
-        backend=BACKEND_NAME,
         command=command,
         data=data,
         started=ctx.obj["started"],
@@ -71,7 +70,6 @@ class AosGroup(click.Group):
         except DartError as err:
             payload = failure(
                 tool=TOOL_NAME,
-                backend=BACKEND_NAME,
                 command=ctx.obj.get("_command_id", "unknown") if ctx.obj else "unknown",
                 error={"code": err.code, "message": err.message, "details": err.details},
                 started=ctx.obj.get("started", time.time()) if ctx.obj else time.time(),
@@ -83,7 +81,6 @@ class AosGroup(click.Group):
         except click.ClickException as err:
             payload = failure(
                 tool=TOOL_NAME,
-                backend=BACKEND_NAME,
                 command=ctx.obj.get("_command_id", "unknown") if ctx.obj else "unknown",
                 error={"code": "INVALID_USAGE", "message": str(err), "details": {}},
                 started=ctx.obj.get("started", time.time()) if ctx.obj else time.time(),
@@ -114,7 +111,7 @@ def cli(ctx: click.Context, as_json: bool, mode: str, verbose: bool) -> None:
 def capabilities(ctx: click.Context) -> None:
     _set_command(ctx, "capabilities")
     require_mode(ctx, "capabilities")
-    emit(build_capabilities_payload(), as_json=True)
+    _emit_success(ctx, "capabilities", build_capabilities_payload())
 
 
 @cli.group("config")
@@ -192,11 +189,12 @@ def task_list(ctx: click.Context, limit: int, dartboard_id: str | None, assignee
 
 @task_group.command("get")
 @click.argument("task_id", required=False)
+@click.option("--task-id", "task_id_option", default=None)
 @click.pass_context
-def task_get(ctx: click.Context, task_id: str | None) -> None:
+def task_get(ctx: click.Context, task_id: str | None, task_id_option: str | None) -> None:
     _set_command(ctx, "task.get")
     require_mode(ctx, "task.get")
-    _emit_success(ctx, "task.get", build_task_get_payload(task_id=task_id)["data"])
+    _emit_success(ctx, "task.get", build_task_get_payload(task_id=task_id_option or task_id)["data"])
 
 
 @task_group.command("create")
@@ -214,25 +212,27 @@ def task_create(ctx: click.Context, title: str, dartboard_id: str | None, descri
 
 @task_group.command("update")
 @click.argument("task_id", required=False)
+@click.option("--task-id", "task_id_option", default=None)
 @click.option("--title", default=None)
 @click.option("--description", default=None)
 @click.option("--status", default=None)
 @click.option("--assignee", default=None)
 @click.option("--priority", default=None)
 @click.pass_context
-def task_update(ctx: click.Context, task_id: str | None, title: str | None, description: str | None, status: str | None, assignee: str | None, priority: str | None) -> None:
+def task_update(ctx: click.Context, task_id: str | None, task_id_option: str | None, title: str | None, description: str | None, status: str | None, assignee: str | None, priority: str | None) -> None:
     _set_command(ctx, "task.update")
     require_mode(ctx, "task.update")
-    _emit_success(ctx, "task.update", build_task_update_payload(task_id=task_id, title=title, description=description, status=status, assignee=assignee, priority=priority)["data"])
+    _emit_success(ctx, "task.update", build_task_update_payload(task_id=task_id_option or task_id, title=title, description=description, status=status, assignee=assignee, priority=priority)["data"])
 
 
 @task_group.command("delete")
 @click.argument("task_id", required=False)
+@click.option("--task-id", "task_id_option", default=None)
 @click.pass_context
-def task_delete(ctx: click.Context, task_id: str | None) -> None:
+def task_delete(ctx: click.Context, task_id: str | None, task_id_option: str | None) -> None:
     _set_command(ctx, "task.delete")
     require_mode(ctx, "task.delete")
-    _emit_success(ctx, "task.delete", build_task_delete_payload(task_id=task_id)["data"])
+    _emit_success(ctx, "task.delete", build_task_delete_payload(task_id=task_id_option or task_id)["data"])
 
 
 # --- Doc ---
@@ -252,12 +252,13 @@ def doc_list(ctx: click.Context, limit: int) -> None:
 
 
 @doc_group.command("get")
-@click.argument("doc_id")
+@click.argument("doc_id", required=False)
+@click.option("--doc-id", "doc_id_option", default=None)
 @click.pass_context
-def doc_get(ctx: click.Context, doc_id: str) -> None:
+def doc_get(ctx: click.Context, doc_id: str | None, doc_id_option: str | None) -> None:
     _set_command(ctx, "doc.get")
     require_mode(ctx, "doc.get")
-    _emit_success(ctx, "doc.get", build_doc_get_payload(doc_id=doc_id)["data"])
+    _emit_success(ctx, "doc.get", build_doc_get_payload(doc_id=doc_id_option or doc_id)["data"])
 
 
 @doc_group.command("create")
@@ -279,11 +280,12 @@ def comment_group() -> None:
 
 @comment_group.command("list")
 @click.argument("task_id", required=False)
+@click.option("--task-id", "task_id_option", default=None)
 @click.pass_context
-def comment_list(ctx: click.Context, task_id: str | None) -> None:
+def comment_list(ctx: click.Context, task_id: str | None, task_id_option: str | None) -> None:
     _set_command(ctx, "comment.list")
     require_mode(ctx, "comment.list")
-    _emit_success(ctx, "comment.list", build_comment_list_payload(task_id=task_id)["data"])
+    _emit_success(ctx, "comment.list", build_comment_list_payload(task_id=task_id_option or task_id)["data"])
 
 
 @comment_group.command("create")

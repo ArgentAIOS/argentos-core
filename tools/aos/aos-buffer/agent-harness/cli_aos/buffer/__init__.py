@@ -1,3 +1,3 @@
-from .cli import cli
+from __future__ import annotations
 
-__all__ = ["cli"]
+__version__ = "0.1.0"

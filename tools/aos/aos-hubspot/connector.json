@@ -14,7 +14,8 @@
     "service_keys": ["HUBSPOT_ACCESS_TOKEN", "HUBSPOT_PORTAL_ID"],
     "interactive_setup": [
       "Create a HubSpot app or private app for the target portal.",
-      "Add HUBSPOT_ACCESS_TOKEN and HUBSPOT_PORTAL_ID for the portal you want this worker to use.",
+      "Add HUBSPOT_ACCESS_TOKEN and HUBSPOT_PORTAL_ID in operator-controlled service keys for the portal you want this worker to use.",
+      "Use local HUBSPOT_* environment variables only as harness fallback when operator service keys are unavailable.",
       "Legacy AOS_HUBSPOT_* variable names are still accepted for backward compatibility.",
       "Restrict pipelines, owners, teams, and ticket queues before enabling write actions."
     ]
@@ -22,6 +23,11 @@
   "scope": {
     "kind": "crm",
     "surface": "contact-company-deal-ticket",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "live_write_available": true,
+    "write_bridge_available": true,
     "workerFields": [
       "contact_id",
       "company_id",
@@ -31,6 +37,32 @@
       "pipeline_id",
       "email",
       "query"
+    ],
+    "worker_visible_actions": [
+      "owner.list",
+      "owner.assign",
+      "pipeline.list",
+      "contact.list",
+      "contact.search",
+      "contact.read",
+      "contact.create",
+      "contact.update",
+      "company.list",
+      "company.search",
+      "company.read",
+      "company.create",
+      "company.update",
+      "deal.list",
+      "deal.search",
+      "deal.read",
+      "deal.create",
+      "deal.update_stage",
+      "ticket.list",
+      "ticket.search",
+      "ticket.read",
+      "ticket.create",
+      "ticket.update_status",
+      "note.create"
     ],
     "fields": [
       {
@@ -368,6 +400,38 @@
     }
   },
   "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
     {
       "id": "owner.list",
       "summary": "List HubSpot owners",

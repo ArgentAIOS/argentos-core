@@ -6,7 +6,11 @@ from functools import lru_cache
 from pathlib import Path
 
 ARGENTOS_ROOT = Path(__file__).resolve().parents[6]
-SERVICE_KEY_VARIABLES = {"ZAPIER_API_URL", "ZAPIER_API_KEY"}
+SERVICE_KEY_VARIABLES = {
+    "ZAPIER_API_URL",
+    "ZAPIER_API_KEY",
+    "ZAPIER_WEBHOOK_BASE_URL",
+}
 
 
 @lru_cache(maxsize=64)
@@ -44,3 +48,11 @@ def service_key_env(variable: str, default: str | None = None) -> str | None:
     if value is not None:
         return value
     return default
+
+
+def service_key_source(variable: str) -> str | None:
+    if variable in SERVICE_KEY_VARIABLES and resolve_service_key(variable):
+        return "service-keys"
+    if os.getenv(variable):
+        return "process.env"
+    return None

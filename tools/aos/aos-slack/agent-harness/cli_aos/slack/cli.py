@@ -204,12 +204,12 @@ def message_search(ctx: click.Context, query: str, limit: int) -> None:
 
 
 @message_group.command("reply")
-@click.argument("channel")
+@click.argument("channel", required=False)
 @click.option("--text", required=True, help="Reply text")
 @click.option("--thread-ts", default=None, help="Thread timestamp to reply in")
 @click.option("--broadcast", is_flag=True, help="Also broadcast the reply")
 @click.pass_context
-def message_reply(ctx: click.Context, channel: str, text: str, thread_ts: str | None, broadcast: bool) -> None:
+def message_reply(ctx: click.Context, channel: str | None, text: str, thread_ts: str | None, broadcast: bool) -> None:
     _run(
         ctx,
         "message.reply",
@@ -242,9 +242,10 @@ def people_group() -> None:
 
 @people_group.command("list")
 @click.option("--limit", type=int, default=50, show_default=True)
+@click.option("--user-id", default=None, help="Filter to one Slack user ID")
 @click.pass_context
-def people_list(ctx: click.Context, limit: int) -> None:
-    _run(ctx, "people.list", list_people, config=None, limit=limit)
+def people_list(ctx: click.Context, limit: int, user_id: str | None) -> None:
+    _run(ctx, "people.list", list_people, config=None, limit=limit, user_id=user_id)
 
 
 @cli.group("mention")
@@ -254,10 +255,11 @@ def mention_group() -> None:
 
 @mention_group.command("scan")
 @click.option("--query", default=None, help="Override the mention query")
+@click.option("--user-id", default=None, help="Scan mentions for a specific Slack user ID")
 @click.option("--limit", type=int, default=10, show_default=True)
 @click.pass_context
-def mention_scan_command(ctx: click.Context, query: str | None, limit: int) -> None:
-    _run(ctx, "mention.scan", mention_scan, config=None, query=query, limit=limit)
+def mention_scan_command(ctx: click.Context, query: str | None, user_id: str | None, limit: int) -> None:
+    _run(ctx, "mention.scan", mention_scan, config=None, query=query, user_id=user_id, limit=limit)
 
 
 @cli.group("reaction")

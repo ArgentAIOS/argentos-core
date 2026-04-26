@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import json
-import mimetypes
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from .constants import BACKEND_NAME
@@ -101,12 +100,14 @@ class DiscordClient:
         self._api_base_url = api_base_url.rstrip("/")
         self._user_agent = "aos-discord-workflow/0.1.0"
 
-    def _headers(self) -> dict[str, str]:
-        return {
-            "Authorization": f"Bot {self._bot_token}",
+    def _headers(self, *, include_auth: bool = True) -> dict[str, str]:
+        headers = {
             "Accept": "application/json",
             "User-Agent": self._user_agent,
         }
+        if include_auth:
+            headers["Authorization"] = f"Bot {self._bot_token}"
+        return headers
 
     def _request(
         self,
@@ -115,9 +116,10 @@ class DiscordClient:
         *,
         json_body: dict[str, Any] | None = None,
         expect_json: bool = True,
+        include_auth: bool = True,
     ) -> Any:
         data: bytes | None = None
-        headers = self._headers()
+        headers = self._headers(include_auth=include_auth)
         if json_body is not None:
             data = json.dumps(json_body).encode("utf-8")
             headers["Content-Type"] = "application/json"
@@ -205,14 +207,12 @@ class DiscordClient:
         channel_id: str,
         message_id: str | None = None,
         name: str,
-        content: str | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {"name": name, "auto_archive_duration": 1440}
-        if content:
-            body["content"] = content
         if message_id:
             raw = self._request("POST", f"{self._api_base_url}/channels/{channel_id}/messages/{message_id}/threads", json_body=body)
         else:
+            body["type"] = 11
             raw = self._request("POST", f"{self._api_base_url}/channels/{channel_id}/threads", json_body=body)
         return _normalize_channel(raw)
 
@@ -256,7 +256,14 @@ class DiscordClient:
         if avatar_url:
             body["avatar_url"] = avatar_url
         url = webhook_url if webhook_url.startswith(("http://", "https://")) else f"{self._api_base_url}{webhook_url}"
-        raw = self._request("POST", url, json_body=body)
+        raw = self._request("POST", _webhook_url_with_wait(url), json_body=body, include_auth=False)
         if isinstance(raw, dict):
             return raw
         return {"raw": raw}
+
+
+def _webhook_url_with_wait(url: str) -> str:
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query["wait"] = "true"
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))

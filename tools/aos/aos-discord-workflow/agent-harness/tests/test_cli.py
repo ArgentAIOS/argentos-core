@@ -47,8 +47,8 @@ class FakeDiscordClient:
     def add_reaction(self, *, channel_id: str, message_id: str, emoji: str) -> dict[str, Any]:
         return {"added": True, "status_code": 204, "raw": {}}
 
-    def create_thread(self, *, channel_id: str, message_id: str | None = None, name: str, content: str | None = None) -> dict[str, Any]:
-        return {"id": "thread_1", "name": name, "type": 11, "position": 0, "topic": content, "raw": {}}
+    def create_thread(self, *, channel_id: str, message_id: str | None = None, name: str) -> dict[str, Any]:
+        return {"id": "thread_1", "name": name, "type": 11, "position": 0, "parent_id": channel_id, "message_id": message_id, "raw": {}}
 
     def send_embed(self, *, channel_id: str, embed: dict[str, Any], content: str | None = None) -> dict[str, Any]:
         return {"id": "msg_embed_1", "channel_id": channel_id, "content": content, "embeds": [embed], "author": {"id": "bot_123"}, "timestamp": "2026-03-27T00:00:00Z", "raw": {}}
@@ -74,14 +74,14 @@ class FakeDiscordClient:
         return {"id": "webhook_msg_1", "content": content, "embeds": [embed] if embed else [], "username": username, "avatar_url": avatar_url, "raw": {}}
 
 
-def invoke_json(args: list[str]) -> dict[str, Any]:
-    result = CliRunner().invoke(cli, ["--json", *args])
+def invoke_json(args: list[str], *, obj: dict[str, Any] | None = None) -> dict[str, Any]:
+    result = CliRunner().invoke(cli, ["--json", *args], obj=obj)
     assert result.exit_code == 0, result.output
     return json.loads(result.output)
 
 
-def invoke_json_with_mode(mode: str, args: list[str]) -> dict[str, Any]:
-    result = CliRunner().invoke(cli, ["--json", "--mode", mode, *args])
+def invoke_json_with_mode(mode: str, args: list[str], *, obj: dict[str, Any] | None = None) -> dict[str, Any]:
+    result = CliRunner().invoke(cli, ["--json", "--mode", mode, *args], obj=obj)
     assert result.exit_code == 0, result.output
     return json.loads(result.output)
 
@@ -102,8 +102,17 @@ def test_capabilities_exposes_manifest():
     assert "webhook.send" in json.dumps(payload["data"])
 
 
+def test_click_help_lists_discord_commands():
+    result = CliRunner().invoke(cli, ["--help"])
+    assert result.exit_code == 0, result.output
+    assert "message" in result.output
+    assert "webhook" in result.output
+    assert "channel" in result.output
+
+
 def test_health_requires_credentials(monkeypatch):
     monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
     payload = invoke_json(["health"])
     assert payload["data"]["status"] == "needs_setup"
     assert "DISCORD_BOT_TOKEN" in json.dumps(payload["data"])
@@ -111,7 +120,7 @@ def test_health_requires_credentials(monkeypatch):
 
 def test_health_ready_with_fake_client(monkeypatch):
     monkeypatch.setenv("DISCORD_BOT_TOKEN", "bot-token")
-    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeDiscordClient())
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj, require_bot_token=True: FakeDiscordClient())
     payload = invoke_json(["health"])
     assert payload["data"]["status"] == "ready"
     assert payload["data"]["probe"]["ok"] is True
@@ -129,10 +138,39 @@ def test_config_show_redacts_credentials(monkeypatch):
     assert data["runtime"]["implementation_mode"] == "live_read_write"
 
 
+def test_config_show_prefers_operator_service_keys(monkeypatch):
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "env-token")
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/env/token")
+    monkeypatch.setenv("DISCORD_GUILD_ID", "env_guild")
+    monkeypatch.setenv("DISCORD_CHANNEL_ID", "env_channel")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj, require_bot_token=True: FakeDiscordClient())
+    payload = invoke_json(
+        ["config", "show"],
+        obj={
+            "service_keys": {
+                "aos-discord-workflow": {
+                    "DISCORD_BOT_TOKEN": "operator-token",
+                    "DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/operator/token",
+                    "DISCORD_GUILD_ID": "operator_guild",
+                    "DISCORD_CHANNEL_ID": "operator_channel",
+                }
+            }
+        },
+    )
+    data = payload["data"]
+    assert "operator-token" not in json.dumps(data)
+    assert "env-token" not in json.dumps(data)
+    assert data["auth"]["sources"]["DISCORD_BOT_TOKEN"] == "operator:service_keys:tool"
+    assert data["auth"]["sources"]["DISCORD_WEBHOOK_URL"] == "operator:service_keys:tool"
+    assert data["scope"]["guild_id"] == "operator_guild"
+    assert data["scope"]["channel_id"] == "operator_channel"
+    assert data["scope"]["sources"]["DISCORD_CHANNEL_ID"] == "operator:service_keys:tool"
+
+
 def test_message_send_requires_write_mode(monkeypatch):
     monkeypatch.setenv("DISCORD_BOT_TOKEN", "bot-token")
     monkeypatch.setenv("DISCORD_CHANNEL_ID", "chan_1")
-    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeDiscordClient())
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj, require_bot_token=True: FakeDiscordClient())
     result = CliRunner().invoke(cli, ["--json", "--mode", "readonly", "message", "send", "--content", "hi"])
     payload = json.loads(result.output)
     assert payload["ok"] is False
@@ -142,7 +180,7 @@ def test_message_send_requires_write_mode(monkeypatch):
 def test_message_send_succeeds_in_write_mode(monkeypatch):
     monkeypatch.setenv("DISCORD_BOT_TOKEN", "bot-token")
     monkeypatch.setenv("DISCORD_CHANNEL_ID", "chan_1")
-    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeDiscordClient())
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj, require_bot_token=True: FakeDiscordClient())
     payload = invoke_json_with_mode("write", ["message", "send", "--content", "Hello Discord"])
     assert payload["data"]["status"] == "live_write"
     assert payload["data"]["message"]["id"] == "msg_1"
@@ -152,7 +190,7 @@ def test_message_send_succeeds_in_write_mode(monkeypatch):
 def test_channel_list_returns_picker_metadata(monkeypatch):
     monkeypatch.setenv("DISCORD_BOT_TOKEN", "bot-token")
     monkeypatch.setenv("DISCORD_GUILD_ID", "guild_1")
-    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeDiscordClient())
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj, require_bot_token=True: FakeDiscordClient())
     payload = invoke_json(["channel", "list", "--limit", "1"])
     assert payload["data"]["channels"]["count"] == 2
     assert payload["data"]["picker"]["kind"] == "discord_channel"
@@ -160,9 +198,27 @@ def test_channel_list_returns_picker_metadata(monkeypatch):
 
 
 def test_webhook_send_succeeds(monkeypatch):
-    monkeypatch.setenv("DISCORD_BOT_TOKEN", "bot-token")
+    monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
     monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/123/abc")
-    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeDiscordClient())
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj, require_bot_token=True: FakeDiscordClient())
     payload = invoke_json_with_mode("write", ["webhook", "send", "--content", "Webhook hello"])
     assert payload["data"]["status"] == "live_write"
     assert payload["data"]["result"]["id"] == "webhook_msg_1"
+
+
+def test_health_reports_partial_ready_for_webhook_only(monkeypatch):
+    monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/123/abc")
+    payload = invoke_json(["health"])
+    assert payload["data"]["status"] == "partial_ready"
+    assert payload["data"]["write_bridge_available"] is True
+
+
+def test_thread_create_posts_initial_message_after_thread_creation(monkeypatch):
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "bot-token")
+    monkeypatch.setenv("DISCORD_CHANNEL_ID", "chan_1")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj, require_bot_token=True: FakeDiscordClient())
+    payload = invoke_json_with_mode("write", ["thread", "create", "--name", "Incident Room", "--content", "Start here"])
+    assert payload["data"]["thread"]["id"] == "thread_1"
+    assert payload["data"]["initial_message"]["channel_id"] == "thread_1"
+    assert payload["data"]["initial_message"]["content"] == "Start here"

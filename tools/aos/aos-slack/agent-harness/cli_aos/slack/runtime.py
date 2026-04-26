@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-from .service_keys import service_key_env
 from typing import Any
 from urllib import error, parse, request
 
@@ -16,13 +15,21 @@ from .constants import (
     COMMAND_SPECS,
     DEFAULT_APP_TOKEN_ENV,
     DEFAULT_BOT_TOKEN_ENV,
+    DEFAULT_CHANNEL_ID_ENV,
+    DEFAULT_TEAM_ID_ENV,
+    DEFAULT_THREAD_TS_ENV,
+    DEFAULT_USER_ID_ENV,
+    DEFAULT_WORKSPACE_ENV,
     LEGACY_APP_TOKEN_ENV,
     LEGACY_BOT_TOKEN_ENV,
+    LEGACY_TEAM_ID_ENV,
+    LEGACY_WORKSPACE_ENV,
     READ_SCOPES,
     TOOL_NAME,
     WRITE_SCOPES,
 )
 from .errors import CliError
+from .service_keys import service_key_env, service_key_source
 
 API_TIMEOUT_SECONDS = 20
 SLACK_API_BASE_URL = "https://slack.com/api"
@@ -54,32 +61,49 @@ _BACKEND_ERROR_CODES = {
 }
 
 
-def _resolve_env(*names: str) -> tuple[str | None, str | None]:
+def _resolve_env(*names: str) -> tuple[str | None, str | None, str | None]:
     for name in names:
         value = service_key_env(name)
         if value:
-            return value, name
-    return None, None
+            return value, name, service_key_source(name)
+    return None, None, None
 
 
 def runtime_config() -> dict[str, Any]:
-    bot_token, bot_token_source = _resolve_env(DEFAULT_BOT_TOKEN_ENV, LEGACY_BOT_TOKEN_ENV)
-    app_token, app_token_source = _resolve_env(DEFAULT_APP_TOKEN_ENV, LEGACY_APP_TOKEN_ENV)
-    workspace_hint, workspace_hint_source = _resolve_env("SLACK_WORKSPACE", "AOS_SLACK_WORKSPACE")
-    team_id_hint, team_id_hint_source = _resolve_env("SLACK_TEAM_ID", "AOS_SLACK_TEAM_ID")
+    bot_token, bot_token_env, bot_token_source = _resolve_env(DEFAULT_BOT_TOKEN_ENV, LEGACY_BOT_TOKEN_ENV)
+    app_token, app_token_env, app_token_source = _resolve_env(DEFAULT_APP_TOKEN_ENV, LEGACY_APP_TOKEN_ENV)
+    workspace_hint, workspace_hint_env, workspace_hint_source = _resolve_env(DEFAULT_WORKSPACE_ENV, LEGACY_WORKSPACE_ENV)
+    team_id_hint, team_id_hint_env, team_id_hint_source = _resolve_env(DEFAULT_TEAM_ID_ENV, LEGACY_TEAM_ID_ENV)
+    channel_id_hint, channel_id_hint_env, channel_id_hint_source = _resolve_env(DEFAULT_CHANNEL_ID_ENV)
+    thread_ts_hint, thread_ts_hint_env, thread_ts_hint_source = _resolve_env(DEFAULT_THREAD_TS_ENV)
+    user_id_hint, user_id_hint_env, user_id_hint_source = _resolve_env(DEFAULT_USER_ID_ENV)
     return {
         "backend": BACKEND,
         "tool": TOOL_NAME,
         "bot_token": bot_token,
         "bot_token_present": bool(bot_token),
+        "bot_token_env": bot_token_env,
         "bot_token_source": bot_token_source,
         "app_token": app_token,
         "app_token_present": bool(app_token),
+        "app_token_env": app_token_env,
         "app_token_source": app_token_source,
         "workspace_hint": workspace_hint,
+        "workspace_hint_env": workspace_hint_env,
         "workspace_hint_source": workspace_hint_source,
         "team_id_hint": team_id_hint,
+        "team_id_hint_env": team_id_hint_env,
         "team_id_hint_source": team_id_hint_source,
+        "channel_id_hint": channel_id_hint,
+        "channel_id_hint_env": channel_id_hint_env,
+        "channel_id_hint_source": channel_id_hint_source,
+        "thread_ts_hint": thread_ts_hint,
+        "thread_ts_hint_env": thread_ts_hint_env,
+        "thread_ts_hint_source": thread_ts_hint_source,
+        "user_id_hint": user_id_hint,
+        "user_id_hint_env": user_id_hint_env,
+        "user_id_hint_source": user_id_hint_source,
+        "resolution_order": ["service-keys", "process.env"],
     }
 
 
@@ -731,6 +755,7 @@ def list_people(
     *,
     config: dict[str, Any] | None = None,
     limit: int = 50,
+    user_id: str | None = None,
 ) -> dict[str, Any]:
     resolved = config or runtime_config()
     token = _require_bot_token(resolved)
@@ -743,6 +768,9 @@ def list_people(
         for item in members
         if not item.get("deleted") and not item.get("is_bot") and not item.get("is_app_user")
     ]
+    requested_user_id = (user_id or resolved.get("user_id_hint") or "").strip() or None
+    if requested_user_id:
+        people = [item for item in people if item.get("id") == requested_user_id]
     picker_items = [_person_picker_item(item, workspace_label=workspace["label"], scope_label="Mention targets") for item in people]
     item_labels = [item["label"] for item in picker_items]
     scope_preview = f"{workspace['label']} > Mention targets: {_compact_preview(item_labels, empty_text='no people returned')}"
@@ -757,6 +785,7 @@ def list_people(
         has_more=bool((payload.get("response_metadata") or {}).get("next_cursor")),
         next_cursor=(payload.get("response_metadata") or {}).get("next_cursor"),
         filters={"exclude_deleted": True, "exclude_bots": True, "exclude_app_users": True},
+        user_id=requested_user_id,
     )
     return _ok_result(
         "list",
@@ -764,6 +793,7 @@ def list_people(
         {
             "count": len(people),
             "people": people,
+            "user_id": requested_user_id,
             "workspace": workspace,
             "scope_preview": scope_preview,
             "scope": scope,
@@ -840,6 +870,7 @@ def mention_scan(
     *,
     config: dict[str, Any] | None = None,
     query: str | None = None,
+    user_id: str | None = None,
     limit: int = 10,
 ) -> dict[str, Any]:
     resolved = config or runtime_config()
@@ -847,7 +878,9 @@ def mention_scan(
     identity = auth_identity(resolved)
     workspace = _workspace_context(identity, resolved)
     bot_user_id = identity.get("user_id")
-    if not bot_user_id:
+    requested_user_id = (user_id or resolved.get("user_id_hint") or "").strip() or None
+    target_user_id = requested_user_id or bot_user_id
+    if not target_user_id:
         raise CliError(
             code="AUTH_ERROR",
             message="Slack auth.test did not return a bot user id",
@@ -855,14 +888,15 @@ def mention_scan(
             details={"method": "auth.test"},
         )
     bot_handle = workspace["bot_handle"]
-    final_query = query.strip() if query and query.strip() else f"<@{bot_user_id}>"
+    target_handle = bot_handle if bot_user_id and target_user_id == bot_user_id else f"<@{target_user_id}>"
+    final_query = query.strip() if query and query.strip() else f"<@{target_user_id}>"
     payload = _request_json("search.messages", token, params={"query": final_query, "count": limit})
     messages = [
         _normalize_search_match(item)
         for item in (payload.get("messages") or {}).get("matches", [])
         if isinstance(item, dict)
     ]
-    scope_label = f"Mentions for {bot_handle}"
+    scope_label = f"Mentions for {target_handle}"
     picker_items = [
         _message_picker_item(item, workspace_label=workspace["label"], scope_label=scope_label, surface="mention.scan")
         for item in messages
@@ -879,6 +913,8 @@ def mention_scan(
         query=final_query,
         bot_user_id=bot_user_id,
         bot_handle=bot_handle,
+        target_user_id=target_user_id,
+        target_handle=target_handle,
         item_count=len(picker_items),
     )
     return _ok_result(
@@ -887,6 +923,7 @@ def mention_scan(
         {
             "query": final_query,
             "bot_user_id": bot_user_id,
+            "target_user_id": target_user_id,
             "count": len(messages),
             "messages": messages,
             "workspace": workspace,
@@ -955,17 +992,23 @@ def list_reactions(
 def reply_message(
     *,
     config: dict[str, Any] | None = None,
-    channel: str,
+    channel: str | None,
     text: str,
     thread_ts: str | None = None,
     broadcast: bool = False,
 ) -> dict[str, Any]:
-    if not channel.strip():
+    resolved = config or runtime_config()
+    resolved_channel = (channel or resolved.get("channel_id_hint") or "").strip()
+    resolved_thread_ts = (thread_ts or resolved.get("thread_ts_hint") or "").strip() or None
+    if not resolved_channel:
         raise CliError(
             code="INVALID_USAGE",
             message="message.reply requires a channel",
             exit_code=2,
-            details={"required_scope": "chat:write"},
+            details={
+                "required_scope": "chat:write",
+                "env": resolved.get("channel_id_hint_env") or DEFAULT_CHANNEL_ID_ENV,
+            },
         )
     if not text.strip():
         raise CliError(
@@ -974,24 +1017,23 @@ def reply_message(
             exit_code=2,
             details={"required_scope": "chat:write"},
         )
-    resolved = config or runtime_config()
     token = _require_bot_token(resolved)
-    params: dict[str, Any] = {"channel": channel, "text": text, "reply_broadcast": broadcast}
-    if thread_ts and thread_ts.strip():
-        params["thread_ts"] = thread_ts.strip()
+    params: dict[str, Any] = {"channel": resolved_channel, "text": text, "reply_broadcast": broadcast}
+    if resolved_thread_ts:
+        params["thread_ts"] = resolved_thread_ts
     payload = _request_json("chat.postMessage", token, params=params)
     message = payload.get("message") if isinstance(payload.get("message"), dict) else {}
     return _ok_result(
         "reply",
         "message",
         {
-            "channel": payload.get("channel") or channel,
+            "channel": payload.get("channel") or resolved_channel,
             "ts": payload.get("ts") or message.get("ts"),
-            "thread_ts": message.get("thread_ts") or thread_ts,
+            "thread_ts": message.get("thread_ts") or resolved_thread_ts,
             "message": {
                 "text": message.get("text") or text,
                 "user": message.get("user"),
-                "channel": message.get("channel") or payload.get("channel") or channel,
+                "channel": message.get("channel") or payload.get("channel") or resolved_channel,
             },
         },
     )
@@ -1023,7 +1065,7 @@ def _runtime_summary(config: dict[str, Any], checks: list[dict[str, Any]]) -> tu
         return (
             "needs_setup",
             "Slack live reads need SLACK_BOT_TOKEN before they can run.",
-            "Set SLACK_BOT_TOKEN in API Keys and retry health.",
+            "Add SLACK_BOT_TOKEN in operator-controlled API Keys, or use local env only as a harness fallback, then retry health.",
         )
     failing = next((check for check in checks if not check["ok"]), None)
     if failing:
@@ -1107,6 +1149,7 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
     else:
         next_steps = [
             "Add SLACK_BOT_TOKEN to API Keys.",
+            "Use process.env only as a local harness fallback when operator service keys are unavailable.",
             "Grant the bot channels:read, search:read, users:read, and reactions:read before assigning it to live reads.",
         ]
     next_steps = list(dict.fromkeys(next_steps))
@@ -1135,18 +1178,33 @@ def config_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
             "bot_token": {
                 "present": config["bot_token_present"],
                 "source": config["bot_token_source"],
+                "env": config["bot_token_env"] or DEFAULT_BOT_TOKEN_ENV,
                 "required": True,
             },
             "app_token": {
                 "present": config["app_token_present"],
                 "source": config["app_token_source"],
+                "env": config["app_token_env"] or DEFAULT_APP_TOKEN_ENV,
                 "required": False,
             },
             "workspace_hint": config["workspace_hint"],
+            "workspace_hint_env": config["workspace_hint_env"] or DEFAULT_WORKSPACE_ENV,
             "workspace_hint_source": config["workspace_hint_source"],
             "team_id_hint": config["team_id_hint"],
+            "team_id_hint_env": config["team_id_hint_env"] or DEFAULT_TEAM_ID_ENV,
             "team_id_hint_source": config["team_id_hint_source"],
+            "channel_id_hint": config["channel_id_hint"],
+            "channel_id_hint_env": config["channel_id_hint_env"] or DEFAULT_CHANNEL_ID_ENV,
+            "channel_id_hint_source": config["channel_id_hint_source"],
+            "thread_ts_hint": config["thread_ts_hint"],
+            "thread_ts_hint_env": config["thread_ts_hint_env"] or DEFAULT_THREAD_TS_ENV,
+            "thread_ts_hint_source": config["thread_ts_hint_source"],
+            "user_id_hint": config["user_id_hint"],
+            "user_id_hint_env": config["user_id_hint_env"] or DEFAULT_USER_ID_ENV,
+            "user_id_hint_source": config["user_id_hint_source"],
+            "resolution_order": config["resolution_order"],
             "runtime_ready": health["status"] == "ok",
+            "implementation_mode": "live_read_with_live_reply_write",
             "required_read_scopes": READ_SCOPES,
             "required_write_scopes": WRITE_SCOPES,
             "supported_commands": [

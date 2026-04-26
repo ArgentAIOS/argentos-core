@@ -9,7 +9,7 @@
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": true,
-    "workerFields": ["channel", "message_text", "thread_ts", "username", "user_id"],
+    "workerFields": ["channel", "message_text", "thread_ts", "user_id"],
     "worker_visible_actions": [
       "message.search",
       "message.reply",
@@ -27,9 +27,9 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": ["message.search", "message.reply", "channel.list"],
+        "applies_to": ["message.reply"],
         "placeholder": "C1234567890 or #general",
-        "description": "The Slack channel ID (e.g. C1234567890) or channel name (e.g. #general) to send or search messages in."
+        "description": "The Slack channel ID (e.g. C1234567890) or channel name (e.g. #general) to reply in."
       },
       {
         "id": "message_text",
@@ -57,18 +57,6 @@
         "description": "The thread timestamp (ts) to reply in. If omitted, sends to channel root."
       },
       {
-        "id": "username",
-        "label": "Username",
-        "type": "text",
-        "renderAs": "text",
-        "required": false,
-        "expressionEnabled": true,
-        "valueType": "string",
-        "applies_to": ["message.reply"],
-        "placeholder": "argent-bot",
-        "description": "Optional username for the bot when posting (username override in workspace app settings)."
-      },
-      {
         "id": "user_id",
         "label": "User ID",
         "type": "text",
@@ -76,9 +64,9 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": ["people.list"],
+        "applies_to": ["people.list", "mention.scan"],
         "placeholder": "U1234567890",
-        "description": "A Slack user ID to filter or mention. Used in people listing and mention scanning."
+        "description": "A Slack user ID to filter people.list results or to target mention.scan at a specific user."
       },
       {
         "id": "search_query",
@@ -93,24 +81,100 @@
         "placeholder": "text from:@username",
         "description": "Search query in Slack's query syntax (supports filters like from:, in:, before:, etc.)."
       }
-    ]
+    ],
+    "commandDefaults": {
+      "message.search": {
+        "selection_surface": "message",
+        "limit": 10
+      },
+      "message.reply": {
+        "selection_surface": "message",
+        "args": ["SLACK_CHANNEL_ID"],
+        "options": {
+          "thread-ts": "SLACK_THREAD_TS"
+        }
+      },
+      "channel.list": {
+        "selection_surface": "channel",
+        "limit": 25
+      },
+      "mention.scan": {
+        "selection_surface": "message",
+        "limit": 10,
+        "options": {
+          "user-id": "SLACK_USER_ID"
+        }
+      },
+      "people.list": {
+        "selection_surface": "people",
+        "limit": 50,
+        "options": {
+          "user-id": "SLACK_USER_ID"
+        }
+      },
+      "reaction.list": {
+        "selection_surface": "reaction",
+        "limit": 25
+      }
+    },
+    "pickerHints": {
+      "channel": {
+        "kind": "channel",
+        "selection_surface": "channel",
+        "resource": "slack.channel",
+        "source_command": "channel.list",
+        "source_fields": ["id", "name", "is_private", "is_archived", "num_members"]
+      },
+      "message": {
+        "kind": "message",
+        "selection_surface": "message",
+        "resource": "slack.message",
+        "source_command": "message.search",
+        "source_fields": ["channel_id", "channel_name", "ts", "user", "text", "permalink"]
+      },
+      "people": {
+        "kind": "person",
+        "selection_surface": "people",
+        "resource": "slack.person",
+        "source_command": "people.list",
+        "source_fields": ["id", "name", "display_name", "real_name", "mention"]
+      },
+      "reaction": {
+        "kind": "reaction",
+        "selection_surface": "reaction",
+        "resource": "slack.reaction",
+        "source_command": "reaction.list",
+        "source_fields": ["channel", "reaction", "count", "message_ts", "message_text"]
+      }
+    }
   },
   "connector": {
     "label": "Slack",
     "category": "general",
-    "categories": ["general", "messaging"],
+    "categories": ["general", "messaging", "team-collaboration"],
     "resources": ["message", "channel", "mention", "reaction", "people"]
   },
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": ["SLACK_BOT_TOKEN"],
+    "service_keys": [
+      "SLACK_BOT_TOKEN",
+      "SLACK_APP_TOKEN",
+      "SLACK_WORKSPACE",
+      "SLACK_TEAM_ID",
+      "SLACK_CHANNEL_ID",
+      "SLACK_THREAD_TS",
+      "SLACK_USER_ID"
+    ],
     "interactive_setup": [
       "Create or install a Slack app for the target workspace.",
-      "Add SLACK_BOT_TOKEN in API Keys.",
+      "Add SLACK_BOT_TOKEN in operator-controlled API Keys before enabling live reads or replies.",
+      "Use local SLACK_BOT_TOKEN environment variables only as a harness fallback when operator service keys are unavailable.",
       "Grant the bot the read scopes it needs: channels:read, search:read, users:read, and reactions:read.",
+      "Add groups:read too if you expect channel.list --include-private to inspect private channels.",
       "Add chat:write if you plan to use message.reply.",
-      "Optional: add SLACK_APP_TOKEN only if you later wire Socket Mode or event ingestion."
+      "Optional: pin SLACK_WORKSPACE, SLACK_TEAM_ID, SLACK_CHANNEL_ID, SLACK_THREAD_TS, and SLACK_USER_ID in operator-controlled API Keys when workers need stable Slack scope defaults.",
+      "Optional: add SLACK_APP_TOKEN only for future Socket Mode wiring; this connector does not advertise event-ingestion commands today."
     ]
   },
   "commands": [

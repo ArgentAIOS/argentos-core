@@ -4,14 +4,21 @@ import json
 from pathlib import Path
 
 from click.testing import CliRunner
+import pytest
 
 from cli_aos.zapier import runtime as runtime_module
 from cli_aos.zapier.cli import cli
+from cli_aos.zapier import service_keys as service_keys_module
 
 
 AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
 CONNECTOR_PATH = AGENT_HARNESS_ROOT.parent / "connector.json"
 PERMISSIONS_PATH = AGENT_HARNESS_ROOT / "permissions.json"
+
+
+@pytest.fixture(autouse=True)
+def no_operator_service_key_by_default(monkeypatch):
+    monkeypatch.setattr(service_keys_module, "resolve_service_key", lambda variable: None)
 
 
 class FakeZapierClient:
@@ -205,6 +212,30 @@ def test_config_show_redacts_tokens_and_reports_live_runtime(monkeypatch):
     assert '"zap_name": "Weekly Ops Sync"' in result.output
 
 
+def test_health_prefers_operator_service_keys_over_env_fallback(monkeypatch):
+    fake_client = FakeZapierClient()
+    operator_values = {
+        "ZAPIER_API_URL": "https://operator.zapier.invalid",
+        "ZAPIER_API_KEY": "operator-secret-key",
+        "ZAPIER_WEBHOOK_BASE_URL": "https://hooks.operator.invalid",
+    }
+    monkeypatch.setattr(service_keys_module, "resolve_service_key", lambda variable: operator_values.get(variable))
+    monkeypatch.setattr(runtime_module, "_client", lambda _ctx: fake_client)
+    monkeypatch.setenv("ZAPIER_API_URL", "https://env.zapier.invalid")
+    monkeypatch.setenv("ZAPIER_API_KEY", "env-secret-key")
+    monkeypatch.setenv("ZAPIER_WEBHOOK_BASE_URL", "https://hooks.env.invalid")
+
+    result = CliRunner().invoke(cli, ["--json", "health"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.output)["data"]
+    assert payload["status"] == "ready"
+    assert payload["auth"]["api_url_source"] == "service-keys"
+    assert payload["auth"]["api_key_source"] == "service-keys"
+    assert payload["auth"]["webhook_base_url_source"] == "service-keys"
+    assert payload["auth"]["resolution_order"] == ["service-keys", "process.env"]
+
+
 def test_doctor_reports_live_runtime_status_and_permissions(monkeypatch):
     fake_client = FakeZapierClient()
     monkeypatch.setattr(runtime_module, "_client", lambda _ctx: fake_client)
@@ -331,3 +362,37 @@ def test_zap_trigger_executes_via_live_bridge(monkeypatch):
         ("probe_trigger",),
         ("trigger_zap", "zap-123", "manual", {"source": "agent", "reason": "builder", "priority": "high"}, "Ops"),
     ]
+
+
+def test_zap_trigger_requires_write_mode(monkeypatch):
+    fake_client = FakeZapierClient()
+    monkeypatch.setattr(runtime_module, "_client", lambda _ctx: fake_client)
+    monkeypatch.setenv("ZAPIER_API_URL", "https://example.zapier.invalid")
+    monkeypatch.setenv("ZAPIER_API_KEY", "super-secret-key")
+
+    result = CliRunner().invoke(cli, ["--json", "zap", "trigger", "zap-123"])
+    assert result.exit_code == 3
+
+    payload = json.loads(result.output)
+    assert payload["ok"] is False
+    assert payload["command"] == "zap.trigger"
+    assert payload["error"]["code"] == "PERMISSION_DENIED"
+    assert payload["error"]["details"] == {"required_mode": "write", "actual_mode": "readonly"}
+    assert fake_client.calls == []
+
+
+def test_zap_trigger_rejects_non_object_payload_json(monkeypatch):
+    monkeypatch.setenv("ZAPIER_API_URL", "https://example.zapier.invalid")
+    monkeypatch.setenv("ZAPIER_API_KEY", "super-secret-key")
+
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--mode", "write", "zap", "trigger", "zap-123", "--payload-json", '["not","an","object"]'],
+    )
+    assert result.exit_code == 2
+
+    payload = json.loads(result.output)
+    assert payload["ok"] is False
+    assert payload["command"] == "unknown"
+    assert payload["error"]["code"] == "INVALID_USAGE"
+    assert "--payload-json must decode to a JSON object" in payload["error"]["message"]

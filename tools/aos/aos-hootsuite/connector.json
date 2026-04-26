@@ -56,7 +56,7 @@
         "valueType": "string",
         "applies_to": ["social_profile.read", "message.list", "message.schedule"],
         "placeholder": "115185509",
-        "description": "The Hootsuite social profile ID (Twitter, Facebook, LinkedIn, Instagram, etc.) to fetch or publish messages on."
+        "description": "The Hootsuite social profile ID (Twitter, Facebook, LinkedIn, Instagram, etc.) to fetch or scope scaffolded outbound message actions on."
       },
       {
         "id": "team_id",
@@ -95,7 +95,8 @@
         "args": ["HOOTSUITE_ORGANIZATION_ID"]
       },
       "social_profile.list": {
-        "selection_surface": "social_profile"
+        "selection_surface": "social_profile",
+        "args": ["HOOTSUITE_ORGANIZATION_ID"]
       },
       "social_profile.read": {
         "selection_surface": "social_profile",
@@ -111,6 +112,7 @@
       },
       "message.list": {
         "selection_surface": "message",
+        "args": ["HOOTSUITE_SOCIAL_PROFILE_ID"],
         "limit": 25,
         "default_window": "now-7d..now+7d"
       },
@@ -173,10 +175,11 @@
     "service_keys": ["HOOTSUITE_ACCESS_TOKEN"],
     "interactive_setup": [
       "Create a Hootsuite developer app and complete OAuth2 for the member and organization context this worker should use.",
-      "Add the resulting HOOTSUITE_ACCESS_TOKEN in API Keys before enabling live reads.",
+      "Add the resulting HOOTSUITE_ACCESS_TOKEN to operator-controlled service keys before enabling live reads.",
       "Optional: set HOOTSUITE_BASE_URL only if you need a non-default Hootsuite API host.",
       "Optional: pin HOOTSUITE_ORGANIZATION_ID, HOOTSUITE_SOCIAL_PROFILE_ID, HOOTSUITE_TEAM_ID, and HOOTSUITE_MESSAGE_ID for worker scope defaults.",
-      "Live reads are enabled for member, organization, social profile, team, and outbound message discovery; keep message.schedule scaffolded until approval and publish safety rules are implemented."
+      "Live reads are enabled for member, organization, social profile, team, and outbound message discovery; local env is harness-only fallback.",
+      "Keep message.schedule scaffolded until approval and publish safety rules are implemented."
     ]
   },
   "commands": [
@@ -286,7 +289,7 @@
     },
     {
       "id": "message.schedule",
-      "summary": "Schedule a Hootsuite outbound message",
+      "summary": "Validate inputs for a scaffolded Hootsuite outbound message schedule",
       "required_mode": "write",
       "supports_json": true,
       "resource": "message",

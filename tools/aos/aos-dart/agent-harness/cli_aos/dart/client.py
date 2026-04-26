@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from .constants import DEFAULT_TIMEOUT_SECONDS
-from .errors import DartAPIError
+from .errors import DartAPIError, DartConfigurationError, DartNotFoundError
 
 
 @dataclass(frozen=True)
@@ -53,10 +53,19 @@ class DartClient:
                     headers={key: value for key, value in response.headers.items()},
                 )
         except HTTPError as exc:
-            raw = exc.read().decode("utf-8") if hasattr(exc, "read") else ""
+            if exc.code in {401, 403}:
+                raise DartConfigurationError(
+                    f"Dart API authentication failed: {exc.code} {exc.reason}",
+                    details={"status_code": exc.code, "reason": exc.reason},
+                ) from exc
+            if exc.code == 404:
+                raise DartNotFoundError(
+                    f"Dart API resource not found: {path}",
+                    details={"status_code": exc.code, "path": path},
+                ) from exc
             raise DartAPIError(
-                f"Dart API request failed: {exc.code} {exc.reason}: {raw or exc}",
-                details={"status_code": exc.code, "reason": exc.reason, "body": raw or None},
+                f"Dart API request failed: {exc.code} {exc.reason}",
+                details={"status_code": exc.code, "reason": exc.reason, "path": path},
             ) from exc
         except URLError as exc:
             raise DartAPIError(f"Dart API request failed: {exc.reason}") from exc

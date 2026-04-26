@@ -15,12 +15,17 @@ Configure a Dart API key from your workspace settings.
 
 Required:
 
-- `DART_API_KEY`
+- operator-controlled `DART_API_KEY` service key
+
+Local harness fallback only:
+
+- `DART_API_KEY` in `process.env` when operator service keys are unavailable
 
 Recommended scope pins:
 
 - `DART_DARTBOARD_ID`
 - `DART_TASK_ID`
+- `DART_DOC_ID`
 
 ## Implementation mode
 
@@ -31,3 +36,5 @@ The harness supports full read and write operations:
 - `doc.list`, `doc.get`, `doc.create` manage docs
 - `comment.list`, `comment.create` manage task comments
 - `property.list` reads custom workspace properties
+
+The Click harness enforces `permissions.json`, prefers operator-controlled service keys for auth, and uses local env values only as a harness fallback.

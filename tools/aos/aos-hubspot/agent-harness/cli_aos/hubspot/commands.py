@@ -5,7 +5,7 @@ from typing import Any
 import click
 
 from .bridge import config_snapshot, health_snapshot
-from .constants import AUTH_DESCRIPTOR, CONNECTOR_DESCRIPTOR, MANIFEST_SCHEMA_VERSION, MODE_ORDER, WORKER_COMMANDS
+from .constants import AUTH_DESCRIPTOR, COMMAND_SPECS, CONNECTOR_DESCRIPTOR, MANIFEST_SCHEMA_VERSION, MODE_ORDER
 from .errors import CliError
 from .permissions import require_mode
 from .runtime import (
@@ -578,7 +578,7 @@ def capabilities(ctx: click.Context) -> None:
             "connector": CONNECTOR_DESCRIPTOR,
             "auth": AUTH_DESCRIPTOR,
             "delivery_model": "hybrid",
-            "commands": WORKER_COMMANDS,
+            "commands": COMMAND_SPECS,
         },
     )
 

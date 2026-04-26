@@ -8,13 +8,20 @@ PERMISSIONS_PATH = Path(__file__).resolve().parents[2] / "permissions.json"
 
 CONNECTOR_LABEL = "Slack"
 CONNECTOR_CATEGORY = "general"
-CONNECTOR_CATEGORIES = ["general", "messaging"]
+CONNECTOR_CATEGORIES = ["general", "messaging", "team-collaboration"]
 CONNECTOR_RESOURCES = ["message", "channel", "mention", "reaction", "people"]
 
 DEFAULT_BOT_TOKEN_ENV = "SLACK_BOT_TOKEN"
 LEGACY_BOT_TOKEN_ENV = "AOS_SLACK_BOT_TOKEN"
 DEFAULT_APP_TOKEN_ENV = "SLACK_APP_TOKEN"
 LEGACY_APP_TOKEN_ENV = "AOS_SLACK_APP_TOKEN"
+DEFAULT_WORKSPACE_ENV = "SLACK_WORKSPACE"
+LEGACY_WORKSPACE_ENV = "AOS_SLACK_WORKSPACE"
+DEFAULT_TEAM_ID_ENV = "SLACK_TEAM_ID"
+LEGACY_TEAM_ID_ENV = "AOS_SLACK_TEAM_ID"
+DEFAULT_CHANNEL_ID_ENV = "SLACK_CHANNEL_ID"
+DEFAULT_THREAD_TS_ENV = "SLACK_THREAD_TS"
+DEFAULT_USER_ID_ENV = "SLACK_USER_ID"
 
 READ_SCOPES = ["channels:read", "search:read", "users:read", "reactions:read"]
 WRITE_SCOPES = ["chat:write"]
@@ -22,13 +29,24 @@ WRITE_SCOPES = ["chat:write"]
 CONNECTOR_AUTH = {
     "kind": "service-key",
     "required": True,
-    "service_keys": [DEFAULT_BOT_TOKEN_ENV],
+    "service_keys": [
+        DEFAULT_BOT_TOKEN_ENV,
+        DEFAULT_APP_TOKEN_ENV,
+        DEFAULT_WORKSPACE_ENV,
+        DEFAULT_TEAM_ID_ENV,
+        DEFAULT_CHANNEL_ID_ENV,
+        DEFAULT_THREAD_TS_ENV,
+        DEFAULT_USER_ID_ENV,
+    ],
     "interactive_setup": [
         "Create or install a Slack app for the target workspace.",
-        "Add SLACK_BOT_TOKEN in API Keys.",
+        "Add SLACK_BOT_TOKEN in operator-controlled API Keys before enabling live reads or replies.",
+        "Use local SLACK_BOT_TOKEN environment variables only as a harness fallback when operator service keys are unavailable.",
         "Grant the bot the read scopes it needs: channels:read, search:read, users:read, and reactions:read.",
+        "Add groups:read too if you expect channel.list --include-private to inspect private channels.",
         "Add chat:write if you plan to use message.reply.",
-        "Optional: add SLACK_APP_TOKEN only if you later wire Socket Mode or event ingestion.",
+        "Optional: pin SLACK_WORKSPACE, SLACK_TEAM_ID, SLACK_CHANNEL_ID, SLACK_THREAD_TS, and SLACK_USER_ID in operator-controlled API Keys when workers need stable Slack scope defaults.",
+        "Optional: add SLACK_APP_TOKEN only for future Socket Mode wiring; this connector does not advertise event-ingestion commands today.",
     ],
 }
 

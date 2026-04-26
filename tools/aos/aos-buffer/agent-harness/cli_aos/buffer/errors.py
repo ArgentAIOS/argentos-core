@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-
-class BufferError(RuntimeError):
-    pass
-
-
-class BufferConfigurationError(BufferError):
-    pass
+from dataclasses import dataclass, field
+from typing import Any
 
 
-class BufferAPIError(BufferError):
-    pass
+@dataclass(slots=True)
+class CliError(Exception):
+    code: str
+    message: str
+    exit_code: int = 10
+    details: dict[str, Any] = field(default_factory=dict)
