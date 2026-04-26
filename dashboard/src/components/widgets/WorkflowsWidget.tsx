@@ -3373,11 +3373,13 @@ function OutputForm({
   onUpdate,
   nodeId,
   outputChannels,
+  nodes,
 }: {
   data: OutputNodeData;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
   nodeId: string;
   outputChannels: OutputChannelOption[];
+  nodes: Node[];
 }) {
   const update = (field: string, value: unknown) => {
     onUpdate(nodeId, { ...data, [field]: value });
@@ -3404,6 +3406,26 @@ function OutputForm({
     (data.target === "channel" || data.target === "discord" || data.target === "telegram") &&
     !selectedChannel;
   const sourceMode = typeof record.sourceMode === "string" ? record.sourceMode : "previous";
+  const sourceNodeOptions = nodes
+    .filter((node) => {
+      if (node.id === nodeId) {
+        return false;
+      }
+      return ["trigger", "agentStep", "action", "gate", "output"].includes(node.type ?? "");
+    })
+    .map((node) => {
+      const nodeData = node.data as Record<string, unknown>;
+      const label =
+        typeof nodeData.label === "string" && nodeData.label.trim()
+          ? nodeData.label.trim()
+          : node.id;
+      return {
+        id: node.id,
+        label,
+        type: node.type ?? "node",
+      };
+    });
+  const selectedSourceNodeId = typeof record.sourceNodeId === "string" ? record.sourceNodeId : "";
   const payloadValue =
     sourceMode === "custom" && typeof record.contentTemplate !== "string"
       ? ""
@@ -3464,13 +3486,23 @@ function OutputForm({
 
       {sourceMode === "node" && (
         <div className="space-y-1.5">
-          <label className={DOCK_LABEL}>Source node ID</label>
-          <input
+          <label className={DOCK_LABEL}>Source node</label>
+          <select
             className={DOCK_INPUT}
-            value={(record.sourceNodeId as string) || ""}
+            value={selectedSourceNodeId}
             onChange={(e) => update("sourceNodeId", e.target.value)}
-            placeholder="agent-1"
-          />
+          >
+            <option value="">Select a node...</option>
+            {sourceNodeOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label} ({option.type})
+              </option>
+            ))}
+            {selectedSourceNodeId &&
+              !sourceNodeOptions.some((option) => option.id === selectedSourceNodeId) && (
+                <option value={selectedSourceNodeId}>{selectedSourceNodeId} (missing)</option>
+              )}
+          </select>
         </div>
       )}
 
@@ -6039,6 +6071,7 @@ function WorkflowCanvasInner({
                         onUpdate={onUpdateNodeData}
                         nodeId={selectedNode.id}
                         outputChannels={outputChannels}
+                        nodes={nodes}
                       />
                     )}
                     {selectedNode.type === "modelProvider" && (
