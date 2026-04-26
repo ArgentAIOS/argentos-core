@@ -1551,9 +1551,20 @@ function NewWorkflowModal({
           />
         </div>
 
-        <div className="mb-4 space-y-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))]/60 p-3">
+        <div className="mb-3 rounded-lg border border-cyan-400/30 bg-cyan-400/5 p-3">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-lg">&#10024;</span>
+            <div>
+              <div className="text-sm font-semibold text-[hsl(var(--foreground))]">
+                AI draft from description
+              </div>
+              <div className="text-xs text-[hsl(var(--muted-foreground))]">
+                Type the outcome you want; Argent creates the first canvas for review.
+              </div>
+            </div>
+          </div>
           <div className="space-y-1.5">
-            <label className={DOCK_LABEL}>Describe what Argent should build</label>
+            <label className={DOCK_LABEL}>What should this workflow do?</label>
             <textarea
               className={DOCK_INPUT + " resize-y"}
               rows={4}
@@ -1574,10 +1585,13 @@ function NewWorkflowModal({
             disabled={!intent.trim() || generating}
             className="w-full rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-400/20 disabled:opacity-40"
           >
-            {generating ? "Building draft..." : "Build draft with Argent"}
+            {generating ? "Building AI draft..." : "Generate AI draft canvas"}
           </button>
         </div>
 
+        <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
+          Or choose a starting point
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <button
             onClick={() => {
@@ -1587,11 +1601,9 @@ function NewWorkflowModal({
             className="p-6 rounded-xl border border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/50 transition-colors text-left"
           >
             <div className="text-2xl mb-2">&#10024;</div>
-            <div className="text-sm font-semibold text-[hsl(var(--foreground))]">
-              Start from scratch
-            </div>
+            <div className="text-sm font-semibold text-[hsl(var(--foreground))]">Blank canvas</div>
             <div className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
-              Build your own workflow with drag and drop
+              Start with one trigger and drag in every node yourself
             </div>
           </button>
 
@@ -1601,10 +1613,10 @@ function NewWorkflowModal({
           >
             <div className="text-2xl mb-2">&#128203;</div>
             <div className="text-sm font-semibold text-[hsl(var(--foreground))]">
-              Use a template
+              Template gallery
             </div>
             <div className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
-              Start with a pre-built workflow and customize it
+              Import a tested owner-operator workflow and customize it
             </div>
           </button>
         </div>
