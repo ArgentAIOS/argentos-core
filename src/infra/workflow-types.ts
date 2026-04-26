@@ -36,6 +36,9 @@ export type TriggerType =
   | "connector_event";
 
 export interface TriggerConfig {
+  /** Manual/test runs may substitute this ItemSet instead of executing the node. */
+  pinnedOutput?: unknown;
+
   // Schedule (cron expression)
   cronExpr?: string;
   timezone?: string;
@@ -139,6 +142,9 @@ export interface AgentOutputSchema {
 }
 
 export interface AgentConfig {
+  /** Manual/test runs may substitute this ItemSet instead of executing the node. */
+  pinnedOutput?: unknown;
+
   agentId: string;
   rolePrompt: string;
   preset?: AgentPreset;
@@ -219,6 +225,9 @@ export type ActionType =
     };
 
 export interface ActionConfig {
+  /** Manual/test runs may substitute this ItemSet instead of executing the node. */
+  pinnedOutput?: unknown;
+
   actionType: ActionType;
   onError?: ErrorConfig;
   timeoutMs?: number;
@@ -254,69 +263,74 @@ export interface MergeStrategyAgentConfig {
   modelTier?: ModelTier;
 }
 
-export type GateConfig =
+export type GateConfig = {
+  /** Manual/test runs may substitute this ItemSet instead of executing the node. */
+  pinnedOutput?: unknown;
+} &
   // Conditional branching
-  | { gateType: "condition"; expression: ConditionExpr; trueEdge: string; falseEdge: string }
-  | {
-      gateType: "switch";
-      cases: Array<{ label: string; expression: ConditionExpr; edgeId: string }>;
-      defaultEdge?: string;
-    }
-  // Parallel execution
-  | { gateType: "parallel"; branchEdges: string[] }
-  | {
-      gateType: "join";
-      strategy: JoinStrategy;
-      branchFailure: BranchFailurePolicy;
-      mergeStrategy: MergeStrategy;
-      timeoutMs?: number;
-      nRequired?: number;
-      mergeAgentConfig?: MergeStrategyAgentConfig;
-    }
-  // Timing
-  | { gateType: "wait_duration"; durationMs: number }
-  | {
-      gateType: "wait_event";
-      eventType: string;
-      eventFilter?: Record<string, unknown>;
-      timeoutMs?: number;
-      timeoutAction: "continue" | "fail";
-    }
-  // Approval (Business-tier — Core treats as pass-through)
-  | {
-      gateType: "approval";
-      approvers: string[];
-      channels: string[];
-      message: string;
-      showPreviousOutput: boolean;
-      allowEdit: boolean;
-      timeoutMs?: number;
-      timeoutAction: "approve" | "deny" | "escalate";
-    }
-  // Iteration
-  | {
-      gateType: "loop";
-      maxIterations: number;
-      condition?: ConditionExpr;
-      bodyEdge: string;
-      exitEdge: string;
-    }
-  // Error handling
-  | {
-      gateType: "error_handler";
-      catchFrom: string[];
-      actions: Array<{
-        type: "log" | "notify" | "create_task" | "retry" | "skip" | "abort";
-        config?: Record<string, unknown>;
-      }>;
-    }
-  // Composition
-  | {
-      gateType: "sub_workflow";
-      workflowId: string;
-      inputMapping?: Record<string, string>;
-      outputMapping?: Record<string, string>;
-    };
+  (
+    | { gateType: "condition"; expression: ConditionExpr; trueEdge: string; falseEdge: string }
+    | {
+        gateType: "switch";
+        cases: Array<{ label: string; expression: ConditionExpr; edgeId: string }>;
+        defaultEdge?: string;
+      }
+    // Parallel execution
+    | { gateType: "parallel"; branchEdges: string[] }
+    | {
+        gateType: "join";
+        strategy: JoinStrategy;
+        branchFailure: BranchFailurePolicy;
+        mergeStrategy: MergeStrategy;
+        timeoutMs?: number;
+        nRequired?: number;
+        mergeAgentConfig?: MergeStrategyAgentConfig;
+      }
+    // Timing
+    | { gateType: "wait_duration"; durationMs: number }
+    | {
+        gateType: "wait_event";
+        eventType: string;
+        eventFilter?: Record<string, unknown>;
+        timeoutMs?: number;
+        timeoutAction: "continue" | "fail";
+      }
+    // Approval (Business-tier — Core treats as pass-through)
+    | {
+        gateType: "approval";
+        approvers: string[];
+        channels: string[];
+        message: string;
+        showPreviousOutput: boolean;
+        allowEdit: boolean;
+        timeoutMs?: number;
+        timeoutAction: "approve" | "deny" | "escalate";
+      }
+    // Iteration
+    | {
+        gateType: "loop";
+        maxIterations: number;
+        condition?: ConditionExpr;
+        bodyEdge: string;
+        exitEdge: string;
+      }
+    // Error handling
+    | {
+        gateType: "error_handler";
+        catchFrom: string[];
+        actions: Array<{
+          type: "log" | "notify" | "create_task" | "retry" | "skip" | "abort";
+          config?: Record<string, unknown>;
+        }>;
+      }
+    // Composition
+    | {
+        gateType: "sub_workflow";
+        workflowId: string;
+        inputMapping?: Record<string, string>;
+        outputMapping?: Record<string, string>;
+      }
+  );
 
 export interface GateNode {
   kind: "gate";
@@ -330,6 +344,9 @@ export interface GateNode {
 export type OutputSourceMode = "previous" | "node" | "summary" | "custom";
 
 export type OutputPayloadConfig = {
+  /** Manual/test runs may substitute this ItemSet instead of executing the node. */
+  pinnedOutput?: unknown;
+
   /** Which upstream data should be treated as the source payload for this output. */
   sourceMode?: OutputSourceMode;
   /** Node id used when sourceMode="node". */

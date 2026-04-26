@@ -293,8 +293,17 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
     let stepStatus: StepRecord["status"] = "completed";
 
     try {
-      // Detect parallel gate → execute full fan-out/join segment
-      if (node.kind === "gate" && node.config.gateType === "parallel") {
+      const pinnedOutput = getPinnedOutputForManualRun(params, node, context);
+      if (pinnedOutput) {
+        stepResult = pinnedOutput;
+        log.info("workflow node used pinned output", {
+          workflowId: workflow.id,
+          runId,
+          nodeId: node.id,
+          nodeKind: node.kind,
+        });
+      } else if (node.kind === "gate" && node.config.gateType === "parallel") {
+        // Detect parallel gate → execute full fan-out/join segment
         const segmentResult = await executeParallelSegment(
           node,
           context,
@@ -305,7 +314,9 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
         );
         stepResult = segmentResult.output;
         stepStatus = segmentResult.failed ? "failed" : "completed";
-        if (segmentResult.failed) finalStatus = "failed";
+        if (segmentResult.failed) {
+          finalStatus = "failed";
+        }
       } else {
         switch (node.kind) {
           case "trigger":
@@ -3430,6 +3441,72 @@ function errorItemSet(message: string): ItemSet {
       },
     ],
   };
+}
+
+function getPinnedOutputForManualRun(
+  params: ExecuteWorkflowParams,
+  node: WorkflowNode,
+  context: PipelineContext,
+): ItemSet | null {
+  const source = params.triggerSource ?? context.trigger.source ?? "";
+  const isManualTestRun =
+    source === "" ||
+    source.startsWith("gateway:manual") ||
+    source.startsWith("gateway:retry_from_step");
+  if (!isManualTestRun) {
+    return null;
+  }
+  const config = node.config as Record<string, unknown>;
+  const pinnedOutput = config.pinnedOutput;
+  if (pinnedOutput === undefined || pinnedOutput === null) {
+    return null;
+  }
+  return itemSetFromPinnedOutput(pinnedOutput, node);
+}
+
+function itemSetFromPinnedOutput(value: unknown, node: WorkflowNode): ItemSet {
+  if (value && typeof value === "object" && Array.isArray((value as { items?: unknown }).items)) {
+    return value as ItemSet;
+  }
+  if (Array.isArray(value)) {
+    return {
+      items: value.map((entry) => itemFromPinnedValue(entry, node)),
+    };
+  }
+  return { items: [itemFromPinnedValue(value, node)] };
+}
+
+function itemFromPinnedValue(value: unknown, node: WorkflowNode): PipelineItem {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    const json = isRecordValue(record.json) ? record.json : record;
+    return {
+      json,
+      text: typeof record.text === "string" ? record.text : undefined,
+      artifacts: Array.isArray(record.artifacts)
+        ? (record.artifacts as PipelineItem["artifacts"])
+        : undefined,
+      meta: {
+        nodeId: node.id,
+        status: "completed",
+        durationMs: 0,
+        ...(isRecordValue(record.meta) ? record.meta : {}),
+      },
+    };
+  }
+  return {
+    json: { value },
+    text: typeof value === "string" ? value : JSON.stringify(value),
+    meta: {
+      nodeId: node.id,
+      status: "completed",
+      durationMs: 0,
+    },
+  };
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function getNodeLabel(node: WorkflowNode): string {

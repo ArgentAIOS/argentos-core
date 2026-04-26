@@ -483,6 +483,7 @@ function normalizeOutputConfig(
       ? sourceModeRaw
       : "previous";
   const source = {
+    pinnedOutput: data.pinnedOutput,
     sourceMode,
     sourceNodeId: asString(config.sourceNodeId ?? data.sourceNodeId) || undefined,
     contentTemplate:
@@ -661,6 +662,7 @@ function normalizeCanvasNode(
         id: node.id,
         triggerType: asString(data.triggerType, "manual") as TriggerType,
         config: {
+          pinnedOutput: data.pinnedOutput,
           cronExpr: asString(data.cronExpression ?? data.cronExpr) || undefined,
           timezone: asString(data.timezone) || undefined,
           webhookPath: asString(data.webhookPath) || undefined,
@@ -703,6 +705,7 @@ function normalizeCanvasNode(
         id: node.id,
         label,
         config: {
+          pinnedOutput: data.pinnedOutput,
           agentId: asString(data.agentId, "argent"),
           rolePrompt: asString(data.rolePrompt ?? data.prompt, "Complete this workflow step."),
           timeoutMs: asNumber(data.timeoutMs, asNumber(data.timeout, 5) * 60_000),
@@ -717,6 +720,7 @@ function normalizeCanvasNode(
         id: node.id,
         label,
         config: {
+          pinnedOutput: data.pinnedOutput,
           actionType: normalizeActionType(data, issues, node.id),
           timeoutMs: typeof data.timeoutMs === "number" ? data.timeoutMs : undefined,
         },
@@ -729,7 +733,10 @@ function normalizeCanvasNode(
         kind: "gate",
         id: node.id,
         label,
-        config: normalizeGateConfig(node, data, edges, issues),
+        config: {
+          ...normalizeGateConfig(node, data, edges, issues),
+          pinnedOutput: data.pinnedOutput,
+        },
       };
     case "output":
       return {

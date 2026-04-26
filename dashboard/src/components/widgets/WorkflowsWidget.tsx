@@ -625,6 +625,17 @@ function ExecOverlay({ state }: { state?: NodeExecState }) {
   return null;
 }
 
+function PinnedDataBadge({ active }: { active?: boolean }) {
+  if (!active) {
+    return null;
+  }
+  return (
+    <div className="absolute -top-1.5 left-2 rounded-full border border-cyan-400/40 bg-cyan-400/15 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-cyan-200">
+      Pinned
+    </div>
+  );
+}
+
 function RetryBadge({ retryCount }: { retryCount?: number }) {
   if (!retryCount || retryCount <= 0) return null;
   return (
@@ -1220,6 +1231,7 @@ function TriggerNode({ data, selected }: NodeProps<Node<TriggerNodeData>>) {
       style={{ background: "hsl(var(--card))" }}
     >
       <ExecOverlay state={data.execState} />
+      <PinnedDataBadge active={data.pinnedOutput != null} />
       <RetryBadge retryCount={data.retryCount} />
       <NodeIssueBadge issues={data.validationIssues as WorkflowValidationIssue[] | undefined} />
       <div className="flex items-center gap-2 mb-1">
@@ -1274,6 +1286,7 @@ function AgentStepNode({ data, selected }: NodeProps<Node<AgentStepNodeData>>) {
       }}
     >
       <ExecOverlay state={data.execState} />
+      <PinnedDataBadge active={data.pinnedOutput != null} />
       <RetryBadge retryCount={data.retryCount} />
       <NodeIssueBadge issues={data.validationIssues as WorkflowValidationIssue[] | undefined} />
       <Handle
@@ -1543,6 +1556,7 @@ function OutputNode({ data, selected }: NodeProps<Node<OutputNodeData>>) {
       style={{ background: "hsl(var(--card))" }}
     >
       <ExecOverlay state={data.execState} />
+      <PinnedDataBadge active={data.pinnedOutput != null} />
       <RetryBadge retryCount={data.retryCount} />
       <NodeIssueBadge issues={data.validationIssues as WorkflowValidationIssue[] | undefined} />
       <Handle
@@ -1621,6 +1635,7 @@ function ActionNode({ data, selected }: NodeProps<Node<ActionNodeData>>) {
       }}
     >
       <ExecOverlay state={data.execState} />
+      <PinnedDataBadge active={data.pinnedOutput != null} />
       <RetryBadge retryCount={data.retryCount} />
       <NodeIssueBadge issues={data.validationIssues as WorkflowValidationIssue[] | undefined} />
       <Handle
@@ -1722,6 +1737,7 @@ function GateNode({ data, selected }: NodeProps<Node<GateNodeData>>) {
       style={{ width: 140, height: 90 }}
     >
       <ExecOverlay state={data.execState} />
+      <PinnedDataBadge active={data.pinnedOutput != null} />
       <RetryBadge retryCount={data.retryCount} />
       <NodeIssueBadge issues={data.validationIssues as WorkflowValidationIssue[] | undefined} />
       {/* Diamond shape */}
@@ -3807,6 +3823,147 @@ function stringifyOutputJson(value: unknown, fallback = "{}"): string {
     }
   }
   return fallback;
+}
+
+function nodeOutputSummary(output: unknown): string {
+  if (!output) {
+    return "No execution data for this node yet.";
+  }
+  if (isRecord(output) && Array.isArray(output.items)) {
+    const items = output.items as unknown[];
+    const first = items.find(isRecord);
+    const firstText = typeof first?.text === "string" ? first.text : "";
+    const firstJson = isRecord(first?.json) ? first.json : undefined;
+    if (firstText.trim()) {
+      return firstText.length > 220 ? `${firstText.slice(0, 217)}...` : firstText;
+    }
+    if (firstJson) {
+      return JSON.stringify(firstJson, null, 2);
+    }
+    return `${items.length} item${items.length === 1 ? "" : "s"}`;
+  }
+  return stringifyOutputJson(output, String(output));
+}
+
+function ExecutionDataPanel({
+  node,
+  latestStep,
+  onUpdate,
+}: {
+  node: Node;
+  latestStep?: RunStepRecord;
+  onUpdate: (id: string, data: Record<string, unknown>) => void;
+}) {
+  const nodeData = node.data as Record<string, unknown>;
+  const pinnedOutput = nodeData.pinnedOutput;
+  const [draft, setDraft] = useState(() => stringifyOutputJson(pinnedOutput, ""));
+  const [error, setError] = useState<string | null>(null);
+
+  const applyPinnedOutput = (value: unknown) => {
+    onUpdate(node.id, { ...nodeData, pinnedOutput: value });
+  };
+
+  const saveDraft = () => {
+    const trimmed = draft.trim();
+    if (!trimmed) {
+      onUpdate(node.id, { ...nodeData, pinnedOutput: undefined });
+      setError(null);
+      return;
+    }
+    try {
+      applyPinnedOutput(JSON.parse(trimmed));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const pinLatest = () => {
+    if (!latestStep?.output) {
+      return;
+    }
+    const next = latestStep.output;
+    setDraft(stringifyOutputJson(next, ""));
+    applyPinnedOutput(next);
+    setError(null);
+  };
+
+  return (
+    <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))]/50 p-3">
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+            Execution data
+          </div>
+          <div className="mt-0.5 text-[10px] leading-relaxed text-[hsl(var(--muted-foreground))]">
+            Pinned data is used for manual tests so you can build downstream steps without repeating
+            expensive or mutating work.
+          </div>
+        </div>
+        {pinnedOutput != null && (
+          <span className="rounded border border-cyan-400/30 bg-cyan-400/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-cyan-200">
+            Pinned
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <div>
+          <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+            Latest output
+          </div>
+          <pre className="max-h-28 overflow-auto whitespace-pre-wrap rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15 p-2 text-[10px] leading-relaxed text-[hsl(var(--foreground))]">
+            {latestStep
+              ? nodeOutputSummary(latestStep.output)
+              : "Run or select a run to inspect data."}
+          </pre>
+        </div>
+
+        <div>
+          <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+            Pinned output JSON
+          </div>
+          <textarea
+            className={DOCK_INPUT + " min-h-[96px] resize-y font-mono text-[11px]"}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder='{"items":[{"json":{"result":"sample"},"text":"Sample output"}]}'
+          />
+          {error && <div className="mt-1 text-[10px] text-red-400">Invalid JSON: {error}</div>}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={pinLatest}
+            disabled={!latestStep?.output}
+            className="rounded-md border border-cyan-400/35 bg-cyan-400/10 px-2.5 py-1.5 text-[10px] font-semibold text-cyan-200 hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Pin latest
+          </button>
+          <button
+            type="button"
+            onClick={saveDraft}
+            className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/25 px-2.5 py-1.5 text-[10px] font-semibold text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary))]/50"
+          >
+            Save pinned data
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDraft("");
+              setError(null);
+              onUpdate(node.id, { ...nodeData, pinnedOutput: undefined });
+            }}
+            disabled={pinnedOutput == null && !draft.trim()}
+            className="rounded-md border border-[hsl(var(--border))] px-2.5 py-1.5 text-[10px] font-semibold text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function KnowledgeCollectionPicker({
@@ -6987,6 +7144,9 @@ function WorkflowCanvasInner({
   const selectedNodeIssues = selectedNode
     ? validationIssues.filter((issue) => issue.nodeId === selectedNode.id)
     : [];
+  const selectedNodeLatestStep = selectedNode
+    ? [...(replayRun?.steps ?? [])].reverse().find((step) => step.nodeId === selectedNode.id)
+    : undefined;
   const focusValidationIssue = useCallback(
     (issue: WorkflowValidationIssue) => {
       if (!issue.nodeId) return;
@@ -7513,6 +7673,16 @@ function WorkflowCanvasInner({
                         nodeId={selectedNode.id}
                         connectors={connectors}
                         availableTools={availableTools}
+                      />
+                    )}
+                    {["trigger", "agentStep", "action", "gate", "output"].includes(
+                      selectedNode.type ?? "",
+                    ) && (
+                      <ExecutionDataPanel
+                        key={selectedNode.id}
+                        node={selectedNode}
+                        latestStep={selectedNodeLatestStep}
+                        onUpdate={onUpdateNodeData}
                       />
                     )}
                   </div>

@@ -293,6 +293,74 @@ describe("executeWorkflow", () => {
     });
   });
 
+  it("substitutes pinned node output during manual test runs", async () => {
+    const trigger = makeTrigger();
+    const dispatchMock = vi.fn();
+    const dispatcher = makeMockDispatcher(dispatchMock);
+    const baseAgent = makeAgent("agent-1", "Worker");
+    const agent: AgentNode = {
+      ...baseAgent,
+      config: {
+        ...baseAgent.config,
+        pinnedOutput: {
+          items: [{ json: { result: "pinned" }, text: "Pinned agent result" }],
+        },
+      },
+    };
+    const output = makeOutput();
+
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-pinned-agent",
+      dispatcher,
+      triggerSource: "gateway:manual",
+    });
+
+    expect(dispatchMock).not.toHaveBeenCalled();
+    expect(result.status).toBe("completed");
+    expect(result.steps[1].output.items[0].text).toBe("Pinned agent result");
+    expect(result.steps[2].output.items[0].text).toBe("Pinned agent result");
+  });
+
+  it("ignores pinned node output for production/event runs", async () => {
+    const trigger = makeTrigger();
+    const dispatchMock = vi.fn(async () => ({
+      items: [{ json: { result: "live" }, text: "Live agent result" }],
+    }));
+    const dispatcher = makeMockDispatcher(dispatchMock);
+    const baseAgent = makeAgent("agent-1", "Worker");
+    const agent: AgentNode = {
+      ...baseAgent,
+      config: {
+        ...baseAgent.config,
+        pinnedOutput: {
+          items: [{ json: { result: "pinned" }, text: "Pinned agent result" }],
+        },
+      },
+    };
+    const output = makeOutput();
+
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-pinned-production",
+      dispatcher,
+      triggerSource: "appforge:event",
+    });
+
+    expect(dispatchMock).toHaveBeenCalledOnce();
+    expect(result.steps[1].output.items[0].text).toBe("Live agent result");
+  });
+
   it("persists DocPanel output through the supplied action executor", async () => {
     const trigger = makeTrigger();
     const agent = makeAgent("agent-1", "Worker");
