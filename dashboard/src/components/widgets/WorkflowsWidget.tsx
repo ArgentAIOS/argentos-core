@@ -202,6 +202,32 @@ interface WorkflowImportReport {
   okForPinnedTestRun: boolean;
   liveRequirements: string[];
   blockers: WorkflowValidationIssue[];
+  requirements: WorkflowBindingRequirement[];
+  bindings?: Record<string, WorkflowBindingValue>;
+}
+
+type WorkflowBindingRequirementKind =
+  | "credential"
+  | "connector"
+  | "channel"
+  | "appforge_base"
+  | "knowledge_collection"
+  | "agent";
+
+interface WorkflowBindingRequirement {
+  key: string;
+  kind: WorkflowBindingRequirementKind;
+  id: string;
+  label: string;
+  provider?: string;
+  purpose?: string;
+  requiredForLive: boolean;
+}
+
+interface WorkflowBindingValue {
+  value: string;
+  target?: string;
+  label?: string;
 }
 
 interface WorkflowImportPreviewResponse {
@@ -433,9 +459,70 @@ function importedCanvasEdges(workflow: unknown, canvasLayout: unknown): Edge[] {
   });
 }
 
+function placeholderIds(value: unknown, prefix: string): string[] {
+  let text = "";
+  try {
+    text = JSON.stringify(value);
+  } catch {
+    return [];
+  }
+  const ids = new Set<string>();
+  const pattern = new RegExp(`\\{\\{${prefix}\\.([a-zA-Z0-9_-]+)(?:\\.[^}]*)?\\}\\}`, "g");
+  for (const match of text.matchAll(pattern)) {
+    if (match[1]) {
+      ids.add(match[1]);
+    }
+  }
+  return [...ids];
+}
+
 function importReportFromPreview(response: WorkflowImportPreviewResponse): WorkflowImportReport {
   const pkg = isRecord(response.package) ? response.package : {};
   const readiness = response.readiness ?? {};
+  const credentials = isRecord(pkg.credentials) ? objectArray(pkg.credentials.required) : [];
+  const dependencies = objectArray(pkg.dependencies);
+  const dependencyKeys = new Set(
+    dependencies.map(
+      (dependency) => `${stringValue(dependency.kind)}:${stringValue(dependency.id)}`,
+    ),
+  );
+  const derivedChannelDependencies = placeholderIds(pkg, "channels").map((id) => ({
+    kind: "channel",
+    id,
+    label: `${id[0]?.toUpperCase() ?? ""}${id.slice(1)} channel`,
+    requiredForLive: true,
+  }));
+  const requirements: WorkflowBindingRequirement[] = [
+    ...credentials.map((credential) => ({
+      key: `credential:${stringValue(credential.id)}`,
+      kind: "credential" as const,
+      id: stringValue(credential.id),
+      label: stringValue(credential.label, stringValue(credential.id, "Credential")),
+      provider: stringValue(credential.provider) || undefined,
+      purpose: stringValue(credential.purpose) || undefined,
+      requiredForLive: credential.requiredForLive !== false,
+    })),
+    ...[...dependencies, ...derivedChannelDependencies]
+      .map((dependency) => {
+        const kind = stringValue(dependency.kind) as WorkflowBindingRequirementKind;
+        if (
+          !["connector", "channel", "appforge_base", "knowledge_collection", "agent"].includes(kind)
+        ) {
+          return null;
+        }
+        if (kind === "channel" && dependencyKeys.has(`channel:${stringValue(dependency.id)}`)) {
+          return null;
+        }
+        return {
+          key: `${kind}:${stringValue(dependency.id)}`,
+          kind,
+          id: stringValue(dependency.id),
+          label: stringValue(dependency.label, stringValue(dependency.id, kind)),
+          requiredForLive: dependency.requiredForLive !== false,
+        } satisfies WorkflowBindingRequirement;
+      })
+      .filter((requirement): requirement is WorkflowBindingRequirement => Boolean(requirement)),
+  ].filter((requirement) => Boolean(requirement.id));
   return {
     packageName: stringValue(pkg.name, "Imported workflow"),
     packageSlug: stringValue(pkg.slug) || undefined,
@@ -445,6 +532,7 @@ function importReportFromPreview(response: WorkflowImportPreviewResponse): Workf
       ? readiness.liveRequirements.map((entry) => String(entry))
       : [],
     blockers: normalizeValidationIssues(readiness.blockers),
+    requirements,
   };
 }
 
@@ -4319,6 +4407,387 @@ function KnowledgeCollectionPicker({
   );
 }
 
+function bindingKindLabel(kind: WorkflowBindingRequirementKind): string {
+  switch (kind) {
+    case "credential":
+      return "Credential";
+    case "connector":
+      return "Connector";
+    case "channel":
+      return "Channel";
+    case "appforge_base":
+      return "AppForge base";
+    case "knowledge_collection":
+      return "Knowledge";
+    case "agent":
+      return "Agent";
+  }
+}
+
+function requirementMatchesConnector(
+  requirement: WorkflowBindingRequirement,
+  connector: ConnectorEntry,
+): boolean {
+  const id = requirement.provider ?? requirement.id;
+  return (
+    connector.id === requirement.id ||
+    connector.id === id ||
+    connector.id.includes(id) ||
+    connector.name.toLowerCase().includes(id.toLowerCase())
+  );
+}
+
+function replaceBindingTokens(
+  text: string,
+  requirement: WorkflowBindingRequirement,
+  value: string,
+) {
+  const tokens = [
+    `{{${requirement.id}}}`,
+    `{{${requirement.key}}}`,
+    `{{credentials.${requirement.id}}}`,
+    `{{credentials.${requirement.id}.primary}}`,
+    `{{channels.${requirement.id}}}`,
+    `{{appforge.${requirement.id}}}`,
+  ];
+  return tokens.reduce((next, token) => next.split(token).join(value), text);
+}
+
+function applyBindingToUnknown(
+  value: unknown,
+  requirement: WorkflowBindingRequirement,
+  binding: WorkflowBindingValue,
+): unknown {
+  if (typeof value === "string") {
+    return replaceBindingTokens(value, requirement, binding.target ?? binding.value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => applyBindingToUnknown(entry, requirement, binding));
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+  const next: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    next[key] = applyBindingToUnknown(entry, requirement, binding);
+  }
+
+  if (requirement.kind === "credential") {
+    const connectorId = stringValue(next.connectorId);
+    const provider = requirement.provider ?? requirement.id.split(".")[0] ?? requirement.id;
+    if (
+      connectorId === requirement.id ||
+      connectorId.includes(provider) ||
+      stringValue(next.provider).includes(provider)
+    ) {
+      next.credentialId = binding.value;
+    }
+  }
+  if (requirement.kind === "connector" && stringValue(next.connectorId) === requirement.id) {
+    next.connectorId = binding.value;
+    if (binding.label) {
+      next.connectorName = binding.label;
+    }
+  }
+  if (requirement.kind === "channel") {
+    if (stringValue(next.channelType) === requirement.id) {
+      next.channelType = binding.value;
+    }
+    if (binding.target && !stringValue(next.channelId)) {
+      next.channelId = binding.target;
+    }
+  }
+  if (requirement.kind === "appforge_base") {
+    if (stringValue(next.appId) === requirement.id) {
+      next.appId = binding.value;
+    }
+    if (stringValue(next.base) === requirement.label || stringValue(next.base) === requirement.id) {
+      next.base = binding.value;
+    }
+  }
+  if (requirement.kind === "knowledge_collection") {
+    if (stringValue(next.collectionId) === requirement.id || !stringValue(next.collectionId)) {
+      next.collectionId = binding.value;
+    }
+  }
+  if (requirement.kind === "agent") {
+    if (stringValue(next.agentId) === requirement.id || !stringValue(next.agentId)) {
+      next.agentId = binding.value;
+    }
+  }
+  return next;
+}
+
+function BindingWizard({
+  workflow,
+  nodes,
+  connectors,
+  outputChannels,
+  knowledgeCollections,
+  agents,
+  gateway,
+  onClose,
+  onApply,
+}: {
+  workflow: WorkflowDefinition;
+  nodes: Node[];
+  connectors: ConnectorEntry[];
+  outputChannels: OutputChannelOption[];
+  knowledgeCollections: KnowledgeCollectionOption[];
+  agents: FamilyMember[];
+  gateway: ReturnType<typeof useGateway>;
+  onClose: () => void;
+  onApply: (bindings: Record<string, WorkflowBindingValue>) => void;
+}) {
+  const requirements = workflow.importReport?.requirements ?? [];
+  const existingBindings = workflow.importReport?.bindings ?? {};
+  const [bindings, setBindings] = useState<Record<string, WorkflowBindingValue>>(existingBindings);
+  const updateBinding = (key: string, patch: Partial<WorkflowBindingValue>) => {
+    setBindings((prev) => ({
+      ...prev,
+      [key]: { ...(prev[key] ?? { value: "" }), ...patch },
+    }));
+  };
+  const completeCount = requirements.filter(
+    (requirement) => bindings[requirement.key]?.value,
+  ).length;
+  const appForgeBaseOptions = Array.from(
+    new Set(
+      nodes
+        .flatMap((node) => {
+          const record = node.data as Record<string, unknown>;
+          return [record.appId, record.appForgeAppId, record.base].filter(
+            (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
+          );
+        })
+        .map((entry) => entry.trim()),
+    ),
+  );
+
+  return (
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55 p-6 backdrop-blur-sm">
+      <div className="flex max-h-[86vh] w-[min(760px,95vw)] flex-col overflow-hidden rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-[hsl(var(--border))] px-5 py-4">
+          <div>
+            <div className="text-base font-semibold text-[hsl(var(--foreground))]">
+              Binding wizard
+            </div>
+            <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+              {workflow.importReport?.packageName ?? workflow.name} · {completeCount}/
+              {requirements.length} ready for live promotion
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1.5 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {requirements.length === 0 ? (
+            <div className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 p-4 text-sm text-emerald-100">
+              This package did not declare external live dependencies.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {requirements.map((requirement) => {
+                const binding = bindings[requirement.key] ?? { value: "" };
+                return (
+                  <div
+                    key={requirement.key}
+                    className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-3"
+                  >
+                    <div className="mb-2 flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-[hsl(var(--foreground))]">
+                          {requirement.label}
+                        </div>
+                        <div className="text-[11px] text-[hsl(var(--muted-foreground))]">
+                          {bindingKindLabel(requirement.kind)}
+                          {requirement.purpose ? ` · ${requirement.purpose}` : ""}
+                        </div>
+                      </div>
+                      <span
+                        className={`rounded px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                          binding.value
+                            ? "bg-emerald-500/15 text-emerald-300"
+                            : "bg-amber-500/15 text-amber-300"
+                        }`}
+                      >
+                        {binding.value ? "Bound" : "Needs binding"}
+                      </span>
+                    </div>
+
+                    {requirement.kind === "credential" && (
+                      <CredentialSelector
+                        connectorId={requirement.provider ?? requirement.id.split(".")[0]}
+                        authKind="service-key"
+                        requiredSecrets={[]}
+                        selectedCredentialId={binding.value}
+                        onChange={(credentialId) =>
+                          updateBinding(requirement.key, { value: credentialId ?? "" })
+                        }
+                        gatewayRequest={gateway.request}
+                        gatewayConnected={gateway.connected}
+                      />
+                    )}
+
+                    {requirement.kind === "connector" && (
+                      <select
+                        className={DOCK_INPUT}
+                        value={binding.value}
+                        onChange={(event) => {
+                          const connector = connectors.find(
+                            (entry) => entry.id === event.target.value,
+                          );
+                          updateBinding(requirement.key, {
+                            value: event.target.value,
+                            label: connector?.name,
+                          });
+                        }}
+                      >
+                        <option value="">Select connector...</option>
+                        {connectors
+                          .filter((connector) => !connector.scaffoldOnly)
+                          .map((connector) => (
+                            <option key={connector.id} value={connector.id}>
+                              {connector.name}
+                              {requirementMatchesConnector(requirement, connector)
+                                ? " (match)"
+                                : ""}
+                            </option>
+                          ))}
+                      </select>
+                    )}
+
+                    {requirement.kind === "channel" && (
+                      <div className="grid gap-2 md:grid-cols-2">
+                        <select
+                          className={DOCK_INPUT}
+                          value={binding.value}
+                          onChange={(event) => {
+                            const channel = outputChannels.find(
+                              (entry) => entry.id === event.target.value,
+                            );
+                            updateBinding(requirement.key, {
+                              value: event.target.value,
+                              label: channel?.label,
+                              target: channel?.targets?.[0]?.id,
+                            });
+                          }}
+                        >
+                          <option value="">Select channel...</option>
+                          {outputChannels.map((channel) => (
+                            <option key={channel.id} value={channel.id}>
+                              {channel.label}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          className={DOCK_INPUT}
+                          value={binding.target ?? ""}
+                          onChange={(event) =>
+                            updateBinding(requirement.key, { target: event.target.value })
+                          }
+                        >
+                          <option value="">Default target...</option>
+                          {outputChannels
+                            .find((channel) => channel.id === binding.value)
+                            ?.targets?.map((target) => (
+                              <option key={target.id} value={target.id}>
+                                {target.label}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {requirement.kind === "knowledge_collection" && (
+                      <KnowledgeCollectionPicker
+                        label="Knowledge collection"
+                        value={binding.value}
+                        onChange={(value) => updateBinding(requirement.key, { value })}
+                        collections={knowledgeCollections}
+                        requireWrite
+                      />
+                    )}
+
+                    {requirement.kind === "agent" && (
+                      <AgentPicker
+                        label="Agent"
+                        value={binding.value}
+                        onChange={(value) => updateBinding(requirement.key, { value })}
+                        agents={agents}
+                      />
+                    )}
+
+                    {requirement.kind === "appforge_base" && (
+                      <div className="space-y-1.5">
+                        <select
+                          className={DOCK_INPUT}
+                          value={binding.value}
+                          onChange={(event) =>
+                            updateBinding(requirement.key, { value: event.target.value })
+                          }
+                        >
+                          <option value="">Select AppForge base...</option>
+                          {appForgeBaseOptions.map((base) => (
+                            <option key={base} value={base}>
+                              {base}
+                            </option>
+                          ))}
+                          {binding.value && !appForgeBaseOptions.includes(binding.value) && (
+                            <option value={binding.value}>Saved custom: {binding.value}</option>
+                          )}
+                        </select>
+                        <input
+                          className={DOCK_INPUT}
+                          value={binding.value}
+                          onChange={(event) =>
+                            updateBinding(requirement.key, { value: event.target.value })
+                          }
+                          placeholder="Base name or id"
+                        />
+                        <div className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                          AppForge durable base pickers are still coming from the AppForge lane;
+                          this field supports manual binding until that gateway picker lands.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-[hsl(var(--border))] px-5 py-4">
+          <div className="text-xs text-[hsl(var(--muted-foreground))]">
+            Applying bindings updates canvas fields and keeps the package in fixture mode until you
+            explicitly promote it.
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="rounded-md px-3 py-2 text-xs font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]"
+            >
+              Close
+            </button>
+            <button
+              onClick={() => onApply(bindings)}
+              className="rounded-md bg-[hsl(var(--primary))]/20 px-3 py-2 text-xs font-semibold text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/30"
+            >
+              Apply bindings
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AgentPicker({
   label,
   value,
@@ -6394,6 +6863,7 @@ function WorkflowCanvasInner({
   const [appForgeEventOptions, setAppForgeEventOptions] = useState<AppForgeEventOption[]>([]);
   const [outputChannels, setOutputChannels] = useState<OutputChannelOption[]>([]);
   const [knowledgeCollections, setKnowledgeCollections] = useState<KnowledgeCollectionOption[]>([]);
+  const [bindingWizardOpen, setBindingWizardOpen] = useState(false);
 
   // ── Run State ─────────────────────────────────────────────────────
   const [saving, setSaving] = useState(false);
@@ -7291,6 +7761,61 @@ function WorkflowCanvasInner({
     () => workflows.find((w) => w.id === activeWorkflowId) ?? null,
     [workflows, activeWorkflowId],
   );
+  const bindingRequirementCount = activeWorkflow?.importReport?.requirements.length ?? 0;
+  const boundRequirementCount =
+    activeWorkflow?.importReport?.requirements.filter(
+      (requirement) => activeWorkflow.importReport?.bindings?.[requirement.key]?.value,
+    ).length ?? 0;
+
+  const applyWorkflowBindings = useCallback(
+    (bindings: Record<string, WorkflowBindingValue>) => {
+      if (!activeWorkflow || !activeWorkflow.importReport) {
+        setBindingWizardOpen(false);
+        return;
+      }
+      const requirements = activeWorkflow.importReport.requirements;
+      const applyAll = (value: unknown) =>
+        requirements.reduce((next, requirement) => {
+          const binding = bindings[requirement.key];
+          if (!binding?.value) {
+            return next;
+          }
+          return applyBindingToUnknown(next, requirement, binding);
+        }, value);
+      const nextNodes = nodes.map((node) => ({
+        ...node,
+        data: applyAll(node.data) as Record<string, unknown>,
+      }));
+      const nextDefinition = activeWorkflow.definition
+        ? applyAll(activeWorkflow.definition)
+        : undefined;
+      const nextReport = { ...activeWorkflow.importReport, bindings };
+      const updatedAt = new Date().toISOString();
+      setNodes(nextNodes);
+      setSelectedNode((prev) =>
+        prev ? (nextNodes.find((node) => node.id === prev.id) ?? prev) : prev,
+      );
+      setWorkflows((prev) => {
+        const next = prev.map((workflow) =>
+          workflow.id === activeWorkflow.id
+            ? {
+                ...workflow,
+                nodes: nextNodes,
+                edges,
+                definition: nextDefinition,
+                importReport: nextReport,
+                updatedAt,
+              }
+            : workflow,
+        );
+        saveWorkflowsLocal(next);
+        return next;
+      });
+      setLastSaveStatus("Bindings applied");
+      setBindingWizardOpen(false);
+    },
+    [activeWorkflow, edges, nodes, setNodes, setWorkflows],
+  );
 
   useEffect(() => {
     if (activeWorkflow) {
@@ -7305,6 +7830,7 @@ function WorkflowCanvasInner({
     setValidationCheckedAt(null);
     setValidationStatus("idle");
     setRunError(null);
+    setBindingWizardOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkflowId]);
 
@@ -7618,6 +8144,16 @@ function WorkflowCanvasInner({
           )}
         </div>
         <div className="flex items-center gap-2">
+          {bindingRequirementCount > 0 && (
+            <button
+              disabled={!activeWorkflowId}
+              onClick={() => setBindingWizardOpen(true)}
+              className="rounded px-3 py-1 text-[11px] font-medium bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25 disabled:opacity-40 transition-colors"
+              title="Bind imported workflow dependencies"
+            >
+              Bind {boundRequirementCount}/{bindingRequirementCount}
+            </button>
+          )}
           <button
             onClick={onNewWorkflow}
             className="px-3 py-1 rounded text-[11px] font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] transition-colors"
@@ -7822,6 +8358,20 @@ function WorkflowCanvasInner({
 
       {/* Canvas + Right Dock */}
       <div className="flex-1 min-h-0 relative">
+        {bindingWizardOpen && activeWorkflow && (
+          <BindingWizard
+            workflow={activeWorkflow}
+            nodes={nodes}
+            connectors={connectors}
+            outputChannels={outputChannels}
+            knowledgeCollections={knowledgeCollections}
+            agents={agents}
+            gateway={gateway}
+            onClose={() => setBindingWizardOpen(false)}
+            onApply={applyWorkflowBindings}
+          />
+        )}
+
         {/* Approval Request Banner */}
         {pendingApprovals.length > 0 && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[60] flex flex-col gap-2">
