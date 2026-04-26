@@ -738,6 +738,11 @@ interface OutputChannelOption {
   deliveryMode?: "direct" | "gateway" | "hybrid";
   configured?: boolean;
   statusLabel?: string;
+  targets?: Array<{
+    id: string;
+    label: string;
+    kind?: "dm" | "group" | "channel" | "allowlist" | "custom";
+  }>;
 }
 
 function toolCapabilitySourceLabel(source?: ToolPaletteEntry["source"]): string {
@@ -3398,6 +3403,12 @@ function OutputForm({
         : "channel:"
       : data.target;
   const selectedChannel = outputChannels.find((channel) => channel.id === selectedChannelId);
+  const selectedChannelTargets = selectedChannel?.targets ?? [];
+  const selectedChannelTargetIds = new Set(selectedChannelTargets.map((target) => target.id));
+  const selectedChannelTargetValue =
+    typeof record.channelId === "string" && selectedChannelTargetIds.has(record.channelId)
+      ? record.channelId
+      : "__custom";
   const selectedChannelNeedsSetup = Boolean(
     selectedChannel && selectedChannel.configured === false,
   );
@@ -3461,7 +3472,16 @@ function OutputForm({
   const updateTarget = (value: string) => {
     if (value.startsWith("channel:")) {
       const channelType = value.slice("channel:".length);
-      onUpdate(nodeId, { ...data, target: "channel", channelType });
+      const nextChannel = outputChannels.find((channel) => channel.id === channelType);
+      const firstTarget = nextChannel?.targets?.[0]?.id;
+      onUpdate(nodeId, {
+        ...data,
+        target: "channel",
+        channelType,
+        ...(firstTarget && !(record.channelId as string | undefined)
+          ? { channelId: firstTarget }
+          : {}),
+      });
       return;
     }
     onUpdate(nodeId, { ...data, target: value });
@@ -3526,20 +3546,26 @@ function OutputForm({
               Variable (not executable yet)
             </option>
           )}
-          <optgroup label="Channels">
-            {outputChannels.map((channel) => (
-              <option key={channel.id} value={`channel:${channel.id}`}>
-                {channel.label}
-                {channel.configured === false ? " (needs setup)" : ""}
-              </option>
-            ))}
-          </optgroup>
+          {outputChannels.length > 0 ? (
+            <optgroup label="Configured channels">
+              {outputChannels.map((channel) => (
+                <option key={channel.id} value={`channel:${channel.id}`}>
+                  {channel.label}
+                  {channel.configured === false ? " (needs setup)" : ""}
+                </option>
+              ))}
+            </optgroup>
+          ) : (
+            <option value="__no_channels" disabled>
+              No configured chat channels
+            </option>
+          )}
           {legacyChannelSelected && (
             <option value={`channel:${selectedChannelId}`} disabled>
               {selectedChannelId} (not configured)
             </option>
           )}
-          <optgroup label="Direct">
+          <optgroup label="Manual endpoints">
             <option value="email">Email</option>
             <option value="webhook">Webhook</option>
           </optgroup>
@@ -3604,17 +3630,44 @@ function OutputForm({
         </>
       )}
       {(data.target === "channel" || data.target === "discord" || data.target === "telegram") && (
-        <div className="space-y-1.5">
-          <label className={DOCK_LABEL}>
-            {(selectedChannel?.label ?? selectedChannelId) || "Channel"} target
-          </label>
-          <input
-            className={DOCK_INPUT}
-            value={(record.channelId as string) || ""}
-            onChange={(e) => update("channelId", e.target.value)}
-            placeholder="channel id, chat id, @handle, or configured alias"
-          />
-        </div>
+        <>
+          {selectedChannelTargets.length > 0 && (
+            <div className="space-y-1.5">
+              <label className={DOCK_LABEL}>
+                {(selectedChannel?.label ?? selectedChannelId) || "Channel"} destination
+              </label>
+              <select
+                className={DOCK_INPUT}
+                value={selectedChannelTargetValue}
+                onChange={(e) => {
+                  if (e.target.value !== "__custom") {
+                    update("channelId", e.target.value);
+                  }
+                }}
+              >
+                {selectedChannelTargets.map((target) => (
+                  <option key={`${target.kind ?? "target"}:${target.id}`} value={target.id}>
+                    {target.label}
+                  </option>
+                ))}
+                <option value="__custom">Custom target...</option>
+              </select>
+            </div>
+          )}
+          {(selectedChannelTargets.length === 0 || selectedChannelTargetValue === "__custom") && (
+            <div className="space-y-1.5">
+              <label className={DOCK_LABEL}>
+                {(selectedChannel?.label ?? selectedChannelId) || "Channel"} target
+              </label>
+              <input
+                className={DOCK_INPUT}
+                value={(record.channelId as string) || ""}
+                onChange={(e) => update("channelId", e.target.value)}
+                placeholder="chat id, channel id, @handle, or configured alias"
+              />
+            </div>
+          )}
+        </>
       )}
 
       {data.target === "knowledge" && (
@@ -3630,7 +3683,10 @@ function OutputForm({
       )}
 
       <div className="space-y-1.5">
-        <label className={DOCK_LABEL}>Payload template</label>
+        <label className={DOCK_LABEL + " flex items-center gap-1"}>
+          Payload template
+          <HelpTip text="This is the actual content delivered by the output node. Use {{previous.text}} for the prior step or choose a source above." />
+        </label>
         <textarea
           className={DOCK_INPUT + " resize-y"}
           rows={4}
@@ -3640,25 +3696,44 @@ function OutputForm({
         />
       </div>
 
-      <div className="space-y-1.5">
-        <label className={DOCK_LABEL}>Format</label>
-        <input
-          className={DOCK_INPUT}
-          value={data.format}
-          onChange={(e) => update("format", e.target.value)}
-          placeholder="markdown"
-        />
-      </div>
+      {(data.target === "doc_panel" || data.target === "knowledge") && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Format</label>
+          <select
+            className={DOCK_INPUT}
+            value={data.format || "markdown"}
+            onChange={(e) => update("format", e.target.value)}
+          >
+            <option value="markdown">Markdown</option>
+            <option value="text">Plain text</option>
+            <option value="json">JSON</option>
+          </select>
+        </div>
+      )}
 
-      <div className="space-y-1.5">
-        <label className={DOCK_LABEL}>Title / Label</label>
-        <input
-          className={DOCK_INPUT}
-          value={(record.title as string) || ""}
-          onChange={(e) => update("title", e.target.value)}
-          placeholder="Output title"
-        />
-      </div>
+      {data.target === "doc_panel" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Document title</label>
+          <input
+            className={DOCK_INPUT}
+            value={(record.title as string) || ""}
+            onChange={(e) => update("title", e.target.value)}
+            placeholder="Workflow output"
+          />
+        </div>
+      )}
+
+      {data.target !== "doc_panel" && (
+        <div className="space-y-1.5">
+          <label className={DOCK_LABEL}>Node label</label>
+          <input
+            className={DOCK_INPUT}
+            value={(record.title as string) || ""}
+            onChange={(e) => update("title", e.target.value)}
+            placeholder="Output"
+          />
+        </div>
+      )}
     </>
   );
 }
@@ -4467,7 +4542,14 @@ function createDefaultAgentStepData(): AgentStepNodeData {
 }
 
 function createDefaultOutputData(): OutputNodeData {
-  return { label: "Output", target: "doc_panel", format: "markdown" };
+  return {
+    label: "Output",
+    target: "doc_panel",
+    format: "markdown",
+    sourceMode: "previous",
+    contentTemplate: "{{previous.text}}",
+    title: "Workflow output",
+  };
 }
 
 function createDefaultActionData(): ActionNodeData {

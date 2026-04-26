@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import postgres from "postgres";
+import type { ArgentConfig } from "../../config/config.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { createOutboundSendDeps } from "../../cli/deps.js";
 import {
@@ -71,6 +72,23 @@ const WORKFLOW_PRIMITIVES = [
 ] as const;
 
 const DASHBOARD_API = process.env.ARGENT_DASHBOARD_API || "http://localhost:9242";
+
+type WorkflowOutputChannelTarget = {
+  id: string;
+  label: string;
+  kind: "dm" | "group" | "channel" | "allowlist" | "custom";
+};
+
+type WorkflowOutputChannelOption = {
+  id: string;
+  label: string;
+  defaultAccountId: string;
+  accountIds: string[];
+  deliveryMode: "direct" | "gateway" | "hybrid";
+  configured: boolean;
+  statusLabel?: string;
+  targets?: WorkflowOutputChannelTarget[];
+};
 
 // ── Postgres connection (lazy singleton) ────────────────────────────────────
 
@@ -542,102 +560,251 @@ async function buildWorkflowAppForgeCapabilities(): Promise<{
   };
 }
 
-async function buildWorkflowOutputChannels(): Promise<
-  Array<{
-    id: string;
-    label: string;
-    defaultAccountId: string;
-    accountIds: string[];
-    deliveryMode: "direct" | "gateway" | "hybrid";
-    configured: boolean;
-    statusLabel?: string;
-  }>
-> {
-  const [{ loadConfig }, { listChannelPlugins }, { listChatChannels }, { DEFAULT_ACCOUNT_ID }] =
-    await Promise.all([
-      import("../../config/config.js"),
-      import("../../channels/plugins/index.js"),
-      import("../../channels/registry.js"),
-      import("../../routing/session-key.js"),
-    ]);
+function collectRecordKeys(value: unknown): string[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  return Object.keys(value as Record<string, unknown>).filter((key) => key.trim());
+}
+
+function collectStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((entry) => String(entry).trim()).filter(Boolean);
+}
+
+function workflowOutputTarget(
+  id: string,
+  kind: WorkflowOutputChannelTarget["kind"],
+  labelPrefix?: string,
+): WorkflowOutputChannelTarget {
+  return {
+    id,
+    kind,
+    label: labelPrefix ? `${labelPrefix}: ${id}` : id,
+  };
+}
+
+function uniqueWorkflowOutputTargets(
+  targets: WorkflowOutputChannelTarget[],
+): WorkflowOutputChannelTarget[] {
+  const seen = new Set<string>();
+  const unique: WorkflowOutputChannelTarget[] = [];
+  for (const target of targets) {
+    const key = `${target.kind}:${target.id}`.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    unique.push(target);
+  }
+  return unique;
+}
+
+function collectWorkflowOutputChannelTargets(
+  channelId: string,
+  cfg: ArgentConfig,
+): WorkflowOutputChannelTarget[] {
+  const channels = cfg.channels as Record<string, unknown> | undefined;
+  const raw = channels?.[channelId];
+  const channel = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  switch (channelId) {
+    case "telegram":
+      return uniqueWorkflowOutputTargets([
+        ...collectRecordKeys(channel.groups).map((id) =>
+          workflowOutputTarget(id, "group", "Group"),
+        ),
+        ...collectRecordKeys(channel.dms).map((id) => workflowOutputTarget(id, "dm", "DM")),
+        ...collectStringList(channel.allowFrom).map((id) =>
+          workflowOutputTarget(id, "allowlist", "Allowed"),
+        ),
+      ]);
+    case "discord":
+      return uniqueWorkflowOutputTargets([
+        ...collectRecordKeys(channel.channels).map((id) =>
+          workflowOutputTarget(id, "channel", "Channel"),
+        ),
+        ...collectStringList(channel.allowFrom).map((id) =>
+          workflowOutputTarget(id, "allowlist", "Allowed"),
+        ),
+      ]);
+    case "slack":
+      return uniqueWorkflowOutputTargets([
+        ...collectRecordKeys(channel.channels).map((id) =>
+          workflowOutputTarget(id, "channel", "Channel"),
+        ),
+        ...collectStringList(channel.allowFrom).map((id) =>
+          workflowOutputTarget(id, "allowlist", "Allowed"),
+        ),
+      ]);
+    case "whatsapp":
+      return uniqueWorkflowOutputTargets([
+        ...collectRecordKeys(channel.groups).map((id) =>
+          workflowOutputTarget(id, "group", "Group"),
+        ),
+        ...collectStringList(channel.allowFrom).map((id) =>
+          workflowOutputTarget(id, "allowlist", "Allowed"),
+        ),
+      ]);
+    default:
+      return uniqueWorkflowOutputTargets([
+        ...collectRecordKeys((channel as { channels?: unknown }).channels).map((id) =>
+          workflowOutputTarget(id, "channel", "Channel"),
+        ),
+        ...collectStringList((channel as { allowFrom?: unknown }).allowFrom).map((id) =>
+          workflowOutputTarget(id, "allowlist", "Allowed"),
+        ),
+      ]);
+  }
+}
+
+export async function buildWorkflowOutputChannels(): Promise<WorkflowOutputChannelOption[]> {
+  const [
+    { loadConfig },
+    { listChatChannels },
+    { DEFAULT_ACCOUNT_ID },
+    { listTelegramAccountIds, resolveTelegramAccount },
+    { listDiscordAccountIds, resolveDiscordAccount },
+    { listSlackAccountIds, resolveSlackAccount },
+    { listWhatsAppAccountIds, hasAnyWhatsAppAuth },
+  ] = await Promise.all([
+    import("../../config/config.js"),
+    import("../../channels/registry.js"),
+    import("../../routing/session-key.js"),
+    import("../../telegram/accounts.js"),
+    import("../../discord/accounts.js"),
+    import("../../slack/accounts.js"),
+    import("../../web/accounts.js"),
+  ]);
   const cfg = loadConfig();
-  const outputChannels = new Map<
-    string,
-    {
-      id: string;
-      label: string;
-      defaultAccountId: string;
-      accountIds: string[];
-      deliveryMode: "direct" | "gateway" | "hybrid";
-      configured: boolean;
-      statusLabel?: string;
-    }
-  >();
+  const outputChannels = new Map<string, WorkflowOutputChannelOption>();
 
-  for (const plugin of listChannelPlugins()) {
-    const outbound = plugin.outbound;
-    if (!outbound) {
-      continue;
-    }
-    if (outbound.deliveryMode !== "gateway" && (!outbound.sendText || !outbound.sendMedia)) {
-      continue;
-    }
-
-    const accountIds = plugin.config.listAccountIds(cfg);
-    const defaultAccountId =
-      plugin.config.defaultAccountId?.(cfg) ?? accountIds[0] ?? DEFAULT_ACCOUNT_ID;
-    const configuredAccountIds = [];
-    const candidates = accountIds.length > 0 ? accountIds : [defaultAccountId];
-    for (const accountId of candidates) {
-      const account = plugin.config.resolveAccount(cfg, accountId);
-      const enabled = plugin.config.isEnabled
-        ? plugin.config.isEnabled(account, cfg)
-        : !account ||
-          typeof account !== "object" ||
-          (account as { enabled?: boolean }).enabled !== false;
-      const configured = plugin.config.isConfigured
-        ? await plugin.config.isConfigured(account, cfg)
-        : true;
-      if (enabled && configured) {
-        configuredAccountIds.push(accountId);
+  try {
+    const { listChannelPlugins } = await import("../../channels/plugins/index.js");
+    for (const plugin of listChannelPlugins()) {
+      const outbound = plugin.outbound;
+      if (!outbound) {
+        continue;
       }
-    }
+      if (outbound.deliveryMode !== "gateway" && (!outbound.sendText || !outbound.sendMedia)) {
+        continue;
+      }
 
-    if (configuredAccountIds.length === 0) {
-      continue;
-    }
+      const accountIds = plugin.config.listAccountIds(cfg);
+      const defaultAccountId =
+        plugin.config.defaultAccountId?.(cfg) ?? accountIds[0] ?? DEFAULT_ACCOUNT_ID;
+      const configuredAccountIds = [];
+      const candidates = accountIds.length > 0 ? accountIds : [defaultAccountId];
+      for (const accountId of candidates) {
+        const account = plugin.config.resolveAccount(cfg, accountId);
+        const enabled = plugin.config.isEnabled
+          ? plugin.config.isEnabled(account, cfg)
+          : !account ||
+            typeof account !== "object" ||
+            (account as { enabled?: boolean }).enabled !== false;
+        const configured = plugin.config.isConfigured
+          ? await plugin.config.isConfigured(account, cfg)
+          : true;
+        if (enabled && configured) {
+          configuredAccountIds.push(accountId);
+        }
+      }
 
-    outputChannels.set(plugin.id, {
-      id: plugin.id,
-      label: plugin.meta.selectionLabel ?? plugin.meta.label ?? plugin.id,
-      defaultAccountId,
-      accountIds: configuredAccountIds,
-      deliveryMode: outbound.deliveryMode,
-      configured: true,
-      statusLabel: "Configured",
-    });
+      if (configuredAccountIds.length === 0) {
+        continue;
+      }
+
+      outputChannels.set(plugin.id, {
+        id: plugin.id,
+        label: plugin.meta.selectionLabel ?? plugin.meta.label ?? plugin.id,
+        defaultAccountId,
+        accountIds: configuredAccountIds,
+        deliveryMode: outbound.deliveryMode,
+        configured: true,
+        statusLabel: "Configured",
+        targets: collectWorkflowOutputChannelTargets(plugin.id, cfg),
+      });
+    }
+  } catch (err) {
+    log.debug("workflow output channel plugin registry unavailable", { error: String(err) });
   }
 
   const channelsConfig =
     cfg.channels && typeof cfg.channels === "object"
       ? (cfg.channels as Record<string, unknown>)
       : {};
+  const configuredCoreChannels: Record<
+    string,
+    { accountIds: string[]; defaultAccountId: string; configured: boolean; statusLabel: string }
+  > = {
+    telegram: (() => {
+      const accountIds = listTelegramAccountIds(cfg).filter((accountId) => {
+        const account = resolveTelegramAccount({ cfg, accountId });
+        return account.enabled && account.tokenSource !== "none";
+      });
+      return {
+        accountIds,
+        defaultAccountId: accountIds[0] ?? DEFAULT_ACCOUNT_ID,
+        configured: accountIds.length > 0,
+        statusLabel: accountIds.length > 0 ? "Configured" : "Needs Telegram bot token",
+      };
+    })(),
+    discord: (() => {
+      const accountIds = listDiscordAccountIds(cfg).filter((accountId) => {
+        const account = resolveDiscordAccount({ cfg, accountId });
+        return account.enabled && account.tokenSource !== "none";
+      });
+      return {
+        accountIds,
+        defaultAccountId: accountIds[0] ?? DEFAULT_ACCOUNT_ID,
+        configured: accountIds.length > 0,
+        statusLabel: accountIds.length > 0 ? "Configured" : "Needs Discord bot token",
+      };
+    })(),
+    slack: (() => {
+      const accountIds = listSlackAccountIds(cfg).filter((accountId) => {
+        const account = resolveSlackAccount({ cfg, accountId });
+        return account.enabled && account.botTokenSource !== "none";
+      });
+      return {
+        accountIds,
+        defaultAccountId: accountIds[0] ?? DEFAULT_ACCOUNT_ID,
+        configured: accountIds.length > 0,
+        statusLabel: accountIds.length > 0 ? "Configured" : "Needs Slack bot token",
+      };
+    })(),
+    whatsapp: (() => {
+      const accountIds = hasAnyWhatsAppAuth(cfg) ? listWhatsAppAccountIds(cfg) : [];
+      return {
+        accountIds,
+        defaultAccountId: accountIds[0] ?? DEFAULT_ACCOUNT_ID,
+        configured: accountIds.length > 0,
+        statusLabel: accountIds.length > 0 ? "Configured" : "Needs WhatsApp login",
+      };
+    })(),
+  };
+
   for (const channel of listChatChannels()) {
-    if (outputChannels.has(channel.id)) {
-      continue;
-    }
+    const existing = outputChannels.get(channel.id);
     const channelConfig = channelsConfig[channel.id];
-    if (!channelConfig || typeof channelConfig !== "object") {
+    const core = configuredCoreChannels[channel.id];
+    const configured =
+      core?.configured ||
+      Boolean(channelConfig && typeof channelConfig === "object" && outputChannels.has(channel.id));
+    if (!configured) {
       continue;
     }
+    const targets = collectWorkflowOutputChannelTargets(channel.id, cfg);
     outputChannels.set(channel.id, {
       id: channel.id,
-      label: channel.selectionLabel ?? channel.label ?? channel.id,
-      defaultAccountId: DEFAULT_ACCOUNT_ID,
-      accountIds: [],
-      deliveryMode: "direct",
+      label: existing?.label ?? channel.selectionLabel ?? channel.label ?? channel.id,
+      defaultAccountId: existing?.defaultAccountId ?? core?.defaultAccountId ?? DEFAULT_ACCOUNT_ID,
+      accountIds: existing?.accountIds?.length ? existing.accountIds : (core?.accountIds ?? []),
+      deliveryMode: existing?.deliveryMode ?? "direct",
       configured: true,
-      statusLabel: "Configured in channel settings",
+      statusLabel: existing?.statusLabel ?? core?.statusLabel ?? "Configured in channel settings",
+      targets: targets.length > 0 ? targets : existing?.targets,
     });
   }
 
