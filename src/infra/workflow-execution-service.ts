@@ -24,6 +24,7 @@ import {
 import {
   CoreAgentDispatcher,
   executeWorkflow,
+  type ActionExecutors,
   type WorkflowResumeOptions,
 } from "./workflow-runner.js";
 
@@ -202,6 +203,38 @@ function itemSetFromStoredOutput(value: unknown): ItemSet {
     return value as ItemSet;
   }
   return { items: [] };
+}
+
+function createWorkflowActionExecutors(): ActionExecutors {
+  return {
+    saveToDocPanel: async (title, content, format) => {
+      const { dashboardApiHeaders } = await import("../utils/dashboard-api.js");
+      const dashboardApi = process.env.ARGENT_DASHBOARD_API || "http://localhost:9242";
+      const docId = `wfdoc-${randomUUID()}`;
+      const res = await fetch(`${dashboardApi}/api/canvas/save`, {
+        method: "POST",
+        headers: dashboardApiHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          doc: {
+            id: docId,
+            title,
+            content,
+            type: format || "markdown",
+            autoRouted: true,
+          },
+        }),
+      });
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "unknown error");
+        throw new Error(`DocPanel save failed: HTTP ${res.status} - ${errBody}`);
+      }
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      return {
+        ok: true,
+        docId: typeof data.id === "string" && data.id.trim() ? data.id : docId,
+      };
+    },
+  };
 }
 
 function workflowOrderMap(workflow: WorkflowDefinition): Map<string, number> {
@@ -398,6 +431,7 @@ export async function executeWorkflowRunFromRow(opts: {
     workflow,
     runId: opts.runId,
     dispatcher,
+    actions: createWorkflowActionExecutors(),
     triggerPayload: opts.triggerPayload,
     triggerSource: opts.triggerSource ?? opts.triggerType,
     resume: opts.resume,
