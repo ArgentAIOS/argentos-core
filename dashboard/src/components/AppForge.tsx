@@ -15,6 +15,7 @@ import {
   Pin,
   Plus,
   Puzzle,
+  RefreshCw,
   Search,
   Send,
   Settings,
@@ -1108,6 +1109,27 @@ export function AppForge({
                       </div>
                     )}
 
+                    {structured.sourceStatus.kind !== "gateway" && (
+                      <div
+                        className={`mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+                          structured.sourceStatus.kind === "loading"
+                            ? "border-sky-300/25 bg-sky-400/10 text-sky-100"
+                            : structured.sourceStatus.kind === "metadata"
+                              ? "border-amber-300/25 bg-amber-400/10 text-amber-100"
+                              : "border-red-400/25 bg-red-500/10 text-red-100"
+                        }`}
+                      >
+                        <span>{structured.sourceStatus.message}</span>
+                        <button
+                          onClick={structured.reload}
+                          className="inline-flex items-center gap-2 rounded-lg border border-white/12 px-3 py-1.5 text-xs font-medium text-white/75 transition-colors hover:bg-white/10 hover:text-white"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                          Retry
+                        </button>
+                      </div>
+                    )}
+
                     <div className="overflow-hidden rounded-2xl border border-white/12 bg-[#0e1316]/90 shadow-2xl">
                       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
                         <div className="flex min-w-0 items-center gap-3">
@@ -1141,6 +1163,9 @@ export function AppForge({
                           )}
                           {structured.saveStatus.kind === "saved" && (
                             <span className="text-emerald-200">Saved</span>
+                          )}
+                          {structured.saveStatus.kind === "degraded" && (
+                            <span className="text-amber-200">Fallback saved</span>
                           )}
                           {structured.saveStatus.kind === "conflict" && (
                             <span className="text-amber-200">Reload needed</span>

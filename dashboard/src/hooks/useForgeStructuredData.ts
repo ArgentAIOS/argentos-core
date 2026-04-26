@@ -45,7 +45,13 @@ export type ForgeStructuredBase = {
 export type ForgeReviewDecision = "approved" | "denied";
 
 export type ForgeStructuredSaveStatus = {
-  kind: "idle" | "saving" | "saved" | "conflict" | "error";
+  kind: "idle" | "saving" | "saved" | "degraded" | "conflict" | "error";
+  message: string | null;
+  updatedAt: string | null;
+};
+
+export type ForgeStructuredSourceStatus = {
+  kind: "loading" | "gateway" | "metadata" | "degraded";
   message: string | null;
   updatedAt: string | null;
 };
@@ -80,6 +86,8 @@ type UseForgeStructuredDataReturn = {
   saving: boolean;
   error: string | null;
   saveStatus: ForgeStructuredSaveStatus;
+  sourceStatus: ForgeStructuredSourceStatus;
+  reload: () => void;
   selectBase: (appId: string) => void;
   selectTable: (tableId: string) => Promise<void>;
   selectField: (fieldId: string) => void;
@@ -321,7 +329,7 @@ function normalizeRecord(value: unknown): ForgeStructuredRecord | null {
   const normalizedValues: Record<string, ForgeStructuredRecordValue> = {};
   for (const [key, raw] of Object.entries(values)) {
     if (raw === null || typeof raw === "string" || typeof raw === "boolean") {
-      normalizedValues[key] = raw;
+      normalizedValues[key] = raw as ForgeStructuredRecordValue;
       continue;
     }
     const numeric = numberValue(raw);
@@ -713,8 +721,14 @@ export function useForgeStructuredData({
     message: null,
     updatedAt: null,
   });
+  const [sourceStatus, setSourceStatus] = useState<ForgeStructuredSourceStatus>({
+    kind: gatewayRequest ? "loading" : "metadata",
+    message: gatewayRequest ? "Loading AppForge gateway data..." : "Using metadata fallback",
+    updatedAt: null,
+  });
+  const [reloadVersion, setReloadVersion] = useState(0);
   const appKey = useMemo(() => apps.map((app) => app.id).join("\0"), [apps]);
-  const gatewayLoadAppIds = useMemo(() => apps.map((app) => app.id), [appKey]);
+  const gatewayLoadAppIds = useMemo(() => (appKey ? appKey.split("\0") : []), [appKey]);
 
   const bases = useMemo(
     () => apps.map((app) => overrides[app.id] ?? gatewayBases[app.id] ?? normalizeBase(app)),
@@ -725,6 +739,25 @@ export function useForgeStructuredData({
     activeBase?.tables.find((table) => table.id === activeBase.activeTableId) ??
     activeBase?.tables[0] ??
     null;
+  const activeSourceStatus = useMemo<ForgeStructuredSourceStatus>(() => {
+    if (sourceStatus.kind === "loading" || sourceStatus.kind === "degraded") {
+      return sourceStatus;
+    }
+    if (activeBase && gatewayBases[activeBase.appId]) {
+      return {
+        kind: "gateway",
+        message: "Gateway source of truth loaded.",
+        updatedAt: sourceStatus.updatedAt,
+      };
+    }
+    return {
+      kind: gatewayRequest ? "metadata" : sourceStatus.kind,
+      message: gatewayRequest
+        ? "Gateway connected; using metadata fallback until this app has a durable base."
+        : (sourceStatus.message ?? "Using metadata fallback."),
+      updatedAt: sourceStatus.updatedAt,
+    };
+  }, [activeBase, gatewayBases, gatewayRequest, sourceStatus]);
   const selectedField =
     activeTable?.fields.find((field) => field.id === selectedFieldId) ??
     activeTable?.fields[1] ??
@@ -760,7 +793,15 @@ export function useForgeStructuredData({
   }, [activeTable, selectedAppId]);
 
   useEffect(() => {
-    if (!gatewayRequest || gatewayLoadAppIds.length === 0) {
+    if (!gatewayRequest) {
+      setSourceStatus({
+        kind: "metadata",
+        message: "Gateway unavailable; using metadata fallback.",
+        updatedAt: nowIso(),
+      });
+      return;
+    }
+    if (gatewayLoadAppIds.length === 0) {
       return;
     }
     const requestGateway: NonNullable<typeof gatewayRequest> = gatewayRequest;
@@ -768,6 +809,11 @@ export function useForgeStructuredData({
     const appIds = new Set(gatewayLoadAppIds);
 
     async function loadGatewayBases() {
+      setSourceStatus({
+        kind: "loading",
+        message: "Loading AppForge gateway data...",
+        updatedAt: null,
+      });
       try {
         const result = await requestGateway<GatewayBasesListResponse>(
           "appforge.bases.list",
@@ -792,10 +838,30 @@ export function useForgeStructuredData({
           }
           return { ...next, ...nextBases };
         });
+        setOverrides((prev) => {
+          const next = { ...prev };
+          for (const appId of appIds) {
+            delete next[appId];
+          }
+          return next;
+        });
+        setSourceStatus({
+          kind: Object.keys(nextBases).length > 0 ? "gateway" : "metadata",
+          message:
+            Object.keys(nextBases).length > 0
+              ? "Gateway source of truth loaded."
+              : "Gateway connected; using metadata fallback until this app has a durable base.",
+          updatedAt: nowIso(),
+        });
       } catch (err) {
         if (!cancelled) {
           console.warn("[AppForge] Gateway base load failed; using metadata fallback.", {
             error: err,
+          });
+          setSourceStatus({
+            kind: "degraded",
+            message: "Gateway load failed; using metadata fallback. Retry before trusting reloads.",
+            updatedAt: nowIso(),
           });
         }
       }
@@ -805,7 +871,11 @@ export function useForgeStructuredData({
     return () => {
       cancelled = true;
     };
-  }, [gatewayLoadAppIds, gatewayRequest]);
+  }, [gatewayLoadAppIds, gatewayRequest, reloadVersion]);
+
+  const reload = useCallback(() => {
+    setReloadVersion((version) => version + 1);
+  }, []);
 
   const persistBase = useCallback(
     async (
@@ -838,10 +908,20 @@ export function useForgeStructuredData({
               gatewayMutation,
             );
             savedToGateway = true;
+            const savedBase = gatewayBase ?? nextBase;
             setGatewayBases((prev) => ({
               ...prev,
-              [nextBase.appId]: gatewayBase ?? nextBase,
+              [nextBase.appId]: savedBase,
             }));
+            setOverrides((prev) => ({
+              ...prev,
+              [nextBase.appId]: savedBase,
+            }));
+            setSourceStatus({
+              kind: "gateway",
+              message: "Gateway source of truth saved.",
+              updatedAt: nowIso(),
+            });
           } catch (err) {
             gatewayError = err;
             if (isRevisionConflictError(err)) {
@@ -863,6 +943,15 @@ export function useForgeStructuredData({
             throw new Error(`Failed to save structured base metadata (${response.status})`);
           }
           savedToMetadata = true;
+          if (!savedToGateway) {
+            setSourceStatus({
+              kind: gatewayRequest ? "degraded" : "metadata",
+              message: gatewayRequest
+                ? "Gateway save failed; changes were saved to metadata fallback."
+                : "Saved to metadata fallback.",
+              updatedAt: nowIso(),
+            });
+          }
         } catch (err) {
           metadataError = err;
           if (!savedToGateway) {
@@ -880,7 +969,11 @@ export function useForgeStructuredData({
         if (event && emitWorkflowEvent) {
           await emitWorkflowEvent(app.id, event);
         }
-        setSaveStatus({ kind: "saved", message: "Saved", updatedAt: nowIso() });
+        setSaveStatus({
+          kind: savedToGateway || !gatewayRequest ? "saved" : "degraded",
+          message: savedToGateway || !gatewayRequest ? "Saved" : "Saved to metadata fallback",
+          updatedAt: nowIso(),
+        });
       } catch (err) {
         const message = formatStructuredSaveError(err);
         setError(message);
@@ -1571,6 +1664,8 @@ export function useForgeStructuredData({
     saving,
     error,
     saveStatus,
+    sourceStatus: activeSourceStatus,
+    reload,
     selectBase,
     selectTable,
     selectField,
