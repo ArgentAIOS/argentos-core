@@ -6,14 +6,9 @@ from .service_keys import service_key_env
 from .constants import (
     DEFAULT_BASE_URL,
     ENV_ACCESS_TOKEN,
-    ENV_AMOUNT,
-    ENV_CURRENCY,
     ENV_CUSTOMER_ID,
-    ENV_EMAIL,
     ENV_ENVIRONMENT,
-    ENV_INVOICE_ID,
     ENV_ITEM_ID,
-    ENV_ITEM_NAME,
     ENV_LOCATION_ID,
     ENV_ORDER_ID,
     ENV_PAYMENT_ID,
@@ -31,11 +26,6 @@ class SquareConfig:
     order_id: str | None
     payment_id: str | None
     item_id: str | None
-    invoice_id: str | None
-    amount: str | None
-    currency: str | None
-    email: str | None
-    item_name: str | None
 
 
 @dataclass(frozen=True)
@@ -47,7 +37,6 @@ class SquareScopePreview:
     order_id: str | None = None
     payment_id: str | None = None
     item_id: str | None = None
-    invoice_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -68,11 +57,6 @@ def resolve_config() -> SquareConfig:
         order_id=service_key_env(ENV_ORDER_ID),
         payment_id=service_key_env(ENV_PAYMENT_ID),
         item_id=service_key_env(ENV_ITEM_ID),
-        invoice_id=service_key_env(ENV_INVOICE_ID),
-        amount=service_key_env(ENV_AMOUNT),
-        currency=service_key_env(ENV_CURRENCY, "USD"),
-        email=service_key_env(ENV_EMAIL),
-        item_name=service_key_env(ENV_ITEM_NAME),
     )
 
 
@@ -86,8 +70,4 @@ def redact_config(config: SquareConfig) -> dict[str, object]:
         "order_id": config.order_id,
         "payment_id": config.payment_id,
         "item_id": config.item_id,
-        "invoice_id": config.invoice_id,
-        "currency": config.currency,
-        "email": config.email,
-        "item_name": config.item_name,
     }

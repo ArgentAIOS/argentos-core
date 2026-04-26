@@ -195,6 +195,14 @@ The workflow output node now discovers configured output channels and has real s
 
 The workflow canvas should consume connector manifests/capabilities rather than connector implementation files. If connector command metadata changes shape, add a short note here before pushing so workflow action-node mapping can stay aligned.
 
+### 2026-04-26 — AOS Square Connector Slice
+
+Lane: `AOS connector Ralph loop`
+Branch/status: `codex/aos-square-loop`, started from `origin/dev` at `36d49ca5`.
+Owned files/directories: `tools/aos/aos-square/**`; coordination note in `ops/THREADMASTER_COORDINATION.md`.
+Shared contract change in progress: Square connector capability metadata is being narrowed to live REST read commands only. Operator-controlled service keys remain the auth and linking source; local environment variables are development fallback only.
+Workflows/AppForge/AOU reaction: consume the Square manifest/capabilities only. Do not assume Square payment/customer/order/item/invoice write mutations exist unless a later handoff advertises them as live-ready with verified approval policy.
+
 ### 2026-04-26 — Workflows General
 
 Before touching shared files, update this board. The goal is to make lane drift visible in the repo before it becomes visible in the product.

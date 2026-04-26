@@ -13,10 +13,8 @@
       "location_id",
       "customer_id",
       "order_id",
-      "amount",
-      "currency",
-      "email",
-      "item_name"
+      "payment_id",
+      "item_id"
     ],
     "worker_visible_actions": [
       "payment.list",
@@ -41,18 +39,12 @@
         "valueType": "string",
         "applies_to": [
           "payment.list",
-          "payment.create",
           "order.list",
-          "order.create",
-          "item.list",
-          "item.create",
-          "invoice.list",
-          "invoice.create",
-          "location.list"
+          "invoice.list"
         ],
         "example": "L1BQFNKJ0AB1C",
         "placeholder": "Select location...",
-        "description": "The Square location to scope operations."
+        "description": "The Square location to scope read operations."
       },
       {
         "id": "customer_id",
@@ -63,11 +55,7 @@
         "expressionEnabled": true,
         "valueType": "string",
         "applies_to": [
-          "customer.get",
-          "customer.update",
-          "order.list",
-          "order.create",
-          "invoice.create"
+          "customer.get"
         ],
         "example": "JDKYHBWT1D4F8MFH63DBMEN8Y4",
         "placeholder": "Select customer...",
@@ -81,85 +69,57 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": ["order.get", "payment.create"],
+        "applies_to": [
+          "order.get"
+        ],
         "example": "CAISENgvlJ6jLWAzERDzjyHVREo",
         "placeholder": "e.g., CAISENgvlJ6jLWAzERDzjyHVREo",
         "description": "The Square order ID."
       },
       {
-        "id": "amount",
-        "label": "Amount",
-        "type": "number",
-        "renderAs": "number",
+        "id": "payment_id",
+        "label": "Payment ID",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
         "expressionEnabled": true,
-        "valueType": "number",
-        "applies_to": ["payment.create"],
-        "example": "1000",
-        "placeholder": "e.g., 1000",
-        "description": "Payment amount in cents (e.g., 1000 = $10.00)."
-      },
-      {
-        "id": "currency",
-        "label": "Currency",
-        "type": "select",
-        "renderAs": "select",
-        "required": false,
-        "expressionEnabled": false,
         "valueType": "string",
-        "applies_to": ["payment.create", "order.create", "item.create"],
-        "example": "USD",
-        "options": [
-          { "value": "USD", "label": "USD" },
-          { "value": "CAD", "label": "CAD" },
-          { "value": "AUD", "label": "AUD" },
-          { "value": "GBP", "label": "GBP" },
-          { "value": "EUR", "label": "EUR" },
-          { "value": "JPY", "label": "JPY" }
+        "applies_to": [
+          "payment.get"
         ],
-        "placeholder": "USD",
-        "description": "Currency for amounts."
+        "example": "PAYMENT_ID",
+        "placeholder": "e.g., PAYMENT_ID",
+        "description": "The Square payment ID."
       },
       {
-        "id": "email",
-        "label": "Customer email",
+        "id": "item_id",
+        "label": "Item ID",
         "type": "text",
         "renderAs": "text",
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": ["customer.list", "customer.create", "customer.update"],
-        "example": "customer@example.com",
-        "placeholder": "customer@example.com",
-        "description": "Customer email address."
-      },
-      {
-        "id": "item_name",
-        "label": "Item name",
-        "type": "text",
-        "renderAs": "text",
-        "required": false,
-        "expressionEnabled": true,
-        "valueType": "string",
-        "applies_to": ["item.list", "item.get", "item.create"],
-        "example": "Monthly subscription",
-        "placeholder": "e.g., Monthly subscription",
-        "description": "Name of the catalog item."
+        "applies_to": [
+          "item.get"
+        ],
+        "example": "ITEM_ID",
+        "placeholder": "e.g., ITEM_ID",
+        "description": "The Square catalog item ID."
       }
     ],
     "commandDefaults": {
       "payment.list": {
         "selection_surface": "payment",
-        "args": ["SQUARE_LOCATION_ID"],
+        "args": [
+          "SQUARE_LOCATION_ID"
+        ],
         "limit": 10
       },
       "payment.get": {
         "selection_surface": "payment",
-        "args": ["SQUARE_PAYMENT_ID"]
-      },
-      "payment.create": {
-        "selection_surface": "payment",
-        "args": ["SQUARE_LOCATION_ID", "SQUARE_AMOUNT", "SQUARE_CURRENCY"]
+        "args": [
+          "SQUARE_PAYMENT_ID"
+        ]
       },
       "customer.list": {
         "selection_surface": "customer",
@@ -167,28 +127,22 @@
       },
       "customer.get": {
         "selection_surface": "customer",
-        "args": ["SQUARE_CUSTOMER_ID"]
-      },
-      "customer.create": {
-        "selection_surface": "customer",
-        "args": ["SQUARE_EMAIL"]
-      },
-      "customer.update": {
-        "selection_surface": "customer",
-        "args": ["SQUARE_CUSTOMER_ID"]
+        "args": [
+          "SQUARE_CUSTOMER_ID"
+        ]
       },
       "order.list": {
         "selection_surface": "order",
-        "args": ["SQUARE_LOCATION_ID"],
+        "args": [
+          "SQUARE_LOCATION_ID"
+        ],
         "limit": 10
       },
       "order.get": {
         "selection_surface": "order",
-        "args": ["SQUARE_ORDER_ID"]
-      },
-      "order.create": {
-        "selection_surface": "order",
-        "args": ["SQUARE_LOCATION_ID"]
+        "args": [
+          "SQUARE_ORDER_ID"
+        ]
       },
       "item.list": {
         "selection_surface": "item",
@@ -196,24 +150,16 @@
       },
       "item.get": {
         "selection_surface": "item",
-        "args": ["SQUARE_ITEM_ID"]
-      },
-      "item.create": {
-        "selection_surface": "item",
-        "args": ["SQUARE_ITEM_NAME"]
+        "args": [
+          "SQUARE_ITEM_ID"
+        ]
       },
       "invoice.list": {
         "selection_surface": "invoice",
-        "args": ["SQUARE_LOCATION_ID"],
+        "args": [
+          "SQUARE_LOCATION_ID"
+        ],
         "limit": 10
-      },
-      "invoice.create": {
-        "selection_surface": "invoice",
-        "args": ["SQUARE_LOCATION_ID", "SQUARE_CUSTOMER_ID"]
-      },
-      "invoice.send": {
-        "selection_surface": "invoice",
-        "args": ["SQUARE_INVOICE_ID"]
       },
       "location.list": {
         "selection_surface": "location",
@@ -226,62 +172,120 @@
         "selection_surface": "payment",
         "resource": "square.payment",
         "source_command": "payment.list",
-        "source_fields": ["id", "amount_money", "status", "source_type", "created_at", "order_id"]
+        "source_fields": [
+          "id",
+          "amount_money",
+          "status",
+          "source_type",
+          "created_at",
+          "order_id"
+        ]
       },
       "customer": {
         "kind": "customer",
         "selection_surface": "customer",
         "resource": "square.customer",
         "source_command": "customer.list",
-        "source_fields": ["id", "given_name", "family_name", "email_address", "created_at"]
+        "source_fields": [
+          "id",
+          "given_name",
+          "family_name",
+          "email_address",
+          "created_at"
+        ]
       },
       "order": {
         "kind": "order",
         "selection_surface": "order",
         "resource": "square.order",
         "source_command": "order.list",
-        "source_fields": ["id", "state", "total_money", "created_at", "line_items"]
+        "source_fields": [
+          "id",
+          "state",
+          "total_money",
+          "created_at",
+          "line_items"
+        ]
       },
       "item": {
         "kind": "item",
         "selection_surface": "item",
         "resource": "square.item",
         "source_command": "item.list",
-        "source_fields": ["id", "name", "type", "variations", "updated_at"]
+        "source_fields": [
+          "id",
+          "name",
+          "type",
+          "variations",
+          "updated_at"
+        ]
       },
       "invoice": {
         "kind": "invoice",
         "selection_surface": "invoice",
         "resource": "square.invoice",
         "source_command": "invoice.list",
-        "source_fields": ["id", "status", "invoice_number", "payment_requests", "created_at"]
+        "source_fields": [
+          "id",
+          "status",
+          "invoice_number",
+          "payment_requests",
+          "created_at"
+        ]
       },
       "location": {
         "kind": "location",
         "selection_surface": "location",
         "resource": "square.location",
         "source_command": "location.list",
-        "source_fields": ["id", "name", "address", "status", "timezone", "currency"]
+        "source_fields": [
+          "id",
+          "name",
+          "address",
+          "status",
+          "timezone",
+          "currency"
+        ]
       }
     }
   },
   "connector": {
     "label": "Square",
     "category": "commerce-ops",
-    "categories": ["commerce-ops", "payments", "invoicing", "crm-revenue"],
-    "resources": ["payment", "customer", "order", "item", "invoice", "location"]
+    "categories": [
+      "commerce-ops",
+      "payments",
+      "invoicing",
+      "crm-revenue"
+    ],
+    "resources": [
+      "payment",
+      "customer",
+      "order",
+      "item",
+      "invoice",
+      "location"
+    ]
   },
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": ["SQUARE_ACCESS_TOKEN"],
+    "service_keys": [
+      "SQUARE_ACCESS_TOKEN",
+      "SQUARE_ENVIRONMENT",
+      "SQUARE_LOCATION_ID",
+      "SQUARE_CUSTOMER_ID",
+      "SQUARE_ORDER_ID",
+      "SQUARE_PAYMENT_ID",
+      "SQUARE_ITEM_ID"
+    ],
     "interactive_setup": [
       "Create a Square application at https://developer.squareup.com/apps and generate an access token.",
       "Add SQUARE_ACCESS_TOKEN in operator-controlled API Keys before enabling live reads.",
-      "The harness resolves SQUARE_ACCESS_TOKEN from service keys first, then falls back to process.env only for local development.",
-      "Optionally set SQUARE_ENVIRONMENT to 'sandbox' for testing (defaults to 'production').",
-      "Set SQUARE_LOCATION_ID to pin a default location for payment, order, and invoice scoping.",
-      "Keep payment.create, customer.create, customer.update, order.create, item.create, invoice.create, and invoice.send scaffolded until Square write workflows are approved.",
+      "The harness resolves SQUARE_ACCESS_TOKEN and Square linking keys from service keys first, then falls back to process.env only for local development.",
+      "Optionally set SQUARE_ENVIRONMENT to 'sandbox' in operator-controlled service keys for testing (defaults to 'production').",
+      "Set SQUARE_LOCATION_ID in operator-controlled service keys to pin a default location for payment, order, and invoice scoping.",
+      "No Square write command is advertised until live write workflows and approval policy are implemented.",
       "The connector is live-read-first and will report API failures instead of masking them."
     ]
   },
@@ -335,14 +339,6 @@
       "action_class": "read"
     },
     {
-      "id": "payment.create",
-      "summary": "Create a Square payment",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "payment",
-      "action_class": "write"
-    },
-    {
       "id": "customer.list",
       "summary": "List Square customers",
       "required_mode": "readonly",
@@ -357,22 +353,6 @@
       "supports_json": true,
       "resource": "customer",
       "action_class": "read"
-    },
-    {
-      "id": "customer.create",
-      "summary": "Create a Square customer",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "customer",
-      "action_class": "write"
-    },
-    {
-      "id": "customer.update",
-      "summary": "Update a Square customer",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "customer",
-      "action_class": "write"
     },
     {
       "id": "order.list",
@@ -391,14 +371,6 @@
       "action_class": "read"
     },
     {
-      "id": "order.create",
-      "summary": "Create a Square order",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "order",
-      "action_class": "write"
-    },
-    {
       "id": "item.list",
       "summary": "List Square catalog items",
       "required_mode": "readonly",
@@ -415,36 +387,12 @@
       "action_class": "read"
     },
     {
-      "id": "item.create",
-      "summary": "Create a Square catalog item",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "item",
-      "action_class": "write"
-    },
-    {
       "id": "invoice.list",
       "summary": "List Square invoices",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "invoice",
       "action_class": "read"
-    },
-    {
-      "id": "invoice.create",
-      "summary": "Create a Square invoice",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "invoice",
-      "action_class": "write"
-    },
-    {
-      "id": "invoice.send",
-      "summary": "Send a Square invoice",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "invoice",
-      "action_class": "write"
     },
     {
       "id": "location.list",
