@@ -53,8 +53,15 @@ type UseForgeStructuredDataOptions = {
   apps: ForgeApp[];
   selectedAppId: string | null;
   onSelectApp: (appId: string) => void;
+  gatewayRequest?: GatewayRequestFn;
   emitWorkflowEvent?: (appId: string, event: AppForgeWorkflowEventRequest) => Promise<boolean>;
 };
+
+export type GatewayRequestFn = <T = unknown>(
+  method: string,
+  params?: Record<string, unknown>,
+  options?: { timeoutMs?: number },
+) => Promise<T>;
 
 type UseForgeStructuredDataReturn = {
   bases: ForgeStructuredBase[];
@@ -387,11 +394,139 @@ function recordValues(table: ForgeStructuredTable, recordId: string): Record<str
   );
 }
 
+type GatewayRecordValue = ForgeStructuredRecordValue | string[];
+
+type GatewayStructuredRecord = ForgeStructuredRecord & {
+  revision: number;
+  values: Record<string, GatewayRecordValue>;
+};
+
+type GatewayStructuredTable = Omit<ForgeStructuredTable, "records"> & {
+  revision: number;
+  records: GatewayStructuredRecord[];
+};
+
+type GatewayStructuredBase = Omit<ForgeStructuredBase, "tables"> & {
+  revision: number;
+  tables: GatewayStructuredTable[];
+};
+
+type GatewayMirrorMutation =
+  | { kind: "base.put" }
+  | { kind: "table.put"; table: ForgeStructuredTable }
+  | { kind: "table.delete"; tableId: string; seedBase: ForgeStructuredBase }
+  | { kind: "record.put"; tableId: string; record: ForgeStructuredRecord }
+  | { kind: "record.delete"; tableId: string; recordId: string; seedBase: ForgeStructuredBase };
+
+type GatewayMirrorCall = {
+  method: string;
+  params: Record<string, unknown>;
+};
+
+function toGatewayRecord(record: ForgeStructuredRecord): GatewayStructuredRecord {
+  return {
+    ...record,
+    revision: 0,
+    values: { ...record.values },
+  };
+}
+
+function toGatewayTable(table: ForgeStructuredTable): GatewayStructuredTable {
+  return {
+    ...table,
+    revision: 0,
+    fields: table.fields.map((field) => ({
+      ...field,
+      options: field.options ? [...field.options] : undefined,
+    })),
+    records: table.records.map(toGatewayRecord),
+  };
+}
+
+function toGatewayBase(base: ForgeStructuredBase): GatewayStructuredBase {
+  return {
+    ...base,
+    revision: 0,
+    tables: base.tables.map(toGatewayTable),
+  };
+}
+
+function buildGatewayMirrorCalls(
+  base: ForgeStructuredBase,
+  mutation: GatewayMirrorMutation = { kind: "base.put" },
+): GatewayMirrorCall[] {
+  const seedBase =
+    mutation.kind === "table.delete" || mutation.kind === "record.delete"
+      ? mutation.seedBase
+      : base;
+  const calls: GatewayMirrorCall[] = [
+    {
+      method: "appforge.bases.put",
+      params: {
+        base: toGatewayBase(seedBase),
+        idempotencyKey: `dashboard-base-${seedBase.id}-${seedBase.updatedAt}`,
+      },
+    },
+  ];
+
+  if (mutation.kind === "table.put") {
+    calls.push({
+      method: "appforge.tables.put",
+      params: {
+        baseId: base.id,
+        table: toGatewayTable(mutation.table),
+        idempotencyKey: `dashboard-table-${base.id}-${mutation.table.id}-${base.updatedAt}`,
+      },
+    });
+  } else if (mutation.kind === "table.delete") {
+    calls.push({
+      method: "appforge.tables.delete",
+      params: { baseId: seedBase.id, tableId: mutation.tableId },
+    });
+  } else if (mutation.kind === "record.put") {
+    calls.push({
+      method: "appforge.records.put",
+      params: {
+        baseId: base.id,
+        tableId: mutation.tableId,
+        record: toGatewayRecord(mutation.record),
+        idempotencyKey: `dashboard-record-${base.id}-${mutation.tableId}-${mutation.record.id}-${mutation.record.updatedAt}`,
+      },
+    });
+  } else if (mutation.kind === "record.delete") {
+    calls.push({
+      method: "appforge.records.delete",
+      params: {
+        baseId: seedBase.id,
+        tableId: mutation.tableId,
+        recordId: mutation.recordId,
+      },
+    });
+  }
+
+  return calls;
+}
+
+async function mirrorGatewayMutation(
+  gatewayRequest: GatewayRequestFn | undefined,
+  base: ForgeStructuredBase,
+  mutation?: GatewayMirrorMutation,
+) {
+  if (!gatewayRequest) {
+    return;
+  }
+  const calls = buildGatewayMirrorCalls(base, mutation);
+  for (const call of calls) {
+    await gatewayRequest(call.method, call.params, { timeoutMs: 5_000 });
+  }
+}
+
 function storedFieldSelectionKey(appId: string, tableId: string): string {
   return `argent.appForge.selectedField.${appId}.${tableId}`;
 }
 
 export const forgeStructuredDataTestUtils = {
+  buildGatewayMirrorCalls,
   coerceValueForField,
   defaultBase,
   defaultValueForField,
@@ -403,6 +538,7 @@ export function useForgeStructuredData({
   apps,
   selectedAppId,
   onSelectApp,
+  gatewayRequest,
   emitWorkflowEvent,
 }: UseForgeStructuredDataOptions): UseForgeStructuredDataReturn {
   const [overrides, setOverrides] = useState<Record<string, ForgeStructuredBase>>({});
@@ -453,6 +589,7 @@ export function useForgeStructuredData({
       event?: Omit<AppForgeWorkflowEventRequest, "payload"> & {
         payload?: Record<string, unknown>;
       },
+      gatewayMutation?: GatewayMirrorMutation,
     ) => {
       const app = apps.find((candidate) => candidate.id === base.appId);
       if (!app) return;
@@ -469,6 +606,13 @@ export function useForgeStructuredData({
         if (!response.ok) {
           throw new Error(`Failed to save structured base (${response.status})`);
         }
+        try {
+          await mirrorGatewayMutation(gatewayRequest, nextBase, gatewayMutation);
+        } catch (gatewayErr) {
+          console.warn("[AppForge] Gateway mirror failed; metadata persistence remains active.", {
+            error: gatewayErr,
+          });
+        }
         if (event && emitWorkflowEvent) {
           await emitWorkflowEvent(app.id, event);
         }
@@ -478,7 +622,7 @@ export function useForgeStructuredData({
         setSaving(false);
       }
     },
-    [apps, emitWorkflowEvent],
+    [apps, emitWorkflowEvent, gatewayRequest],
   );
 
   const selectBase = useCallback(
@@ -513,6 +657,12 @@ export function useForgeStructuredData({
     async (
       updater: (table: ForgeStructuredTable) => ForgeStructuredTable,
       event?: Omit<AppForgeWorkflowEventRequest, "payload"> & { payload?: Record<string, unknown> },
+      gatewayMutation?: (params: {
+        previousBase: ForgeStructuredBase;
+        previousTable: ForgeStructuredTable;
+        nextBase: ForgeStructuredBase;
+        nextTable: ForgeStructuredTable;
+      }) => GatewayMirrorMutation,
     ) => {
       if (!activeBase || !activeTable) return;
       const nextTable = updater(activeTable);
@@ -520,7 +670,16 @@ export function useForgeStructuredData({
         ...activeBase,
         tables: activeBase.tables.map((table) => (table.id === activeTable.id ? nextTable : table)),
       };
-      await persistBase(nextBase, event);
+      await persistBase(
+        nextBase,
+        event,
+        gatewayMutation?.({
+          previousBase: activeBase,
+          previousTable: activeTable,
+          nextBase,
+          nextTable,
+        }) ?? { kind: "table.put", table: nextTable },
+      );
     },
     [activeBase, activeTable, persistBase],
   );
@@ -533,27 +692,34 @@ export function useForgeStructuredData({
       fields: defaultFields(),
       records: [],
     };
-    await persistBase({
+    const nextBase = {
       ...activeBase,
       activeTableId: table.id,
       tables: [...activeBase.tables, table],
-    });
+    };
+    await persistBase(nextBase, undefined, { kind: "table.put", table });
   }, [activeBase, persistBase]);
 
   const updateTable = useCallback(
     async (tableId: string, updates: Partial<Pick<ForgeStructuredTable, "name">>) => {
       if (!activeBase) return;
-      await persistBase({
+      let nextTable: ForgeStructuredTable | null = null;
+      const nextBase = {
         ...activeBase,
         tables: activeBase.tables.map((table) =>
           table.id === tableId
-            ? {
+            ? (nextTable = {
                 ...table,
                 name: updates.name?.trim() || table.name,
-              }
+              })
             : table,
         ),
-      });
+      };
+      await persistBase(
+        nextBase,
+        undefined,
+        nextTable ? { kind: "table.put", table: nextTable } : { kind: "base.put" },
+      );
     },
     [activeBase, persistBase],
   );
@@ -587,11 +753,12 @@ export function useForgeStructuredData({
           };
         }),
       };
-      await persistBase({
+      const nextBase = {
         ...activeBase,
         activeTableId: table.id,
         tables: [...activeBase.tables, table],
-      });
+      };
+      await persistBase(nextBase, undefined, { kind: "table.put", table });
     },
     [activeBase, persistBase],
   );
@@ -600,13 +767,18 @@ export function useForgeStructuredData({
     async (tableId: string) => {
       if (!activeBase || activeBase.tables.length <= 1) return;
       const tables = activeBase.tables.filter((table) => table.id !== tableId);
-      await persistBase({
+      const nextBase = {
         ...activeBase,
         activeTableId:
           activeBase.activeTableId === tableId
             ? (tables[0]?.id ?? activeBase.activeTableId)
             : activeBase.activeTableId,
         tables,
+      };
+      await persistBase(nextBase, undefined, {
+        kind: "table.delete",
+        tableId,
+        seedBase: activeBase,
       });
     },
     [activeBase, persistBase],
@@ -754,10 +926,11 @@ export function useForgeStructuredData({
         ),
       ]),
     );
+    const nextRecord = { id: recordId, createdAt, updatedAt: createdAt, values };
     await updateActiveTable(
       (table) => ({
         ...table,
-        records: [...table.records, { id: recordId, createdAt, updatedAt: createdAt, values }],
+        records: [...table.records, nextRecord],
       }),
       {
         eventType: "forge.record.created",
@@ -765,6 +938,7 @@ export function useForgeStructuredData({
         recordId,
         payload: { tableId: activeTable.id, recordId, values },
       },
+      () => ({ kind: "record.put", tableId: activeTable.id, record: nextRecord }),
     );
   }, [activeBase, activeTable, updateActiveTable]);
 
@@ -813,6 +987,14 @@ export function useForgeStructuredData({
             duplicatedFrom: recordId,
           },
         },
+        ({ nextTable }) => {
+          const mirroredRecord = nextTable.records.find(
+            (candidate) => candidate.id === nextRecordId,
+          );
+          return mirroredRecord
+            ? { kind: "record.put", tableId: activeTable.id, record: mirroredRecord }
+            : { kind: "table.put", table: nextTable };
+        },
       );
     },
     [activeTable, updateActiveTable],
@@ -840,6 +1022,12 @@ export function useForgeStructuredData({
           recordId,
           payload: { tableId: activeTable.id, recordId, fieldId, value },
         },
+        ({ nextTable }) => {
+          const mirroredRecord = nextTable.records.find((candidate) => candidate.id === recordId);
+          return mirroredRecord
+            ? { kind: "record.put", tableId: activeTable.id, record: mirroredRecord }
+            : { kind: "table.put", table: nextTable };
+        },
       );
     },
     [activeTable, updateActiveTable],
@@ -859,6 +1047,12 @@ export function useForgeStructuredData({
           recordId,
           payload: { tableId: activeTable.id, recordId },
         },
+        ({ previousBase }) => ({
+          kind: "record.delete",
+          tableId: activeTable.id,
+          recordId,
+          seedBase: previousBase,
+        }),
       );
     },
     [activeTable, updateActiveTable],
@@ -891,6 +1085,12 @@ export function useForgeStructuredData({
             recordId,
             values: recordValues(activeTable, recordId),
           },
+        },
+        ({ nextTable }) => {
+          const mirroredRecord = nextTable.records.find((candidate) => candidate.id === recordId);
+          return mirroredRecord
+            ? { kind: "record.put", tableId: activeTable.id, record: mirroredRecord }
+            : { kind: "table.put", table: nextTable };
         },
       );
     },
@@ -937,6 +1137,12 @@ export function useForgeStructuredData({
             values: recordValues(activeTable, recordId),
           },
         },
+        ({ nextTable }) => {
+          const mirroredRecord = nextTable.records.find((candidate) => candidate.id === recordId);
+          return mirroredRecord
+            ? { kind: "record.put", tableId: activeTable.id, record: mirroredRecord }
+            : { kind: "table.put", table: nextTable };
+        },
       );
     },
     [activeTable, updateActiveTable],
@@ -975,6 +1181,12 @@ export function useForgeStructuredData({
             capabilityId,
             values: recordValues(activeTable, recordId),
           },
+        },
+        ({ nextTable }) => {
+          const mirroredRecord = nextTable.records.find((candidate) => candidate.id === recordId);
+          return mirroredRecord
+            ? { kind: "record.put", tableId: activeTable.id, record: mirroredRecord }
+            : { kind: "table.put", table: nextTable };
         },
       );
     },

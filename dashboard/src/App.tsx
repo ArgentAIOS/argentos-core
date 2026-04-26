@@ -6008,6 +6008,7 @@ function App() {
         onNewApp={handleNewForgeApp}
         onRestoreApp={appWindows.restoreApp}
         onFocusApp={appWindows.focusApp}
+        gatewayRequest={gateway.request}
         onEmitWorkflowEvent={handleEmitForgeWorkflowEvent}
       />
 

@@ -31,6 +31,7 @@ import type { AppForgeWorkflowEventRequest, ForgeApp } from "../hooks/useApps";
 import type { AppWindowState } from "../hooks/useAppWindows";
 import {
   useForgeStructuredData,
+  type GatewayRequestFn,
   type ForgeStructuredField,
   type ForgeStructuredRecord,
   type ForgeStructuredRecordValue,
@@ -49,6 +50,7 @@ interface AppForgeProps {
   onNewApp: (name: string, description: string) => void;
   onRestoreApp: (appId: string) => void;
   onFocusApp: (appId: string) => void;
+  gatewayRequest?: GatewayRequestFn;
   onEmitWorkflowEvent?: (appId: string, event: AppForgeWorkflowEventRequest) => Promise<boolean>;
 }
 
@@ -313,6 +315,7 @@ export function AppForge({
   onNewApp,
   onRestoreApp,
   onFocusApp,
+  gatewayRequest,
   onEmitWorkflowEvent,
 }: AppForgeProps) {
   const [persistedUiState] = useState<AppForgeUiState>(loadAppForgeUiState);
@@ -464,6 +467,7 @@ export function AppForge({
     apps: filteredApps,
     selectedAppId,
     onSelectApp: setSelectedAppId,
+    gatewayRequest,
     emitWorkflowEvent: onEmitWorkflowEvent,
   });
   const visibleFields = structured.activeTable?.fields.slice(0, 6) ?? [];

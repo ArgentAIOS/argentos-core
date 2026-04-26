@@ -10,7 +10,7 @@ Reason: pure core foundation work
 
 ## Current Position
 
-AppForge is past the mock-shell stage and is now a usable single-user, metadata-backed workspace. Phase 1 is late-stage foundation work; Phase 2 now has a pure core model, an expanded adapter contract, and gateway surfaces for bases, tables, and records. Durable storage and dashboard migration onto those gateway operations are still pending.
+AppForge is past the mock-shell stage and is now a usable single-user, metadata-backed workspace. Phase 1 is late-stage foundation work; Phase 2 now has a pure core model, an expanded adapter contract, gateway surfaces for bases, tables, and records, and the dashboard hook now mirrors table/record mutations through those gateway methods while metadata remains the durable fallback. Durable storage is still pending.
 
 Recent pushed AppForge/core coordination commits before this slice:
 
@@ -24,7 +24,7 @@ Recent pushed AppForge/core coordination commits before this slice:
 ## Phase Progress
 
 - Phase 1, workspace MVP: roughly 75-80% complete.
-- Phase 2, first-class data domain: started, roughly 25-30% complete.
+- Phase 2, first-class data domain: started, roughly 30-35% complete.
 - Phase 3, grid/saved view quality: partially started early through typed editors plus per-view filter/sort/group controls.
 - Phase 5, workflow event bridge: producer/consumer foundation is stronger than expected; coverage and targeted resume hardening remain.
 - Phase 6, permissions/audit: design risk identified; do not ship multi-user semantics until actor binding and AppForge-specific authorization exist.
@@ -62,6 +62,8 @@ Completed in this run:
 - Registered `appforge.bases.list`, `appforge.bases.get`, `appforge.bases.put`, and `appforge.bases.delete` for discovery and gateway auth.
 - Registered `appforge.tables.list`, `appforge.tables.get`, `appforge.tables.put`, and `appforge.tables.delete` for discovery and gateway auth.
 - Registered `appforge.records.list`, `appforge.records.get`, `appforge.records.put`, and `appforge.records.delete` for discovery and gateway auth.
+- Added dashboard gateway request plumbing into AppForge.
+- Added best-effort gateway mirroring for table and record mutations in `useForgeStructuredData`, with existing metadata PATCH persistence preserved as the durable fallback.
 - Added `src/infra/app-forge-model.ts`.
 - Added field/value model types.
 - Added field-aware record validation for text, long text, select, multi-select, number, date, checkbox, URL, email, attachment, and linked-record placeholders.
@@ -72,7 +74,7 @@ Next Phase 2 slices:
 
 - Add PG/schema migration plan and tests.
 - Decide whether field and view edits stay as table-payload updates for MVP or need dedicated `appforge.fields.*` and `appforge.views.*` methods.
-- Migrate dashboard from whole-app metadata PATCHes to core AppForge operations once server methods exist.
+- Replace best-effort gateway mirroring with durable gateway-backed reads/writes once AppForge storage is no longer in-memory.
 
 ### Workflow Bridge
 
@@ -119,6 +121,7 @@ Passing:
 - `pnpm check:repo-lane`
 - `pnpm exec vitest run src/infra/app-forge-adapter.test.ts src/infra/app-forge-permissions.test.ts src/gateway/server-methods/app-forge.test.ts src/infra/app-forge-model.test.ts src/infra/appforge-workflow-events.test.ts src/gateway/server-methods/workflows.appforge-events.test.ts src/infra/appforge-workflow-capabilities.test.ts src/infra/app-forge-structured-data.test.ts`
 - `pnpm exec vitest run src/gateway/server-methods/app-forge.test.ts src/infra/app-forge-adapter.test.ts src/infra/app-forge-permissions.test.ts src/infra/app-forge-model.test.ts src/infra/appforge-workflow-events.test.ts src/gateway/server-methods/workflows.appforge-events.test.ts src/infra/appforge-workflow-capabilities.test.ts src/infra/app-forge-structured-data.test.ts`
+- `pnpm exec vitest run src/infra/app-forge-structured-data.test.ts src/gateway/server-methods/app-forge.test.ts src/infra/app-forge-adapter.test.ts`
 - `pnpm exec vitest run src/gateway/server-methods/app-forge.test.ts src/infra/app-forge-adapter.test.ts src/infra/app-forge-model.test.ts src/infra/appforge-workflow-events.test.ts src/gateway/server-methods/workflows.appforge-events.test.ts`
 - `pnpm exec vitest run src/infra/app-forge-model.test.ts src/infra/app-forge-structured-data.test.ts src/infra/appforge-workflow-events.test.ts src/infra/appforge-workflow-capabilities.test.ts src/gateway/server-methods/workflows.appforge-events.test.ts`
 - `node --test --test-name-pattern='Apps' dashboard/tests/api-server.test.cjs`
@@ -126,13 +129,14 @@ Passing:
 - `pnpm exec oxlint --type-aware src/gateway/server-methods/app-forge.ts src/gateway/server-methods/app-forge.test.ts src/gateway/server-methods.ts src/gateway/server-methods-list.ts src/infra/appforge-workflow-events.test.ts src/gateway/server-methods/workflows.appforge-events.test.ts`
 - `pnpm exec oxlint --type-aware src/infra/app-forge-model.ts src/infra/app-forge-model.test.ts src/infra/app-forge-structured-data.test.ts`
 - File diagnostics for AppForge model/test and structured hook/test surfaces
+- File diagnostics for dashboard AppForge surfaces touched by the gateway mirror slice
 
 Known unrelated failures:
 
 - Full root TypeScript check still fails in unrelated agent/model runner files.
 - Full dashboard TypeScript check still fails in unrelated dashboard files.
 - Full dashboard API suite still has unrelated task/proxy expectation failures.
-- Root oxlint on `dashboard/src/hooks/useForgeStructuredData.ts` reports pre-existing curly-style issues; dashboard eslint on the file passes.
+- Root oxlint on `dashboard/src/hooks/useForgeStructuredData.ts` and `dashboard/src/components/AppForge.tsx` reports pre-existing curly-style issues; targeted changed test lint passes.
 
 ## Next Work Order
 
@@ -140,6 +144,6 @@ Sub-agent lanes:
 
 1. Lane A: add a real AppForge hook/component test harness or move the mutable structured-data logic into pure core functions that can be tested without a browser DOM.
 2. Lane B: draft and coordinate PG schema/migration files with Threadmaster authority before touching storage surfaces.
-3. Lane C: migrate dashboard table/record mutations onto `appforge.tables.*` and `appforge.records.*`, with a metadata fallback until durable storage lands.
+3. Lane C: move AppForge reads toward gateway-backed base/table loading once durable storage replaces the in-memory adapter.
 4. Lane D: add focused workflow bridge tests for targeted AppForge event resume and dashboard record-event API submissions.
 5. Lane E: patch the AppForge permission/actor/audit seam before any multi-user collaboration claims.

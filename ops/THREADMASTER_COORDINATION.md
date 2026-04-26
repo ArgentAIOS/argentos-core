@@ -42,7 +42,7 @@ Bus docs: `ops/threadmaster-bus/README.md`.
 | Lane                                                  | Threadmaster                     | Scope                                                                                                                     | Current State                                                                                                                                                      | Shared Boundaries                                                                                           |
 | ----------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
 | Master coordination + Workflows canvas/runtime        | Codex workflow threadmaster      | Cross-lane coordination, workflow builder canvas, workflow gateway/runtime, output channels, approval/wait/event surfaces | Bus/coordination lane in progress at `1f30784b`; output node configurability and real channel discovery pushed to `dev` at `ad964716`                              | Consumes AppForge through metadata/events only; consumes AOS connectors through manifests/capabilities only |
-| AppForge 2.0                                          | AppForge threadmaster            | Airtable-like core workspace, AppForge adapter/model/gateway, structured metadata, AppForge event producers               | Table/record gateway slice pushed to `dev` at `e22dc0e8`; completion posted to master as `tm-20260426123513-qhfoze`                                                | Must not import Workflow dashboard internals; coordinate before touching workflow files                     |
+| AppForge 2.0                                          | AppForge threadmaster            | Airtable-like core workspace, AppForge adapter/model/gateway, structured metadata, AppForge event producers               | Dashboard gateway mirror slice implemented locally; ready posted as `tm-20260426124813-3iw9kg`; pending push                                                       | Must not import Workflow dashboard internals; coordinate before touching workflow files                     |
 | AOU Stub Finder                                       | AOU threadmaster                 | Stub discovery, connector/tool completeness, skeleton-vs-live implementation inventory                                    | Active in its own threadmaster lane                                                                                                                                | Report stub findings here before changing shared runtime or connector surfaces                              |
 | AOS connectors                                        | Codex AOS connector threadmaster | `tools/aos/**`, connector manifests, operator service-key resolution, connector command capability surfaces               | Branch `codex/aos-next-connector-wave`; latest lane commit `ad3fb0b9` stabilizes Klaviyo as truthful read-only live connector; prior next-wave baseline `83a9bcb7` | Workflows/AppForge should consume connector metadata/capabilities, not private connector internals          |
 | OpenClaw 4.24 realtime/browser/marketplace comparison | Codex comparison threadmaster    | Upstream 4.24 feature comparison, browser harness/realtime voice/Google Meet marketplace-plugin recommendations           | Active on `codex/aos-next-connector-wave` at `ad3fb0b9`; read-only analysis so far                                                                                 | Owns comparison/planning notes only; no shared implementation files without another board update            |
@@ -57,6 +57,7 @@ Bus docs: `ops/threadmaster-bus/README.md`.
 | `src/infra/app-forge-*`                                                             | AppForge            | Workflows needs new metadata/event/capability contracts                        |
 | `src/gateway/server-methods/app-forge*`                                             | AppForge            | Workflows needs producer/consumer event boundary changes                       |
 | `dashboard/src/components/AppForge.tsx` and `dashboard/src/components/app-forge/**` | AppForge            | Workflows needs AppForge UI to expose workflow-capability review/build actions |
+| `dashboard/src/App.tsx`                                                             | Coordinated         | AppForge needs parent-level gateway/request plumbing                           |
 | `tools/aos/**`                                                                      | AOS connectors      | Workflows/AppForge need connector manifest/action contract changes             |
 | `src/data/pg/schema.ts` and migrations                                              | Coordinated         | Any lane needs durable schema changes                                          |
 | Stub/parity reports under `ops/**`                                                  | Master threadmaster | Findings create cross-lane work or imply implementation ownership              |
@@ -81,7 +82,7 @@ Bus docs: `ops/threadmaster-bus/README.md`.
 - Target branch: `dev`
 - Current known commits on `origin/dev`: `77f7046f`, `7aa18ab4`, `ff95fe20`, `73814fbd`, `c48f6e61`, `e22dc0e8`
 - Current bus state: `appforge` has no unacked messages and no assigned tasks after acking `tm-20260426121155-p07tc6`.
-- Current slice: table/record gateway expansion posted to master as `tm-20260426122351-xw0llc`; pushed to `dev` at `e22dc0e8` and completion posted as `tm-20260426123513-qhfoze`.
+- Current slice: dashboard gateway mirror implemented locally after `tm-20260426123731-4szp8v`; narrow App.tsx prop exception posted as `tm-20260426123902-bvd751`; ready posted as `tm-20260426124813-3iw9kg`; pending push.
 - Forbidden repo for this lane: `ArgentAIOS/argentos`
 
 ### Owned Files And Directories
@@ -100,6 +101,7 @@ Shared registration files touched only as Threadmaster-approved gateway registra
 
 - `src/gateway/server-methods.ts`
 - `src/gateway/server-methods-list.ts`
+- `dashboard/src/App.tsx` for narrow AppForge `gateway.request` prop plumbing only
 
 Do not touch without coordination:
 
