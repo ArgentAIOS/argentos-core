@@ -1052,17 +1052,39 @@ function NewWorkflowModal({
   open,
   onClose,
   onCreateBlank,
+  onCreateFromIntent,
   onSelectTemplate,
 }: {
   open: boolean;
   onClose: () => void;
   onCreateBlank: (name?: string) => void;
+  onCreateFromIntent: (intent: string, name?: string) => Promise<void>;
   onSelectTemplate: (template: WorkflowTemplate) => void;
 }) {
   const [showTemplates, setShowTemplates] = useState(false);
   const [workflowName, setWorkflowName] = useState("Untitled workflow");
+  const [intent, setIntent] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   if (!open) return null;
+
+  const createFromIntent = async () => {
+    if (!intent.trim() || generating) {
+      return;
+    }
+    setGenerating(true);
+    setGenerationError(null);
+    try {
+      await onCreateFromIntent(intent.trim(), workflowName.trim() || undefined);
+      setShowTemplates(false);
+      setIntent("");
+    } catch (err) {
+      setGenerationError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -1097,6 +1119,33 @@ function NewWorkflowModal({
             }}
             placeholder="Daily research summary"
           />
+        </div>
+
+        <div className="mb-4 space-y-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))]/60 p-3">
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Describe what Argent should build</label>
+            <textarea
+              className={DOCK_INPUT + " resize-y"}
+              rows={4}
+              value={intent}
+              onChange={(event) => setIntent(event.target.value)}
+              placeholder="Example: Every weekday morning, have Argent research new AI voice model news, summarize it, ask me to approve, then send it to Telegram."
+            />
+          </div>
+          {generationError && (
+            <div className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-xs text-red-200">
+              {generationError}
+            </div>
+          )}
+          <button
+            onClick={() => {
+              void createFromIntent();
+            }}
+            disabled={!intent.trim() || generating}
+            className="w-full rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-400/20 disabled:opacity-40"
+          >
+            {generating ? "Building draft..." : "Build draft with Argent"}
+          </button>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -5557,7 +5606,12 @@ export function WorkflowsWidget() {
   const [newWorkflowModalOpen, setNewWorkflowModalOpen] = useState(false);
 
   const createWorkflow = useCallback(
-    async (name: string, templateNodes: Node[] = [], templateEdges: Edge[] = []) => {
+    async (
+      name: string,
+      templateNodes: Node[] = [],
+      templateEdges: Edge[] = [],
+      extra: Pick<WorkflowDefinition, "definition" | "canvasLayout" | "validation"> = {},
+    ) => {
       const id = `wf-${Date.now()}`;
       const nodes =
         templateNodes.length > 0
@@ -5577,6 +5631,7 @@ export function WorkflowsWidget() {
         edges: templateEdges,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        ...extra,
       };
       const next = [...workflows, newWf];
       setWorkflows(next);
@@ -5590,6 +5645,7 @@ export function WorkflowsWidget() {
             name: newWf.name,
             workflowId: newWf.id,
             canvasData: { nodes: newWf.nodes, edges: newWf.edges },
+            canvasLayout: newWf.canvasLayout,
           });
         } catch {
           /* localStorage fallback already saved */
@@ -5618,6 +5674,34 @@ export function WorkflowsWidget() {
       createWorkflow(template.name);
     },
     [createWorkflow],
+  );
+
+  const handleCreateFromIntent = useCallback(
+    async (intent: string, name?: string) => {
+      if (!gateway.connected) {
+        throw new Error("Gateway is not connected.");
+      }
+      const draft = await gateway.request<{
+        name?: string;
+        nodes?: Node[];
+        edges?: Edge[];
+        definition?: unknown;
+        canvasLayout?: { nodes?: Node[]; edges?: Edge[]; [key: string]: unknown };
+        ok?: boolean;
+        issues?: unknown[];
+      }>("workflows.draft", {
+        intent,
+        name,
+      });
+      const nodes = draft.canvasLayout?.nodes ?? draft.nodes ?? [];
+      const edges = draft.canvasLayout?.edges ?? draft.edges ?? [];
+      await createWorkflow(draft.name ?? name ?? "Generated workflow", nodes, edges, {
+        definition: draft.definition,
+        canvasLayout: draft.canvasLayout,
+        validation: { ok: draft.ok !== false, issues: draft.issues },
+      });
+    },
+    [createWorkflow, gateway],
   );
 
   const handleDelete = useCallback(
@@ -5720,6 +5804,7 @@ export function WorkflowsWidget() {
         open={newWorkflowModalOpen}
         onClose={() => setNewWorkflowModalOpen(false)}
         onCreateBlank={handleCreateBlank}
+        onCreateFromIntent={handleCreateFromIntent}
         onSelectTemplate={handleSelectTemplate}
       />
       <ReactFlowProvider>
