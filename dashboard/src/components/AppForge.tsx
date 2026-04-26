@@ -33,11 +33,13 @@ import type { AppWindowState } from "../hooks/useAppWindows";
 import {
   useForgeStructuredData,
   type GatewayRequestFn,
+  type ForgeStructuredBase,
   type ForgeStructuredField,
   type ForgeStructuredRecord,
   type ForgeStructuredRecordValue,
   type ForgeStructuredTable,
 } from "../hooks/useForgeStructuredData";
+import { fetchLocalApi } from "../utils/localApiFetch";
 import { AppDock } from "./AppDock";
 
 interface AppForgeProps {
@@ -289,6 +291,127 @@ function recordTitle(
   return nameField ? fieldValue(record.values[nameField.id]) || "Untitled" : "Untitled";
 }
 
+function baseRecordCount(base: ForgeStructuredBase | null | undefined): number {
+  return base?.tables.reduce((total, table) => total + table.records.length, 0) ?? 0;
+}
+
+function escapeHtml(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function structuredBaseIcon(): string {
+  return `<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="8" fill="#123243"/><path d="M16 5.5 7.5 10.2v9.6L16 24.5l8.5-4.7v-9.6L16 5.5Z" stroke="#BAE6FD" stroke-width="1.8"/><path d="M8 10.5 16 15l8-4.5M16 15v9" stroke="#BAE6FD" stroke-width="1.8"/><path d="M11.5 17.5 7.5 19.8M20.5 17.5l4 2.3" stroke="#7DD3FC" stroke-width="1.8"/></svg>`;
+}
+
+function structuredBaseAppCode(name: string, description: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(name)}</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #05080a; color: #e5eef5; font-family: Inter, system-ui, sans-serif; }
+    main { max-width: 560px; padding: 32px; }
+    h1 { margin: 0 0 10px; font-size: 28px; }
+    p { margin: 0; color: #9aa8b3; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>${escapeHtml(name)}</h1>
+    <p>${escapeHtml(description)}</p>
+  </main>
+</body>
+</html>`;
+}
+
+function createEmptyStructuredBase(
+  appId: string,
+  name: string,
+  description: string,
+  baseId = `base-${appId}`,
+): ForgeStructuredBase {
+  const updatedAt = new Date().toISOString();
+  return {
+    id: baseId,
+    appId,
+    name,
+    description,
+    activeTableId: "table-main",
+    tables: [
+      {
+        id: "table-main",
+        name: "Table 1",
+        fields: [
+          {
+            id: "name",
+            name: "Name",
+            type: "text",
+            description: "Primary record name",
+            required: true,
+          },
+        ],
+        records: [],
+      },
+    ],
+    updatedAt,
+  };
+}
+
+function createBaseId(): string {
+  const randomId = globalThis.crypto?.randomUUID?.() ?? String(Date.now());
+  return `base-${randomId}`;
+}
+
+function structuredBaseMetadata(
+  metadata: Record<string, unknown>,
+  base: ForgeStructuredBase,
+): Record<string, unknown> {
+  const appForge =
+    metadata.appForge && typeof metadata.appForge === "object"
+      ? (metadata.appForge as Record<string, unknown>)
+      : {};
+  return {
+    ...metadata,
+    appForge: {
+      ...appForge,
+      kind: "structured_base",
+      structured: {
+        version: 1,
+        baseId: base.id,
+        activeTableId: base.activeTableId,
+        updatedAt: base.updatedAt,
+        tables: base.tables,
+      },
+    },
+  };
+}
+
+function metadataWithStructuredBase(
+  app: ForgeApp,
+  base: ForgeStructuredBase,
+): Record<string, unknown> {
+  const metadata = app.metadata && typeof app.metadata === "object" ? app.metadata : {};
+  return structuredBaseMetadata(metadata, base);
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(message)), ms);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 function recordsByField(
   table: ForgeStructuredTable | null | undefined,
   fieldId: string | undefined,
@@ -331,7 +454,6 @@ export function AppForge({
   onOpenApp,
   onPinApp,
   onDeleteApp,
-  onNewApp,
   onRestoreApp,
   onFocusApp,
   gatewayRequest,
@@ -350,6 +472,7 @@ export function AppForge({
   const [building, setBuilding] = useState(false);
   const [newAppName, setNewAppName] = useState("");
   const [newAppDescription, setNewAppDescription] = useState("");
+  const [localCreatedApps, setLocalCreatedApps] = useState<ForgeApp[]>([]);
   const [workflowEventStatus, setWorkflowEventStatus] = useState<WorkflowEventStatus | null>(null);
   const [activeFilter, setActiveFilter] = useState<AppFilter>("all");
   const [activeSection, setActiveSection] = useState<(typeof APP_FORGE_NAV)[number]["id"]>(
@@ -365,10 +488,12 @@ export function AppForge({
   const [selectedAppId, setSelectedAppId] = useState<string | null>(
     persistedUiState.selectedAppId ?? null,
   );
+  const [hoveredBaseId, setHoveredBaseId] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [formRecordId, setFormRecordId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const baseWorkspaceRef = useRef<HTMLDivElement>(null);
   const appCountAtBuild = useRef(0);
   const skipNextViewSettingsPersist = useRef(false);
 
@@ -391,6 +516,7 @@ export function AppForge({
         setWorkflowEventStatus(null);
         setActiveFilter("all");
         setEditingCell(null);
+        setHoveredBaseId(null);
       });
     }
   }, [isOpen]);
@@ -427,15 +553,105 @@ export function AppForge({
     }
   }, [building, apps.length]);
 
-  const handleNewAppSubmit = useCallback(() => {
-    const description = newAppDescription.trim();
-    if (!description) {
-      return;
-    }
+  useEffect(() => {
+    const appIds = new Set(apps.map((app) => app.id));
+    setLocalCreatedApps((current) => current.filter((app) => !appIds.has(app.id)));
+  }, [apps]);
+
+  const handleNewAppSubmit = useCallback(async () => {
+    const baseName = newAppName.trim() || `Untitled Base ${apps.length + 1}`;
+    const description =
+      newAppDescription.trim() ||
+      "Structured AppForge base with tables, records, fields, and workflow capabilities.";
     appCountAtBuild.current = apps.length;
     setBuilding(true);
-    onNewApp(newAppName.trim(), description);
-  }, [newAppName, newAppDescription, onNewApp, apps.length]);
+    try {
+      const baseId = createBaseId();
+      const pendingBase = createEmptyStructuredBase("", baseName, description, baseId);
+      const createResponse = await fetchLocalApi(
+        "/api/apps",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: baseName,
+            description,
+            icon: structuredBaseIcon(),
+            code: structuredBaseAppCode(baseName, description),
+            metadata: structuredBaseMetadata({ workflowCapabilities: [] }, pendingBase),
+          }),
+        },
+        2_500,
+      );
+      if (!createResponse.ok) {
+        throw new Error(`Failed to create base app (${createResponse.status})`);
+      }
+      const created = (await createResponse.json()) as { app?: ForgeApp };
+      if (!created.app?.id) {
+        throw new Error("Create base response did not include an app id");
+      }
+      const base = { ...pendingBase, appId: created.app.id };
+      let gatewayWriteFailed = false;
+      if (gatewayRequest) {
+        try {
+          const gatewayWrite = gatewayRequest("appforge.bases.put", {
+            base,
+            expectedRevision: 0,
+            idempotencyKey: `create-base:${created.app.id}`,
+          });
+          void gatewayWrite.catch(() => undefined);
+          await withTimeout(gatewayWrite, 2_000, "Gateway base create timed out");
+        } catch (err) {
+          gatewayWriteFailed = true;
+          console.warn("[AppForge] Gateway base create failed; saving metadata fallback.", err);
+        }
+      }
+      const metadata = metadataWithStructuredBase(created.app, base);
+      const patchResponse = await fetchLocalApi(
+        `/api/apps/${created.app.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ metadata }),
+        },
+        2_500,
+      );
+      if (!patchResponse.ok) {
+        throw new Error(`Failed to attach structured base metadata (${patchResponse.status})`);
+      }
+      const patched = (await patchResponse.json().catch(() => undefined)) as
+        | { app?: ForgeApp }
+        | undefined;
+      const localApp = {
+        ...(patched?.app ?? created.app),
+        metadata,
+        updatedAt: base.updatedAt,
+      };
+      setLocalCreatedApps((current) => [
+        localApp,
+        ...current.filter((app) => app.id !== localApp.id),
+      ]);
+      setSelectedAppId(localApp.id);
+      setShowNewAppInput(false);
+      setNewAppName("");
+      setNewAppDescription("");
+      setWorkflowEventStatus({
+        kind: "success",
+        appId: created.app.id,
+        message: gatewayWriteFailed
+          ? `${baseName} base created in metadata fallback.`
+          : `${baseName} base created.`,
+      });
+    } catch (err) {
+      setWorkflowEventStatus({
+        kind: "error",
+        appId: "new-base",
+        message: err instanceof Error ? err.message : "Failed to create base.",
+      });
+    } finally {
+      setBuilding(false);
+    }
+  }, [newAppName, apps.length, newAppDescription, gatewayRequest]);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -466,12 +682,16 @@ export function AppForge({
   }, [deleteMode, pendingDeleteApp]);
 
   const runningAppIds = new Set(windows.map((window) => window.appId));
+  const displayApps = useMemo(() => {
+    const appIds = new Set(apps.map((app) => app.id));
+    return [...localCreatedApps.filter((app) => !appIds.has(app.id)), ...apps];
+  }, [apps, localCreatedApps]);
   const baseFilteredApps =
     activeFilter === "pinned"
-      ? apps.filter((app) => app.pinned)
+      ? displayApps.filter((app) => app.pinned)
       : activeFilter === "running"
-        ? apps.filter((app) => runningAppIds.has(app.id))
-        : apps;
+        ? displayApps.filter((app) => runningAppIds.has(app.id))
+        : displayApps;
 
   // Filter apps by search
   const filteredApps = searchQuery
@@ -483,13 +703,16 @@ export function AppForge({
     : baseFilteredApps;
 
   const selectedApp =
-    apps.find((app) => app.id === selectedAppId) ?? filteredApps[0] ?? apps[0] ?? null;
+    displayApps.find((app) => app.id === selectedAppId) ??
+    filteredApps[0] ??
+    displayApps[0] ??
+    null;
   const selectedWindow = selectedApp
     ? windows.find((window) => window.appId === selectedApp.id)
     : undefined;
   const selectedCapability = selectedApp ? appWorkflowCapability(selectedApp) : {};
   const shortcutApps = filteredApps.slice(0, 5);
-  const capabilityCount = apps.filter((app) => appWorkflowCapability(app).id).length;
+  const capabilityCount = displayApps.filter((app) => appWorkflowCapability(app).id).length;
   const structured = useForgeStructuredData({
     apps: filteredApps,
     selectedAppId,
@@ -497,6 +720,20 @@ export function AppForge({
     gatewayRequest,
     emitWorkflowEvent: onEmitWorkflowEvent,
   });
+  const baseByAppId = useMemo(
+    () => new Map(structured.bases.map((base) => [base.appId, base])),
+    [structured.bases],
+  );
+  const selectBaseAndFocusWorkspace = useCallback(
+    (appId: string) => {
+      structured.selectBase(appId);
+      setInspectorMode("table");
+      window.requestAnimationFrame(() => {
+        baseWorkspaceRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    },
+    [structured],
+  );
   const visibleFields = structured.activeTable?.fields.slice(0, 6) ?? [];
   const activeViewSettingsKey =
     selectedApp?.id && structured.activeTable?.id
@@ -548,9 +785,9 @@ export function AppForge({
   const sectionTitle = activeNav?.label ?? "Desktop";
   const sectionSubtitle =
     activeSection === "desktop"
-      ? "All your bases at a glance"
+      ? "Bases are separate structured databases. Select one to work with its tables."
       : activeSection === "bases"
-        ? "Structured bases backed by AppForge metadata"
+        ? "Create, choose, and manage the databases that power AppForge tables."
         : activeSection === "tables"
           ? "Fields, records, and view modes for the active base"
           : activeSection === "interfaces"
@@ -613,7 +850,7 @@ export function AppForge({
 
   const requestDeleteApp = useCallback(
     (appId: string) => {
-      const app = apps.find((candidate) => candidate.id === appId);
+      const app = displayApps.find((candidate) => candidate.id === appId);
       if (!app) {
         return;
       }
@@ -621,7 +858,7 @@ export function AppForge({
       setDeleteError(null);
       setPendingDeleteApp(app);
     },
-    [apps],
+    [displayApps],
   );
 
   const confirmDeleteApp = useCallback(async () => {
@@ -633,6 +870,7 @@ export function AppForge({
     const deleted = await onDeleteApp(pendingDeleteApp.id);
     setDeletingAppId(null);
     if (deleted) {
+      setLocalCreatedApps((current) => current.filter((app) => app.id !== pendingDeleteApp.id));
       setPendingDeleteApp(null);
       return;
     }
@@ -644,7 +882,7 @@ export function AppForge({
       if (!onEmitWorkflowEvent) {
         return;
       }
-      const app = apps.find((candidate) => candidate.id === appId);
+      const app = displayApps.find((candidate) => candidate.id === appId);
       if (!app) {
         return;
       }
@@ -677,7 +915,7 @@ export function AppForge({
           : `Failed to emit ${eventType} for ${app.name}.`,
       });
     },
-    [apps, onEmitWorkflowEvent],
+    [displayApps, onEmitWorkflowEvent],
   );
 
   const commitEditingCell = useCallback(async () => {
@@ -893,8 +1131,15 @@ export function AppForge({
                       <div className="mb-7 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
                         {shortcutApps.map((app, index) => {
                           const running = runningAppIds.has(app.id);
+                          const base = baseByAppId.get(app.id);
+                          const tableCount = base?.tables.length ?? 0;
+                          const recordCount = baseRecordCount(base);
+                          const isSelected = selectedApp?.id === app.id;
+                          const isPreviewed = hoveredBaseId === app.id;
+                          const capability = appWorkflowCapability(app);
                           return (
                             <motion.button
+                              type="button"
                               key={app.id}
                               layout
                               initial={{ scale: 0.92, opacity: 0 }}
@@ -923,7 +1168,7 @@ export function AppForge({
                                   requestDeleteApp(app.id);
                                   return;
                                 }
-                                structured.selectBase(app.id);
+                                selectBaseAndFocusWorkspace(app.id);
                               }}
                               onDoubleClick={() => {
                                 if (!deleteMode) {
@@ -931,13 +1176,31 @@ export function AppForge({
                                 }
                               }}
                               onContextMenu={(e) => handleContextMenu(e, app.id)}
-                              onMouseEnter={() => setSelectedAppId(app.id)}
-                              className={`group relative flex min-h-[112px] flex-col items-center justify-center gap-3 rounded-xl border p-3 transition-colors ${
-                                selectedApp?.id === app.id
+                              onMouseEnter={() => setHoveredBaseId(app.id)}
+                              onMouseLeave={() => setHoveredBaseId(null)}
+                              onFocus={() => setHoveredBaseId(app.id)}
+                              onBlur={() => setHoveredBaseId(null)}
+                              aria-label={`Select ${app.name} base. ${tableCount} ${
+                                tableCount === 1 ? "table" : "tables"
+                              }, ${recordCount} ${recordCount === 1 ? "record" : "records"}.`}
+                              data-testid="appforge-base-card"
+                              className={`group relative flex min-h-[138px] flex-col items-center justify-center gap-3 rounded-xl border p-3 transition-colors ${
+                                isSelected
                                   ? "border-sky-400/30 bg-sky-400/10"
-                                  : "border-white/10 bg-white/[0.04] hover:border-white/18 hover:bg-white/[0.07]"
+                                  : isPreviewed
+                                    ? "border-white/24 bg-white/[0.07]"
+                                    : "border-white/10 bg-white/[0.04] hover:border-white/18 hover:bg-white/[0.07]"
                               }`}
                             >
+                              <span
+                                className={`absolute left-3 top-3 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                  isSelected
+                                    ? "bg-sky-300/18 text-sky-100"
+                                    : "bg-white/[0.06] text-white/38"
+                                }`}
+                              >
+                                {isSelected ? "Selected" : "Base"}
+                              </span>
                               <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/25">
                                 {app.icon ? (
                                   <div
@@ -966,21 +1229,34 @@ export function AppForge({
                                   {app.name}
                                 </div>
                                 <div className="mt-0.5 text-xs text-white/38">
-                                  {appWorkflowCapability(app).id ? "Review table" : "Base"}
+                                  {tableCount} {tableCount === 1 ? "table" : "tables"} ·{" "}
+                                  {recordCount} {recordCount === 1 ? "record" : "records"}
                                 </div>
+                                {capability.id && (
+                                  <div className="mx-auto mt-2 w-fit rounded-full border border-emerald-300/15 bg-emerald-400/10 px-2 py-0.5 text-[10px] text-emerald-100/80">
+                                    Workflow-ready
+                                  </div>
+                                )}
                               </div>
                             </motion.button>
                           );
                         })}
 
                         <button
+                          type="button"
                           onClick={() => {
                             if (deleteMode) {
                               return;
                             }
+                            setNewAppName("");
+                            setNewAppDescription(
+                              "Structured base for tracking records, views, and workflow capabilities.",
+                            );
                             setShowNewAppInput(true);
                           }}
-                          className={`flex min-h-[112px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-3 transition-colors ${
+                          aria-label="Create a new AppForge base"
+                          data-testid="appforge-new-base"
+                          className={`flex min-h-[138px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-3 transition-colors ${
                             deleteMode
                               ? "cursor-default border-white/10 opacity-35"
                               : "border-white/16 bg-black/15 hover:border-sky-300/35 hover:bg-white/[0.05]"
@@ -989,7 +1265,10 @@ export function AppForge({
                           <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-white/12 bg-white/[0.04]">
                             <Plus className="h-7 w-7 text-white/45" />
                           </div>
-                          <span className="text-sm text-white/48">New Base</span>
+                          <div className="text-center">
+                            <div className="text-sm text-white/55">New Base</div>
+                            <div className="mt-0.5 text-xs text-white/32">Create database</div>
+                          </div>
                         </button>
                       </div>
                     ) : (
@@ -1130,14 +1409,29 @@ export function AppForge({
                       </div>
                     )}
 
-                    <div className="overflow-hidden rounded-2xl border border-white/12 bg-[#0e1316]/90 shadow-2xl">
+                    <div
+                      ref={baseWorkspaceRef}
+                      className="overflow-hidden rounded-2xl border border-white/12 bg-[#0e1316]/90 shadow-2xl"
+                    >
                       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
                         <div className="flex min-w-0 items-center gap-3">
                           <Boxes className="h-5 w-5 text-white/55" />
-                          <button className="flex items-center gap-1 text-sm font-medium text-white/82">
-                            {structured.activeBase?.name ?? "Projects"}
-                            <ChevronDown className="h-4 w-4 text-white/35" />
-                          </button>
+                          <div className="min-w-0">
+                            <button className="flex items-center gap-1 text-sm font-medium text-white/82">
+                              <span className="truncate" data-testid="appforge-active-base-name">
+                                {structured.activeBase?.name ?? "Projects"}
+                              </span>
+                              <ChevronDown className="h-4 w-4 shrink-0 text-white/35" />
+                            </button>
+                            <div className="mt-0.5 text-xs text-white/35">
+                              Selected base database · {structured.activeBase?.tables.length ?? 0}{" "}
+                              {(structured.activeBase?.tables.length ?? 0) === 1
+                                ? "table"
+                                : "tables"}{" "}
+                              · {baseRecordCount(structured.activeBase)}{" "}
+                              {baseRecordCount(structured.activeBase) === 1 ? "record" : "records"}
+                            </div>
+                          </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-4 text-sm text-white/48">
                           {FORGE_VIEW_MODES.map((view) => (
@@ -1736,28 +2030,29 @@ export function AppForge({
                           <div className="flex flex-col items-center gap-3 py-4">
                             <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
                             <span className="text-white/60 text-sm">
-                              Building {newAppName || "your app"}...
+                              Creating {newAppName || "your base"}...
                             </span>
                             <span className="text-white/30 text-xs">
-                              The AI is generating code. It will appear here when ready.
+                              AppForge will add it to the desktop as a structured base.
                             </span>
                           </div>
                         ) : (
                           <>
                             <div className="flex items-center gap-2 mb-5">
                               <Sparkles className="w-5 h-5 text-purple-400" />
-                              <span className="text-white/80 font-medium">New App</span>
+                              <span className="text-white/80 font-medium">Create Base</span>
                             </div>
 
                             <div className="space-y-4">
                               {/* App Name */}
                               <div>
                                 <label className="block text-xs text-white/40 mb-1.5">
-                                  What do you want to call it?
+                                  Base name
                                 </label>
                                 <input
                                   ref={nameInputRef}
                                   type="text"
+                                  aria-label="Base name"
                                   value={newAppName}
                                   onChange={(e) => setNewAppName(e.target.value)}
                                   onKeyDown={(e) => {
@@ -1765,7 +2060,7 @@ export function AppForge({
                                       setShowNewAppInput(false);
                                     }
                                   }}
-                                  placeholder="e.g. Price Calculator"
+                                  placeholder="e.g. Marketing Operations"
                                   className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 text-sm"
                                 />
                               </div>
@@ -1773,20 +2068,21 @@ export function AppForge({
                               {/* Description */}
                               <div>
                                 <label className="block text-xs text-white/40 mb-1.5">
-                                  Describe what it does and any design details
+                                  What should this base track?
                                 </label>
                                 <textarea
+                                  aria-label="What should this base track?"
                                   value={newAppDescription}
                                   onChange={(e) => setNewAppDescription(e.target.value)}
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter" && e.metaKey) {
-                                      handleNewAppSubmit();
+                                      void handleNewAppSubmit();
                                     }
                                     if (e.key === "Escape") {
                                       setShowNewAppInput(false);
                                     }
                                   }}
-                                  placeholder="e.g. Calculate markup/markdown percentages on product prices. Show original price, percentage, and final price. Include a toggle for markup vs markdown mode."
+                                  placeholder="e.g. Campaigns, tasks, approvals, owners, due dates, and workflow review status."
                                   rows={4}
                                   className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 text-sm resize-none"
                                 />
@@ -1802,12 +2098,11 @@ export function AppForge({
                                 Cancel
                               </button>
                               <button
-                                onClick={handleNewAppSubmit}
-                                disabled={!newAppDescription.trim()}
-                                className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:bg-white/5 disabled:text-white/20 rounded-xl text-white text-sm font-medium transition-colors flex items-center gap-2"
+                                onClick={() => void handleNewAppSubmit()}
+                                className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 rounded-xl text-white text-sm font-medium transition-colors flex items-center gap-2"
                               >
                                 <Send className="w-4 h-4" />
-                                Build App
+                                Create Base
                               </button>
                             </div>
                             <p className="text-[10px] text-white/20 mt-3 text-center">
@@ -2152,7 +2447,12 @@ export function AppForge({
           </div>
 
           {/* Dock */}
-          <AppDock windows={windows} apps={apps} onRestore={onRestoreApp} onFocus={onFocusApp} />
+          <AppDock
+            windows={windows}
+            apps={displayApps}
+            onRestore={onRestoreApp}
+            onFocus={onFocusApp}
+          />
 
           {/* Context Menu */}
           <AnimatePresence>
