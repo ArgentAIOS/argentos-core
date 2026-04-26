@@ -3580,14 +3580,17 @@ function resolveTemplate(template: string, context: PipelineContext): string {
       return val !== undefined ? String(val) : "";
     }
 
-    // {{steps.nodeLabel.output.text}} or {{steps.nodeLabel.output.json.field}}
+    // {{steps.nodeId.text}}, {{steps.nodeLabel.output.text}}, or
+    // {{steps.nodeLabel.output.json.field}}.
     if (path.startsWith("steps.")) {
       const parts = path.split(".");
-      const stepLabel = parts[1];
-      const step = context.history.find((s) => s.nodeLabel === stepLabel);
-      if (step && parts[2] === "output" && step.output.items.length > 0) {
-        const field = parts.slice(3).join(".");
+      const stepKey = parts[1];
+      const step = context.history.find((s) => s.nodeId === stepKey || s.nodeLabel === stepKey);
+      if (step && step.output.items.length > 0) {
+        const hasOutputPrefix = parts[2] === "output";
+        const field = parts.slice(hasOutputPrefix ? 3 : 2).join(".");
         if (field === "text") return step.output.items[0].text ?? "";
+        if (field === "json") return JSON.stringify(step.output.items[0].json ?? {});
         // Allow steps.X.output.json.field — strip leading "json." prefix
         const jsonField = field.startsWith("json.") ? field.slice(5) : field;
         const val = resolveFieldPath(step.output.items[0].json, jsonField);

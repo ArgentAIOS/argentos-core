@@ -65,6 +65,35 @@ describe("owner-operator workflow packages", () => {
     expect(imports.every((result) => result.normalized.workflow.nodes.length >= 3)).toBe(true);
   });
 
+  it("keeps the showcase owner-operator workflows built out enough to inspect on canvas", () => {
+    const showcaseSlugs = new Set([
+      "daily-marketing-brief",
+      "social-post-generator",
+      "newsletter-builder",
+      "client-onboarding",
+      ...OWNER_OPERATOR_WORKFLOW_VARIATION_SLUGS,
+    ]);
+    const showcase = OWNER_OPERATOR_WORKFLOW_PACKAGES.filter((pkg) => showcaseSlugs.has(pkg.slug));
+
+    expect(showcase.map((pkg) => pkg.slug).sort()).toEqual([...showcaseSlugs].sort());
+    for (const workflowPackage of showcase) {
+      const nodeKinds = new Set(workflowPackage.workflow.nodes.map((node) => node.kind));
+      expect(workflowPackage.workflow.nodes.length, workflowPackage.slug).toBeGreaterThanOrEqual(6);
+      expect(workflowPackage.canvasLayout.nodes.length, workflowPackage.slug).toBe(
+        workflowPackage.workflow.nodes.length,
+      );
+      expect(nodeKinds.has("agent"), workflowPackage.slug).toBe(true);
+      expect(nodeKinds.has("output"), workflowPackage.slug).toBe(true);
+      expect(
+        workflowPackage.workflow.nodes.some(
+          (node) =>
+            node.kind === "action" || (node.kind === "gate" && node.config.gateType === "approval"),
+        ),
+        workflowPackage.slug,
+      ).toBe(true);
+    }
+  });
+
   it("round-trips packages through JSON and YAML import text", () => {
     const source = OWNER_OPERATOR_WORKFLOW_PACKAGES.find(
       (pkg) => pkg.slug === "daily-marketing-brief",

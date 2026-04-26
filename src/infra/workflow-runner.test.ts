@@ -293,6 +293,56 @@ describe("executeWorkflow", () => {
     });
   });
 
+  it("renders output templates from a selected upstream node by id or label", async () => {
+    const trigger = makeTrigger();
+    const planner: AgentNode = {
+      ...makeAgent("planner-1", "Planner"),
+      config: {
+        ...makeAgent("planner-1", "Planner").config,
+        pinnedOutput: {
+          items: [{ json: { summary: "Plan JSON" }, text: "Plan text" }],
+        },
+      },
+    };
+    const reviewer: AgentNode = {
+      ...makeAgent("reviewer-1", "Reviewer"),
+      config: {
+        ...makeAgent("reviewer-1", "Reviewer").config,
+        pinnedOutput: {
+          items: [{ json: { summary: "Review JSON" }, text: "Review text" }],
+        },
+      },
+    };
+    const output: OutputNode = {
+      ...makeOutput(),
+      config: {
+        outputType: "docpanel",
+        title: "Mapped Brief",
+        sourceMode: "node",
+        sourceNodeId: "planner-1",
+        contentTemplate:
+          "By id: {{steps.planner-1.text}} / {{steps.planner-1.json.summary}}\nBy label: {{steps.Reviewer.output.text}} / {{steps.Reviewer.output.json.summary}}",
+      },
+    };
+
+    const workflow = makeWorkflow(
+      [trigger, planner, reviewer, output],
+      [edge(trigger.id, planner.id), edge(planner.id, reviewer.id), edge(reviewer.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-selected-node-output-template",
+      dispatcher: makeMockDispatcher(vi.fn()),
+      triggerSource: "gateway:manual_test",
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.steps[3].output.items[0].text).toBe(
+      "By id: Plan text / Plan JSON\nBy label: Review text / Review JSON",
+    );
+  });
+
   it("substitutes pinned node output during manual test runs", async () => {
     const trigger = makeTrigger();
     const dispatchMock = vi.fn();

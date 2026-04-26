@@ -5420,6 +5420,8 @@ function OutputForm({
       ? [
           { label: "Source text", value: `{{steps.${selectedSourceNodeId}.text}}` },
           { label: "Source JSON", value: `{{steps.${selectedSourceNodeId}.json}}` },
+          { label: "Source output text", value: `{{steps.${selectedSourceNodeId}.output.text}}` },
+          { label: "Source output JSON", value: `{{steps.${selectedSourceNodeId}.output.json}}` },
         ]
       : [];
   const selectedDestinationLabel = outputDestinationLabel(data, selectedChannel);

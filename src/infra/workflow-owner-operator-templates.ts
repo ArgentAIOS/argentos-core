@@ -109,7 +109,12 @@ function docOutput(id: string, title: string, contentTemplate = "{{previous.text
   };
 }
 
-function emailOutput(id: string, subject: string, to = OPERATOR_EMAIL): OutputNode {
+function emailOutput(
+  id: string,
+  subject: string,
+  to = OPERATOR_EMAIL,
+  bodyTemplate = "{{previous.text}}",
+): OutputNode {
   return {
     kind: "output",
     id,
@@ -118,7 +123,7 @@ function emailOutput(id: string, subject: string, to = OPERATOR_EMAIL): OutputNo
       outputType: "email",
       to,
       subject,
-      bodyTemplate: "{{previous.text}}",
+      bodyTemplate,
     },
   };
 }
@@ -275,15 +280,71 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
           filter: "status != archived",
         },
       ),
+      connectorAction(
+        "read-calendar",
+        "Read content calendar",
+        "appforge-core",
+        "records",
+        "records.query",
+        {
+          base: "Marketing Ops",
+          table: "Content Calendar",
+          filter: "publish_date <= +7d AND status != published",
+        },
+      ),
       agent(
         "summarize",
         "Summarize priorities",
         "summarize",
-        "Turn current campaign rows into a concise owner brief.",
+        "Turn campaign rows and content calendar items into a concise owner brief with blockers, due assets, and next best actions.",
       ),
-      docOutput("brief-doc", "Daily Marketing Brief"),
+      approval(
+        "approve-priorities",
+        "Approve today's generated marketing task list and operator alert.",
+      ),
+      connectorAction(
+        "create-priority-tasks",
+        "Create priority tasks",
+        "appforge-core",
+        "records",
+        "records.create_many",
+        {
+          base: "Marketing Ops",
+          table: "Tasks",
+          source: "Daily Marketing Brief",
+          tasks: "{{steps.summarize.output.json.tasks}}",
+        },
+      ),
+      docOutput(
+        "brief-doc",
+        "Daily Marketing Brief",
+        "## Daily marketing brief\n{{steps.summarize.output.text}}\n\n## Created task batch\n{{steps.create-priority-tasks.output.text}}",
+      ),
+      connectorOutput(
+        "notify-slack",
+        "Notify marketing channel",
+        "aos-slack",
+        "message",
+        "message.send",
+        {
+          channel_id: "{{channels.slack.marketing}}",
+          text: "{{steps.summarize.output.text}}",
+        },
+      ),
     ],
-    dependencies: [{ kind: "appforge_base", id: "marketing-ops", label: "Marketing Ops" }],
+    dependencies: [
+      { kind: "appforge_base", id: "marketing-ops", label: "Marketing Ops" },
+      { kind: "channel", id: "slack.marketing", label: "Marketing Slack channel" },
+      { kind: "connector", id: "aos-slack", label: "Slack" },
+    ],
+    credentialIds: [
+      {
+        id: "slack.primary",
+        label: "Slack workspace",
+        provider: "slack",
+        purpose: "Post the approved daily marketing brief",
+      },
+    ],
   }),
   makePackage({
     slug: "social-post-generator",
@@ -301,14 +362,39 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
       eventFilter: { table: "Campaigns", status: "Ready for Social" },
     }),
     nodes: [
+      connectorAction(
+        "read-campaign",
+        "Read approved campaign",
+        "appforge-core",
+        "records",
+        "records.get",
+        {
+          base: "Marketing Ops",
+          table: "Campaigns",
+          record_id: "{{trigger.payload.recordId}}",
+        },
+      ),
       agent(
         "draft-posts",
         "Draft social variants",
         "write",
         "Create LinkedIn, X, and Facebook variants from the campaign row.",
       ),
+      connectorAction(
+        "create-social-rows",
+        "Create social draft rows",
+        "appforge-core",
+        "records",
+        "records.create_many",
+        {
+          base: "Marketing Ops",
+          table: "Social Posts",
+          campaign_id: "{{trigger.payload.recordId}}",
+          drafts: "{{steps.draft-posts.output.json.posts}}",
+        },
+      ),
       approval("approve-posts", "Review generated social posts before scheduling."),
-      connectorOutput(
+      connectorAction(
         "schedule-buffer",
         "Schedule social drafts",
         "aos-buffer",
@@ -318,6 +404,25 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
           text: "{{previous.text}}",
           profile_ids: "{{credentials.buffer.profileIds}}",
         },
+      ),
+      connectorAction(
+        "mark-scheduled",
+        "Mark campaign scheduled",
+        "appforge-core",
+        "records",
+        "records.update",
+        {
+          base: "Marketing Ops",
+          table: "Campaigns",
+          record_id: "{{trigger.payload.recordId}}",
+          status: "Social Scheduled",
+          scheduling_summary: "{{steps.schedule-buffer.output.text}}",
+        },
+      ),
+      docOutput(
+        "social-run-log",
+        "Social Scheduling Run",
+        "## Social variants\n{{steps.draft-posts.output.text}}\n\n## Scheduling result\n{{steps.schedule-buffer.output.text}}",
       ),
     ],
     dependencies: [
@@ -343,14 +448,31 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
       timezone: "America/Chicago",
     }),
     nodes: [
+      connectorAction(
+        "read-approved-content",
+        "Read approved content",
+        "appforge-core",
+        "records",
+        "records.query",
+        {
+          base: "Marketing Ops",
+          table: "Content Calendar",
+          filter: "newsletter_ready = true AND status = approved",
+        },
+      ),
       agent(
         "draft-newsletter",
         "Draft newsletter",
         "write",
         "Build a newsletter from this week's approved items.",
       ),
+      docOutput(
+        "newsletter-preview",
+        "Newsletter Preview",
+        "## Newsletter draft\n{{steps.draft-newsletter.output.text}}",
+      ),
       approval("approve-newsletter", "Review newsletter before creating the email draft."),
-      connectorOutput(
+      connectorAction(
         "resend-draft",
         "Create Resend email draft",
         "aos-resend",
@@ -359,11 +481,32 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
         {
           to: "{{operator.email}}",
           subject: "Weekly Newsletter Draft",
-          html: "{{previous.text}}",
+          html: "{{steps.draft-newsletter.output.text}}",
         },
       ),
+      connectorAction(
+        "record-newsletter",
+        "Record newsletter send plan",
+        "appforge-core",
+        "records",
+        "records.create",
+        {
+          base: "Marketing Ops",
+          table: "Email Campaigns",
+          subject: "Weekly Newsletter Draft",
+          draft_result: "{{steps.resend-draft.output.text}}",
+        },
+      ),
+      docOutput(
+        "newsletter-run-log",
+        "Newsletter Run Log",
+        "## Draft\n{{steps.draft-newsletter.output.text}}\n\n## Resend draft\n{{steps.resend-draft.output.text}}",
+      ),
     ],
-    dependencies: [{ kind: "connector", id: "aos-resend", label: "Resend" }],
+    dependencies: [
+      { kind: "appforge_base", id: "marketing-ops", label: "Marketing Ops" },
+      { kind: "connector", id: "aos-resend", label: "Resend" },
+    ],
     credentialIds: [
       {
         id: "resend.primary",
@@ -399,7 +542,12 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
         "Write a warm, specific welcome email for the new lead.",
       ),
       approval("approve-email", "Approve welcome email before sending."),
-      emailOutput("send-welcome", "Welcome to Argent"),
+      emailOutput(
+        "send-welcome",
+        "Welcome to Argent",
+        OPERATOR_EMAIL,
+        "{{steps.write-welcome.output.text}}",
+      ),
     ],
     dependencies: [{ kind: "appforge_base", id: "marketing-ops", label: "Marketing Ops" }],
   }),
@@ -511,7 +659,12 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
         "Draft a short follow-up for stale warm leads.",
       ),
       approval("approve-follow-up", "Approve follow-up before sending."),
-      emailOutput("send-follow-up", "Quick follow-up"),
+      emailOutput(
+        "send-follow-up",
+        "Quick follow-up",
+        OPERATOR_EMAIL,
+        "{{steps.draft-follow-up.output.text}}",
+      ),
     ],
   }),
   makePackage({
@@ -538,7 +691,12 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
         "Draft a polite, firm invoice reminder.",
       ),
       approval("approve-reminder", "Approve payment reminder before sending."),
-      emailOutput("send-reminder", "Invoice reminder"),
+      emailOutput(
+        "send-reminder",
+        "Invoice reminder",
+        OPERATOR_EMAIL,
+        "{{steps.draft-reminder.output.text}}",
+      ),
     ],
     dependencies: [{ kind: "connector", id: "aos-quickbooks", label: "QuickBooks" }],
     credentialIds: [
@@ -573,14 +731,66 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
           fields: "{{trigger.payload}}",
         },
       ),
+      connectorAction(
+        "create-task-list",
+        "Create onboarding task list",
+        "appforge-core",
+        "records",
+        "records.create_many",
+        {
+          base: "Client Ops",
+          table: "Tasks",
+          project_id: "{{steps.create-project.output.json.id}}",
+          tasks: [
+            "Schedule kickoff",
+            "Collect brand assets",
+            "Confirm billing contact",
+            "Prepare shared workspace",
+          ],
+        },
+      ),
       agent(
         "draft-welcome",
         "Draft welcome packet",
         "write",
         "Create a welcome packet and onboarding checklist.",
       ),
+      docOutput(
+        "welcome-preview",
+        "Client Welcome Preview",
+        "## Welcome packet\n{{steps.draft-welcome.output.text}}\n\n## Tasks created\n{{steps.create-task-list.output.text}}",
+      ),
       approval("approve-welcome", "Approve client welcome packet."),
-      emailOutput("send-welcome", "Welcome aboard"),
+      emailOutput(
+        "send-welcome",
+        "Welcome aboard",
+        OPERATOR_EMAIL,
+        "{{steps.draft-welcome.output.text}}",
+      ),
+      connectorOutput(
+        "notify-operator",
+        "Notify operator",
+        "aos-telegram",
+        "message",
+        "message.send",
+        {
+          chat_id: "{{channels.telegram.operator}}",
+          text: "Client onboarding started: {{steps.create-project.output.text}}",
+        },
+      ),
+    ],
+    dependencies: [
+      { kind: "appforge_base", id: "client-ops", label: "Client Ops" },
+      { kind: "connector", id: "aos-telegram", label: "Telegram" },
+      { kind: "channel", id: "telegram.operator", label: "Operator Telegram" },
+    ],
+    credentialIds: [
+      {
+        id: "telegram.primary",
+        label: "Telegram bot",
+        provider: "telegram",
+        purpose: "Notify the operator after onboarding starts",
+      },
     ],
   }),
   makePackage({
@@ -662,7 +872,12 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
         "Draft a clear first-day welcome and checklist.",
       ),
       approval("approve-first-day", "Approve first-day message."),
-      emailOutput("send-first-day", "Your first day"),
+      emailOutput(
+        "send-first-day",
+        "Your first day",
+        OPERATOR_EMAIL,
+        "{{steps.first-day.output.text}}",
+      ),
     ],
   }),
   makePackage({
@@ -719,7 +934,12 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
         "Draft a short review request based on the completed work.",
       ),
       approval("approve-review-request", "Approve review request before sending."),
-      emailOutput("send-review-request", "Could you share a quick review?"),
+      emailOutput(
+        "send-review-request",
+        "Could you share a quick review?",
+        OPERATOR_EMAIL,
+        "{{steps.draft-review-request.output.text}}",
+      ),
     ],
   }),
   makePackage({
@@ -735,13 +955,66 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
     ]),
     trigger: trigger("trigger", "schedule", { cronExpr: "0 8 1 * *", timezone: "America/Chicago" }),
     nodes: [
+      connectorAction(
+        "read-campaign-metrics",
+        "Read campaign metrics",
+        "appforge-core",
+        "records",
+        "records.query",
+        {
+          base: "Business Ops",
+          table: "Campaigns",
+          filter: "month = current",
+        },
+      ),
+      connectorAction(
+        "read-sales-metrics",
+        "Read sales metrics",
+        "appforge-core",
+        "records",
+        "records.query",
+        {
+          base: "Business Ops",
+          table: "Leads",
+          filter: "month = current",
+        },
+      ),
+      connectorAction(
+        "read-support-metrics",
+        "Read support metrics",
+        "appforge-core",
+        "records",
+        "records.query",
+        {
+          base: "Business Ops",
+          table: "Support Tickets",
+          filter: "month = current",
+        },
+      ),
       agent(
         "compile-report",
         "Compile owner report",
         "summarize",
         "Create an executive monthly operating report from available tables.",
       ),
-      docOutput("owner-report", "Monthly Owner Report"),
+      approval(
+        "approve-owner-report",
+        "Approve the monthly owner report before notifying the team.",
+      ),
+      docOutput(
+        "owner-report",
+        "Monthly Owner Report",
+        "## Monthly owner report\n{{steps.compile-report.output.text}}\n\n## Source summaries\n- Campaigns: {{steps.read-campaign-metrics.output.text}}\n- Sales: {{steps.read-sales-metrics.output.text}}\n- Support: {{steps.read-support-metrics.output.text}}",
+      ),
+      connectorOutput("notify-owner", "Notify owner", "aos-slack", "message", "message.send", {
+        channel_id: "{{channels.slack.owner}}",
+        text: "Monthly owner report is ready: {{steps.compile-report.output.text}}",
+      }),
+    ],
+    dependencies: [
+      { kind: "appforge_base", id: "business-ops", label: "Business Ops" },
+      { kind: "connector", id: "aos-slack", label: "Slack" },
+      { kind: "channel", id: "slack.owner", label: "Owner Slack channel" },
     ],
   }),
   makePackage({
@@ -757,6 +1030,18 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
       timezone: "America/Chicago",
     }),
     nodes: [
+      connectorAction(
+        "read-stale-records",
+        "Read stale records",
+        "appforge-core",
+        "records",
+        "records.query",
+        {
+          base: "Operations",
+          table: "Tasks",
+          filter: "status != done AND updated_at < -14d",
+        },
+      ),
       agent(
         "find-stale",
         "Find stale work",
@@ -773,11 +1058,16 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
         {
           base: "Operations",
           table: "Tasks",
-          updates: "{{previous.json.updates}}",
+          updates: "{{steps.find-stale.output.json.updates}}",
         },
       ),
-      docOutput("cleanup-log", "Operations Cleanup Log"),
+      docOutput(
+        "cleanup-log",
+        "Operations Cleanup Log",
+        "## Proposed cleanup\n{{steps.find-stale.output.text}}\n\n## Update result\n{{steps.update-stale.output.text}}",
+      ),
     ],
+    dependencies: [{ kind: "appforge_base", id: "operations", label: "Operations" }],
   }),
   makePackage({
     slug: "abandoned-cart-recovery",
@@ -786,6 +1076,18 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
     scenario: scenario("sales", "webhook", "Commerce cart abandoned", ["Customers", "Orders"]),
     trigger: trigger("trigger", "webhook", { webhookPath: "/workflows/abandoned-cart" }),
     nodes: [
+      connectorAction(
+        "read-cart-context",
+        "Read cart context",
+        "appforge-core",
+        "records",
+        "records.get",
+        {
+          base: "Commerce Ops",
+          table: "Orders",
+          record_id: "{{trigger.payload.cartId}}",
+        },
+      ),
       agent(
         "draft-cart-email",
         "Draft cart recovery",
@@ -793,8 +1095,33 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
         "Draft a helpful abandoned-cart recovery email.",
       ),
       approval("approve-cart-email", "Approve cart recovery email."),
-      emailOutput("send-cart-email", "Still interested?"),
+      connectorAction(
+        "record-recovery-attempt",
+        "Record recovery attempt",
+        "appforge-core",
+        "records",
+        "records.update",
+        {
+          base: "Commerce Ops",
+          table: "Orders",
+          record_id: "{{trigger.payload.cartId}}",
+          recovery_status: "Drafted",
+          recovery_summary: "{{steps.draft-cart-email.output.text}}",
+        },
+      ),
+      emailOutput(
+        "send-cart-email",
+        "Still interested?",
+        OPERATOR_EMAIL,
+        "{{steps.draft-cart-email.output.text}}",
+      ),
+      docOutput(
+        "cart-run-log",
+        "Abandoned Cart Recovery Log",
+        "## Draft\n{{steps.draft-cart-email.output.text}}\n\n## CRM update\n{{steps.record-recovery-attempt.output.text}}",
+      ),
     ],
+    dependencies: [{ kind: "appforge_base", id: "commerce-ops", label: "Commerce Ops" }],
     notes: ["Variation: ecommerce owner-operator sales recovery."],
   }),
   makePackage({
@@ -807,6 +1134,18 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
       eventFilter: { table: "Candidates", status: "Selected" },
     }),
     nodes: [
+      connectorAction(
+        "read-candidate",
+        "Read candidate record",
+        "appforge-core",
+        "records",
+        "records.get",
+        {
+          base: "HR Ops",
+          table: "Candidates",
+          record_id: "{{trigger.payload.recordId}}",
+        },
+      ),
       agent(
         "draft-offer",
         "Draft offer packet",
@@ -814,8 +1153,32 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
         "Draft offer email, start date checklist, and compensation summary.",
       ),
       approval("approve-offer", "Approve job offer before sending."),
-      emailOutput("send-offer", "Offer details"),
+      connectorAction(
+        "create-offer-record",
+        "Create offer record",
+        "appforge-core",
+        "records",
+        "records.create",
+        {
+          base: "HR Ops",
+          table: "Offers",
+          candidate_id: "{{trigger.payload.recordId}}",
+          packet: "{{steps.draft-offer.output.text}}",
+        },
+      ),
+      emailOutput(
+        "send-offer",
+        "Offer details",
+        OPERATOR_EMAIL,
+        "{{steps.draft-offer.output.text}}",
+      ),
+      docOutput(
+        "offer-run-log",
+        "Offer Draft Log",
+        "## Offer packet\n{{steps.draft-offer.output.text}}\n\n## Offer record\n{{steps.create-offer-record.output.text}}",
+      ),
     ],
+    dependencies: [{ kind: "appforge_base", id: "hr-ops", label: "HR Ops" }],
     notes: ["Variation: HR hiring workflow for small teams."],
   }),
   makePackage({
@@ -825,15 +1188,50 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
     scenario: scenario("marketing", "webhook", "Webinar attendance imported", ["Events", "Leads"]),
     trigger: trigger("trigger", "webhook", { webhookPath: "/workflows/webinar-follow-up" }),
     nodes: [
+      connectorAction(
+        "create-attendee-rows",
+        "Create attendee rows",
+        "appforge-core",
+        "records",
+        "records.create_many",
+        {
+          base: "Marketing Ops",
+          table: "Event Attendees",
+          attendees: "{{trigger.payload.attendees}}",
+        },
+      ),
       agent(
         "segment-attendees",
         "Segment attendees",
         "analyze",
         "Segment attendees by engagement and draft follow-up categories.",
       ),
+      connectorAction(
+        "create-follow-up-tasks",
+        "Create follow-up tasks",
+        "appforge-core",
+        "records",
+        "records.create_many",
+        {
+          base: "Marketing Ops",
+          table: "Tasks",
+          tasks: "{{steps.segment-attendees.output.json.tasks}}",
+        },
+      ),
       approval("approve-segments", "Approve follow-up segment copy."),
-      emailOutput("send-webinar-follow-up", "Thanks for joining"),
+      emailOutput(
+        "send-webinar-follow-up",
+        "Thanks for joining",
+        OPERATOR_EMAIL,
+        "{{steps.segment-attendees.output.text}}",
+      ),
+      docOutput(
+        "webinar-run-log",
+        "Webinar Follow-Up Log",
+        "## Segments\n{{steps.segment-attendees.output.text}}\n\n## Task creation\n{{steps.create-follow-up-tasks.output.text}}",
+      ),
     ],
+    dependencies: [{ kind: "appforge_base", id: "marketing-ops", label: "Marketing Ops" }],
     notes: ["Variation: event marketing and lead nurture."],
   }),
 ];
