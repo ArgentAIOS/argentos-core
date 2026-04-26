@@ -235,6 +235,10 @@ Lane: `openclaw`. Branch: `codex/openclaw-realtime-fake-provider` rebased onto `
 
 Lane: `openclaw`. Branch: `codex/openclaw-realtime-fake-provider` rebased onto `origin/dev` / `4ad2a5a8`; prior operator fake-session commit replayed as `a3a325e5`. Owned files for this slice: `extensions/voice-call/src/realtime-voice/**` and this coordination note only. Shared contract change: add a deterministic terminal/operator command harness over `createRealtimeVoiceOperatorSession` that can feed text/audio-token input, trigger greetings, acknowledge marks, cancel/close sessions, collect transcript/tool/result/close events, and emit stable logs for later CLI wiring. Boundaries: no Workflows, AppForge, AOS, schema, gateway, browser, Google Meet, existing telephony provider behavior, live microphone/audio, live OpenAI/Google provider calls, or credentials. Required reaction: other lanes should treat this as a fake/local harness only.
 
+### 2026-04-26 — OpenClaw OpenAI Realtime Provider Wave
+
+Lane: `openclaw`. Branch: `codex/openclaw-realtime-fake-provider` at `c6f8554c` before this slice. Owned files for this slice: `extensions/voice-call/src/realtime-voice/**` and this coordination note only unless master explicitly widens scope. Shared contract change: add a clearly labeled live OpenAI Realtime provider adapter beside the fake test-only provider; fake remains test-only and should not be registered as an operator-facing CLI surface. Boundaries: no Workflows, AppForge, AOS, schema, browser, Google Meet live runtime, existing telephony provider behavior, credentials, or live microphone/audio claims. Required reaction: live smoke remains blocked until `OPENAI_API_KEY` is visible to the running process; current local checks did not find it in `~/.argentos/.env`, repo `.env`, or `process.env`.
+
 ## Verification Snapshot
 
 Latest AppForge focused verification after rebase onto `origin/dev`:

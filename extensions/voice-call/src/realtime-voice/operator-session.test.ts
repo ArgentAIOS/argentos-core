@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { RealtimeVoiceToolCallEvent } from "./provider-types.js";
+import type {
+  RealtimeVoiceBridge,
+  RealtimeVoiceProvider,
+  RealtimeVoiceToolCallEvent,
+} from "./provider-types.js";
 import { createFakeRealtimeVoiceProvider } from "./fake-provider.js";
 import { createRealtimeVoiceOperatorSession } from "./operator-session.js";
 
@@ -15,6 +19,20 @@ function eventTypes(session: ReturnType<typeof createRealtimeVoiceOperatorSessio
   return session.getEvents().map((event) => event.type);
 }
 
+function createNoopBridge(): RealtimeVoiceBridge {
+  return {
+    acknowledgeMark: () => {},
+    close: () => {},
+    connect: async () => {},
+    isConnected: () => false,
+    sendAudio: () => {},
+    sendUserMessage: () => {},
+    setMediaTimestamp: () => {},
+    submitToolResult: () => {},
+    triggerGreeting: () => {},
+  };
+}
+
 describe("createRealtimeVoiceOperatorSession", () => {
   it("records a deterministic fake-provider operator lifecycle", async () => {
     const toolEvent: RealtimeVoiceToolCallEvent = {
@@ -25,6 +43,7 @@ describe("createRealtimeVoiceOperatorSession", () => {
     };
     const provider = createFakeRealtimeVoiceProvider();
     const session = createRealtimeVoiceOperatorSession({
+      allowTestOnlyProviders: true,
       providers: [provider],
       configuredProviderId: "fake",
       providerConfigs: {
@@ -88,6 +107,7 @@ describe("createRealtimeVoiceOperatorSession", () => {
     const provider = createFakeRealtimeVoiceProvider();
     const callOrder: string[] = [];
     const session = createRealtimeVoiceOperatorSession({
+      allowTestOnlyProviders: true,
       providers: [provider],
       configuredProviderId: "fake",
       providerConfigs: {
@@ -122,6 +142,7 @@ describe("createRealtimeVoiceOperatorSession", () => {
   it("records async tool handler failures as error close events", async () => {
     const provider = createFakeRealtimeVoiceProvider();
     const session = createRealtimeVoiceOperatorSession({
+      allowTestOnlyProviders: true,
       providers: [provider],
       configuredProviderId: "fake",
       providerConfigs: {
@@ -155,6 +176,7 @@ describe("createRealtimeVoiceOperatorSession", () => {
     const provider = createFakeRealtimeVoiceProvider();
     const onEvent = vi.fn();
     const session = createRealtimeVoiceOperatorSession({
+      allowTestOnlyProviders: true,
       providers: [provider],
       configuredProviderId: "fake",
       providerConfigs: { fake: { autoReady: false } },
@@ -172,6 +194,7 @@ describe("createRealtimeVoiceOperatorSession", () => {
   it("supports explicit completed close semantics", async () => {
     const provider = createFakeRealtimeVoiceProvider();
     const session = createRealtimeVoiceOperatorSession({
+      allowTestOnlyProviders: true,
       providers: [provider],
       configuredProviderId: "fake",
       providerConfigs: { fake: { autoReady: false } },
@@ -188,6 +211,31 @@ describe("createRealtimeVoiceOperatorSession", () => {
     expect(() =>
       createRealtimeVoiceOperatorSession({
         providers: [],
+      }),
+    ).toThrow("No realtime voice provider is available for operator sessions");
+  });
+
+  it("excludes test-only providers from operator sessions unless explicitly allowed", () => {
+    const fakeProvider = createFakeRealtimeVoiceProvider();
+    const liveProvider: RealtimeVoiceProvider = {
+      id: "openai",
+      label: "OpenAI Realtime",
+      readiness: "live",
+      createBridge: () => createNoopBridge(),
+    };
+
+    const session = createRealtimeVoiceOperatorSession({
+      providers: [fakeProvider, liveProvider],
+      providerConfigs: { openai: {} },
+    });
+
+    expect(session.providerId).toBe("openai");
+    expect(session.providerLabel).toBe("OpenAI Realtime");
+    expect(() =>
+      createRealtimeVoiceOperatorSession({
+        providers: [fakeProvider],
+        configuredProviderId: "fake",
+        providerConfigs: { fake: {} },
       }),
     ).toThrow("No realtime voice provider is available for operator sessions");
   });

@@ -6,6 +6,8 @@ export type RealtimeVoiceCloseReason = "completed" | "error" | "cancelled";
 
 export type RealtimeVoiceProviderConfig = Record<string, unknown>;
 
+export type RealtimeVoiceProviderReadiness = "live" | "test-only" | "preview";
+
 export type RealtimeVoiceTool = {
   type: "function";
   name: string;
@@ -65,6 +67,7 @@ export type RealtimeVoiceProvider = {
   id: RealtimeVoiceProviderId;
   aliases?: string[];
   label?: string;
+  readiness?: RealtimeVoiceProviderReadiness;
   resolveConfig?: (ctx: RealtimeVoiceProviderResolveContext) => RealtimeVoiceProviderConfig;
   isConfigured?: (ctx: RealtimeVoiceProviderConfiguredContext) => boolean;
   createBridge(request: RealtimeVoiceBridgeCreateRequest): RealtimeVoiceBridge;

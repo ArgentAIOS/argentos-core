@@ -47,6 +47,7 @@ export type RealtimeVoiceOperatorSessionParams = Omit<
   ResolveConfiguredRealtimeVoiceProviderParams,
   "noRegisteredProviderMessage"
 > & {
+  allowTestOnlyProviders?: boolean;
   instructions?: string;
   initialGreetingInstructions?: string;
   markStrategy?: RealtimeVoiceMarkStrategy;
@@ -67,10 +68,14 @@ type ResolvedOperatorProvider = {
 function resolveOperatorProvider(
   params: RealtimeVoiceOperatorSessionParams,
 ): ResolvedOperatorProvider {
+  const providers = params.allowTestOnlyProviders
+    ? params.providers
+    : params.providers.filter((provider) => provider.readiness !== "test-only");
+
   return resolveConfiguredRealtimeVoiceProvider({
     configuredProviderId: params.configuredProviderId,
     providerConfigs: params.providerConfigs,
-    providers: params.providers,
+    providers,
     defaultProviderId: params.defaultProviderId,
     defaultModel: params.defaultModel,
     noRegisteredProviderMessage: "No realtime voice provider is available for operator sessions",
