@@ -3849,10 +3849,14 @@ function ExecutionDataPanel({
   node,
   latestStep,
   onUpdate,
+  onTestToNode,
+  testing,
 }: {
   node: Node;
   latestStep?: RunStepRecord;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
+  onTestToNode?: (nodeId: string) => void;
+  testing?: boolean;
 }) {
   const nodeData = node.data as Record<string, unknown>;
   const pinnedOutput = nodeData.pinnedOutput;
@@ -3933,6 +3937,16 @@ function ExecutionDataPanel({
         </div>
 
         <div className="flex flex-wrap gap-2">
+          {onTestToNode && (
+            <button
+              type="button"
+              onClick={() => onTestToNode(node.id)}
+              disabled={testing}
+              className="rounded-md border border-emerald-400/35 bg-emerald-400/10 px-2.5 py-1.5 text-[10px] font-semibold text-emerald-200 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {testing ? "Testing..." : "Test to this node"}
+            </button>
+          )}
           <button
             type="button"
             onClick={pinLatest}
@@ -6029,6 +6043,7 @@ function WorkflowCanvasInner({
   const [saving, setSaving] = useState(false);
   const [lastSaveStatus, setLastSaveStatus] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [partialRunningNodeId, setPartialRunningNodeId] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [scheduling, setScheduling] = useState(false);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
@@ -6531,6 +6546,7 @@ function WorkflowCanvasInner({
     const unsubRunCompleted = gateway.on("workflow.run.completed", (payload: unknown) => {
       const p = payload as { workflowId?: string; runId?: string };
       setRunning(false);
+      setPartialRunningNodeId(null);
       setActiveNodeId(null);
       setPendingApprovals([]);
       console.log("[Workflows] Run completed:", p);
@@ -6769,6 +6785,7 @@ function WorkflowCanvasInner({
     if (!activeWorkflowId || running) return;
     try {
       setRunning(true);
+      setPartialRunningNodeId(null);
       setRunError(null);
       clearExecState();
       const saved = await saveCurrentWorkflow("Saved workflow before run");
@@ -6798,6 +6815,48 @@ function WorkflowCanvasInner({
     saveCurrentWorkflow,
     validateCurrentWorkflow,
   ]);
+
+  const handleTestToNode = useCallback(
+    async (nodeId: string) => {
+      if (!activeWorkflowId || running) return;
+      try {
+        setRunning(true);
+        setPartialRunningNodeId(nodeId);
+        setRunError(null);
+        clearExecState();
+        const saved = await saveCurrentWorkflow("Saved workflow before partial node test");
+        if (!saved) {
+          setRunning(false);
+          setPartialRunningNodeId(null);
+          return;
+        }
+        const valid = await validateCurrentWorkflow();
+        if (!valid) {
+          setRunning(false);
+          setPartialRunningNodeId(null);
+          return;
+        }
+        await gateway.request("workflows.run", {
+          workflowId: activeWorkflowId,
+          stopAfterNodeId: nodeId,
+        });
+        await gateway.request("workflows.subscribe", { workflowId: activeWorkflowId });
+      } catch (err) {
+        console.error("[Workflows] Partial node test failed:", err);
+        setRunError(err instanceof Error ? err.message : String(err));
+        setRunning(false);
+        setPartialRunningNodeId(null);
+      }
+    },
+    [
+      activeWorkflowId,
+      running,
+      gateway,
+      clearExecState,
+      saveCurrentWorkflow,
+      validateCurrentWorkflow,
+    ],
+  );
 
   const handleSchedule = useCallback(async () => {
     if (!activeWorkflowId || scheduling || !gateway.connected) return;
@@ -7683,6 +7742,8 @@ function WorkflowCanvasInner({
                         node={selectedNode}
                         latestStep={selectedNodeLatestStep}
                         onUpdate={onUpdateNodeData}
+                        onTestToNode={handleTestToNode}
+                        testing={partialRunningNodeId === selectedNode.id}
                       />
                     )}
                   </div>

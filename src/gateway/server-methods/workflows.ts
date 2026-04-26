@@ -1764,6 +1764,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       const triggerPayload = optionalObject(params, "triggerPayload") ?? {};
       const fromStepId = optionalString(params, "fromStepId");
       const sourceRunId = optionalString(params, "sourceRunId");
+      const stopAfterNodeId = optionalString(params, "stopAfterNodeId");
       const normalizedForRun = workflowFromRow(wf);
       const runtimeIssues = await validateWorkflowRuntimeCapabilities(normalizedForRun.workflow);
       const runIssues = [...normalizedForRun.issues, ...runtimeIssues];
@@ -1804,6 +1805,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       const runTriggerPayload = {
         ...triggerPayload,
         ...(fromStepId && sourceRunId ? { retry: { sourceRunId, fromStepId } } : {}),
+        ...(stopAfterNodeId ? { partial: { stopAfterNodeId } } : {}),
       };
 
       const { runId, run } = await createWorkflowRunRecord(sql, {
@@ -1833,10 +1835,15 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         runId,
         triggerType: "manual",
         triggerPayload: runTriggerPayload,
-        triggerSource: fromStepId ? "gateway:retry_from_step" : "gateway:manual",
+        triggerSource: fromStepId
+          ? "gateway:retry_from_step"
+          : stopAfterNodeId
+            ? "gateway:manual_partial"
+            : "gateway:manual",
         broadcast: context?.broadcast,
         outboundDeps: context?.deps ? createOutboundSendDeps(context.deps) : undefined,
         resume,
+        stopAfterNodeId,
       });
     } catch (err) {
       log.warn(`workflows.run failed: ${String(err)}`);

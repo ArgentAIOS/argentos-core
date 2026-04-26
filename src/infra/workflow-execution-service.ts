@@ -401,6 +401,7 @@ export async function executeWorkflowRunFromRow(opts: {
   broadcast?: WorkflowBroadcast;
   outboundDeps?: OutboundSendDeps;
   resume?: WorkflowResumeOptions;
+  stopAfterNodeId?: string;
 }) {
   const { workflow, issues } = workflowFromRow(opts.workflowRow);
   if (hasBlockingWorkflowIssues(issues)) {
@@ -434,6 +435,7 @@ export async function executeWorkflowRunFromRow(opts: {
     actions: createWorkflowActionExecutors(),
     triggerPayload: opts.triggerPayload,
     triggerSource: opts.triggerSource ?? opts.triggerType,
+    stopAfterNodeId: opts.stopAfterNodeId,
     resume: opts.resume,
     redis,
     pgSql: opts.sql,

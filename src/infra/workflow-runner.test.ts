@@ -361,6 +361,28 @@ describe("executeWorkflow", () => {
     expect(result.steps[1].output.items[0].text).toBe("Live agent result");
   });
 
+  it("can stop a manual partial run after a selected node", async () => {
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output = makeOutput();
+
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-partial-agent",
+      dispatcher: mockDispatcher,
+      triggerSource: "gateway:manual_partial",
+      stopAfterNodeId: agent.id,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.steps.map((step) => step.nodeId)).toEqual([trigger.id, agent.id]);
+  });
+
   it("persists DocPanel output through the supplied action executor", async () => {
     const trigger = makeTrigger();
     const agent = makeAgent("agent-1", "Worker");

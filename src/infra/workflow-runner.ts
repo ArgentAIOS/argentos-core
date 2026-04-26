@@ -128,6 +128,8 @@ export interface ExecuteWorkflowParams {
   actions?: ActionExecutors;
   triggerPayload?: Record<string, unknown>;
   triggerSource?: string;
+  /** Manual/partial execution: stop after recording this node. */
+  stopAfterNodeId?: string;
   onStepStart?: (nodeId: string, node: WorkflowNode) => void;
   onStepComplete?: (nodeId: string, result: StepRecord) => void;
   onRunComplete?: (status: string, steps: StepRecord[]) => void;
@@ -868,6 +870,15 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
     }
 
     if (finalStatus === "waiting_duration" || finalStatus === "waiting_event") {
+      break;
+    }
+
+    if (params.stopAfterNodeId === node.id) {
+      log.info("workflow partial run stopped at requested node", {
+        workflowId: workflow.id,
+        runId,
+        nodeId: node.id,
+      });
       break;
     }
 
