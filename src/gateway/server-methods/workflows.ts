@@ -746,6 +746,75 @@ function collectWorkflowOutputChannelTargets(
   }
 }
 
+async function collectWorkflowOutputChannelTargetsWithAccounts(
+  channelId: string,
+  cfg: ArgentConfig,
+  accountIds: string[],
+): Promise<WorkflowOutputChannelTarget[]> {
+  const baseTargets = collectWorkflowOutputChannelTargets(channelId, cfg);
+  const accountTargets: WorkflowOutputChannelTarget[] = [];
+  const uniqueAccountIds = [...new Set(accountIds.filter(Boolean))];
+
+  try {
+    const directory = await import("../../channels/plugins/directory-config.js");
+    for (const accountId of uniqueAccountIds) {
+      switch (channelId) {
+        case "telegram": {
+          const [groups, peers] = await Promise.all([
+            directory.listTelegramDirectoryGroupsFromConfig({ cfg, accountId }),
+            directory.listTelegramDirectoryPeersFromConfig({ cfg, accountId }),
+          ]);
+          accountTargets.push(
+            ...groups.map((entry) => workflowOutputTarget(entry.id, "group", "Group")),
+            ...peers.map((entry) => workflowOutputTarget(entry.id, "dm", "DM")),
+          );
+          break;
+        }
+        case "discord": {
+          const [groups, peers] = await Promise.all([
+            directory.listDiscordDirectoryGroupsFromConfig({ cfg, accountId }),
+            directory.listDiscordDirectoryPeersFromConfig({ cfg, accountId }),
+          ]);
+          accountTargets.push(
+            ...groups.map((entry) => workflowOutputTarget(entry.id, "channel", "Channel")),
+            ...peers.map((entry) => workflowOutputTarget(entry.id, "dm", "DM")),
+          );
+          break;
+        }
+        case "slack": {
+          const [groups, peers] = await Promise.all([
+            directory.listSlackDirectoryGroupsFromConfig({ cfg, accountId }),
+            directory.listSlackDirectoryPeersFromConfig({ cfg, accountId }),
+          ]);
+          accountTargets.push(
+            ...groups.map((entry) => workflowOutputTarget(entry.id, "channel", "Channel")),
+            ...peers.map((entry) => workflowOutputTarget(entry.id, "dm", "DM")),
+          );
+          break;
+        }
+        case "whatsapp": {
+          const [groups, peers] = await Promise.all([
+            directory.listWhatsAppDirectoryGroupsFromConfig({ cfg, accountId }),
+            directory.listWhatsAppDirectoryPeersFromConfig({ cfg, accountId }),
+          ]);
+          accountTargets.push(
+            ...groups.map((entry) => workflowOutputTarget(entry.id, "group", "Group")),
+            ...peers.map((entry) => workflowOutputTarget(entry.id, "dm", "DM")),
+          );
+          break;
+        }
+      }
+    }
+  } catch (err) {
+    log.debug("workflow output channel account target discovery unavailable", {
+      channelId,
+      error: String(err),
+    });
+  }
+
+  return uniqueWorkflowOutputTargets([...baseTargets, ...accountTargets]);
+}
+
 export async function buildWorkflowOutputChannels(): Promise<WorkflowOutputChannelOption[]> {
   const [
     { loadConfig },
@@ -810,7 +879,11 @@ export async function buildWorkflowOutputChannels(): Promise<WorkflowOutputChann
         deliveryMode: outbound.deliveryMode,
         configured: true,
         statusLabel: "Configured",
-        targets: collectWorkflowOutputChannelTargets(plugin.id, cfg),
+        targets: await collectWorkflowOutputChannelTargetsWithAccounts(
+          plugin.id,
+          cfg,
+          configuredAccountIds,
+        ),
       });
     }
   } catch (err) {
@@ -882,12 +955,19 @@ export async function buildWorkflowOutputChannels(): Promise<WorkflowOutputChann
     if (!configured) {
       continue;
     }
-    const targets = collectWorkflowOutputChannelTargets(channel.id, cfg);
+    const accountIds = existing?.accountIds?.length
+      ? existing.accountIds
+      : (core?.accountIds ?? []);
+    const targets = await collectWorkflowOutputChannelTargetsWithAccounts(
+      channel.id,
+      cfg,
+      accountIds,
+    );
     outputChannels.set(channel.id, {
       id: channel.id,
       label: existing?.label ?? channel.selectionLabel ?? channel.label ?? channel.id,
       defaultAccountId: existing?.defaultAccountId ?? core?.defaultAccountId ?? DEFAULT_ACCOUNT_ID,
-      accountIds: existing?.accountIds?.length ? existing.accountIds : (core?.accountIds ?? []),
+      accountIds,
       deliveryMode: existing?.deliveryMode ?? "direct",
       configured: true,
       statusLabel: existing?.statusLabel ?? core?.statusLabel ?? "Configured in channel settings",

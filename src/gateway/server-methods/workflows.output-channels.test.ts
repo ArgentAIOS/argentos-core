@@ -75,6 +75,44 @@ describe("buildWorkflowOutputChannels", () => {
     );
   });
 
+  it("includes per-account chat targets for configured output channels", async () => {
+    mocks.config = {
+      channels: {
+        telegram: {
+          accounts: {
+            operator: {
+              botToken: "123:token",
+              groups: {
+                "-100456": { requireMention: false },
+              },
+              dms: {
+                "777": {},
+              },
+              allowFrom: ["@jason"],
+            },
+          },
+        },
+      },
+    } as ArgentConfig;
+
+    const channels = await buildWorkflowOutputChannels();
+
+    expect(channels).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "telegram",
+          configured: true,
+          accountIds: ["operator"],
+          targets: expect.arrayContaining([
+            expect.objectContaining({ id: "-100456", kind: "group" }),
+            expect.objectContaining({ id: "777", kind: "dm" }),
+            expect.objectContaining({ id: "@jason", kind: "dm" }),
+          ]),
+        }),
+      ]),
+    );
+  });
+
   it("does not advertise tokenless channel configs as runnable output channels", async () => {
     mocks.config = {
       channels: {
