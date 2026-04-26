@@ -187,6 +187,30 @@ function optionalArray(params: Record<string, unknown>, key: string): unknown[] 
   return v;
 }
 
+export function connectorCommandToCliArgs(command: string): string[] {
+  const trimmed = command.trim();
+  if (!trimmed) {
+    throw new Error("command must be a non-empty string");
+  }
+  if (trimmed.includes(" ")) {
+    return trimmed.split(/\s+/).filter(Boolean);
+  }
+  return trimmed.split(".").filter(Boolean);
+}
+
+function connectorCommandExtraArgToCliArg(arg: unknown): string | undefined {
+  if (arg === null || arg === undefined) {
+    return undefined;
+  }
+  if (typeof arg === "string") {
+    return arg;
+  }
+  if (typeof arg === "number" || typeof arg === "boolean" || typeof arg === "bigint") {
+    return String(arg);
+  }
+  return JSON.stringify(arg);
+}
+
 type WorkflowRunPublicStep = {
   id: string;
   nodeId: string;
@@ -2297,13 +2321,12 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         }
       }
 
-      // Build CLI args: --json <command> [extra args...]
-      const cliArgs = ["--json", command];
+      // Build CLI args: --json <resource> <operation> [extra args...]
+      const cliArgs = ["--json", ...connectorCommandToCliArgs(command)];
       for (const arg of args) {
-        if (typeof arg === "string") {
-          cliArgs.push(arg);
-        } else if (arg !== null && arg !== undefined) {
-          cliArgs.push(String(arg));
+        const cliArg = connectorCommandExtraArgToCliArg(arg);
+        if (cliArg !== undefined) {
+          cliArgs.push(cliArg);
         }
       }
 

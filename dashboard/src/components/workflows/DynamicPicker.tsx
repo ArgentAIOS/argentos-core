@@ -1,8 +1,8 @@
 /**
  * DynamicPicker — Searchable dropdown populated from connector read commands.
  *
- * Resolves a `pickerHint` key against the manifest's `scope.pickerHints`,
- * calls the connector's source_command via gateway RPC using the bound
+ * Resolves a `pickerHint` key against the normalized manifest `pickerHints`
+ * or raw manifest `scope.pickerHints`, calls the connector's source command using the bound
  * credential, and renders a filterable dropdown showing `name` / storing `id`.
  *
  * Caches results per credentialId — invalidates when the credential changes.
@@ -15,7 +15,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 export interface DynamicPickerProps {
   connectorId: string;
   credentialId: string;
-  pickerHint: string; // Key into manifest.scope.pickerHints
+  pickerHint: string; // Key into manifest.pickerHints or manifest.scope.pickerHints
   manifest: Record<string, unknown>; // The loaded connector manifest
   value: string;
   onChange: (value: string) => void;
@@ -26,8 +26,8 @@ export interface DynamicPickerProps {
 
 interface PickerHintDef {
   kind?: string;
-  source_command: string;
-  source_fields: string[];
+  sourceCommand: string;
+  sourceFields: string[];
   selection_surface?: string;
   resource?: string;
 }
@@ -50,6 +50,107 @@ const resultCache = new Map<string, PickerItem[]>();
 
 function cacheKey(connectorId: string, credentialId: string, hint: string): string {
   return `${connectorId}::${credentialId}::${hint}`;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+function normalizePickerHint(raw: unknown): PickerHintDef | null {
+  const record = asRecord(raw);
+  if (!record) {
+    return null;
+  }
+  const sourceCommand =
+    typeof record.sourceCommand === "string"
+      ? record.sourceCommand
+      : typeof record.source_command === "string"
+        ? record.source_command
+        : "";
+  const sourceFields =
+    asStringArray(record.sourceFields).length > 0
+      ? asStringArray(record.sourceFields)
+      : asStringArray(record.source_fields);
+
+  if (!sourceCommand || sourceFields.length === 0) {
+    return null;
+  }
+
+  return {
+    kind: typeof record.kind === "string" ? record.kind : undefined,
+    sourceCommand,
+    sourceFields,
+    selection_surface:
+      typeof record.selection_surface === "string" ? record.selection_surface : undefined,
+    resource: typeof record.resource === "string" ? record.resource : undefined,
+  };
+}
+
+function resolvePickerHint(
+  manifest: Record<string, unknown>,
+  pickerHint: string,
+): PickerHintDef | null {
+  const normalizedHints = asRecord(manifest.pickerHints);
+  const normalized = normalizePickerHint(normalizedHints?.[pickerHint]);
+  if (normalized) {
+    return normalized;
+  }
+
+  const scope = asRecord(manifest.scope);
+  const rawHints = asRecord(scope?.pickerHints);
+  return normalizePickerHint(rawHints?.[pickerHint]);
+}
+
+function recordArray(value: unknown): Array<Record<string, unknown>> | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  return value.filter((item): item is Record<string, unknown> => Boolean(asRecord(item)));
+}
+
+function extractConnectorItems(result: unknown): Array<Record<string, unknown>> {
+  const root = asRecord(result);
+  const data = asRecord(root?.data);
+  const envelope = asRecord(root?.envelope);
+  const envelopeData = asRecord(envelope?.data);
+  const candidates = [
+    root?.items,
+    root?.data,
+    data?.items,
+    data?.data,
+    data?.records,
+    envelopeData?.items,
+    envelopeData?.data,
+    envelopeData?.records,
+  ];
+
+  for (const candidate of candidates) {
+    const items = recordArray(candidate);
+    if (items) {
+      return items;
+    }
+  }
+  return [];
+}
+
+function displayString(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  return "";
 }
 
 // ── Styles ─────────────────────────────────────────────────────────────
@@ -166,9 +267,13 @@ const styles = {
 // ── Highlight helper ───────────────────────────────────────────────────
 
 function highlightMatch(text: string, query: string): React.ReactNode {
-  if (!query) return text;
+  if (!query) {
+    return text;
+  }
   const idx = text.toLowerCase().indexOf(query.toLowerCase());
-  if (idx === -1) return text;
+  if (idx === -1) {
+    return text;
+  }
   return (
     <>
       {text.slice(0, idx)}
@@ -202,18 +307,15 @@ export default function DynamicPicker({
   // ── Resolve picker hint from manifest ──────────────────────────────
 
   const hintDef = useMemo<PickerHintDef | null>(() => {
-    const scope = (manifest as Record<string, unknown>)?.scope as
-      | Record<string, unknown>
-      | undefined;
-    const hints = scope?.pickerHints as Record<string, unknown> | undefined;
-    if (!hints || !hints[pickerHint]) return null;
-    return hints[pickerHint] as PickerHintDef;
+    return resolvePickerHint(manifest, pickerHint);
   }, [manifest, pickerHint]);
 
   // ── Fetch items ────────────────────────────────────────────────────
 
   const fetchItems = useCallback(async () => {
-    if (!hintDef || !credentialId) return;
+    if (!hintDef || !credentialId) {
+      return;
+    }
 
     const key = cacheKey(connectorId, credentialId, pickerHint);
     const cached = resultCache.get(key);
@@ -224,28 +326,22 @@ export default function DynamicPicker({
 
     setFetchState({ status: "loading" });
     try {
-      // TODO: The gateway method "workflows.connectorCommand" may not exist yet.
-      // The gateway-eng agent will add it. For now this attempts the call and
-      // gracefully handles failure.
-      const result = await gatewayRequest<{
-        items?: Array<Record<string, unknown>>;
-        data?: Array<Record<string, unknown>>;
-      }>("workflows.connectorCommand", {
+      const result = await gatewayRequest("workflows.connectorCommand", {
         connectorId,
-        command: hintDef.source_command,
+        command: hintDef.sourceCommand,
         credentialId,
       });
 
-      const rawItems = result?.items ?? result?.data ?? [];
+      const rawItems = extractConnectorItems(result);
       const nameField =
-        hintDef.source_fields.find((f) => f === "name" || f === "fullName" || f === "real_name") ??
-        hintDef.source_fields[1] ??
+        hintDef.sourceFields.find((f) => f === "name" || f === "fullName" || f === "real_name") ??
+        hintDef.sourceFields[1] ??
         "name";
 
       const items: PickerItem[] = rawItems.map((raw) => ({
-        id: String(raw.id ?? raw.ID ?? ""),
-        name: String(raw[nameField] ?? raw.name ?? raw.label ?? raw.id ?? ""),
-        meta: raw as Record<string, unknown>,
+        id: displayString(raw.id ?? raw.ID),
+        name: displayString(raw[nameField] ?? raw.name ?? raw.label ?? raw.id),
+        meta: raw,
       }));
 
       resultCache.set(key, items);
@@ -267,7 +363,7 @@ export default function DynamicPicker({
     if (!resultCache.has(key)) {
       setFetchState({ status: "idle" });
     }
-    fetchItems();
+    void fetchItems();
   }, [credentialId, fetchItems, connectorId, pickerHint]);
 
   // ── Close on outside click ─────────────────────────────────────────
@@ -286,7 +382,9 @@ export default function DynamicPicker({
 
   const items = fetchState.status === "loaded" ? fetchState.items : [];
   const filtered = useMemo(() => {
-    if (!search) return items;
+    if (!search) {
+      return items;
+    }
     const q = search.toLowerCase();
     return items.filter(
       (item) => item.name.toLowerCase().includes(q) || item.id.toLowerCase().includes(q),
@@ -338,7 +436,9 @@ export default function DynamicPicker({
   // ── Selected item label ────────────────────────────────────────────
 
   const selectedLabel = useMemo(() => {
-    if (!value) return "";
+    if (!value) {
+      return "";
+    }
     const found = items.find((i) => i.id === value);
     return found?.name ?? value;
   }, [value, items]);
@@ -368,12 +468,16 @@ export default function DynamicPicker({
           value={open ? search : selectedLabel || search}
           onChange={(e) => {
             setSearch(e.target.value);
-            if (!open) setOpen(true);
+            if (!open) {
+              setOpen(true);
+            }
           }}
           onFocus={() => {
             setOpen(true);
             // Clear to show all options when focusing with a selection
-            if (value && !search) setSearch("");
+            if (value && !search) {
+              setSearch("");
+            }
           }}
           onKeyDown={handleKeyDown}
           placeholder={placeholder ?? `Select ${hintDef.kind ?? pickerHint}...`}
