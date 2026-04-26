@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from .constants import (
@@ -13,6 +12,7 @@ from .constants import (
     MONDAY_TOKEN_ENV,
     MONDAY_WORKSPACE_ENV,
 )
+from .service_keys import service_key_env
 
 
 def _present(value: str | None) -> bool:
@@ -37,11 +37,11 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     workspace_env = ctx_obj.get("workspace_env") or MONDAY_WORKSPACE_ENV
     board_env = ctx_obj.get("board_env") or MONDAY_BOARD_ENV
 
-    token = os.getenv(token_env)
-    api_version = os.getenv(api_version_env) or DEFAULT_MONDAY_API_VERSION
-    api_url = os.getenv(api_url_env) or DEFAULT_MONDAY_API_URL
-    workspace_id = os.getenv(workspace_env)
-    board_id = os.getenv(board_env)
+    token = service_key_env(token_env)
+    api_version = service_key_env(api_version_env, DEFAULT_MONDAY_API_VERSION) or DEFAULT_MONDAY_API_VERSION
+    api_url = service_key_env(api_url_env, DEFAULT_MONDAY_API_URL) or DEFAULT_MONDAY_API_URL
+    workspace_id = service_key_env(workspace_env)
+    board_id = service_key_env(board_env)
 
     return {
         "backend": BACKEND_NAME,
@@ -54,9 +54,9 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "token_present": _present(token),
         "token_redacted": _redact(token),
         "api_version": api_version,
-        "api_version_present": _present(os.getenv(api_version_env)),
+        "api_version_present": _present(service_key_env(api_version_env)),
         "api_url": api_url,
-        "api_url_present": _present(os.getenv(api_url_env)),
+        "api_url_present": _present(service_key_env(api_url_env)),
         "workspace_id": workspace_id.strip() if workspace_id and workspace_id.strip() else None,
         "workspace_id_present": _present(workspace_id),
         "board_id": board_id.strip() if board_id and board_id.strip() else None,
@@ -94,7 +94,7 @@ def redacted_config_snapshot(ctx_obj: dict[str, Any], *, runtime_ready: bool, li
             "runtime_ready": runtime_ready,
             "live_backend_available": live_backend_available,
             "live_read_available": live_backend_available,
-            "write_bridge_available": False,
-            "write_paths_scaffolded": True,
+            "write_bridge_available": live_backend_available,
+            "write_paths_scaffolded": False,
         },
     }

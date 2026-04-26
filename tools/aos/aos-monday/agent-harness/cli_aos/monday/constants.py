@@ -33,9 +33,9 @@ AUTH_DESCRIPTOR = {
     "interactive_setup": [
         "Create or copy a monday.com personal API token from the Developer Center.",
         f"Add {MONDAY_TOKEN_ENV} in API Keys before enabling any worker-visible commands.",
-        f"Optionally set {MONDAY_API_VERSION_ENV} to pin a stable monday API version; the scaffold defaults to the current stable release.",
+        f"Optionally set {MONDAY_API_VERSION_ENV} to pin a stable monday API version; the connector defaults to the current stable release.",
         "Share the boards and workspaces you want this worker to read with the account that owns the token.",
-        "Live reads are enabled now; keep item.create, item.update, and update.create scaffolded until a live write bridge is implemented.",
+        "Live reads and writes are enabled for account, workspace, board, item, and update commands.",
     ],
 }
 

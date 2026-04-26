@@ -70,6 +70,40 @@ class FakeMondayClient:
             },
         ][:limit]
 
+    def create_item(self, *, board_id: str, item_name: str, group_id: str | None = None, column_values: str | None = None):
+        return {
+            "id": "item_3",
+            "name": item_name,
+            "board": {"id": board_id, "name": "Ops Board"},
+            "group_id": group_id,
+            "column_values": column_values,
+        }
+
+    def change_simple_column_value(self, *, board_id: str, item_id: str, column_id: str, value: str):
+        return {
+            "id": item_id,
+            "name": "Launch prep",
+            "board_id": board_id,
+            "column_id": column_id,
+            "value": value,
+        }
+
+    def change_multiple_column_values(self, *, board_id: str, item_id: str, column_values: str):
+        return {
+            "id": item_id,
+            "name": "Launch prep",
+            "board_id": board_id,
+            "column_values": column_values,
+        }
+
+    def create_update(self, *, item_id: str, body: str):
+        return {
+            "id": "update_3",
+            "body": body,
+            "created_at": "2026-03-18T14:00:00Z",
+            "item_id": item_id,
+        }
+
 
 def _invoke(args: list[str], monkeypatch):
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeMondayClient())
@@ -134,6 +168,8 @@ def test_health_reports_ready_when_probe_succeeds(monkeypatch):
     assert payload["data"]["runtime_ready"] is True
     assert payload["data"]["live_backend_available"] is True
     assert payload["data"]["connector"]["live_read_available"] is True
+    assert payload["data"]["connector"]["write_bridge_available"] is True
+    assert payload["data"]["connector"]["write_paths_scaffolded"] is False
 
 
 def test_doctor_reports_ready_when_setup_is_complete(monkeypatch):
@@ -164,7 +200,7 @@ def test_config_show_redacts_token_values(monkeypatch):
     assert result.exit_code == 0
     assert "secret_token" not in result.output
     assert '"token_present": true' in result.output
-    assert '"write_paths_scaffolded": true' in result.output
+    assert '"write_paths_scaffolded": false' in result.output
 
 
 def test_account_read_returns_live_payload(monkeypatch):
@@ -236,14 +272,73 @@ def test_update_list_returns_live_payload(monkeypatch):
     assert payload["items"][0]["body"] == "Kickoff posted"
 
 
-def test_scaffolded_write_commands_fail_with_not_implemented(monkeypatch):
+def test_item_create_uses_live_write(monkeypatch):
     monkeypatch.setenv("MONDAY_TOKEN", "secret_token")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeMondayClient())
 
-    result = CliRunner().invoke(cli, ["--json", "--mode", "write", "item", "create", "--board-id", "board_1", "--name", "Draft item"])
-    assert result.exit_code == 10
-    assert "NOT_IMPLEMENTED" in result.output
-    assert "scaffolded" in result.output
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "--mode",
+            "write",
+            "item",
+            "create",
+            "--board-id",
+            "board_1",
+            "--name",
+            "Draft item",
+            "--column-values",
+            '{"status":"Working on it"}',
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.output)["data"]
+    assert payload["status"] == "live_write"
+    assert payload["command"] == "item.create"
+    assert payload["item"]["id"] == "item_3"
+    assert payload["inputs"]["column_values"] == '{"status":"Working on it"}'
+
+
+def test_item_update_uses_live_simple_column_write(monkeypatch):
+    monkeypatch.setenv("MONDAY_TOKEN", "secret_token")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeMondayClient())
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "--mode",
+            "write",
+            "item",
+            "update",
+            "item_1",
+            "--board-id",
+            "board_1",
+            "--column-id",
+            "status",
+            "--column-value",
+            "Done",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.output)["data"]
+    assert payload["status"] == "live_write"
+    assert payload["operation"] == "change_simple_column_value"
+    assert payload["item"]["column_id"] == "status"
+    assert payload["item"]["value"] == "Done"
+
+
+def test_update_create_uses_live_write(monkeypatch):
+    monkeypatch.setenv("MONDAY_TOKEN", "secret_token")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeMondayClient())
+
+    result = CliRunner().invoke(cli, ["--json", "--mode", "write", "update", "create", "item_1", "--body", "Hello"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)["data"]
+    assert payload["status"] == "live_write"
+    assert payload["command"] == "update.create"
+    assert payload["update"]["id"] == "update_3"
 
 
 def test_permission_gate_blocks_write_for_readonly():

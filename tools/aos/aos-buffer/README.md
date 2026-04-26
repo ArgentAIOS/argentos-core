@@ -1,6 +1,6 @@
 # aos-buffer
 
-Buffer connector scaffold for ArgentOS.
+Buffer connector for ArgentOS.
 
 This connector treats Buffer's current public REST docs as the live-read contract for:
 

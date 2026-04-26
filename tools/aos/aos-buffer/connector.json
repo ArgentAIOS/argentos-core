@@ -4,7 +4,7 @@
   "manifest_schema_version": "1.0.0",
   "scope": {
     "kind": "social-media",
-    "surface": "account-channel-profile-post-calendar-analytics",
+    "surface": "account-channel-profile-post",
     "scaffold_only": false,
     "live_backend_available": true,
     "live_read_available": true,
@@ -21,11 +21,13 @@
     "worker_visible_actions": [
       "account.read",
       "channel.list",
+      "channel.read",
       "profile.list",
+      "profile.read",
       "post.list",
-      "post.create",
-      "calendar.list",
-      "analytics.get"
+      "post.read",
+      "post.create_draft",
+      "post.schedule"
     ],
     "fields": [
       {
@@ -48,15 +50,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": [
-          "profile.list",
-          "post.list",
-          "post.create",
-          "post.update",
-          "post.delete",
-          "calendar.list",
-          "analytics.get"
-        ],
+        "applies_to": ["profile.list", "post.list", "post.create_draft", "post.schedule"],
         "placeholder": "4eb854340acb04e870000010",
         "description": "Buffer social profile ID (Twitter, Facebook, LinkedIn, Instagram, etc.). Required for most post operations."
       },
@@ -69,7 +63,7 @@
         "expressionEnabled": true,
         "valueType": "string",
         "rows": 4,
-        "applies_to": ["post.create", "post.update"],
+        "applies_to": ["post.create_draft", "post.schedule"],
         "placeholder": "Draft launch announcement",
         "description": "The post content text. Supports platform-specific markdown and mentions."
       },
@@ -81,7 +75,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": ["post.create", "post.update"],
+        "applies_to": ["post.create_draft", "post.schedule"],
         "placeholder": "https://cdn.example.com/image.png",
         "description": "URL to image or video to attach to the post."
       },
@@ -93,7 +87,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "datetime",
-        "applies_to": ["post.create", "post.update"],
+        "applies_to": ["post.schedule"],
         "placeholder": "2026-04-01T09:00:00Z",
         "description": "ISO 8601 timestamp for when to publish the post. Leave blank to publish immediately."
       },
@@ -105,7 +99,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": ["post.create", "post.update"],
+        "applies_to": ["post.create_draft", "post.schedule"],
         "placeholder": "chan_1,chan_2",
         "description": "Comma-separated list of Buffer channel IDs to post to. Can be a single channel or multiple."
       },
@@ -117,7 +111,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": ["post.create", "post.update"],
+        "applies_to": ["post.create_draft", "post.schedule"],
         "placeholder": "https://argentos.ai/blog/launch",
         "description": "URL to include in the post as a clickable link (for news feeds, etc.)."
       }
@@ -130,35 +124,34 @@
         "selection_surface": "channel",
         "limit": 10
       },
+      "channel.read": {
+        "selection_surface": "channel",
+        "args": ["BUFFER_CHANNEL_ID"]
+      },
       "profile.list": {
         "selection_surface": "profile",
         "limit": 10
+      },
+      "profile.read": {
+        "selection_surface": "profile",
+        "args": ["BUFFER_PROFILE_ID"]
       },
       "post.list": {
         "selection_surface": "post",
         "args": ["BUFFER_PROFILE_ID"],
         "limit": 10
       },
-      "post.create": {
+      "post.read": {
+        "selection_surface": "post",
+        "args": ["BUFFER_POST_ID"]
+      },
+      "post.create_draft": {
         "selection_surface": "post",
         "args": ["BUFFER_PROFILE_ID", "BUFFER_POST_TEXT"]
       },
-      "post.update": {
+      "post.schedule": {
         "selection_surface": "post",
-        "args": ["BUFFER_POST_ID"]
-      },
-      "post.delete": {
-        "selection_surface": "post",
-        "args": ["BUFFER_POST_ID"]
-      },
-      "calendar.list": {
-        "selection_surface": "calendar",
-        "args": ["BUFFER_PROFILE_ID"],
-        "limit": 30
-      },
-      "analytics.get": {
-        "selection_surface": "analytics",
-        "args": ["BUFFER_PROFILE_ID"]
+        "args": ["BUFFER_PROFILE_ID", "BUFFER_POST_TEXT"]
       }
     },
     "pickerHints": {
@@ -212,20 +205,6 @@
           "media_url",
           "link"
         ]
-      },
-      "calendar": {
-        "kind": "calendar",
-        "selection_surface": "calendar",
-        "resource": "buffer.calendar",
-        "source_command": "calendar.list",
-        "source_fields": ["id", "day", "posts_count", "slots"]
-      },
-      "analytics": {
-        "kind": "analytics",
-        "selection_surface": "analytics",
-        "resource": "buffer.analytics",
-        "source_command": "analytics.get",
-        "source_fields": ["profile_id", "impressions", "engagements", "clicks", "reach", "period"]
       }
     }
   },
@@ -233,7 +212,7 @@
     "label": "Buffer",
     "category": "marketing-publishing",
     "categories": ["marketing-publishing", "social-media", "service-ops"],
-    "resources": ["account", "channel", "profile", "post", "calendar", "analytics"]
+    "resources": ["account", "channel", "profile", "post"]
   },
   "auth": {
     "kind": "service-key",
@@ -244,7 +223,7 @@
       "Add BUFFER_API_KEY or BUFFER_ACCESS_TOKEN in API Keys before enabling live reads.",
       "Optional: set BUFFER_BASE_URL to pin a non-default Buffer REST host.",
       "The connector uses the current public /user and /profiles REST surfaces for account, channel, and profile reads.",
-      "Keep post.create_draft and post.schedule scaffolded until the current Buffer post read/write contract is confirmed."
+      "Post list/read/create_draft/schedule remain explicit scaffold surfaces until the current Buffer post API contract is confirmed."
     ]
   },
   "commands": [
@@ -297,6 +276,14 @@
       "action_class": "read"
     },
     {
+      "id": "profile.read",
+      "summary": "Read a Buffer profile",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "profile",
+      "action_class": "read"
+    },
+    {
       "id": "channel.list",
       "summary": "List Buffer channels",
       "required_mode": "readonly",
@@ -305,12 +292,12 @@
       "action_class": "read"
     },
     {
-      "id": "post.create",
-      "summary": "Create a Buffer post",
-      "required_mode": "write",
+      "id": "channel.read",
+      "summary": "Read a Buffer channel",
+      "required_mode": "readonly",
       "supports_json": true,
-      "resource": "post",
-      "action_class": "write"
+      "resource": "channel",
+      "action_class": "read"
     },
     {
       "id": "post.list",
@@ -321,36 +308,28 @@
       "action_class": "read"
     },
     {
-      "id": "post.update",
-      "summary": "Update a Buffer post",
+      "id": "post.read",
+      "summary": "Read a Buffer post",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "post",
+      "action_class": "read"
+    },
+    {
+      "id": "post.create_draft",
+      "summary": "Create a Buffer post draft scaffold payload",
       "required_mode": "write",
       "supports_json": true,
       "resource": "post",
       "action_class": "write"
     },
     {
-      "id": "post.delete",
-      "summary": "Delete a Buffer post",
-      "required_mode": "full",
+      "id": "post.schedule",
+      "summary": "Schedule a Buffer post scaffold payload",
+      "required_mode": "write",
       "supports_json": true,
       "resource": "post",
       "action_class": "write"
-    },
-    {
-      "id": "calendar.list",
-      "summary": "List Buffer posting calendar slots",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "calendar",
-      "action_class": "read"
-    },
-    {
-      "id": "analytics.get",
-      "summary": "Get Buffer analytics for a profile",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "analytics",
-      "action_class": "read"
     }
   ]
 }

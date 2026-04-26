@@ -14,6 +14,7 @@ from .constants import (
     ZAPIER_ZAP_NAME_ENV,
     ZAPIER_ZAP_STATUS_ENV,
 )
+from .service_keys import service_key_env
 
 
 def _present(value: str | None) -> bool:
@@ -32,13 +33,13 @@ def _redact(value: str | None) -> str | None:
 
 
 def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
-    api_url_env = (ctx_obj.get("api_url_env") or ZAPIER_API_URL_ENV).strip() or ZAPIER_API_URL_ENV
-    api_key_env = (ctx_obj.get("api_key_env") or ZAPIER_API_KEY_ENV).strip() or ZAPIER_API_KEY_ENV
-    webhook_base_url_env = (ctx_obj.get("webhook_base_url_env") or ZAPIER_WEBHOOK_BASE_URL_ENV).strip() or ZAPIER_WEBHOOK_BASE_URL_ENV
+    api_url_env = ZAPIER_API_URL_ENV
+    api_key_env = ZAPIER_API_KEY_ENV
+    webhook_base_url_env = ZAPIER_WEBHOOK_BASE_URL_ENV
 
-    api_url = os.getenv(api_url_env)
-    api_key = os.getenv(api_key_env)
-    webhook_base_url = os.getenv(webhook_base_url_env)
+    api_url = service_key_env(api_url_env)
+    api_key = service_key_env(api_key_env)
+    webhook_base_url = service_key_env(webhook_base_url_env)
 
     workspace_name = os.getenv(ZAPIER_WORKSPACE_NAME_ENV)
     zap_id = os.getenv(ZAPIER_ZAP_ID_ENV)

@@ -212,44 +212,52 @@ def item_read(ctx: click.Context, item_id: str) -> None:
 @item_group.command("create")
 @click.option("--board-id", required=True)
 @click.option("--name", "item_name", required=True)
+@click.option("--group-id", default="", show_default=False)
+@click.option("--column-values", default="", show_default=False, help="JSON object string keyed by monday column IDs")
 @click.pass_context
-def item_create(ctx: click.Context, board_id: str, item_name: str) -> None:
+def item_create(ctx: click.Context, board_id: str, item_name: str, group_id: str, column_values: str) -> None:
     _set_command(ctx, "item.create")
     require_mode(ctx, "item.create")
-    raise CliError(
-        code="NOT_IMPLEMENTED",
-        message="item.create is scaffolded but not implemented yet",
-        exit_code=10,
-        details=runtime_module.scaffold_write_command(
-            ctx.obj,
-            command_id="item.create",
-            resource="item",
-            operation="create",
-            inputs={"board_id": board_id, "name": item_name},
-            consequential=True,
+    emit(
+        _success(
+            ctx,
+            "item.create",
+            runtime_module.create_item(
+                ctx.obj,
+                board_id=board_id,
+                item_name=item_name,
+                group_id=group_id or None,
+                column_values=column_values or None,
+            ),
         ),
+        as_json=ctx.obj["json"],
     )
 
 
 @item_group.command("update")
 @click.argument("item_id")
-@click.option("--name", default="", show_default=False)
+@click.option("--board-id", required=True)
+@click.option("--column-id", default="", show_default=False)
+@click.option("--column-value", default="", show_default=False)
+@click.option("--column-values", default="", show_default=False, help="JSON object string keyed by monday column IDs")
 @click.pass_context
-def item_update(ctx: click.Context, item_id: str, name: str) -> None:
+def item_update(ctx: click.Context, item_id: str, board_id: str, column_id: str, column_value: str, column_values: str) -> None:
     _set_command(ctx, "item.update")
     require_mode(ctx, "item.update")
-    raise CliError(
-        code="NOT_IMPLEMENTED",
-        message="item.update is scaffolded but not implemented yet",
-        exit_code=10,
-        details=runtime_module.scaffold_write_command(
-            ctx.obj,
-            command_id="item.update",
-            resource="item",
-            operation="update",
-            inputs={"item_id": item_id, "name": name or None},
-            consequential=True,
+    emit(
+        _success(
+            ctx,
+            "item.update",
+            runtime_module.update_item(
+                ctx.obj,
+                item_id=item_id,
+                board_id=board_id,
+                column_id=column_id or None,
+                column_value=column_value or None,
+                column_values=column_values or None,
+            ),
         ),
+        as_json=ctx.obj["json"],
     )
 
 
@@ -288,16 +296,7 @@ def update_list(ctx: click.Context, limit: int, from_date: str, to_date: str) ->
 def update_create(ctx: click.Context, item_id: str, body: str) -> None:
     _set_command(ctx, "update.create")
     require_mode(ctx, "update.create")
-    raise CliError(
-        code="NOT_IMPLEMENTED",
-        message="update.create is scaffolded but not implemented yet",
-        exit_code=10,
-        details=runtime_module.scaffold_write_command(
-            ctx.obj,
-            command_id="update.create",
-            resource="update",
-            operation="create",
-            inputs={"item_id": item_id, "body": body},
-            consequential=True,
-        ),
+    emit(
+        _success(ctx, "update.create", runtime_module.create_update(ctx.obj, item_id=item_id, body=body)),
+        as_json=ctx.obj["json"],
     )

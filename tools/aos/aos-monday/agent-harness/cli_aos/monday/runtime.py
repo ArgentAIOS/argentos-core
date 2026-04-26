@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import date, datetime
+import json
 from typing import Any
 
 from .client import MondayApiError, MondayClient
@@ -136,7 +137,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         summary = "Monday live read runtime is ready."
         next_steps = [
             "Share the target boards and workspaces with the token owner.",
-            "Keep item.create, item.update, and update.create scaffolded until a live write bridge exists.",
+            "Run write commands in write mode or higher; item.create, item.update, and update.create execute live monday mutations.",
         ]
     else:
         status = "degraded"
@@ -144,7 +145,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         next_steps = [
             "Check the monday token and account access.",
             "Verify the target boards and workspaces are visible to the token owner.",
-            "Keep item.create, item.update, and update.create scaffolded until a live write bridge exists.",
+            "Run write commands in write mode or higher; item.create, item.update, and update.create execute live monday mutations.",
         ]
 
     return {
@@ -154,8 +155,8 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "backend": BACKEND_NAME,
             "live_backend_available": bool(probe.get("ok")),
             "live_read_available": bool(probe.get("ok")),
-            "write_bridge_available": False,
-            "write_paths_scaffolded": True,
+            "write_bridge_available": bool(probe.get("ok")),
+            "write_paths_scaffolded": False,
         },
         "auth": {
             "token_env": runtime["token_env"],
@@ -180,8 +181,8 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "runtime_ready": bool(probe.get("ok")),
         "live_backend_available": bool(probe.get("ok")),
         "live_read_available": bool(probe.get("ok")),
-        "write_bridge_available": False,
-        "write_paths_scaffolded": True,
+        "write_bridge_available": bool(probe.get("ok")),
+        "write_paths_scaffolded": False,
         "probe": probe,
         "next_steps": next_steps,
     }
@@ -195,7 +196,7 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     next_steps = [
         f"Set {runtime['token_env']} in API Keys.",
         "Share the target boards and workspaces with the monday token owner.",
-        "Keep item.create, item.update, and update.create scaffolded until a live write bridge exists.",
+        "Run write commands in write mode or higher; item.create, item.update, and update.create execute live monday mutations.",
     ]
     return {
         "status": "needs_setup" if not setup_complete else ("ready" if live_ready else "degraded"),
@@ -203,8 +204,8 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "runtime_ready": live_ready,
         "live_backend_available": live_ready,
         "live_read_available": live_ready,
-        "write_bridge_available": False,
-        "write_paths_scaffolded": True,
+        "write_bridge_available": live_ready,
+        "write_paths_scaffolded": False,
         "setup_complete": setup_complete,
         "missing_keys": [] if setup_complete else [runtime["token_env"]],
         "next_steps": next_steps,
@@ -396,35 +397,153 @@ def list_updates(
     }
 
 
-def scaffold_write_command(
+def _require_text(value: str | None, *, field: str) -> str:
+    if value is None or not value.strip():
+        raise CliError(
+            code="MONDAY_INVALID_INPUT",
+            message=f"{field} is required",
+            exit_code=2,
+            details={"field": field},
+        )
+    return value.strip()
+
+
+def _normalize_column_values(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    stripped = value.strip()
+    try:
+        parsed = json.loads(stripped)
+    except json.JSONDecodeError as exc:
+        raise CliError(
+            code="MONDAY_INVALID_COLUMN_VALUES",
+            message="column_values must be a JSON object string",
+            exit_code=2,
+            details={"column_values": stripped[:200]},
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise CliError(
+            code="MONDAY_INVALID_COLUMN_VALUES",
+            message="column_values must be a JSON object",
+            exit_code=2,
+            details={"type": type(parsed).__name__},
+        )
+    return json.dumps(parsed, separators=(",", ":"))
+
+
+def create_item(
     ctx_obj: dict[str, Any],
     *,
-    command_id: str,
-    resource: str,
-    operation: str,
-    inputs: dict[str, Any],
-    consequential: bool = False,
+    board_id: str,
+    item_name: str,
+    group_id: str | None = None,
+    column_values: str | None = None,
 ) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    summary = f"{command_id} is scaffolded and not yet wired to monday write APIs."
+    client = create_client(ctx_obj)
+    board_id = _require_text(board_id, field="board_id")
+    item_name = _require_text(item_name, field="item_name")
+    normalized_column_values = _normalize_column_values(column_values)
+    item = client.create_item(
+        board_id=board_id,
+        item_name=item_name,
+        group_id=group_id.strip() if group_id and group_id.strip() else None,
+        column_values=normalized_column_values,
+    )
     return {
-        "status": "scaffolded",
-        "summary": summary,
+        "status": "live_write",
         "backend": BACKEND_NAME,
-        "command": command_id,
-        "resource": resource,
-        "operation": operation,
-        "inputs": inputs,
-        "consequential": consequential,
-        "write_bridge_available": False,
-        "write_paths_scaffolded": True,
-        "runtime": {
-            "api_url": runtime["api_url"],
-            "api_version": runtime["api_version"],
-            "token_present": runtime["token_present"],
+        "command": "item.create",
+        "summary": f"Created monday item {item.get('name') or item.get('id') or item_name}.",
+        "resource": "item",
+        "operation": "create",
+        "executed": True,
+        "consequential": True,
+        "write_bridge_available": True,
+        "write_paths_scaffolded": False,
+        "scope": _scope_metadata(kind="board", preview=f"Board {board_id}", scope_id=board_id, selection_surface="item"),
+        "scope_preview": f"Board {board_id}: created {item.get('name') or item_name}",
+        "inputs": {
+            "board_id": board_id,
+            "item_name": item_name,
+            "group_id": group_id,
+            "column_values": normalized_column_values,
         },
-        "next_steps": [
-            "Implement the monday write bridge before enabling this command for workers.",
-            "Keep the command disabled in automation until the live mutation path is verified.",
-        ],
+        "item": item,
+    }
+
+
+def update_item(
+    ctx_obj: dict[str, Any],
+    *,
+    item_id: str,
+    board_id: str,
+    column_id: str | None = None,
+    column_value: str | None = None,
+    column_values: str | None = None,
+) -> dict[str, Any]:
+    client = create_client(ctx_obj)
+    item_id = _require_text(item_id, field="item_id")
+    board_id = _require_text(board_id, field="board_id")
+    normalized_column_values = _normalize_column_values(column_values)
+    if normalized_column_values:
+        item = client.change_multiple_column_values(
+            board_id=board_id,
+            item_id=item_id,
+            column_values=normalized_column_values,
+        )
+        operation = "change_multiple_column_values"
+    else:
+        column_id = _require_text(column_id, field="column_id")
+        column_value = _require_text(column_value, field="column_value")
+        item = client.change_simple_column_value(
+            board_id=board_id,
+            item_id=item_id,
+            column_id=column_id,
+            value=column_value,
+        )
+        operation = "change_simple_column_value"
+    return {
+        "status": "live_write",
+        "backend": BACKEND_NAME,
+        "command": "item.update",
+        "summary": f"Updated monday item {item.get('id') or item_id}.",
+        "resource": "item",
+        "operation": operation,
+        "executed": True,
+        "consequential": True,
+        "write_bridge_available": True,
+        "write_paths_scaffolded": False,
+        "scope": _scope_metadata(kind="item", preview=f"Item {item_id}", scope_id=item_id, selection_surface="item"),
+        "scope_preview": f"Item {item_id}: updated columns",
+        "inputs": {
+            "board_id": board_id,
+            "item_id": item_id,
+            "column_id": column_id,
+            "column_value": column_value,
+            "column_values": normalized_column_values,
+        },
+        "item": item,
+    }
+
+
+def create_update(ctx_obj: dict[str, Any], *, item_id: str, body: str) -> dict[str, Any]:
+    client = create_client(ctx_obj)
+    item_id = _require_text(item_id, field="item_id")
+    body = _require_text(body, field="body")
+    update = client.create_update(item_id=item_id, body=body)
+    return {
+        "status": "live_write",
+        "backend": BACKEND_NAME,
+        "command": "update.create",
+        "summary": f"Created monday update {update.get('id') or ''} on item {item_id}.",
+        "resource": "update",
+        "operation": "create",
+        "executed": True,
+        "consequential": True,
+        "write_bridge_available": True,
+        "write_paths_scaffolded": False,
+        "scope": _scope_metadata(kind="item", preview=f"Item {item_id}", scope_id=item_id, selection_surface="update"),
+        "scope_preview": f"Item {item_id}: created update",
+        "inputs": {"item_id": item_id, "body": body},
+        "update": update,
     }

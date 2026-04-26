@@ -4,11 +4,12 @@ import os
 from typing import Any
 
 from .constants import BACKEND_NAME, CONNECTOR_CATEGORIES, CONNECTOR_CATEGORY, CONNECTOR_LABEL, CONNECTOR_RESOURCES
+from .service_keys import service_key_env
 
 
 def _first_env(*names: str) -> str:
     for name in names:
-        value = os.getenv(name, "").strip()
+        value = (service_key_env(name, "") or "").strip()
         if value:
             return value
     return ""

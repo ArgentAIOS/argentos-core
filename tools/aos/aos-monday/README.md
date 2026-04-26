@@ -1,7 +1,7 @@
 # aos-monday
 
-`aos-monday` is a live-read-first Monday.com connector scaffold for account,
-workspace, board, item, and update surfaces.
+`aos-monday` is a live Monday.com connector for account, workspace, board,
+item, and update surfaces.
 
 Implemented today:
 
@@ -15,9 +15,6 @@ Implemented today:
 - `board.read`
 - `item.read`
 - `update.list`
-
-Write commands are present but scaffolded only:
-
 - `item.create`
 - `item.update`
 - `update.create`
@@ -48,5 +45,5 @@ aos-monday --json doctor
 
 - `health` reports live-read readiness only after the token can successfully
   query `me` from the monday GraphQL API.
-- `doctor` stays truthful about setup state and does not claim write support.
-- Write commands are scaffolded intentionally until a live write bridge exists.
+- `doctor` stays truthful about setup state and write readiness.
+- `item.create`, `item.update`, and `update.create` execute live monday GraphQL mutations in `write` mode or higher.
