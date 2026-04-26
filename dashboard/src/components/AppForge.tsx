@@ -26,7 +26,13 @@ import {
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { AppForgeWorkflowEventRequest, ForgeApp } from "../hooks/useApps";
 import type { AppWindowState } from "../hooks/useAppWindows";
-import { useForgeStructuredData } from "../hooks/useForgeStructuredData";
+import {
+  useForgeStructuredData,
+  type ForgeStructuredField,
+  type ForgeStructuredRecord,
+  type ForgeStructuredRecordValue,
+  type ForgeStructuredTable,
+} from "../hooks/useForgeStructuredData";
 import { AppDock } from "./AppDock";
 
 interface AppForgeProps {
@@ -50,6 +56,7 @@ type WorkflowEventStatus = {
 };
 
 type AppFilter = "all" | "pinned" | "running";
+type ForgeViewMode = "grid" | "kanban" | "form" | "review";
 
 type EditingCell = {
   recordId: string;
@@ -124,6 +131,56 @@ const APP_FORGE_NAV = [
   { id: "settings", label: "Settings", icon: Settings },
 ] as const;
 
+const FORGE_VIEW_MODES: Array<{ id: ForgeViewMode; label: string }> = [
+  { id: "grid", label: "Grid" },
+  { id: "kanban", label: "Kanban" },
+  { id: "form", label: "Form" },
+  { id: "review", label: "Review" },
+];
+
+function fieldValue(value: ForgeStructuredRecordValue | undefined): string {
+  return value === null || value === undefined ? "" : String(value);
+}
+
+function fieldByName(
+  table: ForgeStructuredTable | null | undefined,
+  name: string,
+): ForgeStructuredField | undefined {
+  if (!table) return undefined;
+  const normalized = name.toLowerCase();
+  return table.fields.find(
+    (field) => field.id.toLowerCase() === normalized || field.name.toLowerCase() === normalized,
+  );
+}
+
+function recordStatus(
+  table: ForgeStructuredTable | null | undefined,
+  record: ForgeStructuredRecord,
+) {
+  const statusField = fieldByName(table, "status");
+  return statusField ? fieldValue(record.values[statusField.id]) : "";
+}
+
+function recordTitle(
+  table: ForgeStructuredTable | null | undefined,
+  record: ForgeStructuredRecord,
+) {
+  const nameField = fieldByName(table, "name") ?? table?.fields[0];
+  return nameField ? fieldValue(record.values[nameField.id]) || "Untitled" : "Untitled";
+}
+
+function recordsByStatus(table: ForgeStructuredTable | null | undefined) {
+  const statusField = fieldByName(table, "status");
+  const options = statusField?.options?.length
+    ? statusField.options
+    : ["Planning", "In Progress", "On Track", "Review", "Blocked"];
+  const records = table?.records ?? [];
+  return options.map((status) => ({
+    status,
+    records: records.filter((record) => recordStatus(table, record) === status),
+  }));
+}
+
 export function AppForge({
   isOpen,
   apps,
@@ -153,6 +210,7 @@ export function AppForge({
   const [activeFilter, setActiveFilter] = useState<AppFilter>("all");
   const [activeSection, setActiveSection] =
     useState<(typeof APP_FORGE_NAV)[number]["id"]>("desktop");
+  const [activeViewMode, setActiveViewMode] = useState<ForgeViewMode>("grid");
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -177,6 +235,7 @@ export function AppForge({
       setWorkflowEventStatus(null);
       setActiveFilter("all");
       setActiveSection("desktop");
+      setActiveViewMode("grid");
       setSelectedAppId(null);
       setEditingCell(null);
     }
@@ -261,6 +320,31 @@ export function AppForge({
     emitWorkflowEvent: onEmitWorkflowEvent,
   });
   const visibleFields = structured.activeTable?.fields.slice(0, 6) ?? [];
+  const reviewRecords =
+    structured.activeTable?.records.filter(
+      (record) => recordStatus(structured.activeTable, record) === "Review",
+    ) ?? [];
+  const formRecord = structured.activeTable?.records[0] ?? null;
+  const activeNav = APP_FORGE_NAV.find((item) => item.id === activeSection);
+  const sectionTitle = activeNav?.label ?? "Desktop";
+  const sectionSubtitle =
+    activeSection === "desktop"
+      ? "All your bases at a glance"
+      : activeSection === "bases"
+        ? "Structured bases backed by AppForge metadata"
+        : activeSection === "tables"
+          ? "Fields, records, and view modes for the active base"
+          : activeSection === "interfaces"
+            ? "Generated operator surfaces for this base"
+            : activeSection === "automations"
+              ? "Workflow capabilities and local event producers"
+              : activeSection === "connectors"
+                ? "Live connector declarations for future sync lanes"
+                : activeSection === "permissions"
+                  ? "Owner, editor, and viewer declarations"
+                  : activeSection === "activity"
+                    ? "Recent structured changes and event status"
+                    : "Base and runtime settings";
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, appId: string) => {
@@ -355,6 +439,27 @@ export function AppForge({
     setEditingCell(null);
     await structured.updateCell(editingCell.recordId, editingCell.fieldId, nextValue);
   }, [editingCell, structured]);
+
+  const handleReviewDecision = useCallback(
+    async (record: ForgeStructuredRecord, decision: "approved" | "denied") => {
+      if (!selectedApp) return;
+      setWorkflowEventStatus({
+        kind: "pending",
+        appId: selectedApp.id,
+        message: `${decision === "approved" ? "Approving" : "Denying"} ${recordTitle(
+          structured.activeTable,
+          record,
+        )}...`,
+      });
+      await structured.completeReview(record.id, decision);
+      setWorkflowEventStatus({
+        kind: "success",
+        appId: selectedApp.id,
+        message: `Review ${decision} for ${recordTitle(structured.activeTable, record)}.`,
+      });
+    },
+    [selectedApp, structured],
+  );
 
   return (
     <AnimatePresence>
@@ -516,8 +621,8 @@ export function AppForge({
                   <div className="relative">
                     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
                       <div>
-                        <h2 className="text-xl font-semibold text-white/90">Desktop</h2>
-                        <p className="mt-1 text-sm text-white/52">All your bases at a glance</p>
+                        <h2 className="text-xl font-semibold text-white/90">{sectionTitle}</h2>
+                        <p className="mt-1 text-sm text-white/52">{sectionSubtitle}</p>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-white/42">
                         <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-emerald-200">
@@ -529,104 +634,209 @@ export function AppForge({
                       </div>
                     </div>
 
-                    <div className="mb-7 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
-                      {shortcutApps.map((app, index) => {
-                        const running = runningAppIds.has(app.id);
-                        return (
-                          <motion.button
-                            key={app.id}
-                            layout
-                            initial={{ scale: 0.92, opacity: 0 }}
-                            animate={
-                              deleteMode
-                                ? {
-                                    scale: 1,
-                                    opacity: 1,
-                                    rotate: [-1.1, 1.1, -1.1],
-                                  }
-                                : { scale: 1, opacity: 1, rotate: 0 }
-                            }
-                            transition={
-                              deleteMode
-                                ? {
-                                    duration: 0.22,
-                                    ease: "easeInOut",
-                                    repeat: Infinity,
-                                    repeatType: "reverse",
-                                    delay: (index % 6) * 0.03,
-                                  }
-                                : { duration: 0.18 }
-                            }
-                            onClick={() => {
-                              if (deleteMode) {
-                                requestDeleteApp(app.id);
-                                return;
+                    {activeSection === "desktop" || activeSection === "bases" ? (
+                      <div className="mb-7 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+                        {shortcutApps.map((app, index) => {
+                          const running = runningAppIds.has(app.id);
+                          return (
+                            <motion.button
+                              key={app.id}
+                              layout
+                              initial={{ scale: 0.92, opacity: 0 }}
+                              animate={
+                                deleteMode
+                                  ? {
+                                      scale: 1,
+                                      opacity: 1,
+                                      rotate: [-1.1, 1.1, -1.1],
+                                    }
+                                  : { scale: 1, opacity: 1, rotate: 0 }
                               }
-                              setSelectedAppId(app.id);
-                            }}
-                            onDoubleClick={() => {
-                              if (!deleteMode) onOpenApp(app.id);
-                            }}
-                            onContextMenu={(e) => handleContextMenu(e, app.id)}
-                            onMouseEnter={() => setSelectedAppId(app.id)}
-                            className={`group relative flex min-h-[112px] flex-col items-center justify-center gap-3 rounded-xl border p-3 transition-colors ${
-                              selectedApp?.id === app.id
-                                ? "border-sky-400/30 bg-sky-400/10"
-                                : "border-white/10 bg-white/[0.04] hover:border-white/18 hover:bg-white/[0.07]"
-                            }`}
-                          >
-                            <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/25">
-                              {app.icon ? (
-                                <div
-                                  className="h-9 w-9"
-                                  dangerouslySetInnerHTML={{ __html: sanitizeSvg(app.icon) }}
-                                />
-                              ) : (
-                                <div
-                                  className="flex h-full w-full items-center justify-center"
-                                  style={{
-                                    backgroundColor: `hsl(${hashString(app.name) % 360}, 42%, 26%)`,
-                                  }}
-                                >
-                                  <Boxes className="h-7 w-7 text-white/62" />
+                              transition={
+                                deleteMode
+                                  ? {
+                                      duration: 0.22,
+                                      ease: "easeInOut",
+                                      repeat: Infinity,
+                                      repeatType: "reverse",
+                                      delay: (index % 6) * 0.03,
+                                    }
+                                  : { duration: 0.18 }
+                              }
+                              onClick={() => {
+                                if (deleteMode) {
+                                  requestDeleteApp(app.id);
+                                  return;
+                                }
+                                structured.selectBase(app.id);
+                              }}
+                              onDoubleClick={() => {
+                                if (!deleteMode) onOpenApp(app.id);
+                              }}
+                              onContextMenu={(e) => handleContextMenu(e, app.id)}
+                              onMouseEnter={() => setSelectedAppId(app.id)}
+                              className={`group relative flex min-h-[112px] flex-col items-center justify-center gap-3 rounded-xl border p-3 transition-colors ${
+                                selectedApp?.id === app.id
+                                  ? "border-sky-400/30 bg-sky-400/10"
+                                  : "border-white/10 bg-white/[0.04] hover:border-white/18 hover:bg-white/[0.07]"
+                              }`}
+                            >
+                              <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/25">
+                                {app.icon ? (
+                                  <div
+                                    className="h-9 w-9"
+                                    dangerouslySetInnerHTML={{ __html: sanitizeSvg(app.icon) }}
+                                  />
+                                ) : (
+                                  <div
+                                    className="flex h-full w-full items-center justify-center"
+                                    style={{
+                                      backgroundColor: `hsl(${hashString(app.name) % 360}, 42%, 26%)`,
+                                    }}
+                                  >
+                                    <Boxes className="h-7 w-7 text-white/62" />
+                                  </div>
+                                )}
+                                {running && (
+                                  <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-emerald-300" />
+                                )}
+                                {app.pinned && (
+                                  <Pin className="absolute bottom-1 right-1 h-3 w-3 text-amber-200" />
+                                )}
+                              </div>
+                              <div className="w-full min-w-0 text-center">
+                                <div className="truncate text-sm font-medium text-white/78">
+                                  {app.name}
                                 </div>
-                              )}
-                              {running && (
-                                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-emerald-300" />
-                              )}
-                              {app.pinned && (
-                                <Pin className="absolute bottom-1 right-1 h-3 w-3 text-amber-200" />
-                              )}
-                            </div>
-                            <div className="w-full min-w-0 text-center">
-                              <div className="truncate text-sm font-medium text-white/78">
-                                {app.name}
+                                <div className="mt-0.5 text-xs text-white/38">
+                                  {appWorkflowCapability(app).id ? "Review table" : "Base"}
+                                </div>
                               </div>
-                              <div className="mt-0.5 text-xs text-white/38">
-                                {appWorkflowCapability(app).id ? "Review table" : "Base"}
-                              </div>
-                            </div>
-                          </motion.button>
-                        );
-                      })}
+                            </motion.button>
+                          );
+                        })}
 
-                      <button
-                        onClick={() => {
-                          if (deleteMode) return;
-                          setShowNewAppInput(true);
-                        }}
-                        className={`flex min-h-[112px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-3 transition-colors ${
-                          deleteMode
-                            ? "cursor-default border-white/10 opacity-35"
-                            : "border-white/16 bg-black/15 hover:border-sky-300/35 hover:bg-white/[0.05]"
-                        }`}
-                      >
-                        <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-white/12 bg-white/[0.04]">
-                          <Plus className="h-7 w-7 text-white/45" />
-                        </div>
-                        <span className="text-sm text-white/48">New Base</span>
-                      </button>
-                    </div>
+                        <button
+                          onClick={() => {
+                            if (deleteMode) return;
+                            setShowNewAppInput(true);
+                          }}
+                          className={`flex min-h-[112px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-3 transition-colors ${
+                            deleteMode
+                              ? "cursor-default border-white/10 opacity-35"
+                              : "border-white/16 bg-black/15 hover:border-sky-300/35 hover:bg-white/[0.05]"
+                          }`}
+                        >
+                          <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-white/12 bg-white/[0.04]">
+                            <Plus className="h-7 w-7 text-white/45" />
+                          </div>
+                          <span className="text-sm text-white/48">New Base</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mb-7 grid gap-3 md:grid-cols-3">
+                        {activeSection === "tables" &&
+                          (structured.activeTable?.fields ?? []).slice(0, 6).map((field) => (
+                            <button
+                              key={field.id}
+                              onClick={() => structured.selectField(field.id)}
+                              className={`rounded-xl border p-4 text-left transition-colors ${
+                                structured.selectedField?.id === field.id
+                                  ? "border-sky-400/35 bg-sky-400/10"
+                                  : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]"
+                              }`}
+                            >
+                              <div className="text-sm font-medium text-white/78">{field.name}</div>
+                              <div className="mt-1 text-xs text-white/42">{field.type}</div>
+                            </button>
+                          ))}
+                        {activeSection === "interfaces" &&
+                          FORGE_VIEW_MODES.map((view) => (
+                            <button
+                              key={view.id}
+                              onClick={() => setActiveViewMode(view.id)}
+                              className={`rounded-xl border p-4 text-left transition-colors ${
+                                activeViewMode === view.id
+                                  ? "border-sky-400/35 bg-sky-400/10"
+                                  : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]"
+                              }`}
+                            >
+                              <div className="text-sm font-medium text-white/78">{view.label}</div>
+                              <div className="mt-1 text-xs text-white/42">
+                                {view.id === "review"
+                                  ? `${reviewRecords.length} pending`
+                                  : `${structured.activeTable?.records.length ?? 0} records`}
+                              </div>
+                            </button>
+                          ))}
+                        {activeSection === "automations" &&
+                          [
+                            "forge.record.created",
+                            "forge.record.updated",
+                            "forge.review.completed",
+                          ].map((eventType) => (
+                            <div
+                              key={eventType}
+                              className="rounded-xl border border-white/10 bg-white/[0.04] p-4"
+                            >
+                              <div className="text-sm font-medium text-white/78">{eventType}</div>
+                              <div className="mt-1 text-xs text-white/42">
+                                {selectedCapability.id ?? "No capability"}
+                              </div>
+                            </div>
+                          ))}
+                        {activeSection === "connectors" &&
+                          ["Airtable import", "Argent tables", "Webhook source"].map(
+                            (connector) => (
+                              <div
+                                key={connector}
+                                className="rounded-xl border border-white/10 bg-white/[0.04] p-4"
+                              >
+                                <div className="text-sm font-medium text-white/78">{connector}</div>
+                                <div className="mt-1 text-xs text-white/42">Declared</div>
+                              </div>
+                            ),
+                          )}
+                        {activeSection === "permissions" &&
+                          ["Owner", "Editor", "Viewer"].map((role) => (
+                            <div
+                              key={role}
+                              className="rounded-xl border border-white/10 bg-white/[0.04] p-4"
+                            >
+                              <div className="text-sm font-medium text-white/78">{role}</div>
+                              <div className="mt-1 text-xs text-white/42">
+                                {role === "Owner" ? (selectedApp?.creator ?? "ai") : "Unassigned"}
+                              </div>
+                            </div>
+                          ))}
+                        {activeSection === "activity" &&
+                          [
+                            `${structured.activeTable?.records.length ?? 0} records`,
+                            `${structured.activeTable?.fields.length ?? 0} fields`,
+                            `${reviewRecords.length} reviews`,
+                          ].map((item) => (
+                            <div
+                              key={item}
+                              className="rounded-xl border border-white/10 bg-white/[0.04] p-4 text-sm font-medium text-white/78"
+                            >
+                              {item}
+                            </div>
+                          ))}
+                        {activeSection === "settings" &&
+                          [
+                            "metadata.appForge.structured",
+                            `v${selectedApp?.version ?? 1}`,
+                            "Core lane",
+                          ].map((item) => (
+                            <div
+                              key={item}
+                              className="rounded-xl border border-white/10 bg-white/[0.04] p-4 text-sm font-medium text-white/78"
+                            >
+                              {item}
+                            </div>
+                          ))}
+                      </div>
+                    )}
 
                     {structured.error && (
                       <div className="mb-3 rounded-xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -644,16 +854,17 @@ export function AppForge({
                           </button>
                         </div>
                         <div className="flex flex-wrap items-center gap-4 text-sm text-white/48">
-                          {["Grid", "Kanban", "Form", "Review"].map((view, index) => (
+                          {FORGE_VIEW_MODES.map((view) => (
                             <button
-                              key={view}
+                              key={view.id}
+                              onClick={() => setActiveViewMode(view.id)}
                               className={`border-b-2 py-1 transition-colors ${
-                                index === 0
+                                activeViewMode === view.id
                                   ? "border-sky-400 text-sky-200"
                                   : "border-transparent hover:text-white/76"
                               }`}
                             >
-                              {view}
+                              {view.label}
                             </button>
                           ))}
                         </div>
@@ -708,133 +919,240 @@ export function AppForge({
                         </div>
 
                         <div className="overflow-auto">
-                          <table className="w-full min-w-[780px] border-collapse text-left text-sm">
-                            <thead className="sticky top-0 z-10 bg-[#11171a] text-xs font-medium uppercase tracking-[0.08em] text-white/38">
-                              <tr>
-                                <th className="w-12 border-b border-r border-white/10 px-3 py-3">
-                                  <span className="block h-4 w-4 rounded border border-white/22" />
-                                </th>
-                                <th className="w-14 border-b border-r border-white/10 px-3 py-3">
-                                  #
-                                </th>
-                                {visibleFields.map((field) => (
-                                  <th
-                                    key={field.id}
-                                    onClick={() => structured.selectField(field.id)}
-                                    className="min-w-36 cursor-pointer border-b border-r border-white/10 px-4 py-3 hover:text-white/62"
-                                  >
-                                    {field.name}
-                                  </th>
-                                ))}
-                                <th className="w-12 border-b border-white/10 px-3 py-3">
-                                  <button
-                                    onClick={() => void structured.addField()}
-                                    className="rounded p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white"
-                                    title="Add field"
-                                  >
-                                    <Plus className="h-4 w-4" />
-                                  </button>
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {(structured.activeTable?.records ?? []).map((record, index) => (
-                                <tr
-                                  key={record.id}
-                                  className="group border-b border-white/[0.07] transition-colors hover:bg-white/[0.04]"
-                                >
-                                  <td className="border-r border-white/[0.07] px-3 py-2">
-                                    <button
-                                      onClick={() => void structured.deleteRecord(record.id)}
-                                      className="block h-4 w-4 rounded border border-white/20 transition-colors group-hover:border-red-300/70"
-                                      title="Delete record"
-                                    />
-                                  </td>
-                                  <td className="border-r border-white/[0.07] px-3 py-2 text-white/42">
-                                    {index + 1}
-                                  </td>
-                                  {visibleFields.map((field) => {
-                                    const rawValue = record.values[field.id];
-                                    const value =
-                                      rawValue === null || rawValue === undefined
-                                        ? ""
-                                        : String(rawValue);
-                                    const isEditing =
-                                      editingCell?.recordId === record.id &&
-                                      editingCell.fieldId === field.id;
-                                    return (
-                                      <td
+                          {activeViewMode === "grid" && (
+                            <>
+                              <table className="w-full min-w-[780px] border-collapse text-left text-sm">
+                                <thead className="sticky top-0 z-10 bg-[#11171a] text-xs font-medium uppercase tracking-[0.08em] text-white/38">
+                                  <tr>
+                                    <th className="w-12 border-b border-r border-white/10 px-3 py-3">
+                                      <span className="block h-4 w-4 rounded border border-white/22" />
+                                    </th>
+                                    <th className="w-14 border-b border-r border-white/10 px-3 py-3">
+                                      #
+                                    </th>
+                                    {visibleFields.map((field) => (
+                                      <th
                                         key={field.id}
                                         onClick={() => structured.selectField(field.id)}
-                                        onDoubleClick={() =>
-                                          setEditingCell({
-                                            recordId: record.id,
-                                            fieldId: field.id,
-                                            value,
-                                          })
-                                        }
-                                        className="border-r border-white/[0.07] px-4 py-2 text-white/66"
+                                        className="min-w-36 cursor-pointer border-b border-r border-white/10 px-4 py-3 hover:text-white/62"
                                       >
-                                        {isEditing ? (
-                                          <input
-                                            autoFocus
-                                            value={editingCell.value}
-                                            onChange={(event) =>
+                                        {field.name}
+                                      </th>
+                                    ))}
+                                    <th className="w-12 border-b border-white/10 px-3 py-3">
+                                      <button
+                                        onClick={() => void structured.addField()}
+                                        className="rounded p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white"
+                                        title="Add field"
+                                      >
+                                        <Plus className="h-4 w-4" />
+                                      </button>
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {(structured.activeTable?.records ?? []).map((record, index) => (
+                                    <tr
+                                      key={record.id}
+                                      className="group border-b border-white/[0.07] transition-colors hover:bg-white/[0.04]"
+                                    >
+                                      <td className="border-r border-white/[0.07] px-3 py-2">
+                                        <button
+                                          onClick={() => void structured.deleteRecord(record.id)}
+                                          className="block h-4 w-4 rounded border border-white/20 transition-colors group-hover:border-red-300/70"
+                                          title="Delete record"
+                                        />
+                                      </td>
+                                      <td className="border-r border-white/[0.07] px-3 py-2 text-white/42">
+                                        {index + 1}
+                                      </td>
+                                      {visibleFields.map((field) => {
+                                        const value = fieldValue(record.values[field.id]);
+                                        const isEditing =
+                                          editingCell?.recordId === record.id &&
+                                          editingCell.fieldId === field.id;
+                                        return (
+                                          <td
+                                            key={field.id}
+                                            onClick={() => structured.selectField(field.id)}
+                                            onDoubleClick={() =>
                                               setEditingCell({
-                                                ...editingCell,
-                                                value: event.target.value,
+                                                recordId: record.id,
+                                                fieldId: field.id,
+                                                value,
                                               })
                                             }
-                                            onBlur={() => void commitEditingCell()}
-                                            onKeyDown={(event) => {
-                                              if (event.key === "Enter") {
-                                                void commitEditingCell();
-                                              }
-                                              if (event.key === "Escape") {
-                                                setEditingCell(null);
-                                              }
-                                            }}
-                                            className="w-full rounded-md border border-sky-400/40 bg-black/45 px-2 py-1 text-sm text-white outline-none"
-                                          />
-                                        ) : field.type === "single_select" && value ? (
-                                          <span className="inline-flex rounded-md bg-emerald-500/18 px-2 py-1 text-xs font-medium text-emerald-100">
-                                            {value}
-                                          </span>
-                                        ) : (
-                                          <span className="truncate">{value || " "}</span>
-                                        )}
+                                            className="border-r border-white/[0.07] px-4 py-2 text-white/66"
+                                          >
+                                            {isEditing ? (
+                                              <input
+                                                autoFocus
+                                                value={editingCell.value}
+                                                onChange={(event) =>
+                                                  setEditingCell({
+                                                    ...editingCell,
+                                                    value: event.target.value,
+                                                  })
+                                                }
+                                                onBlur={() => void commitEditingCell()}
+                                                onKeyDown={(event) => {
+                                                  if (event.key === "Enter") {
+                                                    void commitEditingCell();
+                                                  }
+                                                  if (event.key === "Escape") {
+                                                    setEditingCell(null);
+                                                  }
+                                                }}
+                                                className="w-full rounded-md border border-sky-400/40 bg-black/45 px-2 py-1 text-sm text-white outline-none"
+                                              />
+                                            ) : field.type === "single_select" && value ? (
+                                              <span className="inline-flex rounded-md bg-emerald-500/18 px-2 py-1 text-xs font-medium text-emerald-100">
+                                                {value}
+                                              </span>
+                                            ) : (
+                                              <span className="truncate">{value || " "}</span>
+                                            )}
+                                          </td>
+                                        );
+                                      })}
+                                      <td className="px-3 py-2" />
+                                    </tr>
+                                  ))}
+                                  {(structured.activeTable?.records.length ?? 0) === 0 && (
+                                    <tr>
+                                      <td
+                                        colSpan={visibleFields.length + 3}
+                                        className="px-4 py-16 text-center text-white/35"
+                                      >
+                                        No records
                                       </td>
-                                    );
-                                  })}
-                                  <td className="px-3 py-2" />
-                                </tr>
-                              ))}
-                              {(structured.activeTable?.records.length ?? 0) === 0 && (
-                                <tr>
-                                  <td
-                                    colSpan={visibleFields.length + 3}
-                                    className="px-4 py-16 text-center text-white/35"
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                              <div className="flex items-center justify-between border-t border-white/10 px-4 py-3 text-sm text-white/45">
+                                <button
+                                  onClick={() => void structured.addRecord()}
+                                  className="flex items-center gap-2 transition-colors hover:text-white/75"
+                                >
+                                  <Plus className="h-4 w-4" />
+                                  Add record
+                                </button>
+                                <span>{structured.activeTable?.records.length ?? 0} records</span>
+                              </div>
+                            </>
+                          )}
+
+                          {activeViewMode === "kanban" && (
+                            <div className="grid min-w-[760px] grid-cols-4 gap-3 p-4">
+                              {recordsByStatus(structured.activeTable)
+                                .filter((group) => group.records.length > 0)
+                                .map((group) => (
+                                  <div
+                                    key={group.status}
+                                    className="min-h-56 rounded-xl border border-white/10 bg-black/18 p-3"
                                   >
-                                    {searchQuery
-                                      ? `No apps matching "${searchQuery}"`
-                                      : deleteMode
-                                        ? "No apps left to delete"
-                                        : "No apps yet"}
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                          <div className="flex items-center justify-between border-t border-white/10 px-4 py-3 text-sm text-white/45">
-                            <button
-                              onClick={() => void structured.addRecord()}
-                              className="flex items-center gap-2 transition-colors hover:text-white/75"
-                            >
-                              <Plus className="h-4 w-4" />
-                              Add record
-                            </button>
-                            <span>{structured.activeTable?.records.length ?? 0} records</span>
-                          </div>
+                                    <div className="mb-3 flex items-center justify-between text-sm text-white/70">
+                                      <span>{group.status}</span>
+                                      <span className="text-xs text-white/35">
+                                        {group.records.length}
+                                      </span>
+                                    </div>
+                                    <div className="space-y-2">
+                                      {group.records.map((record) => (
+                                        <div
+                                          key={record.id}
+                                          className="rounded-lg border border-white/10 bg-white/[0.04] p-3"
+                                        >
+                                          <div className="text-sm font-medium text-white/76">
+                                            {recordTitle(structured.activeTable, record)}
+                                          </div>
+                                          <div className="mt-1 text-xs text-white/38">
+                                            {fieldValue(
+                                              record.values[
+                                                fieldByName(structured.activeTable, "owner")?.id ??
+                                                  ""
+                                              ],
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+
+                          {activeViewMode === "form" && (
+                            <div className="grid gap-4 p-4 md:grid-cols-2">
+                              {(structured.activeTable?.fields ?? []).map((field) => (
+                                <label key={field.id} className="block">
+                                  <span className="mb-2 block text-xs text-white/38">
+                                    {field.name}
+                                  </span>
+                                  <input
+                                    value={
+                                      formRecord ? fieldValue(formRecord.values[field.id]) : ""
+                                    }
+                                    onChange={(event) => {
+                                      if (!formRecord) return;
+                                      void structured.updateCell(
+                                        formRecord.id,
+                                        field.id,
+                                        event.target.value,
+                                      );
+                                    }}
+                                    className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-sm text-white/72 outline-none"
+                                  />
+                                </label>
+                              ))}
+                            </div>
+                          )}
+
+                          {activeViewMode === "review" && (
+                            <div className="space-y-3 p-4">
+                              {(reviewRecords.length > 0
+                                ? reviewRecords
+                                : (structured.activeTable?.records ?? [])
+                              ).map((record) => (
+                                <div
+                                  key={record.id}
+                                  className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.04] p-4"
+                                >
+                                  <div className="min-w-0">
+                                    <div className="truncate text-sm font-medium text-white/78">
+                                      {recordTitle(structured.activeTable, record)}
+                                    </div>
+                                    <div className="mt-1 text-xs text-white/42">
+                                      {recordStatus(structured.activeTable, record) || "Ready"}
+                                    </div>
+                                  </div>
+                                  <div className="flex shrink-0 items-center gap-2">
+                                    {recordStatus(structured.activeTable, record) !== "Review" && (
+                                      <button
+                                        onClick={() => void structured.requestReview(record.id)}
+                                        className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition-colors hover:bg-white/10 hover:text-white"
+                                      >
+                                        Request
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => void handleReviewDecision(record, "approved")}
+                                      className="rounded-lg bg-emerald-500/20 px-3 py-2 text-xs font-medium text-emerald-100 transition-colors hover:bg-emerald-500/30"
+                                    >
+                                      Approve
+                                    </button>
+                                    <button
+                                      onClick={() => void handleReviewDecision(record, "denied")}
+                                      className="rounded-lg bg-red-500/18 px-3 py-2 text-xs font-medium text-red-100 transition-colors hover:bg-red-500/28"
+                                    >
+                                      Deny
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

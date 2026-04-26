@@ -39,6 +39,8 @@ export type ForgeStructuredBase = {
   updatedAt: string;
 };
 
+export type ForgeReviewDecision = "approved" | "denied";
+
 type StructuredPayload = {
   version?: number;
   baseId?: unknown;
@@ -74,6 +76,9 @@ type UseForgeStructuredDataReturn = {
     value: ForgeStructuredRecordValue,
   ) => Promise<void>;
   deleteRecord: (recordId: string) => Promise<void>;
+  requestReview: (recordId: string) => Promise<void>;
+  completeReview: (recordId: string, decision: ForgeReviewDecision) => Promise<void>;
+  completeCapability: (recordId: string) => Promise<void>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -130,7 +135,16 @@ function defaultFields(): ForgeStructuredField[] {
       id: "status",
       name: "Status",
       type: "single_select",
-      options: ["Planning", "In Progress", "On Track", "Review", "Blocked"],
+      options: [
+        "Planning",
+        "In Progress",
+        "On Track",
+        "Review",
+        "Blocked",
+        "Approved",
+        "Denied",
+        "Completed",
+      ],
       description: "Current status for this record",
     },
     {
@@ -313,6 +327,21 @@ function metadataWithBase(app: ForgeApp, base: ForgeStructuredBase): Record<stri
       },
     },
   };
+}
+
+function fieldByName(table: ForgeStructuredTable, name: string): ForgeStructuredField | undefined {
+  const normalized = name.trim().toLowerCase();
+  return table.fields.find(
+    (field) => field.id.toLowerCase() === normalized || field.name.toLowerCase() === normalized,
+  );
+}
+
+function recordValues(table: ForgeStructuredTable, recordId: string): Record<string, unknown> {
+  const record = table.records.find((candidate) => candidate.id === recordId);
+  if (!record) return {};
+  return Object.fromEntries(
+    table.fields.map((field) => [field.name, record.values[field.id] ?? null]),
+  );
 }
 
 export function useForgeStructuredData({
@@ -545,6 +574,123 @@ export function useForgeStructuredData({
     [activeTable, updateActiveTable],
   );
 
+  const requestReview = useCallback(
+    async (recordId: string) => {
+      if (!activeTable) return;
+      const statusField = fieldByName(activeTable, "status");
+      await updateActiveTable(
+        (table) => ({
+          ...table,
+          records: table.records.map((record) =>
+            record.id === recordId && statusField
+              ? {
+                  ...record,
+                  values: { ...record.values, [statusField.id]: "Review" },
+                  updatedAt: nowIso(),
+                }
+              : record,
+          ),
+        }),
+        {
+          eventType: "forge.review.requested",
+          tableId: activeTable.id,
+          recordId,
+          reviewId: `review-${recordId}-${Date.now()}`,
+          payload: {
+            tableId: activeTable.id,
+            recordId,
+            values: recordValues(activeTable, recordId),
+          },
+        },
+      );
+    },
+    [activeTable, updateActiveTable],
+  );
+
+  const completeReview = useCallback(
+    async (recordId: string, decision: ForgeReviewDecision) => {
+      if (!activeTable) return;
+      const statusField = fieldByName(activeTable, "status");
+      const capabilityField = fieldByName(activeTable, "capability");
+      const record = activeTable.records.find((candidate) => candidate.id === recordId);
+      const capabilityId = capabilityField
+        ? stringValue(record?.values[capabilityField.id]) || undefined
+        : undefined;
+      await updateActiveTable(
+        (table) => ({
+          ...table,
+          records: table.records.map((candidate) =>
+            candidate.id === recordId && statusField
+              ? {
+                  ...candidate,
+                  values: {
+                    ...candidate.values,
+                    [statusField.id]: decision === "approved" ? "Approved" : "Denied",
+                  },
+                  updatedAt: nowIso(),
+                }
+              : candidate,
+          ),
+        }),
+        {
+          eventType: "forge.review.completed",
+          capabilityId,
+          tableId: activeTable.id,
+          recordId,
+          reviewId: `review-${recordId}-${Date.now()}`,
+          decision,
+          payload: {
+            tableId: activeTable.id,
+            recordId,
+            decision,
+            approvedItems: decision === "approved" ? [recordId] : [],
+            values: recordValues(activeTable, recordId),
+          },
+        },
+      );
+    },
+    [activeTable, updateActiveTable],
+  );
+
+  const completeCapability = useCallback(
+    async (recordId: string) => {
+      if (!activeTable) return;
+      const statusField = fieldByName(activeTable, "status");
+      const capabilityField = fieldByName(activeTable, "capability");
+      const record = activeTable.records.find((candidate) => candidate.id === recordId);
+      const capabilityId = capabilityField
+        ? stringValue(record?.values[capabilityField.id]) || undefined
+        : undefined;
+      await updateActiveTable(
+        (table) => ({
+          ...table,
+          records: table.records.map((candidate) =>
+            candidate.id === recordId && statusField
+              ? {
+                  ...candidate,
+                  values: { ...candidate.values, [statusField.id]: "Completed" },
+                  updatedAt: nowIso(),
+                }
+              : candidate,
+          ),
+        }),
+        {
+          eventType: "forge.capability.completed",
+          capabilityId,
+          tableId: activeTable.id,
+          recordId,
+          payload: {
+            tableId: activeTable.id,
+            recordId,
+            capabilityId,
+            values: recordValues(activeTable, recordId),
+          },
+        },
+      );
+    },
+    [activeTable, updateActiveTable],
+  );
+
   return {
     bases,
     activeBase,
@@ -561,5 +707,8 @@ export function useForgeStructuredData({
     addRecord,
     updateCell,
     deleteRecord,
+    requestReview,
+    completeReview,
+    completeCapability,
   };
 }
