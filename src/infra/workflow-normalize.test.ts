@@ -351,11 +351,32 @@ describe("workflow-normalize", () => {
             template: "{{previous.text}}",
           },
         },
+        {
+          id: "task",
+          type: "output",
+          data: {
+            target: "task_update",
+            taskId: "{{previous.json.taskId}}",
+            status: "completed",
+            evidence: "{{previous.text}}",
+          },
+        },
+        {
+          id: "next",
+          type: "output",
+          data: {
+            target: "next_workflow",
+            workflowId: "wf-next",
+            inputMapping: '{"brief":"text","score":"json.score"}',
+          },
+        },
       ],
       edges: [
         { id: "e1", source: "trigger", target: "email" },
         { id: "e2", source: "email", target: "webhook" },
         { id: "e3", source: "webhook", target: "discord" },
+        { id: "e4", source: "discord", target: "task" },
+        { id: "e5", source: "task", target: "next" },
       ],
     });
 
@@ -389,6 +410,27 @@ describe("workflow-normalize", () => {
         channelType: "discord",
         channelId: "campaigns",
         template: "{{previous.text}}",
+      });
+    }
+
+    const task = result.workflow.nodes.find((node) => node.id === "task");
+    expect(task?.kind).toBe("output");
+    if (task?.kind === "output") {
+      expect(task.config).toMatchObject({
+        outputType: "task_update",
+        taskId: "{{previous.json.taskId}}",
+        status: "completed",
+        evidence: "{{previous.text}}",
+      });
+    }
+
+    const next = result.workflow.nodes.find((node) => node.id === "next");
+    expect(next?.kind).toBe("output");
+    if (next?.kind === "output") {
+      expect(next.config).toMatchObject({
+        outputType: "next_workflow",
+        workflowId: "wf-next",
+        inputMapping: { brief: "text", score: "json.score" },
       });
     }
     expect(result.issues.filter((issue) => issue.severity === "error")).toEqual([]);

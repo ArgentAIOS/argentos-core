@@ -105,7 +105,9 @@ interface OutputNodeData {
     | "email"
     | "webhook"
     | "variable"
-    | "knowledge";
+    | "knowledge"
+    | "task_update"
+    | "next_workflow";
   format: string;
   execState?: NodeExecState;
   retryCount?: number;
@@ -1671,6 +1673,13 @@ const DOCK_INPUT =
   "w-full px-2.5 py-2 rounded-lg text-xs bg-[hsl(var(--background))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] focus:outline-none focus:border-[hsl(var(--primary))] transition-colors";
 const DOCK_LABEL =
   "text-xs font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wider";
+
+const OUTPUT_TEMPLATE_TOKENS = [
+  { label: "Previous text", value: "{{previous.text}}" },
+  { label: "Previous JSON", value: "{{previous.json}}" },
+  { label: "Run ID", value: "{{run.id}}" },
+  { label: "Workflow", value: "{{workflow.name}}" },
+] as const;
 
 type ScheduleType = "daily" | "weekly" | "monthly" | "custom";
 
@@ -3399,6 +3408,107 @@ function GateForm({
   );
 }
 
+function appendOutputToken(current: string, token: string): string {
+  if (!current.trim()) {
+    return token;
+  }
+  const separator = current.endsWith(" ") || current.endsWith("\n") ? "" : " ";
+  return `${current}${separator}${token}`;
+}
+
+function outputSourceLabel(
+  sourceMode: string,
+  selectedSourceNodeId: string,
+  sourceNodeOptions: Array<{ id: string; label: string; type: string }>,
+): string {
+  if (sourceMode === "summary") {
+    return "Workflow summary";
+  }
+  if (sourceMode === "custom") {
+    return "Custom template";
+  }
+  if (sourceMode === "node") {
+    const selected = sourceNodeOptions.find((node) => node.id === selectedSourceNodeId);
+    return selected ? selected.label : "Specific node";
+  }
+  return "Previous node";
+}
+
+function outputDestinationLabel(
+  data: OutputNodeData,
+  selectedChannel?: OutputChannelOption,
+): string {
+  const record = data as Record<string, unknown>;
+  switch (data.target) {
+    case "channel":
+    case "discord":
+    case "telegram": {
+      const channel = selectedChannel?.label ?? record.channelType ?? data.target;
+      const target = typeof record.channelId === "string" && record.channelId.trim();
+      return target ? `${channel} / ${target}` : String(channel);
+    }
+    case "email":
+      return record.to || record.recipient ? `Email / ${record.to || record.recipient}` : "Email";
+    case "webhook":
+      return record.url || record.webhookUrl
+        ? `Webhook / ${record.url || record.webhookUrl}`
+        : "Webhook";
+    case "knowledge":
+      return record.collectionId ? `Knowledge / ${record.collectionId}` : "Knowledge";
+    case "task_update":
+      return record.taskId ? `Task update / ${record.taskId}` : "Task update";
+    case "next_workflow":
+      return record.workflowId ? `Workflow / ${record.workflowId}` : "Start workflow";
+    case "variable":
+      return "Variable";
+    case "doc_panel":
+    default:
+      return record.title ? `DocPanel / ${record.title}` : "DocPanel";
+  }
+}
+
+function outputPreviewText(
+  template: string,
+  sourceMode: string,
+  selectedSourceLabel: string,
+): string {
+  const base =
+    template.trim() ||
+    (sourceMode === "custom"
+      ? ""
+      : sourceMode === "summary"
+        ? "Workflow completed with summarized step outputs."
+        : "{{previous.text}}");
+  if (!base.trim()) {
+    return "No payload template yet.";
+  }
+  return base
+    .replaceAll("{{previous.text}}", "Example result from the previous step.")
+    .replaceAll("{{previous.json}}", '{"status":"ready","items":3}')
+    .replaceAll("{{run.id}}", "run_123")
+    .replaceAll("{{workflow.name}}", "Workflow name")
+    .replaceAll("{{source.label}}", selectedSourceLabel)
+    .replaceAll(/\{\{steps\.([^}]+)\}\}/g, "Example step value");
+}
+
+function outputSideEffectLabel(target: OutputNodeData["target"]): string {
+  switch (target) {
+    case "channel":
+    case "discord":
+    case "telegram":
+    case "email":
+    case "webhook":
+    case "task_update":
+    case "next_workflow":
+      return "External write";
+    case "knowledge":
+    case "doc_panel":
+      return "Core write";
+    default:
+      return "Draft";
+  }
+}
+
 function OutputForm({
   data,
   onUpdate,
@@ -3484,6 +3594,14 @@ function OutputForm({
           : typeof record.contentTemplate === "string"
             ? record.contentTemplate
             : "{{previous.text}}";
+  const selectedSourceLabel = outputSourceLabel(
+    sourceMode,
+    selectedSourceNodeId,
+    sourceNodeOptions,
+  );
+  const selectedDestinationLabel = outputDestinationLabel(data, selectedChannel);
+  const previewText = outputPreviewText(payloadValue, sourceMode, selectedSourceLabel);
+  const sideEffectLabel = outputSideEffectLabel(data.target);
   const updatePayload = (value: string) => {
     if (data.target === "channel" || data.target === "discord" || data.target === "telegram") {
       onUpdate(nodeId, { ...data, template: value, contentTemplate: value });
@@ -3514,6 +3632,25 @@ function OutputForm({
   };
   return (
     <>
+      <div className="rounded-lg border border-cyan-400/25 bg-cyan-400/5 p-3">
+        <div className="grid grid-cols-[74px_1fr] gap-x-3 gap-y-1.5 text-[11px] leading-relaxed">
+          <span className="text-[hsl(var(--muted-foreground))]">Source</span>
+          <span className="truncate font-medium text-[hsl(var(--foreground))]">
+            {selectedSourceLabel}
+          </span>
+          <span className="text-[hsl(var(--muted-foreground))]">Payload</span>
+          <span className="truncate font-medium text-[hsl(var(--foreground))]">
+            {payloadValue.trim() ? "Template rendered at run time" : "No payload"}
+          </span>
+          <span className="text-[hsl(var(--muted-foreground))]">Destination</span>
+          <span className="truncate font-medium text-[hsl(var(--foreground))]">
+            {selectedDestinationLabel}
+          </span>
+          <span className="text-[hsl(var(--muted-foreground))]">Policy</span>
+          <span className="font-medium text-amber-200">{sideEffectLabel}</span>
+        </div>
+      </div>
+
       <div className="space-y-1.5">
         <label className={DOCK_LABEL + " flex items-center gap-1"}>
           Source
@@ -3566,6 +3703,8 @@ function OutputForm({
           <optgroup label="Local">
             <option value="doc_panel">DocPanel</option>
             <option value="knowledge">Knowledge</option>
+            <option value="task_update">Task Manager</option>
+            <option value="next_workflow">Start another workflow</option>
           </optgroup>
           {legacyVariableSelected && (
             <option value="variable" disabled>
@@ -3708,11 +3847,89 @@ function OutputForm({
         </div>
       )}
 
+      {data.target === "task_update" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Task ID</label>
+            <input
+              className={DOCK_INPUT}
+              value={(record.taskId as string) || ""}
+              onChange={(e) => update("taskId", e.target.value)}
+              placeholder="task id or {{previous.json.taskId}}"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Status</label>
+            <select
+              className={DOCK_INPUT}
+              value={(record.status as string) || "completed"}
+              onChange={(e) => update("status", e.target.value)}
+            >
+              <option value="pending">Pending</option>
+              <option value="in_progress">In progress</option>
+              <option value="blocked">Blocked</option>
+              <option value="completed">Completed</option>
+              <option value="failed">Failed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Evidence template</label>
+            <textarea
+              className={DOCK_INPUT + " resize-y"}
+              rows={3}
+              value={(record.evidence as string) || payloadValue}
+              onChange={(e) => update("evidence", e.target.value)}
+              placeholder="{{previous.text}}"
+            />
+          </div>
+        </>
+      )}
+
+      {data.target === "next_workflow" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Workflow ID</label>
+            <input
+              className={DOCK_INPUT}
+              value={(record.workflowId as string) || ""}
+              onChange={(e) => update("workflowId", e.target.value)}
+              placeholder="workflow id"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL + " flex items-center gap-1"}>
+              Input mapping
+              <HelpTip text="Optional JSON object mapping next workflow input fields to previous output paths." />
+            </label>
+            <textarea
+              className={DOCK_INPUT + " font-mono text-[11px] resize-y"}
+              rows={3}
+              value={(record.inputMapping as string) || ""}
+              onChange={(e) => update("inputMapping", e.target.value)}
+              placeholder='{"brief": "text", "score": "json.score"}'
+            />
+          </div>
+        </>
+      )}
+
       <div className="space-y-1.5">
         <label className={DOCK_LABEL + " flex items-center gap-1"}>
           Payload template
           <HelpTip text="This is the actual content delivered by the output node. Use {{previous.text}} for the prior step or choose a source above." />
         </label>
+        <div className="flex flex-wrap gap-1.5">
+          {OUTPUT_TEMPLATE_TOKENS.map((token) => (
+            <button
+              key={token.value}
+              type="button"
+              className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/25 px-2 py-1 text-[10px] font-medium text-[hsl(var(--muted-foreground))] hover:border-cyan-400/60 hover:text-cyan-200"
+              onClick={() => updatePayload(appendOutputToken(payloadValue, token.value))}
+            >
+              {token.label}
+            </button>
+          ))}
+        </div>
         <textarea
           className={DOCK_INPUT + " resize-y"}
           rows={4}
@@ -3720,6 +3937,13 @@ function OutputForm({
           onChange={(e) => updatePayload(e.target.value)}
           placeholder="{{previous.text}}"
         />
+      </div>
+
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL}>Rendered preview</label>
+        <pre className="max-h-28 overflow-auto whitespace-pre-wrap rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20 p-2 text-[11px] leading-relaxed text-[hsl(var(--foreground))]">
+          {previewText}
+        </pre>
       </div>
 
       {(data.target === "doc_panel" || data.target === "knowledge") && (

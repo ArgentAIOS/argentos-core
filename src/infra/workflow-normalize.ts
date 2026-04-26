@@ -554,18 +554,22 @@ function normalizeOutputConfig(
       return {
         ...source,
         outputType: "task_update",
-        taskId: asString(config.taskId),
-        status: asString(config.status, "done"),
-        evidence: asString(config.evidence) || undefined,
+        taskId: asString(config.taskId ?? data.taskId),
+        status: asString(config.status ?? data.status, "completed"),
+        evidence: asString(config.evidence ?? data.evidence) || undefined,
       };
     case "next_workflow":
       return {
         ...source,
         outputType: "next_workflow",
         workflowId: asString(config.workflowId ?? data.workflowId),
-        inputMapping: isRecord(config.inputMapping)
-          ? (config.inputMapping as Record<string, string>)
-          : undefined,
+        inputMapping:
+          parseStringRecord(
+            config.inputMapping ?? data.inputMapping,
+            issues,
+            nodeId,
+            "Next workflow input mapping",
+          ) ?? undefined,
       };
     case "variable":
       issues.push({
