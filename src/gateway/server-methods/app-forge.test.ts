@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppForgeBase } from "../../infra/app-forge-model.js";
+import type { AppForgeBase, AppForgeRecord, AppForgeTable } from "../../infra/app-forge-model.js";
 import type { ConnectParams, RequestFrame } from "../protocol/index.js";
 import type { GatewayRequestContext, GatewayRequestHandlerOptions } from "./types.js";
 import { listGatewayMethods } from "../server-methods-list.js";
@@ -24,6 +24,28 @@ function base(overrides: Partial<AppForgeBase> = {}): AppForgeBase {
         records: [],
       },
     ],
+    ...overrides,
+  };
+}
+
+function table(overrides: Partial<AppForgeTable> = {}): AppForgeTable {
+  return {
+    id: "table-2",
+    name: "Approvals",
+    revision: 1,
+    fields: [{ id: "status", name: "Status", type: "text" }],
+    records: [],
+    ...overrides,
+  };
+}
+
+function record(overrides: Partial<AppForgeRecord> = {}): AppForgeRecord {
+  return {
+    id: "record-1",
+    revision: 1,
+    values: { status: "Ready" },
+    createdAt: "2026-04-25T21:00:00.000Z",
+    updatedAt: "2026-04-25T21:00:00.000Z",
     ...overrides,
   };
 }
@@ -71,8 +93,17 @@ describe("AppForge gateway handlers", () => {
   });
 
   it("registers AppForge methods for discovery and dispatch", () => {
-    expect(listGatewayMethods()).toEqual(expect.arrayContaining(["appforge.bases.list"]));
+    expect(listGatewayMethods()).toEqual(
+      expect.arrayContaining([
+        "appforge.bases.list",
+        "appforge.tables.list",
+        "appforge.records.put",
+      ]),
+    );
     expect(coreGatewayHandlers["appforge.bases.put"]).toBe(appForgeHandlers["appforge.bases.put"]);
+    expect(coreGatewayHandlers["appforge.records.put"]).toBe(
+      appForgeHandlers["appforge.records.put"],
+    );
   });
 
   it("lists and fetches bases", async () => {
@@ -158,6 +189,180 @@ describe("AppForge gateway handlers", () => {
     );
   });
 
+  it("lists, fetches, writes, and deletes tables", async () => {
+    const listRespond = await invokeAppForgeHandler("appforge.tables.list", { baseId: "base-1" });
+    expect(listRespond).toHaveBeenCalledWith(
+      true,
+      { tables: [expect.objectContaining({ id: "table-1" })] },
+      undefined,
+    );
+
+    const putRespond = await invokeAppForgeHandler("appforge.tables.put", {
+      baseId: "base-1",
+      table: table(),
+      expectedBaseRevision: 1,
+      expectedTableRevision: 0,
+      idempotencyKey: "table-write-1",
+    });
+    expect(putRespond).toHaveBeenCalledWith(
+      true,
+      {
+        base: expect.objectContaining({ revision: 2 }),
+        table: expect.objectContaining({ id: "table-2", revision: 1 }),
+      },
+      undefined,
+    );
+
+    const replayRespond = await invokeAppForgeHandler("appforge.tables.put", {
+      baseId: "base-1",
+      table: table({ name: "Ignored" }),
+      expectedBaseRevision: 1,
+      expectedTableRevision: 0,
+      idempotencyKey: "table-write-1",
+    });
+    expect(replayRespond).toHaveBeenCalledWith(
+      true,
+      {
+        base: expect.objectContaining({ revision: 2 }),
+        table: expect.objectContaining({ id: "table-2", name: "Approvals" }),
+      },
+      undefined,
+    );
+
+    const getRespond = await invokeAppForgeHandler("appforge.tables.get", {
+      baseId: "base-1",
+      tableId: "table-2",
+    });
+    expect(getRespond).toHaveBeenCalledWith(
+      true,
+      { table: expect.objectContaining({ id: "table-2" }) },
+      undefined,
+    );
+
+    const deleteRespond = await invokeAppForgeHandler("appforge.tables.delete", {
+      baseId: "base-1",
+      tableId: "table-2",
+      expectedBaseRevision: 2,
+      expectedTableRevision: 1,
+    });
+    expect(deleteRespond).toHaveBeenCalledWith(
+      true,
+      {
+        base: expect.objectContaining({ revision: 3 }),
+        table: expect.objectContaining({ id: "table-2", revision: 2 }),
+      },
+      undefined,
+    );
+  });
+
+  it("lists, fetches, writes, and deletes records", async () => {
+    const putRespond = await invokeAppForgeHandler("appforge.records.put", {
+      baseId: "base-1",
+      tableId: "table-1",
+      record: record(),
+      expectedBaseRevision: 1,
+      expectedTableRevision: 1,
+      expectedRecordRevision: 0,
+      idempotencyKey: "record-write-1",
+    });
+    expect(putRespond).toHaveBeenCalledWith(
+      true,
+      {
+        base: expect.objectContaining({ revision: 2 }),
+        table: expect.objectContaining({ id: "table-1", revision: 2 }),
+        record: expect.objectContaining({ id: "record-1", revision: 1 }),
+      },
+      undefined,
+    );
+
+    const replayRespond = await invokeAppForgeHandler("appforge.records.put", {
+      baseId: "base-1",
+      tableId: "table-1",
+      record: record({ values: { status: "Ignored" } }),
+      expectedBaseRevision: 1,
+      expectedTableRevision: 1,
+      expectedRecordRevision: 0,
+      idempotencyKey: "record-write-1",
+    });
+    expect(replayRespond).toHaveBeenCalledWith(
+      true,
+      {
+        base: expect.objectContaining({ revision: 2 }),
+        table: expect.objectContaining({ id: "table-1", revision: 2 }),
+        record: expect.objectContaining({ id: "record-1", values: { status: "Ready" } }),
+      },
+      undefined,
+    );
+
+    const listRespond = await invokeAppForgeHandler("appforge.records.list", {
+      baseId: "base-1",
+      tableId: "table-1",
+    });
+    expect(listRespond).toHaveBeenCalledWith(
+      true,
+      { records: [expect.objectContaining({ id: "record-1" })] },
+      undefined,
+    );
+
+    const getRespond = await invokeAppForgeHandler("appforge.records.get", {
+      baseId: "base-1",
+      tableId: "table-1",
+      recordId: "record-1",
+    });
+    expect(getRespond).toHaveBeenCalledWith(
+      true,
+      { record: expect.objectContaining({ id: "record-1" }) },
+      undefined,
+    );
+
+    const deleteRespond = await invokeAppForgeHandler("appforge.records.delete", {
+      baseId: "base-1",
+      tableId: "table-1",
+      recordId: "record-1",
+      expectedBaseRevision: 2,
+      expectedTableRevision: 2,
+      expectedRecordRevision: 1,
+    });
+    expect(deleteRespond).toHaveBeenCalledWith(
+      true,
+      {
+        base: expect.objectContaining({ revision: 3 }),
+        table: expect.objectContaining({ revision: 3 }),
+        record: expect.objectContaining({ id: "record-1", revision: 2 }),
+      },
+      undefined,
+    );
+  });
+
+  it("rejects malformed table and record writes", async () => {
+    const tableRespond = await invokeAppForgeHandler("appforge.tables.put", {
+      baseId: "base-1",
+      table: { id: "table-1" },
+    });
+    expect(tableRespond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "baseId and valid table are required",
+      }),
+    );
+
+    const recordRespond = await invokeAppForgeHandler("appforge.records.put", {
+      baseId: "base-1",
+      tableId: "table-1",
+      record: { id: "record-1" },
+    });
+    expect(recordRespond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "baseId, tableId, and valid record are required",
+      }),
+    );
+  });
+
   it("authorizes AppForge read and write scopes", async () => {
     const readRespond = createResponder();
     await handleGatewayRequest({
@@ -179,8 +384,15 @@ describe("AppForge gateway handlers", () => {
       req: {
         type: "req",
         id: "2",
-        method: "appforge.bases.put",
-        params: { base: base(), expectedRevision: 1 },
+        method: "appforge.records.put",
+        params: {
+          baseId: "base-1",
+          tableId: "table-1",
+          record: record(),
+          expectedBaseRevision: 1,
+          expectedTableRevision: 1,
+          expectedRecordRevision: 0,
+        },
       } satisfies RequestFrame,
       client: { connect: operatorConnect(["operator.read"]) },
       context: {} as unknown as GatewayRequestContext,

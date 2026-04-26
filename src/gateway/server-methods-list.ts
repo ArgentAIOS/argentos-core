@@ -147,6 +147,14 @@ const BASE_METHODS = [
   "appforge.bases.get",
   "appforge.bases.put",
   "appforge.bases.delete",
+  "appforge.tables.list",
+  "appforge.tables.get",
+  "appforge.tables.put",
+  "appforge.tables.delete",
+  "appforge.records.list",
+  "appforge.records.get",
+  "appforge.records.put",
+  "appforge.records.delete",
   // Intent
   "intent.simulate",
   // Workflows

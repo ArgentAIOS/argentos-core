@@ -117,6 +117,10 @@ const READ_METHODS = new Set([
   "providers.registry",
   "appforge.bases.list",
   "appforge.bases.get",
+  "appforge.tables.list",
+  "appforge.tables.get",
+  "appforge.records.list",
+  "appforge.records.get",
   "workflows.get",
   "workflows.list",
   "workflows.runs.list",
@@ -190,6 +194,10 @@ const WRITE_METHODS = new Set([
   "credentials.delete",
   "appforge.bases.put",
   "appforge.bases.delete",
+  "appforge.tables.put",
+  "appforge.tables.delete",
+  "appforge.records.put",
+  "appforge.records.delete",
 ]);
 
 function authorizeGatewayMethod(method: string, client: GatewayRequestOptions["client"]) {

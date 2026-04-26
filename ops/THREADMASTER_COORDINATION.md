@@ -39,13 +39,13 @@ Bus docs: `ops/threadmaster-bus/README.md`.
 
 ## Active Lanes
 
-| Lane                                                  | Threadmaster                     | Scope                                                                                                                     | Current State                                                                                                                                                                                                           | Shared Boundaries                                                                                           |
-| ----------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Master coordination + Workflows canvas/runtime        | Codex workflow threadmaster      | Cross-lane coordination, workflow builder canvas, workflow gateway/runtime, output channels, approval/wait/event surfaces | Bus/coordination lane in progress at `1f30784b`; output node configurability and real channel discovery pushed to `dev` at `ad964716`                                                                                   | Consumes AppForge through metadata/events only; consumes AOS connectors through manifests/capabilities only |
-| AppForge 2.0                                          | AppForge threadmaster            | Airtable-like core workspace, AppForge adapter/model/gateway, structured metadata, AppForge event producers               | Pulled through `ff95fe20`; bus online notice acked as `appforge`; no active AppForge bus tasks; see AppForge details below plus `ops/HANDOFF_APP_FORGE_THREADMASTER_STATUS.md` and `ops/HANDOFF_APP_FORGE_2_ROLLOUT.md` | Must not import Workflow dashboard internals; coordinate before touching workflow files                     |
-| AOU Stub Finder                                       | AOU threadmaster                 | Stub discovery, connector/tool completeness, skeleton-vs-live implementation inventory                                    | Active in its own threadmaster lane                                                                                                                                                                                     | Report stub findings here before changing shared runtime or connector surfaces                              |
-| AOS connectors                                        | Codex AOS connector threadmaster | `tools/aos/**`, connector manifests, operator service-key resolution, connector command capability surfaces               | Branch `codex/aos-next-connector-wave`; latest lane commit `ad3fb0b9` stabilizes Klaviyo as truthful read-only live connector; prior next-wave baseline `83a9bcb7`                                                      | Workflows/AppForge should consume connector metadata/capabilities, not private connector internals          |
-| OpenClaw 4.24 realtime/browser/marketplace comparison | Codex comparison threadmaster    | Upstream 4.24 feature comparison, browser harness/realtime voice/Google Meet marketplace-plugin recommendations           | Active on `codex/aos-next-connector-wave` at `ad3fb0b9`; read-only analysis so far                                                                                                                                      | Owns comparison/planning notes only; no shared implementation files without another board update            |
+| Lane                                                  | Threadmaster                     | Scope                                                                                                                     | Current State                                                                                                                                                      | Shared Boundaries                                                                                           |
+| ----------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| Master coordination + Workflows canvas/runtime        | Codex workflow threadmaster      | Cross-lane coordination, workflow builder canvas, workflow gateway/runtime, output channels, approval/wait/event surfaces | Bus/coordination lane in progress at `1f30784b`; output node configurability and real channel discovery pushed to `dev` at `ad964716`                              | Consumes AppForge through metadata/events only; consumes AOS connectors through manifests/capabilities only |
+| AppForge 2.0                                          | AppForge threadmaster            | Airtable-like core workspace, AppForge adapter/model/gateway, structured metadata, AppForge event producers               | Table/record gateway slice implemented locally after bus post `tm-20260426122351-xw0llc`; verification green; pending push to `dev`                                | Must not import Workflow dashboard internals; coordinate before touching workflow files                     |
+| AOU Stub Finder                                       | AOU threadmaster                 | Stub discovery, connector/tool completeness, skeleton-vs-live implementation inventory                                    | Active in its own threadmaster lane                                                                                                                                | Report stub findings here before changing shared runtime or connector surfaces                              |
+| AOS connectors                                        | Codex AOS connector threadmaster | `tools/aos/**`, connector manifests, operator service-key resolution, connector command capability surfaces               | Branch `codex/aos-next-connector-wave`; latest lane commit `ad3fb0b9` stabilizes Klaviyo as truthful read-only live connector; prior next-wave baseline `83a9bcb7` | Workflows/AppForge should consume connector metadata/capabilities, not private connector internals          |
+| OpenClaw 4.24 realtime/browser/marketplace comparison | Codex comparison threadmaster    | Upstream 4.24 feature comparison, browser harness/realtime voice/Google Meet marketplace-plugin recommendations           | Active on `codex/aos-next-connector-wave` at `ad3fb0b9`; read-only analysis so far                                                                                 | Owns comparison/planning notes only; no shared implementation files without another board update            |
 
 ## Overlap Zones
 
@@ -79,8 +79,9 @@ Bus docs: `ops/threadmaster-bus/README.md`.
 - Local path from AppForge lane: `/tmp/argent-core-appforge-threadmaster`
 - Branch: `codex/appforge-threadmaster-next`
 - Target branch: `dev`
-- Current known commits on `origin/dev`: `77f7046f`, `7aa18ab4`, `ff95fe20`
+- Current known commits on `origin/dev`: `77f7046f`, `7aa18ab4`, `ff95fe20`, `73814fbd`, `c48f6e61`
 - Current bus state: `appforge` has no unacked messages and no assigned tasks after acking `tm-20260426121155-p07tc6`.
+- Current slice: table/record gateway expansion posted to master as `tm-20260426122351-xw0llc`; implemented locally and verification is green pending push.
 - Forbidden repo for this lane: `ArgentAIOS/argentos`
 
 ### Owned Files And Directories
@@ -123,8 +124,17 @@ AppForge gateway:
   - `appforge.bases.get`
   - `appforge.bases.put`
   - `appforge.bases.delete`
+  - `appforge.tables.list`
+  - `appforge.tables.get`
+  - `appforge.tables.put`
+  - `appforge.tables.delete`
+  - `appforge.records.list`
+  - `appforge.records.get`
+  - `appforge.records.put`
+  - `appforge.records.delete`
 - Read methods require `operator.read` or `operator.write`.
 - Write/delete methods require `operator.write`.
+- Field and view edits currently remain table-payload semantics until a separate API is explicitly designed.
 
 AppForge workflow bridge:
 
@@ -154,7 +164,7 @@ Workflows:
 
 AppForge:
 
-- Next implementation should expand gateway methods from base CRUD into tables/fields/views/records.
+- Next implementation should migrate dashboard table/record mutations onto `appforge.tables.*` and `appforge.records.*` with a safe metadata fallback.
 - Dashboard should migrate event emission toward gateway `workflows.emitAppForgeEvent` with API fallback.
 - Dashboard structured-data writes should not switch exclusively to `appforge.bases.put` until durable storage or safe dual-write is in place.
 - Multi-user features must wait for the permission/actor/audit seam to be enforced.

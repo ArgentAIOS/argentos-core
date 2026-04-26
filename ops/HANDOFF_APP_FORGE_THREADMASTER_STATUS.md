@@ -10,18 +10,21 @@ Reason: pure core foundation work
 
 ## Current Position
 
-AppForge is past the mock-shell stage and is now a usable single-user, metadata-backed workspace. Phase 1 is late-stage foundation work; Phase 2 now has a pure core model, an expanded adapter contract, and an initial `appforge.bases.*` gateway surface. Durable storage and table/record-level gateway migration are still pending.
+AppForge is past the mock-shell stage and is now a usable single-user, metadata-backed workspace. Phase 1 is late-stage foundation work; Phase 2 now has a pure core model, an expanded adapter contract, and gateway surfaces for bases, tables, and records. Durable storage and dashboard migration onto those gateway operations are still pending.
 
-Latest pushed AppForge commits:
+Recent pushed AppForge/core coordination commits before this slice:
 
 - `e3fc0496 Define the AppForge adapter contract`
-- `737de016 Lock down AppForge structured metadata behavior`
 - `3bac9914 Introduce the AppForge core model foundation`
+- `f409bc01 Expose AppForge base operations through core gateway`
+- `77f7046f Expand AppForge adapter and permission seams`
+- `7aa18ab4 Coordinate the AppForge core lane`
+- `73814fbd Acknowledge AppForge on the Threadmaster bus`
 
 ## Phase Progress
 
 - Phase 1, workspace MVP: roughly 75-80% complete.
-- Phase 2, first-class data domain: started, roughly 20-25% complete.
+- Phase 2, first-class data domain: started, roughly 25-30% complete.
 - Phase 3, grid/saved view quality: partially started early through typed editors plus per-view filter/sort/group controls.
 - Phase 5, workflow event bridge: producer/consumer foundation is stronger than expected; coverage and targeted resume hardening remain.
 - Phase 6, permissions/audit: design risk identified; do not ship multi-user semantics until actor binding and AppForge-specific authorization exist.
@@ -57,6 +60,8 @@ Completed in this run:
 - Added `src/gateway/server-methods/app-forge.ts`.
 - Added `src/gateway/server-methods/app-forge.test.ts`.
 - Registered `appforge.bases.list`, `appforge.bases.get`, `appforge.bases.put`, and `appforge.bases.delete` for discovery and gateway auth.
+- Registered `appforge.tables.list`, `appforge.tables.get`, `appforge.tables.put`, and `appforge.tables.delete` for discovery and gateway auth.
+- Registered `appforge.records.list`, `appforge.records.get`, `appforge.records.put`, and `appforge.records.delete` for discovery and gateway auth.
 - Added `src/infra/app-forge-model.ts`.
 - Added field/value model types.
 - Added field-aware record validation for text, long text, select, multi-select, number, date, checkbox, URL, email, attachment, and linked-record placeholders.
@@ -66,7 +71,7 @@ Completed in this run:
 Next Phase 2 slices:
 
 - Add PG/schema migration plan and tests.
-- Expand gateway server-method surface from base CRUD to tables/fields/views/records.
+- Decide whether field and view edits stay as table-payload updates for MVP or need dedicated `appforge.fields.*` and `appforge.views.*` methods.
 - Migrate dashboard from whole-app metadata PATCHes to core AppForge operations once server methods exist.
 
 ### Workflow Bridge
@@ -113,6 +118,7 @@ Passing:
 
 - `pnpm check:repo-lane`
 - `pnpm exec vitest run src/infra/app-forge-adapter.test.ts src/infra/app-forge-permissions.test.ts src/gateway/server-methods/app-forge.test.ts src/infra/app-forge-model.test.ts src/infra/appforge-workflow-events.test.ts src/gateway/server-methods/workflows.appforge-events.test.ts src/infra/appforge-workflow-capabilities.test.ts src/infra/app-forge-structured-data.test.ts`
+- `pnpm exec vitest run src/gateway/server-methods/app-forge.test.ts src/infra/app-forge-adapter.test.ts src/infra/app-forge-permissions.test.ts src/infra/app-forge-model.test.ts src/infra/appforge-workflow-events.test.ts src/gateway/server-methods/workflows.appforge-events.test.ts src/infra/appforge-workflow-capabilities.test.ts src/infra/app-forge-structured-data.test.ts`
 - `pnpm exec vitest run src/gateway/server-methods/app-forge.test.ts src/infra/app-forge-adapter.test.ts src/infra/app-forge-model.test.ts src/infra/appforge-workflow-events.test.ts src/gateway/server-methods/workflows.appforge-events.test.ts`
 - `pnpm exec vitest run src/infra/app-forge-model.test.ts src/infra/app-forge-structured-data.test.ts src/infra/appforge-workflow-events.test.ts src/infra/appforge-workflow-capabilities.test.ts src/gateway/server-methods/workflows.appforge-events.test.ts`
 - `node --test --test-name-pattern='Apps' dashboard/tests/api-server.test.cjs`
@@ -134,6 +140,6 @@ Sub-agent lanes:
 
 1. Lane A: add a real AppForge hook/component test harness or move the mutable structured-data logic into pure core functions that can be tested without a browser DOM.
 2. Lane B: draft and coordinate PG schema/migration files with Threadmaster authority before touching storage surfaces.
-3. Lane C: expand gateway methods from base CRUD into tables/fields/views/records.
+3. Lane C: migrate dashboard table/record mutations onto `appforge.tables.*` and `appforge.records.*`, with a metadata fallback until durable storage lands.
 4. Lane D: add focused workflow bridge tests for targeted AppForge event resume and dashboard record-event API submissions.
 5. Lane E: patch the AppForge permission/actor/audit seam before any multi-user collaboration claims.

@@ -1,4 +1,4 @@
-import type { AppForgeBase } from "../../infra/app-forge-model.js";
+import type { AppForgeBase, AppForgeRecord, AppForgeTable } from "../../infra/app-forge-model.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import {
   createInMemoryAppForgeAdapter,
@@ -38,6 +38,38 @@ function asAppForgeBase(value: unknown): AppForgeBase | null {
     return null;
   }
   return value as AppForgeBase;
+}
+
+function asAppForgeTable(value: unknown): AppForgeTable | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  if (
+    typeof value.id !== "string" ||
+    typeof value.name !== "string" ||
+    typeof value.revision !== "number" ||
+    !Array.isArray(value.fields) ||
+    !Array.isArray(value.records)
+  ) {
+    return null;
+  }
+  return value as AppForgeTable;
+}
+
+function asAppForgeRecord(value: unknown): AppForgeRecord | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  if (
+    typeof value.id !== "string" ||
+    typeof value.revision !== "number" ||
+    typeof value.createdAt !== "string" ||
+    typeof value.updatedAt !== "string" ||
+    !isRecord(value.values)
+  ) {
+    return null;
+  }
+  return value as AppForgeRecord;
 }
 
 export function resetAppForgeAdapterForTests(seed: AppForgeBase[] = []) {
@@ -108,5 +140,188 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       return;
     }
     respond(true, { base: result.base }, undefined);
+  },
+
+  "appforge.tables.list": async ({ params, respond }) => {
+    const baseId = stringParam(params, "baseId");
+    if (!baseId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "baseId is required"));
+      return;
+    }
+
+    const tables = await adapter.listTables(baseId);
+    respond(true, { tables }, undefined);
+  },
+
+  "appforge.tables.get": async ({ params, respond }) => {
+    const baseId = stringParam(params, "baseId");
+    const tableId = stringParam(params, "tableId");
+    if (!baseId || !tableId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "baseId and tableId are required"),
+      );
+      return;
+    }
+
+    const table = await adapter.getTable(baseId, tableId);
+    if (!table) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "table not found"));
+      return;
+    }
+    respond(true, { table }, undefined);
+  },
+
+  "appforge.tables.put": async ({ params, respond }) => {
+    const baseId = stringParam(params, "baseId");
+    const table = asAppForgeTable(params.table);
+    if (!baseId || !table) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "baseId and valid table are required"),
+      );
+      return;
+    }
+
+    const result = await adapter.putTable(baseId, table, {
+      expectedBaseRevision: optionalNumberParam(params, "expectedBaseRevision"),
+      expectedTableRevision: optionalNumberParam(params, "expectedTableRevision"),
+      idempotencyKey: stringParam(params, "idempotencyKey") ?? undefined,
+    });
+    if (!result.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
+      );
+      return;
+    }
+    respond(true, { base: result.base, table: result.table }, undefined);
+  },
+
+  "appforge.tables.delete": async ({ params, respond }) => {
+    const baseId = stringParam(params, "baseId");
+    const tableId = stringParam(params, "tableId");
+    if (!baseId || !tableId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "baseId and tableId are required"),
+      );
+      return;
+    }
+
+    const result = await adapter.deleteTable(baseId, tableId, {
+      expectedBaseRevision: optionalNumberParam(params, "expectedBaseRevision"),
+      expectedTableRevision: optionalNumberParam(params, "expectedTableRevision"),
+    });
+    if (!result.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
+      );
+      return;
+    }
+    respond(true, { base: result.base, table: result.table }, undefined);
+  },
+
+  "appforge.records.list": async ({ params, respond }) => {
+    const baseId = stringParam(params, "baseId");
+    const tableId = stringParam(params, "tableId");
+    if (!baseId || !tableId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "baseId and tableId are required"),
+      );
+      return;
+    }
+
+    const records = await adapter.listRecords(baseId, tableId);
+    respond(true, { records }, undefined);
+  },
+
+  "appforge.records.get": async ({ params, respond }) => {
+    const baseId = stringParam(params, "baseId");
+    const tableId = stringParam(params, "tableId");
+    const recordId = stringParam(params, "recordId");
+    if (!baseId || !tableId || !recordId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "baseId, tableId, and recordId are required"),
+      );
+      return;
+    }
+
+    const records = await adapter.listRecords(baseId, tableId);
+    const record = records.find((item) => item.id === recordId) ?? null;
+    if (!record) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "record not found"));
+      return;
+    }
+    respond(true, { record }, undefined);
+  },
+
+  "appforge.records.put": async ({ params, respond }) => {
+    const baseId = stringParam(params, "baseId");
+    const tableId = stringParam(params, "tableId");
+    const record = asAppForgeRecord(params.record);
+    if (!baseId || !tableId || !record) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "baseId, tableId, and valid record are required"),
+      );
+      return;
+    }
+
+    const result = await adapter.putRecord(baseId, tableId, record, {
+      expectedBaseRevision: optionalNumberParam(params, "expectedBaseRevision"),
+      expectedTableRevision: optionalNumberParam(params, "expectedTableRevision"),
+      expectedRecordRevision: optionalNumberParam(params, "expectedRecordRevision"),
+      idempotencyKey: stringParam(params, "idempotencyKey") ?? undefined,
+    });
+    if (!result.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
+      );
+      return;
+    }
+    respond(true, { base: result.base, table: result.table, record: result.record }, undefined);
+  },
+
+  "appforge.records.delete": async ({ params, respond }) => {
+    const baseId = stringParam(params, "baseId");
+    const tableId = stringParam(params, "tableId");
+    const recordId = stringParam(params, "recordId");
+    if (!baseId || !tableId || !recordId) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "baseId, tableId, and recordId are required"),
+      );
+      return;
+    }
+
+    const result = await adapter.deleteRecord(baseId, tableId, recordId, {
+      expectedBaseRevision: optionalNumberParam(params, "expectedBaseRevision"),
+      expectedTableRevision: optionalNumberParam(params, "expectedTableRevision"),
+      expectedRecordRevision: optionalNumberParam(params, "expectedRecordRevision"),
+    });
+    if (!result.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
+      );
+      return;
+    }
+    respond(true, { base: result.base, table: result.table, record: result.record }, undefined);
   },
 };
