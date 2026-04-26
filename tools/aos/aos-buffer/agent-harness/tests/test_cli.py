@@ -180,6 +180,9 @@ def test_manifest_and_permissions_are_in_sync():
     assert manifest["backend"] == "buffer-graphql-api"
     assert manifest["scope"]["commandDefaults"]["post.list"]["args"] == ["BUFFER_ORGANIZATION_ID", "BUFFER_CHANNEL_ID"]
     assert manifest["scope"]["kind"] == "social-media"
+    assert "post.create_draft" not in command_ids
+    assert "post.schedule" not in command_ids
+    assert {command["required_mode"] for command in manifest["commands"]} == {"readonly"}
 
 
 def test_capabilities_exposes_graphql_manifest():
@@ -188,17 +191,19 @@ def test_capabilities_exposes_graphql_manifest():
     assert payload["meta"]["version"] == "0.1.0"
     assert payload["data"]["backend"] == "buffer-graphql-api"
     assert payload["data"]["modes"] == ["readonly", "write", "full", "admin"]
-    assert payload["data"]["write_support"]["scaffold_only"] is True
+    assert payload["data"]["write_support"]["scaffold_only"] is False
+    assert payload["data"]["write_support"]["scaffolded_commands"] == []
     assert "profile.read" in json.dumps(payload["data"])
-    assert "preview_only" in json.dumps(payload["data"])
+    assert "post.create_draft" not in json.dumps(payload["data"])
+    assert "post.schedule" not in json.dumps(payload["data"])
 
 
-def test_permission_denied_uses_json_error_envelope():
+def test_removed_write_command_returns_json_usage_error():
     result = CliRunner().invoke(cli, ["--json", "post", "create-draft", "Launch post"])
-    assert result.exit_code == 3, result.output
+    assert result.exit_code == 2, result.output
     payload = json.loads(result.output)
     assert payload["ok"] is False
-    assert payload["error"]["code"] == "PERMISSION_DENIED"
+    assert payload["error"]["code"] == "INVALID_USAGE"
     assert payload["meta"]["mode"] == "readonly"
     assert payload["meta"]["version"] == "0.1.0"
 
@@ -228,7 +233,6 @@ def test_config_show_redacts_and_surfaces_scope(monkeypatch):
     monkeypatch.setenv("BUFFER_CHANNEL_ID", "chan_1")
     monkeypatch.setenv("BUFFER_PROFILE_ID", "chan_legacy")
     monkeypatch.setenv("BUFFER_POST_ID", "post_1")
-    monkeypatch.setenv("BUFFER_POST_TEXT", "Launch post")
     payload = invoke_json(["config", "show"])
     data = payload["data"]
     assert "very-secret-token" not in json.dumps(data)
@@ -252,6 +256,53 @@ def test_operator_service_keys_win_over_env_for_auth_and_scope(monkeypatch):
         assert payload["data"]["channels"][0]["id"] == "chan_3"
         assert server["requests"][0]["auth"] == "Bearer operator-token"
         assert server["requests"][1]["variables"]["organizationId"] == "org_2"
+
+
+def test_operator_service_keys_win_over_env_for_base_url(monkeypatch):
+    with mock_buffer_server() as server:
+        monkeypatch.setenv("BUFFER_API_KEY", "env-token")
+        monkeypatch.setenv("BUFFER_BASE_URL", "http://127.0.0.1:1")
+        payload = invoke_json(
+            ["account", "read"],
+            obj={"service_keys": {"BUFFER_ACCESS_TOKEN": "operator-token", "BUFFER_BASE_URL": server["base_url"]}},
+        )
+        assert payload["data"]["account"]["name"] == "Argent Buffer"
+        assert server["requests"][0]["path"] == "/"
+        assert server["requests"][0]["auth"] == "Bearer operator-token"
+
+
+def test_operator_service_keys_support_tool_scoped_aliases(monkeypatch):
+    monkeypatch.setenv("BUFFER_ORGANIZATION_ID", "env-org")
+    monkeypatch.setenv("BUFFER_CHANNEL_ID", "env-channel")
+    payload = invoke_json(
+        ["config", "show"],
+        obj={
+            "service_keys": {
+                "aos-buffer": {
+                    "access_token": "operator-token",
+                    "organization_id": "operator-org",
+                    "channel_id": "operator-channel",
+                    "profile_id": "operator-profile",
+                    "post_id": "operator-post",
+                }
+            }
+        },
+    )
+    data = payload["data"]
+    assert data["auth"]["service_keys"] == [
+        "BUFFER_API_KEY",
+        "BUFFER_ACCESS_TOKEN",
+        "BUFFER_BASE_URL",
+        "BUFFER_ORGANIZATION_ID",
+        "BUFFER_CHANNEL_ID",
+        "BUFFER_PROFILE_ID",
+        "BUFFER_POST_ID",
+    ]
+    assert data["runtime"]["implementation_mode"] == "live_graphql_read_only"
+    assert data["runtime"]["picker_scopes"]["channel"]["selected"]["organization_id"] == "operator-org"
+    assert data["runtime"]["picker_scopes"]["channel"]["selected"]["channel_id"] == "operator-channel"
+    assert data["runtime"]["picker_scopes"]["profile"]["selected"]["profile_id"] == "operator-profile"
+    assert data["runtime"]["picker_scopes"]["post"]["selected"]["post_id"] == "operator-post"
 
 
 def test_account_read_returns_organizations(monkeypatch):
@@ -296,17 +347,3 @@ def test_post_read_scans_accessible_scope(monkeypatch):
         payload = invoke_json(["post", "read", "post_3"])
         assert payload["data"]["post"]["id"] == "post_3"
         assert payload["data"]["scope_preview"]["command_id"] == "post.read"
-
-
-def test_write_commands_are_preview_only_in_write_mode(monkeypatch):
-    monkeypatch.setenv("BUFFER_CHANNEL_ID", "chan_1")
-    result = CliRunner().invoke(
-        cli,
-        ["--json", "--mode", "write", "post", "schedule", "Launch post", "--due-at", "2026-04-01T15:00:00Z"],
-    )
-    assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
-    assert payload["ok"] is True
-    assert payload["data"]["status"] == "scaffold_write_preview"
-    assert payload["data"]["executed"] is False
-    assert payload["data"]["mutation_preview"]["input"]["mode"] == "customScheduled"

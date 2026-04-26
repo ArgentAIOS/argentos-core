@@ -14,9 +14,7 @@
       "organization_id",
       "channel_id",
       "profile_id",
-      "post_id",
-      "text",
-      "scheduled_at"
+      "post_id"
     ],
     "worker_visible_actions": [
       "account.read",
@@ -25,9 +23,7 @@
       "profile.list",
       "profile.read",
       "post.list",
-      "post.read",
-      "post.create_draft",
-      "post.schedule"
+      "post.read"
     ],
     "fields": [
       {
@@ -62,9 +58,9 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": ["channel.read", "post.list", "post.create_draft", "post.schedule"],
+        "applies_to": ["channel.read", "post.list"],
         "placeholder": "chan_123",
-        "description": "Buffer channel ID. Required to read one channel directly and used to scope post discovery or write previews."
+        "description": "Buffer channel ID. Required to read one channel directly and used to scope post discovery."
       },
       {
         "id": "profile_id",
@@ -89,31 +85,6 @@
         "applies_to": ["post.read"],
         "placeholder": "post_123",
         "description": "Buffer post ID used to search for a single post within the accessible organization scope."
-      },
-      {
-        "id": "text",
-        "label": "Post text",
-        "type": "richtext",
-        "renderAs": "richtext",
-        "required": false,
-        "expressionEnabled": true,
-        "valueType": "string",
-        "rows": 4,
-        "applies_to": ["post.create_draft", "post.schedule"],
-        "placeholder": "Launch announcement draft",
-        "description": "The text that would be used in the Buffer `createPost` mutation preview."
-      },
-      {
-        "id": "scheduled_at",
-        "label": "Scheduled at",
-        "type": "text",
-        "renderAs": "datetime",
-        "required": false,
-        "expressionEnabled": true,
-        "valueType": "datetime",
-        "applies_to": ["post.schedule"],
-        "placeholder": "2026-04-01T09:00:00Z",
-        "description": "ISO 8601 UTC timestamp that would be passed as `dueAt` in the previewed Buffer schedule mutation."
       }
     ],
     "commandDefaults": {
@@ -146,14 +117,6 @@
       "post.read": {
         "selection_surface": "post",
         "args": ["BUFFER_POST_ID", "BUFFER_ORGANIZATION_ID"]
-      },
-      "post.create_draft": {
-        "selection_surface": "post",
-        "args": ["BUFFER_CHANNEL_ID", "BUFFER_POST_TEXT"]
-      },
-      "post.schedule": {
-        "selection_surface": "post",
-        "args": ["BUFFER_CHANNEL_ID", "BUFFER_POST_TEXT"]
       }
     },
     "pickerHints": {
@@ -196,14 +159,22 @@
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": ["BUFFER_API_KEY", "BUFFER_ACCESS_TOKEN"],
+    "service_keys": [
+      "BUFFER_API_KEY",
+      "BUFFER_ACCESS_TOKEN",
+      "BUFFER_BASE_URL",
+      "BUFFER_ORGANIZATION_ID",
+      "BUFFER_CHANNEL_ID",
+      "BUFFER_PROFILE_ID",
+      "BUFFER_POST_ID"
+    ],
     "interactive_setup": [
       "Create or choose a Buffer API key for the operator-controlled account.",
-      "Add BUFFER_API_KEY or BUFFER_ACCESS_TOKEN in API Keys before enabling live reads.",
-      "Optional: set BUFFER_ORGANIZATION_ID, BUFFER_CHANNEL_ID, BUFFER_PROFILE_ID, and BUFFER_POST_ID as operator linking keys to stabilize worker scope.",
-      "Optional: set BUFFER_BASE_URL only if you need to point the harness at a non-default Buffer GraphQL host.",
+      "Add BUFFER_API_KEY or BUFFER_ACCESS_TOKEN in operator-controlled service keys before enabling live reads.",
+      "Optional: set BUFFER_ORGANIZATION_ID, BUFFER_CHANNEL_ID, BUFFER_PROFILE_ID, and BUFFER_POST_ID in operator-controlled service keys to stabilize worker scope.",
+      "Optional: set BUFFER_BASE_URL in operator-controlled service keys only if you need to point the harness at a non-default Buffer GraphQL host.",
       "Live reads use Buffer's GraphQL account, channel, and posts surfaces.",
-      "post.create_draft and post.schedule remain write-mode mutation previews so the harness does not perform social publishing writes."
+      "No draft or schedule write command is advertised until a live write bridge and approval policy are implemented."
     ]
   },
   "commands": [
@@ -294,22 +265,6 @@
       "supports_json": true,
       "resource": "post",
       "action_class": "read"
-    },
-    {
-      "id": "post.create_draft",
-      "summary": "Preview a Buffer draft-post mutation without executing it",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "post",
-      "action_class": "write"
-    },
-    {
-      "id": "post.schedule",
-      "summary": "Preview a Buffer scheduled-post mutation without executing it",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "post",
-      "action_class": "write"
     }
   ]
 }

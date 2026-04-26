@@ -19,7 +19,6 @@ from .runtime import (
     health_snapshot,
     post_list_result,
     post_read_result,
-    scaffold_write_result,
 )
 
 
@@ -249,50 +248,6 @@ def post_read(ctx: click.Context, post_id: str | None) -> None:
     _set_command(ctx, "post.read")
     require_mode(ctx, "post.read")
     _emit_success(ctx, "post.read", post_read_result(ctx.obj, post_id=post_id))
-
-
-@post_group.command("create-draft")
-@click.argument("text", required=False)
-@click.option("--channel-id", default=None, help="Target channel ID")
-@click.option("--profile-id", default=None, help="Legacy channel alias")
-@click.pass_context
-def post_create_draft(ctx: click.Context, text: str | None, channel_id: str | None, profile_id: str | None) -> None:
-    _set_command(ctx, "post.create_draft")
-    require_mode(ctx, "post.create_draft")
-    _emit_success(
-        ctx,
-        "post.create_draft",
-        scaffold_write_result(ctx.obj, command_id="post.create_draft", channel_id=channel_id, profile_id=profile_id, text=text),
-    )
-
-
-@post_group.command("schedule")
-@click.argument("text", required=False)
-@click.option("--channel-id", default=None, help="Target channel ID")
-@click.option("--profile-id", default=None, help="Legacy channel alias")
-@click.option("--due-at", default=None, help="ISO-8601 UTC timestamp")
-@click.pass_context
-def post_schedule(
-    ctx: click.Context,
-    text: str | None,
-    channel_id: str | None,
-    profile_id: str | None,
-    due_at: str | None,
-) -> None:
-    _set_command(ctx, "post.schedule")
-    require_mode(ctx, "post.schedule")
-    _emit_success(
-        ctx,
-        "post.schedule",
-        scaffold_write_result(
-            ctx.obj,
-            command_id="post.schedule",
-            channel_id=channel_id,
-            profile_id=profile_id,
-            text=text,
-            due_at=due_at,
-        ),
-    )
 
 
 if __name__ == "__main__":

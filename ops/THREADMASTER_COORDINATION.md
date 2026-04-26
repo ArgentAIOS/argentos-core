@@ -199,6 +199,14 @@ The workflow canvas should consume connector manifests/capabilities rather than 
 
 Before touching shared files, update this board. The goal is to make lane drift visible in the repo before it becomes visible in the product.
 
+### 2026-04-26 — AOS Buffer Connector Slice
+
+Lane: `AOS connector Ralph loop`
+Branch/status: `codex/aos-buffer-loop`, starting from `origin/dev` at `bdbf18fa`.
+Owned files/directories: `tools/aos/aos-buffer/**`; coordination note in `ops/THREADMASTER_COORDINATION.md`.
+Shared contract change in progress: Buffer connector surface is being made truthful by keeping live GraphQL read commands only unless a live write bridge is implemented and verified. Operator service keys remain the auth/link source.
+Workflows/AppForge/AOU reaction: consume the Buffer manifest/capabilities only. Do not assume Buffer draft/schedule writes exist unless a later handoff advertises them as live-ready.
+
 ### 2026-04-26 — AOS Connectors to Workflows/AppForge/AOU
 
 Lane: `AOS next connector wave`
