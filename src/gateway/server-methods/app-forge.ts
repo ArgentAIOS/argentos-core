@@ -1,12 +1,29 @@
 import type { AppForgeBase, AppForgeRecord, AppForgeTable } from "../../infra/app-forge-model.js";
 import type { GatewayRequestHandlers } from "./types.js";
+import { getPgClient } from "../../data/pg-client.js";
+import { isPostgresEnabled } from "../../data/storage-config.js";
+import { resolveRuntimeStorageConfig } from "../../data/storage-resolver.js";
 import {
-  createInMemoryAppForgeAdapter,
   type AppForgeAdapter,
-} from "../../infra/app-forge-adapter.js";
+  createInMemoryAppForgeStore,
+  createPostgresAppForgeStore,
+} from "../../infra/app-forge-store.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 
-let adapter: AppForgeAdapter = createInMemoryAppForgeAdapter();
+let cachedAdapter: AppForgeAdapter | null = null;
+
+function createAppForgeAdapter(): AppForgeAdapter {
+  const storageConfig = resolveRuntimeStorageConfig();
+  if (isPostgresEnabled(storageConfig) && storageConfig.postgres) {
+    return createPostgresAppForgeStore(getPgClient(storageConfig.postgres));
+  }
+  return createInMemoryAppForgeStore();
+}
+
+function getAppForgeAdapter(): AppForgeAdapter {
+  cachedAdapter ??= createAppForgeAdapter();
+  return cachedAdapter;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -73,17 +90,19 @@ function asAppForgeRecord(value: unknown): AppForgeRecord | null {
 }
 
 export function resetAppForgeAdapterForTests(seed: AppForgeBase[] = []) {
-  adapter = createInMemoryAppForgeAdapter(seed);
+  cachedAdapter = createInMemoryAppForgeStore(seed);
 }
 
 export const appForgeHandlers: GatewayRequestHandlers = {
   "appforge.bases.list": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
     const appId = stringParam(params, "appId") ?? undefined;
     const bases = await adapter.listBases({ appId });
     respond(true, { bases }, undefined);
   },
 
   "appforge.bases.get": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
     const baseId = stringParam(params, "baseId");
     if (!baseId) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "baseId is required"));
@@ -99,6 +118,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
   },
 
   "appforge.bases.put": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
     const base = asAppForgeBase(params.base);
     if (!base) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "valid base is required"));
@@ -122,6 +142,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
   },
 
   "appforge.bases.delete": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
     const baseId = stringParam(params, "baseId");
     if (!baseId) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "baseId is required"));
@@ -143,6 +164,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
   },
 
   "appforge.tables.list": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
     const baseId = stringParam(params, "baseId");
     if (!baseId) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "baseId is required"));
@@ -154,6 +176,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
   },
 
   "appforge.tables.get": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
     const baseId = stringParam(params, "baseId");
     const tableId = stringParam(params, "tableId");
     if (!baseId || !tableId) {
@@ -174,6 +197,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
   },
 
   "appforge.tables.put": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
     const baseId = stringParam(params, "baseId");
     const table = asAppForgeTable(params.table);
     if (!baseId || !table) {
@@ -202,6 +226,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
   },
 
   "appforge.tables.delete": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
     const baseId = stringParam(params, "baseId");
     const tableId = stringParam(params, "tableId");
     if (!baseId || !tableId) {
@@ -229,6 +254,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
   },
 
   "appforge.records.list": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
     const baseId = stringParam(params, "baseId");
     const tableId = stringParam(params, "tableId");
     if (!baseId || !tableId) {
@@ -245,6 +271,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
   },
 
   "appforge.records.get": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
     const baseId = stringParam(params, "baseId");
     const tableId = stringParam(params, "tableId");
     const recordId = stringParam(params, "recordId");
@@ -267,6 +294,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
   },
 
   "appforge.records.put": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
     const baseId = stringParam(params, "baseId");
     const tableId = stringParam(params, "tableId");
     const record = asAppForgeRecord(params.record);
@@ -297,6 +325,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
   },
 
   "appforge.records.delete": async ({ params, respond }) => {
+    const adapter = getAppForgeAdapter();
     const baseId = stringParam(params, "baseId");
     const tableId = stringParam(params, "tableId");
     const recordId = stringParam(params, "recordId");
