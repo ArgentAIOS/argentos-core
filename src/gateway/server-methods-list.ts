@@ -142,6 +142,11 @@ const BASE_METHODS = [
   // SpecForge
   "specforge.suggest",
   "specforge.kickoff",
+  // AppForge
+  "appforge.bases.list",
+  "appforge.bases.get",
+  "appforge.bases.put",
+  "appforge.bases.delete",
   // Intent
   "intent.simulate",
   // Workflows

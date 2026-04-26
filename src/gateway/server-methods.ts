@@ -3,6 +3,7 @@ import { ErrorCodes, errorShape } from "./protocol/index.js";
 import { aevpHandlers } from "./server-methods/aevp.js";
 import { agentHandlers } from "./server-methods/agent.js";
 import { agentsHandlers } from "./server-methods/agents.js";
+import { appForgeHandlers } from "./server-methods/app-forge.js";
 import { browserHandlers } from "./server-methods/browser.js";
 import { channelsHandlers } from "./server-methods/channels.js";
 import { chatHandlers } from "./server-methods/chat.js";
@@ -114,6 +115,8 @@ const READ_METHODS = new Set([
   "copilot.run.story",
   "providers.status",
   "providers.registry",
+  "appforge.bases.list",
+  "appforge.bases.get",
   "workflows.get",
   "workflows.list",
   "workflows.runs.list",
@@ -185,6 +188,8 @@ const WRITE_METHODS = new Set([
   "workflows.deny",
   "credentials.create",
   "credentials.delete",
+  "appforge.bases.put",
+  "appforge.bases.delete",
 ]);
 
 function authorizeGatewayMethod(method: string, client: GatewayRequestOptions["client"]) {
@@ -297,6 +302,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...browserHandlers,
   ...terminalHandlers,
   ...aevpHandlers,
+  ...appForgeHandlers,
   ...specforgeHandlers,
   ...intentHandlers,
   ...workflowsHandlers,

@@ -5,6 +5,23 @@ import {
 } from "./appforge-workflow-events.js";
 
 describe("AppForge workflow events", () => {
+  it.each([
+    ["created", "forge.record.created"],
+    ["record_updated", "forge.record.updated"],
+    ["record.deleted", "forge.record.deleted"],
+    ["review_requested", "forge.review.requested"],
+    ["review.completed", "forge.review.completed"],
+    ["capability_completed", "forge.capability.completed"],
+  ])("normalizes %s to %s", (alias, eventType) => {
+    const event = normalizeAppForgeWorkflowEvent({
+      eventType: alias,
+      appId: "app-1",
+    });
+
+    expect(event.eventType).toBe(eventType);
+    expect(event.payload.eventType).toBe(eventType);
+  });
+
   it("normalizes record aliases into canonical workflow events", () => {
     const event = normalizeAppForgeWorkflowEvent({
       action: "record_updated",

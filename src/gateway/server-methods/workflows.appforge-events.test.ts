@@ -127,4 +127,48 @@ describe("startAppForgeEventTriggeredWorkflows", () => {
     expect(createWorkflowRunRecordMock).not.toHaveBeenCalled();
     expect(executeWorkflowRunFromRowMock).not.toHaveBeenCalled();
   });
+
+  it("reports validation errors for malformed appforge event trigger filters", async () => {
+    const event = normalizeAppForgeWorkflowEvent({
+      eventType: "forge.review.completed",
+      appId: "forge-app-1",
+      capabilityId: "review",
+      decision: "approved",
+    });
+
+    const result = await startAppForgeEventTriggeredWorkflows({
+      sql: fakeWorkflowSql([
+        appForgeWorkflowRow({
+          nodes: [
+            {
+              id: "trigger",
+              type: "trigger",
+              data: {
+                triggerType: "appforge_event",
+                appId: "forge-app-1",
+                capabilityId: "review",
+                eventType: "forge.review.completed",
+                eventFilterJson: '{"decision":',
+              },
+            },
+            {
+              id: "output",
+              type: "output",
+              data: {
+                outputType: "docpanel",
+              },
+            },
+          ],
+        }),
+      ]),
+      event,
+    });
+
+    expect(result.started).toEqual([]);
+    expect(result.errors).toEqual([
+      "workflow=wf-appforge-review: validation failed: Event filter must be a valid JSON object.",
+    ]);
+    expect(createWorkflowRunRecordMock).not.toHaveBeenCalled();
+    expect(executeWorkflowRunFromRowMock).not.toHaveBeenCalled();
+  });
 });
