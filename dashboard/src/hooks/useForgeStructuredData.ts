@@ -44,6 +44,12 @@ export type ForgeStructuredBase = {
 
 export type ForgeReviewDecision = "approved" | "denied";
 
+export type ForgeStructuredSaveStatus = {
+  kind: "idle" | "saving" | "saved" | "conflict" | "error";
+  message: string | null;
+  updatedAt: string | null;
+};
+
 type StructuredPayload = {
   version?: number;
   baseId?: unknown;
@@ -73,6 +79,7 @@ type UseForgeStructuredDataReturn = {
   selectedField: ForgeStructuredField | null;
   saving: boolean;
   error: string | null;
+  saveStatus: ForgeStructuredSaveStatus;
   selectBase: (appId: string) => void;
   selectTable: (tableId: string) => Promise<void>;
   selectField: (fieldId: string) => void;
@@ -500,6 +507,10 @@ type GatewayBasesListResponse = {
   bases?: unknown;
 };
 
+type GatewayMirrorResponse = {
+  base?: unknown;
+};
+
 function toGatewayRecord(record: ForgeStructuredRecord): GatewayStructuredRecord {
   return {
     ...record,
@@ -532,70 +543,141 @@ function buildGatewayMirrorCalls(
   base: ForgeStructuredBase,
   mutation: GatewayMirrorMutation = { kind: "base.put" },
 ): GatewayMirrorCall[] {
+  const baseRevision = base.revision ?? 0;
   const seedBase =
     mutation.kind === "table.delete" || mutation.kind === "record.delete"
       ? mutation.seedBase
       : base;
-  const calls: GatewayMirrorCall[] = [
-    {
-      method: "appforge.bases.put",
-      params: {
-        base: toGatewayBase(seedBase),
-        idempotencyKey: `dashboard-base-${seedBase.id}-${seedBase.updatedAt}`,
-      },
+  const seedRevision = seedBase.revision ?? 0;
+  const seedBaseCall: GatewayMirrorCall = {
+    method: "appforge.bases.put",
+    params: {
+      base: toGatewayBase(seedBase),
+      expectedRevision: seedRevision,
+      idempotencyKey: `dashboard-base-${seedBase.id}-${seedBase.updatedAt}`,
     },
-  ];
+  };
 
   if (mutation.kind === "table.put") {
-    calls.push({
-      method: "appforge.tables.put",
-      params: {
-        baseId: base.id,
-        table: toGatewayTable(mutation.table),
-        idempotencyKey: `dashboard-table-${base.id}-${mutation.table.id}-${base.updatedAt}`,
+    if (baseRevision <= 0) {
+      return [seedBaseCall];
+    }
+    return [
+      {
+        method: "appforge.tables.put",
+        params: {
+          baseId: base.id,
+          table: toGatewayTable(mutation.table),
+          expectedBaseRevision: baseRevision,
+          expectedTableRevision: mutation.table.revision ?? 0,
+          idempotencyKey: `dashboard-table-${base.id}-${mutation.table.id}-${base.updatedAt}`,
+        },
       },
-    });
-  } else if (mutation.kind === "table.delete") {
-    calls.push({
-      method: "appforge.tables.delete",
-      params: { baseId: seedBase.id, tableId: mutation.tableId },
-    });
-  } else if (mutation.kind === "record.put") {
-    calls.push({
-      method: "appforge.records.put",
-      params: {
-        baseId: base.id,
-        tableId: mutation.tableId,
-        record: toGatewayRecord(mutation.record),
-        idempotencyKey: `dashboard-record-${base.id}-${mutation.tableId}-${mutation.record.id}-${mutation.record.updatedAt}`,
+    ];
+  }
+  if (mutation.kind === "table.delete") {
+    const table = seedBase.tables.find((candidate) => candidate.id === mutation.tableId);
+    return [
+      {
+        method: "appforge.tables.delete",
+        params: {
+          baseId: seedBase.id,
+          tableId: mutation.tableId,
+          expectedBaseRevision: seedRevision,
+          expectedTableRevision: table?.revision ?? 0,
+        },
       },
-    });
-  } else if (mutation.kind === "record.delete") {
-    calls.push({
-      method: "appforge.records.delete",
-      params: {
-        baseId: seedBase.id,
-        tableId: mutation.tableId,
-        recordId: mutation.recordId,
+    ];
+  }
+  if (mutation.kind === "record.put") {
+    if (baseRevision <= 0) {
+      return [seedBaseCall];
+    }
+    const table = base.tables.find((candidate) => candidate.id === mutation.tableId);
+    return [
+      {
+        method: "appforge.records.put",
+        params: {
+          baseId: base.id,
+          tableId: mutation.tableId,
+          record: toGatewayRecord(mutation.record),
+          expectedBaseRevision: baseRevision,
+          expectedTableRevision: table?.revision ?? 0,
+          expectedRecordRevision: mutation.record.revision ?? 0,
+          idempotencyKey: `dashboard-record-${base.id}-${mutation.tableId}-${mutation.record.id}-${mutation.record.updatedAt}`,
+        },
       },
-    });
+    ];
+  }
+  if (mutation.kind === "record.delete") {
+    const table = seedBase.tables.find((candidate) => candidate.id === mutation.tableId);
+    const record = table?.records.find((candidate) => candidate.id === mutation.recordId);
+    return [
+      {
+        method: "appforge.records.delete",
+        params: {
+          baseId: seedBase.id,
+          tableId: mutation.tableId,
+          recordId: mutation.recordId,
+          expectedBaseRevision: seedRevision,
+          expectedTableRevision: table?.revision ?? 0,
+          expectedRecordRevision: record?.revision ?? 0,
+        },
+      },
+    ];
   }
 
-  return calls;
+  return [seedBaseCall];
+}
+
+function isRevisionConflictError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  if (/revision_conflict|expected revision \d+,\s*found \d+/i.test(message)) {
+    return true;
+  }
+  if (isRecord(err)) {
+    const details = isRecord(err.details) ? err.details : undefined;
+    return err.code === "revision_conflict" || details?.code === "revision_conflict";
+  }
+  return false;
+}
+
+function formatStructuredSaveError(err: unknown): string {
+  const message =
+    err instanceof Error
+      ? err.message
+      : typeof err === "string"
+        ? err
+        : "Failed to save structured base";
+  if (message.startsWith("This table changed elsewhere.")) {
+    return message;
+  }
+  if (isRevisionConflictError(err)) {
+    return `This table changed elsewhere. Reload AppForge and try again. ${message}`;
+  }
+  return message || "Failed to save structured base";
 }
 
 async function mirrorGatewayMutation(
   gatewayRequest: GatewayRequestFn | undefined,
   base: ForgeStructuredBase,
   mutation?: GatewayMirrorMutation,
-) {
+): Promise<ForgeStructuredBase | null> {
   if (!gatewayRequest) {
-    return;
+    return null;
   }
   const calls = buildGatewayMirrorCalls(base, mutation);
+  let latestBase: ForgeStructuredBase | null = null;
   for (const call of calls) {
-    await gatewayRequest(call.method, call.params, { timeoutMs: 5_000 });
+    const response = await gatewayRequest<GatewayMirrorResponse>(call.method, call.params, {
+      timeoutMs: 5_000,
+    });
+    const normalizedBase = normalizeGatewayBase(response.base);
+    if (normalizedBase) {
+      latestBase = normalizedBase;
+    }
   }
+  return latestBase;
 }
 
 function storedFieldSelectionKey(appId: string, tableId: string): string {
@@ -607,6 +689,8 @@ export const forgeStructuredDataTestUtils = {
   coerceValueForField,
   defaultBase,
   defaultValueForField,
+  formatStructuredSaveError,
+  isRevisionConflictError,
   metadataWithBase,
   normalizeGatewayBase,
   normalizeBase,
@@ -624,6 +708,11 @@ export function useForgeStructuredData({
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<ForgeStructuredSaveStatus>({
+    kind: "idle",
+    message: null,
+    updatedAt: null,
+  });
   const appKey = useMemo(() => apps.map((app) => app.id).join("\0"), [apps]);
   const gatewayLoadAppIds = useMemo(() => apps.map((app) => app.id), [appKey]);
 
@@ -734,6 +823,7 @@ export function useForgeStructuredData({
       setOverrides((prev) => ({ ...prev, [base.appId]: nextBase }));
       setSaving(true);
       setError(null);
+      setSaveStatus({ kind: "saving", message: "Saving changes...", updatedAt: null });
       try {
         let savedToGateway = false;
         let savedToMetadata = false;
@@ -742,11 +832,21 @@ export function useForgeStructuredData({
 
         if (gatewayRequest) {
           try {
-            await mirrorGatewayMutation(gatewayRequest, nextBase, gatewayMutation);
+            const gatewayBase = await mirrorGatewayMutation(
+              gatewayRequest,
+              nextBase,
+              gatewayMutation,
+            );
             savedToGateway = true;
-            setGatewayBases((prev) => ({ ...prev, [nextBase.appId]: nextBase }));
+            setGatewayBases((prev) => ({
+              ...prev,
+              [nextBase.appId]: gatewayBase ?? nextBase,
+            }));
           } catch (err) {
             gatewayError = err;
+            if (isRevisionConflictError(err)) {
+              throw err;
+            }
             console.warn("[AppForge] Gateway save failed; trying metadata fallback.", {
               error: err,
             });
@@ -780,8 +880,15 @@ export function useForgeStructuredData({
         if (event && emitWorkflowEvent) {
           await emitWorkflowEvent(app.id, event);
         }
+        setSaveStatus({ kind: "saved", message: "Saved", updatedAt: nowIso() });
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to save structured base");
+        const message = formatStructuredSaveError(err);
+        setError(message);
+        setSaveStatus({
+          kind: isRevisionConflictError(err) ? "conflict" : "error",
+          message,
+          updatedAt: nowIso(),
+        });
       } finally {
         setSaving(false);
       }
@@ -1463,6 +1570,7 @@ export function useForgeStructuredData({
     selectedField,
     saving,
     error,
+    saveStatus,
     selectBase,
     selectTable,
     selectField,

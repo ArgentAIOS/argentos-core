@@ -103,7 +103,9 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 function firstString(values: unknown): string | undefined {
-  if (!Array.isArray(values)) return undefined;
+  if (!Array.isArray(values)) {
+    return undefined;
+  }
   return values.find(
     (value): value is string => typeof value === "string" && value.trim().length > 0,
   );
@@ -119,9 +121,13 @@ function appWorkflowCapability(app: ForgeApp): { id?: string; eventType?: string
     appForge?.workflowCapabilities,
   ];
   for (const candidate of candidates) {
-    if (!Array.isArray(candidate)) continue;
+    if (!Array.isArray(candidate)) {
+      continue;
+    }
     const capability = candidate.find(asRecord);
-    if (!capability) continue;
+    if (!capability) {
+      continue;
+    }
     return {
       id:
         typeof capability.id === "string" && capability.id.trim()
@@ -180,12 +186,16 @@ function isForgeInspectorMode(value: unknown): value is ForgeInspectorMode {
 }
 
 function loadAppForgeUiState(): AppForgeUiState {
-  if (typeof window === "undefined") return {};
+  if (typeof window === "undefined") {
+    return {};
+  }
   try {
     const parsed = JSON.parse(
       window.localStorage.getItem(APP_FORGE_UI_STATE_KEY) ?? "{}",
     ) as Record<string, unknown> | null;
-    if (!parsed) return {};
+    if (!parsed) {
+      return {};
+    }
     return {
       selectedAppId: typeof parsed.selectedAppId === "string" ? parsed.selectedAppId : null,
       activeSection: isForgeSection(parsed.activeSection) ? parsed.activeSection : undefined,
@@ -202,7 +212,9 @@ function viewSettingsKey(appId: string, tableId: string, viewMode: ForgeViewMode
 }
 
 function loadViewSettings(key: string | null): ForgeViewSettings {
-  if (!key || typeof window === "undefined") return DEFAULT_VIEW_SETTINGS;
+  if (!key || typeof window === "undefined") {
+    return DEFAULT_VIEW_SETTINGS;
+  }
   try {
     const parsed = JSON.parse(window.localStorage.getItem(key) ?? "{}") as Record<
       string,
@@ -224,8 +236,12 @@ function fieldValue(value: ForgeStructuredRecordValue | undefined): string {
 }
 
 function fieldInputType(field: ForgeStructuredField): string {
-  if (field.type === "number") return "number";
-  if (field.type === "date") return "date";
+  if (field.type === "number") {
+    return "number";
+  }
+  if (field.type === "date") {
+    return "date";
+  }
   return "text";
 }
 
@@ -247,7 +263,9 @@ function fieldByName(
   table: ForgeStructuredTable | null | undefined,
   name: string,
 ): ForgeStructuredField | undefined {
-  if (!table) return undefined;
+  if (!table) {
+    return undefined;
+  }
   const normalized = name.toLowerCase();
   return table.fields.find(
     (field) => field.id.toLowerCase() === normalized || field.name.toLowerCase() === normalized,
@@ -377,7 +395,9 @@ export function AppForge({
   }, [isOpen]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") {
+      return;
+    }
     window.localStorage.setItem(
       APP_FORGE_UI_STATE_KEY,
       JSON.stringify({
@@ -408,7 +428,9 @@ export function AppForge({
 
   const handleNewAppSubmit = useCallback(() => {
     const description = newAppDescription.trim();
-    if (!description) return;
+    if (!description) {
+      return;
+    }
     appCountAtBuild.current = apps.length;
     setBuilding(true);
     onNewApp(newAppName.trim(), description);
@@ -416,14 +438,18 @@ export function AppForge({
 
   // Close context menu on click outside
   useEffect(() => {
-    if (!contextMenu) return;
+    if (!contextMenu) {
+      return;
+    }
     const handler = () => setContextMenu(null);
     window.addEventListener("click", handler);
     return () => window.removeEventListener("click", handler);
   }, [contextMenu]);
 
   useEffect(() => {
-    if (!deleteMode && !pendingDeleteApp) return;
+    if (!deleteMode && !pendingDeleteApp) {
+      return;
+    }
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (pendingDeleteApp) {
@@ -477,7 +503,9 @@ export function AppForge({
       : null;
   const viewRecords = useMemo(() => {
     const table = structured.activeTable;
-    if (!table) return [];
+    if (!table) {
+      return [];
+    }
     const normalizedFilter = viewSettings.filterText.trim().toLowerCase();
     const filtered = normalizedFilter
       ? table.records.filter((record) =>
@@ -487,8 +515,12 @@ export function AppForge({
         )
       : table.records;
     const sortField = table.fields.find((field) => field.id === viewSettings.sortFieldId);
-    if (!sortField) return filtered;
-    return [...filtered].sort((left, right) => {
+    if (!sortField) {
+      return filtered;
+    }
+    const sorted = [...filtered];
+    // oxlint-disable-next-line unicorn/no-array-sort -- dashboard target does not include ES2023 toSorted.
+    return sorted.sort((left: ForgeStructuredRecord, right: ForgeStructuredRecord) => {
       const leftValue = left.values[sortField.id];
       const rightValue = right.values[sortField.id];
       const direction = viewSettings.sortDirection === "desc" ? -1 : 1;
@@ -538,7 +570,9 @@ export function AppForge({
   }, [activeViewSettingsKey]);
 
   useEffect(() => {
-    if (!activeViewSettingsKey || typeof window === "undefined") return;
+    if (!activeViewSettingsKey || typeof window === "undefined") {
+      return;
+    }
     if (skipNextViewSettingsPersist.current) {
       skipNextViewSettingsPersist.current = false;
       return;
@@ -550,13 +584,17 @@ export function AppForge({
     const nextRecordId = tableRecords.some((record) => record.id === formRecordId)
       ? formRecordId
       : (tableRecords[0]?.id ?? null);
-    if (nextRecordId === formRecordId) return;
+    if (nextRecordId === formRecordId) {
+      return;
+    }
     queueMicrotask(() => setFormRecordId(nextRecordId));
   }, [formRecordId, tableRecords]);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, appId: string) => {
-      if (deleteMode) return;
+      if (deleteMode) {
+        return;
+      }
       e.preventDefault();
       setSelectedAppId(appId);
       setContextMenu({ appId, x: e.clientX, y: e.clientY });
@@ -575,7 +613,9 @@ export function AppForge({
   const requestDeleteApp = useCallback(
     (appId: string) => {
       const app = apps.find((candidate) => candidate.id === appId);
-      if (!app) return;
+      if (!app) {
+        return;
+      }
       setContextMenu(null);
       setDeleteError(null);
       setPendingDeleteApp(app);
@@ -584,7 +624,9 @@ export function AppForge({
   );
 
   const confirmDeleteApp = useCallback(async () => {
-    if (!pendingDeleteApp || deletingAppId) return;
+    if (!pendingDeleteApp || deletingAppId) {
+      return;
+    }
     setDeleteError(null);
     setDeletingAppId(pendingDeleteApp.id);
     const deleted = await onDeleteApp(pendingDeleteApp.id);
@@ -598,9 +640,13 @@ export function AppForge({
 
   const emitTestWorkflowEvent = useCallback(
     async (appId: string) => {
-      if (!onEmitWorkflowEvent) return;
+      if (!onEmitWorkflowEvent) {
+        return;
+      }
       const app = apps.find((candidate) => candidate.id === appId);
-      if (!app) return;
+      if (!app) {
+        return;
+      }
 
       const capability = appWorkflowCapability(app);
       const eventType = capability.eventType ?? "forge.review.completed";
@@ -634,7 +680,9 @@ export function AppForge({
   );
 
   const commitEditingCell = useCallback(async () => {
-    if (!editingCell) return;
+    if (!editingCell) {
+      return;
+    }
     const field = structured.activeTable?.fields.find(
       (candidate) => candidate.id === editingCell.fieldId,
     );
@@ -647,7 +695,9 @@ export function AppForge({
     record: ForgeStructuredRecord,
     decision: "approved" | "denied",
   ) {
-    if (!selectedApp?.id) return;
+    if (!selectedApp?.id) {
+      return;
+    }
     const appId = selectedApp.id;
     setWorkflowEventStatus({
       kind: "pending",
@@ -875,7 +925,9 @@ export function AppForge({
                                 structured.selectBase(app.id);
                               }}
                               onDoubleClick={() => {
-                                if (!deleteMode) onOpenApp(app.id);
+                                if (!deleteMode) {
+                                  onOpenApp(app.id);
+                                }
                               }}
                               onContextMenu={(e) => handleContextMenu(e, app.id)}
                               onMouseEnter={() => setSelectedAppId(app.id)}
@@ -922,7 +974,9 @@ export function AppForge({
 
                         <button
                           onClick={() => {
-                            if (deleteMode) return;
+                            if (deleteMode) {
+                              return;
+                            }
                             setShowNewAppInput(true);
                           }}
                           className={`flex min-h-[112px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-3 transition-colors ${
@@ -1043,7 +1097,13 @@ export function AppForge({
                     )}
 
                     {structured.error && (
-                      <div className="mb-3 rounded-xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                      <div
+                        className={`mb-3 rounded-xl border px-4 py-3 text-sm ${
+                          structured.saveStatus.kind === "conflict"
+                            ? "border-amber-300/30 bg-amber-400/10 text-amber-100"
+                            : "border-red-400/25 bg-red-500/10 text-red-200"
+                        }`}
+                      >
                         {structured.error}
                       </div>
                     )}
@@ -1073,7 +1133,18 @@ export function AppForge({
                           ))}
                         </div>
                         <div className="flex flex-wrap items-center gap-2 text-sm text-white/45">
-                          {structured.saving && <span className="text-sky-200">Saving...</span>}
+                          {structured.saveStatus.kind === "saving" && (
+                            <span className="inline-flex items-center gap-1 text-sky-200">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              Saving
+                            </span>
+                          )}
+                          {structured.saveStatus.kind === "saved" && (
+                            <span className="text-emerald-200">Saved</span>
+                          )}
+                          {structured.saveStatus.kind === "conflict" && (
+                            <span className="text-amber-200">Reload needed</span>
+                          )}
                           <input
                             value={viewSettings.filterText}
                             onChange={(event) =>
@@ -1287,9 +1358,11 @@ export function AppForge({
                                       </td>
                                       {visibleFields.map((field) => {
                                         const value = fieldValue(record.values[field.id]);
-                                        const isEditing =
+                                        const activeEditingCell =
                                           editingCell?.recordId === record.id &&
-                                          editingCell.fieldId === field.id;
+                                          editingCell.fieldId === field.id
+                                            ? editingCell
+                                            : null;
                                         return (
                                           <td
                                             key={field.id}
@@ -1303,13 +1376,13 @@ export function AppForge({
                                             }
                                             className="border-r border-white/[0.07] px-4 py-2 text-white/66"
                                           >
-                                            {isEditing && field.type === "single_select" ? (
+                                            {activeEditingCell && field.type === "single_select" ? (
                                               <select
                                                 autoFocus
-                                                value={editingCell.value}
+                                                value={activeEditingCell.value}
                                                 onChange={(event) =>
                                                   setEditingCell({
-                                                    ...editingCell,
+                                                    ...activeEditingCell,
                                                     value: event.target.value,
                                                   })
                                                 }
@@ -1330,14 +1403,14 @@ export function AppForge({
                                                   </option>
                                                 ))}
                                               </select>
-                                            ) : isEditing && field.type === "checkbox" ? (
+                                            ) : activeEditingCell && field.type === "checkbox" ? (
                                               <input
                                                 autoFocus
                                                 type="checkbox"
-                                                checked={editingCell.value === "true"}
+                                                checked={activeEditingCell.value === "true"}
                                                 onChange={(event) =>
                                                   setEditingCell({
-                                                    ...editingCell,
+                                                    ...activeEditingCell,
                                                     value: event.target.checked ? "true" : "false",
                                                   })
                                                 }
@@ -1352,14 +1425,14 @@ export function AppForge({
                                                 }}
                                                 className="h-4 w-4 rounded border-white/20 bg-black/45 accent-sky-400"
                                               />
-                                            ) : isEditing ? (
+                                            ) : activeEditingCell ? (
                                               <input
                                                 autoFocus
                                                 type={fieldInputType(field)}
-                                                value={editingCell.value}
+                                                value={activeEditingCell.value}
                                                 onChange={(event) =>
                                                   setEditingCell({
-                                                    ...editingCell,
+                                                    ...activeEditingCell,
                                                     value: event.target.value,
                                                   })
                                                 }
@@ -1507,7 +1580,9 @@ export function AppForge({
                                           formRecord ? fieldValue(formRecord.values[field.id]) : ""
                                         }
                                         onChange={(event) => {
-                                          if (!formRecord) return;
+                                          if (!formRecord) {
+                                            return;
+                                          }
                                           void structured.updateCell(
                                             formRecord.id,
                                             field.id,
@@ -1531,7 +1606,9 @@ export function AppForge({
                                             : false
                                         }
                                         onChange={(event) => {
-                                          if (!formRecord) return;
+                                          if (!formRecord) {
+                                            return;
+                                          }
                                           void structured.updateCell(
                                             formRecord.id,
                                             field.id,
@@ -1550,7 +1627,9 @@ export function AppForge({
                                           formRecord ? fieldValue(formRecord.values[field.id]) : ""
                                         }
                                         onChange={(event) => {
-                                          if (!formRecord) return;
+                                          if (!formRecord) {
+                                            return;
+                                          }
                                           void structured.updateCell(
                                             formRecord.id,
                                             field.id,
@@ -1657,7 +1736,9 @@ export function AppForge({
                                   value={newAppName}
                                   onChange={(e) => setNewAppName(e.target.value)}
                                   onKeyDown={(e) => {
-                                    if (e.key === "Escape") setShowNewAppInput(false);
+                                    if (e.key === "Escape") {
+                                      setShowNewAppInput(false);
+                                    }
                                   }}
                                   placeholder="e.g. Price Calculator"
                                   className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 text-sm"
@@ -1673,8 +1754,12 @@ export function AppForge({
                                   value={newAppDescription}
                                   onChange={(e) => setNewAppDescription(e.target.value)}
                                   onKeyDown={(e) => {
-                                    if (e.key === "Enter" && e.metaKey) handleNewAppSubmit();
-                                    if (e.key === "Escape") setShowNewAppInput(false);
+                                    if (e.key === "Enter" && e.metaKey) {
+                                      handleNewAppSubmit();
+                                    }
+                                    if (e.key === "Escape") {
+                                      setShowNewAppInput(false);
+                                    }
                                   }}
                                   placeholder="e.g. Calculate markup/markdown percentages on product prices. Show original price, percentage, and final price. Include a toggle for markup vs markdown mode."
                                   rows={4}
@@ -1764,7 +1849,9 @@ export function AppForge({
                           <input
                             value={structured.selectedField?.name ?? ""}
                             onChange={(event) => {
-                              if (!structured.selectedField) return;
+                              if (!structured.selectedField) {
+                                return;
+                              }
                               void structured.updateField(structured.selectedField.id, {
                                 name: event.target.value,
                               });
@@ -1778,7 +1865,9 @@ export function AppForge({
                           <select
                             value={structured.selectedField?.type ?? "text"}
                             onChange={(event) => {
-                              if (!structured.selectedField) return;
+                              if (!structured.selectedField) {
+                                return;
+                              }
                               void structured.updateField(structured.selectedField.id, {
                                 type: event.target.value as
                                   | "text"
@@ -1811,7 +1900,9 @@ export function AppForge({
                                   <input
                                     value={label}
                                     onChange={(event) => {
-                                      if (!structured.selectedField) return;
+                                      if (!structured.selectedField) {
+                                        return;
+                                      }
                                       const options = [...(structured.selectedField.options ?? [])];
                                       options[index] = event.target.value;
                                       void structured.updateField(structured.selectedField.id, {
@@ -1822,7 +1913,9 @@ export function AppForge({
                                   />
                                   <button
                                     onClick={() => {
-                                      if (!structured.selectedField) return;
+                                      if (!structured.selectedField) {
+                                        return;
+                                      }
                                       void structured.updateField(structured.selectedField.id, {
                                         options: (structured.selectedField.options ?? []).filter(
                                           (_option, optionIndex) => optionIndex !== index,
@@ -1839,7 +1932,9 @@ export function AppForge({
                             </div>
                             <button
                               onClick={() => {
-                                if (!structured.selectedField) return;
+                                if (!structured.selectedField) {
+                                  return;
+                                }
                                 void structured.updateField(structured.selectedField.id, {
                                   options: [
                                     ...(structured.selectedField.options ?? []),
@@ -1860,7 +1955,9 @@ export function AppForge({
                           <textarea
                             value={structured.selectedField?.description ?? ""}
                             onChange={(event) => {
-                              if (!structured.selectedField) return;
+                              if (!structured.selectedField) {
+                                return;
+                              }
                               void structured.updateField(structured.selectedField.id, {
                                 description: event.target.value,
                               });
@@ -1876,7 +1973,9 @@ export function AppForge({
                             type="checkbox"
                             checked={!!structured.selectedField?.required}
                             onChange={(event) => {
-                              if (!structured.selectedField) return;
+                              if (!structured.selectedField) {
+                                return;
+                              }
                               void structured.updateField(structured.selectedField.id, {
                                 required: event.target.checked,
                               });
@@ -1916,7 +2015,9 @@ export function AppForge({
                           <input
                             value={structured.activeTable?.name ?? ""}
                             onChange={(event) => {
-                              if (!structured.activeTable) return;
+                              if (!structured.activeTable) {
+                                return;
+                              }
                               void structured.updateTable(structured.activeTable.id, {
                                 name: event.target.value,
                               });
@@ -2090,7 +2191,9 @@ export function AppForge({
                 exit={{ opacity: 0 }}
                 className="fixed inset-0 z-[320] flex items-center justify-center bg-black/45 px-4"
                 onClick={() => {
-                  if (deletingAppId) return;
+                  if (deletingAppId) {
+                    return;
+                  }
                   setPendingDeleteApp(null);
                   setDeleteError(null);
                 }}

@@ -146,6 +146,26 @@ describe("AppForge gateway handlers", () => {
     );
   });
 
+  it("creates a base when expectedRevision is 0", async () => {
+    const created = base({ id: "base-new", appId: "app-new", revision: 0 });
+    const respond = await invokeAppForgeHandler("appforge.bases.put", {
+      base: created,
+      expectedRevision: 0,
+    });
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      { base: expect.objectContaining({ id: "base-new", revision: 1 }) },
+      undefined,
+    );
+
+    const getRespond = await invokeAppForgeHandler("appforge.bases.get", { baseId: "base-new" });
+    expect(getRespond).toHaveBeenCalledWith(
+      true,
+      { base: expect.objectContaining({ id: "base-new", appId: "app-new", revision: 1 }) },
+      undefined,
+    );
+  });
+
   it("rejects malformed and stale writes", async () => {
     const invalidRespond = await invokeAppForgeHandler("appforge.bases.put", {
       base: { id: "base-1" },
@@ -186,6 +206,27 @@ describe("AppForge gateway handlers", () => {
       false,
       undefined,
       expect.objectContaining({ code: "INVALID_REQUEST", message: "base not found" }),
+    );
+  });
+
+  it("returns revision conflict details when deleting a missing base", async () => {
+    const respond = await invokeAppForgeHandler("appforge.bases.delete", {
+      baseId: "missing",
+      expectedRevision: 3,
+    });
+
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "Base missing does not exist.",
+        details: expect.objectContaining({
+          code: "revision_conflict",
+          expectedRevision: 3,
+          actualRevision: 0,
+        }),
+      }),
     );
   });
 

@@ -221,34 +221,23 @@ describe("forge structured data metadata", () => {
       kind: "table.put",
       table,
     });
-    expect(tableCalls.map((call) => call.method)).toEqual([
-      "appforge.bases.put",
-      "appforge.tables.put",
-    ]);
+    expect(tableCalls.map((call) => call.method)).toEqual(["appforge.bases.put"]);
     expect(tableCalls[0]?.params.base).toMatchObject({
       id: "base-existing",
       revision: 0,
       tables: [expect.objectContaining({ id: "table-review", revision: 0 })],
     });
-    expect(tableCalls[1]?.params.table).toMatchObject({
-      id: "table-review",
-      revision: 0,
-      records: [expect.objectContaining({ id: "record-1", revision: 0 })],
-    });
+    expect(tableCalls[0]?.params.expectedRevision).toBe(0);
 
     const recordCalls = forgeStructuredDataTestUtils.buildGatewayMirrorCalls(base, {
       kind: "record.put",
       tableId: table.id,
       record,
     });
-    expect(recordCalls.map((call) => call.method)).toEqual([
-      "appforge.bases.put",
-      "appforge.records.put",
-    ]);
-    expect(recordCalls[1]?.params).toMatchObject({
-      baseId: "base-existing",
-      tableId: "table-review",
-      record: expect.objectContaining({ id: "record-1", revision: 0 }),
+    expect(recordCalls.map((call) => call.method)).toEqual(["appforge.bases.put"]);
+    expect(recordCalls[0]?.params).toMatchObject({
+      base: expect.objectContaining({ id: "base-existing", revision: 0 }),
+      expectedRevision: 0,
     });
   });
 
@@ -296,14 +285,86 @@ describe("forge structured data metadata", () => {
       record,
     });
 
-    expect(calls[0]?.params.base).toMatchObject({
-      id: "base-existing",
-      revision: 7,
-      tables: [expect.objectContaining({ id: "table-review", revision: 5 })],
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.method).toBe("appforge.records.put");
+    expect(calls[0]?.params).toMatchObject({
+      baseId: "base-existing",
+      tableId: "table-review",
+      expectedBaseRevision: 7,
+      expectedTableRevision: 5,
+      expectedRecordRevision: 2,
     });
-    expect(calls[1]?.params.record).toMatchObject({
+    expect(calls[0]?.params.record).toMatchObject({
       id: "record-1",
       revision: 2,
     });
+  });
+
+  it("builds revision-checked gateway delete calls from previous state", () => {
+    const base = forgeStructuredDataTestUtils.normalizeGatewayBase({
+      id: "base-existing",
+      appId: "app-1",
+      name: "Gateway Base",
+      activeTableId: "table-review",
+      revision: 7,
+      updatedAt: "2026-04-26T17:30:00.000Z",
+      tables: [
+        {
+          id: "table-review",
+          name: "Reviews",
+          revision: 5,
+          fields: [{ id: "title", name: "Title", type: "text" }],
+          records: [
+            {
+              id: "record-1",
+              revision: 2,
+              values: { title: "Asset A" },
+              createdAt: "2026-04-26T17:20:00.000Z",
+              updatedAt: "2026-04-26T17:25:00.000Z",
+            },
+          ],
+        },
+      ],
+    });
+    if (!base) {
+      throw new Error("gateway base did not normalize");
+    }
+    const table = base.tables[0];
+    if (!table) {
+      throw new Error("gateway table did not normalize");
+    }
+
+    const calls = forgeStructuredDataTestUtils.buildGatewayMirrorCalls(
+      { ...base, tables: [{ ...table, records: [] }] },
+      {
+        kind: "record.delete",
+        tableId: "table-review",
+        recordId: "record-1",
+        seedBase: base,
+      },
+    );
+
+    expect(calls).toEqual([
+      {
+        method: "appforge.records.delete",
+        params: {
+          baseId: "base-existing",
+          tableId: "table-review",
+          recordId: "record-1",
+          expectedBaseRevision: 7,
+          expectedTableRevision: 5,
+          expectedRecordRevision: 2,
+        },
+      },
+    ]);
+  });
+
+  it("formats revision conflicts for operator recovery", () => {
+    const message = forgeStructuredDataTestUtils.formatStructuredSaveError(
+      new Error("Expected revision 3, found 4."),
+    );
+
+    expect(message).toContain("Reload AppForge");
+    expect(forgeStructuredDataTestUtils.isRevisionConflictError(message)).toBe(true);
   });
 });
