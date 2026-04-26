@@ -259,6 +259,10 @@ Lane: `openclaw`. Branch: `codex/openclaw-audio-process` rebased onto `origin/de
 
 Lane: `openclaw`. Branch: `codex/openclaw-audio-process` at `c7ec43ae` before this slice. Owned files for this slice: `extensions/voice-call/src/realtime-voice/local-audio-live-smoke.ts`, `extensions/voice-call/src/realtime-voice/local-audio-live-smoke.test.ts`, `extensions/voice-call/src/realtime-voice/index.ts`, and this coordination note only. Shared contract change: add a CLI-runnable local audio smoke harness that uses the gated local audio operator session in dry-run synthetic/capture mode by default, with optional `ARGENT_REALTIME_AUDIO_SMOKE_MODE=process` for explicit real-device attempts. Boundaries: `ARGENT_REALTIME_AUDIO_PROCESS_ENABLE=1` and `ARGENT_REALTIME_AUDIO_CONFIRM_LIVE=1` remain mandatory, no secrets are printed, no raw audio persistence unless `ARGENT_REALTIME_AUDIO_CAPTURE_PATH` is explicitly set, and this still does not claim always-on live operator voice support.
 
+### 2026-04-26 — OpenClaw Gated Operator Voice CLI UX Wave
+
+Lane: `openclaw`. Branch: `codex/openclaw-audio-process` at `3be41f18` before this slice. Owned files for this slice: `extensions/voice-call/src/realtime-voice/operator-voice-cli.ts`, `extensions/voice-call/src/realtime-voice/operator-voice-cli.test.ts`, `extensions/voice-call/src/realtime-voice/index.ts`, and this coordination note only. Shared contract change: add an extension-local operator voice CLI/dev command wrapper that preflights the proven local audio smoke harness and reports separate blockers for missing live gates, OpenAI key, ffmpeg, ffplay, and likely mic/speaker permission failures. Boundaries: no core CLI registry changes, no Workflows/AppForge/AOS/schema/browser/Google Meet runtime or telephony default changes, no secrets printed, no raw audio persistence unless `ARGENT_REALTIME_AUDIO_CAPTURE_PATH` is explicit, and dry-run/process/live evidence remains truth-labeled.
+
 ## Verification Snapshot
 
 Latest AppForge focused verification after rebase onto `origin/dev`:

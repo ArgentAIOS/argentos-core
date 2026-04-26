@@ -75,6 +75,15 @@ export {
   type RealtimeLocalAudioLiveSmokeResult,
 } from "./local-audio-live-smoke.js";
 export {
+  createRealtimeOperatorVoiceCliPreflight,
+  runRealtimeOperatorVoiceCli,
+  type RealtimeOperatorVoiceCliOptions,
+  type RealtimeOperatorVoiceCliPreflight,
+  type RealtimeOperatorVoiceCliPreflightIssue,
+  type RealtimeOperatorVoiceCliReport,
+  type RealtimeOperatorVoiceCliStatus,
+} from "./operator-voice-cli.js";
+export {
   createRealtimeVoiceOperatorSession,
   type RealtimeVoiceOperatorSession,
   type RealtimeVoiceOperatorSessionEvent,
