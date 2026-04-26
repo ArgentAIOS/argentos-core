@@ -899,6 +899,99 @@ export function validateWorkflow(
         });
       }
     }
+
+    if (node.kind === "output") {
+      const config = node.config;
+      if (config.sourceMode === "node") {
+        if (!config.sourceNodeId?.trim()) {
+          issues.push({
+            severity: "error",
+            code: "output_source_node_required",
+            nodeId: node.id,
+            message: "Output source mode is Specific node result, but no source node is selected.",
+          });
+        } else if (!nodeIds.has(config.sourceNodeId)) {
+          issues.push({
+            severity: "error",
+            code: "output_source_node_missing",
+            nodeId: node.id,
+            message: `Output source node "${config.sourceNodeId}" does not exist.`,
+          });
+        }
+      }
+      if (config.sourceMode === "custom" && !config.contentTemplate?.trim()) {
+        issues.push({
+          severity: "error",
+          code: "output_template_required",
+          nodeId: node.id,
+          message: "Custom template output requires a payload template.",
+        });
+      }
+
+      switch (config.outputType) {
+        case "email":
+          if (!config.to?.trim()) {
+            issues.push({
+              severity: "error",
+              code: "output_email_recipient_required",
+              nodeId: node.id,
+              message: "Email output requires a recipient.",
+            });
+          }
+          break;
+        case "webhook":
+          if (!config.url?.trim()) {
+            issues.push({
+              severity: "error",
+              code: "output_webhook_url_required",
+              nodeId: node.id,
+              message: "Webhook output requires a URL.",
+            });
+          }
+          break;
+        case "channel":
+          if (!config.channelType?.trim()) {
+            issues.push({
+              severity: "error",
+              code: "output_channel_type_required",
+              nodeId: node.id,
+              message: "Channel output requires a configured channel type.",
+            });
+          }
+          if (!config.channelId?.trim()) {
+            issues.push({
+              severity: "error",
+              code: "output_channel_target_required",
+              nodeId: node.id,
+              message: "Channel output requires a target channel, chat, or account.",
+            });
+          }
+          break;
+        case "task_update":
+          if (!config.taskId?.trim()) {
+            issues.push({
+              severity: "error",
+              code: "output_task_id_required",
+              nodeId: node.id,
+              message: "Task update output requires a task ID.",
+            });
+          }
+          break;
+        case "next_workflow":
+          if (!config.workflowId?.trim()) {
+            issues.push({
+              severity: "error",
+              code: "output_next_workflow_required",
+              nodeId: node.id,
+              message: "Next workflow output requires a workflow ID.",
+            });
+          }
+          break;
+        case "docpanel":
+        case "knowledge":
+          break;
+      }
+    }
   }
 
   if (mode === "live") {

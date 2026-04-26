@@ -429,6 +429,48 @@ describe("workflow-normalize", () => {
     }
   });
 
+  it("validates output destinations and explicit source node references", () => {
+    const result = normalizeWorkflow({
+      id: "wf-output-validation",
+      name: "Output Validation",
+      deploymentStage: "live",
+      nodes: [
+        { id: "trigger", type: "trigger", data: { triggerType: "manual" } },
+        {
+          id: "email-out",
+          type: "output",
+          data: {
+            target: "email",
+            sourceMode: "node",
+            sourceNodeId: "missing-agent",
+            subject: "Missing fields",
+          },
+        },
+      ],
+      edges: [{ id: "e1", source: "trigger", target: "email-out" }],
+    });
+
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: "error",
+          code: "output_source_node_missing",
+          nodeId: "email-out",
+        }),
+        expect.objectContaining({
+          severity: "error",
+          code: "output_email_recipient_required",
+          nodeId: "email-out",
+        }),
+        expect.objectContaining({
+          severity: "error",
+          code: "unsafe_side_effect_without_approval",
+          nodeId: "email-out",
+        }),
+      ]),
+    );
+  });
+
   it("parses action JSON fields from the canvas form", () => {
     const result = normalizeWorkflow({
       id: "wf-action-json",
