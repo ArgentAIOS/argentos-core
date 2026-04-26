@@ -538,6 +538,68 @@ async function buildWorkflowAppForgeCapabilities(): Promise<{
   };
 }
 
+async function buildWorkflowOutputChannels(): Promise<
+  Array<{
+    id: string;
+    label: string;
+    defaultAccountId: string;
+    accountIds: string[];
+    deliveryMode: "direct" | "gateway" | "hybrid";
+  }>
+> {
+  const [{ loadConfig }, { listChannelPlugins }, { DEFAULT_ACCOUNT_ID }] = await Promise.all([
+    import("../../config/config.js"),
+    import("../../channels/plugins/index.js"),
+    import("../../routing/session-key.js"),
+  ]);
+  const cfg = loadConfig();
+  const outputChannels = [];
+
+  for (const plugin of listChannelPlugins()) {
+    const outbound = plugin.outbound;
+    if (!outbound) {
+      continue;
+    }
+    if (outbound.deliveryMode !== "gateway" && (!outbound.sendText || !outbound.sendMedia)) {
+      continue;
+    }
+
+    const accountIds = plugin.config.listAccountIds(cfg);
+    const defaultAccountId =
+      plugin.config.defaultAccountId?.(cfg) ?? accountIds[0] ?? DEFAULT_ACCOUNT_ID;
+    const configuredAccountIds = [];
+    const candidates = accountIds.length > 0 ? accountIds : [defaultAccountId];
+    for (const accountId of candidates) {
+      const account = plugin.config.resolveAccount(cfg, accountId);
+      const enabled = plugin.config.isEnabled
+        ? plugin.config.isEnabled(account, cfg)
+        : !account ||
+          typeof account !== "object" ||
+          (account as { enabled?: boolean }).enabled !== false;
+      const configured = plugin.config.isConfigured
+        ? await plugin.config.isConfigured(account, cfg)
+        : true;
+      if (enabled && configured) {
+        configuredAccountIds.push(accountId);
+      }
+    }
+
+    if (configuredAccountIds.length === 0) {
+      continue;
+    }
+
+    outputChannels.push({
+      id: plugin.id,
+      label: plugin.meta.selectionLabel ?? plugin.meta.label ?? plugin.id,
+      defaultAccountId,
+      accountIds: configuredAccountIds,
+      deliveryMode: outbound.deliveryMode,
+    });
+  }
+
+  return outputChannels;
+}
+
 export async function startAppForgeEventTriggeredWorkflows(opts: {
   sql: ReturnType<typeof postgres>;
   event: NormalizedAppForgeWorkflowEvent;
@@ -1437,6 +1499,10 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         log.warn(`workflow AppForge capabilities unavailable: ${String(err)}`);
         return { apps: [], capabilities: [] };
       });
+      const outputChannels = await buildWorkflowOutputChannels().catch((err) => {
+        log.warn(`workflow output channel capabilities unavailable: ${String(err)}`);
+        return [];
+      });
       const catalog = await discoverConnectorCatalog();
       const connectors = catalog.connectors.map((c: ConnectorCatalogEntry) => {
         let scaffoldOnly = false;
@@ -1498,6 +1564,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         promotedTools: skillCapabilities.promotedTools,
         appForgeApps: appForge.apps,
         appForgeCapabilities: appForge.capabilities,
+        outputChannels,
         connectors,
         policy: toolStatus.policy,
         agentId: toolStatus.agentId,

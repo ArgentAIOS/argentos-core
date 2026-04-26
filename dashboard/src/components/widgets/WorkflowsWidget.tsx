@@ -97,7 +97,7 @@ interface AgentStepNodeData {
 
 interface OutputNodeData {
   label: string;
-  target: "doc_panel" | "discord" | "email" | "webhook" | "variable";
+  target: "doc_panel" | "channel" | "discord" | "telegram" | "email" | "webhook" | "variable";
   format: string;
   execState?: NodeExecState;
   retryCount?: number;
@@ -722,6 +722,14 @@ interface AppForgeEventOption {
   capabilityId?: string;
 }
 
+interface OutputChannelOption {
+  id: string;
+  label: string;
+  defaultAccountId?: string;
+  accountIds?: string[];
+  deliveryMode?: "direct" | "gateway" | "hybrid";
+}
+
 function toolCapabilitySourceLabel(source?: ToolPaletteEntry["source"]): string {
   switch (source) {
     case "connector":
@@ -1314,11 +1322,23 @@ function ToolGrantNode({ data, selected }: NodeProps<Node<SubPortNodeData>>) {
 function OutputNode({ data, selected }: NodeProps<Node<OutputNodeData>>) {
   const targetLabels: Record<string, string> = {
     doc_panel: "DocPanel",
+    channel: "Channel",
     discord: "Discord",
+    telegram: "Telegram",
     email: "Email",
     webhook: "Webhook",
     variable: "Variable",
   };
+  const channelType =
+    typeof data.channelType === "string" && data.channelType.trim()
+      ? data.channelType.trim()
+      : data.target === "discord" || data.target === "telegram"
+        ? data.target
+        : "";
+  const targetLabel =
+    data.target === "channel" && channelType
+      ? channelType
+      : targetLabels[data.target] || data.target;
   return (
     <div
       className={`relative px-4 py-3 rounded-lg border min-w-[160px] transition-shadow ${execStateClass(data.execState)} ${
@@ -1341,9 +1361,7 @@ function OutputNode({ data, selected }: NodeProps<Node<OutputNodeData>>) {
         <span className="text-base">&#128228;</span>
         <span className="text-xs font-semibold text-[hsl(var(--foreground))]">Output</span>
       </div>
-      <div className="text-[10px] text-[hsl(var(--muted-foreground))]">
-        {targetLabels[data.target] || data.target}
-      </div>
+      <div className="text-[10px] text-[hsl(var(--muted-foreground))]">{targetLabel}</div>
     </div>
   );
 }
@@ -3343,13 +3361,40 @@ function OutputForm({
   data,
   onUpdate,
   nodeId,
+  outputChannels,
 }: {
   data: OutputNodeData;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
   nodeId: string;
+  outputChannels: OutputChannelOption[];
 }) {
   const update = (field: string, value: unknown) => {
     onUpdate(nodeId, { ...data, [field]: value });
+  };
+  const selectedChannelId =
+    typeof data.channelType === "string" && data.channelType.trim()
+      ? data.channelType.trim()
+      : data.target === "discord" || data.target === "telegram"
+        ? data.target
+        : "";
+  const selectValue =
+    data.target === "channel" || data.target === "discord" || data.target === "telegram"
+      ? selectedChannelId
+        ? `channel:${selectedChannelId}`
+        : "channel:"
+      : data.target;
+  const selectedChannel = outputChannels.find((channel) => channel.id === selectedChannelId);
+  const legacyChannelSelected =
+    Boolean(selectedChannelId) &&
+    (data.target === "channel" || data.target === "discord" || data.target === "telegram") &&
+    !selectedChannel;
+  const updateTarget = (value: string) => {
+    if (value.startsWith("channel:")) {
+      const channelType = value.slice("channel:".length);
+      onUpdate(nodeId, { ...data, target: "channel", channelType });
+      return;
+    }
+    onUpdate(nodeId, { ...data, target: value });
   };
   return (
     <>
@@ -3360,18 +3405,30 @@ function OutputForm({
         </label>
         <select
           className={DOCK_INPUT}
-          value={data.target}
-          onChange={(e) => update("target", e.target.value)}
+          value={selectValue}
+          onChange={(e) => updateTarget(e.target.value)}
         >
           <option value="doc_panel">DocPanel</option>
-          <option value="discord">Discord</option>
+          {outputChannels.map((channel) => (
+            <option key={channel.id} value={`channel:${channel.id}`}>
+              {channel.label}
+            </option>
+          ))}
+          {legacyChannelSelected && (
+            <option value={`channel:${selectedChannelId}`} disabled>
+              {selectedChannelId} (not configured)
+            </option>
+          )}
           <option value="email">Email</option>
           <option value="webhook">Webhook</option>
-          <option value="variable" disabled>
-            Variable (coming soon)
-          </option>
         </select>
       </div>
+
+      {legacyChannelSelected && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          {selectedChannelId} is not currently configured as a workflow output channel.
+        </div>
+      )}
 
       {data.target === "email" && (
         <div className="space-y-1.5">
@@ -3395,14 +3452,16 @@ function OutputForm({
           />
         </div>
       )}
-      {data.target === "discord" && (
+      {(data.target === "channel" || data.target === "discord" || data.target === "telegram") && (
         <div className="space-y-1.5">
-          <label className={DOCK_LABEL}>Channel</label>
+          <label className={DOCK_LABEL}>
+            {(selectedChannel?.label ?? selectedChannelId) || "Channel"} target
+          </label>
           <input
             className={DOCK_INPUT}
             value={((data as Record<string, unknown>).channelId as string) || ""}
             onChange={(e) => update("channelId", e.target.value)}
-            placeholder="#channel-name"
+            placeholder="channel id, chat id, @handle, or configured alias"
           />
         </div>
       )}
@@ -4570,6 +4629,7 @@ function WorkflowCanvasInner({
   const [agents, setAgents] = useState<FamilyMember[]>([]);
   const [availableTools, setAvailableTools] = useState<ToolPaletteEntry[]>([...AVAILABLE_TOOLS]);
   const [appForgeEventOptions, setAppForgeEventOptions] = useState<AppForgeEventOption[]>([]);
+  const [outputChannels, setOutputChannels] = useState<OutputChannelOption[]>([]);
 
   // ── Run State ─────────────────────────────────────────────────────
   const [running, setRunning] = useState(false);
@@ -4716,6 +4776,7 @@ function WorkflowCanvasInner({
     if (!gateway.connected) {
       setAvailableTools([...AVAILABLE_TOOLS]);
       setAppForgeEventOptions([]);
+      setOutputChannels([]);
       return;
     }
     let cancelled = false;
@@ -4740,10 +4801,12 @@ function WorkflowCanvasInner({
             eventTypes?: string[];
           }>;
           connectors?: ConnectorEntry[];
+          outputChannels?: OutputChannelOption[];
         }>("workflows.capabilities", {});
         if (capabilities?.connectors) {
           setConnectors(capabilities.connectors);
         }
+        setOutputChannels(capabilities?.outputChannels ?? []);
         const appForgeEvents = new Map<string, AppForgeEventOption>();
         for (const capability of capabilities?.appForgeCapabilities ?? []) {
           for (const eventType of capability.eventTypes ?? []) {
@@ -4781,6 +4844,7 @@ function WorkflowCanvasInner({
           });
         }
       } catch {
+        setOutputChannels([]);
         try {
           const status = await gateway.request<{
             tools?: Array<{
@@ -5837,6 +5901,7 @@ function WorkflowCanvasInner({
                         data={selectedNode.data as unknown as OutputNodeData}
                         onUpdate={onUpdateNodeData}
                         nodeId={selectedNode.id}
+                        outputChannels={outputChannels}
                       />
                     )}
                     {selectedNode.type === "modelProvider" && (
