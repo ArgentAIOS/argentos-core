@@ -18,6 +18,7 @@ export type ForgeStructuredRecordValue = string | number | boolean | null;
 export type ForgeStructuredRecord = {
   id: string;
   values: Record<string, ForgeStructuredRecordValue>;
+  revision?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -27,6 +28,7 @@ export type ForgeStructuredTable = {
   name: string;
   fields: ForgeStructuredField[];
   records: ForgeStructuredRecord[];
+  revision?: number;
 };
 
 export type ForgeStructuredBase = {
@@ -36,6 +38,7 @@ export type ForgeStructuredBase = {
   description?: string;
   activeTableId: string;
   tables: ForgeStructuredTable[];
+  revision?: number;
   updatedAt: string;
 };
 
@@ -127,9 +130,15 @@ function cloneValue(value: ForgeStructuredRecordValue): ForgeStructuredRecordVal
 }
 
 function defaultValueForField(field: ForgeStructuredField, label = ""): ForgeStructuredRecordValue {
-  if (field.type === "number") return 0;
-  if (field.type === "checkbox") return false;
-  if (field.type === "single_select") return field.options?.[0] ?? "";
+  if (field.type === "number") {
+    return 0;
+  }
+  if (field.type === "checkbox") {
+    return false;
+  }
+  if (field.type === "single_select") {
+    return field.options?.[0] ?? "";
+  }
   return label;
 }
 
@@ -138,7 +147,9 @@ function coerceValueForField(
   field: ForgeStructuredField,
 ): ForgeStructuredRecordValue {
   if (field.type === "number") {
-    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
     if (typeof value === "string" && value.trim()) {
       const parsed = Number(value);
       return Number.isFinite(parsed) ? parsed : 0;
@@ -263,10 +274,14 @@ function defaultBase(app: ForgeApp): ForgeStructuredBase {
 }
 
 function normalizeField(value: unknown): ForgeStructuredField | null {
-  if (!isRecord(value)) return null;
+  if (!isRecord(value)) {
+    return null;
+  }
   const id = stringValue(value.id);
   const name = stringValue(value.name);
-  if (!id || !name) return null;
+  if (!id || !name) {
+    return null;
+  }
   const rawType = stringValue(value.type);
   const type: ForgeFieldType =
     rawType === "single_select" ||
@@ -288,10 +303,14 @@ function normalizeField(value: unknown): ForgeStructuredField | null {
 }
 
 function normalizeRecord(value: unknown): ForgeStructuredRecord | null {
-  if (!isRecord(value)) return null;
+  if (!isRecord(value)) {
+    return null;
+  }
   const id = stringValue(value.id);
   const values = isRecord(value.values) ? value.values : {};
-  if (!id) return null;
+  if (!id) {
+    return null;
+  }
   const normalizedValues: Record<string, ForgeStructuredRecordValue> = {};
   for (const [key, raw] of Object.entries(values)) {
     if (raw === null || typeof raw === "string" || typeof raw === "boolean") {
@@ -306,16 +325,21 @@ function normalizeRecord(value: unknown): ForgeStructuredRecord | null {
   return {
     id,
     values: normalizedValues,
+    revision: numberValue(value.revision),
     createdAt: stringValue(value.createdAt) ?? nowIso(),
     updatedAt: stringValue(value.updatedAt) ?? nowIso(),
   };
 }
 
 function normalizeTable(value: unknown): ForgeStructuredTable | null {
-  if (!isRecord(value)) return null;
+  if (!isRecord(value)) {
+    return null;
+  }
   const id = stringValue(value.id);
   const name = stringValue(value.name);
-  if (!id || !name) return null;
+  if (!id || !name) {
+    return null;
+  }
   const fields = Array.isArray(value.fields)
     ? value.fields.map(normalizeField).filter((field): field is ForgeStructuredField => !!field)
     : [];
@@ -329,6 +353,7 @@ function normalizeTable(value: unknown): ForgeStructuredTable | null {
     name,
     fields: fields.length > 0 ? fields : defaultFields(),
     records,
+    revision: numberValue(value.revision),
   };
 }
 
@@ -341,11 +366,15 @@ function structuredPayload(app: ForgeApp): StructuredPayload | undefined {
 function normalizeBase(app: ForgeApp): ForgeStructuredBase {
   const fallback = defaultBase(app);
   const payload = structuredPayload(app);
-  if (!payload) return fallback;
+  if (!payload) {
+    return fallback;
+  }
   const tables = Array.isArray(payload.tables)
     ? payload.tables.map(normalizeTable).filter((table): table is ForgeStructuredTable => !!table)
     : [];
-  if (tables.length === 0) return fallback;
+  if (tables.length === 0) {
+    return fallback;
+  }
   const activeTableId = stringValue(payload.activeTableId);
   return {
     id: stringValue(payload.baseId) ?? fallback.id,
@@ -358,6 +387,35 @@ function normalizeBase(app: ForgeApp): ForgeStructuredBase {
         : tables[0].id,
     tables,
     updatedAt: stringValue(payload.updatedAt) ?? app.updatedAt ?? fallback.updatedAt,
+  };
+}
+
+function normalizeGatewayBase(value: unknown): ForgeStructuredBase | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const id = stringValue(value.id);
+  const appId = stringValue(value.appId);
+  const name = stringValue(value.name);
+  if (!id || !appId || !name) {
+    return null;
+  }
+  const tables = Array.isArray(value.tables)
+    ? value.tables.map(normalizeTable).filter((table): table is ForgeStructuredTable => !!table)
+    : [];
+  const activeTableId = stringValue(value.activeTableId);
+  return {
+    id,
+    appId,
+    name,
+    description: stringValue(value.description),
+    activeTableId:
+      activeTableId && tables.some((table) => table.id === activeTableId)
+        ? activeTableId
+        : (tables[0]?.id ?? ""),
+    tables,
+    revision: numberValue(value.revision),
+    updatedAt: stringValue(value.updatedAt) ?? nowIso(),
   };
 }
 
@@ -388,7 +446,9 @@ function fieldByName(table: ForgeStructuredTable, name: string): ForgeStructured
 
 function recordValues(table: ForgeStructuredTable, recordId: string): Record<string, unknown> {
   const record = table.records.find((candidate) => candidate.id === recordId);
-  if (!record) return {};
+  if (!record) {
+    return {};
+  }
   return Object.fromEntries(
     table.fields.map((field) => [field.name, record.values[field.id] ?? null]),
   );
@@ -436,10 +496,14 @@ type GatewayMirrorCall = {
   params: Record<string, unknown>;
 };
 
+type GatewayBasesListResponse = {
+  bases?: unknown;
+};
+
 function toGatewayRecord(record: ForgeStructuredRecord): GatewayStructuredRecord {
   return {
     ...record,
-    revision: 0,
+    revision: record.revision ?? 0,
     values: { ...record.values },
   };
 }
@@ -447,7 +511,7 @@ function toGatewayRecord(record: ForgeStructuredRecord): GatewayStructuredRecord
 function toGatewayTable(table: ForgeStructuredTable): GatewayStructuredTable {
   return {
     ...table,
-    revision: 0,
+    revision: table.revision ?? 0,
     fields: table.fields.map((field) => ({
       ...field,
       options: field.options ? [...field.options] : undefined,
@@ -459,7 +523,7 @@ function toGatewayTable(table: ForgeStructuredTable): GatewayStructuredTable {
 function toGatewayBase(base: ForgeStructuredBase): GatewayStructuredBase {
   return {
     ...base,
-    revision: 0,
+    revision: base.revision ?? 0,
     tables: base.tables.map(toGatewayTable),
   };
 }
@@ -544,6 +608,7 @@ export const forgeStructuredDataTestUtils = {
   defaultBase,
   defaultValueForField,
   metadataWithBase,
+  normalizeGatewayBase,
   normalizeBase,
 };
 
@@ -555,13 +620,16 @@ export function useForgeStructuredData({
   emitWorkflowEvent,
 }: UseForgeStructuredDataOptions): UseForgeStructuredDataReturn {
   const [overrides, setOverrides] = useState<Record<string, ForgeStructuredBase>>({});
+  const [gatewayBases, setGatewayBases] = useState<Record<string, ForgeStructuredBase>>({});
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const appKey = useMemo(() => apps.map((app) => app.id).join("\0"), [apps]);
+  const gatewayLoadAppIds = useMemo(() => apps.map((app) => app.id), [appKey]);
 
   const bases = useMemo(
-    () => apps.map((app) => overrides[app.id] ?? normalizeBase(app)),
-    [apps, overrides],
+    () => apps.map((app) => overrides[app.id] ?? gatewayBases[app.id] ?? normalizeBase(app)),
+    [apps, gatewayBases, overrides],
   );
   const activeBase = bases.find((base) => base.appId === selectedAppId) ?? bases[0] ?? null;
   const activeTable =
@@ -575,19 +643,25 @@ export function useForgeStructuredData({
     null;
 
   useEffect(() => {
-    if (!activeBase) return;
+    if (!activeBase) {
+      return;
+    }
     if (selectedAppId !== activeBase.appId) {
       onSelectApp(activeBase.appId);
     }
   }, [activeBase, onSelectApp, selectedAppId]);
 
   useEffect(() => {
-    if (!selectedField || selectedField.id === selectedFieldId) return;
+    if (!selectedField || selectedField.id === selectedFieldId) {
+      return;
+    }
     setSelectedFieldId(selectedField.id);
   }, [selectedField, selectedFieldId]);
 
   useEffect(() => {
-    if (!selectedAppId || !activeTable || typeof window === "undefined") return;
+    if (!selectedAppId || !activeTable || typeof window === "undefined") {
+      return;
+    }
     const stored = window.localStorage.getItem(
       storedFieldSelectionKey(selectedAppId, activeTable.id),
     );
@@ -595,6 +669,54 @@ export function useForgeStructuredData({
       setSelectedFieldId(stored);
     }
   }, [activeTable, selectedAppId]);
+
+  useEffect(() => {
+    if (!gatewayRequest || gatewayLoadAppIds.length === 0) {
+      return;
+    }
+    const requestGateway: NonNullable<typeof gatewayRequest> = gatewayRequest;
+    let cancelled = false;
+    const appIds = new Set(gatewayLoadAppIds);
+
+    async function loadGatewayBases() {
+      try {
+        const result = await requestGateway<GatewayBasesListResponse>(
+          "appforge.bases.list",
+          {},
+          { timeoutMs: 5_000 },
+        );
+        if (cancelled) {
+          return;
+        }
+        const gatewayBaseList = Array.isArray(result.bases) ? result.bases : [];
+        const nextBases: Record<string, ForgeStructuredBase> = {};
+        for (const rawBase of gatewayBaseList) {
+          const base = normalizeGatewayBase(rawBase);
+          if (base && appIds.has(base.appId)) {
+            nextBases[base.appId] = base;
+          }
+        }
+        setGatewayBases((prev) => {
+          const next = { ...prev };
+          for (const appId of appIds) {
+            delete next[appId];
+          }
+          return { ...next, ...nextBases };
+        });
+      } catch (err) {
+        if (!cancelled) {
+          console.warn("[AppForge] Gateway base load failed; using metadata fallback.", {
+            error: err,
+          });
+        }
+      }
+    }
+
+    void loadGatewayBases();
+    return () => {
+      cancelled = true;
+    };
+  }, [gatewayLoadAppIds, gatewayRequest]);
 
   const persistBase = useCallback(
     async (
@@ -605,27 +727,56 @@ export function useForgeStructuredData({
       gatewayMutation?: GatewayMirrorMutation,
     ) => {
       const app = apps.find((candidate) => candidate.id === base.appId);
-      if (!app) return;
+      if (!app) {
+        return;
+      }
       const nextBase = { ...base, updatedAt: nowIso() };
       setOverrides((prev) => ({ ...prev, [base.appId]: nextBase }));
       setSaving(true);
       setError(null);
       try {
-        const response = await fetchLocalApi(`/api/apps/${app.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ metadata: metadataWithBase(app, nextBase) }),
-        });
-        if (!response.ok) {
-          throw new Error(`Failed to save structured base (${response.status})`);
+        let savedToGateway = false;
+        let savedToMetadata = false;
+        let gatewayError: unknown;
+        let metadataError: unknown;
+
+        if (gatewayRequest) {
+          try {
+            await mirrorGatewayMutation(gatewayRequest, nextBase, gatewayMutation);
+            savedToGateway = true;
+            setGatewayBases((prev) => ({ ...prev, [nextBase.appId]: nextBase }));
+          } catch (err) {
+            gatewayError = err;
+            console.warn("[AppForge] Gateway save failed; trying metadata fallback.", {
+              error: err,
+            });
+          }
         }
+
         try {
-          await mirrorGatewayMutation(gatewayRequest, nextBase, gatewayMutation);
-        } catch (gatewayErr) {
-          console.warn("[AppForge] Gateway mirror failed; metadata persistence remains active.", {
-            error: gatewayErr,
+          const response = await fetchLocalApi(`/api/apps/${app.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ metadata: metadataWithBase(app, nextBase) }),
+          });
+          if (!response.ok) {
+            throw new Error(`Failed to save structured base metadata (${response.status})`);
+          }
+          savedToMetadata = true;
+        } catch (err) {
+          metadataError = err;
+          if (!savedToGateway) {
+            throw err;
+          }
+          console.warn("[AppForge] Metadata fallback save failed; gateway save remains active.", {
+            error: err,
           });
         }
+
+        if (!savedToGateway && !savedToMetadata) {
+          throw gatewayError ?? metadataError ?? new Error("Failed to save structured base");
+        }
+
         if (event && emitWorkflowEvent) {
           await emitWorkflowEvent(app.id, event);
         }
@@ -647,7 +798,9 @@ export function useForgeStructuredData({
 
   const selectTable = useCallback(
     async (tableId: string) => {
-      if (!activeBase || activeBase.activeTableId === tableId) return;
+      if (!activeBase || activeBase.activeTableId === tableId) {
+        return;
+      }
       await persistBase({ ...activeBase, activeTableId: tableId });
     },
     [activeBase, persistBase],
@@ -677,7 +830,9 @@ export function useForgeStructuredData({
         nextTable: ForgeStructuredTable;
       }) => GatewayMirrorMutation,
     ) => {
-      if (!activeBase || !activeTable) return;
+      if (!activeBase || !activeTable) {
+        return;
+      }
       const nextTable = updater(activeTable);
       const nextBase = {
         ...activeBase,
@@ -709,7 +864,9 @@ export function useForgeStructuredData({
   );
 
   const addTable = useCallback(async () => {
-    if (!activeBase) return;
+    if (!activeBase) {
+      return;
+    }
     const table: ForgeStructuredTable = {
       id: newId("table"),
       name: `Table ${activeBase.tables.length + 1}`,
@@ -734,7 +891,9 @@ export function useForgeStructuredData({
 
   const updateTable = useCallback(
     async (tableId: string, updates: Partial<Pick<ForgeStructuredTable, "name">>) => {
-      if (!activeBase) return;
+      if (!activeBase) {
+        return;
+      }
       let nextTable: ForgeStructuredTable | null = null;
       const nextBase = {
         ...activeBase,
@@ -767,9 +926,13 @@ export function useForgeStructuredData({
 
   const duplicateTable = useCallback(
     async (tableId: string) => {
-      if (!activeBase) return;
+      if (!activeBase) {
+        return;
+      }
       const source = activeBase.tables.find((table) => table.id === tableId);
-      if (!source) return;
+      if (!source) {
+        return;
+      }
       const fieldIdMap = new Map(source.fields.map((field) => [field.id, newId("field")]));
       const table: ForgeStructuredTable = {
         id: newId("table"),
@@ -817,7 +980,9 @@ export function useForgeStructuredData({
 
   const deleteTable = useCallback(
     async (tableId: string) => {
-      if (!activeBase || activeBase.tables.length <= 1) return;
+      if (!activeBase || activeBase.tables.length <= 1) {
+        return;
+      }
       const tables = activeBase.tables.filter((table) => table.id !== tableId);
       const nextBase = {
         ...activeBase,
@@ -874,7 +1039,9 @@ export function useForgeStructuredData({
       await updateActiveTable((table) => ({
         ...table,
         fields: table.fields.map((field) => {
-          if (field.id !== fieldId) return field;
+          if (field.id !== fieldId) {
+            return field;
+          }
           const nextField = {
             ...field,
             ...updates,
@@ -889,7 +1056,9 @@ export function useForgeStructuredData({
         }),
         records: table.records.map((record) => {
           const field = table.fields.find((candidate) => candidate.id === fieldId);
-          if (!field) return record;
+          if (!field) {
+            return record;
+          }
           const nextField = { ...field, ...updates, id: field.id };
           return {
             ...record,
@@ -907,9 +1076,13 @@ export function useForgeStructuredData({
 
   const duplicateField = useCallback(
     async (fieldId: string) => {
-      if (!activeTable) return;
+      if (!activeTable) {
+        return;
+      }
       const source = activeTable.fields.find((field) => field.id === fieldId);
-      if (!source) return;
+      if (!source) {
+        return;
+      }
       const sourceIndex = activeTable.fields.findIndex((field) => field.id === fieldId);
       const field: ForgeStructuredField = {
         ...source,
@@ -940,7 +1113,9 @@ export function useForgeStructuredData({
 
   const deleteField = useCallback(
     async (fieldId: string) => {
-      if (!activeTable || activeTable.fields.length <= 1) return;
+      if (!activeTable || activeTable.fields.length <= 1) {
+        return;
+      }
       const nextField = activeTable.fields.find((field) => field.id !== fieldId);
       await updateActiveTable((table) => ({
         ...table,
@@ -964,14 +1139,20 @@ export function useForgeStructuredData({
 
   const moveField = useCallback(
     async (fieldId: string, direction: "left" | "right") => {
-      if (!activeTable) return;
+      if (!activeTable) {
+        return;
+      }
       const index = activeTable.fields.findIndex((field) => field.id === fieldId);
       const targetIndex = direction === "left" ? index - 1 : index + 1;
-      if (index < 0 || targetIndex < 0 || targetIndex >= activeTable.fields.length) return;
+      if (index < 0 || targetIndex < 0 || targetIndex >= activeTable.fields.length) {
+        return;
+      }
       await updateActiveTable((table) => {
         const fields = [...table.fields];
         const [field] = fields.splice(index, 1);
-        if (!field) return table;
+        if (!field) {
+          return table;
+        }
         fields.splice(targetIndex, 0, field);
         return { ...table, fields };
       });
@@ -980,7 +1161,9 @@ export function useForgeStructuredData({
   );
 
   const addRecord = useCallback(async () => {
-    if (!activeBase || !activeTable) return;
+    if (!activeBase || !activeTable) {
+      return;
+    }
     const recordId = newId("record");
     const createdAt = nowIso();
     const values = Object.fromEntries(
@@ -1010,9 +1193,13 @@ export function useForgeStructuredData({
 
   const duplicateRecord = useCallback(
     async (recordId: string) => {
-      if (!activeTable) return;
+      if (!activeTable) {
+        return;
+      }
       const source = activeTable.records.find((record) => record.id === recordId);
-      if (!source) return;
+      if (!source) {
+        return;
+      }
       const nextRecordId = newId("record");
       const createdAt = nowIso();
       const values = Object.fromEntries(
@@ -1068,7 +1255,9 @@ export function useForgeStructuredData({
 
   const updateCell = useCallback(
     async (recordId: string, fieldId: string, value: ForgeStructuredRecordValue) => {
-      if (!activeTable) return;
+      if (!activeTable) {
+        return;
+      }
       await updateActiveTable(
         (table) => ({
           ...table,
@@ -1101,7 +1290,9 @@ export function useForgeStructuredData({
 
   const deleteRecord = useCallback(
     async (recordId: string) => {
-      if (!activeTable) return;
+      if (!activeTable) {
+        return;
+      }
       await updateActiveTable(
         (table) => ({
           ...table,
@@ -1126,7 +1317,9 @@ export function useForgeStructuredData({
 
   const requestReview = useCallback(
     async (recordId: string) => {
-      if (!activeTable) return;
+      if (!activeTable) {
+        return;
+      }
       const statusField = fieldByName(activeTable, "status");
       await updateActiveTable(
         (table) => ({
@@ -1165,7 +1358,9 @@ export function useForgeStructuredData({
 
   const completeReview = useCallback(
     async (recordId: string, decision: ForgeReviewDecision) => {
-      if (!activeTable) return;
+      if (!activeTable) {
+        return;
+      }
       const statusField = fieldByName(activeTable, "status");
       const capabilityField = fieldByName(activeTable, "capability");
       const record = activeTable.records.find((candidate) => candidate.id === recordId);
@@ -1216,7 +1411,9 @@ export function useForgeStructuredData({
 
   const completeCapability = useCallback(
     async (recordId: string) => {
-      if (!activeTable) return;
+      if (!activeTable) {
+        return;
+      }
       const statusField = fieldByName(activeTable, "status");
       const capabilityField = fieldByName(activeTable, "capability");
       const record = activeTable.records.find((candidate) => candidate.id === recordId);

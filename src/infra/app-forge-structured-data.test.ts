@@ -113,6 +113,50 @@ describe("forge structured data metadata", () => {
     });
   });
 
+  it("normalizes gateway-backed bases and preserves revisions", () => {
+    const base = forgeStructuredDataTestUtils.normalizeGatewayBase({
+      id: "base-gateway",
+      appId: "app-1",
+      name: "Gateway Base",
+      description: "Loaded from gateway",
+      activeTableId: "table-review",
+      revision: 4,
+      updatedAt: "2026-04-26T17:30:00.000Z",
+      tables: [
+        {
+          id: "table-review",
+          name: "Reviews",
+          revision: 3,
+          fields: [{ id: "title", name: "Title", type: "text" }],
+          records: [
+            {
+              id: "record-1",
+              revision: 2,
+              values: { title: "Asset A" },
+              createdAt: "2026-04-26T17:20:00.000Z",
+              updatedAt: "2026-04-26T17:25:00.000Z",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(base).toMatchObject({
+      id: "base-gateway",
+      appId: "app-1",
+      name: "Gateway Base",
+      activeTableId: "table-review",
+      revision: 4,
+      tables: [
+        expect.objectContaining({
+          id: "table-review",
+          revision: 3,
+          records: [expect.objectContaining({ id: "record-1", revision: 2 })],
+        }),
+      ],
+    });
+  });
+
   it("coerces record values when field types change", () => {
     const selectField: ForgeStructuredField = {
       id: "status",
@@ -205,6 +249,61 @@ describe("forge structured data metadata", () => {
       baseId: "base-existing",
       tableId: "table-review",
       record: expect.objectContaining({ id: "record-1", revision: 0 }),
+    });
+  });
+
+  it("preserves gateway revisions when building gateway write calls", () => {
+    const base = forgeStructuredDataTestUtils.normalizeGatewayBase({
+      id: "base-existing",
+      appId: "app-1",
+      name: "Gateway Base",
+      activeTableId: "table-review",
+      revision: 7,
+      updatedAt: "2026-04-26T17:30:00.000Z",
+      tables: [
+        {
+          id: "table-review",
+          name: "Reviews",
+          revision: 5,
+          fields: [{ id: "title", name: "Title", type: "text" }],
+          records: [
+            {
+              id: "record-1",
+              revision: 2,
+              values: { title: "Asset A" },
+              createdAt: "2026-04-26T17:20:00.000Z",
+              updatedAt: "2026-04-26T17:25:00.000Z",
+            },
+          ],
+        },
+      ],
+    });
+    if (!base) {
+      throw new Error("gateway base did not normalize");
+    }
+
+    const table = base.tables[0];
+    if (!table) {
+      throw new Error("gateway table did not normalize");
+    }
+    const record = table.records[0];
+    if (!record) {
+      throw new Error("gateway record did not normalize");
+    }
+    const calls = forgeStructuredDataTestUtils.buildGatewayMirrorCalls(base, {
+      kind: "record.put",
+      tableId: table.id,
+      record,
+    });
+
+    expect(calls[0]?.params.base).toMatchObject({
+      id: "base-existing",
+      revision: 7,
+      tables: [expect.objectContaining({ id: "table-review", revision: 5 })],
+    });
+    expect(calls[1]?.params.record).toMatchObject({
+      id: "record-1",
+      revision: 2,
     });
   });
 });
