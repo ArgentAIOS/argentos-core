@@ -31,28 +31,6 @@ def _require_arg(value: str | None, *, code: str, message: str, detail_key: str,
     raise CliError(code=code, message=message, exit_code=4, details={detail_key: detail_value})
 
 
-def _parse_json_settings(raw: str | None) -> dict[str, Any] | None:
-    if not raw:
-        return None
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as err:
-        raise CliError(
-            code="DROPBOX_SETTINGS_INVALID",
-            message="shared_link_settings must be valid JSON",
-            exit_code=4,
-            details={"error": str(err)},
-        ) from err
-    if not isinstance(payload, dict):
-        raise CliError(
-            code="DROPBOX_SETTINGS_INVALID",
-            message="shared_link_settings must decode to a JSON object",
-            exit_code=4,
-            details={"type": type(payload).__name__},
-        )
-    return payload
-
-
 def capabilities_snapshot() -> dict[str, Any]:
     manifest = _load_manifest()
     read_support: dict[str, bool] = {}
@@ -163,6 +141,9 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "app_secret_present": runtime["app_secret_present"],
             "refresh_token_env": runtime["refresh_token_env"],
             "refresh_token_present": runtime["refresh_token_present"],
+            "service_keys": runtime["service_keys"],
+            "operator_service_keys": runtime["service_keys"],
+            "sources": runtime["sources"],
         },
         "scope": {
             "path": runtime["path"] or None,
@@ -202,6 +183,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             f"Set {runtime['app_key_env']}, {runtime['app_secret_env']}, and {runtime['refresh_token_env']} in API Keys.",
             f"Optionally set {runtime['path_env']} to scope list and search commands.",
             "Use health to verify the Dropbox token refresh and a live list_folder probe.",
+            "Do not advertise Dropbox write actions until a write bridge and approval policy are verified.",
         ],
     }
 
@@ -214,17 +196,12 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "status": "ready" if ready else ("needs_setup" if probe.get("code") == "DROPBOX_SETUP_REQUIRED" else "degraded"),
         "summary": "Dropbox connector diagnostics.",
         "runtime": {
-            "implementation_mode": "live_read_write",
+            "implementation_mode": "live_read_only",
             "command_readiness": {
                 "file.list": ready,
                 "file.get": ready,
-                "file.upload": ready and runtime["source_file_present"] if "source_file_present" in runtime else ready,
                 "file.download": ready,
-                "file.delete": ready,
-                "file.move": ready,
                 "folder.list": ready,
-                "folder.create": ready,
-                "share.create_link": ready,
                 "share.list": ready,
                 "search.query": ready,
             },
@@ -245,17 +222,12 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "share.list",
             "search.query",
         ],
-        "supported_write_commands": [
-            "file.upload",
-            "file.delete",
-            "file.move",
-            "folder.create",
-            "share.create_link",
-        ],
+        "supported_write_commands": [],
         "next_steps": [
             f"Set {runtime['app_key_env']}, {runtime['app_secret_env']}, and {runtime['refresh_token_env']} to enable live Dropbox access.",
             f"Set {runtime['path_env']} and {runtime['query_env']} defaults if you want stable worker scope pickers.",
-            "Use file.list and search.query to confirm the scoped folder before writes.",
+            "Use file.list and search.query to confirm the scoped folder.",
+            "Do not advertise Dropbox write actions until a write bridge and approval policy are verified.",
         ],
     }
 
@@ -325,34 +297,7 @@ def file_get_result(ctx_obj: dict[str, Any], *, path: str | None, file_id: str |
     }
 
 
-def file_upload_result(ctx_obj: dict[str, Any], *, path: str | None, source_file: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    client = create_client(ctx_obj)
-    resolved_path = _require_arg(
-        path or runtime["path"],
-        code="DROPBOX_PATH_REQUIRED",
-        message="Dropbox destination path is required",
-        detail_key="env",
-        detail_value=runtime["path_env"],
-    )
-    resolved_source = _require_arg(
-        source_file or runtime["source_file"],
-        code="DROPBOX_SOURCE_FILE_REQUIRED",
-        message="source_file is required",
-        detail_key="env",
-        detail_value=runtime["source_file_env"],
-    )
-    result = client.upload_file(dropbox_path=resolved_path, source_file=resolved_source)
-    return {
-        "status": "live_write",
-        "backend": BACKEND_NAME,
-        "summary": f"Uploaded file to {resolved_path}.",
-        "upload": result,
-        "scope_preview": _scope_preview("file.upload", "file", {"path": resolved_path, "source_file": resolved_source}),
-    }
-
-
-def file_download_result(ctx_obj: dict[str, Any], *, path: str | None, file_id: str | None, output_file: str | None) -> dict[str, Any]:
+def file_download_result(ctx_obj: dict[str, Any], *, path: str | None, file_id: str | None) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
     client = create_client(ctx_obj)
     target = file_id or runtime["file_id"] or path or runtime["path"]
@@ -369,62 +314,7 @@ def file_download_result(ctx_obj: dict[str, Any], *, path: str | None, file_id: 
         "backend": BACKEND_NAME,
         "summary": f"Downloaded Dropbox file {resolved_target}.",
         "download": result,
-        "scope_preview": _scope_preview("file.download", "file", {"path_or_id": resolved_target, "output_file": output_file or runtime["output_file"] or None}),
-    }
-
-
-def file_delete_result(ctx_obj: dict[str, Any], *, path: str | None, file_id: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    client = create_client(ctx_obj)
-    target = file_id or runtime["file_id"] or path or runtime["path"]
-    resolved_target = _require_arg(
-        target,
-        code="DROPBOX_TARGET_REQUIRED",
-        message="file path or file_id is required",
-        detail_key="env",
-        detail_value=runtime["file_id_env"],
-    )
-    result = client.delete_file(path_or_id=resolved_target)
-    return {
-        "status": "live_write",
-        "backend": BACKEND_NAME,
-        "summary": f"Deleted Dropbox file {resolved_target}.",
-        "delete": result,
-        "scope_preview": _scope_preview("file.delete", "file", {"path_or_id": resolved_target}),
-    }
-
-
-def file_move_result(
-    ctx_obj: dict[str, Any],
-    *,
-    path: str | None,
-    file_id: str | None,
-    dest_path: str | None,
-) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    client = create_client(ctx_obj)
-    source = file_id or runtime["file_id"] or path or runtime["path"]
-    resolved_source = _require_arg(
-        source,
-        code="DROPBOX_TARGET_REQUIRED",
-        message="file path or file_id is required",
-        detail_key="env",
-        detail_value=runtime["file_id_env"],
-    )
-    resolved_dest = _require_arg(
-        dest_path or runtime["dest_path"],
-        code="DROPBOX_DEST_PATH_REQUIRED",
-        message="destination path is required",
-        detail_key="env",
-        detail_value=runtime["dest_path_env"],
-    )
-    result = client.move_file(source_path=resolved_source, dest_path=resolved_dest)
-    return {
-        "status": "live_write",
-        "backend": BACKEND_NAME,
-        "summary": f"Moved Dropbox file to {resolved_dest}.",
-        "move": result,
-        "scope_preview": _scope_preview("file.move", "file", {"source": resolved_source, "dest_path": resolved_dest}),
+        "scope_preview": _scope_preview("file.download", "file", {"path_or_id": resolved_target}),
     }
 
 
@@ -441,47 +331,6 @@ def folder_list_result(ctx_obj: dict[str, Any], *, path: str | None, cursor: str
         "folders": payload,
         "picker": _picker(_folder_items(payload["folders"]), kind="folder"),
         "scope_preview": _scope_preview("folder.list", "folder", {"path": resolved_path, "cursor": resolved_cursor}),
-    }
-
-
-def folder_create_result(ctx_obj: dict[str, Any], *, path: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    client = create_client(ctx_obj)
-    resolved_path = _require_arg(
-        path or runtime["path"],
-        code="DROPBOX_PATH_REQUIRED",
-        message="Dropbox folder path is required",
-        detail_key="env",
-        detail_value=runtime["path_env"],
-    )
-    result = client.create_folder(path=resolved_path)
-    return {
-        "status": "live_write",
-        "backend": BACKEND_NAME,
-        "summary": f"Created Dropbox folder {resolved_path}.",
-        "folder": result,
-        "scope_preview": _scope_preview("folder.create", "folder", {"path": resolved_path}),
-    }
-
-
-def share_create_link_result(ctx_obj: dict[str, Any], *, path: str | None, settings: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    client = create_client(ctx_obj)
-    resolved_path = _require_arg(
-        path or runtime["path"],
-        code="DROPBOX_PATH_REQUIRED",
-        message="Dropbox path is required",
-        detail_key="env",
-        detail_value=runtime["path_env"],
-    )
-    resolved_settings = _parse_json_settings(settings or runtime["shared_link_settings"])
-    result = client.create_shared_link(path=resolved_path, settings=resolved_settings)
-    return {
-        "status": "live_write",
-        "backend": BACKEND_NAME,
-        "summary": f"Created shared link for {resolved_path}.",
-        "share": result,
-        "scope_preview": _scope_preview("share.create_link", "share", {"path": resolved_path}),
     }
 
 
