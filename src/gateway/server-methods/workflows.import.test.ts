@@ -28,6 +28,24 @@ async function callImportPreview(params: Record<string, unknown>) {
   return respond.mock.calls[0] as [boolean, unknown, unknown?];
 }
 
+async function callTemplateList(params: Record<string, unknown> = {}) {
+  const respond = vi.fn();
+  await workflowsHandlers["workflows.templates.list"]({
+    params,
+    respond,
+  } as unknown as GatewayRequestHandlerOptions);
+  return respond.mock.calls[0] as [boolean, unknown, unknown?];
+}
+
+async function callTemplateGet(params: Record<string, unknown>) {
+  const respond = vi.fn();
+  await workflowsHandlers["workflows.templates.get"]({
+    params,
+    respond,
+  } as unknown as GatewayRequestHandlerOptions);
+  return respond.mock.calls[0] as [boolean, unknown, unknown?];
+}
+
 describe("workflows.importPreview", () => {
   it("previews canonical JSON packages without persisting them", async () => {
     const source = OWNER_OPERATOR_WORKFLOW_PACKAGES[0];
@@ -79,5 +97,49 @@ describe("workflows.importPreview", () => {
     expect(error).toMatchObject({
       code: "INVALID_REQUEST",
     });
+  });
+});
+
+describe("workflows.templates", () => {
+  it("lists owner-operator workflow templates for the browser gallery", async () => {
+    const [ok, payload] = await callTemplateList();
+
+    expect(ok).toBe(true);
+    const templates = (payload as { templates?: Array<{ slug?: string; nodeCount?: number }> })
+      .templates;
+    expect(templates?.length).toBe(OWNER_OPERATOR_WORKFLOW_PACKAGES.length);
+    expect(templates?.some((template) => template.slug === "vip-email-alert")).toBe(true);
+    expect(templates?.every((template) => Number(template.nodeCount) > 0)).toBe(true);
+  });
+
+  it("filters templates by department and returns import-preview payloads by slug", async () => {
+    const [listOk, listPayload] = await callTemplateList({ department: "marketing" });
+
+    expect(listOk).toBe(true);
+    expect(
+      (listPayload as { templates?: Array<{ scenario?: { department?: string } }> }).templates
+        ?.length,
+    ).toBeGreaterThan(0);
+    expect(
+      (
+        listPayload as { templates?: Array<{ scenario?: { department?: string } }> }
+      ).templates?.every((template) => template.scenario?.department === "marketing"),
+    ).toBe(true);
+
+    const [getOk, getPayload] = await callTemplateGet({ slug: "vip-email-alert" });
+
+    expect(getOk).toBe(true);
+    expect(getPayload).toMatchObject({
+      package: { kind: "argent.workflow.package", slug: "vip-email-alert" },
+      workflow: { nodes: expect.any(Array) },
+      readiness: { okForPinnedTestRun: true },
+    });
+  });
+
+  it("returns a user-facing error for unknown template slugs", async () => {
+    const [ok, , error] = await callTemplateGet({ slug: "missing-template" });
+
+    expect(ok).toBe(false);
+    expect(error).toMatchObject({ code: "INVALID_REQUEST" });
   });
 });

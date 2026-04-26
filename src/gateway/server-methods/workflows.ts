@@ -57,10 +57,12 @@ import {
   normalizeWorkflow,
   type WorkflowIssue,
 } from "../../infra/workflow-normalize.js";
+import { OWNER_OPERATOR_WORKFLOW_PACKAGES } from "../../infra/workflow-owner-operator-templates.js";
 import {
   applyWorkflowPackageTestFixtures,
   importWorkflowPackage,
   parseWorkflowPackageText,
+  type WorkflowPackage,
   type WorkflowPackageFormat,
 } from "../../infra/workflow-package.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -331,6 +333,39 @@ function optionalWorkflowPackageFormat(
   return v;
 }
 
+function workflowTemplateSummary(workflowPackage: WorkflowPackage) {
+  const imported = importWorkflowPackage(workflowPackage);
+  return {
+    id: workflowPackage.id,
+    slug: workflowPackage.slug,
+    name: workflowPackage.name,
+    description: workflowPackage.description,
+    scenario: workflowPackage.scenario,
+    credentialCount: workflowPackage.credentials?.required.length ?? 0,
+    dependencyCount: workflowPackage.dependencies?.length ?? 0,
+    nodeCount: workflowPackage.workflow.nodes.length,
+    edgeCount: workflowPackage.workflow.edges.length,
+    okForImport: imported.readiness.okForImport,
+    okForPinnedTestRun: imported.readiness.okForPinnedTestRun,
+    liveRequirements: imported.readiness.liveRequirements,
+    notes: workflowPackage.notes ?? [],
+  };
+}
+
+function workflowPackagePreviewPayload(workflowPackage: WorkflowPackage) {
+  const imported = importWorkflowPackage(workflowPackage);
+  return {
+    package: workflowPackage,
+    workflow: applyWorkflowPackageTestFixtures(workflowPackage),
+    canvasLayout: imported.normalized.canvasLayout,
+    readiness: imported.readiness,
+    validation: {
+      ok: imported.readiness.okForImport,
+      issues: imported.normalized.issues,
+    },
+  };
+}
+
 type WorkflowRunPublicStep = {
   id: string;
   nodeId: string;
@@ -393,6 +428,16 @@ function numericValue(value: unknown, fallback = 0): number {
   return fallback;
 }
 
+function stringValue(value: unknown, fallback = ""): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  return fallback;
+}
+
 function elapsedMs(start: unknown, end: unknown, nowMs = Date.now()): number {
   const startIso = isoString(start);
   if (!startIso) {
@@ -440,15 +485,15 @@ export function publicWorkflowRunStep(
   row: Record<string, unknown>,
   nodeLabels: Map<string, string> = new Map(),
 ): WorkflowRunPublicStep {
-  const nodeId = String(row.node_id ?? row.nodeId ?? "");
+  const nodeId = stringValue(row.node_id ?? row.nodeId);
   const startedAt = isoString(row.started_at ?? row.startedAt);
   const endedAt = isoString(row.ended_at ?? row.endedAt);
   return {
-    id: String(row.id ?? ""),
+    id: stringValue(row.id),
     nodeId,
     nodeName: nodeLabels.get(nodeId) ?? nodeId,
-    nodeKind: String(row.node_kind ?? row.nodeKind ?? "action"),
-    status: String(row.status ?? "pending"),
+    nodeKind: stringValue(row.node_kind ?? row.nodeKind, "action"),
+    status: stringValue(row.status, "pending"),
     agentId:
       typeof row.agent_id === "string"
         ? row.agent_id
@@ -481,17 +526,17 @@ export function publicWorkflowRunStep(
 
 export function publicWorkflowApproval(row: Record<string, unknown>): WorkflowRunPublicApproval {
   return {
-    approvalId: String(row.id ?? row.approval_id ?? ""),
-    runId: String(row.run_id ?? row.runId ?? ""),
-    workflowId: String(row.workflow_id ?? row.workflowId ?? ""),
-    nodeId: String(row.node_id ?? row.nodeId ?? ""),
+    approvalId: stringValue(row.id ?? row.approval_id),
+    runId: stringValue(row.run_id ?? row.runId),
+    workflowId: stringValue(row.workflow_id ?? row.workflowId),
+    nodeId: stringValue(row.node_id ?? row.nodeId),
     nodeLabel:
       typeof row.node_label === "string"
         ? row.node_label
         : typeof row.nodeLabel === "string"
           ? row.nodeLabel
           : undefined,
-    message: String(row.message ?? "Review required before continuing"),
+    message: stringValue(row.message, "Review required before continuing"),
     sideEffectClass:
       typeof row.side_effect_class === "string"
         ? row.side_effect_class
@@ -506,7 +551,7 @@ export function publicWorkflowApproval(row: Record<string, unknown>): WorkflowRu
         : typeof row.timeoutAction === "string"
           ? row.timeoutAction
           : undefined,
-    status: String(row.status ?? "pending"),
+    status: stringValue(row.status, "pending"),
     requestedAt: isoString(row.requested_at ?? row.requestedAt),
     resolvedAt: isoString(row.resolved_at ?? row.resolvedAt),
     resolvedBy:
@@ -607,7 +652,7 @@ export function publicWorkflowRun(
       ? {
           at: endedAt,
           type: "run_finished",
-          label: `Run ${String(row.status ?? "finished")}`,
+          label: `Run ${stringValue(row.status, "finished")}`,
           status: row.status,
           error: typeof row.error === "string" ? row.error : undefined,
         }
@@ -618,9 +663,9 @@ export function publicWorkflowRun(
     .toSorted((a, b) => String(a.at).localeCompare(String(b.at)));
 
   return {
-    id: String(row.id ?? ""),
-    runId: String(row.id ?? ""),
-    workflowId: String(row.workflow_id ?? row.workflowId ?? ""),
+    id: stringValue(row.id),
+    runId: stringValue(row.id),
+    workflowId: stringValue(row.workflow_id ?? row.workflowId),
     workflowName:
       typeof row.workflow_name === "string"
         ? row.workflow_name
@@ -628,8 +673,8 @@ export function publicWorkflowRun(
           ? row.workflowName
           : undefined,
     workflowVersion: numericValue(row.workflow_version ?? row.workflowVersion),
-    status: String(row.status ?? "created"),
-    triggerType: String(row.trigger_type ?? row.triggerType ?? ""),
+    status: stringValue(row.status, "created"),
+    triggerType: stringValue(row.trigger_type ?? row.triggerType),
     triggerPayload: row.trigger_payload ?? row.triggerPayload,
     currentNodeId:
       typeof row.current_node_id === "string"
@@ -669,8 +714,8 @@ async function buildWorkflowAppForgeCapabilities(): Promise<{
   const apps = (payload.apps ?? [])
     .filter((app): app is Record<string, unknown> => Boolean(app && typeof app === "object"))
     .map((app) => ({
-      id: String(app.id ?? ""),
-      name: String(app.name ?? "Untitled App"),
+      id: stringValue(app.id),
+      name: stringValue(app.name, "Untitled App"),
       description: typeof app.description === "string" ? app.description : undefined,
       version: typeof app.version === "number" ? app.version : undefined,
       metadata: app.metadata,
@@ -1080,7 +1125,7 @@ export async function validateWorkflowRuntimeCapabilities(
   ]);
   const availableChannels = new Set(
     outputChannels
-      .filter((channel) => channel.configured !== false)
+      .filter((channel) => channel.configured)
       .map((channel) => channel.id.toLowerCase()),
   );
   const availableConnectors = new Set(
@@ -1262,22 +1307,64 @@ export async function startAppForgeEventTriggeredWorkflows(opts: {
 export const workflowsHandlers: GatewayRequestHandlers = {
   // ── Import / Export ───────────────────────────────────────────────────────
 
+  "workflows.templates.list": async ({ params, respond }) => {
+    try {
+      const department = optionalString(params, "department");
+      const runPattern = optionalString(params, "runPattern");
+      const query = optionalString(params, "query")?.toLowerCase();
+      const templates = OWNER_OPERATOR_WORKFLOW_PACKAGES.filter((workflowPackage) => {
+        if (department && workflowPackage.scenario.department !== department) {
+          return false;
+        }
+        if (runPattern && workflowPackage.scenario.runPattern !== runPattern) {
+          return false;
+        }
+        if (query) {
+          const haystack = [
+            workflowPackage.name,
+            workflowPackage.description,
+            workflowPackage.scenario.department,
+            workflowPackage.scenario.runPattern,
+            workflowPackage.scenario.summary,
+          ]
+            .join(" ")
+            .toLowerCase();
+          return haystack.includes(query);
+        }
+        return true;
+      }).map(workflowTemplateSummary);
+      respond(true, { templates });
+    } catch (err) {
+      log.warn(`workflows.templates.list failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "workflows.templates.get": async ({ params, respond }) => {
+    try {
+      const slugOrId = optionalString(params, "slug") ?? optionalString(params, "id");
+      if (!slugOrId) {
+        throw new Error("slug or id is required");
+      }
+      const workflowPackage = OWNER_OPERATOR_WORKFLOW_PACKAGES.find(
+        (candidate) => candidate.slug === slugOrId || candidate.id === slugOrId,
+      );
+      if (!workflowPackage) {
+        throw new Error(`Workflow template not found: ${slugOrId}`);
+      }
+      respond(true, workflowPackagePreviewPayload(workflowPackage));
+    } catch (err) {
+      log.warn(`workflows.templates.get failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
   "workflows.importPreview": async ({ params, respond }) => {
     try {
       const text = requireString(params, "text");
       const format = optionalWorkflowPackageFormat(params);
       const workflowPackage = parseWorkflowPackageText(text, format);
-      const imported = importWorkflowPackage(workflowPackage);
-      respond(true, {
-        package: workflowPackage,
-        workflow: applyWorkflowPackageTestFixtures(workflowPackage),
-        canvasLayout: imported.normalized.canvasLayout,
-        readiness: imported.readiness,
-        validation: {
-          ok: imported.readiness.okForImport,
-          issues: imported.normalized.issues,
-        },
-      });
+      respond(true, workflowPackagePreviewPayload(workflowPackage));
     } catch (err) {
       log.warn(`workflows.importPreview failed: ${String(err)}`);
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
@@ -1398,13 +1485,13 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       const description = optionalString(params, "description");
       const nodes =
         optionalArray(params, "nodes") ??
-        (canvasData && Array.isArray((canvasData as Record<string, unknown>).nodes)
-          ? ((canvasData as Record<string, unknown>).nodes as unknown[])
+        (canvasData && Array.isArray(canvasData.nodes)
+          ? (canvasData.nodes as unknown[])
           : undefined);
       const edges =
         optionalArray(params, "edges") ??
-        (canvasData && Array.isArray((canvasData as Record<string, unknown>).edges)
-          ? ((canvasData as Record<string, unknown>).edges as unknown[])
+        (canvasData && Array.isArray(canvasData.edges)
+          ? (canvasData.edges as unknown[])
           : undefined);
       const canvasLayout = optionalObject(params, "canvasLayout") ?? canvasData;
       const triggerType = optionalString(params, "triggerType");
@@ -1431,7 +1518,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
               maxRunCostUsd:
                 maxRunCostUsd ??
                 (typeof existing.max_run_cost_usd === "number"
-                  ? (existing.max_run_cost_usd as number)
+                  ? existing.max_run_cost_usd
                   : undefined),
               deploymentStage: "live",
             })
@@ -1845,7 +1932,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
     try {
       const sql = await getSql();
       const resolution = await resolveRunnableWorkflowRow(sql, params);
-      if (resolution.ok === false) {
+      if (!resolution.ok) {
         respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, resolution.error));
         return;
       }

@@ -160,6 +160,8 @@ const BASE_METHODS = [
   // Workflows
   "workflows.emitAppForgeEvent",
   "workflows.importPreview",
+  "workflows.templates.list",
+  "workflows.templates.get",
 ];
 
 export function listGatewayMethods(): string[] {

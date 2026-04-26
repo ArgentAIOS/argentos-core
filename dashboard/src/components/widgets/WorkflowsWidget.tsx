@@ -243,6 +243,26 @@ interface WorkflowImportPreviewResponse {
   validation?: { ok?: boolean; issues?: unknown[] };
 }
 
+interface WorkflowPackageTemplateSummary {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  scenario?: {
+    audience?: string;
+    department?: string;
+    runPattern?: string;
+    summary?: string;
+    appForgeTables?: string[];
+  };
+  credentialCount?: number;
+  dependencyCount?: number;
+  nodeCount?: number;
+  okForImport?: boolean;
+  okForPinnedTestRun?: boolean;
+  liveRequirements?: string[];
+}
+
 interface WorkflowCronJob {
   id: string;
   name?: string;
@@ -1416,18 +1436,25 @@ function NewWorkflowModal({
   onCreateBlank,
   onCreateFromIntent,
   onSelectTemplate,
+  packageTemplates,
+  packageTemplatesLoading,
+  onSelectPackageTemplate,
 }: {
   open: boolean;
   onClose: () => void;
   onCreateBlank: (name?: string) => void;
   onCreateFromIntent: (intent: string, name?: string) => Promise<void>;
   onSelectTemplate: (template: WorkflowTemplate) => void;
+  packageTemplates: WorkflowPackageTemplateSummary[];
+  packageTemplatesLoading: boolean;
+  onSelectPackageTemplate: (template: WorkflowPackageTemplateSummary) => Promise<void>;
 }) {
   const [showTemplates, setShowTemplates] = useState(false);
   const [workflowName, setWorkflowName] = useState("Untitled workflow");
   const [intent, setIntent] = useState("");
   const [generating, setGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [selectedPackageSlug, setSelectedPackageSlug] = useState<string | null>(null);
 
   if (!open) return null;
 
@@ -1542,7 +1569,78 @@ function NewWorkflowModal({
         </div>
 
         {showTemplates && (
-          <div className="mt-4 space-y-2 max-h-60 overflow-y-auto">
+          <div className="mt-4 max-h-80 space-y-3 overflow-y-auto pr-1">
+            {packageTemplates.length > 0 || packageTemplatesLoading ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className={DOCK_LABEL}>Owner-operator packages</div>
+                  {packageTemplatesLoading && (
+                    <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                      Loading...
+                    </span>
+                  )}
+                </div>
+                {packageTemplates.map((template) => {
+                  const running = selectedPackageSlug === template.slug;
+                  return (
+                    <button
+                      key={template.slug}
+                      onClick={() => {
+                        setSelectedPackageSlug(template.slug);
+                        void onSelectPackageTemplate(template)
+                          .then(() => {
+                            setShowTemplates(false);
+                            setIntent("");
+                          })
+                          .catch((err) => {
+                            setGenerationError(err instanceof Error ? err.message : String(err));
+                          })
+                          .finally(() => {
+                            setSelectedPackageSlug(null);
+                          });
+                      }}
+                      disabled={running}
+                      className="w-full rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-3 text-left transition-colors hover:border-cyan-300/50 disabled:opacity-50"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate text-xs font-semibold text-[hsl(var(--foreground))]">
+                            {template.name}
+                          </div>
+                          <div className="mt-0.5 line-clamp-2 text-[10px] text-[hsl(var(--muted-foreground))]">
+                            {template.description}
+                          </div>
+                        </div>
+                        <span className="shrink-0 rounded border border-cyan-300/30 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-cyan-200">
+                          {template.scenario?.department ?? "workflow"}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-[9px] text-[hsl(var(--muted-foreground))]">
+                        <span className="rounded bg-[hsl(var(--muted))]/40 px-1.5 py-0.5">
+                          {template.scenario?.runPattern ?? "manual"}
+                        </span>
+                        <span className="rounded bg-[hsl(var(--muted))]/40 px-1.5 py-0.5">
+                          {template.nodeCount ?? 0} nodes
+                        </span>
+                        <span className="rounded bg-[hsl(var(--muted))]/40 px-1.5 py-0.5">
+                          {(template.credentialCount ?? 0) + (template.dependencyCount ?? 0)}{" "}
+                          bindings
+                        </span>
+                        {template.okForPinnedTestRun && (
+                          <span className="rounded bg-emerald-400/10 px-1.5 py-0.5 text-emerald-200">
+                            fixture-ready
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            <div className="pt-2">
+              <div className={DOCK_LABEL}>Simple starters</div>
+            </div>
             {WORKFLOW_TEMPLATES.map((t) => (
               <button
                 key={t.id}
@@ -6458,6 +6556,8 @@ export function WorkflowsWidget() {
   });
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [connectors, setConnectors] = useState<ConnectorEntry[]>([]);
+  const [packageTemplates, setPackageTemplates] = useState<WorkflowPackageTemplateSummary[]>([]);
+  const [packageTemplatesLoading, setPackageTemplatesLoading] = useState(false);
 
   // Inject CSS keyframes once
   useEffect(() => {
@@ -6508,6 +6608,35 @@ export function WorkflowsWidget() {
         }
       } catch {
         /* connector catalog unavailable — sidebar just stays empty */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gateway.connected, gateway.request]);
+
+  // Load tested owner-operator workflow packages for the template gallery.
+  useEffect(() => {
+    if (!gateway.connected) return;
+    let cancelled = false;
+    setPackageTemplatesLoading(true);
+    (async () => {
+      try {
+        const res = await gateway.request<{ templates?: WorkflowPackageTemplateSummary[] }>(
+          "workflows.templates.list",
+          {},
+        );
+        if (!cancelled) {
+          setPackageTemplates(res?.templates ?? []);
+        }
+      } catch {
+        if (!cancelled) {
+          setPackageTemplates([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setPackageTemplatesLoading(false);
+        }
       }
     })();
     return () => {
@@ -6766,6 +6895,20 @@ export function WorkflowsWidget() {
     [gateway, saveImportedWorkflow],
   );
 
+  const handleSelectPackageTemplate = useCallback(
+    async (template: WorkflowPackageTemplateSummary) => {
+      if (!gateway.connected) {
+        throw new Error("Gateway is not connected.");
+      }
+      const preview = await gateway.request<WorkflowImportPreviewResponse>(
+        "workflows.templates.get",
+        { slug: template.slug },
+      );
+      await saveImportedWorkflow(workflowFromImportPreview(preview));
+    },
+    [gateway, saveImportedWorkflow],
+  );
+
   const handleSelectRun = useCallback(
     (run: RunRecord) => {
       setReplayRun(run);
@@ -6799,6 +6942,9 @@ export function WorkflowsWidget() {
         onCreateBlank={handleCreateBlank}
         onCreateFromIntent={handleCreateFromIntent}
         onSelectTemplate={handleSelectTemplate}
+        packageTemplates={packageTemplates}
+        packageTemplatesLoading={packageTemplatesLoading}
+        onSelectPackageTemplate={handleSelectPackageTemplate}
       />
       <ReactFlowProvider>
         <Sidebar
