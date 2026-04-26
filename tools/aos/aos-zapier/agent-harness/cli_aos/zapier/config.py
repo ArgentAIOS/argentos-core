@@ -14,7 +14,7 @@ from .constants import (
     ZAPIER_ZAP_NAME_ENV,
     ZAPIER_ZAP_STATUS_ENV,
 )
-from .service_keys import service_key_env
+from .service_keys import service_key_env, service_key_source
 
 
 def _present(value: str | None) -> bool:
@@ -51,6 +51,9 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "api_url_env": api_url_env,
         "api_key_env": api_key_env,
         "webhook_base_url_env": webhook_base_url_env,
+        "api_url_source": service_key_source(api_url_env) or "missing",
+        "api_key_source": service_key_source(api_key_env) or "missing",
+        "webhook_base_url_source": service_key_source(webhook_base_url_env) or "missing",
         "api_url": api_url,
         "api_url_present": _present(api_url),
         "api_url_redacted": _redact(api_url),
@@ -86,18 +89,23 @@ def redacted_config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "api_url_env": runtime["api_url_env"],
             "api_url_present": runtime["api_url_present"],
             "api_url_redacted": runtime["api_url_redacted"],
+            "api_url_source": runtime["api_url_source"],
             "api_key_env": runtime["api_key_env"],
             "api_key_present": runtime["api_key_present"],
             "api_key_redacted": runtime["api_key_redacted"],
+            "api_key_source": runtime["api_key_source"],
             "webhook_base_url_env": runtime["webhook_base_url_env"],
             "webhook_base_url_present": runtime["webhook_base_url_present"],
             "webhook_base_url_redacted": runtime["webhook_base_url_redacted"],
+            "webhook_base_url_source": runtime["webhook_base_url_source"],
+            "resolution_order": ["service-keys", "process.env"],
         },
         "runtime": {
             "workspace_name": runtime["workspace_name"],
             "zap_id": runtime["zap_id"],
             "zap_name": runtime["zap_name"],
             "zap_status": runtime["zap_status"],
+            "auth_resolution": "service_keys_first_env_fallback",
             "auth_ready": auth_ready,
             "runtime_ready": runtime_ready,
             "live_backend_available": live_backend_available,

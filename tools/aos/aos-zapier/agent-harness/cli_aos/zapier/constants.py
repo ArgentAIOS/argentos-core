@@ -33,8 +33,9 @@ AUTH_DESCRIPTOR = {
     "required": True,
     "service_keys": [ZAPIER_API_URL_ENV, ZAPIER_API_KEY_ENV],
     "interactive_setup": [
-        f"Add {ZAPIER_API_URL_ENV} and {ZAPIER_API_KEY_ENV} in API Keys to point at the live Zapier bridge.",
-        f"Set {ZAPIER_WEBHOOK_BASE_URL_ENV} if you want future webhook URLs to use a stable public base.",
+        f"Add {ZAPIER_API_URL_ENV} and {ZAPIER_API_KEY_ENV} in operator-controlled API Keys to point at the live Zapier bridge.",
+        f"Add {ZAPIER_WEBHOOK_BASE_URL_ENV} in API Keys when you want future webhook URLs to use a stable public base; local env is only a harness fallback.",
+        f"Use local env only as a harness fallback when operator-controlled API Keys are unavailable.",
         f"Set {ZAPIER_WORKSPACE_NAME_ENV}, {ZAPIER_ZAP_ID_ENV}, {ZAPIER_ZAP_NAME_ENV}, and {ZAPIER_ZAP_STATUS_ENV} to preview the zap scope shown to workers.",
         "zap.trigger now uses the configured bridge when POST /trigger is available.",
     ],
