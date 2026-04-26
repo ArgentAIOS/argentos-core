@@ -5872,6 +5872,7 @@ function WorkflowCanvasInner({
   const [saving, setSaving] = useState(false);
   const [lastSaveStatus, setLastSaveStatus] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
   const [scheduling, setScheduling] = useState(false);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [, setCompletedNodeIds] = useState<Set<string>>(new Set());
@@ -6611,6 +6612,7 @@ function WorkflowCanvasInner({
     if (!activeWorkflowId || running) return;
     try {
       setRunning(true);
+      setRunError(null);
       clearExecState();
       const saved = await saveCurrentWorkflow("Saved workflow before run");
       if (!saved) {
@@ -6628,6 +6630,7 @@ function WorkflowCanvasInner({
       await gateway.request("workflows.subscribe", { workflowId: activeWorkflowId });
     } catch (err) {
       console.error("[Workflows] Run failed:", err);
+      setRunError(err instanceof Error ? err.message : String(err));
       setRunning(false);
     }
   }, [
@@ -6729,6 +6732,7 @@ function WorkflowCanvasInner({
     setValidationIssues([]);
     setValidationCheckedAt(null);
     setValidationStatus("idle");
+    setRunError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkflowId]);
 
@@ -7136,6 +7140,24 @@ function WorkflowCanvasInner({
           </button>
         </div>
       </div>
+
+      {runError && (
+        <div className="flex-shrink-0 border-b border-red-500/30 bg-red-500/10 px-4 py-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 text-xs text-red-200">
+              <span className="font-semibold">Run failed:</span>{" "}
+              <span className="break-words">{runError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRunError(null)}
+              className="rounded px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-500/15"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {(validationIssues.length > 0 || validationStatus === "error") && (
         <div
