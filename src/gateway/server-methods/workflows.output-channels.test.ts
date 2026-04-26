@@ -261,4 +261,61 @@ describe("buildWorkflowOutputChannels", () => {
       ]),
     );
   });
+
+  it("rejects connector outputs that point at read-only operations", async () => {
+    mocks.discoverConnectorCatalog.mockResolvedValue({
+      connectors: [
+        {
+          tool: "aos-buffer",
+          label: "Buffer",
+          category: "social",
+          categories: ["social"],
+          commands: [{ id: "post.list", summary: "List posts", actionClass: "read" }],
+          installState: "ready",
+          status: { ok: true },
+        },
+      ],
+    });
+
+    const workflow: WorkflowDefinition = {
+      id: "wf-readonly-output",
+      name: "Read-only Output",
+      version: 1,
+      ownerAgentId: "argent",
+      deploymentStage: "live",
+      defaultOnError: { strategy: "fail" },
+      nodes: [
+        {
+          kind: "trigger",
+          id: "trigger",
+          label: "Manual",
+          config: { triggerType: "manual" },
+        },
+        {
+          kind: "output",
+          id: "out",
+          label: "Output",
+          config: {
+            outputType: "connector_action",
+            connectorId: "aos-buffer",
+            resource: "post",
+            operation: "post.list",
+            parameters: {},
+          },
+        },
+      ],
+      edges: [{ id: "e1", source: "trigger", target: "out" }],
+    };
+
+    const issues = await validateWorkflowRuntimeCapabilities(workflow);
+
+    expect(issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "workflow_output_connector_operation_unavailable",
+          nodeId: "out",
+        }),
+      ]),
+    );
+  });
 });

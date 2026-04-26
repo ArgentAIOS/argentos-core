@@ -111,6 +111,22 @@ type WorkflowConnectorCapability = {
   readinessState: "blocked" | "setup_required" | "write_ready";
 };
 
+function isWorkflowOutputConnectorCommand(command: {
+  id: string;
+  actionClass: string | undefined;
+}): boolean {
+  const actionClass = command.actionClass?.toLowerCase();
+  if (actionClass === "read") {
+    return false;
+  }
+  if (actionClass === "write" || actionClass === "destructive") {
+    return true;
+  }
+  return /\.(send|post|create|update|delete|publish|schedule|reply|upload|append|trigger)\b/.test(
+    command.id,
+  );
+}
+
 // ── Postgres connection (lazy singleton) ────────────────────────────────────
 
 let _sql: ReturnType<typeof postgres> | null = null;
@@ -1053,6 +1069,15 @@ export async function validateWorkflowRuntimeCapabilities(
       .filter((connector) => !connector.scaffoldOnly && connector.readinessState !== "blocked")
       .map((connector) => connector.id),
   );
+  const outputConnectorOperations = new Set(
+    connectors
+      .filter((connector) => !connector.scaffoldOnly && connector.readinessState !== "blocked")
+      .flatMap((connector) =>
+        connector.commands
+          .filter(isWorkflowOutputConnectorCommand)
+          .map((command) => `${connector.id}:${command.id}`),
+      ),
+  );
   const channelLabel = outputChannels.length
     ? outputChannels.map((channel) => channel.label).join(", ")
     : "none";
@@ -1110,6 +1135,20 @@ export async function validateWorkflowRuntimeCapabilities(
           code: "workflow_output_connector_unavailable",
           nodeId: node.id,
           message: `Output uses connector "${config.connectorId}", but that connector is not currently runnable.`,
+        });
+      }
+      if (
+        config.outputType === "connector_action" &&
+        config.connectorId.trim() &&
+        config.operation.trim() &&
+        availableConnectors.has(config.connectorId) &&
+        !outputConnectorOperations.has(`${config.connectorId}:${config.operation}`)
+      ) {
+        issues.push({
+          severity: "error",
+          code: "workflow_output_connector_operation_unavailable",
+          nodeId: node.id,
+          message: `Output uses "${config.operation}" on "${config.connectorId}", but that operation is not advertised as a write/delivery operation.`,
         });
       }
     }

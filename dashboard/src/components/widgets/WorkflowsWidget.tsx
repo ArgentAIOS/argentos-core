@@ -4244,13 +4244,16 @@ function OutputForm({
     (data.target === "channel" || data.target === "discord" || data.target === "telegram") &&
     !selectedChannel;
   const runnableConnectors = connectors.filter(
-    (connector) => !connector.scaffoldOnly && connector.readinessState !== "blocked",
+    (connector) =>
+      !connector.scaffoldOnly &&
+      connector.readinessState !== "blocked" &&
+      connectorOutputCommands(connector).length > 0,
   );
   const selectedConnector =
     typeof record.connectorId === "string"
       ? runnableConnectors.find((connector) => connector.id === record.connectorId)
       : undefined;
-  const connectorCommands = selectedConnector?.commands ?? [];
+  const connectorCommands = connectorOutputCommands(selectedConnector);
   const legacyVariableSelected = data.target === "variable";
   const sourceMode = typeof record.sourceMode === "string" ? record.sourceMode : "previous";
   const sourceNodeOptions = nodes
@@ -5207,6 +5210,23 @@ function connectorIcon(category: string): string {
     general: "\uD83D\uDD0C",
   };
   return icons[category] ?? "\uD83D\uDD0C";
+}
+
+function isConnectorOutputCommand(command: { id: string; actionClass?: string }): boolean {
+  const actionClass = command.actionClass?.toLowerCase();
+  if (actionClass === "read") {
+    return false;
+  }
+  if (actionClass === "write" || actionClass === "destructive") {
+    return true;
+  }
+  return /\.(send|post|create|update|delete|publish|schedule|reply|upload|append|trigger)\b/.test(
+    command.id,
+  );
+}
+
+function connectorOutputCommands(connector?: ConnectorEntry) {
+  return connector?.commands.filter(isConnectorOutputCommand) ?? [];
 }
 
 interface SidebarProps {
