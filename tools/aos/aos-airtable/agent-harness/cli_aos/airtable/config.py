@@ -22,14 +22,29 @@ from .constants import (
     LEGACY_WORKSPACE_ID_ENV,
     TOOL_NAME,
 )
+from .service_keys import resolve_service_key
 
 
 def _env(*names: str) -> str:
+    for name in names:
+        value = (resolve_service_key(name) or "").strip()
+        if value:
+            return value
     for name in names:
         value = os.getenv(name, "").strip()
         if value:
             return value
     return ""
+
+
+def _source(*names: str) -> str | None:
+    for name in names:
+        if (resolve_service_key(name) or "").strip():
+            return "service-keys"
+    for name in names:
+        if os.getenv(name, "").strip():
+            return "process.env"
+    return None
 
 
 def _scope_command_defaults_template() -> dict[str, dict[str, Any]]:
@@ -39,8 +54,8 @@ def _scope_command_defaults_template() -> dict[str, dict[str, Any]]:
         "record.list": {"options": {"table": DEFAULT_TABLE_NAME_ENV}},
         "record.search": {"options": {"table": DEFAULT_TABLE_NAME_ENV}},
         "record.read": {"options": {"table": DEFAULT_TABLE_NAME_ENV}},
-        "record.create_draft": {"options": {"table": DEFAULT_TABLE_NAME_ENV}},
-        "record.update_draft": {"options": {"table": DEFAULT_TABLE_NAME_ENV}},
+        "record.create": {"options": {"table": DEFAULT_TABLE_NAME_ENV}},
+        "record.update": {"options": {"table": DEFAULT_TABLE_NAME_ENV}},
     }
 
 
@@ -53,8 +68,8 @@ def _scope_command_defaults(base_id: str, table_name: str) -> dict[str, dict[str
         defaults["record.list"] = {"options": {"table": table_name}}
         defaults["record.search"] = {"options": {"table": table_name}}
         defaults["record.read"] = {"options": {"table": table_name}}
-        defaults["record.create_draft"] = {"options": {"table": table_name}}
-        defaults["record.update_draft"] = {"options": {"table": table_name}}
+        defaults["record.create"] = {"options": {"table": table_name}}
+        defaults["record.update"] = {"options": {"table": table_name}}
     return defaults
 
 
@@ -78,8 +93,8 @@ def _command_readiness(api_token: str, base_id: str, table_name: str) -> dict[st
         "record.list": table_scoped_ready,
         "record.search": table_scoped_ready,
         "record.read": table_scoped_ready,
-        "record.create_draft": False,
-        "record.update_draft": False,
+        "record.create": table_scoped_ready,
+        "record.update": table_scoped_ready,
     }
 
 
@@ -117,6 +132,13 @@ def runtime_config() -> dict[str, Any]:
             "service_keys": list(CONNECTOR_AUTH["service_keys"]),
             "configured": configured,
             "missing_keys": missing_keys,
+            "sources": {
+                DEFAULT_API_TOKEN_ENV: _source(DEFAULT_API_TOKEN_ENV, LEGACY_API_TOKEN_ENV),
+                DEFAULT_BASE_ID_ENV: _source(DEFAULT_BASE_ID_ENV, LEGACY_BASE_ID_ENV),
+                DEFAULT_TABLE_NAME_ENV: _source(DEFAULT_TABLE_NAME_ENV, LEGACY_TABLE_NAME_ENV),
+                DEFAULT_WORKSPACE_ID_ENV: _source(DEFAULT_WORKSPACE_ID_ENV, LEGACY_WORKSPACE_ID_ENV),
+                DEFAULT_API_BASE_URL_ENV: _source(DEFAULT_API_BASE_URL_ENV),
+            },
             "redacted": {
                 DEFAULT_API_TOKEN_ENV: _redact(api_token),
                 DEFAULT_BASE_ID_ENV: _redact(base_id),
@@ -136,16 +158,16 @@ def runtime_config() -> dict[str, Any]:
             "base_discovery_ready": auth_ready,
             "base_scoped_read_ready": base_scoped_ready,
             "table_scoped_read_ready": bool(api_token and base_id and table_name),
-            "live_write_ready": False,
-            "implementation_mode": "live_read_only" if auth_ready else "configuration_only",
+            "live_write_ready": bool(api_token and base_id),
+            "implementation_mode": "live_read_with_live_writes" if auth_ready else "configuration_only",
             "auth_ready": auth_ready,
             "command_readiness": command_readiness,
             "command_defaults_ready": bool(command_defaults),
         },
         "read_support": command_readiness,
         "write_support": {
-            "live_writes_enabled": False,
-            "scaffold_only": True,
+            "live_writes_enabled": bool(api_token and base_id),
+            "scaffold_only": False,
         },
         "context": {
             "base_id": base_id,

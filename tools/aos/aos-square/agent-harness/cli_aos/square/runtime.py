@@ -7,7 +7,20 @@ from typing import Any
 
 from .client import SquareClient
 from .config import SquareConnectorContext, redact_config, resolve_config
-from .constants import BACKEND_NAME, TOOL_NAME
+from .constants import BACKEND_NAME, ENV_ACCESS_TOKEN, TOOL_NAME
+from .service_keys import service_key_source
+
+LIVE_READ_SURFACES = ["payment", "customer", "order", "item", "invoice", "location"]
+SCAFFOLDED_WRITE_SURFACES = ["payment", "customer", "order", "item", "invoice"]
+SCAFFOLDED_WRITE_COMMANDS = [
+    "payment.create",
+    "customer.create",
+    "customer.update",
+    "order.create",
+    "item.create",
+    "invoice.create",
+    "invoice.send",
+]
 
 
 def resolve_runtime_binary() -> str | None:
@@ -56,6 +69,15 @@ def build_config_show_payload() -> dict[str, Any]:
         "backend": BACKEND_NAME,
         "data": {
             "config": redact_config(config),
+            "auth": {
+                "kind": "service-key",
+                "required": True,
+                "service_keys": [ENV_ACCESS_TOKEN],
+                "operator_service_keys": [ENV_ACCESS_TOKEN],
+                "configured": {ENV_ACCESS_TOKEN: bool(config.access_token)},
+                "sources": {ENV_ACCESS_TOKEN: service_key_source(ENV_ACCESS_TOKEN)},
+                "development_fallback": [ENV_ACCESS_TOKEN],
+            },
             "scope": {
                 "location_id": config.location_id,
                 "customer_id": config.customer_id,
@@ -67,8 +89,9 @@ def build_config_show_payload() -> dict[str, Any]:
             "runtime": {
                 "binary_path": resolve_runtime_binary(),
                 "implementation_mode": "live_read_with_scaffolded_writes",
-                "live_read_surfaces": ["payment", "customer", "order", "item", "invoice", "location"],
-                "scaffolded_surfaces": [],
+                "live_read_surfaces": LIVE_READ_SURFACES,
+                "scaffolded_surfaces": SCAFFOLDED_WRITE_SURFACES,
+                "scaffolded_commands": SCAFFOLDED_WRITE_COMMANDS,
             },
         },
     }
@@ -90,7 +113,11 @@ def build_health_payload(*, client_factory=None) -> dict[str, Any]:
             "label": "Square access token configured",
             "ok": bool(config.access_token),
             "optional": False,
-            "summary": "SQUARE_ACCESS_TOKEN is set" if config.access_token else "Add SQUARE_ACCESS_TOKEN in API Keys.",
+            "summary": (
+                f"SQUARE_ACCESS_TOKEN resolved from {service_key_source(ENV_ACCESS_TOKEN)}"
+                if config.access_token
+                else "Add SQUARE_ACCESS_TOKEN in operator-controlled API Keys, or use process.env only for local development."
+            ),
         },
         {
             "name": "environment",
@@ -138,7 +165,7 @@ def build_health_payload(*, client_factory=None) -> dict[str, Any]:
     if not resolve_runtime_binary():
         next_steps.append("Install the Square harness so the aos-square binary is available on PATH.")
     if not config.access_token:
-        next_steps.append("Create a Square application and add SQUARE_ACCESS_TOKEN.")
+        next_steps.append("Create a Square application and add SQUARE_ACCESS_TOKEN in operator-controlled API Keys. Use process.env only as a local development fallback.")
     if not config.location_id:
         next_steps.append("Optional: pin SQUARE_LOCATION_ID to default a worker to one Square location.")
     next_steps.append("Keep write commands scaffolded until Square write workflows are approved.")

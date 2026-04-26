@@ -14,10 +14,10 @@ from .runtime import (
     asset_upload_result,
     autofill_create_result,
     brand_template_create_design_result,
+    brand_template_get_result,
     brand_template_list_result,
     capabilities_snapshot,
     config_show_result,
-    design_clone_result,
     design_create_result,
     design_get_result,
     design_list_result,
@@ -29,8 +29,6 @@ from .runtime import (
     folder_get_result,
     folder_list_result,
     health_snapshot,
-    template_get_result,
-    template_list_result,
 )
 
 
@@ -166,46 +164,12 @@ def design_get(ctx: click.Context, design_id: str | None) -> None:
 
 @design_group.command("create")
 @click.option("--title", default=None)
-@click.option("--template-id", default=None)
 @click.option("--asset-id", default=None)
 @click.pass_context
-def design_create(ctx: click.Context, title: str | None, template_id: str | None, asset_id: str | None) -> None:
+def design_create(ctx: click.Context, title: str | None, asset_id: str | None) -> None:
     _set_command(ctx, "design.create")
     require_mode(ctx, "design.create")
-    _emit_success(ctx, "design.create", design_create_result(ctx.obj, title=title, template_id=template_id, asset_id=asset_id))
-
-
-@design_group.command("clone")
-@click.argument("design_id", required=False)
-@click.option("--title", default=None)
-@click.pass_context
-def design_clone(ctx: click.Context, design_id: str | None, title: str | None) -> None:
-    _set_command(ctx, "design.clone")
-    require_mode(ctx, "design.clone")
-    _emit_success(ctx, "design.clone", design_clone_result(ctx.obj, design_id=design_id, title=title))
-
-
-@cli.group("template")
-def template_group() -> None:
-    pass
-
-
-@template_group.command("list")
-@click.option("--limit", default=10, show_default=True, type=int)
-@click.pass_context
-def template_list(ctx: click.Context, limit: int) -> None:
-    _set_command(ctx, "template.list")
-    require_mode(ctx, "template.list")
-    _emit_success(ctx, "template.list", template_list_result(ctx.obj, limit=limit))
-
-
-@template_group.command("get")
-@click.argument("template_id", required=False)
-@click.pass_context
-def template_get(ctx: click.Context, template_id: str | None) -> None:
-    _set_command(ctx, "template.get")
-    require_mode(ctx, "template.get")
-    _emit_success(ctx, "template.get", template_get_result(ctx.obj, template_id=template_id))
+    _emit_success(ctx, "design.create", design_create_result(ctx.obj, title=title, asset_id=asset_id))
 
 
 @cli.group("brand-template")
@@ -220,6 +184,15 @@ def brand_template_list(ctx: click.Context, limit: int) -> None:
     _set_command(ctx, "brand_template.list")
     require_mode(ctx, "brand_template.list")
     _emit_success(ctx, "brand_template.list", brand_template_list_result(ctx.obj, limit=limit))
+
+
+@brand_template_group.command("get")
+@click.argument("brand_template_id", required=False)
+@click.pass_context
+def brand_template_get(ctx: click.Context, brand_template_id: str | None) -> None:
+    _set_command(ctx, "brand_template.get")
+    require_mode(ctx, "brand_template.get")
+    _emit_success(ctx, "brand_template.get", brand_template_get_result(ctx.obj, brand_template_id=brand_template_id))
 
 
 @brand_template_group.command("create-design")

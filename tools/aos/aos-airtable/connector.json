@@ -15,8 +15,7 @@
       "Grant the token access to the base this worker should operate on.",
       "Add AIRTABLE_API_TOKEN and AIRTABLE_BASE_ID in API Keys.",
       "Optionally set AIRTABLE_TABLE_NAME to pin a default table scope for worker commands.",
-      "Keep table scope narrow until live read/write support is intentionally enabled.",
-      "This scaffold does not implement live writes yet; commands are setup-oriented only."
+      "Keep table scope narrow before enabling write mode for record mutations."
     ]
   },
   "scope": {
@@ -32,8 +31,8 @@
       "record.list",
       "record.search",
       "record.read",
-      "record.create_draft",
-      "record.update_draft"
+      "record.create",
+      "record.update"
     ],
     "fields": [
       {
@@ -89,7 +88,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "json",
-        "applies_to": ["record.create_draft", "record.update_draft"],
+        "applies_to": ["record.create", "record.update"],
         "placeholder": "{}",
         "description": "JSON object of field values for the record"
       },
@@ -128,12 +127,12 @@
           "table": "AIRTABLE_TABLE_NAME"
         }
       },
-      "record.create_draft": {
+      "record.create": {
         "options": {
           "table": "AIRTABLE_TABLE_NAME"
         }
       },
-      "record.update_draft": {
+      "record.update": {
         "options": {
           "table": "AIRTABLE_TABLE_NAME"
         }
@@ -230,16 +229,16 @@
       "action_class": "read"
     },
     {
-      "id": "record.create_draft",
-      "summary": "Create a draft record payload",
+      "id": "record.create",
+      "summary": "Create a record",
       "required_mode": "write",
       "supports_json": true,
       "resource": "record",
       "action_class": "write"
     },
     {
-      "id": "record.update_draft",
-      "summary": "Update a draft record payload",
+      "id": "record.update",
+      "summary": "Update a record",
       "required_mode": "write",
       "supports_json": true,
       "resource": "record",

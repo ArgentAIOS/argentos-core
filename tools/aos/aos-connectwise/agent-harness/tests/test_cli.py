@@ -7,6 +7,7 @@ from typing import Any
 from click.testing import CliRunner
 
 from cli_aos.connectwise.cli import cli
+import cli_aos.connectwise.config as config
 import cli_aos.connectwise.runtime as runtime
 
 
@@ -47,11 +48,25 @@ class FakeConnectWiseClient:
             "assignee": "jdoe",
         }
 
+    def create_ticket(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": 2001,
+            "summary": payload.get("summary", "Created ticket"),
+            "status": payload.get("status", "New"),
+            "priority": payload.get("priority", "Priority 3 - Normal"),
+            "company": payload.get("company", "Acme"),
+            "board": payload.get("board", "Service Desk"),
+            "assignee": payload.get("assignee", "jdoe"),
+        }
+
     def list_companies(self, *, limit: int = 25) -> dict[str, Any]:
         return {"companies": [{"id": 250, "name": "Acme", "raw": {"type": "Customer"}}][:limit]}
 
     def get_company(self, company_id: str) -> dict[str, Any]:
         return {"id": company_id, "name": "Acme", "raw": {"type": "Customer"}}
+
+    def create_company(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {"id": 251, "name": payload.get("name", "Created Co"), "raw": payload}
 
     def list_contacts(self, *, company_id: str | None = None, limit: int = 25) -> dict[str, Any]:
         return {
@@ -77,6 +92,15 @@ class FakeConnectWiseClient:
             "type": "Decision Maker",
         }
 
+    def create_contact(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": 1002,
+            "name": " ".join(part for part in [payload.get("firstName"), payload.get("lastName")] if part) or "Created Contact",
+            "email": payload.get("emailAddress", "created@example.com"),
+            "company": payload.get("company", "Acme"),
+            "raw": payload,
+        }
+
     def list_projects(self, *, limit: int = 25) -> dict[str, Any]:
         return {"projects": [{"id": 10, "name": "Migration", "status": "In Progress", "company": "Acme"}][:limit]}
 
@@ -91,6 +115,9 @@ class FakeConnectWiseClient:
 
     def list_members(self, *, limit: int = 25) -> dict[str, Any]:
         return {"members": [{"id": 77, "name": "Jane Doe", "email": "jane@example.com", "title": "Engineer"}][:limit]}
+
+    def create_time_entry(self, ticket_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return {"id": 9001, "ticket": {"id": ticket_id}, **payload}
 
     def list_configurations(self, *, company_id: str | None = None, limit: int = 25) -> dict[str, Any]:
         return {"configurations": [{"id": 500, "name": "Laptop-01", "type": "Laptop", "status": "Active", "company": "Acme"}][:limit]}
@@ -125,6 +152,8 @@ def test_capabilities_exposes_manifest():
     assert payload["data"]["backend"] == "connectwise-api"
     assert "ticket.list" in json.dumps(payload["data"])
     assert "time_entry.create" in json.dumps(payload["data"])
+    assert payload["data"]["write_support"]["ticket.create"] is True
+    assert payload["data"]["write_support"]["ticket.update"] is False
 
 
 def test_health_requires_credentials(monkeypatch):
@@ -142,6 +171,8 @@ def test_health_ready_with_fake_client(monkeypatch):
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeConnectWiseClient())
     payload = invoke_json(["health"])
     assert payload["data"]["status"] == "ready"
+    assert payload["data"]["connector"]["write_bridge_available"] is True
+    assert payload["data"]["connector"]["scaffold_only"] is False
     assert payload["data"]["probe"]["ok"] is True
     assert payload["data"]["probe"]["details"]["boards"]["name"] == "Board 1"
 
@@ -157,6 +188,30 @@ def test_config_show_redacts_credentials(monkeypatch):
     assert "public-secret" not in encoded
     assert "private-secret" not in encoded
     assert payload["data"]["auth"]["site_url_present"] is True
+    assert "CW_SITE_URL" in payload["data"]["auth"]["operator_service_keys"]
+
+
+def test_runtime_config_prefers_operator_service_keys(monkeypatch):
+    monkeypatch.setenv("CW_SITE_URL", "env.myconnectwise.net")
+    monkeypatch.setenv("CW_COMPANY_ID_AUTH", "env-company")
+    monkeypatch.setenv("CW_PUBLIC_KEY", "env-public")
+    monkeypatch.setenv("CW_PRIVATE_KEY", "env-private")
+
+    def fake_service_key_env(name: str, default: str | None = None) -> str | None:
+        overrides = {
+            "CW_SITE_URL": "service.myconnectwise.net",
+            "CW_COMPANY_ID_AUTH": "service-company",
+            "CW_PUBLIC_KEY": "service-public",
+            "CW_PRIVATE_KEY": "service-private",
+        }
+        return overrides.get(name, default)
+
+    monkeypatch.setattr(config, "service_key_env", fake_service_key_env)
+    payload = config.resolve_runtime_values({})
+    assert payload["site_url"] == "service.myconnectwise.net"
+    assert payload["company_id"] == "service-company"
+    assert payload["public_key"] == "service-public"
+    assert payload["private_key"] == "service-private"
 
 
 def test_ticket_list_returns_picker(monkeypatch):
@@ -170,6 +225,23 @@ def test_ticket_list_returns_picker(monkeypatch):
     assert payload["data"]["picker"]["kind"] == "connectwise_ticket"
 
 
+def test_ticket_list_does_not_use_company_scope_as_status_default(monkeypatch):
+    monkeypatch.setenv("CW_COMPANY_ID_AUTH", "acme")
+    monkeypatch.setenv("CW_PUBLIC_KEY", "public")
+    monkeypatch.setenv("CW_PRIVATE_KEY", "private")
+    monkeypatch.setenv("CW_SITE_URL", "na.myconnectwise.net")
+    monkeypatch.setenv("CW_COMPANY_ID", "250")
+
+    class AssertingClient(FakeConnectWiseClient):
+        def list_tickets(self, *, board_id: str | None = None, status: str | None = None, priority: str | None = None, limit: int = 25) -> dict[str, Any]:
+            assert status is None
+            return super().list_tickets(board_id=board_id, status=status, priority=priority, limit=limit)
+
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: AssertingClient())
+    payload = invoke_json(["ticket", "list"])
+    assert payload["data"]["tickets"][0]["id"] == 1001
+
+
 def test_ticket_create_requires_write_mode(monkeypatch):
     monkeypatch.setenv("CW_COMPANY_ID_AUTH", "acme")
     monkeypatch.setenv("CW_PUBLIC_KEY", "public")
@@ -181,16 +253,28 @@ def test_ticket_create_requires_write_mode(monkeypatch):
     assert payload["error"]["code"] == "PERMISSION_DENIED"
 
 
-def test_ticket_create_is_scaffolded_in_write_mode(monkeypatch):
+def test_ticket_create_executes_in_write_mode(monkeypatch):
     monkeypatch.setenv("CW_COMPANY_ID_AUTH", "acme")
     monkeypatch.setenv("CW_PUBLIC_KEY", "public")
     monkeypatch.setenv("CW_PRIVATE_KEY", "private")
     monkeypatch.setenv("CW_SITE_URL", "na.myconnectwise.net")
-    result = CliRunner().invoke(cli, ["--json", "--mode", "write", "ticket", "create"])
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeConnectWiseClient())
+    payload = invoke_json_with_mode("write", ["ticket", "create", "--payload-json", '{"summary":"Created from test"}'])
+    assert payload["data"]["status"] == "live_write"
+    assert payload["data"]["ticket"]["summary"] == "Created from test"
+    assert payload["data"]["command_id"] == "ticket.create"
+
+
+def test_ticket_update_is_scaffolded_in_write_mode(monkeypatch):
+    monkeypatch.setenv("CW_COMPANY_ID_AUTH", "acme")
+    monkeypatch.setenv("CW_PUBLIC_KEY", "public")
+    monkeypatch.setenv("CW_PRIVATE_KEY", "private")
+    monkeypatch.setenv("CW_SITE_URL", "na.myconnectwise.net")
+    result = CliRunner().invoke(cli, ["--json", "--mode", "write", "ticket", "update"])
     payload = json.loads(result.output)
     assert payload["ok"] is False
     assert payload["error"]["code"] == "NOT_IMPLEMENTED"
-    assert payload["error"]["details"]["command_id"] == "ticket.create"
+    assert payload["error"]["details"]["command_id"] == "ticket.update"
 
 
 def test_company_get_uses_scope_defaults(monkeypatch):
@@ -202,6 +286,17 @@ def test_company_get_uses_scope_defaults(monkeypatch):
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeConnectWiseClient())
     payload = invoke_json(["company", "get"])
     assert payload["data"]["company"]["id"] == "250"
+
+
+def test_company_create_executes_in_write_mode(monkeypatch):
+    monkeypatch.setenv("CW_COMPANY_ID_AUTH", "acme")
+    monkeypatch.setenv("CW_PUBLIC_KEY", "public")
+    monkeypatch.setenv("CW_PRIVATE_KEY", "private")
+    monkeypatch.setenv("CW_SITE_URL", "na.myconnectwise.net")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeConnectWiseClient())
+    payload = invoke_json_with_mode("write", ["company", "create", "--payload", "name=Acme Two", "--payload", "identifier=ACME2"])
+    assert payload["data"]["status"] == "live_write"
+    assert payload["data"]["company"]["name"] == "Acme Two"
 
 
 def test_status_list_requires_board_id(monkeypatch):
@@ -216,6 +311,17 @@ def test_status_list_requires_board_id(monkeypatch):
     assert payload["error"]["code"] == "CONNECTWISE_BOARD_ID_REQUIRED"
 
 
+def test_contact_create_executes_in_write_mode(monkeypatch):
+    monkeypatch.setenv("CW_COMPANY_ID_AUTH", "acme")
+    monkeypatch.setenv("CW_PUBLIC_KEY", "public")
+    monkeypatch.setenv("CW_PRIVATE_KEY", "private")
+    monkeypatch.setenv("CW_SITE_URL", "na.myconnectwise.net")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeConnectWiseClient())
+    payload = invoke_json_with_mode("write", ["contact", "create", "--payload-json", '{"firstName":"Ada","lastName":"Lovelace","emailAddress":"ada@example.com"}'])
+    assert payload["data"]["status"] == "live_write"
+    assert payload["data"]["contact"]["name"] == "Ada Lovelace"
+
+
 def test_configuration_list_returns_picker(monkeypatch):
     monkeypatch.setenv("CW_COMPANY_ID_AUTH", "acme")
     monkeypatch.setenv("CW_PUBLIC_KEY", "public")
@@ -225,3 +331,14 @@ def test_configuration_list_returns_picker(monkeypatch):
     payload = invoke_json(["configuration", "list"])
     assert payload["data"]["configurations"][0]["name"] == "Laptop-01"
     assert payload["data"]["picker"]["kind"] == "connectwise_configuration"
+
+
+def test_time_entry_create_executes_in_write_mode(monkeypatch):
+    monkeypatch.setenv("CW_COMPANY_ID_AUTH", "acme")
+    monkeypatch.setenv("CW_PUBLIC_KEY", "public")
+    monkeypatch.setenv("CW_PRIVATE_KEY", "private")
+    monkeypatch.setenv("CW_SITE_URL", "na.myconnectwise.net")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeConnectWiseClient())
+    payload = invoke_json_with_mode("write", ["time-entry", "create", "12345", "--payload-json", '{"hoursDeduct":1.0,"notes":"Triage"}'])
+    assert payload["data"]["status"] == "live_write"
+    assert payload["data"]["time_entry"]["ticket"]["id"] == "12345"

@@ -8,6 +8,7 @@ from click.testing import CliRunner
 
 from cli_aos.airtable.cli import cli
 from cli_aos.airtable import client as airtable_client
+from cli_aos.airtable import config as airtable_config
 
 
 AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
@@ -33,7 +34,11 @@ class FakeResponse:
         return False
 
 
-def invoke_json(args: list[str], monkeypatch, transport=None) -> dict[str, Any]:
+def invoke_json(args: list[str], monkeypatch, transport=None, service_keys: dict[str, str] | None = None) -> dict[str, Any]:
+    if monkeypatch is not None:
+        resolver = lambda name: (service_keys or {}).get(name)
+        monkeypatch.setattr(airtable_config, "resolve_service_key", resolver)
+        monkeypatch.setattr(airtable_client, "resolve_service_key", resolver)
     if transport is not None:
         monkeypatch.setattr(airtable_client, "urlopen", transport)
     result = CliRunner().invoke(cli, ["--json", *args])
@@ -48,6 +53,17 @@ def transport_for(routes: dict[str, dict[str, Any]]):
             if needle in url:
                 return FakeResponse(payload)
         raise AssertionError(f"unexpected Airtable request: {url}")
+
+    return _transport
+
+
+def write_transport_for(*, method: str, path: str, expected_body: dict[str, Any], response: dict[str, Any]):
+    def _transport(request, timeout=30):  # noqa: ARG001
+        url = getattr(request, "full_url", str(request))
+        assert getattr(request, "method", "") == method
+        assert path in url
+        assert json.loads((request.data or b"{}").decode("utf-8")) == expected_body
+        return FakeResponse(response)
 
     return _transport
 
@@ -68,7 +84,7 @@ def test_capabilities_json_includes_manifest_metadata():
     payload = invoke_json(["capabilities"], monkeypatch=None)
     assert payload["tool"] == "aos-airtable"
     assert payload["manifest_schema_version"] == "1.0.0"
-    assert "record.create_draft" in json.dumps(payload)
+    assert "record.create" in json.dumps(payload)
     assert "read_support" in payload
     assert payload["scope"]["commandDefaults"]["table.read"]["args"] == ["AIRTABLE_TABLE_NAME"]
 
@@ -112,12 +128,35 @@ def test_config_show_redacts_sensitive_values(monkeypatch):
     payload = invoke_json(["config", "show"], monkeypatch)
     data = payload["data"]
     assert "pat_super_secret" not in json.dumps(data)
-    assert data["runtime"]["implementation_mode"] == "live_read_only"
+    assert data["runtime"]["implementation_mode"] == "live_read_with_live_writes"
     assert data["read_support"]["base.list"] is True
     assert data["read_support"]["record.read"] is True
-    assert data["write_support"]["scaffold_only"] is True
+    assert data["write_support"]["live_writes_enabled"] is True
+    assert data["write_support"]["scaffold_only"] is False
     assert data["scope"]["table_name"] == "Projects"
     assert data["scope"]["commandDefaults"]["record.list"]["options"]["table"] == "Projects"
+
+
+def test_config_show_prefers_operator_service_keys(monkeypatch):
+    monkeypatch.setenv("AIRTABLE_API_TOKEN", "env_token")
+    monkeypatch.setenv("AIRTABLE_BASE_ID", "env_base")
+    monkeypatch.setenv("AIRTABLE_TABLE_NAME", "Env Table")
+
+    payload = invoke_json(
+        ["config", "show"],
+        monkeypatch,
+        service_keys={
+            "AIRTABLE_API_TOKEN": "operator_token",
+            "AIRTABLE_BASE_ID": "operator_base",
+            "AIRTABLE_TABLE_NAME": "Operator Table",
+        },
+    )
+    data = payload["data"]
+    assert "operator_token" not in json.dumps(data)
+    assert "env_token" not in json.dumps(data)
+    assert data["auth"]["sources"]["AIRTABLE_API_TOKEN"] == "service-keys"
+    assert data["scope"]["base_id"] == "operator_base"
+    assert data["scope"]["table_name"] == "Operator Table"
 
 
 def test_doctor_reports_live_read_support_when_setup_present(monkeypatch):
@@ -130,7 +169,7 @@ def test_doctor_reports_live_read_support_when_setup_present(monkeypatch):
     assert data["runtime"]["command_readiness"]["table.read"] is True
     assert data["runtime"]["base_scoped_read_ready"] is True
     assert data["runtime"]["table_name_present"] is True
-    assert data["checks"][1]["details"]["implementation_mode"] == "live_read_only"
+    assert data["checks"][1]["details"]["implementation_mode"] == "live_read_with_live_writes"
 
 
 def test_base_list_reads_live_bases(monkeypatch):
@@ -430,7 +469,7 @@ def test_permission_denied_for_write_path_in_readonly():
             "--mode",
             "readonly",
             "record",
-            "create-draft",
+            "create",
             "--table",
             "Projects",
             "--field",
@@ -442,25 +481,72 @@ def test_permission_denied_for_write_path_in_readonly():
     assert "requires mode=write" in result.output
 
 
-def test_write_command_stays_scaffolded_in_write_mode(monkeypatch):
+def test_record_create_writes_live_record(monkeypatch):
     monkeypatch.setenv("AIRTABLE_API_TOKEN", "pat_test_123")
     monkeypatch.setenv("AIRTABLE_BASE_ID", "app123")
-    result = CliRunner().invoke(
-        cli,
+    transport = write_transport_for(
+        method="POST",
+        path="/v0/app123/Projects",
+        expected_body={"fields": {"Status": "Draft", "Name": "New Project"}, "typecast": True},
+        response={
+            "id": "rec_new",
+            "createdTime": "2026-03-18T00:00:00.000Z",
+            "fields": {"Name": "New Project", "Status": "Draft"},
+        },
+    )
+    payload = invoke_json(
         [
-            "--json",
             "--mode",
             "write",
             "record",
-            "update-draft",
+            "create",
+            "--table",
+            "Projects",
+            "--field",
+            "Name=New Project",
+            "--fields-json",
+            '{"Status":"Draft"}',
+            "--typecast",
+        ],
+        monkeypatch,
+        transport=transport,
+    )
+    data = payload["data"]
+    assert data["status"] == "live_write"
+    assert data["record_id"] == "rec_new"
+    assert data["record"]["fields"]["Name"] == "New Project"
+    assert data["write_support"]["live_writes_enabled"] is True
+
+
+def test_record_update_writes_live_record(monkeypatch):
+    monkeypatch.setenv("AIRTABLE_API_TOKEN", "pat_test_123")
+    monkeypatch.setenv("AIRTABLE_BASE_ID", "app123")
+    transport = write_transport_for(
+        method="PATCH",
+        path="/v0/app123/Projects/rec123",
+        expected_body={"fields": {"Status": "Draft"}},
+        response={
+            "id": "rec123",
+            "createdTime": "2026-03-18T00:00:00.000Z",
+            "fields": {"Status": "Draft"},
+        },
+    )
+    payload = invoke_json(
+        [
+            "--mode",
+            "write",
+            "record",
+            "update",
             "rec123",
             "--table",
             "Projects",
             "--field",
             "Status=Draft",
         ],
+        monkeypatch,
+        transport=transport,
     )
-    assert result.exit_code == 0
-    assert '"status": "scaffold"' in result.output
-    assert '"executed": false' in result.output
-    assert '"live_writes_enabled": false' in result.output
+    data = payload["data"]
+    assert data["status"] == "live_write"
+    assert data["record_id"] == "rec123"
+    assert data["record"]["fields"]["Status"] == "Draft"

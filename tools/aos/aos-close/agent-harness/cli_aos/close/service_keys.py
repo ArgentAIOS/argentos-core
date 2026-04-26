@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 
 ARGENTOS_ROOT = Path(__file__).resolve().parents[6]
-SERVICE_KEY_VARIABLES = {'WOO_STORE_URL', 'WOO_CONSUMER_SECRET', 'WOO_CONSUMER_KEY'}
+SERVICE_KEY_VARIABLES = {"CLOSE_API_KEY"}
 
 
 @lru_cache(maxsize=64)

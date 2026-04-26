@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import time
+from typing import Any
 
 import click
 
 from . import __version__
+from .client import ConnectWiseApiError
 from .config import config_snapshot
 from .constants import MODE_ORDER, PERMISSIONS_PATH
 from .errors import CliError
@@ -13,10 +15,12 @@ from .output import emit, failure, success
 from .runtime import (
     board_list_result,
     capabilities_snapshot,
+    company_create_result,
     company_get_result,
     company_list_result,
     configuration_get_result,
     configuration_list_result,
+    contact_create_result,
     contact_get_result,
     contact_list_result,
     doctor_snapshot,
@@ -26,8 +30,10 @@ from .runtime import (
     project_list_result,
     scaffold_write_result,
     status_list_result,
+    ticket_create_result,
     ticket_get_result,
     ticket_list_result,
+    time_entry_create_result,
 )
 
 
@@ -48,6 +54,30 @@ def require_mode(ctx: click.Context, command_id: str) -> None:
     raise CliError(code="PERMISSION_DENIED", message=f"Command requires mode={required}", exit_code=3, details={"required_mode": required, "actual_mode": mode})
 
 
+def _parse_payload(
+    *,
+    payload_json: str,
+    payload_items: tuple[str, ...],
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    if payload_json.strip():
+        try:
+            parsed = json.loads(payload_json)
+        except json.JSONDecodeError as exc:
+            raise click.ClickException("--payload-json must be valid JSON") from exc
+        if not isinstance(parsed, dict):
+            raise click.ClickException("--payload-json must decode to a JSON object")
+        payload.update(parsed)
+    for item in payload_items:
+        if "=" not in item:
+            raise click.ClickException("--payload entries must use key=value")
+        key, value = item.split("=", 1)
+        payload[key.strip()] = value.strip()
+    if not payload:
+        raise click.ClickException("Provide --payload-json or at least one --payload key=value entry")
+    return payload
+
+
 class AosGroup(click.Group):
     def invoke(self, ctx: click.Context):
         try:
@@ -55,6 +85,22 @@ class AosGroup(click.Group):
         except CliError as err:
             emit(failure(command=ctx.obj.get("_command_id", "unknown") if ctx.obj else "unknown", mode=ctx.obj.get("mode", "unknown") if ctx.obj else "unknown", started=ctx.obj.get("started", time.time()) if ctx.obj else time.time(), error={"code": err.code, "message": err.message, "details": err.details}), as_json=ctx.obj.get("json", True) if ctx.obj else True)
             ctx.exit(err.exit_code)
+        except ConnectWiseApiError as err:
+            code = "CONNECTWISE_AUTH_FAILED" if err.status_code in {401, 403} else err.code
+            emit(
+                failure(
+                    command=ctx.obj.get("_command_id", "unknown") if ctx.obj else "unknown",
+                    mode=ctx.obj.get("mode", "unknown") if ctx.obj else "unknown",
+                    started=ctx.obj.get("started", time.time()) if ctx.obj else time.time(),
+                    error={
+                        "code": code,
+                        "message": err.message,
+                        "details": {**(err.details or {}), "status_code": err.status_code},
+                    },
+                ),
+                as_json=ctx.obj.get("json", True) if ctx.obj else True,
+            )
+            ctx.exit(5)
         except click.ClickException as err:
             emit(failure(command=ctx.obj.get("_command_id", "unknown") if ctx.obj else "unknown", mode=ctx.obj.get("mode", "unknown") if ctx.obj else "unknown", started=ctx.obj.get("started", time.time()) if ctx.obj else time.time(), error={"code": "INVALID_USAGE", "message": str(err), "details": {}}), as_json=ctx.obj.get("json", True) if ctx.obj else True)
             ctx.exit(2)
@@ -143,13 +189,23 @@ def ticket_get(ctx: click.Context, ticket_id: str | None) -> None:
 
 
 @ticket_group.command("create")
+@click.option(
+    "--payload",
+    "payload_items",
+    multiple=True,
+    help="Repeated key=value payload field. Each item becomes a JSON object field.",
+)
+@click.option(
+    "--payload-json",
+    default="",
+    help="JSON object payload forwarded to the ConnectWise ticket create API.",
+)
 @click.pass_context
-def ticket_create(ctx: click.Context) -> None:
+def ticket_create(ctx: click.Context, payload_items: tuple[str, ...], payload_json: str) -> None:
     _set_command(ctx, "ticket.create")
     require_mode(ctx, "ticket.create")
-    payload = scaffold_write_result("ticket.create")
-    emit(failure(command="ticket.create", mode=ctx.obj["mode"], started=ctx.obj["started"], error={"code": "NOT_IMPLEMENTED", "message": "ticket.create is scaffolded but not implemented yet", "details": payload}), as_json=ctx.obj["json"])
-    ctx.exit(10)
+    payload = _parse_payload(payload_json=payload_json, payload_items=payload_items)
+    _emit_success(ctx, "ticket.create", ticket_create_result(ctx.obj, payload=payload))
 
 
 @ticket_group.command("update")
@@ -158,7 +214,7 @@ def ticket_update(ctx: click.Context) -> None:
     _set_command(ctx, "ticket.update")
     require_mode(ctx, "ticket.update")
     payload = scaffold_write_result("ticket.update")
-    emit(failure(command="ticket.update", mode=ctx.obj["mode"], started=ctx.obj["started"], error={"code": "NOT_IMPLEMENTED", "message": "ticket.update is scaffolded but not implemented yet", "details": payload}), as_json=ctx.obj["json"])
+    emit(failure(command="ticket.update", mode=ctx.obj["mode"], started=ctx.obj["started"], error={"code": "NOT_IMPLEMENTED", "message": "ticket.update remains scaffolded because ConnectWise PATCH payload semantics are not verified in this harness", "details": payload}), as_json=ctx.obj["json"])
     ctx.exit(10)
 
 
@@ -186,13 +242,23 @@ def company_get(ctx: click.Context, company_id: str | None) -> None:
 
 
 @company_group.command("create")
+@click.option(
+    "--payload",
+    "payload_items",
+    multiple=True,
+    help="Repeated key=value payload field. Each item becomes a JSON object field.",
+)
+@click.option(
+    "--payload-json",
+    default="",
+    help="JSON object payload forwarded to the ConnectWise company create API.",
+)
 @click.pass_context
-def company_create(ctx: click.Context) -> None:
+def company_create(ctx: click.Context, payload_items: tuple[str, ...], payload_json: str) -> None:
     _set_command(ctx, "company.create")
     require_mode(ctx, "company.create")
-    payload = scaffold_write_result("company.create")
-    emit(failure(command="company.create", mode=ctx.obj["mode"], started=ctx.obj["started"], error={"code": "NOT_IMPLEMENTED", "message": "company.create is scaffolded but not implemented yet", "details": payload}), as_json=ctx.obj["json"])
-    ctx.exit(10)
+    payload = _parse_payload(payload_json=payload_json, payload_items=payload_items)
+    _emit_success(ctx, "company.create", company_create_result(ctx.obj, payload=payload))
 
 
 @cli.group("contact")
@@ -220,13 +286,23 @@ def contact_get(ctx: click.Context, contact_id: str | None) -> None:
 
 
 @contact_group.command("create")
+@click.option(
+    "--payload",
+    "payload_items",
+    multiple=True,
+    help="Repeated key=value payload field. Each item becomes a JSON object field.",
+)
+@click.option(
+    "--payload-json",
+    default="",
+    help="JSON object payload forwarded to the ConnectWise contact create API.",
+)
 @click.pass_context
-def contact_create(ctx: click.Context) -> None:
+def contact_create(ctx: click.Context, payload_items: tuple[str, ...], payload_json: str) -> None:
     _set_command(ctx, "contact.create")
     require_mode(ctx, "contact.create")
-    payload = scaffold_write_result("contact.create")
-    emit(failure(command="contact.create", mode=ctx.obj["mode"], started=ctx.obj["started"], error={"code": "NOT_IMPLEMENTED", "message": "contact.create is scaffolded but not implemented yet", "details": payload}), as_json=ctx.obj["json"])
-    ctx.exit(10)
+    payload = _parse_payload(payload_json=payload_json, payload_items=payload_items)
+    _emit_success(ctx, "contact.create", contact_create_result(ctx.obj, payload=payload))
 
 
 @cli.group("project")
@@ -293,6 +369,37 @@ def member_list(ctx: click.Context, limit: int) -> None:
     _set_command(ctx, "member.list")
     require_mode(ctx, "member.list")
     _emit_success(ctx, "member.list", member_list_result(ctx.obj, limit=limit))
+
+
+@cli.group("time-entry")
+def time_entry_group() -> None:
+    pass
+
+
+@time_entry_group.command("create")
+@click.argument("ticket_id", required=False)
+@click.option(
+    "--payload",
+    "payload_items",
+    multiple=True,
+    help="Repeated key=value payload field. Each item becomes a JSON object field.",
+)
+@click.option(
+    "--payload-json",
+    default="",
+    help="JSON object payload forwarded to the ConnectWise time entry create API.",
+)
+@click.pass_context
+def time_entry_create(
+    ctx: click.Context,
+    ticket_id: str | None,
+    payload_items: tuple[str, ...],
+    payload_json: str,
+) -> None:
+    _set_command(ctx, "time_entry.create")
+    require_mode(ctx, "time_entry.create")
+    payload = _parse_payload(payload_json=payload_json, payload_items=payload_items)
+    _emit_success(ctx, "time_entry.create", time_entry_create_result(ctx.obj, ticket_id=ticket_id, payload=payload))
 
 
 @cli.group("configuration")

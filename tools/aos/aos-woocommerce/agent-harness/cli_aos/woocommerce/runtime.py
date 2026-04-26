@@ -9,6 +9,26 @@ from .client import WooCommerceClient
 from .config import WooCommerceConnectorContext, redact_config, resolve_config
 from .constants import BACKEND_NAME, TOOL_NAME
 
+LIVE_READ_COMMANDS = [
+    "order.list",
+    "order.get",
+    "product.list",
+    "product.get",
+    "customer.list",
+    "customer.get",
+    "coupon.list",
+    "report.sales",
+    "report.top_sellers",
+]
+SCAFFOLDED_WRITE_COMMANDS = [
+    "order.create",
+    "order.update",
+    "product.create",
+    "product.update",
+    "customer.create",
+    "coupon.create",
+]
+
 
 def resolve_runtime_binary() -> str | None:
     return shutil.which("aos-woocommerce")
@@ -67,9 +87,11 @@ def build_config_show_payload() -> dict[str, Any]:
             },
             "runtime": {
                 "binary_path": resolve_runtime_binary(),
-                "implementation_mode": "live_read_with_scaffolded_writes",
+                "implementation_mode": "live_reads_with_scaffolded_writes",
                 "live_read_surfaces": ["order", "product", "customer", "coupon", "report"],
-                "scaffolded_surfaces": [],
+                "live_read_commands": LIVE_READ_COMMANDS,
+                "scaffolded_surfaces": ["order", "product", "customer", "coupon"],
+                "scaffolded_write_commands": SCAFFOLDED_WRITE_COMMANDS,
             },
         },
     }
@@ -105,7 +127,7 @@ def build_health_payload(*, client_factory=None) -> dict[str, Any]:
             "label": "WooCommerce store URL configured",
             "ok": bool(config.store_url),
             "optional": False,
-            "summary": config.store_url or "Set WOO_STORE_URL to the WordPress site URL.",
+            "summary": config.store_url or "Add WOO_STORE_URL in API Keys or set it locally for development.",
         },
     ]
     probe = None
@@ -141,8 +163,8 @@ def build_health_payload(*, client_factory=None) -> dict[str, Any]:
     if not config.consumer_key or not config.consumer_secret:
         next_steps.append("Generate WooCommerce REST API keys and add WOO_CONSUMER_KEY and WOO_CONSUMER_SECRET.")
     if not config.store_url:
-        next_steps.append("Set WOO_STORE_URL to the WordPress site URL.")
-    next_steps.append("Keep write commands scaffolded until WooCommerce write workflows are approved.")
+        next_steps.append("Add WOO_STORE_URL in API Keys or set it locally for development.")
+    next_steps.append("Write commands remain scaffold-only; do not expect live WooCommerce mutations yet.")
     return {
         "tool": TOOL_NAME,
         "backend": BACKEND_NAME,

@@ -77,6 +77,10 @@ def invoke_json(args: list[str]) -> dict[str, Any]:
     return json.loads(result.output)
 
 
+def invoke_result(args: list[str]):
+    return CliRunner().invoke(cli, ["--json", *args])
+
+
 def test_manifest_and_permissions_are_in_sync():
     manifest = json.loads(CONNECTOR_PATH.read_text())
     permissions = json.loads(PERMISSIONS_PATH.read_text())["permissions"]
@@ -95,6 +99,7 @@ def test_capabilities_exposes_manifest():
 
 def test_health_requires_access_token(monkeypatch):
     monkeypatch.delenv("SQUARE_ACCESS_TOKEN", raising=False)
+    monkeypatch.setattr("cli_aos.square.service_keys.resolve_service_key", lambda variable: None)
     monkeypatch.setattr(runtime, "resolve_runtime_binary", lambda: None)
     payload = invoke_json(["health"])
     assert payload["data"]["status"] == "needs_setup"
@@ -150,7 +155,7 @@ def test_customer_list_returns_picker(monkeypatch):
 
 def test_payment_create_is_scaffolded(monkeypatch):
     monkeypatch.setenv("SQUARE_ACCESS_TOKEN", "tok_test_abc")
-    payload = invoke_json(["payment", "create", "--amount", "1000"])
+    payload = invoke_json(["--mode", "write", "payment", "create", "--amount", "1000"])
     assert payload["data"]["status"] == "scaffold_write_only"
 
 
@@ -161,3 +166,25 @@ def test_config_show_redacts_token(monkeypatch):
     data = payload["data"]
     assert "secret-token" not in json.dumps(data)
     assert data["scope"]["location_id"] == "LOC_1"
+    assert data["runtime"]["live_read_surfaces"] == ["payment", "customer", "order", "item", "invoice", "location"]
+    assert data["runtime"]["scaffolded_surfaces"] == ["payment", "customer", "order", "item", "invoice"]
+    assert data["auth"]["development_fallback"] == ["SQUARE_ACCESS_TOKEN"]
+
+
+def test_config_show_prefers_operator_service_keys(monkeypatch):
+    monkeypatch.setenv("SQUARE_ACCESS_TOKEN", "env-token")
+    monkeypatch.setattr("cli_aos.square.service_keys.resolve_service_key", lambda variable: "svc-token" if variable == "SQUARE_ACCESS_TOKEN" else None)
+    payload = invoke_json(["config", "show"])
+    data = payload["data"]
+    assert "env-token" not in json.dumps(data)
+    assert data["auth"]["configured"]["SQUARE_ACCESS_TOKEN"] is True
+    assert data["auth"]["sources"]["SQUARE_ACCESS_TOKEN"] == "service-keys"
+
+
+def test_write_commands_require_write_mode(monkeypatch):
+    monkeypatch.setenv("SQUARE_ACCESS_TOKEN", "tok_test_abc")
+    result = invoke_result(["payment", "create", "--amount", "1000"])
+    assert result.exit_code == 3
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "PERMISSION_DENIED"
+    assert payload["error"]["details"] == {"required_mode": "write", "actual_mode": "readonly"}

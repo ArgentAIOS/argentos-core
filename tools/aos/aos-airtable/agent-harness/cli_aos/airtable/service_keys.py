@@ -6,7 +6,17 @@ from functools import lru_cache
 from pathlib import Path
 
 ARGENTOS_ROOT = Path(__file__).resolve().parents[6]
-SERVICE_KEY_VARIABLES = {'WOO_STORE_URL', 'WOO_CONSUMER_SECRET', 'WOO_CONSUMER_KEY'}
+SERVICE_KEY_VARIABLES = {
+    "AIRTABLE_API_TOKEN",
+    "AOS_AIRTABLE_API_TOKEN",
+    "AIRTABLE_BASE_ID",
+    "AOS_AIRTABLE_BASE_ID",
+    "AIRTABLE_TABLE_NAME",
+    "AOS_AIRTABLE_TABLE_NAME",
+    "AIRTABLE_WORKSPACE_ID",
+    "AOS_AIRTABLE_WORKSPACE_ID",
+    "AIRTABLE_API_BASE_URL",
+}
 
 
 @lru_cache(maxsize=64)

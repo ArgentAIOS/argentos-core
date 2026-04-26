@@ -103,8 +103,8 @@ def _normalize_brand_template(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 class CanvaClient:
-    def __init__(self, *, api_key: str, api_base_url: str = API_BASE_URL) -> None:
-        self._api_key = api_key.strip()
+    def __init__(self, *, access_token: str, api_base_url: str = API_BASE_URL) -> None:
+        self._access_token = access_token.strip()
         self._api_base_url = api_base_url.rstrip("/")
 
     def _request(
@@ -124,7 +124,7 @@ class CanvaClient:
             if encoded:
                 url = f"{url}?{encoded}"
         req_headers = {
-            "Authorization": f"Bearer {self._api_key}",
+            "Authorization": f"Bearer {self._access_token}",
             "Accept": "application/json",
         }
         if headers:

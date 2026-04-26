@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from functools import lru_cache
+import json
+from pathlib import Path
 from typing import Any
 
 import click
@@ -7,10 +10,13 @@ import click
 from .output import dumps
 from . import runtime
 
+MODE_ORDER = ["readonly", "write"]
+PERMISSIONS_PATH = Path(__file__).resolve().parents[2] / "permissions.json"
+
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("--json/--no-json", "json_output", default=True, show_default=True)
-@click.option("--mode", type=click.Choice(["readonly", "write"]), default="readonly", show_default=True)
+@click.option("--mode", type=click.Choice(MODE_ORDER), default="readonly", show_default=True)
 @click.pass_context
 def cli(ctx: click.Context, json_output: bool, mode: str) -> None:
     ctx.ensure_object(dict)
@@ -24,6 +30,31 @@ def emit(ctx: click.Context, payload: dict[str, Any], *, exit_code: int = 0) -> 
     else:
         click.echo(payload)
     raise SystemExit(exit_code)
+
+
+@lru_cache(maxsize=1)
+def load_permissions() -> dict[str, str]:
+    return json.loads(PERMISSIONS_PATH.read_text()).get("permissions", {})
+
+
+def require_mode(ctx: click.Context, command_id: str) -> None:
+    required_mode = load_permissions().get(command_id, "write")
+    actual_mode = ctx.obj.get("mode", "readonly")
+    if MODE_ORDER.index(actual_mode) >= MODE_ORDER.index(required_mode):
+        return
+    emit(
+        ctx,
+        {
+            "tool": "aos-woocommerce",
+            "backend": "woocommerce-rest-api",
+            "error": {
+                "code": "PERMISSION_DENIED",
+                "message": f"Command requires mode={required_mode}",
+                "details": {"required_mode": required_mode, "actual_mode": actual_mode},
+            },
+        },
+        exit_code=3,
+    )
 
 
 @cli.command()
@@ -81,6 +112,7 @@ def order_get(ctx: click.Context, order_id: str | None) -> None:
 @order.command(name="create")
 @click.pass_context
 def order_create(ctx: click.Context) -> None:
+    require_mode(ctx, "order.create")
     emit(ctx, runtime.build_order_create_payload())
 
 
@@ -89,6 +121,7 @@ def order_create(ctx: click.Context) -> None:
 @click.option("--status", type=str, default=None)
 @click.pass_context
 def order_update(ctx: click.Context, order_id: str | None, status: str | None) -> None:
+    require_mode(ctx, "order.update")
     emit(ctx, runtime.build_order_update_payload(order_id=order_id, status=status))
 
 
@@ -118,6 +151,7 @@ def product_get(ctx: click.Context, product_id: str | None) -> None:
 @click.option("--name", type=str, default=None)
 @click.pass_context
 def product_create(ctx: click.Context, name: str | None) -> None:
+    require_mode(ctx, "product.create")
     emit(ctx, runtime.build_product_create_payload(name=name))
 
 
@@ -126,6 +160,7 @@ def product_create(ctx: click.Context, name: str | None) -> None:
 @click.option("--status", type=str, default=None)
 @click.pass_context
 def product_update(ctx: click.Context, product_id: str | None, status: str | None) -> None:
+    require_mode(ctx, "product.update")
     emit(ctx, runtime.build_product_update_payload(product_id=product_id, status=status))
 
 
@@ -153,6 +188,7 @@ def customer_get(ctx: click.Context, customer_id: str | None) -> None:
 @click.option("--email", type=str, default=None)
 @click.pass_context
 def customer_create(ctx: click.Context, email: str | None) -> None:
+    require_mode(ctx, "customer.create")
     emit(ctx, runtime.build_customer_create_payload(email=email))
 
 
@@ -173,6 +209,7 @@ def coupon_list(ctx: click.Context, limit: int) -> None:
 @click.option("--code", type=str, default=None)
 @click.pass_context
 def coupon_create(ctx: click.Context, code: str | None) -> None:
+    require_mode(ctx, "coupon.create")
     emit(ctx, runtime.build_coupon_create_payload(code=code))
 
 

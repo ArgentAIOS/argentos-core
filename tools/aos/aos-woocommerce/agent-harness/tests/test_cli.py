@@ -7,6 +7,7 @@ from typing import Any
 from click.testing import CliRunner
 
 from cli_aos.woocommerce.cli import cli
+import cli_aos.woocommerce.config as config
 import cli_aos.woocommerce.runtime as runtime
 
 
@@ -140,8 +141,16 @@ def test_order_create_is_scaffolded(monkeypatch):
     monkeypatch.setenv("WOO_CONSUMER_KEY", "ck_test")
     monkeypatch.setenv("WOO_CONSUMER_SECRET", "cs_test")
     monkeypatch.setenv("WOO_STORE_URL", "https://mystore.example.com")
-    payload = invoke_json(["order", "create"])
+    payload = invoke_json(["--mode", "write", "order", "create"])
     assert payload["data"]["status"] == "scaffold_write_only"
+
+
+def test_write_commands_require_write_mode():
+    result = CliRunner().invoke(cli, ["--json", "order", "create"])
+    assert result.exit_code == 3, result.output
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "PERMISSION_DENIED"
+    assert payload["error"]["details"] == {"required_mode": "write", "actual_mode": "readonly"}
 
 
 def test_report_sales_returns_data(monkeypatch):
@@ -162,3 +171,31 @@ def test_config_show_redacts_secrets(monkeypatch):
     assert "ck_secret" not in json.dumps(data)
     assert "cs_secret" not in json.dumps(data)
     assert data["scope"]["store_url"] == "https://mystore.example.com"
+
+
+def test_config_show_reports_live_reads_and_scaffolded_writes(monkeypatch):
+    monkeypatch.setenv("WOO_STORE_URL", "https://mystore.example.com")
+    payload = invoke_json(["config", "show"])
+    runtime_payload = payload["data"]["runtime"]
+    assert runtime_payload["implementation_mode"] == "live_reads_with_scaffolded_writes"
+    assert "order.list" in runtime_payload["live_read_commands"]
+    assert "coupon.create" in runtime_payload["scaffolded_write_commands"]
+    assert "coupon" in runtime_payload["scaffolded_surfaces"]
+
+
+def test_resolve_config_prefers_service_key_helper_for_store_and_credentials(monkeypatch):
+    values = {
+        "WOO_STORE_URL": "https://service-keys.example.com",
+        "WOO_CONSUMER_KEY": "ck_service",
+        "WOO_CONSUMER_SECRET": "cs_service",
+    }
+
+    def fake_service_key_env(name: str, default: str | None = None) -> str | None:
+        return values.get(name, default)
+
+    monkeypatch.setattr(config, "service_key_env", fake_service_key_env)
+    resolved = config.resolve_config()
+    assert resolved.store_url == "https://service-keys.example.com"
+    assert resolved.base_url == "https://service-keys.example.com/wp-json/wc/v3"
+    assert resolved.consumer_key == "ck_service"
+    assert resolved.consumer_secret == "cs_service"

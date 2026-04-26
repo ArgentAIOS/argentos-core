@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from .constants import (
@@ -8,7 +7,9 @@ from .constants import (
     CLOSE_API_KEY_ENV,
     CLOSE_CONTACT_ID_ENV,
     CLOSE_LEAD_ID_ENV,
+    CLOSE_OPPORTUNITY_ID_ENV,
 )
+from .service_keys import resolve_service_key, service_key_env
 
 
 def _mask(value: str | None) -> str | None:
@@ -23,22 +24,37 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     key_env = ctx_obj.get("key_env") or CLOSE_API_KEY_ENV
     lead_id_env = ctx_obj.get("lead_id_env") or CLOSE_LEAD_ID_ENV
     contact_id_env = ctx_obj.get("contact_id_env") or CLOSE_CONTACT_ID_ENV
+    opportunity_id_env = ctx_obj.get("opportunity_id_env") or CLOSE_OPPORTUNITY_ID_ENV
 
-    api_key = (os.getenv(key_env) or "").strip()
-    lead_id = (os.getenv(lead_id_env) or "").strip()
-    contact_id = (os.getenv(contact_id_env) or "").strip()
+    service_key_value = (resolve_service_key(key_env) or "").strip() if key_env == CLOSE_API_KEY_ENV else ""
+    env_value = (service_key_env(key_env, "") or "").strip()
+    api_key = env_value
+    if service_key_value:
+        auth_source = "service_key"
+    elif api_key:
+        auth_source = "env"
+    else:
+        auth_source = "missing"
+
+    lead_id = (service_key_env(lead_id_env, "") or "").strip()
+    contact_id = (service_key_env(contact_id_env, "") or "").strip()
+    opportunity_id = (service_key_env(opportunity_id_env, "") or "").strip()
 
     return {
         "backend": BACKEND_NAME,
         "key_env": key_env,
         "lead_id_env": lead_id_env,
         "contact_id_env": contact_id_env,
+        "opportunity_id_env": opportunity_id_env,
         "api_key": api_key,
+        "auth_source": auth_source,
         "lead_id": lead_id,
         "contact_id": contact_id,
+        "opportunity_id": opportunity_id,
         "api_key_present": bool(api_key),
         "lead_id_present": bool(lead_id),
         "contact_id_present": bool(contact_id),
+        "opportunity_id_present": bool(opportunity_id),
     }
 
 
@@ -58,20 +74,22 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "summary": "Close connector configuration snapshot.",
         "backend": BACKEND_NAME,
         "runtime": {
-            "implementation_mode": "live_read_with_scaffolded_writes",
+            "implementation_mode": "live_read_with_live_crm_writes_and_scaffolded_outreach",
             "live_read_available": live_ready,
-            "write_bridge_available": False,
+            "write_bridge_available": live_ready,
             "probe": probe,
         },
         "auth": {
             "key_env": runtime["key_env"],
             "api_key_present": runtime["api_key_present"],
             "api_key_preview": _mask(runtime["api_key"]),
+            "api_key_source": runtime["auth_source"],
         },
         "scope": {
-            "workerFields": ["lead_id", "contact_id", "query", "status", "assignee"],
+            "workerFields": ["lead_id", "contact_id", "opportunity_id", "query", "status", "assignee"],
             "lead_id": runtime["lead_id"] or None,
             "contact_id": runtime["contact_id"] or None,
+            "opportunity_id": runtime["opportunity_id"] or None,
         },
         "read_support": {
             "lead.list": True,
@@ -84,15 +102,15 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "task.list": True,
         },
         "write_support": {
-            "lead.create": "scaffold_only",
-            "lead.update": "scaffold_only",
-            "contact.create": "scaffold_only",
-            "opportunity.create": "scaffold_only",
-            "activity.create": "scaffold_only",
-            "task.create": "scaffold_only",
+            "lead.create": "live",
+            "lead.update": "live",
+            "contact.create": "live",
+            "opportunity.create": "live",
+            "activity.create": "live",
+            "task.create": "live",
             "email.send": "scaffold_only",
             "sms.send": "scaffold_only",
             "call.create": "scaffold_only",
-            "scaffold_only": True,
+            "scaffold_only": False,
         },
     }

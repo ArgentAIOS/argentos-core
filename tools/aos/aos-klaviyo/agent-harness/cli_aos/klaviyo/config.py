@@ -12,6 +12,7 @@ from .constants import (
     KLAVIYO_PROFILE_EMAIL_ENV,
     KLAVIYO_PROFILE_ID_ENV,
     KLAVIYO_REVISION_ENV,
+    KLAVIYO_SERVICE_KEY_NAME,
 )
 
 
@@ -88,15 +89,83 @@ def _scope_picker_preview(
     }
 
 
+def _string_value(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _mapping_value(mapping: Any, *keys: str) -> str:
+    if not isinstance(mapping, dict):
+        return ""
+    for key in keys:
+        value = _string_value(mapping.get(key))
+        if value:
+            return value
+    return ""
+
+
+def _operator_service_key_value(ctx_obj: dict[str, Any], service_key_name: str) -> tuple[str, str]:
+    service_key_key = service_key_name.lower()
+    for field_name in ("service_keys", "service_key_values", "api_keys", "secrets"):
+        container = ctx_obj.get(field_name)
+        value = _mapping_value(container, service_key_name, service_key_key)
+        if value:
+            return value, f"operator:{field_name}"
+
+        tool_scoped = None
+        if isinstance(container, dict):
+            tool_scoped = container.get("aos-klaviyo") or container.get("klaviyo")
+        value = _mapping_value(tool_scoped, service_key_name, service_key_key, "api_key")
+        if value:
+            return value, f"operator:{field_name}:tool"
+
+    value = _mapping_value(ctx_obj, service_key_name, service_key_key, "api_key")
+    if value:
+        return value, "operator:context"
+
+    return "", "missing"
+
+
+def _resolve_service_key(ctx_obj: dict[str, Any], *, service_key_name: str, env_name: str) -> dict[str, Any]:
+    operator_value, operator_source = _operator_service_key_value(ctx_obj, service_key_name)
+    if operator_value:
+        return {
+            "value": operator_value,
+            "present": True,
+            "source": operator_source,
+            "service_key_name": service_key_name,
+            "env_name": env_name,
+        }
+
+    env_value = _string_value(os.getenv(env_name))
+    if env_value:
+        return {
+            "value": env_value,
+            "present": True,
+            "source": "env_fallback",
+            "service_key_name": service_key_name,
+            "env_name": env_name,
+        }
+
+    return {
+        "value": "",
+        "present": False,
+        "source": "missing",
+        "service_key_name": service_key_name,
+        "env_name": env_name,
+    }
+
+
 def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     api_key_env = ctx_obj.get("api_key_env") or KLAVIYO_API_KEY_ENV
+    service_key_name = ctx_obj.get("service_key_name") or KLAVIYO_SERVICE_KEY_NAME
     revision_env = ctx_obj.get("revision_env") or KLAVIYO_REVISION_ENV
     list_id_env = ctx_obj.get("list_id_env") or KLAVIYO_LIST_ID_ENV
     profile_id_env = ctx_obj.get("profile_id_env") or KLAVIYO_PROFILE_ID_ENV
     profile_email_env = ctx_obj.get("profile_email_env") or KLAVIYO_PROFILE_EMAIL_ENV
     campaign_id_env = ctx_obj.get("campaign_id_env") or KLAVIYO_CAMPAIGN_ID_ENV
 
-    api_key = (os.getenv(api_key_env) or "").strip()
+    service_key = _resolve_service_key(ctx_obj, service_key_name=service_key_name, env_name=api_key_env)
+    api_key = service_key["value"]
     revision = (os.getenv(revision_env) or DEFAULT_REVISION).strip() or DEFAULT_REVISION
     list_id = (os.getenv(list_id_env) or "").strip()
     profile_id = (os.getenv(profile_id_env) or "").strip()
@@ -105,6 +174,7 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "backend": BACKEND_NAME,
+        "service_key_name": service_key["service_key_name"],
         "api_key_env": api_key_env,
         "revision_env": revision_env,
         "list_id_env": list_id_env,
@@ -117,7 +187,8 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "profile_id": profile_id,
         "profile_email": profile_email,
         "campaign_id": campaign_id,
-        "api_key_present": bool(api_key),
+        "api_key_present": service_key["present"],
+        "api_key_source": service_key["source"],
         "revision_present": bool(revision),
         "list_id_present": bool(list_id),
         "profile_id_present": bool(profile_id),
@@ -168,7 +239,7 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             surface="account",
             kind="account_scope",
             ready=live_ready,
-            requirements=[runtime["api_key_env"]],
+            requirements=[runtime["service_key_name"]],
             pickers={
                 "account": _picker_source(
                     command="account.read",
@@ -199,7 +270,7 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             surface="list",
             kind="list_scope",
             ready=live_ready,
-            requirements=[runtime["api_key_env"]],
+            requirements=[runtime["service_key_name"]],
             pickers={
                 "list": _picker_source(
                     command="list.list",
@@ -228,7 +299,7 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             surface="profile",
             kind="profile_scope",
             ready=live_ready,
-            requirements=[runtime["api_key_env"]],
+            requirements=[runtime["service_key_name"]],
             pickers={
                 "profile": _picker_source(
                     command="profile.list",
@@ -264,7 +335,7 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             surface="campaign",
             kind="campaign_scope",
             ready=live_ready,
-            requirements=[runtime["api_key_env"]],
+            requirements=[runtime["service_key_name"]],
             pickers={
                 "campaign": _picker_source(
                     command="campaign.list",
@@ -292,21 +363,24 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     }
     from .runtime import probe_runtime
 
-    probe = probe_runtime(ctx_obj) if runtime["api_key_present"] else {"ok": False, "code": "SKIPPED", "message": "Klaviyo probe skipped until KLAVIYO_API_KEY is configured", "details": {"skipped": True}}
+    probe = probe_runtime(ctx_obj) if runtime["api_key_present"] else {"ok": False, "code": "SKIPPED", "message": "Klaviyo probe skipped until the KLAVIYO_API_KEY service key is configured", "details": {"skipped": True}}
     return {
         "summary": "Klaviyo connector configuration snapshot.",
         "backend": BACKEND_NAME,
         "runtime": {
             "implementation_mode": "live_read_with_scaffolded_writes",
             "live_read_available": runtime["api_key_present"],
+            "live_write_available": False,
             "write_bridge_available": False,
             "command_defaults": command_defaults,
             "picker_scopes": picker_scopes,
             "probe": probe,
         },
         "auth": {
+            "service_key_name": runtime["service_key_name"],
             "api_key_env": runtime["api_key_env"],
             "api_key_present": runtime["api_key_present"],
+            "api_key_source": runtime["api_key_source"],
             "api_key_preview": _mask(runtime["api_key"]),
             "revision_env": runtime["revision_env"],
             "revision": runtime["revision"],

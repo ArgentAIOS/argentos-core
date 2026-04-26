@@ -2,7 +2,10 @@
 
 Agent-native Mailchimp Marketing API connector.
 
-This first pass gives ArgentOS a truthful Mailchimp surface for:
+This connector is live-read-first and uses operator-controlled service keys for auth
+before falling back to process env in the harness service-key helper.
+
+Real today:
 
 - connector setup and health
 - audience reads
@@ -10,4 +13,10 @@ This first pass gives ArgentOS a truthful Mailchimp surface for:
 - campaign reads
 - report reads
 
-Write commands remain scaffolded until we decide which Mailchimp mutations are safe enough to expose directly in worker flows.
+Still scaffolded:
+
+- `campaign.create_draft`
+- `member.upsert`
+
+Those write commands are intentionally present as scaffold placeholders and return
+`scaffold_write_only` instead of performing live Mailchimp mutations.

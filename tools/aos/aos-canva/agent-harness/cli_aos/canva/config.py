@@ -4,7 +4,7 @@ import os
 from typing import Any
 
 from .constants import (
-    CANVA_API_KEY_ENV,
+    CANVA_ACCESS_TOKEN_ENV,
     CANVA_ASSET_FILE_ENV,
     CANVA_ASSET_ID_ENV,
     CANVA_ASSET_NAME_ENV,
@@ -16,9 +16,12 @@ from .constants import (
     CANVA_EXPORT_JOB_ID_ENV,
     CANVA_FOLDER_ID_ENV,
     CANVA_FOLDER_NAME_ENV,
-    CANVA_TEMPLATE_ID_ENV,
     CANVA_TITLE_ENV,
+    LEGACY_AOS_CANVA_ACCESS_TOKEN_ENV,
+    LEGACY_AOS_CANVA_API_KEY_ENV,
+    LEGACY_CANVA_API_KEY_ENV,
 )
+from .service_keys import resolve_service_key, service_key_env
 
 
 def _mask(value: str | None) -> str | None:
@@ -29,31 +32,62 @@ def _mask(value: str | None) -> str | None:
     return f"{value[:2]}***{value[-2:]}"
 
 
+def _env(*names: str) -> str:
+    for name in names:
+        value = (service_key_env(name) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _source(*names: str) -> str | None:
+    for name in names:
+        if (resolve_service_key(name) or "").strip():
+            return "service-keys"
+    for name in names:
+        if os.getenv(name, "").strip():
+            return "process.env"
+    return None
+
+
 def resolve_runtime_values(_ctx_obj: dict[str, Any]) -> dict[str, Any]:
-    api_key = os.getenv(CANVA_API_KEY_ENV, "").strip()
-    folder_id = os.getenv(CANVA_FOLDER_ID_ENV, "").strip()
-    design_id = os.getenv(CANVA_DESIGN_ID_ENV, "").strip()
-    template_id = os.getenv(CANVA_TEMPLATE_ID_ENV, "").strip()
-    brand_template_id = os.getenv(CANVA_BRAND_TEMPLATE_ID_ENV, "").strip()
-    export_format = os.getenv(CANVA_EXPORT_FORMAT_ENV, "").strip()
-    export_job_id = os.getenv(CANVA_EXPORT_JOB_ID_ENV, "").strip()
-    asset_file = os.getenv(CANVA_ASSET_FILE_ENV, "").strip()
-    asset_url = os.getenv(CANVA_ASSET_URL_ENV, "").strip()
-    asset_name = os.getenv(CANVA_ASSET_NAME_ENV, "").strip()
-    asset_id = os.getenv(CANVA_ASSET_ID_ENV, "").strip()
-    autofill_data = os.getenv(CANVA_AUTOFILL_DATA_ENV, "").strip()
-    folder_name = os.getenv(CANVA_FOLDER_NAME_ENV, "").strip()
-    title = os.getenv(CANVA_TITLE_ENV, "").strip()
+    access_token = _env(
+        CANVA_ACCESS_TOKEN_ENV,
+        LEGACY_CANVA_API_KEY_ENV,
+        LEGACY_AOS_CANVA_ACCESS_TOKEN_ENV,
+        LEGACY_AOS_CANVA_API_KEY_ENV,
+    )
+    folder_id = _env(CANVA_FOLDER_ID_ENV)
+    design_id = _env(CANVA_DESIGN_ID_ENV)
+    brand_template_id = _env(CANVA_BRAND_TEMPLATE_ID_ENV)
+    export_format = _env(CANVA_EXPORT_FORMAT_ENV)
+    export_job_id = _env(CANVA_EXPORT_JOB_ID_ENV)
+    asset_file = _env(CANVA_ASSET_FILE_ENV)
+    asset_url = _env(CANVA_ASSET_URL_ENV)
+    asset_name = _env(CANVA_ASSET_NAME_ENV)
+    asset_id = _env(CANVA_ASSET_ID_ENV)
+    autofill_data = _env(CANVA_AUTOFILL_DATA_ENV)
+    folder_name = _env(CANVA_FOLDER_NAME_ENV)
+    title = _env(CANVA_TITLE_ENV)
     return {
-        "api_key": api_key,
-        "api_key_present": bool(api_key),
-        "api_key_env": CANVA_API_KEY_ENV,
+        "access_token": access_token,
+        "access_token_present": bool(access_token),
+        "access_token_env": CANVA_ACCESS_TOKEN_ENV,
+        "access_token_source": _source(
+            CANVA_ACCESS_TOKEN_ENV,
+            LEGACY_CANVA_API_KEY_ENV,
+            LEGACY_AOS_CANVA_ACCESS_TOKEN_ENV,
+            LEGACY_AOS_CANVA_API_KEY_ENV,
+        ),
+        "legacy_access_token_envs": [
+            LEGACY_CANVA_API_KEY_ENV,
+            LEGACY_AOS_CANVA_ACCESS_TOKEN_ENV,
+            LEGACY_AOS_CANVA_API_KEY_ENV,
+        ],
         "folder_id": folder_id or None,
         "folder_id_env": CANVA_FOLDER_ID_ENV,
         "design_id": design_id or None,
         "design_id_env": CANVA_DESIGN_ID_ENV,
-        "template_id": template_id or None,
-        "template_id_env": CANVA_TEMPLATE_ID_ENV,
         "brand_template_id": brand_template_id or None,
         "brand_template_id_env": CANVA_BRAND_TEMPLATE_ID_ENV,
         "export_format": export_format or None,
@@ -81,21 +115,28 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
     return {
         "auth": {
-            "api_key_env": runtime["api_key_env"],
-            "api_key_present": runtime["api_key_present"],
-            "api_key_preview": _mask(runtime["api_key"]),
+            "access_token_env": runtime["access_token_env"],
+            "legacy_access_token_envs": runtime["legacy_access_token_envs"],
+            "access_token_present": runtime["access_token_present"],
+            "access_token_source": runtime["access_token_source"],
+            "access_token_preview": _mask(runtime["access_token"]),
         },
         "defaults": {
             "folder_id": runtime["folder_id"],
             "design_id": runtime["design_id"],
-            "template_id": runtime["template_id"],
             "brand_template_id": runtime["brand_template_id"],
             "export_format": runtime["export_format"],
             "export_job_id": runtime["export_job_id"],
             "asset_file": runtime["asset_file"],
             "asset_url": runtime["asset_url"],
             "asset_name": runtime["asset_name"],
+            "asset_id": runtime["asset_id"],
+            "autofill_data_present": bool(runtime["autofill_data"]),
             "folder_name": runtime["folder_name"],
             "title": runtime["title"],
+        },
+        "runtime": {
+            "implementation_mode": "live_read_with_live_writes" if runtime["access_token_present"] else "configuration_only",
+            "operator_service_keys_first": True,
         },
     }

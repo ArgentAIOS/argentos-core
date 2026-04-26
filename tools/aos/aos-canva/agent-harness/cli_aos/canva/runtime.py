@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 from .client import CanvaApiError, CanvaClient
 from .config import config_snapshot, resolve_runtime_values
-from .constants import BACKEND_NAME, CANVA_ASSET_FILE_ENV, CONNECTOR_PATH, TOOL_NAME
+from .constants import BACKEND_NAME, CONNECTOR_PATH, TOOL_NAME
 from .errors import CliError
 
 
@@ -67,24 +66,24 @@ def capabilities_snapshot() -> dict[str, Any]:
 
 def create_client(ctx_obj: dict[str, Any]) -> CanvaClient:
     runtime = resolve_runtime_values(ctx_obj)
-    if not runtime["api_key_present"]:
+    if not runtime["access_token_present"]:
         raise CliError(
             code="CANVA_SETUP_REQUIRED",
-            message="Canva connector is missing required credentials",
+            message="Canva connector is missing a required access token",
             exit_code=4,
-            details={"missing_keys": [runtime["api_key_env"]]},
+            details={"missing_keys": [runtime["access_token_env"]]},
         )
-    return CanvaClient(api_key=runtime["api_key"])
+    return CanvaClient(access_token=runtime["access_token"])
 
 
 def probe_runtime(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
-    if not runtime["api_key_present"]:
+    if not runtime["access_token_present"]:
         return {
             "ok": False,
             "code": "CANVA_SETUP_REQUIRED",
-            "message": "Canva connector is missing required credentials",
-            "details": {"missing_keys": [runtime["api_key_env"]], "live_backend_available": False},
+            "message": "Canva connector is missing a required access token",
+            "details": {"missing_keys": [runtime["access_token_env"]], "live_backend_available": False},
         }
     try:
         client = create_client(ctx_obj)
@@ -123,30 +122,30 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "scaffold_only": False,
         },
         "auth": {
-            "api_key_env": runtime["api_key_env"],
-            "api_key_present": runtime["api_key_present"],
+            "access_token_env": runtime["access_token_env"],
+            "access_token_present": runtime["access_token_present"],
+            "access_token_source": runtime["access_token_source"],
         },
         "scope": {
             "folder_id": runtime["folder_id"],
             "design_id": runtime["design_id"],
-            "template_id": runtime["template_id"],
             "brand_template_id": runtime["brand_template_id"],
             "export_format": runtime["export_format"],
         },
         "checks": [
             {
                 "name": "required_env",
-                "ok": runtime["api_key_present"],
-                "details": {"missing_keys": [] if runtime["api_key_present"] else [runtime["api_key_env"]]},
+                "ok": runtime["access_token_present"],
+                "details": {"missing_keys": [] if runtime["access_token_present"] else [runtime["access_token_env"]]},
             },
             {"name": "live_backend", "ok": bool(probe["ok"]), "details": probe.get("details", {})},
         ],
         "runtime_ready": bool(probe["ok"]),
         "probe": probe,
         "next_steps": [
-            f"Set {runtime['api_key_env']} in API Keys.",
+            f"Set {runtime['access_token_env']} in API Keys after completing the Canva OAuth token exchange.",
             f"Optionally set {runtime['folder_id_env']} to scope design and asset listings.",
-            "Use design.list or brand_template.list to confirm the live backend responds.",
+            "Use design.list or brand-template list to confirm the live backend responds.",
         ],
     }
 
@@ -159,19 +158,18 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "status": "ready" if ready else ("needs_setup" if probe["code"] == "CANVA_SETUP_REQUIRED" else "degraded"),
         "summary": "Canva connector diagnostics.",
         "runtime": {
-            "implementation_mode": "live_read_write",
+            "implementation_mode": "live_read_with_live_writes" if runtime["access_token_present"] else "configuration_only",
             "command_readiness": {
                 "design.list": ready,
                 "design.get": ready and bool(runtime["design_id"]),
                 "design.create": ready,
-                "design.clone": ready and bool(runtime["design_id"]),
-                "template.list": ready,
-                "template.get": ready and bool(runtime["template_id"]),
                 "brand_template.list": ready,
+                "brand_template.get": ready and bool(runtime["brand_template_id"]),
                 "brand_template.create_design": ready and bool(runtime["brand_template_id"]),
                 "asset.upload": ready and bool(runtime["asset_file"] or runtime["asset_url"]),
                 "asset.list": ready,
                 "folder.list": ready,
+                "folder.get": ready and bool(runtime["folder_id"]),
                 "folder.create": ready and bool(runtime["folder_name"]),
                 "export.start": ready and bool(runtime["design_id"]),
                 "export.status": ready and bool(runtime["export_job_id"]),
@@ -180,31 +178,31 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             },
         },
         "checks": [
-            {"name": "required_env", "ok": runtime["api_key_present"], "details": {"missing_keys": [] if runtime["api_key_present"] else [runtime["api_key_env"]]}},
+            {"name": "required_env", "ok": runtime["access_token_present"], "details": {"missing_keys": [] if runtime["access_token_present"] else [runtime["access_token_env"]]}},
             {"name": "live_backend", "ok": ready, "details": probe.get("details", {})},
         ],
         "supported_read_commands": [
             "design.list",
             "design.get",
-            "template.list",
-            "template.get",
             "brand_template.list",
+            "brand_template.get",
             "asset.list",
             "folder.list",
-            "export.start",
+            "folder.get",
             "export.status",
             "export.download",
         ],
         "supported_write_commands": [
             "design.create",
-            "design.clone",
             "brand_template.create_design",
             "asset.upload",
             "folder.create",
+            "export.start",
             "autofill.create",
         ],
+        "scaffolded_commands": [],
         "next_steps": [
-            f"Set {runtime['api_key_env']} to enable live Canva calls.",
+            f"Set {runtime['access_token_env']} in API Keys to enable live Canva calls.",
             "Provide a folder default if you want folder-scoped design and asset listings.",
             "Set brand template and autofill data defaults for automation flows.",
         ],
@@ -272,7 +270,7 @@ def design_get_result(ctx_obj: dict[str, Any], *, design_id: str | None) -> dict
     }
 
 
-def design_create_result(ctx_obj: dict[str, Any], *, title: str | None, template_id: str | None, asset_id: str | None) -> dict[str, Any]:
+def design_create_result(ctx_obj: dict[str, Any], *, title: str | None, asset_id: str | None) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
     resolved_title = title or runtime["title"] or "Untitled Canva design"
     client = create_client(ctx_obj)
@@ -280,50 +278,9 @@ def design_create_result(ctx_obj: dict[str, Any], *, title: str | None, template
     return {
         "status": "live_write",
         "backend": BACKEND_NAME,
-        "summary": f"Created design {design.get('id') or resolved_title}.",
+        "summary": f"Created blank design {design.get('id') or resolved_title}.",
         "design": design,
-        "template_id": template_id or runtime["template_id"],
         "scope_preview": _scope_preview("design.create", "design", {"title": resolved_title}),
-    }
-
-
-def design_clone_result(ctx_obj: dict[str, Any], *, design_id: str | None, title: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    resolved_design_id = _require_arg(design_id or runtime["design_id"], code="CANVA_DESIGN_ID_REQUIRED", message="design_id is required", env_name=runtime["design_id_env"])
-    raise CliError(
-        code="CANVA_CLONE_NOT_IMPLEMENTED",
-        message="Canva Connect does not expose a true clone endpoint in this harness",
-        exit_code=10,
-        details={"design_id": resolved_design_id, "title": title or runtime["title"], "scaffold_only": True},
-    )
-
-
-def template_list_result(ctx_obj: dict[str, Any], *, limit: int) -> dict[str, Any]:
-    client = create_client(ctx_obj)
-    listing = client.list_designs(limit=limit, ownership="shared")
-    items = listing["items"]
-    picker_items = [{"value": item["id"], "label": item.get("title") or item["id"], "subtitle": "template", "selected": False} for item in items]
-    return {
-        "status": "live_read",
-        "backend": BACKEND_NAME,
-        "summary": f"Listed {len(items)} template-like design(s).",
-        "templates": items,
-        "picker": _picker(picker_items, kind="canva_template"),
-        "scope_preview": _scope_preview("template.list", "template"),
-    }
-
-
-def template_get_result(ctx_obj: dict[str, Any], *, template_id: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    resolved_template_id = _require_arg(template_id or runtime["template_id"], code="CANVA_TEMPLATE_ID_REQUIRED", message="template_id is required", env_name=runtime["template_id_env"])
-    client = create_client(ctx_obj)
-    template = client.get_design(resolved_template_id)
-    return {
-        "status": "live_read",
-        "backend": BACKEND_NAME,
-        "summary": f"Fetched template {resolved_template_id}.",
-        "template": template,
-        "scope_preview": _scope_preview("template.get", "template", {"template_id": resolved_template_id}),
     }
 
 
@@ -463,7 +420,7 @@ def export_start_result(ctx_obj: dict[str, Any], *, design_id: str | None, expor
     client = create_client(ctx_obj)
     job = client.create_export_job(design_id=resolved_design_id, export_format=resolved_format)
     return {
-        "status": "live_read",
+        "status": "live_write",
         "backend": BACKEND_NAME,
         "summary": f"Started export job for design {resolved_design_id}.",
         "job": job,

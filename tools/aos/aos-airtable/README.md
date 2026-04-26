@@ -1,11 +1,11 @@
 # aos-airtable
 
-Agent-native Airtable connector scaffold.
+Agent-native Airtable connector.
 
 This package defines the Airtable connector manifest and a Click-based harness.
 Live Airtable reads are implemented for base, table, and record discovery.
-Write commands remain scaffolded so the surface stays stable while mutation
-paths are added deliberately.
+Write-mode record creation and update use Airtable's REST API and remain gated
+behind AOS permissions.
 
 ## What is included
 
@@ -14,15 +14,13 @@ paths are added deliberately.
 - `capabilities`, `health`, `config show`, and `doctor`
 - Worker-visible base, table, and record commands
 - Permission gates and JSON envelopes matching the other `aos-*` tools
-- Tests for manifest/permissions sync, config redaction, live reads, and scaffold outputs
+- Tests for manifest/permissions sync, config redaction, live reads, and write-mode record mutations
 
 ## Setup intent
 
 Configure a dedicated Airtable personal access token and the base you want this
-worker to target. Add `AIRTABLE_TABLE_NAME` if you want a default table scope
-for record commands.
-
-The scaffold currently tracks setup state only:
+worker to target in operator-controlled API Keys. Add `AIRTABLE_TABLE_NAME` if
+you want a default table scope for record commands.
 
 - `AIRTABLE_API_TOKEN`
 - `AIRTABLE_BASE_ID`
@@ -30,8 +28,14 @@ The scaffold currently tracks setup state only:
 - optional `AIRTABLE_WORKSPACE_ID`
 - optional `AIRTABLE_API_BASE_URL`
 
-## Current limitation
+Local process environment variables remain a development fallback only. Runtime
+resolution checks ArgentOS service keys first.
 
-The connector does not perform live Airtable writes. Record creation and update
-commands are present as scaffolded worker-visible commands so the surface area is
-stable, but they return scaffold payloads instead of mutating Airtable.
+## Write commands
+
+Record creation and update are available in `write` mode or higher:
+
+```sh
+aos-airtable --json --mode write record create --table Projects --field Name="New project"
+aos-airtable --json --mode write record update rec123 --table Projects --fields-json '{"Status":"Active"}'
+```

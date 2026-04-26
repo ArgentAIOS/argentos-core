@@ -1,17 +1,25 @@
 # aos-square
 
-Square connector scaffold for ArgentOS.
+Square AOS connector for ArgentOS.
 
-This connector targets the Square REST API v2 for:
+Live read surfaces are implemented against Square REST API v2 for:
 
-- payments (list, get, create)
-- customers (list, get, create, update)
-- orders (list, get, create)
-- catalog items (list, get, create)
-- invoices (list, create, send)
-- locations (list)
+- payments (`payment.list`, `payment.get`)
+- customers (`customer.list`, `customer.get`)
+- orders (`order.list`, `order.get`)
+- catalog items (`item.list`, `item.get`)
+- invoices (`invoice.list`)
+- locations (`location.list`)
 
-Write paths remain scaffolded until Square write workflows are reviewed and approved.
+Scaffold-only write surfaces remain explicit and non-live for:
+
+- payments (`payment.create`)
+- customers (`customer.create`, `customer.update`)
+- orders (`order.create`)
+- catalog items (`item.create`)
+- invoices (`invoice.create`, `invoice.send`)
+
+Credential resolution uses ArgentOS operator-controlled service keys first for `SQUARE_ACCESS_TOKEN`, with local `process.env` as a development fallback only.
 
 Docs used for this scaffold:
 

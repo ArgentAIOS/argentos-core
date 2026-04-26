@@ -1,19 +1,18 @@
 from __future__ import annotations
 
-import base64
 import json
 from dataclasses import dataclass
 from typing import Any
 from urllib import error, parse, request
 
-from .constants import BACKEND_NAME, DEFAULT_API_BASE_URL
+from .constants import BACKEND_NAME, DEFAULT_API_BASE_URL, DEFAULT_EVENTS_API_BASE_URL
 
 API_TIMEOUT_SECONDS = 20
 USER_AGENT = "aos-pagerduty/0.1.0"
 PAGERDUTY_MEDIA_TYPE = "application/vnd.pagerduty+json;version=2"
 
 
-@dataclass(slots=True)
+@dataclass
 class PagerDutyApiError(Exception):
     status_code: int | None
     code: str
@@ -27,15 +26,6 @@ class PagerDutyApiError(Exception):
             "message": self.message,
             "details": self.details or {},
         }
-
-
-def _load_json(payload: bytes) -> Any:
-    if not payload:
-        return {}
-    text = payload.decode("utf-8")
-    if not text.strip():
-        return {}
-    return json.loads(text)
 
 
 def _dict_or_empty(value: Any) -> dict[str, Any]:
@@ -144,31 +134,38 @@ def _normalize_alert(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 class PagerDutyClient:
-    def __init__(self, *, api_key: str, base_url: str = DEFAULT_API_BASE_URL) -> None:
-        self._api_key = api_key.strip()
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        events_routing_key: str | None = None,
+        base_url: str = DEFAULT_API_BASE_URL,
+        events_base_url: str = DEFAULT_EVENTS_API_BASE_URL,
+    ) -> None:
+        self._api_key = (api_key or "").strip()
+        self._events_routing_key = (events_routing_key or "").strip()
         self._base_url = base_url.rstrip("/")
+        self._events_base_url = events_base_url.rstrip("/")
 
     def _request_json(
         self,
         method: str,
-        path: str,
+        url: str,
         *,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        url = f"{self._base_url}{path}"
         if params:
             url = f"{url}?{parse.urlencode(_clean_dict(params), doseq=True)}"
+
         payload: bytes | None = None
-        headers: dict[str, str] = {
-            "Authorization": f"Bearer {self._api_key}",
-            "Accept": PAGERDUTY_MEDIA_TYPE,
-            "User-Agent": USER_AGENT,
-        }
+        request_headers = {"User-Agent": USER_AGENT, **(headers or {})}
         if json_body is not None:
             payload = json.dumps(json_body).encode("utf-8")
-            headers["Content-Type"] = PAGERDUTY_MEDIA_TYPE
-        req = request.Request(url, data=payload, method=method.upper(), headers=headers)
+            request_headers.setdefault("Content-Type", "application/json")
+
+        req = request.Request(url, data=payload, method=method.upper(), headers=request_headers)
         try:
             with request.urlopen(req, timeout=API_TIMEOUT_SECONDS) as response:
                 charset = response.headers.get_content_charset("utf-8")
@@ -179,36 +176,27 @@ class PagerDutyClient:
             details: dict[str, Any] = {"status": exc.code, "url": url}
             message = body or str(exc)
             try:
-                payload = json.loads(body) if body else {}
+                response_payload = json.loads(body) if body else {}
             except json.JSONDecodeError:
-                payload = {}
-            if isinstance(payload, dict) and payload:
-                details["response"] = payload
-                error_payload = payload.get("error")
+                response_payload = {}
+            if isinstance(response_payload, dict) and response_payload:
+                details["response"] = response_payload
+                error_payload = response_payload.get("error")
                 if isinstance(error_payload, dict):
                     message = str(error_payload.get("message") or error_payload.get("code") or message)
                 elif error_payload:
                     message = str(error_payload)
                 else:
-                    message = str(payload.get("message") or message)
+                    message = str(response_payload.get("message") or message)
             if exc.code in {401, 403}:
                 code = "PAGERDUTY_AUTH_ERROR"
-                exit_code = 4
             elif exc.code == 404:
                 code = "NOT_FOUND"
-                exit_code = 6
             elif exc.code == 429:
                 code = "RATE_LIMITED"
-                exit_code = 5
             else:
                 code = "PAGERDUTY_API_ERROR"
-                exit_code = 5
-            raise PagerDutyApiError(
-                status_code=exc.code,
-                code=code,
-                message=message,
-                details=details,
-            ) from exc
+            raise PagerDutyApiError(status_code=exc.code, code=code, message=message, details=details) from exc
         except error.URLError as exc:
             raise PagerDutyApiError(
                 status_code=None,
@@ -220,7 +208,7 @@ class PagerDutyClient:
         if not body:
             return {}
         try:
-            payload = json.loads(body)
+            parsed = json.loads(body)
         except json.JSONDecodeError as exc:
             raise PagerDutyApiError(
                 status_code=None,
@@ -228,7 +216,28 @@ class PagerDutyClient:
                 message="PagerDuty returned invalid JSON",
                 details={"url": url, "body": body[:2000]},
             ) from exc
-        return _dict_or_empty(payload)
+        return _dict_or_empty(parsed)
+
+    def _rest_request_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
+        from_email: str | None = None,
+    ) -> dict[str, Any]:
+        headers = {
+            "Authorization": f"Token token={self._api_key}",
+            "Accept": PAGERDUTY_MEDIA_TYPE,
+        }
+        if from_email:
+            headers["From"] = from_email
+        return self._request_json(method, f"{self._base_url}{path}", params=params, json_body=json_body, headers=headers)
+
+    def _events_request_json(self, path: str, *, json_body: dict[str, Any]) -> dict[str, Any]:
+        headers = {"Accept": "application/json"}
+        return self._request_json("POST", f"{self._events_base_url}{path}", json_body=json_body, headers=headers)
 
     def list_incidents(
         self,
@@ -242,7 +251,7 @@ class PagerDutyClient:
             params["statuses[]"] = statuses
         if service_id:
             params["service_ids[]"] = [service_id]
-        raw = self._request_json("GET", "/incidents", params=params)
+        raw = self._rest_request_json("GET", "/incidents", params=params)
         incidents = [_normalize_incident(item) for item in _list_or_empty(raw.get("incidents"))]
         return {
             "items": incidents,
@@ -254,13 +263,60 @@ class PagerDutyClient:
             "total": raw.get("total"),
         }
 
+    def create_incident(
+        self,
+        *,
+        from_email: str,
+        service_id: str,
+        title: str,
+        description: str | None = None,
+        urgency: str | None = None,
+        escalation_policy_id: str | None = None,
+    ) -> dict[str, Any]:
+        incident = {
+            "type": "incident",
+            "title": title,
+            "service": {"id": service_id, "type": "service_reference"},
+        }
+        if urgency:
+            incident["urgency"] = urgency
+        if description:
+            incident["body"] = {"type": "incident_body", "details": description}
+        if escalation_policy_id:
+            incident["escalation_policy"] = {"id": escalation_policy_id, "type": "escalation_policy_reference"}
+        raw = self._rest_request_json("POST", "/incidents", json_body={"incident": incident}, from_email=from_email)
+        created = raw.get("incident") if isinstance(raw.get("incident"), dict) else raw
+        return _normalize_incident(_dict_or_empty(created))
+
     def get_incident(self, incident_id: str) -> dict[str, Any]:
-        raw = self._request_json("GET", f"/incidents/{incident_id}")
+        raw = self._rest_request_json("GET", f"/incidents/{incident_id}")
         incident = raw.get("incident") if isinstance(raw.get("incident"), dict) else raw
         return _normalize_incident(_dict_or_empty(incident))
 
+    def manage_incident(
+        self,
+        incident_id: str,
+        *,
+        from_email: str,
+        status: str,
+        resolution: str | None = None,
+    ) -> dict[str, Any]:
+        incident: dict[str, Any] = {"id": incident_id, "type": "incident", "status": status}
+        if resolution and status == "resolved":
+            incident["resolution"] = resolution
+        raw = self._rest_request_json(
+            "PUT",
+            "/incidents",
+            json_body={"incidents": [incident]},
+            from_email=from_email,
+        )
+        incidents = _list_or_empty(raw.get("incidents"))
+        if incidents:
+            return _normalize_incident(incidents[0])
+        return _normalize_incident(_dict_or_empty(raw.get("incident")))
+
     def list_services(self, *, limit: int = 25) -> dict[str, Any]:
-        raw = self._request_json("GET", "/services", params={"limit": max(1, min(limit, 100))})
+        raw = self._rest_request_json("GET", "/services", params={"limit": max(1, min(limit, 100))})
         services = [_normalize_service(item) for item in _list_or_empty(raw.get("services"))]
         return {
             "items": services,
@@ -273,12 +329,12 @@ class PagerDutyClient:
         }
 
     def get_service(self, service_id: str) -> dict[str, Any]:
-        raw = self._request_json("GET", f"/services/{service_id}")
+        raw = self._rest_request_json("GET", f"/services/{service_id}")
         service = raw.get("service") if isinstance(raw.get("service"), dict) else raw
         return _normalize_service(_dict_or_empty(service))
 
     def list_escalation_policies(self, *, limit: int = 25) -> dict[str, Any]:
-        raw = self._request_json("GET", "/escalation_policies", params={"limit": max(1, min(limit, 100))})
+        raw = self._rest_request_json("GET", "/escalation_policies", params={"limit": max(1, min(limit, 100))})
         policies = [_normalize_escalation_policy(item) for item in _list_or_empty(raw.get("escalation_policies"))]
         return {
             "items": policies,
@@ -294,12 +350,12 @@ class PagerDutyClient:
         params: dict[str, Any] = {"limit": max(1, min(limit, 100))}
         if escalation_policy_id:
             params["escalation_policy_ids[]"] = [escalation_policy_id]
-        raw = self._request_json("GET", "/oncalls", params=params)
-        oncalls = [_normalize_on_call(item) for item in _list_or_empty(raw.get("oncalls"))]
+        raw = self._rest_request_json("GET", "/oncalls", params=params)
+        on_calls = [_normalize_on_call(item) for item in _list_or_empty(raw.get("oncalls"))]
         return {
-            "items": oncalls,
+            "items": on_calls,
             "raw": raw,
-            "count": len(oncalls),
+            "count": len(on_calls),
             "more": bool(raw.get("more")),
             "limit": raw.get("limit", limit),
             "offset": raw.get("offset", 0),
@@ -308,11 +364,13 @@ class PagerDutyClient:
 
     def list_alerts(self, *, limit: int = 25, incident_id: str | None = None) -> dict[str, Any]:
         if incident_id:
-            raw = self._request_json("GET", f"/incidents/{incident_id}/alerts", params={"limit": max(1, min(limit, 100))})
-            alerts = [_normalize_alert(item) for item in _list_or_empty(raw.get("alerts"))]
+            path = f"/incidents/{incident_id}/alerts"
+            params = {"limit": max(1, min(limit, 100))}
         else:
-            raw = self._request_json("GET", "/alerts", params={"limit": max(1, min(limit, 100))})
-            alerts = [_normalize_alert(item) for item in _list_or_empty(raw.get("alerts"))]
+            path = "/alerts"
+            params = {"limit": max(1, min(limit, 100))}
+        raw = self._rest_request_json("GET", path, params=params)
+        alerts = [_normalize_alert(item) for item in _list_or_empty(raw.get("alerts"))]
         return {
             "items": alerts,
             "raw": raw,
@@ -322,3 +380,15 @@ class PagerDutyClient:
             "offset": raw.get("offset", 0),
             "total": raw.get("total"),
         }
+
+    def create_change_event(
+        self,
+        *,
+        summary: str,
+        source: str,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"routing_key": self._events_routing_key, "payload": {"summary": summary, "source": source}}
+        if description:
+            payload["payload"]["custom_details"] = {"description": description}
+        return self._events_request_json("/change/enqueue", json_body=payload)

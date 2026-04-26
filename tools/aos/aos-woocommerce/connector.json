@@ -235,13 +235,12 @@
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": ["WOO_CONSUMER_KEY", "WOO_CONSUMER_SECRET"],
+    "service_keys": ["WOO_STORE_URL", "WOO_CONSUMER_KEY", "WOO_CONSUMER_SECRET"],
     "interactive_setup": [
       "Generate WooCommerce REST API keys under WooCommerce > Settings > Advanced > REST API.",
-      "Add WOO_CONSUMER_KEY and WOO_CONSUMER_SECRET in API Keys before enabling live reads.",
-      "Set WOO_STORE_URL to the WordPress site URL (e.g. https://mystore.example.com).",
+      "Preferred: add WOO_STORE_URL, WOO_CONSUMER_KEY, and WOO_CONSUMER_SECRET in operator-controlled API Keys; the harness falls back to local process env only for development.",
       "The connector targets WooCommerce REST API v3 at {store_url}/wp-json/wc/v3.",
-      "Keep order.create, product.create, and coupon.create scaffolded until WooCommerce write workflows are approved.",
+      "Only live read commands are enabled today; all write commands remain scaffold placeholders until WooCommerce write workflows are approved.",
       "The connector is live-read-first and will report API failures instead of masking them."
     ]
   },
@@ -296,7 +295,7 @@
     },
     {
       "id": "order.create",
-      "summary": "Create a WooCommerce order",
+      "summary": "Scaffold placeholder for creating a WooCommerce order",
       "required_mode": "write",
       "supports_json": true,
       "resource": "order",
@@ -304,7 +303,7 @@
     },
     {
       "id": "order.update",
-      "summary": "Update a WooCommerce order",
+      "summary": "Scaffold placeholder for updating a WooCommerce order",
       "required_mode": "write",
       "supports_json": true,
       "resource": "order",
@@ -328,7 +327,7 @@
     },
     {
       "id": "product.create",
-      "summary": "Create a WooCommerce product",
+      "summary": "Scaffold placeholder for creating a WooCommerce product",
       "required_mode": "write",
       "supports_json": true,
       "resource": "product",
@@ -336,7 +335,7 @@
     },
     {
       "id": "product.update",
-      "summary": "Update a WooCommerce product",
+      "summary": "Scaffold placeholder for updating a WooCommerce product",
       "required_mode": "write",
       "supports_json": true,
       "resource": "product",
@@ -360,7 +359,7 @@
     },
     {
       "id": "customer.create",
-      "summary": "Create a WooCommerce customer",
+      "summary": "Scaffold placeholder for creating a WooCommerce customer",
       "required_mode": "write",
       "supports_json": true,
       "resource": "customer",
@@ -376,7 +375,7 @@
     },
     {
       "id": "coupon.create",
-      "summary": "Create a WooCommerce coupon",
+      "summary": "Scaffold placeholder for creating a WooCommerce coupon",
       "required_mode": "write",
       "supports_json": true,
       "resource": "coupon",

@@ -36,15 +36,21 @@ def _list_or_empty(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
+def _name_or_value(value: Any, *, key: str = "name") -> Any:
+    if isinstance(value, dict):
+        return value.get(key)
+    return value
+
+
 def _normalize_ticket(raw: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": raw.get("id"),
         "summary": raw.get("summary") or raw.get("name"),
         "status": raw.get("status", {}).get("name") if isinstance(raw.get("status"), dict) else raw.get("status"),
         "priority": raw.get("priority", {}).get("name") if isinstance(raw.get("priority"), dict) else raw.get("priority"),
-        "company": raw.get("company") or raw.get("company", {}).get("name"),
-        "board": raw.get("board") or raw.get("board", {}).get("name"),
-        "assignee": raw.get("assignedBy") or raw.get("assignedBy", {}).get("identifier"),
+        "company": _name_or_value(raw.get("company")),
+        "board": _name_or_value(raw.get("board")),
+        "assignee": _name_or_value(raw.get("assignedBy"), key="identifier"),
         "created_at": raw.get("dateEntered") or raw.get("createdAt"),
         "updated_at": raw.get("lastUpdated") or raw.get("updatedAt"),
         "raw": raw,

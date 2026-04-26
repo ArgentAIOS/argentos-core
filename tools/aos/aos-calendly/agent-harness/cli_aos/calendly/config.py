@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -10,6 +9,7 @@ from .constants import (
     CALENDLY_EVENT_TYPE_UUID_ENV,
     CALENDLY_EVENT_UUID_ENV,
 )
+from .service_keys import service_key_env
 
 
 def _mask(value: str | None) -> str | None:
@@ -20,14 +20,21 @@ def _mask(value: str | None) -> str | None:
     return f"{value[:4]}***{value[-4:]}"
 
 
+def _env_value(variable: str, default: str | None = None) -> str | None:
+    value = os.getenv(variable)
+    if value is not None:
+        return value
+    return default
+
+
 def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     api_key_env = ctx_obj.get("api_key_env") or CALENDLY_API_KEY_ENV
     event_type_uuid_env = ctx_obj.get("event_type_uuid_env") or CALENDLY_EVENT_TYPE_UUID_ENV
     event_uuid_env = ctx_obj.get("event_uuid_env") or CALENDLY_EVENT_UUID_ENV
 
     api_key = (service_key_env(api_key_env) or "").strip()
-    event_type_uuid = (service_key_env(event_type_uuid_env) or "").strip()
-    event_uuid = (service_key_env(event_uuid_env) or "").strip()
+    event_type_uuid = (_env_value(event_type_uuid_env) or "").strip()
+    event_uuid = (_env_value(event_uuid_env) or "").strip()
 
     return {
         "backend": BACKEND_NAME,
@@ -57,9 +64,10 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "summary": "Calendly connector configuration snapshot.",
         "backend": BACKEND_NAME,
         "runtime": {
-            "implementation_mode": "live_read_with_scaffolded_writes",
+            "implementation_mode": "live_read_with_partial_writes",
             "live_read_available": runtime["api_key_present"],
-            "write_bridge_available": False,
+            "write_bridge_available": True,
+            "scaffolded_commands": ["scheduling_links.create"],
             "probe": probe,
         },
         "auth": {
@@ -81,7 +89,7 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "availability.get": True,
         },
         "write_support": {
-            "events.cancel": "scaffold_only",
+            "events.cancel": "live",
             "scheduling_links.create": "scaffold_only",
         },
     }

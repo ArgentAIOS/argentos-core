@@ -5,8 +5,9 @@ import subprocess
 from functools import lru_cache
 from pathlib import Path
 
+
 ARGENTOS_ROOT = Path(__file__).resolve().parents[6]
-SERVICE_KEY_VARIABLES = {'WOO_STORE_URL', 'WOO_CONSUMER_SECRET', 'WOO_CONSUMER_KEY'}
+SERVICE_KEY_VARIABLES = {"MAILCHIMP_API_KEY", "MAILCHIMP_SERVER_PREFIX"}
 
 
 @lru_cache(maxsize=64)

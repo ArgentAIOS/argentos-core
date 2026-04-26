@@ -30,8 +30,7 @@ CONNECTOR_AUTH = {
         "Grant the token access to the base this worker should operate on.",
         "Add AIRTABLE_API_TOKEN and AIRTABLE_BASE_ID in API Keys.",
         "Optionally set AIRTABLE_TABLE_NAME to pin a default table scope for worker commands.",
-        "Keep table scope narrow until live read/write support is intentionally enabled.",
-        "This scaffold does not implement live writes yet; commands are setup-oriented only.",
+        "Keep table scope narrow before enabling write mode for record mutations.",
     ],
 }
 
@@ -125,16 +124,16 @@ COMMAND_SPECS = [
         "action_class": "read",
     },
     {
-        "id": "record.create_draft",
-        "summary": "Create a draft record payload",
+        "id": "record.create",
+        "summary": "Create a record",
         "required_mode": "write",
         "supports_json": True,
         "resource": "record",
         "action_class": "write",
     },
     {
-        "id": "record.update_draft",
-        "summary": "Update a draft record payload",
+        "id": "record.update",
+        "summary": "Update a record",
         "required_mode": "write",
         "supports_json": True,
         "resource": "record",

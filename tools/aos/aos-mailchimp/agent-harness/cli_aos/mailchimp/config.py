@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import os
+import re
 from typing import Any
 
 from .constants import (
@@ -11,6 +11,7 @@ from .constants import (
     MAILCHIMP_MEMBER_EMAIL_ENV,
     MAILCHIMP_SERVER_PREFIX_ENV,
 )
+from .service_keys import service_key_env
 
 
 def _mask(value: str | None) -> str | None:
@@ -25,7 +26,7 @@ def _infer_server_prefix(api_key: str) -> str:
     if "-" not in api_key:
         return ""
     suffix = api_key.rsplit("-", 1)[-1].strip()
-    return suffix if suffix.startswith("us") else ""
+    return suffix.lower() if re.fullmatch(r"[a-z]{2,}[0-9]+", suffix.lower()) else ""
 
 
 def _picker_candidate(
@@ -100,12 +101,12 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     campaign_env = ctx_obj.get("campaign_env") or MAILCHIMP_CAMPAIGN_ID_ENV
     member_email_env = ctx_obj.get("member_email_env") or MAILCHIMP_MEMBER_EMAIL_ENV
 
-    api_key = (os.getenv(api_key_env) or "").strip()
-    configured_server_prefix = (os.getenv(server_prefix_env) or "").strip()
+    api_key = (service_key_env(api_key_env, "") or "").strip()
+    configured_server_prefix = (service_key_env(server_prefix_env, "") or "").strip()
     server_prefix = configured_server_prefix or _infer_server_prefix(api_key)
-    audience_id = (os.getenv(audience_env) or "").strip()
-    campaign_id = (os.getenv(campaign_env) or "").strip()
-    member_email = (os.getenv(member_email_env) or "").strip()
+    audience_id = (service_key_env(audience_env, "") or "").strip()
+    campaign_id = (service_key_env(campaign_env, "") or "").strip()
+    member_email = (service_key_env(member_email_env, "") or "").strip()
 
     return {
         "backend": BACKEND_NAME,

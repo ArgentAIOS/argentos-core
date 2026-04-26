@@ -11,17 +11,23 @@ from .constants import MODE_ORDER, PERMISSIONS_PATH
 from .errors import CliError
 from .output import emit, failure, success
 from .runtime import (
+    activity_create_result,
     activity_list_result,
     capabilities_snapshot,
+    contact_create_result,
     contact_get_result,
     contact_list_result,
     doctor_snapshot,
     health_snapshot,
+    lead_create_result,
     lead_get_result,
     lead_list_result,
+    lead_update_result,
+    opportunity_create_result,
     opportunity_get_result,
     opportunity_list_result,
     scaffold_write_result,
+    task_create_result,
     task_list_result,
 )
 
@@ -142,20 +148,47 @@ def lead_get(ctx: click.Context, lead_id: str | None) -> None:
 @lead_group.command("create")
 @click.argument("name")
 @click.option("--status", default=None)
+@click.option("--description", default=None)
+@click.option("--url", default=None)
 @click.pass_context
-def lead_create(ctx: click.Context, name: str, status: str | None) -> None:
+def lead_create(
+    ctx: click.Context,
+    name: str,
+    status: str | None,
+    description: str | None,
+    url: str | None,
+) -> None:
     _set_command(ctx, "lead.create")
     require_mode(ctx, "lead.create")
-    _emit_success(ctx, "lead.create", scaffold_write_result(ctx.obj, command_id="lead.create", inputs={"name": name, "status": status}))
+    _emit_success(
+        ctx,
+        "lead.create",
+        lead_create_result(ctx.obj, name=name, status=status, description=description, url=url),
+    )
 
 
 @lead_group.command("update")
-@click.argument("lead_id")
+@click.argument("lead_id", required=False)
+@click.option("--name", default=None)
+@click.option("--status", default=None)
+@click.option("--description", default=None)
+@click.option("--url", default=None)
 @click.pass_context
-def lead_update(ctx: click.Context, lead_id: str) -> None:
+def lead_update(
+    ctx: click.Context,
+    lead_id: str | None,
+    name: str | None,
+    status: str | None,
+    description: str | None,
+    url: str | None,
+) -> None:
     _set_command(ctx, "lead.update")
     require_mode(ctx, "lead.update")
-    _emit_success(ctx, "lead.update", scaffold_write_result(ctx.obj, command_id="lead.update", inputs={"lead_id": lead_id}))
+    _emit_success(
+        ctx,
+        "lead.update",
+        lead_update_result(ctx.obj, lead_id=lead_id, name=name, status=status, description=description, url=url),
+    )
 
 
 @cli.group("contact")
@@ -165,11 +198,12 @@ def contact_group() -> None:
 
 @contact_group.command("list")
 @click.option("--limit", default=10, show_default=True, type=int)
+@click.option("--lead-id", default=None)
 @click.pass_context
-def contact_list(ctx: click.Context, limit: int) -> None:
+def contact_list(ctx: click.Context, limit: int, lead_id: str | None) -> None:
     _set_command(ctx, "contact.list")
     require_mode(ctx, "contact.list")
-    _emit_success(ctx, "contact.list", contact_list_result(ctx.obj, limit=limit))
+    _emit_success(ctx, "contact.list", contact_list_result(ctx.obj, limit=limit, lead_id=lead_id))
 
 
 @contact_group.command("get")
@@ -184,11 +218,25 @@ def contact_get(ctx: click.Context, contact_id: str | None) -> None:
 @contact_group.command("create")
 @click.argument("name")
 @click.option("--lead-id", default=None)
+@click.option("--email", default=None)
+@click.option("--phone", default=None)
+@click.option("--title", default=None)
 @click.pass_context
-def contact_create(ctx: click.Context, name: str, lead_id: str | None) -> None:
+def contact_create(
+    ctx: click.Context,
+    name: str,
+    lead_id: str | None,
+    email: str | None,
+    phone: str | None,
+    title: str | None,
+) -> None:
     _set_command(ctx, "contact.create")
     require_mode(ctx, "contact.create")
-    _emit_success(ctx, "contact.create", scaffold_write_result(ctx.obj, command_id="contact.create", inputs={"name": name, "lead_id": lead_id}))
+    _emit_success(
+        ctx,
+        "contact.create",
+        contact_create_result(ctx.obj, name=name, lead_id=lead_id, email=email, phone=phone, title=title),
+    )
 
 
 @cli.group("opportunity")
@@ -198,11 +246,17 @@ def opportunity_group() -> None:
 
 @opportunity_group.command("list")
 @click.option("--limit", default=10, show_default=True, type=int)
+@click.option("--lead-id", default=None)
+@click.option("--status-type", type=click.Choice(["active", "won", "lost"]), default=None)
 @click.pass_context
-def opportunity_list(ctx: click.Context, limit: int) -> None:
+def opportunity_list(ctx: click.Context, limit: int, lead_id: str | None, status_type: str | None) -> None:
     _set_command(ctx, "opportunity.list")
     require_mode(ctx, "opportunity.list")
-    _emit_success(ctx, "opportunity.list", opportunity_list_result(ctx.obj, limit=limit))
+    _emit_success(
+        ctx,
+        "opportunity.list",
+        opportunity_list_result(ctx.obj, limit=limit, lead_id=lead_id, status_type=status_type),
+    )
 
 
 @opportunity_group.command("get")
@@ -215,13 +269,34 @@ def opportunity_get(ctx: click.Context, opportunity_id: str | None) -> None:
 
 
 @opportunity_group.command("create")
-@click.argument("lead_id")
-@click.option("--value", default=None, type=float)
+@click.argument("lead_id", required=False)
+@click.option("--note", default=None)
+@click.option("--value", default=None, type=int)
+@click.option("--confidence", default=None, type=int)
+@click.option("--status-id", default=None)
 @click.pass_context
-def opportunity_create(ctx: click.Context, lead_id: str, value: float | None) -> None:
+def opportunity_create(
+    ctx: click.Context,
+    lead_id: str | None,
+    note: str | None,
+    value: int | None,
+    confidence: int | None,
+    status_id: str | None,
+) -> None:
     _set_command(ctx, "opportunity.create")
     require_mode(ctx, "opportunity.create")
-    _emit_success(ctx, "opportunity.create", scaffold_write_result(ctx.obj, command_id="opportunity.create", inputs={"lead_id": lead_id, "value": value}))
+    _emit_success(
+        ctx,
+        "opportunity.create",
+        opportunity_create_result(
+            ctx.obj,
+            lead_id=lead_id,
+            note=note,
+            value=value,
+            confidence=confidence,
+            status_id=status_id,
+        ),
+    )
 
 
 @cli.group("activity")
@@ -231,11 +306,12 @@ def activity_group() -> None:
 
 @activity_group.command("list")
 @click.option("--limit", default=10, show_default=True, type=int)
+@click.option("--lead-id", default=None)
 @click.pass_context
-def activity_list(ctx: click.Context, limit: int) -> None:
+def activity_list(ctx: click.Context, limit: int, lead_id: str | None) -> None:
     _set_command(ctx, "activity.list")
     require_mode(ctx, "activity.list")
-    _emit_success(ctx, "activity.list", activity_list_result(ctx.obj, limit=limit))
+    _emit_success(ctx, "activity.list", activity_list_result(ctx.obj, limit=limit, lead_id=lead_id))
 
 
 @activity_group.command("create")
@@ -245,7 +321,7 @@ def activity_list(ctx: click.Context, limit: int) -> None:
 def activity_create(ctx: click.Context, note: str, lead_id: str | None) -> None:
     _set_command(ctx, "activity.create")
     require_mode(ctx, "activity.create")
-    _emit_success(ctx, "activity.create", scaffold_write_result(ctx.obj, command_id="activity.create", inputs={"note": note, "lead_id": lead_id}))
+    _emit_success(ctx, "activity.create", activity_create_result(ctx.obj, note=note, lead_id=lead_id))
 
 
 @cli.group("task")
@@ -255,21 +331,29 @@ def task_group() -> None:
 
 @task_group.command("list")
 @click.option("--limit", default=10, show_default=True, type=int)
+@click.option("--lead-id", default=None)
+@click.option("--assignee", default=None)
 @click.pass_context
-def task_list(ctx: click.Context, limit: int) -> None:
+def task_list(ctx: click.Context, limit: int, lead_id: str | None, assignee: str | None) -> None:
     _set_command(ctx, "task.list")
     require_mode(ctx, "task.list")
-    _emit_success(ctx, "task.list", task_list_result(ctx.obj, limit=limit))
+    _emit_success(ctx, "task.list", task_list_result(ctx.obj, limit=limit, lead_id=lead_id, assignee=assignee))
 
 
 @task_group.command("create")
 @click.argument("text")
 @click.option("--lead-id", default=None)
+@click.option("--due-date", default=None)
+@click.option("--assignee", default=None)
 @click.pass_context
-def task_create(ctx: click.Context, text: str, lead_id: str | None) -> None:
+def task_create(ctx: click.Context, text: str, lead_id: str | None, due_date: str | None, assignee: str | None) -> None:
     _set_command(ctx, "task.create")
     require_mode(ctx, "task.create")
-    _emit_success(ctx, "task.create", scaffold_write_result(ctx.obj, command_id="task.create", inputs={"text": text, "lead_id": lead_id}))
+    _emit_success(
+        ctx,
+        "task.create",
+        task_create_result(ctx.obj, text=text, lead_id=lead_id, due_date=due_date, assignee=assignee),
+    )
 
 
 @cli.group("email")

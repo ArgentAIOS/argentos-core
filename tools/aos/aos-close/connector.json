@@ -8,8 +8,8 @@
     "scaffold_only": false,
     "live_backend_available": true,
     "live_read_available": true,
-    "write_bridge_available": false,
-    "workerFields": ["lead_id", "contact_id", "query", "status", "assignee"],
+    "write_bridge_available": true,
+    "workerFields": ["lead_id", "contact_id", "opportunity_id", "query", "status", "assignee"],
     "worker_visible_actions": [
       "lead.list",
       "lead.get",
@@ -35,7 +35,7 @@
         "label": "Lead",
         "type": "select",
         "renderAs": "select",
-        "required": true,
+        "required": false,
         "expressionEnabled": true,
         "pickerHint": "lead",
         "applies_to": [
@@ -46,22 +46,36 @@
           "opportunity.list",
           "opportunity.create",
           "activity.list",
-          "activity.create"
+          "activity.create",
+          "task.list",
+          "task.create"
         ],
         "placeholder": "Select a lead...",
-        "description": "The parent lead for this operation."
+        "description": "Lead scope hint. Required by some commands, optional for list filters, and can be supplied via CLOSE_LEAD_ID."
       },
       {
         "id": "contact_id",
         "label": "Contact",
         "type": "select",
         "renderAs": "select",
-        "required": true,
+        "required": false,
         "expressionEnabled": true,
         "pickerHint": "contact",
         "applies_to": ["contact.get", "email.send", "sms.send", "call.create"],
         "placeholder": "Select a contact...",
-        "description": "The contact to interact with."
+        "description": "Contact scope hint for reads and scaffolded outreach. Can be supplied via CLOSE_CONTACT_ID."
+      },
+      {
+        "id": "opportunity_id",
+        "label": "Opportunity",
+        "type": "select",
+        "renderAs": "select",
+        "required": false,
+        "expressionEnabled": true,
+        "pickerHint": "opportunity",
+        "applies_to": ["opportunity.get"],
+        "placeholder": "Select an opportunity...",
+        "description": "Opportunity scope hint. Can be supplied via CLOSE_OPPORTUNITY_ID."
       },
       {
         "id": "lead_name",
@@ -77,18 +91,13 @@
       {
         "id": "status",
         "label": "Lead Status",
-        "type": "select",
-        "renderAs": "select",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
-        "expressionEnabled": false,
-        "applies_to": ["lead.list", "lead.create", "lead.update"],
-        "options": [
-          { "value": "Potential", "label": "Potential" },
-          { "value": "Bad Fit", "label": "Bad Fit" },
-          { "value": "Qualified", "label": "Qualified" },
-          { "value": "Customer", "label": "Customer" }
-        ],
-        "default": "Potential"
+        "expressionEnabled": true,
+        "applies_to": ["lead.create", "lead.update"],
+        "placeholder": "Qualified",
+        "description": "Optional Close lead status label. Statuses are organization-specific."
       },
       {
         "id": "query",
@@ -108,9 +117,9 @@
         "renderAs": "text",
         "required": false,
         "expressionEnabled": true,
-        "applies_to": ["lead.create", "lead.update", "task.create"],
+        "applies_to": ["task.list", "task.create"],
         "placeholder": "user_abc123",
-        "description": "Close user ID to assign this item to."
+        "description": "Close user ID to filter or assign tasks."
       },
       {
         "id": "contact_name",
@@ -186,18 +195,29 @@
       },
       {
         "id": "opportunity_status",
-        "label": "Opportunity Status",
+        "label": "Opportunity Status Type",
         "type": "select",
         "renderAs": "select",
         "required": false,
         "expressionEnabled": false,
-        "applies_to": ["opportunity.create", "opportunity.list"],
+        "applies_to": ["opportunity.list"],
         "options": [
           { "value": "active", "label": "Active" },
           { "value": "won", "label": "Won" },
           { "value": "lost", "label": "Lost" }
         ],
-        "default": "active"
+        "description": "Optional status_type filter for opportunity discovery."
+      },
+      {
+        "id": "opportunity_status_id",
+        "label": "Opportunity Status ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["opportunity.create"],
+        "placeholder": "stat_abc123",
+        "description": "Optional Close opportunity status ID for live opportunity creation."
       },
       {
         "id": "activity_note",
@@ -428,10 +448,10 @@
     "service_keys": ["CLOSE_API_KEY"],
     "interactive_setup": [
       "Navigate to Close Settings > API Keys to create or find your API key.",
-      "Add CLOSE_API_KEY in API Keys before enabling live reads.",
-      "Optionally set CLOSE_LEAD_ID and CLOSE_CONTACT_ID for default scope hints.",
-      "Keep write commands (email.send, sms.send, call.create) scaffolded until outreach workflows are approved.",
-      "The connector is live-read-first and will report API failures instead of masking them."
+      "Add CLOSE_API_KEY in API Keys; the harness resolves operator-controlled service keys first and only falls back to env in the helper.",
+      "Optionally set CLOSE_LEAD_ID, CLOSE_CONTACT_ID, and CLOSE_OPPORTUNITY_ID for default scope hints.",
+      "CRM object writes are live for leads, contacts, opportunities, notes, and tasks.",
+      "Outreach commands (email.send, sms.send, call.create) remain scaffolded until delivery safeguards are approved."
     ]
   },
   "events": [
@@ -444,14 +464,11 @@
         {
           "id": "event_status_filter",
           "label": "Status Filter",
-          "type": "select",
-          "renderAs": "select",
+          "type": "text",
+          "renderAs": "text",
           "required": false,
-          "options": [
-            { "value": "Potential", "label": "Potential" },
-            { "value": "Qualified", "label": "Qualified" }
-          ],
-          "description": "Only trigger for leads with this initial status."
+          "placeholder": "Qualified",
+          "description": "Optional lead status label filter. Close lead statuses are organization-specific."
         }
       ]
     },
@@ -593,7 +610,7 @@
     },
     {
       "id": "activity.create",
-      "summary": "Create a Close activity",
+      "summary": "Create a Close note activity",
       "required_mode": "write",
       "supports_json": true,
       "resource": "activity",
@@ -617,7 +634,7 @@
     },
     {
       "id": "email.send",
-      "summary": "Send an email via Close",
+      "summary": "Scaffold a Close email send payload",
       "required_mode": "write",
       "supports_json": true,
       "resource": "email",
@@ -625,7 +642,7 @@
     },
     {
       "id": "sms.send",
-      "summary": "Send an SMS via Close",
+      "summary": "Scaffold a Close SMS send payload",
       "required_mode": "write",
       "supports_json": true,
       "resource": "sms",
@@ -633,7 +650,7 @@
     },
     {
       "id": "call.create",
-      "summary": "Log a call in Close",
+      "summary": "Scaffold a Close call log payload",
       "required_mode": "write",
       "supports_json": true,
       "resource": "call",

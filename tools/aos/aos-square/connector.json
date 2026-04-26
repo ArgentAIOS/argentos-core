@@ -277,10 +277,11 @@
     "service_keys": ["SQUARE_ACCESS_TOKEN"],
     "interactive_setup": [
       "Create a Square application at https://developer.squareup.com/apps and generate an access token.",
-      "Add SQUARE_ACCESS_TOKEN in API Keys before enabling live reads.",
+      "Add SQUARE_ACCESS_TOKEN in operator-controlled API Keys before enabling live reads.",
+      "The harness resolves SQUARE_ACCESS_TOKEN from service keys first, then falls back to process.env only for local development.",
       "Optionally set SQUARE_ENVIRONMENT to 'sandbox' for testing (defaults to 'production').",
       "Set SQUARE_LOCATION_ID to pin a default location for payment, order, and invoice scoping.",
-      "Keep payment.create, order.create, invoice.create, and invoice.send scaffolded until Square write workflows are approved.",
+      "Keep payment.create, customer.create, customer.update, order.create, item.create, invoice.create, and invoice.send scaffolded until Square write workflows are approved.",
       "The connector is live-read-first and will report API failures instead of masking them."
     ]
   },

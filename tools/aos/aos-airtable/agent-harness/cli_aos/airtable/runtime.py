@@ -89,6 +89,7 @@ def _scope_preview(config: dict[str, Any], *, command_id: str, inputs: dict[str,
 def _health_checks(config: dict[str, Any]) -> list[dict[str, Any]]:
     runtime = config["runtime"]
     read_support = config["read_support"]
+    write_support = config["write_support"]
     return [
         {
             "name": "auth",
@@ -116,11 +117,8 @@ def _health_checks(config: dict[str, Any]) -> list[dict[str, Any]]:
         },
         {
             "name": "write_paths",
-            "ok": False,
-            "details": {
-                "live_writes_enabled": False,
-                "scaffold_only": True,
-            },
+            "ok": write_support["live_writes_enabled"],
+            "details": write_support,
         },
     ]
 
@@ -165,13 +163,13 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     return {
         "status": "ready",
         "backend": config["backend"],
-        "summary": "Airtable live reads are ready; write commands remain scaffolded",
+        "summary": "Airtable live reads and write-mode record mutations are ready",
         "checks": _health_checks(config),
         "implementation_mode": runtime["implementation_mode"],
         "live_backend_ready": True,
         "base_discovery_ready": True,
         "base_scoped_read_ready": True,
-        "write_ready": False,
+        "write_ready": runtime["live_write_ready"],
         "context": {
             "base_id_present": bool(config["context"]["base_id"]),
             "table_name_present": bool(config["context"]["table_name"]),
@@ -188,7 +186,7 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     return {
         "status": "ready" if fully_ready else "partial_ready" if setup_ready else "needs_setup",
         "backend": config["backend"],
-        "summary": "Airtable connector is live-read capable with scaffolded writes",
+        "summary": "Airtable connector is live-read capable with write-mode record mutations",
         "runtime_ready": setup_ready,
         "checks": [
             {
@@ -199,7 +197,7 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
                     "base_discovery_ready": runtime["base_discovery_ready"],
                     "base_scoped_read_ready": runtime["base_scoped_read_ready"],
                     "table_name_present": bool(config["context"]["table_name"]),
-                    "live_writes_enabled": False,
+                    "live_writes_enabled": runtime["live_write_ready"],
                 },
             },
             {
@@ -219,11 +217,8 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             },
             {
                 "name": "write_paths",
-                "ok": False,
-                "details": {
-                    "live_write_support": False,
-                    "reason": "write paths remain scaffold-only",
-                },
+                "ok": runtime["live_write_ready"],
+                "details": config["write_support"],
             },
         ],
         "runtime": config["runtime"],
@@ -232,47 +227,42 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def scaffold_result(
+def live_write_result(
     ctx_obj: dict[str, Any],
     *,
     command_id: str,
     resource: str,
     operation: str,
     inputs: dict[str, Any],
-    consequential: bool = False,
+    fetcher: Any,
 ) -> dict[str, Any]:
     config = runtime_config()
+    client = AirtableClient.from_config(config)
+    details = fetcher(client)
+    scope_preview = details.pop("scope_preview", None)
     return {
-        "status": "scaffold",
+        "status": "live_write",
         "backend": config["backend"],
         "command_id": command_id,
         "resource": resource,
         "operation": operation,
-        "implemented": False,
-        "executed": False,
-        "consequential": consequential,
-        "implementation_mode": "configuration_only",
+        "implemented": True,
+        "executed": True,
+        "consequential": True,
+        "implementation_mode": config["runtime"]["implementation_mode"],
         "inputs": inputs,
         "scope": {
             "base_id": config["context"]["base_id"],
             "table_name": config["context"]["table_name"],
             "workspace_id": config["context"]["workspace_id"],
-            "preview": {
-                "command_id": command_id,
-                "base_id": inputs.get("base_id") or config["context"]["base_id"] or None,
-                "table_name": inputs.get("table_name") or inputs.get("table") or config["context"]["table_name"] or None,
-                "resource": resource,
-            },
+            "commandDefaults": config["scope"]["commandDefaults"],
+            "commandDefaultsTemplate": config["scope"]["commandDefaultsTemplate"],
+            "preview": scope_preview or _scope_preview(config, command_id=command_id, inputs=inputs, details=details),
         },
-        "write_support": {
-            "live_writes_enabled": False,
-            "scaffold_only": True,
-        },
-        "summary": f"{command_id} is scaffolded but not implemented yet",
-        "setup_notes": [
-            "This connector does not perform live Airtable writes yet.",
-            "Use the manifest and config output to confirm the intended target base.",
-        ],
+        "read_support": config["read_support"],
+        "write_support": config["write_support"],
+        "summary": details.pop("summary", f"{command_id} completed"),
+        **details,
     }
 
 

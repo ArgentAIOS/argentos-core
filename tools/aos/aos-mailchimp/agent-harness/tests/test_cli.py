@@ -1,18 +1,30 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 from click.testing import CliRunner
+import pytest
 
 from cli_aos.mailchimp.cli import cli
+import cli_aos.mailchimp.config as config
 import cli_aos.mailchimp.runtime as runtime
 
 
 AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
 CONNECTOR_PATH = AGENT_HARNESS_ROOT.parent / "connector.json"
 PERMISSIONS_PATH = AGENT_HARNESS_ROOT / "permissions.json"
+
+
+@pytest.fixture(autouse=True)
+def isolate_service_key_resolution(monkeypatch):
+    monkeypatch.setattr(
+        config,
+        "service_key_env",
+        lambda name, default=None: os.getenv(name) if os.getenv(name) is not None else default,
+    )
 
 
 class FakeMailchimpClient:
@@ -114,6 +126,40 @@ def test_health_requires_api_key_and_server_prefix(monkeypatch):
     assert payload["data"]["status"] == "needs_setup"
     assert "MAILCHIMP_API_KEY" in json.dumps(payload["data"])
     assert "MAILCHIMP_SERVER_PREFIX" in json.dumps(payload["data"])
+
+
+def test_runtime_prefers_operator_service_keys_for_auth(monkeypatch):
+    monkeypatch.setenv("MAILCHIMP_API_KEY", "env-us5")
+    monkeypatch.setenv("MAILCHIMP_SERVER_PREFIX", "env1")
+
+    def fake_service_key_env(name: str, default: str | None = None) -> str | None:
+        if name == "MAILCHIMP_API_KEY":
+            return "service-eu2"
+        if name == "MAILCHIMP_SERVER_PREFIX":
+            return "eu9"
+        return default
+
+    monkeypatch.setattr(config, "service_key_env", fake_service_key_env)
+    runtime_values = config.resolve_runtime_values({})
+    assert runtime_values["api_key"] == "service-eu2"
+    assert runtime_values["server_prefix"] == "eu9"
+    assert runtime_values["configured_server_prefix"] == "eu9"
+
+
+def test_runtime_infers_server_prefix_from_api_key_suffix(monkeypatch):
+    monkeypatch.delenv("MAILCHIMP_SERVER_PREFIX", raising=False)
+
+    def fake_service_key_env(name: str, default: str | None = None) -> str | None:
+        if name == "MAILCHIMP_API_KEY":
+            return "service-eu2"
+        if name == "MAILCHIMP_SERVER_PREFIX":
+            return ""
+        return default
+
+    monkeypatch.setattr(config, "service_key_env", fake_service_key_env)
+    runtime_values = config.resolve_runtime_values({})
+    assert runtime_values["server_prefix"] == "eu2"
+    assert runtime_values["server_prefix_present"] is True
 
 
 def test_health_ready_with_fake_client(monkeypatch):

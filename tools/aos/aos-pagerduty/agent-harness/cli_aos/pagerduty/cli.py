@@ -7,20 +7,23 @@ from typing import Any
 import click
 
 from . import __version__
-from .config import config_snapshot
+from .config import config_snapshot, resolve_runtime_values
 from .constants import MODE_ORDER
 from .errors import CliError
 from .output import emit, failure, success
 from .runtime import (
     alert_list_result,
     capabilities_snapshot,
+    change_event_create_result,
     doctor_snapshot,
     escalation_policy_list_result,
     health_snapshot,
+    incident_acknowledge_result,
+    incident_create_result,
     incident_get_result,
     incident_list_result,
+    incident_resolve_result,
     on_call_list_result,
-    scaffold_write_command,
     service_get_result,
     service_list_result,
 )
@@ -86,17 +89,8 @@ def _emit_success(ctx: click.Context, command_id: str, data: dict[str, Any]) -> 
     emit(success(command=command_id, mode=ctx.obj["mode"], started=ctx.obj["started"], data=data), as_json=ctx.obj["json"])
 
 
-def _emit_scaffold(ctx: click.Context, command_id: str, data: dict[str, Any]) -> None:
-    emit(
-        failure(
-            command=command_id,
-            mode=ctx.obj["mode"],
-            started=ctx.obj["started"],
-            error={"code": "NOT_IMPLEMENTED", "message": f"{command_id} is scaffolded but not implemented yet", "details": data},
-        ),
-        as_json=ctx.obj["json"],
-    )
-    raise SystemExit(10)
+def _runtime_defaults(ctx: click.Context) -> dict[str, Any]:
+    return resolve_runtime_values(ctx.obj)
 
 
 @click.group(cls=AosGroup)
@@ -183,7 +177,7 @@ def incident_list(ctx: click.Context, limit: int, statuses: tuple[str, ...], ser
 def incident_get(ctx: click.Context, incident_id: str | None, incident_id_option: str | None) -> None:
     _set_command(ctx, "incident.get")
     require_mode(ctx, "incident.get")
-    resolved = incident_id_option or incident_id or ctx.obj.get("incident_id")
+    resolved = incident_id_option or incident_id or _runtime_defaults(ctx)["incident_id"]
     if not resolved:
         raise CliError(
             code="MISSING_ARGUMENT",
@@ -200,6 +194,7 @@ def incident_get(ctx: click.Context, incident_id: str | None, incident_id_option
 @click.option("--description", default=None, help="Incident description")
 @click.option("--urgency", default=None, help="Incident urgency")
 @click.option("--escalation-policy-id", default=None, help="Escalation policy ID")
+@click.option("--from-email", default=None, help="PagerDuty user email for incident writes")
 @click.pass_context
 def incident_create(
     ctx: click.Context,
@@ -208,42 +203,74 @@ def incident_create(
     description: str | None,
     urgency: str | None,
     escalation_policy_id: str | None,
+    from_email: str | None,
 ) -> None:
     _set_command(ctx, "incident.create")
     require_mode(ctx, "incident.create")
-    _emit_scaffold(
+    _emit_success(
         ctx,
         "incident.create",
-        {
-            "service_id": service_id or ctx.obj.get("service_id"),
-            "title": title or ctx.obj.get("title"),
-            "description": description or ctx.obj.get("description"),
-            "urgency": urgency or ctx.obj.get("urgency") or "high",
-            "escalation_policy_id": escalation_policy_id or ctx.obj.get("escalation_policy_id"),
-        },
+        incident_create_result(
+            ctx.obj,
+            service_id=service_id,
+            title=title,
+            description=description,
+            urgency=urgency,
+            escalation_policy_id=escalation_policy_id,
+            from_email=from_email,
+        ),
     )
 
 
 @incident_group.command("acknowledge")
 @click.argument("incident_id", required=False)
+@click.option("--incident-id", "incident_id_option", default=None, help="Incident ID")
+@click.option("--from-email", default=None, help="PagerDuty user email for incident writes")
 @click.pass_context
-def incident_acknowledge(ctx: click.Context, incident_id: str | None) -> None:
+def incident_acknowledge(
+    ctx: click.Context,
+    incident_id: str | None,
+    incident_id_option: str | None,
+    from_email: str | None,
+) -> None:
     _set_command(ctx, "incident.acknowledge")
     require_mode(ctx, "incident.acknowledge")
-    _emit_scaffold(
+    _emit_success(
         ctx,
         "incident.acknowledge",
-        {"incident_id": incident_id or ctx.obj.get("incident_id")},
+        incident_acknowledge_result(
+            ctx.obj,
+            incident_id=incident_id_option or incident_id or _runtime_defaults(ctx)["incident_id"],
+            from_email=from_email,
+        ),
     )
 
 
 @incident_group.command("resolve")
 @click.argument("incident_id", required=False)
+@click.option("--incident-id", "incident_id_option", default=None, help="Incident ID")
+@click.option("--resolution", default=None, help="Resolution note")
+@click.option("--from-email", default=None, help="PagerDuty user email for incident writes")
 @click.pass_context
-def incident_resolve(ctx: click.Context, incident_id: str | None) -> None:
+def incident_resolve(
+    ctx: click.Context,
+    incident_id: str | None,
+    incident_id_option: str | None,
+    resolution: str | None,
+    from_email: str | None,
+) -> None:
     _set_command(ctx, "incident.resolve")
     require_mode(ctx, "incident.resolve")
-    _emit_scaffold(ctx, "incident.resolve", {"incident_id": incident_id or ctx.obj.get("incident_id")})
+    _emit_success(
+        ctx,
+        "incident.resolve",
+        incident_resolve_result(
+            ctx.obj,
+            incident_id=incident_id_option or incident_id or _runtime_defaults(ctx)["incident_id"],
+            from_email=from_email,
+            resolution=resolution,
+        ),
+    )
 
 
 @cli.group("service")
@@ -267,7 +294,7 @@ def service_list(ctx: click.Context, limit: int) -> None:
 def service_get(ctx: click.Context, service_id: str | None, service_id_option: str | None) -> None:
     _set_command(ctx, "service.get")
     require_mode(ctx, "service.get")
-    resolved = service_id_option or service_id or ctx.obj.get("service_id")
+    resolved = service_id_option or service_id or _runtime_defaults(ctx)["service_id"]
     if not resolved:
         raise CliError(
             code="MISSING_ARGUMENT",
@@ -332,27 +359,25 @@ def change_event_group() -> None:
 
 
 @change_event_group.command("create")
-@click.option("--service-id", default=None, help="Service ID")
 @click.option("--summary", default=None, help="Change summary")
 @click.option("--description", default=None, help="Change description")
 @click.option("--source", default="aos-pagerduty", show_default=True, help="Change source")
 @click.pass_context
 def change_event_create(
     ctx: click.Context,
-    service_id: str | None,
     summary: str | None,
     description: str | None,
     source: str,
 ) -> None:
     _set_command(ctx, "change_event.create")
     require_mode(ctx, "change_event.create")
-    _emit_scaffold(
+    _emit_success(
         ctx,
         "change_event.create",
-        {
-            "service_id": service_id or ctx.obj.get("service_id"),
-            "summary": summary or ctx.obj.get("title") or "PagerDuty change event",
-            "description": description or ctx.obj.get("description"),
-            "source": source,
-        },
+        change_event_create_result(
+            ctx.obj,
+            summary=summary,
+            description=description,
+            source=source,
+        ),
     )

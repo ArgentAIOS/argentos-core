@@ -16,11 +16,12 @@ from .runtime import (
     doctor_snapshot,
     event_types_get_result,
     event_types_list_result,
+    events_cancel_result,
     events_get_result,
     events_list_result,
     health_snapshot,
     invitees_list_result,
-    scaffold_write_result,
+    scheduling_links_create_scaffold_result,
 )
 
 
@@ -169,16 +170,16 @@ def events_get(ctx: click.Context, uuid: str | None) -> None:
 
 
 @events_group.command("cancel")
-@click.argument("uuid")
+@click.argument("uuid", required=False)
 @click.option("--reason", default=None, help="Cancellation reason")
 @click.pass_context
-def events_cancel(ctx: click.Context, uuid: str, reason: str | None) -> None:
+def events_cancel(ctx: click.Context, uuid: str | None, reason: str | None) -> None:
     _set_command(ctx, "events.cancel")
     require_mode(ctx, "events.cancel")
     _emit_success(
         ctx,
         "events.cancel",
-        scaffold_write_result(ctx.obj, command_id="events.cancel", inputs={"uuid": uuid, "reason": reason}),
+        events_cancel_result(ctx.obj, uuid, reason=reason),
     )
 
 
@@ -243,18 +244,14 @@ def scheduling_links_group() -> None:
 
 
 @scheduling_links_group.command("create")
-@click.argument("event_type_uuid")
+@click.argument("event_type_uuid", required=False)
 @click.option("--max-event-count", default=1, show_default=True, type=int)
 @click.pass_context
-def scheduling_links_create(ctx: click.Context, event_type_uuid: str, max_event_count: int) -> None:
+def scheduling_links_create(ctx: click.Context, event_type_uuid: str | None, max_event_count: int) -> None:
     _set_command(ctx, "scheduling_links.create")
     require_mode(ctx, "scheduling_links.create")
     _emit_success(
         ctx,
         "scheduling_links.create",
-        scaffold_write_result(
-            ctx.obj,
-            command_id="scheduling_links.create",
-            inputs={"event_type_uuid": event_type_uuid, "max_event_count": max_event_count},
-        ),
+        scheduling_links_create_scaffold_result(ctx.obj, event_type_uuid, max_event_count=max_event_count),
     )
