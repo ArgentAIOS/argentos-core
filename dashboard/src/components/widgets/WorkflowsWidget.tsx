@@ -7542,12 +7542,19 @@ function WorkflowCanvasInner({
     [],
   );
 
+  const gatewayRef = useRef(gateway);
+
+  useEffect(() => {
+    gatewayRef.current = gateway;
+  }, [gateway]);
+
   const refreshPendingApprovals = useCallback(async () => {
-    if (!gateway.connected) {
+    const currentGateway = gatewayRef.current;
+    if (!currentGateway.connected) {
       return;
     }
     try {
-      const res = await gateway.request<{ approvals?: Record<string, unknown>[] }>(
+      const res = await currentGateway.request<{ approvals?: Record<string, unknown>[] }>(
         "workflows.pendingApprovals",
         activeWorkflowId ? { workflowId: activeWorkflowId } : {},
       );
@@ -7559,7 +7566,7 @@ function WorkflowCanvasInner({
     } catch (err) {
       console.warn("[Workflows] Pending approvals unavailable:", err);
     }
-  }, [activeWorkflowId, gateway, normalizePendingApproval]);
+  }, [activeWorkflowId, normalizePendingApproval]);
 
   useEffect(() => {
     void refreshPendingApprovals();
