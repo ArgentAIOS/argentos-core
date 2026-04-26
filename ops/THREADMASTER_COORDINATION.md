@@ -267,6 +267,10 @@ Lane: `openclaw`. Branch: `codex/openclaw-audio-process` at `3be41f18` before th
 
 Lane: `openclaw`. Branch: `codex/openclaw-audio-process` rebased onto `origin/dev` / `ca7efa17`; voice CLI UX baseline replayed through `7df91416` before this read-only plan. Owned files for this slice: `ops/OPENCLAW_VOICE_ALERT_INTEGRATION_PLAN.md` and this coordination note only. Shared contract proposal: introduce a future `OperatorAlertEvent` contract consumed by Telegram, macOS `system.notify`, workflow/exec approval notifications, and optional realtime voice output. Boundaries: no product code edits, no Workflows/AppForge/AOS/schema/browser/Google Meet runtime or telephony default changes, no always-on listening claim, and voice alerts remain optional notification output only. Required reaction: Threadmaster should assign shared contract ownership before any lane implements product code.
 
+### 2026-04-26 — OpenClaw Operator Alert Voice Adapter Prep
+
+Lane: `openclaw`. Branch: `codex/openclaw-audio-process` at `685e0aea` before this read-only adapter-prep note. Owned files for this slice: `ops/OPENCLAW_OPERATOR_ALERT_VOICE_ADAPTER_NOTES.md` and this coordination note only. Shared contract dependency: Workflows/shared owner is defining `OperatorAlertEvent`; OpenClaw will wait for that payload before runtime implementation. Boundaries: no product code edits, no Workflows/AppForge/AOS/schema/browser/Google Meet runtime or telephony default changes, no spoken approval resolution, and voice remains optional alert output only.
+
 ## Verification Snapshot
 
 Latest AppForge focused verification after rebase onto `origin/dev`:
