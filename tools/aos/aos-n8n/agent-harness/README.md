@@ -2,6 +2,10 @@
 
 Click CLI harness for `aos-n8n`.
 
+The harness resolves `N8N_API_URL`, `N8N_API_KEY`, and
+`N8N_WEBHOOK_BASE_URL` from operator-controlled service keys first, then falls
+back to local environment variables for harness development.
+
 ## Commands
 
 - `capabilities`

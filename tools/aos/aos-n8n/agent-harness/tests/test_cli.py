@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 from click.testing import CliRunner
 
 from cli_aos.n8n.cli import cli
+import cli_aos.n8n.service_keys as service_keys
 
 
 AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +45,16 @@ LIVE_WORKFLOW = {
     "updatedAt": "2026-03-19T13:00:00Z",
     "tags": [{"name": "ops"}],
 }
+
+
+def _clear_service_key_cache() -> None:
+    service_keys.resolve_service_key.cache_clear()
+
+
+def _mock_service_keys(monkeypatch, values: dict[str, str] | None = None) -> None:
+    _clear_service_key_cache()
+    resolver = lambda variable: (values or {}).get(variable)
+    monkeypatch.setattr(service_keys, "resolve_service_key", resolver)
 
 
 class MockN8NHandler(BaseHTTPRequestHandler):
@@ -145,6 +156,15 @@ def _set_live_env(monkeypatch, base_url: str) -> None:
     monkeypatch.delenv("N8N_WORKFLOW_ID", raising=False)
 
 
+def test_help_lists_global_flags_and_workflow_commands():
+    result = CliRunner().invoke(cli, ["--help"])
+    assert result.exit_code == 0
+    assert "--json" in result.output
+    assert "--mode" in result.output
+    assert "capabilities" in result.output
+    assert "workflow" in result.output
+
+
 def test_manifest_and_permissions_are_in_sync():
     manifest = json.loads(CONNECTOR_PATH.read_text())
     permissions = json.loads(PERMISSIONS_PATH.read_text())["permissions"]
@@ -182,6 +202,7 @@ def test_capabilities_json_matches_manifest():
 
 
 def test_health_reports_needs_setup_without_env(monkeypatch):
+    _mock_service_keys(monkeypatch)
     monkeypatch.delenv("N8N_API_URL", raising=False)
     monkeypatch.delenv("N8N_API_KEY", raising=False)
     monkeypatch.delenv("N8N_WEBHOOK_BASE_URL", raising=False)
@@ -203,6 +224,7 @@ def test_health_reports_needs_setup_without_env(monkeypatch):
 
 def test_config_show_reports_live_read_truthfully(monkeypatch):
     with mock_n8n_server() as server:
+        _mock_service_keys(monkeypatch)
         _set_live_env(monkeypatch, server["base_url"])
 
         result = CliRunner().invoke(cli, ["--json", "config", "show"])
@@ -219,14 +241,52 @@ def test_config_show_reports_live_read_truthfully(monkeypatch):
         assert payload["api_probe"]["ok"] is True
         assert payload["api_probe"]["details"]["sample_count"] == 1
         assert payload["write_probe"]["ok"] is True
+        assert payload["auth"]["sources"]["N8N_API_URL"] == "process.env"
+        assert payload["auth"]["sources"]["N8N_WEBHOOK_BASE_URL"] == "process.env"
         assert payload["runtime"]["workflow_name"] == "Onboarding Sync"
         assert payload["trigger_builder"]["event_hints"][0]["value"] == "manual"
         assert payload["trigger_builder"]["payload_hints"]["shape"] == "flat key-value map"
         assert payload["trigger_builder"]["request_template"]["workflow"]["workflow_name"] == "Onboarding Sync"
 
 
+def test_config_show_prefers_operator_service_keys_for_live_endpoints(monkeypatch):
+    with mock_n8n_server() as server:
+        monkeypatch.setenv("N8N_API_URL", "https://env.example.com")
+        monkeypatch.setenv("N8N_API_KEY", "env-secret-key")
+        monkeypatch.setenv("N8N_WEBHOOK_BASE_URL", "https://env-hooks.example.com")
+        monkeypatch.setenv("N8N_WORKSPACE_NAME", "Ops")
+        monkeypatch.setenv("N8N_WORKFLOW_NAME", "Onboarding Sync")
+        monkeypatch.setenv("N8N_WORKFLOW_STATUS", "active")
+        monkeypatch.delenv("N8N_WORKFLOW_ID", raising=False)
+        _mock_service_keys(
+            monkeypatch,
+            {
+                "N8N_API_URL": server["base_url"],
+                "N8N_API_KEY": "operator-secret-key",
+                "N8N_WEBHOOK_BASE_URL": server["base_url"],
+            },
+        )
+
+        result = CliRunner().invoke(cli, ["--json", "config", "show"])
+        assert result.exit_code == 0
+        assert "operator-secret-key" not in result.output
+        assert "env-secret-key" not in result.output
+
+        payload = json.loads(result.output)["data"]
+        assert payload["auth"]["sources"]["N8N_API_URL"] == "service-keys"
+        assert payload["auth"]["sources"]["N8N_API_KEY"] == "service-keys"
+        assert payload["auth"]["sources"]["N8N_WEBHOOK_BASE_URL"] == "service-keys"
+        assert any(
+            request["path"] == "/api/v1/workflows"
+            and request["query"] == "limit=1&active=true"
+            and request["auth"] == "operator-secret-key"
+            for request in server["requests"]
+        )
+
+
 def test_doctor_reports_live_status_and_permissions(monkeypatch):
     with mock_n8n_server() as server:
+        _mock_service_keys(monkeypatch)
         _set_live_env(monkeypatch, server["base_url"])
 
         result = CliRunner().invoke(cli, ["--json", "doctor"])
@@ -250,6 +310,7 @@ def test_doctor_reports_live_status_and_permissions(monkeypatch):
 
 def test_workflow_list_fetches_live_workflows_and_builds_picker_options(monkeypatch):
     with mock_n8n_server() as server:
+        _mock_service_keys(monkeypatch)
         _set_live_env(monkeypatch, server["base_url"])
 
         result = CliRunner().invoke(cli, ["--json", "workflow", "list", "--limit", "2", "--status", "active"])
@@ -286,6 +347,7 @@ def test_workflow_list_fetches_live_workflows_and_builds_picker_options(monkeypa
 
 def test_workflow_status_uses_configured_workflow_target(monkeypatch):
     with mock_n8n_server() as server:
+        _mock_service_keys(monkeypatch)
         _set_live_env(monkeypatch, server["base_url"])
 
         result = CliRunner().invoke(cli, ["--json", "workflow", "status"])
@@ -318,8 +380,30 @@ def test_workflow_status_uses_configured_workflow_target(monkeypatch):
         assert any(request["method"] == "GET" and request["path"] == "/api/v1/workflows/workflow-123" for request in server["requests"])
 
 
+def test_workflow_list_reports_config_error_when_setup_is_missing(monkeypatch):
+    _mock_service_keys(monkeypatch)
+    monkeypatch.delenv("N8N_API_URL", raising=False)
+    monkeypatch.delenv("N8N_API_KEY", raising=False)
+    result = CliRunner().invoke(cli, ["--json", "workflow", "list"])
+    assert result.exit_code == 4
+    payload = json.loads(result.output)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "N8N_SETUP_REQUIRED"
+
+
+def test_workflow_trigger_requires_write_mode(monkeypatch):
+    _mock_service_keys(monkeypatch)
+    result = CliRunner().invoke(cli, ["--json", "--mode", "readonly", "workflow", "trigger", "workflow-123"])
+    assert result.exit_code == 3
+    payload = json.loads(result.output)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "PERMISSION_DENIED"
+    assert payload["error"]["details"]["required_mode"] == "write"
+
+
 def test_workflow_trigger_executes_bridge_and_posts_payload(monkeypatch):
     with mock_n8n_server() as server:
+        _mock_service_keys(monkeypatch)
         _set_live_env(monkeypatch, server["base_url"])
 
         result = CliRunner().invoke(

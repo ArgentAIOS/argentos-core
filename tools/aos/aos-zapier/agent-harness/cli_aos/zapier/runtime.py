@@ -420,8 +420,8 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         status = "needs_setup"
         summary = f"Zapier live reads need {runtime['api_url_env']} and {runtime['api_key_env']} before they can run."
         next_steps = [
-            f"Set {runtime['api_url_env']} to the live bridge URL.",
-            f"Set {runtime['api_key_env']} to a bridge API key accepted by the configured endpoint.",
+            f"Set {runtime['api_url_env']} in operator-controlled API Keys first, or local env when running the harness directly.",
+            f"Set {runtime['api_key_env']} in operator-controlled API Keys first, or local env when running the harness directly.",
         ]
     elif not read_ready:
         status = "degraded"
@@ -470,10 +470,14 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "auth": {
             "api_url_env": runtime["api_url_env"],
             "api_url_present": runtime["api_url_present"],
+            "api_url_source": runtime["api_url_source"],
             "api_key_env": runtime["api_key_env"],
             "api_key_present": runtime["api_key_present"],
+            "api_key_source": runtime["api_key_source"],
             "webhook_base_url_env": runtime["webhook_base_url_env"],
             "webhook_base_url_present": runtime["webhook_base_url_present"],
+            "webhook_base_url_source": runtime["webhook_base_url_source"],
+            "resolution_order": ["service-keys", "process.env"],
         },
         "checks": [
             {
@@ -537,7 +541,11 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "setup_complete": auth_ready,
         "missing_keys": _missing_keys(runtime),
         "next_steps": [
-            f"Set {runtime['api_url_env']} and {runtime['api_key_env']} in API Keys." if not auth_ready else "Confirm the configured bridge answers live read requests and accepts trigger probes.",
+            (
+                f"Set {runtime['api_url_env']} and {runtime['api_key_env']} in operator-controlled API Keys, or use local env only when running the harness directly."
+                if not auth_ready
+                else "Confirm the configured bridge answers live read requests and accepts trigger probes."
+            ),
             "Keep zap.trigger guarded by write mode and a bridge that accepts POST /trigger.",
         ],
         "probe": probe,

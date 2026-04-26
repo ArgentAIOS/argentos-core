@@ -151,8 +151,9 @@
     "required": true,
     "service_keys": ["ZAPIER_API_URL", "ZAPIER_API_KEY"],
     "interactive_setup": [
-      "Add ZAPIER_API_URL and ZAPIER_API_KEY in API Keys to point at the live Zapier bridge.",
-      "Set ZAPIER_WEBHOOK_BASE_URL if you want future webhook URLs to use a stable public base.",
+      "Add ZAPIER_API_URL and ZAPIER_API_KEY in operator-controlled API Keys to point at the live Zapier bridge.",
+      "Add ZAPIER_WEBHOOK_BASE_URL in API Keys when you want future webhook URLs to use a stable public base; local env is only a harness fallback.",
+      "Use local env only as a harness fallback when operator-controlled API Keys are unavailable.",
       "Set ZAPIER_WORKSPACE_NAME, ZAPIER_ZAP_ID, ZAPIER_ZAP_NAME, and ZAPIER_ZAP_STATUS to preview the zap scope shown to workers.",
       "zap.trigger now uses the configured bridge when POST /trigger is available."
     ]

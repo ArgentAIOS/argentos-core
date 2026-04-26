@@ -10,6 +10,10 @@ SERVICE_KEY_VARIABLES = {
     "TEAMS_TENANT_ID",
     "TEAMS_CLIENT_ID",
     "TEAMS_CLIENT_SECRET",
+    "TEAMS_TEAM_ID",
+    "TEAMS_CHANNEL_ID",
+    "TEAMS_CHAT_ID",
+    "TEAMS_USER_ID",
 }
 
 
@@ -48,3 +52,11 @@ def service_key_env(variable: str, default: str | None = None) -> str | None:
     if value is not None:
         return value
     return default
+
+
+def service_key_source(variable: str) -> str | None:
+    if variable in SERVICE_KEY_VARIABLES and (resolve_service_key(variable) or "").strip():
+        return "service-keys"
+    if (os.getenv(variable) or "").strip():
+        return "process.env"
+    return None

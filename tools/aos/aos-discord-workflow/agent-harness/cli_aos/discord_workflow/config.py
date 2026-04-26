@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import os
-from .service_keys import service_key_env
 from typing import Any
 
+from .service_keys import resolve_service_key
 from .constants import (
     BACKEND_NAME,
     DEFAULT_API_BASE_URL,
@@ -35,6 +35,93 @@ def _resolve_env(ctx_obj: dict[str, Any], key: str, default: str) -> str:
     return ctx_obj.get(key) or default
 
 
+def _string_value(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _mapping_value(mapping: Any, *keys: str) -> str:
+    if not isinstance(mapping, dict):
+        return ""
+    for key in keys:
+        value = _string_value(mapping.get(key))
+        if value:
+            return value
+    return ""
+
+
+def _operator_service_key_value(ctx_obj: dict[str, Any], service_key_name: str) -> tuple[str, str]:
+    service_key_key = service_key_name.lower()
+    for field_name in ("service_keys", "service_key_values", "api_keys", "secrets"):
+        container = ctx_obj.get(field_name)
+        value = _mapping_value(container, service_key_name, service_key_key)
+        if value:
+            return value, f"operator:{field_name}"
+
+        tool_scoped = None
+        if isinstance(container, dict):
+            tool_scoped = (
+                container.get("aos-discord-workflow")
+                or container.get("discord_workflow")
+                or container.get("discord")
+            )
+        value = _mapping_value(tool_scoped, service_key_name, service_key_key)
+        if value:
+            return value, f"operator:{field_name}:tool"
+
+    value = _mapping_value(ctx_obj, service_key_name, service_key_key)
+    if value:
+        return value, "operator:context"
+
+    return "", "missing"
+
+
+def _resolve_value(
+    ctx_obj: dict[str, Any],
+    *,
+    service_key_name: str | None,
+    env_name: str,
+    default: str = "",
+) -> dict[str, Any]:
+    if service_key_name:
+        operator_value, operator_source = _operator_service_key_value(ctx_obj, service_key_name)
+        if operator_value:
+            return {
+                "value": operator_value,
+                "present": True,
+                "source": operator_source,
+                "service_key_name": service_key_name,
+                "env_name": env_name,
+            }
+
+        service_key_value = _string_value(resolve_service_key(service_key_name))
+        if service_key_value:
+            return {
+                "value": service_key_value,
+                "present": True,
+                "source": "service-keys",
+                "service_key_name": service_key_name,
+                "env_name": env_name,
+            }
+
+    env_value = _string_value(os.getenv(env_name))
+    if env_value:
+        return {
+            "value": env_value,
+            "present": True,
+            "source": "env_fallback",
+            "service_key_name": service_key_name,
+            "env_name": env_name,
+        }
+
+    return {
+        "value": default,
+        "present": bool(default),
+        "source": "default" if default else "missing",
+        "service_key_name": service_key_name,
+        "env_name": env_name,
+    }
+
+
 def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     bot_token_env = _resolve_env(ctx_obj, "bot_token_env", DISCORD_BOT_TOKEN_ENV)
     api_base_url_env = _resolve_env(ctx_obj, "api_base_url_env", DISCORD_API_BASE_URL_ENV)
@@ -50,19 +137,19 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     channel_name_env = _resolve_env(ctx_obj, "channel_name_env", DISCORD_CHANNEL_NAME_ENV)
     reaction_env = _resolve_env(ctx_obj, "reaction_env", DISCORD_REACTION_ENV)
 
-    bot_token = (service_key_env(bot_token_env) or "").strip()
-    api_base_url = (service_key_env(api_base_url_env) or DEFAULT_API_BASE_URL).strip().rstrip("/")
-    guild_id = (service_key_env(guild_id_env) or "").strip()
-    channel_id = (service_key_env(channel_id_env) or "").strip()
-    message_id = (service_key_env(message_id_env) or "").strip()
-    webhook_url = (service_key_env(webhook_url_env) or "").strip()
-    content = (service_key_env(content_env) or "").strip()
-    embed_json = (service_key_env(embed_json_env) or "").strip()
-    role_id = (service_key_env(role_id_env) or "").strip()
-    member_id = (service_key_env(member_id_env) or "").strip()
-    thread_name = (service_key_env(thread_name_env) or "").strip()
-    channel_name = (service_key_env(channel_name_env) or "").strip()
-    reaction = (service_key_env(reaction_env) or "").strip()
+    bot_token = _resolve_value(ctx_obj, service_key_name=DISCORD_BOT_TOKEN_ENV, env_name=bot_token_env)
+    api_base_url = _resolve_value(ctx_obj, service_key_name=None, env_name=api_base_url_env, default=DEFAULT_API_BASE_URL)
+    guild_id = _resolve_value(ctx_obj, service_key_name=DISCORD_GUILD_ID_ENV, env_name=guild_id_env)
+    channel_id = _resolve_value(ctx_obj, service_key_name=DISCORD_CHANNEL_ID_ENV, env_name=channel_id_env)
+    message_id = _resolve_value(ctx_obj, service_key_name=DISCORD_MESSAGE_ID_ENV, env_name=message_id_env)
+    webhook_url = _resolve_value(ctx_obj, service_key_name=DISCORD_WEBHOOK_URL_ENV, env_name=webhook_url_env)
+    content = _resolve_value(ctx_obj, service_key_name=None, env_name=content_env)
+    embed_json = _resolve_value(ctx_obj, service_key_name=None, env_name=embed_json_env)
+    role_id = _resolve_value(ctx_obj, service_key_name=DISCORD_ROLE_ID_ENV, env_name=role_id_env)
+    member_id = _resolve_value(ctx_obj, service_key_name=DISCORD_MEMBER_ID_ENV, env_name=member_id_env)
+    thread_name = _resolve_value(ctx_obj, service_key_name=None, env_name=thread_name_env)
+    channel_name = _resolve_value(ctx_obj, service_key_name=None, env_name=channel_name_env)
+    reaction = _resolve_value(ctx_obj, service_key_name=None, env_name=reaction_env)
 
     return {
         "backend": BACKEND_NAME,
@@ -79,36 +166,62 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "thread_name_env": thread_name_env,
         "channel_name_env": channel_name_env,
         "reaction_env": reaction_env,
-        "bot_token": bot_token,
-        "api_base_url": api_base_url,
-        "guild_id": guild_id,
-        "channel_id": channel_id,
-        "message_id": message_id,
-        "webhook_url": webhook_url,
-        "content": content,
-        "embed_json": embed_json,
-        "role_id": role_id,
-        "member_id": member_id,
-        "thread_name": thread_name,
-        "channel_name": channel_name,
-        "reaction": reaction,
-        "bot_token_present": bool(bot_token),
-        "guild_id_present": bool(guild_id),
-        "channel_id_present": bool(channel_id),
-        "message_id_present": bool(message_id),
-        "webhook_url_present": bool(webhook_url),
-        "runtime_ready": bool(bot_token),
+        "bot_token": bot_token["value"],
+        "bot_token_source": bot_token["source"],
+        "api_base_url": api_base_url["value"].rstrip("/"),
+        "api_base_url_source": api_base_url["source"],
+        "guild_id": guild_id["value"],
+        "guild_id_source": guild_id["source"],
+        "channel_id": channel_id["value"],
+        "channel_id_source": channel_id["source"],
+        "message_id": message_id["value"],
+        "message_id_source": message_id["source"],
+        "webhook_url": webhook_url["value"],
+        "webhook_url_source": webhook_url["source"],
+        "content": content["value"],
+        "content_source": content["source"],
+        "embed_json": embed_json["value"],
+        "embed_json_source": embed_json["source"],
+        "role_id": role_id["value"],
+        "role_id_source": role_id["source"],
+        "member_id": member_id["value"],
+        "member_id_source": member_id["source"],
+        "thread_name": thread_name["value"],
+        "thread_name_source": thread_name["source"],
+        "channel_name": channel_name["value"],
+        "channel_name_source": channel_name["source"],
+        "reaction": reaction["value"],
+        "reaction_source": reaction["source"],
+        "bot_token_present": bot_token["present"],
+        "guild_id_present": guild_id["present"],
+        "channel_id_present": channel_id["present"],
+        "message_id_present": message_id["present"],
+        "webhook_url_present": webhook_url["present"],
+        "role_id_present": role_id["present"],
+        "member_id_present": member_id["present"],
+        "runtime_ready": bot_token["present"],
     }
 
 
 def config_snapshot(ctx_obj: dict[str, Any], *, probe: dict[str, Any] | None = None) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
+    implementation_mode = "live_read_write" if runtime["bot_token_present"] else ("webhook_write_only" if runtime["webhook_url_present"] else "configuration_only")
     return {
         "backend": BACKEND_NAME,
         "auth": {
+            "kind": "service-key",
             "bot_token_env": runtime["bot_token_env"],
             "bot_token_present": runtime["bot_token_present"],
+            "bot_token_source": runtime["bot_token_source"],
             "bot_token_masked": _mask(runtime["bot_token"]),
+            "webhook_url_env": runtime["webhook_url_env"],
+            "webhook_url_present": runtime["webhook_url_present"],
+            "webhook_url_source": runtime["webhook_url_source"],
+            "webhook_url_masked": _mask(runtime["webhook_url"]),
+            "sources": {
+                DISCORD_BOT_TOKEN_ENV: runtime["bot_token_source"],
+                DISCORD_WEBHOOK_URL_ENV: runtime["webhook_url_source"],
+            },
         },
         "scope": {
             "api_base_url": runtime["api_base_url"],
@@ -123,10 +236,19 @@ def config_snapshot(ctx_obj: dict[str, Any], *, probe: dict[str, Any] | None = N
             "thread_name": runtime["thread_name"] or None,
             "channel_name": runtime["channel_name"] or None,
             "reaction": runtime["reaction"] or None,
+            "sources": {
+                DISCORD_GUILD_ID_ENV: runtime["guild_id_source"],
+                DISCORD_CHANNEL_ID_ENV: runtime["channel_id_source"],
+                DISCORD_MESSAGE_ID_ENV: runtime["message_id_source"],
+                DISCORD_ROLE_ID_ENV: runtime["role_id_source"],
+                DISCORD_MEMBER_ID_ENV: runtime["member_id_source"],
+            },
         },
         "runtime": {
-            "implementation_mode": "live_read_write",
+            "implementation_mode": implementation_mode,
             "runtime_ready": bool(probe["ok"]) if probe else runtime["runtime_ready"],
+            "bot_runtime_ready": bool(probe["ok"]) if probe else runtime["bot_token_present"],
+            "webhook_write_ready": runtime["webhook_url_present"],
         },
         "probe": probe,
     }

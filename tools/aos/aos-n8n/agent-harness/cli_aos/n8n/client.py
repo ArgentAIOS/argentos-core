@@ -20,7 +20,7 @@ def normalize_api_base_url(api_url: str) -> str:
         raise ConnectorError(
             "N8N_SETUP_REQUIRED",
             "n8n API URL is missing.",
-            2,
+            4,
             details={"missing_keys": ["N8N_API_URL"]},
         )
 
@@ -29,7 +29,7 @@ def normalize_api_base_url(api_url: str) -> str:
         raise ConnectorError(
             "N8N_INVALID_URL",
             "N8N_API_URL must include a scheme and host, for example https://n8n.example.com.",
-            2,
+            4,
             details={"api_url": stripped},
         )
 
@@ -52,7 +52,7 @@ def normalize_webhook_base_url(webhook_url: str) -> str:
         raise ConnectorError(
             "N8N_SETUP_REQUIRED",
             "n8n webhook base URL is missing.",
-            2,
+            4,
             details={"missing_keys": ["N8N_WEBHOOK_BASE_URL"]},
         )
 
@@ -61,7 +61,7 @@ def normalize_webhook_base_url(webhook_url: str) -> str:
         raise ConnectorError(
             "N8N_INVALID_URL",
             "N8N_WEBHOOK_BASE_URL must include a scheme and host, for example https://hooks.example.com.",
-            2,
+            4,
             details={"webhook_base_url": stripped},
         )
     return parse.urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), parts.query, parts.fragment))
@@ -168,9 +168,13 @@ def _http_request(
         code = "N8N_API_ERROR"
         if exc.code in {401, 403}:
             code = "N8N_AUTH_FAILED"
+            exit_code = 4
         elif exc.code == 404:
             code = "N8N_NOT_FOUND"
-        raise ConnectorError(code, f"n8n request failed with HTTP {exc.code}.", 5, details=details) from exc
+            exit_code = 6
+        else:
+            exit_code = 5
+        raise ConnectorError(code, f"n8n request failed with HTTP {exc.code}.", exit_code, details=details) from exc
     except error.URLError as exc:
         raise ConnectorError(
             "N8N_UNREACHABLE",
@@ -271,7 +275,7 @@ def _effective_api_url(runtime: dict[str, Any]) -> str:
         raise ConnectorError(
             "N8N_SETUP_REQUIRED",
             "n8n API URL is missing.",
-            2,
+            4,
             details={"missing_keys": ["N8N_API_URL"]},
         )
     return normalize_api_base_url(api_url)
@@ -293,7 +297,7 @@ class N8NApiClient:
             raise ConnectorError(
                 "N8N_SETUP_REQUIRED",
                 "n8n API key is missing.",
-                2,
+                4,
                 details={"missing_keys": ["N8N_API_KEY"]},
             )
         return api_key.strip()
@@ -349,7 +353,7 @@ class N8NWebhookClient:
             raise ConnectorError(
                 "N8N_SETUP_REQUIRED",
                 "n8n webhook base URL is missing.",
-                2,
+                4,
                 details={"missing_keys": ["N8N_WEBHOOK_BASE_URL"]},
             )
         return normalize_webhook_base_url(webhook_base_url)

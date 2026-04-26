@@ -1,48 +1,54 @@
 from __future__ import annotations
 
 import json
-import sys
 import time
+from datetime import datetime, timezone
 from typing import Any
 
-
-def _duration(started: float) -> float:
-    return max(time.time() - started, 0.0)
+import click
 
 
-def success(*, tool: str, backend: str, command: str, data: Any, started: float, mode: str, version: str) -> dict[str, Any]:
-    ended = time.time()
+def _timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def success(*, tool: str, command: str, data: Any, started: float, mode: str, version: str) -> dict[str, Any]:
     return {
-        "status": "ok",
+        "ok": True,
         "tool": tool,
-        "backend": backend,
         "command": command,
-        "mode": mode,
-        "version": version,
-        "started": started,
-        "ended": ended,
-        "duration_seconds": round(ended - started, 3),
         "data": data,
+        "meta": {
+            "mode": mode,
+            "duration_ms": int((time.time() - started) * 1000),
+            "timestamp": _timestamp(),
+            "version": version,
+        },
     }
 
 
-def failure(*, tool: str, command: str, error: dict[str, Any], started: float, mode: str, version: str, backend: str) -> dict[str, Any]:
-    ended = time.time()
+def failure(*, tool: str, command: str, error: dict[str, Any], started: float, mode: str, version: str) -> dict[str, Any]:
     return {
-        "status": "error",
+        "ok": False,
         "tool": tool,
-        "backend": backend,
         "command": command,
-        "mode": mode,
-        "version": version,
-        "started": started,
-        "ended": ended,
-        "duration_seconds": round(ended - started, 3),
         "error": error,
+        "meta": {
+            "mode": mode,
+            "duration_ms": int((time.time() - started) * 1000),
+            "timestamp": _timestamp(),
+            "version": version,
+        },
     }
 
 
 def emit(payload: Any, *, as_json: bool) -> None:
-    text = json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) if as_json else json.dumps(payload, sort_keys=True, ensure_ascii=False)
-    sys.stdout.write(text)
-    sys.stdout.write("\n")
+    if as_json:
+        click.echo(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    if payload.get("ok"):
+        data = payload.get("data", {})
+        summary = data.get("summary") or payload.get("command") or "OK"
+        click.echo(summary)
+        return
+    click.echo(f"ERROR: {payload.get('error', {}).get('message', 'Unknown error')}")

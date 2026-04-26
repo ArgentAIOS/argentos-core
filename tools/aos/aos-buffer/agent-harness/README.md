@@ -2,10 +2,17 @@
 
 This harness provides the Buffer connector CLI for ArgentOS.
 
-Live reads are implemented for:
+Live reads are implemented against Buffer's public GraphQL API for:
 
-- account metadata via `/user`
-- social channels / profiles via `/profiles`
-- profile schedules via `/profiles/:id/schedules`
+- account and organization discovery
+- channel discovery and direct channel reads
+- post discovery within accessible organizations
 
-Post read and write surfaces are scaffolded until the current Buffer post contract is confirmed.
+The `profile.*` commands are legacy aliases over the same live channel data.
+
+Write commands stay permission-gated and preview-only:
+
+- `post create-draft`
+- `post schedule`
+
+They do not execute social publishing mutations from the harness.

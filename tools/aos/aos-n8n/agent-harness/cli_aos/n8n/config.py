@@ -18,7 +18,7 @@ from .constants import (
 )
 from .client import normalize_api_base_url, normalize_webhook_base_url, probe_live_read, probe_write_bridge
 from .errors import ConnectorError
-from .service_keys import service_key_env
+from .service_keys import service_key_env, service_key_source
 
 
 def _present(value: str | None) -> bool:
@@ -117,9 +117,11 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "api_url": api_url,
         "api_url_present": _present(api_url),
         "api_url_redacted": _redact(api_url),
+        "api_url_source": service_key_source(api_url_env),
         "api_key": api_key,
         "api_key_present": _present(api_key),
         "api_key_redacted": _redact(api_key),
+        "api_key_source": service_key_source(api_key_env),
         "api_base_url": api_base_url,
         "api_base_url_present": api_base_url_present,
         "api_base_url_redacted": api_base_url_redacted,
@@ -127,6 +129,7 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "webhook_base_url": webhook_base_url,
         "webhook_base_url_present": _present(webhook_base_url),
         "webhook_base_url_redacted": _redact(webhook_base_url),
+        "webhook_base_url_source": service_key_source(webhook_base_url_env),
         "webhook_base_url_error": webhook_base_url_error,
         "webhook_bridge_url": webhook_bridge_url,
         "webhook_bridge_url_present": webhook_bridge_url_present,
@@ -165,18 +168,26 @@ def redacted_config_snapshot(ctx_obj: dict[str, Any], *, probe: dict[str, Any] |
             "api_url_env": runtime["api_url_env"],
             "api_url_present": runtime["api_url_present"],
             "api_url_redacted": runtime["api_url_redacted"],
+            "api_url_source": runtime["api_url_source"],
             "api_base_url_present": runtime["api_base_url_present"],
             "api_base_url_redacted": runtime["api_base_url_redacted"],
             "api_base_url_error": runtime["api_base_url_error"],
             "api_key_env": runtime["api_key_env"],
             "api_key_present": runtime["api_key_present"],
             "api_key_redacted": runtime["api_key_redacted"],
+            "api_key_source": runtime["api_key_source"],
             "webhook_base_url_env": runtime["webhook_base_url_env"],
             "webhook_base_url_present": runtime["webhook_base_url_present"],
             "webhook_base_url_redacted": runtime["webhook_base_url_redacted"],
+            "webhook_base_url_source": runtime["webhook_base_url_source"],
             "webhook_base_url_error": runtime["webhook_base_url_error"],
             "webhook_bridge_url_present": runtime["webhook_bridge_url_present"],
             "webhook_bridge_url_redacted": runtime["webhook_bridge_url_redacted"],
+            "sources": {
+                runtime["api_url_env"]: runtime["api_url_source"],
+                runtime["api_key_env"]: runtime["api_key_source"],
+                runtime["webhook_base_url_env"]: runtime["webhook_base_url_source"],
+            },
         },
         "runtime": {
             "workspace_name": runtime["workspace_name"],

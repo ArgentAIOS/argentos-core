@@ -162,15 +162,24 @@
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": ["DISCORD_BOT_TOKEN"],
+    "service_keys": [
+      "DISCORD_BOT_TOKEN",
+      "DISCORD_WEBHOOK_URL",
+      "DISCORD_GUILD_ID",
+      "DISCORD_CHANNEL_ID",
+      "DISCORD_MESSAGE_ID",
+      "DISCORD_ROLE_ID",
+      "DISCORD_MEMBER_ID"
+    ],
     "interactive_setup": [
       "Create a Discord application and bot at https://discord.com/developers/applications.",
-      "Add DISCORD_BOT_TOKEN in API Keys.",
+      "Add DISCORD_BOT_TOKEN as an operator-controlled service key before enabling bot-backed Discord reads and writes.",
+      "Use the DISCORD_BOT_TOKEN environment variable only as a local harness fallback when operator keys are unavailable.",
       "Enable the SERVER MEMBERS and MESSAGE CONTENT privileged gateway intents.",
       "Invite the bot with permissions: Send Messages, Manage Messages, Add Reactions, Manage Channels, Manage Roles, Attach Files, Create Public Threads, Send Messages in Threads, Use External Emojis.",
-      "Set DISCORD_GUILD_ID to scope the connector to a specific server.",
-      "Set DISCORD_CHANNEL_ID and DISCORD_MESSAGE_ID for stable channel and message scope defaults.",
-      "For webhook.send, configure DISCORD_WEBHOOK_URL for the target channel webhook."
+      "Set DISCORD_GUILD_ID, DISCORD_CHANNEL_ID, DISCORD_MESSAGE_ID, DISCORD_ROLE_ID, and DISCORD_MEMBER_ID as operator linking keys when worker flows need stable scope defaults.",
+      "For webhook.send, configure DISCORD_WEBHOOK_URL as an operator-controlled service key; the environment variable is only a local harness fallback.",
+      "webhook.send can run with DISCORD_WEBHOOK_URL alone, but all other live Discord commands require DISCORD_BOT_TOKEN plus the relevant bot permissions."
     ]
   },
   "commands": [

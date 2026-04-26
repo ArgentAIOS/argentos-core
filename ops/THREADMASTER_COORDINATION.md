@@ -39,13 +39,13 @@ Bus docs: `ops/threadmaster-bus/README.md`.
 
 ## Active Lanes
 
-| Lane                                                  | Threadmaster                     | Scope                                                                                                                     | Current State                                                                                                                                                                                                           | Shared Boundaries                                                                                           |
-| ----------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Master coordination + Workflows canvas/runtime        | Codex workflow threadmaster      | Cross-lane coordination, workflow builder canvas, workflow gateway/runtime, output channels, approval/wait/event surfaces | Bus/coordination lane in progress at `1f30784b`; output node configurability and real channel discovery pushed to `dev` at `ad964716`                                                                                   | Consumes AppForge through metadata/events only; consumes AOS connectors through manifests/capabilities only |
-| AppForge 2.0                                          | AppForge threadmaster            | Airtable-like core workspace, AppForge adapter/model/gateway, structured metadata, AppForge event producers               | Pulled through `ff95fe20`; bus online notice acked as `appforge`; no active AppForge bus tasks; see AppForge details below plus `ops/HANDOFF_APP_FORGE_THREADMASTER_STATUS.md` and `ops/HANDOFF_APP_FORGE_2_ROLLOUT.md` | Must not import Workflow dashboard internals; coordinate before touching workflow files                     |
-| AOU Stub Finder                                       | AOU threadmaster                 | Stub discovery, connector/tool completeness, skeleton-vs-live implementation inventory                                    | Active in its own threadmaster lane                                                                                                                                                                                     | Report stub findings here before changing shared runtime or connector surfaces                              |
-| AOS connectors                                        | Codex AOS connector threadmaster | `tools/aos/**`, connector manifests, operator service-key resolution, connector command capability surfaces               | Branch `codex/aos-next-connector-wave`; latest lane commit `ad3fb0b9` stabilizes Klaviyo as truthful read-only live connector; prior next-wave baseline `83a9bcb7`                                                      | Workflows/AppForge should consume connector metadata/capabilities, not private connector internals          |
-| OpenClaw 4.24 realtime/browser/marketplace comparison | Codex comparison threadmaster    | Upstream 4.24 feature comparison, browser harness/realtime voice/Google Meet marketplace-plugin recommendations           | Active on `codex/aos-next-connector-wave` at `ad3fb0b9`; read-only analysis so far                                                                                                                                      | Owns comparison/planning notes only; no shared implementation files without another board update            |
+| Lane                                                  | Threadmaster                     | Scope                                                                                                                     | Current State                                                                                                                                                                                                                                                                | Shared Boundaries                                                                                           |
+| ----------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Master coordination + Workflows canvas/runtime        | Codex workflow threadmaster      | Cross-lane coordination, workflow builder canvas, workflow gateway/runtime, output channels, approval/wait/event surfaces | Bus/coordination lane in progress at `1f30784b`; output node configurability and real channel discovery pushed to `dev` at `ad964716`                                                                                                                                        | Consumes AppForge through metadata/events only; consumes AOS connectors through manifests/capabilities only |
+| AppForge 2.0                                          | AppForge threadmaster            | Airtable-like core workspace, AppForge adapter/model/gateway, structured metadata, AppForge event producers               | Pulled through `ff95fe20`; bus online notice acked as `appforge`; no active AppForge bus tasks; see AppForge details below plus `ops/HANDOFF_APP_FORGE_THREADMASTER_STATUS.md` and `ops/HANDOFF_APP_FORGE_2_ROLLOUT.md`                                                      | Must not import Workflow dashboard internals; coordinate before touching workflow files                     |
+| AOU Stub Finder                                       | AOU threadmaster                 | Stub discovery, connector/tool completeness, skeleton-vs-live implementation inventory                                    | Active in its own threadmaster lane                                                                                                                                                                                                                                          | Report stub findings here before changing shared runtime or connector surfaces                              |
+| AOS connectors                                        | Codex AOS connector threadmaster | `tools/aos/**`, connector manifests, operator service-key resolution, connector command capability surfaces               | Branch `codex/aos-updates-and-patching-verified`; verified connector wave committed in this lane; bus status posted as `tm-20260426123306-1hcqmo`, contract summary `tm-20260426123319-v4x6t5`, branch corrections `tm-20260426123419-4f2lw5` and `tm-20260426123732-j958f8` | Workflows/AppForge should consume connector metadata/capabilities, not private connector internals          |
+| OpenClaw 4.24 realtime/browser/marketplace comparison | Codex comparison threadmaster    | Upstream 4.24 feature comparison, browser harness/realtime voice/Google Meet marketplace-plugin recommendations           | Active on `codex/aos-next-connector-wave` at `ad3fb0b9`; read-only analysis so far                                                                                                                                                                                           | Owns comparison/planning notes only; no shared implementation files without another board update            |
 
 ## Overlap Zones
 
@@ -191,6 +191,23 @@ Owned files/directories: `tools/aos/**`, with active connector ownership over Ai
 Shared contract changes: connector manifests, permissions, and command capability declarations remain the public contract; operator-controlled service keys are the key source for linked external systems. Klaviyo is now a truthful live read connector and does not advertise mutation/write actions until those are implemented.
 Workflows/AppForge/AOU reaction: consume manifests/capabilities only; do not infer private connector internals or assume scaffolded writes exist. AOU Stub Finder should treat Klaviyo at `ad3fb0b9` as a real read-only baseline and track future mutation work separately.
 
+### 2026-04-26 — AOS Connectors to Workflows/AppForge/AOU (Teams contract update)
+
+Lane: `AOS next connector wave`
+Branch: `codex/aos-updates-and-patching-verified`
+Shared contract change in progress: `aos-teams` is being narrowed to truthful surfaced commands only. Public manifest/capability surface is `team.list`, `channel.list`, `channel.create`, `meeting.list`, and `meeting.create`; delegated-only or unsupported app-only flows such as chat/channel message posting, Adaptive Cards, and file upload are being removed from the exposed contract instead of left as fake writes.
+Operator key contract: `TEAMS_TENANT_ID`, `TEAMS_CLIENT_ID`, and `TEAMS_CLIENT_SECRET` remain primary auth service keys, and `TEAMS_TEAM_ID` plus `TEAMS_USER_ID` are now treated as operator-controlled linking keys before local env fallback in the harness.
+Workflows/AppForge/AOU reaction: consume the narrowed Teams manifest/capability set only; do not assume message/chat/card/file write actions exist until a future connector update advertises them explicitly.
+
+### 2026-04-26 — AOS Connectors Verified Wave
+
+Lane: `AOS next connector wave`
+Branch/status: `codex/aos-updates-and-patching-verified`, verified connector wave committed in this lane snapshot.
+Bus: acked `tm-20260426121155-p07tc6` and `tm-20260426123212-bze1az`; posted status `tm-20260426123306-1hcqmo`; posted all-lane contract summary `tm-20260426123319-v4x6t5`; posted branch corrections `tm-20260426123419-4f2lw5` and `tm-20260426123732-j958f8`; AOS inbox currently has no unacked messages or tasks.
+Owned connector directories touched/verified: `aos-airtable`, `aos-monday`, `aos-hubspot`, `aos-dart`, `aos-zapier`, `aos-n8n`, `aos-hootsuite`, `aos-slack`, `aos-teams`, `aos-buffer`, `aos-discord-workflow`.
+Shared contract changes: operator service keys are now first-class link credentials across the patched connectors; public integration surface remains connector manifests, permissions, command capabilities, and `action_class`. Teams is narrowed to team/channel/meeting commands only, Buffer publish commands are preview-only, and Discord webhook sends may use the webhook URL without requiring a bot token.
+Workflows/AppForge/AOU reaction: consume connector manifests/capabilities only; do not infer private harness internals or assume scaffolded/preview writes are live. AOU should treat this wave as real connector substrate with noted preview-only limitations.
+
 ### 2026-04-26 — Master Threadmaster Roster
 
 Current active core threadmasters: AppForge 2.0, Work flow building master, AOU Stub Finder, and Compare OpenClaw 4.24 features. Treat the Workflows threadmaster as the master coordinator for cross-project lane awareness while it continues implementing the workflow canvas/runtime.
@@ -200,6 +217,25 @@ Current active core threadmasters: AppForge 2.0, Work flow building master, AOU 
 Lane: OpenClaw 4.24 realtime/browser/marketplace comparison. Branch/commit: `codex/aos-next-connector-wave` at `ad3fb0b9`. Owned files/directories for this lane: `ops/THREADMASTER_COORDINATION.md` for coordination updates; future comparison artifacts under `ops/**` only unless the board is updated first. Shared contract changes: none yet. Workflows/AppForge/AOU reaction: proposed direction is browser harness first, provider-neutral realtime voice substrate second, then Google Meet as a marketplace-distributed capability plugin; no implementation dependency is active until a follow-up plan claims specific files/contracts.
 
 ## Verification Snapshot
+
+Latest AOS focused verification after threadmaster bus adoption:
+
+- `pnpm threadmaster:status`
+- `pnpm threadmaster:list --lane aos --unacked`
+- `pnpm threadmaster:task-list --lane aos`
+- Isolated harness sweep, one connector `agent-harness` at a time:
+  - `aos-airtable`: 24 passed
+  - `aos-monday`: 15 passed
+  - `aos-hubspot`: 24 passed
+  - `aos-dart`: 11 passed
+  - `aos-zapier`: 13 passed
+  - `aos-n8n`: 12 passed
+  - `aos-hootsuite`: 14 passed
+  - `aos-slack`: 16 passed
+  - `aos-teams`: 13 passed
+  - `aos-buffer`: 15 passed
+  - `aos-discord-workflow`: 13 passed
+- `python -m json.tool` passed for all connector manifests above.
 
 Latest AppForge focused verification after rebase onto `origin/dev`:
 

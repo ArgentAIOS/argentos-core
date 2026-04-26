@@ -9,8 +9,10 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from click.testing import CliRunner
+import pytest
 
 from cli_aos.hootsuite.cli import cli
+from cli_aos.hootsuite import service_keys as hootsuite_service_keys
 
 
 HARNESS_ROOT = Path(__file__).resolve().parents[1]
@@ -162,6 +164,27 @@ def invoke_json(args: list[str]) -> dict[str, Any]:
     return json.loads(result.output)
 
 
+def invoke_json_with_obj(args: list[str], *, obj: dict[str, Any]) -> dict[str, Any]:
+    result = CliRunner().invoke(cli, ["--json", *args], obj=obj)
+    assert result.exit_code == 0, result.output
+    return json.loads(result.output)
+
+
+@pytest.fixture(autouse=True)
+def disable_repo_service_key_resolution(monkeypatch):
+    hootsuite_service_keys.resolve_service_key.cache_clear()
+    monkeypatch.setattr(hootsuite_service_keys, "resolve_service_key", lambda variable: None)
+
+
+def test_help_advertises_required_global_flags_and_modes():
+    result = CliRunner().invoke(cli, ["--help"])
+    assert result.exit_code == 0, result.output
+    assert "--json" in result.output
+    assert "--mode" in result.output
+    assert "--verbose" in result.output
+    assert "[readonly|write|full|admin]" in result.output
+
+
 def test_manifest_and_permissions_are_in_sync():
     manifest = json.loads(CONNECTOR_PATH.read_text())
     permissions = json.loads(PERMISSIONS_PATH.read_text())["permissions"]
@@ -169,14 +192,31 @@ def test_manifest_and_permissions_are_in_sync():
     assert set(command_ids) == set(permissions.keys())
     assert manifest["scope"]["kind"] == "social-scheduling"
     assert "message.schedule" in command_ids
+    assert manifest["scope"]["commandDefaults"]["social_profile.list"]["args"] == ["HOOTSUITE_ORGANIZATION_ID"]
+    assert manifest["scope"]["commandDefaults"]["message.list"]["args"] == ["HOOTSUITE_SOCIAL_PROFILE_ID"]
 
 
 def test_capabilities_exposes_manifest():
     payload = invoke_json(["capabilities"])
     assert payload["tool"] == "aos-hootsuite"
+    assert payload["meta"]["version"] == "0.1.0"
     assert payload["data"]["backend"] == "hootsuite-rest-api"
+    assert payload["data"]["modes"] == ["readonly", "write", "full", "admin"]
+    assert payload["data"]["write_support"]["scaffold_only"] is True
     assert "organization.read" in json.dumps(payload["data"])
-    assert "message.schedule" in json.dumps(payload["data"])
+    assert "scaffolded Hootsuite outbound message schedule" in json.dumps(payload["data"])
+
+
+def test_json_error_envelope_includes_meta_for_permission_denied():
+    result = CliRunner().invoke(cli, ["--json", "message", "schedule", "Launch post"])
+    assert result.exit_code == 3, result.output
+    payload = json.loads(result.output)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "PERMISSION_DENIED"
+    assert payload["meta"]["mode"] == "readonly"
+    assert payload["meta"]["version"] == "0.1.0"
+    assert "duration_ms" in payload["meta"]
+    assert "timestamp" in payload["meta"]
 
 
 def test_health_requires_access_token(monkeypatch):
@@ -206,6 +246,7 @@ def test_config_show_redacts_and_surfaces_scope(monkeypatch):
     payload = invoke_json(["config", "show"])
     data = payload["data"]
     assert "very-secret-token" not in json.dumps(data)
+    assert data["auth"]["access_token_source"] == "env_fallback"
     assert data["scope"]["access_token"] == "<redacted>"
     assert data["runtime"]["implementation_mode"] == "live_read_with_scaffolded_writes"
     assert data["runtime"]["command_defaults"]["organization.read"]["args"][0] == "HOOTSUITE_ORGANIZATION_ID"
@@ -213,6 +254,18 @@ def test_config_show_redacts_and_surfaces_scope(monkeypatch):
     assert data["runtime"]["picker_scopes"]["social_profile"]["selected"]["social_profile_id"] == "sp-1"
     assert data["runtime"]["picker_scopes"]["team"]["selected"]["team_id"] == "team-1"
     assert data["runtime"]["picker_scopes"]["message"]["selected"]["message_id"] == "msg-1"
+
+
+def test_operator_service_key_context_wins_over_env_fallback(monkeypatch):
+    with mock_hootsuite_server() as server:
+        monkeypatch.setenv("HOOTSUITE_ACCESS_TOKEN", "env-token")
+        monkeypatch.setenv("HOOTSUITE_BASE_URL", server["base_url"])
+        payload = invoke_json_with_obj(
+            ["me", "read"],
+            obj={"service_keys": {"HOOTSUITE_ACCESS_TOKEN": "operator-token"}},
+        )
+        assert payload["data"]["member"]["fullName"] == "Jane Social"
+        assert server["requests"][0]["auth"] == "Bearer operator-token"
 
 
 def test_member_read_returns_scope_preview(monkeypatch):

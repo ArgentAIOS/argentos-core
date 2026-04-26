@@ -13,7 +13,6 @@ from .output import emit, failure, success
 from .runtime import (
     capabilities_snapshot,
     channel_list_result,
-    channel_create_result,
     config_snapshot,
     doctor_snapshot,
     health_snapshot,
@@ -188,68 +187,3 @@ def meeting_create(ctx: click.Context, items: tuple[str, ...]) -> None:
     _set_command(ctx, "meeting.create")
     require_mode(ctx, "meeting.create")
     _emit_write(ctx, "meeting.create", items)
-
-
-@cli.group("message")
-def message_group() -> None:
-    pass
-
-
-@message_group.command("send")
-@click.argument("items", nargs=-1)
-@click.pass_context
-def message_send(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _set_command(ctx, "message.send")
-    require_mode(ctx, "message.send")
-    _emit_write(ctx, "message.send", items)
-
-
-@message_group.command("reply")
-@click.argument("items", nargs=-1)
-@click.pass_context
-def message_reply(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _set_command(ctx, "message.reply")
-    require_mode(ctx, "message.reply")
-    _emit_write(ctx, "message.reply", items)
-
-
-@cli.group("chat")
-def chat_group() -> None:
-    pass
-
-
-@chat_group.command("send")
-@click.argument("items", nargs=-1)
-@click.pass_context
-def chat_send(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _set_command(ctx, "chat.send")
-    require_mode(ctx, "chat.send")
-    _emit_write(ctx, "chat.send", items)
-
-
-@cli.group("file")
-def file_group() -> None:
-    pass
-
-
-@file_group.command("upload")
-@click.argument("items", nargs=-1)
-@click.pass_context
-def file_upload(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _set_command(ctx, "file.upload")
-    require_mode(ctx, "file.upload")
-    _emit_write(ctx, "file.upload", items)
-
-
-@cli.group("adaptive-card")
-def adaptive_card_group() -> None:
-    pass
-
-
-@adaptive_card_group.command("send")
-@click.argument("items", nargs=-1)
-@click.pass_context
-def adaptive_card_send(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _set_command(ctx, "adaptive_card.send")
-    require_mode(ctx, "adaptive_card.send")
-    _emit_write(ctx, "adaptive_card.send", items)

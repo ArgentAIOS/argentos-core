@@ -1,22 +1,22 @@
 {
   "tool": "aos-buffer",
-  "backend": "buffer-rest-api",
+  "backend": "buffer-graphql-api",
   "manifest_schema_version": "1.0.0",
   "scope": {
     "kind": "social-media",
-    "surface": "account-channel-profile-post",
+    "surface": "account-organization-channel-post",
     "scaffold_only": false,
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": false,
     "workerFields": [
       "account",
+      "organization_id",
+      "channel_id",
       "profile_id",
+      "post_id",
       "text",
-      "media_url",
-      "scheduled_at",
-      "channel_ids",
-      "link"
+      "scheduled_at"
     ],
     "worker_visible_actions": [
       "account.read",
@@ -39,8 +39,32 @@
         "expressionEnabled": false,
         "valueType": "string",
         "applies_to": ["account.read"],
-        "placeholder": "connected Buffer account",
-        "description": "Refers to the connected Buffer account (read-only, populated on query)."
+        "placeholder": "authenticated Buffer account",
+        "description": "Refers to the authenticated Buffer account (read-only, populated on query)."
+      },
+      {
+        "id": "organization_id",
+        "label": "Organization ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["channel.list", "profile.list", "post.list", "post.read"],
+        "placeholder": "org_123",
+        "description": "Buffer organization ID used to scope channel and post discovery. Optional, but recommended when the account belongs to more than one organization."
+      },
+      {
+        "id": "channel_id",
+        "label": "Channel ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["channel.read", "post.list", "post.create_draft", "post.schedule"],
+        "placeholder": "chan_123",
+        "description": "Buffer channel ID. Required to read one channel directly and used to scope post discovery or write previews."
       },
       {
         "id": "profile_id",
@@ -50,9 +74,21 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": ["profile.list", "post.list", "post.create_draft", "post.schedule"],
-        "placeholder": "4eb854340acb04e870000010",
-        "description": "Buffer social profile ID (Twitter, Facebook, LinkedIn, Instagram, etc.). Required for most post operations."
+        "applies_to": ["profile.read", "post.list"],
+        "placeholder": "chan_123",
+        "description": "Legacy alias for a Buffer channel ID. Buffer's current GraphQL API calls these channels, but this field is retained for worker compatibility."
+      },
+      {
+        "id": "post_id",
+        "label": "Post ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["post.read"],
+        "placeholder": "post_123",
+        "description": "Buffer post ID used to search for a single post within the accessible organization scope."
       },
       {
         "id": "text",
@@ -64,20 +100,8 @@
         "valueType": "string",
         "rows": 4,
         "applies_to": ["post.create_draft", "post.schedule"],
-        "placeholder": "Draft launch announcement",
-        "description": "The post content text. Supports platform-specific markdown and mentions."
-      },
-      {
-        "id": "media_url",
-        "label": "Media URL",
-        "type": "text",
-        "renderAs": "text",
-        "required": false,
-        "expressionEnabled": true,
-        "valueType": "string",
-        "applies_to": ["post.create_draft", "post.schedule"],
-        "placeholder": "https://cdn.example.com/image.png",
-        "description": "URL to image or video to attach to the post."
+        "placeholder": "Launch announcement draft",
+        "description": "The text that would be used in the Buffer `createPost` mutation preview."
       },
       {
         "id": "scheduled_at",
@@ -89,31 +113,7 @@
         "valueType": "datetime",
         "applies_to": ["post.schedule"],
         "placeholder": "2026-04-01T09:00:00Z",
-        "description": "ISO 8601 timestamp for when to publish the post. Leave blank to publish immediately."
-      },
-      {
-        "id": "channel_ids",
-        "label": "Channel IDs",
-        "type": "text",
-        "renderAs": "text",
-        "required": false,
-        "expressionEnabled": true,
-        "valueType": "string",
-        "applies_to": ["post.create_draft", "post.schedule"],
-        "placeholder": "chan_1,chan_2",
-        "description": "Comma-separated list of Buffer channel IDs to post to. Can be a single channel or multiple."
-      },
-      {
-        "id": "link",
-        "label": "Link",
-        "type": "text",
-        "renderAs": "text",
-        "required": false,
-        "expressionEnabled": true,
-        "valueType": "string",
-        "applies_to": ["post.create_draft", "post.schedule"],
-        "placeholder": "https://argentos.ai/blog/launch",
-        "description": "URL to include in the post as a clickable link (for news feeds, etc.)."
+        "description": "ISO 8601 UTC timestamp that would be passed as `dueAt` in the previewed Buffer schedule mutation."
       }
     ],
     "commandDefaults": {
@@ -122,6 +122,7 @@
       },
       "channel.list": {
         "selection_surface": "channel",
+        "args": ["BUFFER_ORGANIZATION_ID"],
         "limit": 10
       },
       "channel.read": {
@@ -130,6 +131,7 @@
       },
       "profile.list": {
         "selection_surface": "profile",
+        "args": ["BUFFER_ORGANIZATION_ID"],
         "limit": 10
       },
       "profile.read": {
@@ -138,20 +140,20 @@
       },
       "post.list": {
         "selection_surface": "post",
-        "args": ["BUFFER_PROFILE_ID"],
+        "args": ["BUFFER_ORGANIZATION_ID", "BUFFER_CHANNEL_ID"],
         "limit": 10
       },
       "post.read": {
         "selection_surface": "post",
-        "args": ["BUFFER_POST_ID"]
+        "args": ["BUFFER_POST_ID", "BUFFER_ORGANIZATION_ID"]
       },
       "post.create_draft": {
         "selection_surface": "post",
-        "args": ["BUFFER_PROFILE_ID", "BUFFER_POST_TEXT"]
+        "args": ["BUFFER_CHANNEL_ID", "BUFFER_POST_TEXT"]
       },
       "post.schedule": {
         "selection_surface": "post",
-        "args": ["BUFFER_PROFILE_ID", "BUFFER_POST_TEXT"]
+        "args": ["BUFFER_CHANNEL_ID", "BUFFER_POST_TEXT"]
       }
     },
     "pickerHints": {
@@ -160,51 +162,28 @@
         "selection_surface": "account",
         "resource": "buffer.account",
         "source_command": "account.read",
-        "source_fields": ["id", "name", "email", "timezone", "locale"]
+        "source_fields": ["id", "name", "email", "timezone", "organizations"]
       },
       "channel": {
         "kind": "channel",
         "selection_surface": "channel",
         "resource": "buffer.channel",
         "source_command": "channel.list",
-        "source_fields": [
-          "id",
-          "service",
-          "service_username",
-          "formatted_username",
-          "default",
-          "timezone"
-        ]
+        "source_fields": ["id", "name", "service", "organization_id", "isQueuePaused"]
       },
       "profile": {
         "kind": "profile",
         "selection_surface": "profile",
-        "resource": "buffer.profile",
+        "resource": "buffer.channel",
         "source_command": "profile.list",
-        "source_fields": [
-          "id",
-          "service",
-          "service_username",
-          "formatted_username",
-          "default",
-          "timezone"
-        ]
+        "source_fields": ["id", "name", "service", "organization_id", "isQueuePaused"]
       },
       "post": {
         "kind": "post",
         "selection_surface": "post",
         "resource": "buffer.post",
         "source_command": "post.list",
-        "source_fields": [
-          "id",
-          "text",
-          "status",
-          "profile_id",
-          "scheduled_at",
-          "sent_at",
-          "media_url",
-          "link"
-        ]
+        "source_fields": ["id", "text", "status", "channelId", "dueAt", "organization_id"]
       }
     }
   },
@@ -219,17 +198,18 @@
     "required": true,
     "service_keys": ["BUFFER_API_KEY", "BUFFER_ACCESS_TOKEN"],
     "interactive_setup": [
-      "Create or choose a Buffer API token for the workspace or account.",
+      "Create or choose a Buffer API key for the operator-controlled account.",
       "Add BUFFER_API_KEY or BUFFER_ACCESS_TOKEN in API Keys before enabling live reads.",
-      "Optional: set BUFFER_BASE_URL to pin a non-default Buffer REST host.",
-      "The connector uses the current public /user and /profiles REST surfaces for account, channel, and profile reads.",
-      "Post list/read/create_draft/schedule remain explicit scaffold surfaces until the current Buffer post API contract is confirmed."
+      "Optional: set BUFFER_ORGANIZATION_ID, BUFFER_CHANNEL_ID, BUFFER_PROFILE_ID, and BUFFER_POST_ID as operator linking keys to stabilize worker scope.",
+      "Optional: set BUFFER_BASE_URL only if you need to point the harness at a non-default Buffer GraphQL host.",
+      "Live reads use Buffer's GraphQL account, channel, and posts surfaces.",
+      "post.create_draft and post.schedule remain write-mode mutation previews so the harness does not perform social publishing writes."
     ]
   },
   "commands": [
     {
       "id": "account.read",
-      "summary": "Read Buffer account metadata",
+      "summary": "Read Buffer account metadata and organizations",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "account",
@@ -253,7 +233,7 @@
     },
     {
       "id": "health",
-      "summary": "Report connector health and Buffer API readiness",
+      "summary": "Report connector health and Buffer GraphQL readiness",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "connector",
@@ -265,22 +245,6 @@
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "connector",
-      "action_class": "read"
-    },
-    {
-      "id": "profile.list",
-      "summary": "List Buffer profiles",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "profile",
-      "action_class": "read"
-    },
-    {
-      "id": "profile.read",
-      "summary": "Read a Buffer profile",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "profile",
       "action_class": "read"
     },
     {
@@ -300,8 +264,24 @@
       "action_class": "read"
     },
     {
+      "id": "profile.list",
+      "summary": "List Buffer profile aliases backed by channels",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "profile",
+      "action_class": "read"
+    },
+    {
+      "id": "profile.read",
+      "summary": "Read a Buffer profile alias backed by a channel",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "profile",
+      "action_class": "read"
+    },
+    {
       "id": "post.list",
-      "summary": "List Buffer posts for a profile",
+      "summary": "List Buffer posts",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "post",
@@ -309,7 +289,7 @@
     },
     {
       "id": "post.read",
-      "summary": "Read a Buffer post",
+      "summary": "Read a Buffer post by scanning the accessible organization scope",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "post",
@@ -317,7 +297,7 @@
     },
     {
       "id": "post.create_draft",
-      "summary": "Create a Buffer post draft scaffold payload",
+      "summary": "Preview a Buffer draft-post mutation without executing it",
       "required_mode": "write",
       "supports_json": true,
       "resource": "post",
@@ -325,7 +305,7 @@
     },
     {
       "id": "post.schedule",
-      "summary": "Schedule a Buffer post scaffold payload",
+      "summary": "Preview a Buffer scheduled-post mutation without executing it",
       "required_mode": "write",
       "supports_json": true,
       "resource": "post",

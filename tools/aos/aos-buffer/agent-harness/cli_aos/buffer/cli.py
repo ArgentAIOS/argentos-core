@@ -1,173 +1,298 @@
 from __future__ import annotations
 
-from typing import Any
+import json
+import time
 
 import click
 
-from .output import dumps
-from . import runtime
+from . import __version__
+from .config import config_snapshot
+from .constants import MODE_ORDER, PERMISSIONS_PATH
+from .errors import CliError
+from .output import emit, failure, success
+from .runtime import (
+    account_read_result,
+    capabilities_snapshot,
+    channel_list_result,
+    channel_read_result,
+    doctor_snapshot,
+    health_snapshot,
+    post_list_result,
+    post_read_result,
+    scaffold_write_result,
+)
 
 
-@click.group(context_settings={"help_option_names": ["-h", "--help"]})
-@click.option("--json/--no-json", "json_output", default=True, show_default=True)
-@click.option("--mode", type=click.Choice(["readonly", "write"]), default="readonly", show_default=True)
+def _mode_allows(actual: str, required: str) -> bool:
+    return MODE_ORDER.index(actual) >= MODE_ORDER.index(required)
+
+
+def _load_permissions() -> dict[str, str]:
+    payload = json.loads(PERMISSIONS_PATH.read_text())
+    return payload.get("permissions", {})
+
+
+def require_mode(ctx: click.Context, command_id: str) -> None:
+    required = _load_permissions().get(command_id, "admin")
+    mode = ctx.obj["mode"]
+    if _mode_allows(mode, required):
+        return
+    raise CliError(
+        code="PERMISSION_DENIED",
+        message=f"Command requires mode={required}",
+        exit_code=3,
+        details={"required_mode": required, "actual_mode": mode},
+    )
+
+
+class AosGroup(click.Group):
+    def invoke(self, ctx: click.Context):
+        try:
+            return super().invoke(ctx)
+        except CliError as err:
+            emit(
+                failure(
+                    command=ctx.obj.get("_command_id", "unknown") if ctx.obj else "unknown",
+                    mode=ctx.obj.get("mode", "unknown") if ctx.obj else "unknown",
+                    started=ctx.obj.get("started", time.time()) if ctx.obj else time.time(),
+                    error={"code": err.code, "message": err.message, "details": err.details},
+                ),
+                as_json=ctx.obj.get("json", True) if ctx.obj else True,
+            )
+            ctx.exit(err.exit_code)
+        except click.ClickException as err:
+            emit(
+                failure(
+                    command=ctx.obj.get("_command_id", "unknown") if ctx.obj else "unknown",
+                    mode=ctx.obj.get("mode", "unknown") if ctx.obj else "unknown",
+                    started=ctx.obj.get("started", time.time()) if ctx.obj else time.time(),
+                    error={"code": "INVALID_USAGE", "message": str(err), "details": {}},
+                ),
+                as_json=ctx.obj.get("json", True) if ctx.obj else True,
+            )
+            ctx.exit(2)
+
+
+def _set_command(ctx: click.Context, command_id: str) -> None:
+    ctx.obj["_command_id"] = command_id
+
+
+def _emit_success(ctx: click.Context, command_id: str, data: dict[str, object]) -> None:
+    emit(
+        success(command=command_id, mode=ctx.obj["mode"], started=ctx.obj["started"], data=data),
+        as_json=ctx.obj["json"],
+    )
+
+
+@click.group(cls=AosGroup)
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON output")
+@click.option("--mode", type=click.Choice(MODE_ORDER), default="readonly", show_default=True)
+@click.option("--verbose", is_flag=True, help="Verbose diagnostics")
+@click.version_option(__version__)
 @click.pass_context
-def cli(ctx: click.Context, json_output: bool, mode: str) -> None:
+def cli(ctx: click.Context, as_json: bool, mode: str, verbose: bool) -> None:
     ctx.ensure_object(dict)
-    ctx.obj["json_output"] = json_output
-    ctx.obj["mode"] = mode
+    ctx.obj.update(
+        {
+            "json": as_json,
+            "mode": mode,
+            "verbose": verbose,
+            "started": time.time(),
+            "version": __version__,
+            "_command_id": "unknown",
+        }
+    )
 
 
-def emit(ctx: click.Context, payload: dict[str, Any], *, exit_code: int = 0) -> None:
-    if ctx.obj.get("json_output", True):
-        click.echo(dumps(payload))
-    else:
-        click.echo(payload)
-    raise SystemExit(exit_code)
-
-
-@cli.command()
+@cli.command("capabilities")
 @click.pass_context
 def capabilities(ctx: click.Context) -> None:
-    emit(ctx, runtime.build_capabilities_payload())
+    _set_command(ctx, "capabilities")
+    require_mode(ctx, "capabilities")
+    _emit_success(ctx, "capabilities", capabilities_snapshot())
 
 
-@cli.group()
-@click.pass_context
-def config(ctx: click.Context) -> None:
-    del ctx
+@cli.group("config")
+def config_group() -> None:
+    pass
 
 
-@config.command(name="show")
+@config_group.command("show")
 @click.pass_context
 def config_show(ctx: click.Context) -> None:
-    emit(ctx, runtime.build_config_show_payload())
+    _set_command(ctx, "config.show")
+    require_mode(ctx, "config.show")
+    _emit_success(ctx, "config.show", config_snapshot(ctx.obj))
 
 
-@cli.command()
+@cli.command("health")
 @click.pass_context
 def health(ctx: click.Context) -> None:
-    emit(ctx, runtime.build_health_payload())
+    _set_command(ctx, "health")
+    require_mode(ctx, "health")
+    _emit_success(ctx, "health", health_snapshot(ctx.obj))
 
 
-@cli.command()
+@cli.command("doctor")
 @click.pass_context
 def doctor(ctx: click.Context) -> None:
-    emit(ctx, runtime.build_doctor_payload())
+    _set_command(ctx, "doctor")
+    require_mode(ctx, "doctor")
+    _emit_success(ctx, "doctor", doctor_snapshot(ctx.obj))
 
 
-@cli.group()
-@click.pass_context
-def account(ctx: click.Context) -> None:
-    del ctx
+@cli.group("account")
+def account_group() -> None:
+    pass
 
 
-@account.command(name="read")
+@account_group.command("read")
 @click.pass_context
 def account_read(ctx: click.Context) -> None:
-    emit(ctx, runtime.build_account_read_payload())
+    _set_command(ctx, "account.read")
+    require_mode(ctx, "account.read")
+    _emit_success(ctx, "account.read", account_read_result(ctx.obj))
 
 
-@cli.group()
-@click.pass_context
-def channel(ctx: click.Context) -> None:
-    del ctx
+@cli.group("channel")
+def channel_group() -> None:
+    pass
 
 
-@channel.command(name="list")
+@channel_group.command("list")
+@click.option("--organization-id", default=None, help="Optional organization scope")
 @click.option("--limit", type=int, default=10, show_default=True)
 @click.pass_context
-def channel_list(ctx: click.Context, limit: int) -> None:
-    emit(ctx, runtime.build_channel_list_payload(limit=limit))
+def channel_list(ctx: click.Context, organization_id: str | None, limit: int) -> None:
+    _set_command(ctx, "channel.list")
+    require_mode(ctx, "channel.list")
+    _emit_success(ctx, "channel.list", channel_list_result(ctx.obj, organization_id=organization_id, limit=limit))
 
 
-@channel.command(name="read")
-@click.option("--channel-id", type=str, default=None)
+@channel_group.command("read")
+@click.argument("channel_id", required=False)
 @click.pass_context
 def channel_read(ctx: click.Context, channel_id: str | None) -> None:
-    emit(ctx, runtime.build_channel_read_payload(channel_id=channel_id))
+    _set_command(ctx, "channel.read")
+    require_mode(ctx, "channel.read")
+    _emit_success(ctx, "channel.read", channel_read_result(ctx.obj, channel_id=channel_id))
 
 
-@cli.group()
-@click.pass_context
-def profile(ctx: click.Context) -> None:
-    del ctx
+@cli.group("profile")
+def profile_group() -> None:
+    pass
 
 
-@profile.command(name="list")
+@profile_group.command("list")
+@click.option("--organization-id", default=None, help="Optional organization scope")
 @click.option("--limit", type=int, default=10, show_default=True)
 @click.pass_context
-def profile_list(ctx: click.Context, limit: int) -> None:
-    emit(ctx, runtime.build_profile_list_payload(limit=limit))
+def profile_list(ctx: click.Context, organization_id: str | None, limit: int) -> None:
+    _set_command(ctx, "profile.list")
+    require_mode(ctx, "profile.list")
+    _emit_success(
+        ctx,
+        "profile.list",
+        channel_list_result(ctx.obj, organization_id=organization_id, limit=limit, profile_alias=True),
+    )
 
 
-@profile.command(name="read")
-@click.option("--profile-id", type=str, default=None)
+@profile_group.command("read")
+@click.argument("profile_id", required=False)
 @click.pass_context
 def profile_read(ctx: click.Context, profile_id: str | None) -> None:
-    emit(ctx, runtime.build_profile_read_payload(profile_id=profile_id))
+    _set_command(ctx, "profile.read")
+    require_mode(ctx, "profile.read")
+    _emit_success(ctx, "profile.read", channel_read_result(ctx.obj, profile_id=profile_id, profile_alias=True))
 
 
-@cli.group()
+@cli.group("post")
+def post_group() -> None:
+    pass
+
+
+@post_group.command("list")
+@click.option("--organization-id", default=None, help="Optional organization scope")
+@click.option("--channel-id", default=None, help="Optional channel scope")
+@click.option("--profile-id", default=None, help="Legacy channel alias scope")
+@click.option("--status", default=None, help="Optional comma-separated Buffer post status filter")
+@click.option("--limit", default=10, show_default=True, type=int)
 @click.pass_context
-def post(ctx: click.Context) -> None:
-    del ctx
+def post_list(
+    ctx: click.Context,
+    organization_id: str | None,
+    channel_id: str | None,
+    profile_id: str | None,
+    status: str | None,
+    limit: int,
+) -> None:
+    _set_command(ctx, "post.list")
+    require_mode(ctx, "post.list")
+    _emit_success(
+        ctx,
+        "post.list",
+        post_list_result(
+            ctx.obj,
+            organization_id=organization_id,
+            channel_id=channel_id,
+            profile_id=profile_id,
+            status=status,
+            limit=limit,
+        ),
+    )
 
 
-@post.command(name="list")
-@click.option("--profile-id", type=str, default=None)
-@click.option("--status", type=str, default=None)
-@click.option("--limit", type=int, default=10, show_default=True)
-@click.pass_context
-def post_list(ctx: click.Context, profile_id: str | None, status: str | None, limit: int) -> None:
-    emit(ctx, runtime.build_post_list_payload(profile_id=profile_id, status=status, limit=limit))
-
-
-@post.command(name="read")
-@click.option("--post-id", type=str, default=None)
+@post_group.command("read")
+@click.argument("post_id", required=False)
 @click.pass_context
 def post_read(ctx: click.Context, post_id: str | None) -> None:
-    emit(ctx, runtime.build_post_read_payload(post_id=post_id))
+    _set_command(ctx, "post.read")
+    require_mode(ctx, "post.read")
+    _emit_success(ctx, "post.read", post_read_result(ctx.obj, post_id=post_id))
 
 
-@post.command(name="create-draft")
+@post_group.command("create-draft")
 @click.argument("text", required=False)
-@click.option("--channel-id", type=str, default=None)
-@click.option("--due-at", type=str, default=None)
+@click.option("--channel-id", default=None, help="Target channel ID")
+@click.option("--profile-id", default=None, help="Legacy channel alias")
 @click.pass_context
-def post_create_draft(ctx: click.Context, text: str | None, channel_id: str | None, due_at: str | None) -> None:
-    if ctx.obj.get("mode") == "write":
-        emit(ctx, {
-            "tool": "aos-buffer",
-            "backend": "buffer-rest-api",
-            "data": {
-                "status": "scaffold_write_only",
-                "command": "post.create_draft",
-                "reason": "Buffer post creation remains scaffolded until the current public post contract is confirmed.",
-                "scope_preview": {"selection_surface": "post", "command_id": "post.create_draft", "channel_id": channel_id, "post_text": text},
-            },
-        })
-    emit(ctx, runtime.build_post_create_draft_payload(channel_id=channel_id, text=text, due_at=due_at))
+def post_create_draft(ctx: click.Context, text: str | None, channel_id: str | None, profile_id: str | None) -> None:
+    _set_command(ctx, "post.create_draft")
+    require_mode(ctx, "post.create_draft")
+    _emit_success(
+        ctx,
+        "post.create_draft",
+        scaffold_write_result(ctx.obj, command_id="post.create_draft", channel_id=channel_id, profile_id=profile_id, text=text),
+    )
 
 
-@post.command(name="schedule")
+@post_group.command("schedule")
 @click.argument("text", required=False)
-@click.option("--channel-id", type=str, default=None)
-@click.option("--due-at", type=str, default=None)
+@click.option("--channel-id", default=None, help="Target channel ID")
+@click.option("--profile-id", default=None, help="Legacy channel alias")
+@click.option("--due-at", default=None, help="ISO-8601 UTC timestamp")
 @click.pass_context
-def post_schedule(ctx: click.Context, text: str | None, channel_id: str | None, due_at: str | None) -> None:
-    if ctx.obj.get("mode") == "write":
-        emit(ctx, {
-            "tool": "aos-buffer",
-            "backend": "buffer-rest-api",
-            "data": {
-                "status": "scaffold_write_only",
-                "command": "post.schedule",
-                "reason": "Buffer post scheduling remains scaffolded until the current public post contract is confirmed.",
-                "scope_preview": {"selection_surface": "post", "command_id": "post.schedule", "channel_id": channel_id, "post_text": text},
-            },
-        })
-    emit(ctx, runtime.build_post_schedule_payload(channel_id=channel_id, text=text, due_at=due_at))
+def post_schedule(
+    ctx: click.Context,
+    text: str | None,
+    channel_id: str | None,
+    profile_id: str | None,
+    due_at: str | None,
+) -> None:
+    _set_command(ctx, "post.schedule")
+    require_mode(ctx, "post.schedule")
+    _emit_success(
+        ctx,
+        "post.schedule",
+        scaffold_write_result(
+            ctx.obj,
+            command_id="post.schedule",
+            channel_id=channel_id,
+            profile_id=profile_id,
+            text=text,
+            due_at=due_at,
+        ),
+    )
 
 
 if __name__ == "__main__":
