@@ -255,6 +255,10 @@ Lane: `openclaw`. Branch: `codex/openclaw-audio-process` rebased/reconstructed f
 
 Lane: `openclaw`. Branch: `codex/openclaw-audio-process` rebased onto `origin/dev` / `6805cc0c`, with process-wrapper commit replayed as `6b79a660` before this slice. Owned files for this slice: `extensions/voice-call/src/realtime-voice/local-audio-process-session.ts`, `extensions/voice-call/src/realtime-voice/local-audio-process-session.test.ts`, `extensions/voice-call/src/realtime-voice/index.ts`, and this coordination note only. Shared contract change: add a gated local audio operator session factory that connects the existing realtime operator session to process input/output adapters or dry-run synthetic/capture adapters while requiring `ARGENT_REALTIME_AUDIO_PROCESS_ENABLE=1` and `ARGENT_REALTIME_AUDIO_CONFIRM_LIVE=1`. Boundaries: default disabled, tests do not touch live devices, no operator CLI wiring, no live mic/speaker support claim, and no Workflows/AppForge/AOS/schema/browser/Google Meet runtime or telephony default changes.
 
+### 2026-04-26 — OpenClaw Local Audio Live-Smoke Harness Wave
+
+Lane: `openclaw`. Branch: `codex/openclaw-audio-process` at `c7ec43ae` before this slice. Owned files for this slice: `extensions/voice-call/src/realtime-voice/local-audio-live-smoke.ts`, `extensions/voice-call/src/realtime-voice/local-audio-live-smoke.test.ts`, `extensions/voice-call/src/realtime-voice/index.ts`, and this coordination note only. Shared contract change: add a CLI-runnable local audio smoke harness that uses the gated local audio operator session in dry-run synthetic/capture mode by default, with optional `ARGENT_REALTIME_AUDIO_SMOKE_MODE=process` for explicit real-device attempts. Boundaries: `ARGENT_REALTIME_AUDIO_PROCESS_ENABLE=1` and `ARGENT_REALTIME_AUDIO_CONFIRM_LIVE=1` remain mandatory, no secrets are printed, no raw audio persistence unless `ARGENT_REALTIME_AUDIO_CAPTURE_PATH` is explicitly set, and this still does not claim always-on live operator voice support.
+
 ## Verification Snapshot
 
 Latest AppForge focused verification after rebase onto `origin/dev`:

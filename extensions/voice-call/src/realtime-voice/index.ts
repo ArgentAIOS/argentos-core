@@ -69,6 +69,12 @@ export {
   type RealtimeLocalAudioOperatorSessionParams,
 } from "./local-audio-process-session.js";
 export {
+  runRealtimeLocalAudioLiveSmoke,
+  type RealtimeLocalAudioLiveSmokeMode,
+  type RealtimeLocalAudioLiveSmokeOptions,
+  type RealtimeLocalAudioLiveSmokeResult,
+} from "./local-audio-live-smoke.js";
+export {
   createRealtimeVoiceOperatorSession,
   type RealtimeVoiceOperatorSession,
   type RealtimeVoiceOperatorSessionEvent,
