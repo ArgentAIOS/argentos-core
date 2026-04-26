@@ -1,29 +1,38 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import sys
+import time
 from typing import Any
 
 
-def success(*, command: str, mode: str, started: float, data: dict[str, Any]) -> dict[str, Any]:
+def _meta(*, mode: str, started: float, version: str) -> dict[str, Any]:
+    return {
+        "mode": mode,
+        "duration_ms": max(0, int((time.time() - started) * 1000)),
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "version": version,
+    }
+
+
+def success(*, command: str, mode: str, started: float, version: str, data: dict[str, Any]) -> dict[str, Any]:
     return {
         "ok": True,
         "tool": "aos-hootsuite",
         "command": command,
-        "mode": mode,
-        "started": started,
         "data": data,
+        "meta": _meta(mode=mode, started=started, version=version),
     }
 
 
-def failure(*, command: str, mode: str, started: float, error: dict[str, Any]) -> dict[str, Any]:
+def failure(*, command: str, mode: str, started: float, version: str, error: dict[str, Any]) -> dict[str, Any]:
     return {
         "ok": False,
         "tool": "aos-hootsuite",
         "command": command,
-        "mode": mode,
-        "started": started,
         "error": error,
+        "meta": _meta(mode=mode, started=started, version=version),
     }
 
 

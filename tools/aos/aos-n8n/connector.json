@@ -76,11 +76,11 @@
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": ["N8N_API_URL", "N8N_API_KEY"],
+    "service_keys": ["N8N_API_URL", "N8N_API_KEY", "N8N_WEBHOOK_BASE_URL"],
     "interactive_setup": [
       "Create or connect an n8n instance for the workspace you want this worker to use.",
-      "Add N8N_API_URL and N8N_API_KEY in API Keys.",
-      "Set N8N_WEBHOOK_BASE_URL to the public base used by the workflow.trigger webhook bridge.",
+      "Add N8N_API_URL, N8N_API_KEY, and N8N_WEBHOOK_BASE_URL in operator-controlled API Keys.",
+      "Use local N8N_API_URL, N8N_API_KEY, and N8N_WEBHOOK_BASE_URL environment variables only as harness fallbacks when operator keys are unavailable.",
       "workflow.list and workflow.status use the live n8n API read path.",
       "workflow.trigger posts a live webhook execution payload through the bridge."
     ]

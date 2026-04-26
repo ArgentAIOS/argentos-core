@@ -1,6 +1,6 @@
 # aos-hubspot
 
-`aos-hubspot` is an agent-native HubSpot connector with live CRM reads plus permission-gated write actions for the HubSpot object surface exposed by the AOS manifest.
+`aos-hubspot` is an agent-native HubSpot connector with live CRM reads plus permission-gated live write actions for the HubSpot object surface exposed by the AOS manifest.
 
 - Backend: `hubspot`
 - Interface: stable `aos-*` contract
@@ -27,7 +27,7 @@ Recommended environment variables:
 - `HUBSPOT_APP_ID`
 - `HUBSPOT_WEBHOOK_SECRET`
 
-The connector now prefers operator-controlled service keys for `HUBSPOT_ACCESS_TOKEN` and `HUBSPOT_PORTAL_ID`, with direct environment variables and legacy `AOS_HUBSPOT_*` names kept as fallbacks.
+The connector resolves `HUBSPOT_ACCESS_TOKEN` and `HUBSPOT_PORTAL_ID` from operator-controlled service keys first, with direct environment variables and legacy `AOS_HUBSPOT_*` names kept only as local harness fallbacks.
 
 `health` now checks both local configuration and a lightweight HubSpot API probe.
 
@@ -65,6 +65,6 @@ python3 aos-hubspot/installer/preflight_hubspot.py --require-auth --json
 
 ## First-Pass Notes
 
-- `capabilities`, `health`, and `config show` are implemented.
+- `capabilities`, `health`, `config show`, and `doctor` are implemented.
 - `owner.list`, `pipeline.list`, `contact.*` read paths, `company.*` read paths, `deal.*` read paths, and `ticket.*` read paths are live.
 - `owner.assign`, `contact.create`, `contact.update`, `company.create`, `company.update`, `deal.create`, `deal.update_stage`, `ticket.create`, `ticket.update_status`, and `note.create` now execute live HubSpot API mutations behind the existing permission gates.

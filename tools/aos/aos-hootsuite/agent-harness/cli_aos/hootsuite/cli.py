@@ -59,6 +59,7 @@ class AosGroup(click.Group):
                     command=ctx.obj.get("_command_id", "unknown") if ctx.obj else "unknown",
                     mode=ctx.obj.get("mode", "unknown") if ctx.obj else "unknown",
                     started=ctx.obj.get("started", time.time()) if ctx.obj else time.time(),
+                    version=ctx.obj.get("version", __version__) if ctx.obj else __version__,
                     error={"code": err.code, "message": err.message, "details": err.details or {}},
                 ),
                 as_json=ctx.obj.get("json", True) if ctx.obj else True,
@@ -70,6 +71,7 @@ class AosGroup(click.Group):
                     command=ctx.obj.get("_command_id", "unknown") if ctx.obj else "unknown",
                     mode=ctx.obj.get("mode", "unknown") if ctx.obj else "unknown",
                     started=ctx.obj.get("started", time.time()) if ctx.obj else time.time(),
+                    version=ctx.obj.get("version", __version__) if ctx.obj else __version__,
                     error={"code": "INVALID_USAGE", "message": str(err), "details": {}},
                 ),
                 as_json=ctx.obj.get("json", True) if ctx.obj else True,
@@ -82,7 +84,16 @@ def _set_command(ctx: click.Context, command_id: str) -> None:
 
 
 def _emit_success(ctx: click.Context, command_id: str, data: dict) -> None:
-    emit(success(command=command_id, mode=ctx.obj["mode"], started=ctx.obj["started"], data=data), as_json=ctx.obj["json"])
+    emit(
+        success(
+            command=command_id,
+            mode=ctx.obj["mode"],
+            started=ctx.obj["started"],
+            version=ctx.obj["version"],
+            data=data,
+        ),
+        as_json=ctx.obj["json"],
+    )
 
 
 @click.group(cls=AosGroup)

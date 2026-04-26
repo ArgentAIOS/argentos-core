@@ -13,3 +13,6 @@ This first pass gives ArgentOS a truthful Hootsuite surface for:
 
 `message.schedule` is included as a scaffold-only write command until publish approvals,
 artifact handling, and safety rules are ready for a live bridge.
+
+Operator-controlled service keys are the primary auth source for the connector.
+Local `HOOTSUITE_*` environment variables remain available only as harness fallback.

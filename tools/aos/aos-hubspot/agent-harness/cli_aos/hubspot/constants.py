@@ -29,13 +29,46 @@ AUTH_DESCRIPTOR = {
     "service_keys": [DEFAULT_ACCESS_TOKEN_ENV, DEFAULT_PORTAL_ID_ENV],
     "interactive_setup": [
         "Create a HubSpot app or private app for the target portal.",
-        "Add HUBSPOT_ACCESS_TOKEN and HUBSPOT_PORTAL_ID for the portal you want this worker to use.",
+        "Add HUBSPOT_ACCESS_TOKEN and HUBSPOT_PORTAL_ID in operator-controlled service keys for the portal you want this worker to use.",
+        "Use local HUBSPOT_* environment variables only as harness fallback when operator service keys are unavailable.",
         "Legacy AOS_HUBSPOT_* variable names are still accepted for backward compatibility.",
         "Restrict pipelines, owners, teams, and ticket queues before enabling write actions.",
     ],
 }
 
-WORKER_COMMANDS = [
+COMMAND_SPECS = [
+    {
+        "id": "capabilities",
+        "summary": "Describe the connector manifest",
+        "required_mode": "readonly",
+        "supports_json": True,
+        "resource": "connector",
+        "action_class": "read",
+    },
+    {
+        "id": "health",
+        "summary": "Report connector health and setup readiness",
+        "required_mode": "readonly",
+        "supports_json": True,
+        "resource": "connector",
+        "action_class": "read",
+    },
+    {
+        "id": "config.show",
+        "summary": "Show redacted connector configuration",
+        "required_mode": "readonly",
+        "supports_json": True,
+        "resource": "connector",
+        "action_class": "read",
+    },
+    {
+        "id": "doctor",
+        "summary": "Run connector diagnostics",
+        "required_mode": "readonly",
+        "supports_json": True,
+        "resource": "connector",
+        "action_class": "read",
+    },
     {
         "id": "owner.list",
         "summary": "List HubSpot owners",

@@ -9,8 +9,24 @@
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": true,
-    "workerFields": ["workspace_id", "board_id", "item_id", "column_id"],
+    "required": ["MONDAY_TOKEN"],
+    "optional": ["MONDAY_API_VERSION", "MONDAY_API_URL", "MONDAY_WORKSPACE_ID", "MONDAY_BOARD_ID"],
+    "workerFields": [
+      "account",
+      "workspace_id",
+      "board_id",
+      "item_id",
+      "item_name",
+      "group_id",
+      "column_id",
+      "column_value",
+      "column_values",
+      "update_body",
+      "from_date",
+      "to_date"
+    ],
     "worker_visible_actions": [
+      "account.read",
       "workspace.list",
       "board.list",
       "board.read",
@@ -21,6 +37,18 @@
       "update.create"
     ],
     "fields": [
+      {
+        "id": "account",
+        "label": "Account",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": false,
+        "valueType": "string",
+        "applies_to": ["account.read"],
+        "placeholder": "connected account",
+        "description": "Refers to the connected monday.com account."
+      },
       {
         "id": "workspace_id",
         "label": "Workspace",
@@ -40,6 +68,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
+        "applies_to": ["board.read", "item.create", "item.update"],
         "placeholder": "Select board...",
         "description": "Monday board ID to operate on"
       },
@@ -51,6 +80,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
+        "applies_to": ["item.read", "item.update", "update.create"],
         "placeholder": "Select item...",
         "description": "Monday item ID to operate on"
       },
@@ -62,9 +92,21 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": ["item.create", "item.update"],
+        "applies_to": ["item.create"],
         "placeholder": "Enter item name...",
-        "description": "Name of the item to create or update"
+        "description": "Name of the item to create"
+      },
+      {
+        "id": "group_id",
+        "label": "Group ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["item.create"],
+        "placeholder": "topics",
+        "description": "Optional monday group ID for item creation"
       },
       {
         "id": "column_id",
@@ -74,6 +116,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
+        "applies_to": ["item.update"],
         "placeholder": "Select column...",
         "description": "Monday column ID for status or field updates"
       },
@@ -88,8 +131,133 @@
         "applies_to": ["item.update"],
         "placeholder": "Enter value...",
         "description": "Value to set in the specified column"
+      },
+      {
+        "id": "column_values",
+        "label": "Column Values",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "json",
+        "applies_to": ["item.create", "item.update"],
+        "placeholder": "{}",
+        "description": "JSON object string keyed by monday column IDs"
+      },
+      {
+        "id": "update_body",
+        "label": "Update Body",
+        "type": "text",
+        "renderAs": "textarea",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["update.create"],
+        "placeholder": "Write the update...",
+        "description": "Body text to post as a monday update"
+      },
+      {
+        "id": "from_date",
+        "label": "From Date",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["update.list"],
+        "placeholder": "2026-03-01",
+        "description": "Optional inclusive ISO date filter for update.list"
+      },
+      {
+        "id": "to_date",
+        "label": "To Date",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["update.list"],
+        "placeholder": "2026-03-31",
+        "description": "Optional inclusive ISO date filter for update.list"
       }
-    ]
+    ],
+    "commandDefaults": {
+      "account.read": {
+        "selection_surface": "account"
+      },
+      "workspace.list": {
+        "selection_surface": "workspace",
+        "limit": 10
+      },
+      "board.list": {
+        "selection_surface": "board",
+        "limit": 10
+      },
+      "board.read": {
+        "selection_surface": "board",
+        "args": ["MONDAY_BOARD_ID"],
+        "limit": 5
+      },
+      "item.read": {
+        "selection_surface": "item"
+      },
+      "item.create": {
+        "selection_surface": "item",
+        "options": {
+          "board_id": "MONDAY_BOARD_ID"
+        }
+      },
+      "item.update": {
+        "selection_surface": "item",
+        "options": {
+          "board_id": "MONDAY_BOARD_ID"
+        }
+      },
+      "update.list": {
+        "selection_surface": "update",
+        "limit": 10
+      },
+      "update.create": {
+        "selection_surface": "update"
+      }
+    },
+    "pickerHints": {
+      "account": {
+        "kind": "account",
+        "selection_surface": "account",
+        "resource": "monday.account",
+        "source_command": "account.read",
+        "source_fields": ["id", "name", "email", "title"]
+      },
+      "workspace": {
+        "kind": "workspace",
+        "selection_surface": "workspace",
+        "resource": "monday.workspace",
+        "source_command": "workspace.list",
+        "source_fields": ["id", "name", "is_default_workspace"]
+      },
+      "board": {
+        "kind": "board",
+        "selection_surface": "board",
+        "resource": "monday.board",
+        "source_command": "board.list",
+        "source_fields": ["id", "name", "items_count"]
+      },
+      "item": {
+        "kind": "item",
+        "selection_surface": "item",
+        "resource": "monday.item",
+        "source_command": "board.read",
+        "source_fields": ["id", "name"]
+      },
+      "update": {
+        "kind": "update",
+        "selection_surface": "update",
+        "resource": "monday.update",
+        "source_command": "update.list",
+        "source_fields": ["id", "body", "created_at", "creator"]
+      }
+    }
   },
   "connector": {
     "label": "Monday.com",
@@ -103,7 +271,8 @@
     "service_keys": ["MONDAY_TOKEN"],
     "interactive_setup": [
       "Create or copy a monday.com personal API token from the Developer Center.",
-      "Add MONDAY_TOKEN in API Keys before enabling any worker-visible commands.",
+      "Add MONDAY_TOKEN in operator-controlled service keys before enabling any worker-visible commands.",
+      "Use the MONDAY_TOKEN environment variable only as a local harness fallback when operator keys are unavailable.",
       "Optionally set MONDAY_API_VERSION to pin a stable monday API version; the connector defaults to the current stable release.",
       "Share the boards and workspaces you want this worker to read with the account that owns the token.",
       "Live reads and writes are enabled for account, workspace, board, item, and update commands."

@@ -4,14 +4,22 @@ import json
 from pathlib import Path
 
 from click.testing import CliRunner
+import pytest
 
 from cli_aos.monday.cli import cli
+import cli_aos.monday.config as monday_config
 import cli_aos.monday.runtime as runtime
+import cli_aos.monday.service_keys as service_keys
 
 
 AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
 CONNECTOR_PATH = AGENT_HARNESS_ROOT.parent / "connector.json"
 PERMISSIONS_PATH = AGENT_HARNESS_ROOT / "permissions.json"
+
+
+@pytest.fixture(autouse=True)
+def no_operator_service_key_by_default(monkeypatch):
+    monkeypatch.setattr(service_keys, "resolve_service_key", lambda variable: None)
 
 
 class FakeMondayClient:
@@ -118,6 +126,8 @@ def test_manifest_and_permissions_are_in_sync():
     assert set(manifest_command_ids) == set(permissions.keys())
     assert "capabilities" in manifest_command_ids
     assert "update.create" in manifest_command_ids
+    assert "account.read" in manifest["scope"]["worker_visible_actions"]
+    assert manifest["scope"]["commandDefaults"]["board.read"]["args"] == ["MONDAY_BOARD_ID"]
 
 
 def test_capabilities_json_matches_manifest():
@@ -133,6 +143,7 @@ def test_capabilities_json_matches_manifest():
     assert payload["tool"] == manifest["tool"]
     assert payload["backend"] == manifest["backend"]
     assert payload["manifest_schema_version"] == manifest["manifest_schema_version"]
+    assert payload["scope"] == manifest["scope"]
     assert payload["connector"] == manifest["connector"]
     assert payload["auth"] == manifest["auth"]
     assert payload["commands"] == manifest["commands"]
@@ -200,7 +211,32 @@ def test_config_show_redacts_token_values(monkeypatch):
     assert result.exit_code == 0
     assert "secret_token" not in result.output
     assert '"token_present": true' in result.output
+    assert '"process.env"' in result.output
     assert '"write_paths_scaffolded": false' in result.output
+
+
+def test_config_snapshot_prefers_operator_service_keys(monkeypatch):
+    monkeypatch.setenv("MONDAY_TOKEN", "env_token")
+    monkeypatch.setenv("MONDAY_API_VERSION", "2026-01")
+    monkeypatch.setenv("MONDAY_API_URL", "https://env.example/v2")
+    snapshot = monday_config.redacted_config_snapshot(
+        {
+            "service_keys": {
+                "MONDAY_TOKEN": "operator_token",
+                "MONDAY_API_VERSION": "2026-02",
+                "MONDAY_API_URL": "https://operator.example/v2",
+            }
+        },
+        runtime_ready=False,
+        live_backend_available=False,
+    )
+
+    assert "operator_token" not in json.dumps(snapshot)
+    assert "env_token" not in json.dumps(snapshot)
+    assert snapshot["auth"]["sources"]["MONDAY_TOKEN"] == "operator:service_keys"
+    assert snapshot["auth"]["sources"]["MONDAY_API_VERSION"] == "operator:service_keys"
+    assert snapshot["runtime"]["api_version"] == "2026-02"
+    assert snapshot["runtime"]["api_url"] == "https://operator.example/v2"
 
 
 def test_account_read_returns_live_payload(monkeypatch):

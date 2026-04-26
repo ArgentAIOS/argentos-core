@@ -4,9 +4,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from . import __version__
 from .client import HootsuiteApiError, HootsuiteClient
 from .config import config_snapshot, resolve_runtime_values, redacted_config_snapshot
-from .constants import BACKEND_NAME, CONNECTOR_CATEGORIES, CONNECTOR_CATEGORY, CONNECTOR_LABEL, CONNECTOR_RESOURCES, CONNECTOR_PATH
+from .constants import BACKEND_NAME, CONNECTOR_CATEGORIES, CONNECTOR_CATEGORY, CONNECTOR_LABEL, CONNECTOR_RESOURCES, CONNECTOR_PATH, MODE_ORDER
 from .errors import ConnectorError
 
 
@@ -65,7 +66,7 @@ def create_client(ctx_obj: dict[str, Any] | None = None) -> HootsuiteClient:
     if not runtime["access_token"]:
         raise ConnectorError(
             code="HOOTSUITE_ACCESS_TOKEN_REQUIRED",
-            message="HOOTSUITE_ACCESS_TOKEN is required for Hootsuite live reads.",
+            message="HOOTSUITE_ACCESS_TOKEN service key is required for Hootsuite live reads.",
             details={"env": runtime["access_token_env"]},
         )
     return HootsuiteClient(access_token=runtime["access_token"], base_url=runtime["base_url"])
@@ -116,7 +117,34 @@ def _resolve_message_id(runtime: dict[str, Any], message_id: str | None = None) 
 
 
 def capabilities_snapshot() -> dict[str, Any]:
-    return _connector_manifest()
+    manifest = _connector_manifest()
+    return {
+        "tool": manifest["tool"],
+        "version": __version__,
+        "backend": manifest["backend"],
+        "manifest_schema_version": manifest.get("manifest_schema_version", "1.0.0"),
+        "modes": MODE_ORDER,
+        "connector": manifest["connector"],
+        "auth": manifest["auth"],
+        "scope": manifest.get("scope", {}),
+        "commands": manifest["commands"],
+        "read_support": {
+            "me.read": True,
+            "organization.list": True,
+            "organization.read": True,
+            "social_profile.list": True,
+            "social_profile.read": True,
+            "team.list": True,
+            "team.read": True,
+            "message.list": True,
+            "message.read": True,
+        },
+        "write_support": {
+            "live_writes_enabled": False,
+            "scaffold_only": True,
+            "scaffolded_commands": ["message.schedule"],
+        },
+    }
 
 
 def probe_live_read(runtime: dict[str, Any]) -> dict[str, Any]:
@@ -158,10 +186,11 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     live_ready = bool(probe.get("ok"))
     if not auth_ready:
         status = "needs_setup"
-        summary = "Configure HOOTSUITE_ACCESS_TOKEN before using live Hootsuite reads."
+        summary = "Configure HOOTSUITE_ACCESS_TOKEN in operator-controlled service keys before using live Hootsuite reads."
         next_steps = [
-            f"Set {runtime['access_token_env']} to a valid Hootsuite OAuth access token.",
+            f"Set {runtime['access_token_env']} in operator-controlled service keys to a valid Hootsuite OAuth access token.",
             f"Optional: set {runtime['base_url_env']} if you need a non-default Hootsuite API host.",
+            "Use local HOOTSUITE_* environment variables only as harness fallback during development.",
         ]
     elif not live_ready:
         status = "degraded"
@@ -194,8 +223,10 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "auth": {
             "base_url_env": runtime["base_url_env"],
             "base_url_present": runtime["base_url_present"],
+            "base_url_source": runtime["base_url_source"],
             "access_token_env": runtime["access_token_env"],
             "access_token_present": runtime["access_token_present"],
+            "access_token_source": runtime["access_token_source"],
             "organization_id_env": runtime["organization_id_env"],
             "organization_id_present": runtime["organization_id_present"],
             "social_profile_id_env": runtime["social_profile_id_env"],
@@ -209,7 +240,11 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             {
                 "name": "access_token",
                 "ok": auth_ready,
-                "details": {"present": auth_ready, "env": runtime["access_token_env"]},
+                "details": {
+                    "present": auth_ready,
+                    "env": runtime["access_token_env"],
+                    "source": runtime["access_token_source"],
+                },
             },
             {
                 "name": "live_read",
@@ -231,7 +266,7 @@ def doctor_snapshot(ctx_obj: dict[str, Any], *, health: dict[str, Any] | None = 
     health = health or health_snapshot(ctx_obj)
     if health["status"] == "needs_setup":
         recommendations = [
-            "Configure HOOTSUITE_ACCESS_TOKEN before handing this connector to a worker.",
+            "Configure HOOTSUITE_ACCESS_TOKEN in operator-controlled service keys before handing this connector to a worker.",
             "Use organization.list and social_profile.list to narrow scope after setup.",
         ]
     elif health["status"] == "degraded":

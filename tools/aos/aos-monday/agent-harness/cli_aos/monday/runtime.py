@@ -131,7 +131,10 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     if not runtime["token_present"]:
         status = "needs_setup"
         summary = "Monday runtime needs MONDAY_TOKEN before live read commands can run."
-        next_steps = [f"Set {runtime['token_env']} to a monday personal API token."]
+        next_steps = [
+            f"Set {runtime['token_env']} in operator-controlled service keys.",
+            f"Use the {runtime['token_env']} environment variable only as a local harness fallback.",
+        ]
     elif probe["ok"]:
         status = "ready"
         summary = "Monday live read runtime is ready."
@@ -161,10 +164,13 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "auth": {
             "token_env": runtime["token_env"],
             "token_present": runtime["token_present"],
+            "token_source": runtime["token_source"],
             "api_version_env": runtime["api_version_env"],
             "api_version_present": runtime["api_version_present"],
+            "api_version_source": runtime["api_version_source"],
             "api_url_env": runtime["api_url_env"],
             "api_url_present": runtime["api_url_present"],
+            "api_url_source": runtime["api_url_source"],
         },
         "checks": [
             {
@@ -194,7 +200,8 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     setup_complete = runtime["token_present"]
     live_ready = bool(probe.get("ok"))
     next_steps = [
-        f"Set {runtime['token_env']} in API Keys.",
+        f"Set {runtime['token_env']} in operator-controlled service keys.",
+        f"Use the {runtime['token_env']} environment variable only as a local harness fallback.",
         "Share the target boards and workspaces with the monday token owner.",
         "Run write commands in write mode or higher; item.create, item.update, and update.create execute live monday mutations.",
     ]
@@ -213,6 +220,7 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "runtime": {
             "api_version": runtime["api_version"],
             "api_url": runtime["api_url"],
+            "token_source": runtime["token_source"],
             "workspace_id_present": runtime["workspace_id_present"],
             "board_id_present": runtime["board_id_present"],
             "probe_mode": probe["details"].get("probe_mode") if probe.get("details") else "setup-required",
@@ -263,7 +271,13 @@ def read_account(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "command": "account.read",
         "summary": summary,
         "scope_preview": summary,
-        "scope": _scope_metadata(kind="account", preview=summary, label=display_name, scope_id=str(account.get("id") or "")),
+        "scope": _scope_metadata(
+            kind="account",
+            preview=summary,
+            label=display_name,
+            scope_id=str(account.get("id") or ""),
+            selection_surface="account",
+        ),
         "account": account,
     }
 
@@ -321,7 +335,15 @@ def read_board(ctx_obj: dict[str, Any], *, board_id: str, limit: int) -> dict[st
         "status": "ok",
         "backend": BACKEND_NAME,
         "command": "board.read",
-        **_board_preview(board, limit=limit),
+        **{
+            **_board_preview(board, limit=limit),
+            "scope": _scope_metadata(
+                kind="board",
+                preview=_board_preview(board, limit=limit)["scope_preview"],
+                scope_id=str(board.get("id") or ""),
+                selection_surface="board",
+            ),
+        },
     }
 
 
@@ -347,7 +369,13 @@ def read_item(ctx_obj: dict[str, Any], *, item_id: str) -> dict[str, Any]:
         "command": "item.read",
         "summary": summary,
         "scope_preview": summary,
-        "scope": _scope_metadata(kind="item", preview=summary, label=title, scope_id=str(item.get("id") or "")),
+        "scope": _scope_metadata(
+            kind="item",
+            preview=summary,
+            label=title,
+            scope_id=str(item.get("id") or ""),
+            selection_surface="item",
+        ),
         "item": item,
     }
 

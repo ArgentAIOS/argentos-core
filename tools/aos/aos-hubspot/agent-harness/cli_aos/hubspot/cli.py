@@ -57,12 +57,12 @@ class AosGroup(click.Group):
 @click.option("--base-url", default=lambda: os.getenv("HUBSPOT_BASE_URL") or os.getenv("AOS_HUBSPOT_BASE_URL") or DEFAULT_BASE_URL, show_default=True)
 @click.option(
     "--portal-id",
-    default=lambda: os.getenv(DEFAULT_PORTAL_ID_ENV) or os.getenv(LEGACY_PORTAL_ID_ENV, ""),
+    default="",
     help="HubSpot portal/account id",
 )
 @click.option(
     "--account-alias",
-    default=lambda: os.getenv(DEFAULT_ACCOUNT_ALIAS_ENV) or os.getenv(LEGACY_ACCOUNT_ALIAS_ENV, ""),
+    default="",
     help="Human-friendly account alias",
 )
 @click.option(

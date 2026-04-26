@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aos-hubspot"
 version = "0.1.0"
-description = "Agent-native HubSpot connector scaffold"
+description = "Agent-native HubSpot connector harness"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["click>=8.1"]

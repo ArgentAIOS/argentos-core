@@ -15,6 +15,14 @@ from .constants import BACKEND_NAME, CONNECTOR_CATEGORIES, CONNECTOR_CATEGORY, C
 from .errors import ConnectorError
 
 
+def _probe_exit_code(code: str | None) -> int:
+    if code in {"N8N_SETUP_REQUIRED", "N8N_WRITE_BRIDGE_REQUIRED", "N8N_INVALID_URL", "N8N_AUTH_FAILED"}:
+        return 4
+    if code in {"N8N_NOT_FOUND", "N8N_WORKFLOW_NOT_FOUND"}:
+        return 6
+    return 5
+
+
 def _clean_pairs(items: tuple[str, ...]) -> tuple[dict[str, str], list[str]]:
     options: dict[str, str] = {}
     terms: list[str] = []
@@ -391,7 +399,7 @@ def _resolve_status_workflow(runtime: dict[str, Any], options: dict[str, str], t
         raise ConnectorError(
             "N8N_WORKFLOW_NOT_FOUND",
             f"No workflow matched the name '{workflow_name}'.",
-            5,
+            6,
             details={"workflow_name": workflow_name},
         )
     resolved = _workflow_lookup_target(runtime, {"workflow_id": str(workflow.get("id") or workflow.get("workflowId") or "")}, [])
@@ -468,7 +476,7 @@ def run_read_command(command_id: str, items: tuple[str, ...]) -> dict[str, Any]:
         raise ConnectorError(
             read_probe.get("code", "N8N_LIVE_READ_UNAVAILABLE"),
             read_probe.get("message", "n8n live read access is unavailable."),
-            5,
+            _probe_exit_code(read_probe.get("code")),
             details=read_probe.get("details", {}),
         )
     options, terms = _clean_pairs(items)
@@ -485,7 +493,7 @@ def run_trigger_command(inputs: dict[str, Any]) -> dict[str, Any]:
         raise ConnectorError(
             write_probe.get("code", "N8N_WRITE_BRIDGE_REQUIRED"),
             write_probe.get("message", "n8n workflow trigger bridge is unavailable."),
-            5,
+            _probe_exit_code(write_probe.get("code")),
             details=write_probe.get("details", {}),
         )
 

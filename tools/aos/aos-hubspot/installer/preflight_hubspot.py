@@ -108,9 +108,9 @@ def build_next_steps(checks: list[Check], require_auth: bool) -> list[str]:
             steps.append(step)
 
     if not lookup["portal_id"].ok:
-        add("Set HUBSPOT_PORTAL_ID to the target HubSpot portal/account id.")
+        add("Add HUBSPOT_PORTAL_ID in operator-controlled service keys first, or set it locally for harness fallback.")
     if require_auth and not lookup["access_token"].ok:
-        add("Set HUBSPOT_ACCESS_TOKEN for live HubSpot API access.")
+        add("Add HUBSPOT_ACCESS_TOKEN in operator-controlled service keys first, or set it locally for harness fallback.")
     if not lookup["app_id"].ok:
         add("Optional: set HUBSPOT_APP_ID when the OAuth/webhook app is provisioned.")
     if not lookup["webhook_secret"].ok:

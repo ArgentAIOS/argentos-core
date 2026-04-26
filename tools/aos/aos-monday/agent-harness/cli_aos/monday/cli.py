@@ -91,6 +91,7 @@ def cli(ctx: click.Context, as_json: bool, mode: str, verbose: bool) -> None:
 @click.pass_context
 def capabilities(ctx: click.Context) -> None:
     _set_command(ctx, "capabilities")
+    require_mode(ctx, "capabilities")
     manifest = json.loads(CONNECTOR_PATH.read_text())
     emit(
         _success(
@@ -103,6 +104,7 @@ def capabilities(ctx: click.Context) -> None:
                 "manifest_schema_version": MANIFEST_SCHEMA_VERSION,
                 "backend": manifest["backend"],
                 "modes": MODE_ORDER,
+                "scope": manifest["scope"],
                 "connector": manifest["connector"],
                 "auth": manifest["auth"],
                 "commands": manifest["commands"],

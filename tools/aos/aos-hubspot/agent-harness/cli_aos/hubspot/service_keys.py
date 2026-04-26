@@ -44,3 +44,11 @@ def service_key_env(variable: str, default: str | None = None) -> str | None:
     if value is not None:
         return value
     return default
+
+
+def service_key_source(variable: str) -> str | None:
+    if variable in SERVICE_KEY_VARIABLES and resolve_service_key(variable):
+        return "service-keys"
+    if os.getenv(variable):
+        return "process.env"
+    return None
