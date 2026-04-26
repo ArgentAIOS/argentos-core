@@ -195,6 +195,14 @@ The workflow output node now discovers configured output channels and has real s
 
 The workflow canvas should consume connector manifests/capabilities rather than connector implementation files. If connector command metadata changes shape, add a short note here before pushing so workflow action-node mapping can stay aligned.
 
+### 2026-04-26 — AOS Google Drive Connector Slice
+
+Lane: `AOS connector Ralph loop`
+Branch/status: `codex/aos-google-drive-loop`, started from `origin/dev` at `4ad2a5a8`.
+Owned files/directories: `tools/aos/aos-google-drive/**`; coordination note in `ops/THREADMASTER_COORDINATION.md`.
+Shared contract change in progress: Google Drive connector capability metadata is being narrowed to live read/export/search commands only. Operator-controlled service keys remain the auth and linking source; local environment variables are development fallback only.
+Workflows/AppForge/AOU reaction: consume the Google Drive manifest/capabilities only. Do not assume Google Drive file/folder/share write mutations exist unless a later handoff advertises them as live-ready with verified approval policy.
+
 ### 2026-04-26 — Workflows General
 
 Before touching shared files, update this board. The goal is to make lane drift visible in the repo before it becomes visible in the product.

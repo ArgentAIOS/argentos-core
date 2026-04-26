@@ -6,7 +6,16 @@ from functools import lru_cache
 from pathlib import Path
 
 ARGENTOS_ROOT = Path(__file__).resolve().parents[6]
-SERVICE_KEY_VARIABLES = {'GOOGLE_DRIVE_CLIENT_SECRET', 'GOOGLE_DRIVE_REFRESH_TOKEN', 'GOOGLE_DRIVE_CLIENT_ID'}
+SERVICE_KEY_VARIABLES = {
+    "GOOGLE_DRIVE_CLIENT_ID",
+    "GOOGLE_DRIVE_CLIENT_SECRET",
+    "GOOGLE_DRIVE_REFRESH_TOKEN",
+    "GOOGLE_DRIVE_FOLDER_ID",
+    "GOOGLE_DRIVE_FILE_ID",
+    "GOOGLE_DRIVE_MIME_TYPE",
+    "GOOGLE_DRIVE_QUERY",
+    "GOOGLE_DRIVE_BASE_URL",
+}
 
 
 @lru_cache(maxsize=64)
@@ -44,3 +53,14 @@ def service_key_env(variable: str, default: str | None = None) -> str | None:
     if value is not None:
         return value
     return default
+
+
+def service_key_source(variable: str) -> str | None:
+    if variable in SERVICE_KEY_VARIABLES:
+        value = resolve_service_key(variable)
+        if value:
+            return "service-keys"
+    value = os.getenv(variable)
+    if value:
+        return "process.env"
+    return None
