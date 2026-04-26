@@ -26,7 +26,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import type { AppForgeWorkflowEventRequest, ForgeApp } from "../hooks/useApps";
 import type { AppWindowState } from "../hooks/useAppWindows";
 import {
@@ -61,6 +61,14 @@ type WorkflowEventStatus = {
 type AppFilter = "all" | "pinned" | "running";
 type ForgeViewMode = "grid" | "kanban" | "form" | "review";
 type ForgeInspectorMode = "field" | "table";
+type ForgeSortDirection = "asc" | "desc";
+
+type ForgeViewSettings = {
+  filterText: string;
+  sortFieldId: string;
+  sortDirection: ForgeSortDirection;
+  groupFieldId: string;
+};
 
 type EditingCell = {
   recordId: string;
@@ -143,6 +151,12 @@ const FORGE_VIEW_MODES: Array<{ id: ForgeViewMode; label: string }> = [
 ];
 
 const APP_FORGE_UI_STATE_KEY = "argent.appForge.workspaceState.v1";
+const DEFAULT_VIEW_SETTINGS: ForgeViewSettings = {
+  filterText: "",
+  sortFieldId: "",
+  sortDirection: "asc",
+  groupFieldId: "",
+};
 
 type AppForgeUiState = {
   selectedAppId?: string | null;
@@ -181,8 +195,50 @@ function loadAppForgeUiState(): AppForgeUiState {
   }
 }
 
+function viewSettingsKey(appId: string, tableId: string, viewMode: ForgeViewMode): string {
+  return `argent.appForge.viewSettings.${appId}.${tableId}.${viewMode}`;
+}
+
+function loadViewSettings(key: string | null): ForgeViewSettings {
+  if (!key || typeof window === "undefined") return DEFAULT_VIEW_SETTINGS;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) ?? "{}") as Record<
+      string,
+      unknown
+    > | null;
+    return {
+      filterText: typeof parsed?.filterText === "string" ? parsed.filterText : "",
+      sortFieldId: typeof parsed?.sortFieldId === "string" ? parsed.sortFieldId : "",
+      sortDirection: parsed?.sortDirection === "desc" ? "desc" : "asc",
+      groupFieldId: typeof parsed?.groupFieldId === "string" ? parsed.groupFieldId : "",
+    };
+  } catch {
+    return DEFAULT_VIEW_SETTINGS;
+  }
+}
+
 function fieldValue(value: ForgeStructuredRecordValue | undefined): string {
   return value === null || value === undefined ? "" : String(value);
+}
+
+function fieldInputType(field: ForgeStructuredField): string {
+  if (field.type === "number") return "number";
+  if (field.type === "date") return "date";
+  return "text";
+}
+
+function cellValueFromInput(
+  field: ForgeStructuredField,
+  value: string,
+): ForgeStructuredRecordValue {
+  if (field.type === "number") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (field.type === "checkbox") {
+    return value === "true";
+  }
+  return value;
 }
 
 function fieldByName(
@@ -212,16 +268,38 @@ function recordTitle(
   return nameField ? fieldValue(record.values[nameField.id]) || "Untitled" : "Untitled";
 }
 
-function recordsByStatus(table: ForgeStructuredTable | null | undefined) {
-  const statusField = fieldByName(table, "status");
-  const options = statusField?.options?.length
-    ? statusField.options
-    : ["Planning", "In Progress", "On Track", "Review", "Blocked"];
-  const records = table?.records ?? [];
-  return options.map((status) => ({
-    status,
-    records: records.filter((record) => recordStatus(table, record) === status),
-  }));
+function recordsByField(
+  table: ForgeStructuredTable | null | undefined,
+  fieldId: string | undefined,
+  records: ForgeStructuredRecord[] = table?.records ?? [],
+) {
+  const field = fieldId
+    ? table?.fields.find((candidate) => candidate.id === fieldId)
+    : fieldByName(table, "status");
+  const options = field?.options?.length
+    ? field.options
+    : field?.id
+      ? []
+      : ["Planning", "In Progress", "On Track", "Review", "Blocked"];
+  const grouped = new Map<string, ForgeStructuredRecord[]>();
+  for (const record of records) {
+    const label = field ? fieldValue(record.values[field.id]) || "Unassigned" : "Records";
+    grouped.set(label, [...(grouped.get(label) ?? []), record]);
+  }
+  const orderedLabels = [
+    ...options,
+    ...[...grouped.keys()].filter((label) => !options.includes(label)),
+  ];
+  return options
+    .map((status) => ({
+      status,
+      records: grouped.get(status) ?? [],
+    }))
+    .concat(
+      orderedLabels
+        .filter((label) => !options.includes(label))
+        .map((label) => ({ status: label, records: grouped.get(label) ?? [] })),
+    );
 }
 
 export function AppForge({
@@ -258,6 +336,7 @@ export function AppForge({
   const [activeViewMode, setActiveViewMode] = useState<ForgeViewMode>(
     persistedUiState.activeViewMode ?? "grid",
   );
+  const [viewSettings, setViewSettings] = useState<ForgeViewSettings>(DEFAULT_VIEW_SETTINGS);
   const [inspectorMode, setInspectorMode] = useState<ForgeInspectorMode>(
     persistedUiState.inspectorMode ?? "field",
   );
@@ -265,9 +344,11 @@ export function AppForge({
     persistedUiState.selectedAppId ?? null,
   );
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const [formRecordId, setFormRecordId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const appCountAtBuild = useRef(0);
+  const skipNextViewSettingsPersist = useRef(false);
 
   // Focus search on open
   useEffect(() => {
@@ -386,11 +467,46 @@ export function AppForge({
     emitWorkflowEvent: onEmitWorkflowEvent,
   });
   const visibleFields = structured.activeTable?.fields.slice(0, 6) ?? [];
+  const activeViewSettingsKey =
+    selectedApp?.id && structured.activeTable?.id
+      ? viewSettingsKey(selectedApp.id, structured.activeTable.id, activeViewMode)
+      : null;
+  const viewRecords = useMemo(() => {
+    const table = structured.activeTable;
+    if (!table) return [];
+    const normalizedFilter = viewSettings.filterText.trim().toLowerCase();
+    const filtered = normalizedFilter
+      ? table.records.filter((record) =>
+          table.fields.some((field) =>
+            fieldValue(record.values[field.id]).toLowerCase().includes(normalizedFilter),
+          ),
+        )
+      : table.records;
+    const sortField = table.fields.find((field) => field.id === viewSettings.sortFieldId);
+    if (!sortField) return filtered;
+    return [...filtered].sort((left, right) => {
+      const leftValue = left.values[sortField.id];
+      const rightValue = right.values[sortField.id];
+      const direction = viewSettings.sortDirection === "desc" ? -1 : 1;
+      if (sortField.type === "number") {
+        return (Number(leftValue ?? 0) - Number(rightValue ?? 0)) * direction;
+      }
+      return (
+        fieldValue(leftValue).localeCompare(fieldValue(rightValue), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }) * direction
+      );
+    });
+  }, [structured.activeTable, viewSettings]);
   const reviewRecords =
-    structured.activeTable?.records.filter(
-      (record) => recordStatus(structured.activeTable, record) === "Review",
-    ) ?? [];
-  const formRecord = structured.activeTable?.records[0] ?? null;
+    viewRecords.filter((record) => recordStatus(structured.activeTable, record) === "Review") ?? [];
+  const tableRecords = useMemo(
+    () => structured.activeTable?.records ?? [],
+    [structured.activeTable],
+  );
+  const formRecord =
+    tableRecords.find((record) => record.id === formRecordId) ?? tableRecords[0] ?? null;
   const activeNav = APP_FORGE_NAV.find((item) => item.id === activeSection);
   const sectionTitle = activeNav?.label ?? "Desktop";
   const sectionSubtitle =
@@ -411,6 +527,28 @@ export function AppForge({
                   : activeSection === "activity"
                     ? "Recent structured changes and event status"
                     : "Base and runtime settings";
+
+  useEffect(() => {
+    skipNextViewSettingsPersist.current = true;
+    queueMicrotask(() => setViewSettings(loadViewSettings(activeViewSettingsKey)));
+  }, [activeViewSettingsKey]);
+
+  useEffect(() => {
+    if (!activeViewSettingsKey || typeof window === "undefined") return;
+    if (skipNextViewSettingsPersist.current) {
+      skipNextViewSettingsPersist.current = false;
+      return;
+    }
+    window.localStorage.setItem(activeViewSettingsKey, JSON.stringify(viewSettings));
+  }, [activeViewSettingsKey, viewSettings]);
+
+  useEffect(() => {
+    const nextRecordId = tableRecords.some((record) => record.id === formRecordId)
+      ? formRecordId
+      : (tableRecords[0]?.id ?? null);
+    if (nextRecordId === formRecordId) return;
+    queueMicrotask(() => setFormRecordId(nextRecordId));
+  }, [formRecordId, tableRecords]);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, appId: string) => {
@@ -496,12 +634,7 @@ export function AppForge({
     const field = structured.activeTable?.fields.find(
       (candidate) => candidate.id === editingCell.fieldId,
     );
-    const nextValue =
-      field?.type === "number"
-        ? Number(editingCell.value) || 0
-        : field?.type === "checkbox"
-          ? editingCell.value === "true"
-          : editingCell.value;
+    const nextValue = field ? cellValueFromInput(field, editingCell.value) : editingCell.value;
     setEditingCell(null);
     await structured.updateCell(editingCell.recordId, editingCell.fieldId, nextValue);
   }, [editingCell, structured]);
@@ -832,7 +965,7 @@ export function AppForge({
                               <div className="mt-1 text-xs text-white/42">
                                 {view.id === "review"
                                   ? `${reviewRecords.length} pending`
-                                  : `${structured.activeTable?.records.length ?? 0} records`}
+                                  : `${viewRecords.length} records`}
                               </div>
                             </button>
                           ))}
@@ -878,7 +1011,7 @@ export function AppForge({
                           ))}
                         {activeSection === "activity" &&
                           [
-                            `${structured.activeTable?.records.length ?? 0} records`,
+                            `${viewRecords.length} records`,
                             `${structured.activeTable?.fields.length ?? 0} fields`,
                             `${reviewRecords.length} reviews`,
                           ].map((item) => (
@@ -935,11 +1068,65 @@ export function AppForge({
                             </button>
                           ))}
                         </div>
-                        <div className="flex items-center gap-3 text-sm text-white/45">
+                        <div className="flex flex-wrap items-center gap-2 text-sm text-white/45">
                           {structured.saving && <span className="text-sky-200">Saving...</span>}
-                          <button className="hover:text-white/75">Filter</button>
-                          <button className="hover:text-white/75">Sort</button>
-                          <button className="hover:text-white/75">Group</button>
+                          <input
+                            value={viewSettings.filterText}
+                            onChange={(event) =>
+                              setViewSettings((prev) => ({
+                                ...prev,
+                                filterText: event.target.value,
+                              }))
+                            }
+                            placeholder="Filter records"
+                            className="h-8 w-32 rounded-lg border border-white/10 bg-black/22 px-2 text-xs text-white/70 outline-none placeholder:text-white/30"
+                          />
+                          <select
+                            value={viewSettings.sortFieldId}
+                            onChange={(event) =>
+                              setViewSettings((prev) => ({
+                                ...prev,
+                                sortFieldId: event.target.value,
+                              }))
+                            }
+                            className="h-8 rounded-lg border border-white/10 bg-black/22 px-2 text-xs text-white/70 outline-none"
+                          >
+                            <option value="">Sort</option>
+                            {(structured.activeTable?.fields ?? []).map((field) => (
+                              <option key={field.id} value={field.id}>
+                                {field.name}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() =>
+                              setViewSettings((prev) => ({
+                                ...prev,
+                                sortDirection: prev.sortDirection === "asc" ? "desc" : "asc",
+                              }))
+                            }
+                            className="h-8 rounded-lg border border-white/10 px-2 text-xs transition-colors hover:bg-white/10 hover:text-white"
+                            title="Toggle sort direction"
+                          >
+                            {viewSettings.sortDirection === "asc" ? "Asc" : "Desc"}
+                          </button>
+                          <select
+                            value={viewSettings.groupFieldId}
+                            onChange={(event) =>
+                              setViewSettings((prev) => ({
+                                ...prev,
+                                groupFieldId: event.target.value,
+                              }))
+                            }
+                            className="h-8 rounded-lg border border-white/10 bg-black/22 px-2 text-xs text-white/70 outline-none"
+                          >
+                            <option value="">Group</option>
+                            {(structured.activeTable?.fields ?? []).map((field) => (
+                              <option key={field.id} value={field.id}>
+                                {field.name}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       </div>
 
@@ -1066,7 +1253,7 @@ export function AppForge({
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {(structured.activeTable?.records ?? []).map((record, index) => (
+                                  {viewRecords.map((record, index) => (
                                     <tr
                                       key={record.id}
                                       className="group border-b border-white/[0.07] transition-colors hover:bg-white/[0.04]"
@@ -1112,9 +1299,59 @@ export function AppForge({
                                             }
                                             className="border-r border-white/[0.07] px-4 py-2 text-white/66"
                                           >
-                                            {isEditing ? (
+                                            {isEditing && field.type === "single_select" ? (
+                                              <select
+                                                autoFocus
+                                                value={editingCell.value}
+                                                onChange={(event) =>
+                                                  setEditingCell({
+                                                    ...editingCell,
+                                                    value: event.target.value,
+                                                  })
+                                                }
+                                                onBlur={() => void commitEditingCell()}
+                                                onKeyDown={(event) => {
+                                                  if (event.key === "Enter") {
+                                                    void commitEditingCell();
+                                                  }
+                                                  if (event.key === "Escape") {
+                                                    setEditingCell(null);
+                                                  }
+                                                }}
+                                                className="w-full rounded-md border border-sky-400/40 bg-black/75 px-2 py-1 text-sm text-white outline-none"
+                                              >
+                                                {(field.options ?? []).map((option) => (
+                                                  <option key={option} value={option}>
+                                                    {option}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            ) : isEditing && field.type === "checkbox" ? (
                                               <input
                                                 autoFocus
+                                                type="checkbox"
+                                                checked={editingCell.value === "true"}
+                                                onChange={(event) =>
+                                                  setEditingCell({
+                                                    ...editingCell,
+                                                    value: event.target.checked ? "true" : "false",
+                                                  })
+                                                }
+                                                onBlur={() => void commitEditingCell()}
+                                                onKeyDown={(event) => {
+                                                  if (event.key === "Enter") {
+                                                    void commitEditingCell();
+                                                  }
+                                                  if (event.key === "Escape") {
+                                                    setEditingCell(null);
+                                                  }
+                                                }}
+                                                className="h-4 w-4 rounded border-white/20 bg-black/45 accent-sky-400"
+                                              />
+                                            ) : isEditing ? (
+                                              <input
+                                                autoFocus
+                                                type={fieldInputType(field)}
                                                 value={editingCell.value}
                                                 onChange={(event) =>
                                                   setEditingCell({
@@ -1137,6 +1374,13 @@ export function AppForge({
                                               <span className="inline-flex rounded-md bg-emerald-500/18 px-2 py-1 text-xs font-medium text-emerald-100">
                                                 {value}
                                               </span>
+                                            ) : field.type === "checkbox" ? (
+                                              <input
+                                                type="checkbox"
+                                                checked={value === "true"}
+                                                readOnly
+                                                className="h-4 w-4 rounded border-white/20 bg-black/45 accent-sky-400"
+                                              />
                                             ) : (
                                               <span className="truncate">{value || " "}</span>
                                             )}
@@ -1146,7 +1390,7 @@ export function AppForge({
                                       <td className="px-3 py-2" />
                                     </tr>
                                   ))}
-                                  {(structured.activeTable?.records.length ?? 0) === 0 && (
+                                  {viewRecords.length === 0 && (
                                     <tr>
                                       <td
                                         colSpan={visibleFields.length + 3}
@@ -1166,14 +1410,25 @@ export function AppForge({
                                   <Plus className="h-4 w-4" />
                                   Add record
                                 </button>
-                                <span>{structured.activeTable?.records.length ?? 0} records</span>
+                                <span>
+                                  {viewRecords.length}
+                                  {structured.activeTable?.records.length !== viewRecords.length
+                                    ? ` of ${structured.activeTable?.records.length ?? 0}`
+                                    : ""}{" "}
+                                  records
+                                </span>
                               </div>
                             </>
                           )}
 
                           {activeViewMode === "kanban" && (
                             <div className="grid min-w-[760px] grid-cols-4 gap-3 p-4">
-                              {recordsByStatus(structured.activeTable)
+                              {recordsByField(
+                                structured.activeTable,
+                                viewSettings.groupFieldId ||
+                                  fieldByName(structured.activeTable, "status")?.id,
+                                viewRecords,
+                              )
                                 .filter((group) => group.records.length > 0)
                                 .map((group) => (
                                   <div
@@ -1212,73 +1467,145 @@ export function AppForge({
                           )}
 
                           {activeViewMode === "form" && (
-                            <div className="grid gap-4 p-4 md:grid-cols-2">
-                              {(structured.activeTable?.fields ?? []).map((field) => (
-                                <label key={field.id} className="block">
-                                  <span className="mb-2 block text-xs text-white/38">
-                                    {field.name}
-                                  </span>
-                                  <input
-                                    value={
-                                      formRecord ? fieldValue(formRecord.values[field.id]) : ""
-                                    }
-                                    onChange={(event) => {
-                                      if (!formRecord) return;
-                                      void structured.updateCell(
-                                        formRecord.id,
-                                        field.id,
-                                        event.target.value,
-                                      );
-                                    }}
-                                    className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-sm text-white/72 outline-none"
-                                  />
-                                </label>
-                              ))}
+                            <div className="space-y-4 p-4">
+                              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/18 px-3 py-2">
+                                <div>
+                                  <div className="text-xs uppercase tracking-[0.16em] text-white/30">
+                                    Form record
+                                  </div>
+                                  <div className="text-sm text-white/70">
+                                    {formRecord
+                                      ? recordTitle(structured.activeTable, formRecord)
+                                      : "No records"}
+                                  </div>
+                                </div>
+                                <select
+                                  value={formRecord?.id ?? ""}
+                                  onChange={(event) => setFormRecordId(event.target.value)}
+                                  className="h-9 min-w-52 rounded-lg border border-white/10 bg-black/55 px-3 text-sm text-white/72 outline-none"
+                                >
+                                  {tableRecords.map((record) => (
+                                    <option key={record.id} value={record.id}>
+                                      {recordTitle(structured.activeTable, record)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="grid gap-4 md:grid-cols-2">
+                                {(structured.activeTable?.fields ?? []).map((field) => (
+                                  <label key={field.id} className="block">
+                                    <span className="mb-2 block text-xs text-white/38">
+                                      {field.name}
+                                    </span>
+                                    {field.type === "single_select" ? (
+                                      <select
+                                        value={
+                                          formRecord ? fieldValue(formRecord.values[field.id]) : ""
+                                        }
+                                        onChange={(event) => {
+                                          if (!formRecord) return;
+                                          void structured.updateCell(
+                                            formRecord.id,
+                                            field.id,
+                                            cellValueFromInput(field, event.target.value),
+                                          );
+                                        }}
+                                        className="w-full rounded-lg border border-white/10 bg-black/55 px-3 py-2 text-sm text-white/72 outline-none"
+                                      >
+                                        {(field.options ?? []).map((option) => (
+                                          <option key={option} value={option}>
+                                            {option}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : field.type === "checkbox" ? (
+                                      <input
+                                        type="checkbox"
+                                        checked={
+                                          formRecord
+                                            ? fieldValue(formRecord.values[field.id]) === "true"
+                                            : false
+                                        }
+                                        onChange={(event) => {
+                                          if (!formRecord) return;
+                                          void structured.updateCell(
+                                            formRecord.id,
+                                            field.id,
+                                            cellValueFromInput(
+                                              field,
+                                              event.target.checked ? "true" : "false",
+                                            ),
+                                          );
+                                        }}
+                                        className="h-5 w-5 rounded border-white/20 bg-black/45 accent-sky-400"
+                                      />
+                                    ) : (
+                                      <input
+                                        type={fieldInputType(field)}
+                                        value={
+                                          formRecord ? fieldValue(formRecord.values[field.id]) : ""
+                                        }
+                                        onChange={(event) => {
+                                          if (!formRecord) return;
+                                          void structured.updateCell(
+                                            formRecord.id,
+                                            field.id,
+                                            cellValueFromInput(field, event.target.value),
+                                          );
+                                        }}
+                                        className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-sm text-white/72 outline-none"
+                                      />
+                                    )}
+                                  </label>
+                                ))}
+                              </div>
                             </div>
                           )}
 
                           {activeViewMode === "review" && (
                             <div className="space-y-3 p-4">
-                              {(reviewRecords.length > 0
-                                ? reviewRecords
-                                : (structured.activeTable?.records ?? [])
-                              ).map((record) => (
-                                <div
-                                  key={record.id}
-                                  className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.04] p-4"
-                                >
-                                  <div className="min-w-0">
-                                    <div className="truncate text-sm font-medium text-white/78">
-                                      {recordTitle(structured.activeTable, record)}
+                              {(reviewRecords.length > 0 ? reviewRecords : viewRecords).map(
+                                (record) => (
+                                  <div
+                                    key={record.id}
+                                    className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.04] p-4"
+                                  >
+                                    <div className="min-w-0">
+                                      <div className="truncate text-sm font-medium text-white/78">
+                                        {recordTitle(structured.activeTable, record)}
+                                      </div>
+                                      <div className="mt-1 text-xs text-white/42">
+                                        {recordStatus(structured.activeTable, record) || "Ready"}
+                                      </div>
                                     </div>
-                                    <div className="mt-1 text-xs text-white/42">
-                                      {recordStatus(structured.activeTable, record) || "Ready"}
-                                    </div>
-                                  </div>
-                                  <div className="flex shrink-0 items-center gap-2">
-                                    {recordStatus(structured.activeTable, record) !== "Review" && (
+                                    <div className="flex shrink-0 items-center gap-2">
+                                      {recordStatus(structured.activeTable, record) !==
+                                        "Review" && (
+                                        <button
+                                          onClick={() => void structured.requestReview(record.id)}
+                                          className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition-colors hover:bg-white/10 hover:text-white"
+                                        >
+                                          Request
+                                        </button>
+                                      )}
                                       <button
-                                        onClick={() => void structured.requestReview(record.id)}
-                                        className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition-colors hover:bg-white/10 hover:text-white"
+                                        onClick={() =>
+                                          void handleReviewDecision(record, "approved")
+                                        }
+                                        className="rounded-lg bg-emerald-500/20 px-3 py-2 text-xs font-medium text-emerald-100 transition-colors hover:bg-emerald-500/30"
                                       >
-                                        Request
+                                        Approve
                                       </button>
-                                    )}
-                                    <button
-                                      onClick={() => void handleReviewDecision(record, "approved")}
-                                      className="rounded-lg bg-emerald-500/20 px-3 py-2 text-xs font-medium text-emerald-100 transition-colors hover:bg-emerald-500/30"
-                                    >
-                                      Approve
-                                    </button>
-                                    <button
-                                      onClick={() => void handleReviewDecision(record, "denied")}
-                                      className="rounded-lg bg-red-500/18 px-3 py-2 text-xs font-medium text-red-100 transition-colors hover:bg-red-500/28"
-                                    >
-                                      Deny
-                                    </button>
+                                      <button
+                                        onClick={() => void handleReviewDecision(record, "denied")}
+                                        className="rounded-lg bg-red-500/18 px-3 py-2 text-xs font-medium text-red-100 transition-colors hover:bg-red-500/28"
+                                      >
+                                        Deny
+                                      </button>
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
+                                ),
+                              )}
                             </div>
                           )}
                         </div>
@@ -1642,9 +1969,7 @@ export function AppForge({
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <div className="text-xs text-white/30">Records</div>
-                              <div className="truncate text-white/60">
-                                {structured.activeTable?.records.length ?? 0}
-                              </div>
+                              <div className="truncate text-white/60">{viewRecords.length}</div>
                             </div>
                             <div>
                               <div className="text-xs text-white/30">Fields</div>
