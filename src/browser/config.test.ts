@@ -20,8 +20,19 @@ describe("browser config", () => {
     expect(argent?.driver).toBe("argent");
     expect(argent?.cdpPort).toBe(18800);
     expect(argent?.cdpUrl).toBe("http://127.0.0.1:18800");
+    expect(resolved.cdpPortRangeStart).toBe(18800);
+    expect(resolved.cdpPortRangeEnd).toBe(18899);
     expect(resolved.remoteCdpTimeoutMs).toBe(1500);
     expect(resolved.remoteCdpHandshakeTimeoutMs).toBe(3000);
+    expect(resolved.localLaunchTimeoutMs).toBe(15_000);
+    expect(resolved.localCdpReadyTimeoutMs).toBe(8_000);
+    expect(resolved.actionTimeoutMs).toBe(60_000);
+    expect(resolved.tabCleanup).toEqual({
+      enabled: true,
+      idleMinutes: 120,
+      maxTabsPerSession: 8,
+      sweepMinutes: 5,
+    });
   });
 
   it("derives default ports from ARGENT_GATEWAY_PORT when unset", () => {
@@ -84,6 +95,37 @@ describe("browser config", () => {
     });
     expect(resolved.remoteCdpTimeoutMs).toBe(2200);
     expect(resolved.remoteCdpHandshakeTimeoutMs).toBe(5000);
+  });
+
+  it("supports explicit local browser timing, CDP range, and tab cleanup settings", () => {
+    const resolved = resolveBrowserConfig({
+      localLaunchTimeoutMs: 45_000,
+      localCdpReadyTimeoutMs: 30_000,
+      actionTimeoutMs: 90_000,
+      cdpPortRangeStart: 19000,
+      tabCleanup: {
+        enabled: false,
+        idleMinutes: 0,
+        maxTabsPerSession: 0,
+        sweepMinutes: 15,
+      },
+    });
+
+    expect(resolved.localLaunchTimeoutMs).toBe(45_000);
+    expect(resolved.localCdpReadyTimeoutMs).toBe(30_000);
+    expect(resolved.actionTimeoutMs).toBe(90_000);
+    expect(resolved.cdpPortRangeStart).toBe(19000);
+    expect(resolved.cdpPortRangeEnd).toBe(19099);
+    expect(resolved.tabCleanup).toEqual({
+      enabled: false,
+      idleMinutes: 0,
+      maxTabsPerSession: 0,
+      sweepMinutes: 15,
+    });
+
+    const argent = resolveProfile(resolved, "argent");
+    expect(argent?.cdpPort).toBe(19000);
+    expect(argent?.cdpUrl).toBe("http://127.0.0.1:19000");
   });
 
   it("falls back to default color for invalid hex", () => {

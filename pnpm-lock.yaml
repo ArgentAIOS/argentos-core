@@ -503,13 +503,13 @@ importers:
         specifier: workspace:*
         version: link:../..
 
-  extensions/google-antigravity-auth:
+  extensions/google-gemini-cli-auth:
     devDependencies:
       argentos:
         specifier: workspace:*
         version: link:../..
 
-  extensions/google-gemini-cli-auth:
+  extensions/google-meet:
     devDependencies:
       argentos:
         specifier: workspace:*
@@ -10485,7 +10485,7 @@ snapshots:
 
   '@larksuiteoapi/node-sdk@1.59.0':
     dependencies:
-      axios: 1.13.6
+      axios: 1.13.6(debug@4.4.3)
       lodash.identity: 3.0.0
       lodash.merge: 4.6.2
       lodash.pickby: 4.6.0
@@ -10501,7 +10501,7 @@ snapshots:
     dependencies:
       '@types/node': 24.12.0
     optionalDependencies:
-      axios: 1.13.6
+      axios: 1.13.6(debug@4.4.3)
     transitivePeerDependencies:
       - debug
 
@@ -10706,7 +10706,7 @@ snapshots:
     dependencies:
       '@microsoft/agents-activity': 1.4.1
       '@microsoft/agents-hosting': 1.4.1
-      axios: 1.13.6
+      axios: 1.13.6(debug@4.4.3)
       zod: 3.25.76
     transitivePeerDependencies:
       - debug
@@ -10717,7 +10717,7 @@ snapshots:
       '@azure/core-auth': 1.10.1
       '@azure/msal-node': 5.1.1
       '@microsoft/agents-activity': 1.4.1
-      axios: 1.13.6
+      axios: 1.13.6(debug@4.4.3)
       jsonwebtoken: 9.0.3
       jwks-rsa: 4.0.1
       object-path: 0.11.8
@@ -12182,7 +12182,7 @@ snapshots:
       '@slack/types': 2.20.1
       '@slack/web-api': 7.15.0
       '@types/express': 5.0.6
-      axios: 1.13.6
+      axios: 1.13.6(debug@4.4.3)
       express: 5.2.1
       path-to-regexp: 8.3.0
       raw-body: 3.0.2
@@ -12228,7 +12228,7 @@ snapshots:
       '@slack/types': 2.20.1
       '@types/node': 25.5.0
       '@types/retry': 0.12.0
-      axios: 1.13.6
+      axios: 1.13.6(debug@4.4.3)
       eventemitter3: 5.0.4
       form-data: 2.5.4
       is-electron: 2.2.2
@@ -13742,14 +13742,6 @@ snapshots:
 
   aws4@1.13.2: {}
 
-  axios@1.13.6:
-    dependencies:
-      follow-redirects: 1.15.11
-      form-data: 2.5.4
-      proxy-from-env: 1.1.0
-    transitivePeerDependencies:
-      - debug
-
   axios@1.13.6(debug@4.4.3):
     dependencies:
       follow-redirects: 1.15.11(debug@4.4.3)
@@ -14891,8 +14883,6 @@ snapshots:
   flatbuffers@24.12.23: {}
 
   flatted@3.4.2: {}
-
-  follow-redirects@1.15.11: {}
 
   follow-redirects@1.15.11(debug@4.4.3):
     optionalDependencies:

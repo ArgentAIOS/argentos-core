@@ -1,0 +1,162 @@
+{
+  "id": "google-meet",
+  "name": "Google Meet",
+  "description": "Google Meet meeting setup/status and future realtime voice/browser control integration.",
+  "capabilities": [
+    {
+      "id": "google-meet.setup",
+      "label": "Setup preflight",
+      "status": "implemented"
+    },
+    {
+      "id": "google-meet.status",
+      "label": "Runtime status",
+      "status": "implemented"
+    },
+    {
+      "id": "google-meet.join",
+      "label": "Join meeting",
+      "status": "planned",
+      "dependsOn": ["browser", "realtime-voice"]
+    },
+    {
+      "id": "google-meet.agent-consult",
+      "label": "Realtime agent consult",
+      "status": "planned",
+      "dependsOn": ["realtime-voice"]
+    }
+  ],
+  "permissions": [
+    {
+      "id": "browser",
+      "level": "control",
+      "reason": "Join and recover a Meet tab through the browser harness."
+    },
+    {
+      "id": "microphone",
+      "level": "local",
+      "reason": "Future realtime mode needs local meeting audio bridge access."
+    },
+    {
+      "id": "google-oauth",
+      "level": "read",
+      "reason": "Create and identify meetings when OAuth is configured."
+    }
+  ],
+  "runtimeSurfaces": ["plugin-tool", "browser", "realtime-voice"],
+  "nativeDependencies": [
+    {
+      "id": "audio-bridge",
+      "label": "Local audio bridge command",
+      "required": false,
+      "platforms": ["darwin", "linux"]
+    }
+  ],
+  "setupChecks": [
+    {
+      "id": "oauth-token",
+      "label": "Google OAuth token path"
+    },
+    {
+      "id": "browser-profile",
+      "label": "Browser profile configured"
+    },
+    {
+      "id": "audio-bridge",
+      "label": "Audio bridge commands configured"
+    }
+  ],
+  "oauthProviders": [
+    {
+      "id": "google",
+      "scopes": ["https://www.googleapis.com/auth/calendar.events"]
+    }
+  ],
+  "installNotes": [
+    "Live join/create behavior is intentionally hidden until browser and realtime voice integration land.",
+    "Configure an OAuth token path and browser profile before enabling live meeting actions."
+  ],
+  "uiHints": {
+    "oauth.tokenPath": {
+      "label": "Google OAuth Token Path",
+      "sensitive": true
+    },
+    "browser.profile": {
+      "label": "Browser Profile"
+    },
+    "audioBridge.recordCommand": {
+      "label": "Audio Record Command",
+      "advanced": true
+    },
+    "audioBridge.playCommand": {
+      "label": "Audio Play Command",
+      "advanced": true
+    },
+    "realtime.provider": {
+      "label": "Realtime Voice Provider",
+      "advanced": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "oauth": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tokenPath": {
+            "type": "string"
+          }
+        }
+      },
+      "browser": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "profile": {
+            "type": "string"
+          }
+        }
+      },
+      "defaultTransport": {
+        "type": "string",
+        "enum": ["chrome-node", "local-chrome", "websocket"]
+      },
+      "audioBridge": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "recordCommand": {
+            "type": "string"
+          },
+          "playCommand": {
+            "type": "string"
+          }
+        }
+      },
+      "realtime": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "voice": {
+            "type": "string"
+          },
+          "toolPolicy": {
+            "type": "string",
+            "enum": ["off", "read-only", "allow-configured"]
+          }
+        }
+      }
+    }
+  }
+}

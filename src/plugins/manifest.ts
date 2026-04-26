@@ -1,6 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { PluginConfigUiHint, PluginKind } from "./types.js";
+import type {
+  PluginConfigUiHint,
+  PluginKind,
+  PluginManifestCapability,
+  PluginManifestInstallNote,
+  PluginManifestNativeDependency,
+  PluginManifestOAuthProvider,
+  PluginManifestPermission,
+  PluginManifestRuntimeSurface,
+  PluginManifestSetupCheck,
+} from "./types.js";
 import { MANIFEST_KEY } from "../compat/legacy-names.js";
 
 export const PLUGIN_MANIFEST_FILENAME = "argent.plugin.json";
@@ -13,6 +23,13 @@ export type PluginManifest = {
   channels?: string[];
   providers?: string[];
   skills?: string[];
+  capabilities?: PluginManifestCapability[];
+  permissions?: PluginManifestPermission[];
+  runtimeSurfaces?: PluginManifestRuntimeSurface[];
+  nativeDependencies?: PluginManifestNativeDependency[];
+  setupChecks?: PluginManifestSetupCheck[];
+  oauthProviders?: PluginManifestOAuthProvider[];
+  installNotes?: PluginManifestInstallNote[];
   name?: string;
   description?: string;
   version?: string;
@@ -28,6 +45,15 @@ function normalizeStringList(value: unknown): string[] {
     return [];
   }
   return value.map((entry) => (typeof entry === "string" ? entry.trim() : "")).filter(Boolean);
+}
+
+function normalizeMetadataList<T extends string | Record<string, unknown>>(
+  value: unknown,
+): T[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.filter((entry): entry is T => typeof entry === "string" || isRecord(entry));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -78,6 +104,15 @@ export function loadPluginManifest(rootDir: string): PluginManifestLoadResult {
   const channels = normalizeStringList(raw.channels);
   const providers = normalizeStringList(raw.providers);
   const skills = normalizeStringList(raw.skills);
+  const capabilities = normalizeMetadataList<PluginManifestCapability>(raw.capabilities);
+  const permissions = normalizeMetadataList<PluginManifestPermission>(raw.permissions);
+  const runtimeSurfaces = normalizeMetadataList<PluginManifestRuntimeSurface>(raw.runtimeSurfaces);
+  const nativeDependencies = normalizeMetadataList<PluginManifestNativeDependency>(
+    raw.nativeDependencies,
+  );
+  const setupChecks = normalizeMetadataList<PluginManifestSetupCheck>(raw.setupChecks);
+  const oauthProviders = normalizeMetadataList<PluginManifestOAuthProvider>(raw.oauthProviders);
+  const installNotes = normalizeMetadataList<PluginManifestInstallNote>(raw.installNotes);
 
   let uiHints: Record<string, PluginConfigUiHint> | undefined;
   if (isRecord(raw.uiHints)) {
@@ -93,6 +128,13 @@ export function loadPluginManifest(rootDir: string): PluginManifestLoadResult {
       channels,
       providers,
       skills,
+      capabilities,
+      permissions,
+      runtimeSurfaces,
+      nativeDependencies,
+      setupChecks,
+      oauthProviders,
+      installNotes,
       name,
       description,
       version,

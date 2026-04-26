@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ArgentConfig } from "../config/config.js";
 import type { GatewayRequestHandler } from "../gateway/server-methods/types.js";
+import type { PluginManifestRecord } from "./manifest-registry.js";
 import type {
   ArgentPluginDefinition,
   ArgentPluginModule,
@@ -167,6 +168,18 @@ function pushDiagnostics(diagnostics: PluginDiagnostic[], append: PluginDiagnost
   diagnostics.push(...append);
 }
 
+function applyManifestMetadata(record: PluginRecord, manifestRecord: PluginManifestRecord) {
+  record.configUiHints = manifestRecord.configUiHints;
+  record.configJsonSchema = manifestRecord.configSchema;
+  record.capabilities = manifestRecord.capabilities;
+  record.permissions = manifestRecord.permissions;
+  record.runtimeSurfaces = manifestRecord.runtimeSurfaces;
+  record.nativeDependencies = manifestRecord.nativeDependencies;
+  record.setupChecks = manifestRecord.setupChecks;
+  record.oauthProviders = manifestRecord.oauthProviders;
+  record.installNotes = manifestRecord.installNotes;
+}
+
 export function loadArgentPlugins(options: PluginLoadOptions = {}): PluginRegistry {
   const cfg = options.config ?? {};
   const logger = options.logger ?? defaultLogger();
@@ -257,6 +270,7 @@ export function loadArgentPlugins(options: PluginLoadOptions = {}): PluginRegist
         enabled: false,
         configSchema: Boolean(manifestRecord.configSchema),
       });
+      applyManifestMetadata(record, manifestRecord);
       record.status = "disabled";
       record.error = `overridden by ${existingOrigin} plugin`;
       registry.plugins.push(record);
@@ -277,8 +291,7 @@ export function loadArgentPlugins(options: PluginLoadOptions = {}): PluginRegist
       configSchema: Boolean(manifestRecord.configSchema),
     });
     record.kind = manifestRecord.kind;
-    record.configUiHints = manifestRecord.configUiHints;
-    record.configJsonSchema = manifestRecord.configSchema;
+    applyManifestMetadata(record, manifestRecord);
 
     if (candidate.origin === "org") {
       if (orgScope.allowlistStatus !== "ok") {
