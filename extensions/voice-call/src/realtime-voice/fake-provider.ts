@@ -150,6 +150,7 @@ export class FakeRealtimeVoiceProvider implements RealtimeVoiceProvider {
   readonly id = "fake";
   readonly aliases = ["test", "local-fake"];
   readonly label = "Fake realtime voice";
+  readonly readiness = "test-only";
   readonly bridges: FakeRealtimeVoiceBridge[] = [];
 
   resolveConfig({

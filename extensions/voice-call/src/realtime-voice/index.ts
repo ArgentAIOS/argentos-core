@@ -13,6 +13,17 @@ export {
   normalizeRealtimeVoiceProviderId,
 } from "./provider-registry.js";
 export {
+  createOpenAiRealtimeVoiceProvider,
+  OpenAiRealtimeVoiceBridge,
+  OpenAiRealtimeVoiceProvider,
+  type OpenAiRealtimeAudioFormat,
+  type OpenAiRealtimeAudioFormatConfig,
+  type OpenAiRealtimeVoiceProviderConfig,
+  type OpenAiRealtimeVoiceProviderOptions,
+  type OpenAiRealtimeWebSocketFactory,
+  type OpenAiRealtimeWebSocketLike,
+} from "./openai-realtime-provider.js";
+export {
   createRealtimeVoiceOperatorSession,
   type RealtimeVoiceOperatorSession,
   type RealtimeVoiceOperatorSessionEvent,
@@ -47,6 +58,7 @@ export type {
   RealtimeVoiceProviderConfig,
   RealtimeVoiceProviderConfiguredContext,
   RealtimeVoiceProviderId,
+  RealtimeVoiceProviderReadiness,
   RealtimeVoiceProviderResolveContext,
   RealtimeVoiceRole,
   RealtimeVoiceTool,

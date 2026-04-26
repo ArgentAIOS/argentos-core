@@ -22,6 +22,7 @@ describe("createRealtimeVoiceOperatorCliHarness", () => {
     const toolResult = { ok: true };
     const provider = createFakeRealtimeVoiceProvider();
     const harness = createRealtimeVoiceOperatorCliHarness({
+      allowTestOnlyProviders: true,
       providers: [provider],
       configuredProviderId: "fake",
       providerConfigs: {
@@ -113,6 +114,7 @@ describe("createRealtimeVoiceOperatorCliHarness", () => {
   it("logs operator cancellation distinctly from completed close", async () => {
     const provider = createFakeRealtimeVoiceProvider();
     const harness = createRealtimeVoiceOperatorCliHarness({
+      allowTestOnlyProviders: true,
       providers: [provider],
       configuredProviderId: "fake",
       providerConfigs: { fake: { autoReady: false } },
@@ -136,6 +138,7 @@ describe("createRealtimeVoiceOperatorCliHarness", () => {
     const provider = createFakeRealtimeVoiceProvider();
     const lateErrors: string[] = [];
     const harness = createRealtimeVoiceOperatorCliHarness({
+      allowTestOnlyProviders: true,
       providers: [provider],
       configuredProviderId: "fake",
       providerConfigs: { fake: { autoReady: false } },
@@ -159,6 +162,7 @@ describe("createRealtimeVoiceOperatorCliHarness", () => {
     const provider = createFakeRealtimeVoiceProvider();
     const lateErrors: string[] = [];
     const harness = createRealtimeVoiceOperatorCliHarness({
+      allowTestOnlyProviders: true,
       providers: [provider],
       configuredProviderId: "fake",
       providerConfigs: { fake: { autoReady: false } },
@@ -184,6 +188,7 @@ describe("createRealtimeVoiceOperatorCliHarness", () => {
     const provider = createFakeRealtimeVoiceProvider();
     const order: string[] = [];
     const harness = createRealtimeVoiceOperatorCliHarness({
+      allowTestOnlyProviders: true,
       providers: [provider],
       configuredProviderId: "fake",
       providerConfigs: {
@@ -233,6 +238,7 @@ describe("createRealtimeVoiceOperatorCliHarness", () => {
   it("normalizes provider errors into deterministic log messages", async () => {
     const provider = createFakeRealtimeVoiceProvider();
     const harness = createRealtimeVoiceOperatorCliHarness({
+      allowTestOnlyProviders: true,
       providers: [provider],
       configuredProviderId: "fake",
       providerConfigs: { fake: { script: [{ type: "error", message: "boom" }] } },
@@ -255,6 +261,7 @@ describe("createRealtimeVoiceOperatorCliHarness", () => {
       }
     });
     const harness = createRealtimeVoiceOperatorCliHarness({
+      allowTestOnlyProviders: true,
       providers: [provider],
       configuredProviderId: "fake",
       providerConfigs: { fake: { script: [{ type: "ready" }] } },
