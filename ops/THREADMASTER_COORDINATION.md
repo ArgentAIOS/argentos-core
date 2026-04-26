@@ -231,6 +231,10 @@ Lane: `openclaw`. Branch: `codex/openclaw-realtime-fake-provider` from `origin/d
 
 Lane: `openclaw`. Branch: `codex/openclaw-realtime-fake-provider` rebased onto `origin/dev` / `bdbf18fa`; prior fake-provider determinism commit replayed as `e6d7c3d5`. Owned files for this slice: `extensions/voice-call/src/realtime-voice/**` and this coordination note only. Shared contract change: add an operator-facing realtime voice session contract that can run against the deterministic fake provider, recording transcript/audio/tool/close events and preserving handoff points for future OpenAI/Google adapters; `RealtimeVoiceCloseReason` now includes `cancelled` for operator-initiated cancellation. Boundaries: no Workflows, AppForge, AOS, schema, gateway, browser, Google Meet, existing telephony provider behavior, live microphone/audio, or live provider support claims. Required reaction: other lanes should treat this as a local deterministic operator harness only until a separate live adapter task is assigned and verified.
 
+### 2026-04-26 — OpenClaw Fake-Backed Operator CLI Harness Wave
+
+Lane: `openclaw`. Branch: `codex/openclaw-realtime-fake-provider` rebased onto `origin/dev` / `4ad2a5a8`; prior operator fake-session commit replayed as `a3a325e5`. Owned files for this slice: `extensions/voice-call/src/realtime-voice/**` and this coordination note only. Shared contract change: add a deterministic terminal/operator command harness over `createRealtimeVoiceOperatorSession` that can feed text/audio-token input, trigger greetings, acknowledge marks, cancel/close sessions, collect transcript/tool/result/close events, and emit stable logs for later CLI wiring. Boundaries: no Workflows, AppForge, AOS, schema, gateway, browser, Google Meet, existing telephony provider behavior, live microphone/audio, live OpenAI/Google provider calls, or credentials. Required reaction: other lanes should treat this as a fake/local harness only.
+
 ## Verification Snapshot
 
 Latest AppForge focused verification after rebase onto `origin/dev`:
