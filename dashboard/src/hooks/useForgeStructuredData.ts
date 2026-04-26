@@ -2,7 +2,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppForgeWorkflowEventRequest, ForgeApp } from "./useApps";
 import { fetchLocalApi } from "../utils/localApiFetch";
 
-export type ForgeFieldType = "text" | "single_select" | "number" | "date" | "checkbox";
+export type ForgeFieldType =
+  | "text"
+  | "long_text"
+  | "single_select"
+  | "multi_select"
+  | "number"
+  | "date"
+  | "checkbox"
+  | "url"
+  | "email"
+  | "attachment"
+  | "linked_record";
 
 export type ForgeStructuredField = {
   id: string;
@@ -13,7 +24,7 @@ export type ForgeStructuredField = {
   options?: string[];
 };
 
-export type ForgeStructuredRecordValue = string | number | boolean | null;
+export type ForgeStructuredRecordValue = string | number | boolean | string[] | null;
 
 export type ForgeStructuredRecord = {
   id: string;
@@ -133,7 +144,33 @@ function nowIso(): string {
 }
 
 function cloneValue(value: ForgeStructuredRecordValue): ForgeStructuredRecordValue {
-  return value;
+  return Array.isArray(value) ? [...value] : value;
+}
+
+function stringArrayValue(value: unknown): string[] | undefined {
+  if (typeof value === "string") {
+    return value
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function isArrayFieldType(
+  type: ForgeFieldType,
+): type is "multi_select" | "attachment" | "linked_record" {
+  return type === "multi_select" || type === "attachment" || type === "linked_record";
+}
+
+function fieldSupportsOptions(type: ForgeFieldType): boolean {
+  return type === "single_select" || type === "multi_select";
 }
 
 function defaultValueForField(field: ForgeStructuredField, label = ""): ForgeStructuredRecordValue {
@@ -145,6 +182,9 @@ function defaultValueForField(field: ForgeStructuredField, label = ""): ForgeStr
   }
   if (field.type === "single_select") {
     return field.options?.[0] ?? "";
+  }
+  if (isArrayFieldType(field.type)) {
+    return [];
   }
   return label;
 }
@@ -169,6 +209,13 @@ function coerceValueForField(
   if (field.type === "single_select") {
     const text = value === null || value === undefined ? "" : String(value);
     return field.options?.includes(text) ? text : (field.options?.[0] ?? "");
+  }
+  if (isArrayFieldType(field.type)) {
+    const parsed = stringArrayValue(value) ?? [];
+    if (field.type === "multi_select" && field.options?.length) {
+      return parsed.filter((option) => field.options?.includes(option));
+    }
+    return parsed;
   }
   return value === null || value === undefined ? "" : String(value);
 }
@@ -291,10 +338,16 @@ function normalizeField(value: unknown): ForgeStructuredField | null {
   }
   const rawType = stringValue(value.type);
   const type: ForgeFieldType =
+    rawType === "long_text" ||
     rawType === "single_select" ||
+    rawType === "multi_select" ||
     rawType === "number" ||
     rawType === "date" ||
-    rawType === "checkbox"
+    rawType === "checkbox" ||
+    rawType === "url" ||
+    rawType === "email" ||
+    rawType === "attachment" ||
+    rawType === "linked_record"
       ? rawType
       : "text";
   return {
@@ -309,7 +362,10 @@ function normalizeField(value: unknown): ForgeStructuredField | null {
   };
 }
 
-function normalizeRecord(value: unknown): ForgeStructuredRecord | null {
+function normalizeRecord(
+  value: unknown,
+  fields: ForgeStructuredField[] = [],
+): ForgeStructuredRecord | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -319,9 +375,22 @@ function normalizeRecord(value: unknown): ForgeStructuredRecord | null {
     return null;
   }
   const normalizedValues: Record<string, ForgeStructuredRecordValue> = {};
+  if (fields.length > 0) {
+    for (const field of fields) {
+      normalizedValues[field.id] = coerceValueForField(values[field.id], field);
+    }
+  }
   for (const [key, raw] of Object.entries(values)) {
+    if (key in normalizedValues) {
+      continue;
+    }
     if (raw === null || typeof raw === "string" || typeof raw === "boolean") {
       normalizedValues[key] = raw;
+      continue;
+    }
+    const arrayValue = stringArrayValue(raw);
+    if (arrayValue) {
+      normalizedValues[key] = arrayValue;
       continue;
     }
     const numeric = numberValue(raw);
@@ -352,7 +421,7 @@ function normalizeTable(value: unknown): ForgeStructuredTable | null {
     : [];
   const records = Array.isArray(value.records)
     ? value.records
-        .map(normalizeRecord)
+        .map((record) => normalizeRecord(record, fields))
         .filter((record): record is ForgeStructuredRecord => !!record)
     : [];
   return {
@@ -1301,7 +1370,7 @@ export function useForgeStructuredData({
             id: field.id,
             name: updates.name?.trim() || field.name,
             options:
-              updates.type && updates.type !== "single_select"
+              updates.type && !fieldSupportsOptions(updates.type)
                 ? undefined
                 : (updates.options ?? field.options),
           };

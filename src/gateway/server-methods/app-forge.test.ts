@@ -2,6 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppForgeBase, AppForgeRecord, AppForgeTable } from "../../infra/app-forge-model.js";
 import type { ConnectParams, RequestFrame } from "../protocol/index.js";
 import type { GatewayRequestContext, GatewayRequestHandlerOptions } from "./types.js";
+import { createAppForgePermissions } from "../../infra/app-forge-permissions.js";
+
+const { emitAppForgeEventHandlerMock } = vi.hoisted(() => ({
+  emitAppForgeEventHandlerMock: vi.fn(),
+}));
+
+vi.mock("./workflows.js", () => ({
+  workflowsHandlers: {
+    "workflows.emitAppForgeEvent": emitAppForgeEventHandlerMock,
+  },
+}));
+
 import { listGatewayMethods } from "../server-methods-list.js";
 import { coreGatewayHandlers, handleGatewayRequest } from "../server-methods.js";
 import { appForgeHandlers, resetAppForgeAdapterForTests } from "./app-forge.js";
@@ -54,18 +66,35 @@ function createResponder() {
   return vi.fn<(ok: boolean, payload?: unknown, error?: unknown) => void>();
 }
 
-async function invokeAppForgeHandler(method: string, params: Record<string, unknown>) {
+function permissions(
+  overrides: Parameters<typeof createAppForgePermissions>[0] = { creator: "owner-1" },
+) {
+  return createAppForgePermissions(overrides);
+}
+
+async function invokeAppForgeHandler(
+  method: string,
+  params: Record<string, unknown>,
+  overrides: Partial<GatewayRequestHandlerOptions> = {},
+) {
   const handler = appForgeHandlers[method];
   if (!handler) {
     throw new Error(`missing handler: ${method}`);
   }
   const respond = createResponder();
   await handler({
-    req: { type: "req", id: `test-${method}`, method, params },
+    req:
+      overrides.req ??
+      ({
+        type: "req",
+        id: `test-${method}`,
+        method,
+        params,
+      } satisfies RequestFrame),
     params,
-    client: null,
-    context: {} as unknown as GatewayRequestContext,
-    isWebchatConnect: () => false,
+    client: overrides.client ?? null,
+    context: overrides.context ?? ({} as unknown as GatewayRequestContext),
+    isWebchatConnect: overrides.isWebchatConnect ?? (() => false),
     respond,
   } satisfies GatewayRequestHandlerOptions);
   return respond;
@@ -90,6 +119,10 @@ function operatorConnect(scopes: string[]): ConnectParams {
 describe("AppForge gateway handlers", () => {
   beforeEach(() => {
     resetAppForgeAdapterForTests([base(), base({ id: "base-2", appId: "app-2", name: "Other" })]);
+    emitAppForgeEventHandlerMock.mockReset();
+    emitAppForgeEventHandlerMock.mockImplementation(async ({ respond }) => {
+      respond(true, { ok: true }, undefined);
+    });
   });
 
   it("registers AppForge methods for discovery and dispatch", () => {
@@ -166,6 +199,64 @@ describe("AppForge gateway handlers", () => {
     );
   });
 
+  it("enforces AppForge ACL claims on base writes when multi-user params are provided", async () => {
+    const deniedRespond = await invokeAppForgeHandler("appforge.bases.put", {
+      base: base({ name: "Denied" }),
+      expectedRevision: 1,
+      actor: { actorId: "viewer-1", actorType: "operator", sessionKey: "agent:viewer-1:main" },
+      permissions: permissions({
+        creator: { actorId: "owner-1", actorType: "operator" },
+        viewers: ["viewer-1"],
+      }),
+    });
+    expect(deniedRespond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "unauthorized appforge write",
+        audit: expect.objectContaining({
+          eventType: "forge.permissions.checked",
+          appId: "app-1",
+          allowed: false,
+          aclRole: "viewer",
+        }),
+      }),
+    );
+
+    const allowedRespond = await invokeAppForgeHandler("appforge.bases.put", {
+      base: base({ name: "Allowed" }),
+      expectedRevision: 1,
+      actor: { actorId: "editor-1", actorType: "operator" },
+      permissions: permissions({
+        creator: { actorId: "owner-1", actorType: "operator" },
+        editors: ["editor-1"],
+        viewers: ["viewer-1"],
+      }),
+    });
+    expect(allowedRespond).toHaveBeenCalledWith(
+      true,
+      { base: expect.objectContaining({ revision: 2, name: "Allowed" }) },
+      undefined,
+    );
+  });
+
+  it("rejects partial AppForge multi-user claims on writes", async () => {
+    const respond = await invokeAppForgeHandler("appforge.bases.put", {
+      base: base({ name: "Updated" }),
+      expectedRevision: 1,
+      permissions: permissions(),
+    });
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "actor and permissions are required together for AppForge multi-user writes",
+      }),
+    );
+  });
+
   it("rejects malformed and stale writes", async () => {
     const invalidRespond = await invokeAppForgeHandler("appforge.bases.put", {
       base: { id: "base-1" },
@@ -227,6 +318,38 @@ describe("AppForge gateway handlers", () => {
           actualRevision: 0,
         }),
       }),
+    );
+  });
+
+  it("enforces AppForge ACL claims on deletes when multi-user params are provided", async () => {
+    const deniedRespond = await invokeAppForgeHandler("appforge.bases.delete", {
+      baseId: "base-1",
+      expectedRevision: 1,
+      actor: "viewer-1",
+      permissions: permissions({
+        creator: "owner-1",
+        viewers: ["viewer-1"],
+      }),
+    });
+    expect(deniedRespond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "unauthorized appforge write",
+      }),
+    );
+
+    const allowedRespond = await invokeAppForgeHandler("appforge.bases.delete", {
+      baseId: "base-1",
+      expectedRevision: 1,
+      actor: "owner-1",
+      permissions: permissions(),
+    });
+    expect(allowedRespond).toHaveBeenCalledWith(
+      true,
+      { base: expect.objectContaining({ id: "base-1", revision: 2 }) },
+      undefined,
     );
   });
 
@@ -293,6 +416,42 @@ describe("AppForge gateway handlers", () => {
         table: expect.objectContaining({ id: "table-2", revision: 2 }),
       },
       undefined,
+    );
+  });
+
+  it("emits canonical table mutation events for non-webchat gateway writers", async () => {
+    await invokeAppForgeHandler(
+      "appforge.tables.put",
+      {
+        baseId: "base-1",
+        table: table(),
+        expectedBaseRevision: 1,
+        expectedTableRevision: 0,
+      },
+      {
+        client: { connect: operatorConnect(["operator.write"]) },
+      },
+    );
+
+    expect(emitAppForgeEventHandlerMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: {
+          eventType: "forge.table.created",
+          appId: "app-1",
+          baseId: "base-1",
+          tableId: "table-2",
+          payload: {
+            baseId: "base-1",
+            baseRevision: 2,
+            tableId: "table-2",
+            tableName: "Approvals",
+            tableRevision: 1,
+            fieldIds: ["status"],
+            recordCount: 0,
+            changeType: "table.created",
+          },
+        },
+      }),
     );
   });
 
@@ -373,6 +532,131 @@ describe("AppForge gateway handlers", () => {
       },
       undefined,
     );
+  });
+
+  it("emits canonical record mutation events for updates and deletes", async () => {
+    await invokeAppForgeHandler(
+      "appforge.records.put",
+      {
+        baseId: "base-1",
+        tableId: "table-1",
+        record: record(),
+        expectedBaseRevision: 1,
+        expectedTableRevision: 1,
+        expectedRecordRevision: 0,
+      },
+      {
+        client: { connect: operatorConnect(["operator.write"]) },
+      },
+    );
+    emitAppForgeEventHandlerMock.mockClear();
+
+    await invokeAppForgeHandler(
+      "appforge.records.put",
+      {
+        baseId: "base-1",
+        tableId: "table-1",
+        record: record({ revision: 1, values: { status: "Approved" } }),
+        expectedBaseRevision: 2,
+        expectedTableRevision: 2,
+        expectedRecordRevision: 1,
+      },
+      {
+        client: { connect: operatorConnect(["operator.write"]) },
+      },
+    );
+
+    expect(emitAppForgeEventHandlerMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: {
+          eventType: "forge.record.updated",
+          appId: "app-1",
+          baseId: "base-1",
+          tableId: "table-1",
+          recordId: "record-1",
+          payload: {
+            baseId: "base-1",
+            baseRevision: 3,
+            tableId: "table-1",
+            tableName: "Reviews",
+            tableRevision: 3,
+            recordId: "record-1",
+            recordRevision: 2,
+            values: { status: "Approved" },
+            changeType: "record.updated",
+          },
+        },
+      }),
+    );
+
+    emitAppForgeEventHandlerMock.mockClear();
+
+    await invokeAppForgeHandler(
+      "appforge.records.delete",
+      {
+        baseId: "base-1",
+        tableId: "table-1",
+        recordId: "record-1",
+        expectedBaseRevision: 3,
+        expectedTableRevision: 3,
+        expectedRecordRevision: 2,
+      },
+      {
+        client: { connect: operatorConnect(["operator.write"]) },
+      },
+    );
+
+    expect(emitAppForgeEventHandlerMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: {
+          eventType: "forge.record.deleted",
+          appId: "app-1",
+          baseId: "base-1",
+          tableId: "table-1",
+          recordId: "record-1",
+          payload: {
+            baseId: "base-1",
+            baseRevision: 4,
+            tableId: "table-1",
+            tableName: "Reviews",
+            tableRevision: 4,
+            recordId: "record-1",
+            recordRevision: 3,
+            values: { status: "Approved" },
+            changeType: "record.deleted",
+          },
+        },
+      }),
+    );
+  });
+
+  it("suppresses automatic mutation emission for the webchat dashboard client", async () => {
+    await invokeAppForgeHandler(
+      "appforge.records.put",
+      {
+        baseId: "base-1",
+        tableId: "table-1",
+        record: record(),
+        expectedBaseRevision: 1,
+        expectedTableRevision: 1,
+        expectedRecordRevision: 0,
+      },
+      {
+        client: {
+          connect: {
+            ...operatorConnect(["operator.write"]),
+            client: {
+              id: "webchat",
+              version: "1.0.0",
+              platform: "web",
+              mode: "webchat",
+            },
+          },
+        },
+      },
+    );
+
+    expect(emitAppForgeEventHandlerMock).not.toHaveBeenCalled();
   });
 
   it("rejects malformed table and record writes", async () => {

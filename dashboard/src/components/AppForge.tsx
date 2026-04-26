@@ -233,6 +233,9 @@ function loadViewSettings(key: string | null): ForgeViewSettings {
 }
 
 function fieldValue(value: ForgeStructuredRecordValue | undefined): string {
+  if (Array.isArray(value)) {
+    return value.join(", ");
+  }
   return value === null || value === undefined ? "" : String(value);
 }
 
@@ -242,6 +245,12 @@ function fieldInputType(field: ForgeStructuredField): string {
   }
   if (field.type === "date") {
     return "date";
+  }
+  if (field.type === "url") {
+    return "url";
+  }
+  if (field.type === "email") {
+    return "email";
   }
   return "text";
 }
@@ -256,6 +265,16 @@ function cellValueFromInput(
   }
   if (field.type === "checkbox") {
     return value === "true";
+  }
+  if (
+    field.type === "multi_select" ||
+    field.type === "attachment" ||
+    field.type === "linked_record"
+  ) {
+    return value
+      .split(/[\n,]/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
   }
   return value;
 }
@@ -1871,25 +1890,27 @@ export function AppForge({
                                 return;
                               }
                               void structured.updateField(structured.selectedField.id, {
-                                type: event.target.value as
-                                  | "text"
-                                  | "single_select"
-                                  | "number"
-                                  | "date"
-                                  | "checkbox",
+                                type: event.target.value as ForgeStructuredField["type"],
                               });
                             }}
                             className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
                           >
                             <option value="text">Text</option>
+                            <option value="long_text">Long text</option>
                             <option value="single_select">Single select</option>
+                            <option value="multi_select">Multi select</option>
                             <option value="number">Number</option>
                             <option value="date">Date</option>
                             <option value="checkbox">Checkbox</option>
+                            <option value="url">URL</option>
+                            <option value="email">Email</option>
+                            <option value="attachment">Attachment</option>
+                            <option value="linked_record">Linked record</option>
                           </select>
                         </label>
 
-                        {structured.selectedField?.type === "single_select" && (
+                        {(structured.selectedField?.type === "single_select" ||
+                          structured.selectedField?.type === "multi_select") && (
                           <div>
                             <div className="mb-2 text-xs text-white/38">Options</div>
                             <div className="space-y-2">

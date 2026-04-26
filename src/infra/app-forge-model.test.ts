@@ -9,11 +9,14 @@ import {
 describe("AppForge core model", () => {
   const fields: AppForgeField[] = [
     { id: "name", name: "Name", type: "text", required: true },
+    { id: "notes", name: "Notes", type: "long_text" },
     { id: "status", name: "Status", type: "single_select", options: ["Planning", "Review"] },
     { id: "score", name: "Score", type: "number" },
     { id: "done", name: "Done", type: "checkbox" },
     { id: "due", name: "Due", type: "date" },
     { id: "tags", name: "Tags", type: "multi_select", options: ["Design", "Launch"] },
+    { id: "files", name: "Files", type: "attachment" },
+    { id: "related", name: "Related", type: "linked_record" },
     { id: "email", name: "Email", type: "email" },
     { id: "url", name: "URL", type: "url" },
   ];
@@ -21,11 +24,14 @@ describe("AppForge core model", () => {
   it("validates and coerces record values by field type", () => {
     const result = validateAppForgeRecordValues(fields, {
       name: "Campaign",
+      notes: "Line one\nLine two",
       status: "Review",
       score: "42",
       done: "true",
       due: "2026-05-01",
       tags: ["Design", "Launch"],
+      files: "brief.pdf, https://example.com/mock.png",
+      related: "record-1,\nrecord-2",
       email: "operator@example.com",
       url: "https://example.com/review",
       extra: "ignored",
@@ -35,11 +41,14 @@ describe("AppForge core model", () => {
     expect(result.errors).toEqual([]);
     expect(result.values).toEqual({
       name: "Campaign",
+      notes: "Line one\nLine two",
       status: "Review",
       score: 42,
       done: true,
       due: "2026-05-01",
       tags: ["Design", "Launch"],
+      files: ["brief.pdf", "https://example.com/mock.png"],
+      related: ["record-1", "record-2"],
       email: "operator@example.com",
       url: "https://example.com/review",
     });
@@ -53,6 +62,8 @@ describe("AppForge core model", () => {
       done: {},
       due: "05/01/2026",
       tags: ["Design", "Bad"],
+      files: { id: "asset-1" },
+      related: { id: "record-1" },
       email: "operator",
       url: "not a url",
     });
@@ -65,6 +76,8 @@ describe("AppForge core model", () => {
       "invalid_boolean",
       "invalid_date",
       "invalid_option",
+      "invalid_array",
+      "invalid_array",
       "invalid_email",
       "invalid_url",
     ]);
@@ -101,14 +114,25 @@ describe("AppForge core model", () => {
                 revision: 2,
                 fields: [
                   { id: "name", name: "Name", type: "text", required: true },
+                  { id: "notes", name: "Notes", type: "long_text" },
                   { id: "status", name: "Status", type: "single_select", options: ["Review"] },
                   { id: "score", name: "Score", type: "number" },
+                  { id: "files", name: "Files", type: "attachment" },
+                  { id: "related", name: "Related", type: "linked_record" },
                 ],
                 records: [
                   {
                     id: "record-1",
                     revision: 4,
-                    values: { name: "Asset", status: "Review", score: "5", ignored: true },
+                    values: {
+                      name: "Asset",
+                      notes: "Needs second review",
+                      status: "Review",
+                      score: "5",
+                      files: "brief.pdf, https://example.com/mock.png",
+                      related: ["record-2"],
+                      ignored: true,
+                    },
                     createdAt: "2026-04-25T20:00:00.000Z",
                     updatedAt: "2026-04-25T21:00:00.000Z",
                   },
@@ -132,7 +156,14 @@ describe("AppForge core model", () => {
     expect(base.tables[0]?.records[0]).toMatchObject({
       id: "record-1",
       revision: 4,
-      values: { name: "Asset", status: "Review", score: 5 },
+      values: {
+        name: "Asset",
+        notes: "Needs second review",
+        status: "Review",
+        score: 5,
+        files: ["brief.pdf", "https://example.com/mock.png"],
+        related: ["record-2"],
+      },
     });
   });
 });

@@ -1,3 +1,5 @@
+import type { AppForgeBase, AppForgeRecord, AppForgeTable } from "./app-forge-model.js";
+
 export const APPFORGE_WORKFLOW_EVENT_TYPES = [
   "forge.table.created",
   "forge.table.updated",
@@ -17,6 +19,7 @@ export type AppForgeWorkflowEventInput = {
   type?: string;
   action?: string;
   appId?: string;
+  baseId?: string;
   capabilityId?: string;
   workflowRunId?: string;
   runId?: string;
@@ -37,6 +40,25 @@ export type NormalizedAppForgeWorkflowEvent = {
   workflowRunId?: string;
   nodeId?: string;
   payload: Record<string, unknown>;
+};
+
+type AppForgeTableMutationAction = "created" | "updated" | "deleted";
+type AppForgeRecordMutationAction = "created" | "updated" | "deleted";
+
+type BuildAppForgeTableMutationEventOptions = {
+  action: AppForgeTableMutationAction;
+  base: AppForgeBase;
+  table: AppForgeTable;
+  nextActiveTableId?: string;
+  payload?: Record<string, unknown>;
+};
+
+type BuildAppForgeRecordMutationEventOptions = {
+  action: AppForgeRecordMutationAction;
+  base: AppForgeBase;
+  table: AppForgeTable;
+  record: AppForgeRecord;
+  payload?: Record<string, unknown>;
 };
 
 const EVENT_ALIASES: Record<string, AppForgeWorkflowEventType> = {
@@ -152,6 +174,7 @@ export function normalizeAppForgeWorkflowEvent(
   };
 
   optionalField(payload, "capabilityId", capabilityId);
+  optionalField(payload, "baseId", stringValue(source.baseId));
   optionalField(payload, "workflowRunId", workflowRunId);
   optionalField(payload, "nodeId", nodeId);
   optionalField(payload, "tableId", stringValue(source.tableId));
@@ -204,4 +227,78 @@ export function appForgeEventMatchesTriggerConfig(
   }
 
   return true;
+}
+
+function cloneRecordValues(values: AppForgeRecord["values"]): Record<string, unknown> {
+  return { ...values };
+}
+
+function tableMutationPayload(
+  action: AppForgeTableMutationAction,
+  base: AppForgeBase,
+  table: AppForgeTable,
+  payload: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    baseId: base.id,
+    baseRevision: base.revision,
+    tableId: table.id,
+    tableName: table.name,
+    tableRevision: table.revision,
+    fieldIds: table.fields.map((field) => field.id),
+    recordCount: table.records.length,
+    changeType: `table.${action}`,
+    ...payload,
+  };
+}
+
+function recordMutationPayload(
+  action: AppForgeRecordMutationAction,
+  base: AppForgeBase,
+  table: AppForgeTable,
+  record: AppForgeRecord,
+  payload: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    baseId: base.id,
+    baseRevision: base.revision,
+    tableId: table.id,
+    tableName: table.name,
+    tableRevision: table.revision,
+    recordId: record.id,
+    recordRevision: record.revision,
+    values: cloneRecordValues(record.values),
+    changeType: `record.${action}`,
+    ...payload,
+  };
+}
+
+export function buildAppForgeTableMutationEvent(
+  options: BuildAppForgeTableMutationEventOptions,
+): AppForgeWorkflowEventInput {
+  const { action, base, table, nextActiveTableId, payload } = options;
+  return {
+    eventType: `forge.table.${action}`,
+    appId: base.appId,
+    baseId: base.id,
+    tableId: table.id,
+    payload: tableMutationPayload(action, base, table, {
+      ...payload,
+      ...(nextActiveTableId ? { nextActiveTableId } : {}),
+    }),
+  };
+}
+
+export function buildAppForgeRecordMutationEvent(
+  options: BuildAppForgeRecordMutationEventOptions,
+): AppForgeWorkflowEventInput {
+  const { action, base, table, record, payload } = options;
+  return {
+    eventType: `forge.record.${action}`,
+    appId: base.appId,
+    baseId: base.id,
+    tableId: table.id,
+    recordId: record.id,
+    payload: recordMutationPayload(action, base, table, record, payload),
+  };
 }
