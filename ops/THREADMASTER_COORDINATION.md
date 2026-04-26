@@ -235,6 +235,10 @@ Lane: `openclaw`. Branch: `codex/openclaw-realtime-fake-provider` at `c6f8554c` 
 
 Lane: `openclaw`. Branch: `codex/openclaw-realtime-fake-provider` at `05b22380` before this slice. Owned files for this slice: `extensions/voice-call/src/realtime-voice/**` and this coordination note only. Shared contract change: add a reusable live OpenAI Realtime smoke helper that uses the live-labeled OpenAI provider to send one local text prompt and require both a final assistant transcript and audio output chunks without exposing secrets. Boundaries: fake provider remains test-only; no Workflows, AppForge, AOS, schema, browser, Google Meet runtime, existing telephony provider behavior, or microphone/playback claims. Required reaction: other lanes may treat this as live OpenAI text-to-audio session evidence only when the helper output reports `ok: true`, final transcript, and `audioChunkCount > 0`; live microphone/speaker and synthetic input-audio fixtures remain separate follow-up work.
 
+### 2026-04-26 — OpenClaw Synthetic Audio I/O Adapter Wave
+
+Lane: `openclaw`. Branch: `codex/openclaw-realtime-fake-provider` at `80fdc6d4` before this slice. Owned files for this slice: `extensions/voice-call/src/realtime-voice/**` and this coordination note only. Shared contract change: add local realtime operator audio I/O abstractions for synthetic 24k PCM input and capture-only 24k PCM output, plus an operator audio session wrapper that routes synthetic frames into the existing operator session and captures provider audio chunks. Boundaries: no real microphone device code, no speaker playback device code, no Workflows, AppForge, AOS, schema, browser, Google Meet runtime, or existing telephony provider defaults. Required reaction: downstream lanes may use this as a testable audio I/O contract only; live mic/speaker device adapters still require a separate assignment and explicit privacy/permission gates.
+
 ## Verification Snapshot
 
 Latest AppForge focused verification after rebase onto `origin/dev`:

@@ -29,6 +29,15 @@ export {
   type OpenAiRealtimeLiveSmokeResult,
 } from "./openai-realtime-live-smoke.js";
 export {
+  CaptureRealtimeOperatorAudioOutput,
+  createRealtimeOperatorAudioSession,
+  SyntheticRealtimeOperatorAudioInput,
+  type RealtimeOperatorAudioInput,
+  type RealtimeOperatorAudioOutput,
+  type RealtimeOperatorAudioSession,
+  type RealtimeOperatorAudioSessionParams,
+} from "./local-audio-io.js";
+export {
   createRealtimeVoiceOperatorSession,
   type RealtimeVoiceOperatorSession,
   type RealtimeVoiceOperatorSessionEvent,
