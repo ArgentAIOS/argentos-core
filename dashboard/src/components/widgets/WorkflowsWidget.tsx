@@ -9000,10 +9000,7 @@ function WorkflowCanvasInner({
                     id: activeWorkflow.id,
                     name: activeWorkflow.name,
                     description: "",
-                    nodes: cleanNodes,
-                    edges: cleanEdges,
                     defaultOnError: { strategy: "fail", notifyOnError: true },
-                    deploymentStage: "simulate",
                   };
               const exportData = {
                 kind: "argent.workflow.package" as const,
@@ -9025,6 +9022,9 @@ function WorkflowCanvasInner({
                   ...workflowDefinition,
                   id: activeWorkflow.id,
                   name: activeWorkflow.name,
+                  nodes: cleanNodes,
+                  edges: cleanEdges,
+                  deploymentStage: activeDeploymentStage,
                 },
                 canvasLayout: {
                   ...(activeWorkflow.canvasLayout ?? {}),
