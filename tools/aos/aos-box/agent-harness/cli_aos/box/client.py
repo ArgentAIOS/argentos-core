@@ -2,16 +2,13 @@ from __future__ import annotations
 
 import base64
 import json
-import mimetypes
-import uuid
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
-from .constants import BACKEND_NAME, DEFAULT_API_BASE_URL, DEFAULT_UPLOAD_BASE_URL
+from .constants import BACKEND_NAME, DEFAULT_API_BASE_URL
 
 
 @dataclass(slots=True)
@@ -37,38 +34,6 @@ def _dict_or_empty(value: Any) -> dict[str, Any]:
 
 def _list_or_empty(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
-
-
-def _guess_type(filename: str) -> str:
-    return mimetypes.guess_type(filename)[0] or "application/octet-stream"
-
-
-def _multipart(fields: dict[str, str], files: dict[str, tuple[str, bytes, str]]) -> tuple[bytes, str]:
-    boundary = f"----aos-box-{uuid.uuid4().hex}"
-    parts: list[bytes] = []
-    for name, value in fields.items():
-        parts.extend(
-            [
-                f"--{boundary}\r\n".encode(),
-                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode(),
-                value.encode(),
-                b"\r\n",
-            ]
-        )
-    for name, (filename, payload, content_type) in files.items():
-        parts.extend(
-            [
-                f"--{boundary}\r\n".encode(),
-                (
-                    f'Content-Disposition: form-data; name="{name}"; filename="{filename}"\r\n'
-                    f"Content-Type: {content_type}\r\n\r\n"
-                ).encode(),
-                payload,
-                b"\r\n",
-            ]
-        )
-    parts.append(f"--{boundary}--\r\n".encode())
-    return b"".join(parts), f"multipart/form-data; boundary={boundary}"
 
 
 def _normalize_item(raw: dict[str, Any]) -> dict[str, Any]:
@@ -99,10 +64,9 @@ def _normalize_collaboration(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 class BoxClient:
-    def __init__(self, *, access_token: str, api_base_url: str = DEFAULT_API_BASE_URL, upload_base_url: str = DEFAULT_UPLOAD_BASE_URL) -> None:
+    def __init__(self, *, access_token: str, api_base_url: str = DEFAULT_API_BASE_URL) -> None:
         self._access_token = access_token.strip()
         self._api_base_url = api_base_url.rstrip("/")
-        self._upload_base_url = upload_base_url.rstrip("/")
         self._user_agent = "aos-box/0.1.0"
 
     def _request(
@@ -112,8 +76,6 @@ class BoxClient:
         *,
         query: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
-        multipart_fields: dict[str, str] | None = None,
-        multipart_files: dict[str, tuple[str, bytes, str]] | None = None,
         expect_json: bool = True,
     ) -> Any:
         if query:
@@ -127,9 +89,6 @@ class BoxClient:
         if json_body is not None:
             payload = json.dumps(json_body).encode("utf-8")
             headers["Content-Type"] = "application/json"
-        elif multipart_fields is not None or multipart_files is not None:
-            payload, content_type = _multipart(multipart_fields or {}, multipart_files or {})
-            headers["Content-Type"] = content_type
         request = Request(url, data=payload, method=method.upper(), headers=headers)
         try:
             with urlopen(request, timeout=60) as response:
@@ -173,53 +132,10 @@ class BoxClient:
             "content_base64": base64.b64encode(payload).decode("utf-8"),
         }
 
-    def upload_file(self, *, folder_id: str, file_path: str, name: str | None = None) -> dict[str, Any]:
-        path = Path(file_path).expanduser()
-        filename = name or path.name
-        payload = path.read_bytes()
-        raw = self._request(
-            "POST",
-            f"{self._upload_base_url}/files/content",
-            multipart_fields={"attributes": json.dumps({"name": filename, "parent": {"id": folder_id}})},
-            multipart_files={"file": (filename, payload, _guess_type(filename))},
-        )
-        entries = [_normalize_item(item) for item in _list_or_empty(raw.get("entries")) if isinstance(item, dict)]
-        return {"entries": entries, "raw": raw}
-
-    def copy_file(self, *, file_id: str, parent_id: str, name: str | None = None) -> dict[str, Any]:
-        body: dict[str, Any] = {"parent": {"id": parent_id}}
-        if name:
-            body["name"] = name
-        raw = self._request("POST", f"{self._api_base_url}/files/{quote(file_id, safe='')}/copy", json_body=body)
-        return _normalize_item(raw)
-
-    def move_file(self, *, file_id: str, parent_id: str) -> dict[str, Any]:
-        raw = self._request("PUT", f"{self._api_base_url}/files/{quote(file_id, safe='')}", json_body={"parent": {"id": parent_id}})
-        return _normalize_item(raw)
-
-    def create_folder(self, *, name: str, parent_id: str) -> dict[str, Any]:
-        raw = self._request("POST", f"{self._api_base_url}/folders", json_body={"name": name, "parent": {"id": parent_id}})
-        return _normalize_item(raw)
-
-    def update_shared_link(self, *, file_id: str, access: str | None = None) -> dict[str, Any]:
-        body: dict[str, Any] = {"shared_link": {}}
-        if access:
-            body["shared_link"]["access"] = access
-        raw = self._request("PUT", f"{self._api_base_url}/files/{quote(file_id, safe='')}", json_body=body)
-        return _normalize_item(raw)
-
     def list_collaborations(self, folder_id: str) -> dict[str, Any]:
         raw = self._request("GET", f"{self._api_base_url}/folders/{quote(folder_id, safe='')}/collaborations")
         entries = [_normalize_collaboration(item) for item in _list_or_empty(raw.get("entries")) if isinstance(item, dict)]
         return {"entries": entries, "total_count": raw.get("total_count", len(entries)), "raw": raw}
-
-    def create_collaboration(self, *, folder_id: str, email: str, role: str = "editor") -> dict[str, Any]:
-        raw = self._request(
-            "POST",
-            f"{self._api_base_url}/collaborations",
-            json_body={"item": {"type": "folder", "id": folder_id}, "accessible_by": {"type": "user", "login": email}, "role": role},
-        )
-        return _normalize_collaboration(raw)
 
     def search(self, *, query_text: str, limit: int = 25) -> dict[str, Any]:
         raw = self._request("GET", f"{self._api_base_url}/search", query={"query": query_text, "limit": max(1, limit)})
@@ -228,6 +144,3 @@ class BoxClient:
 
     def get_metadata(self, *, file_id: str) -> dict[str, Any]:
         return self._request("GET", f"{self._api_base_url}/files/{quote(file_id, safe='')}/metadata")
-
-    def set_metadata(self, *, file_id: str, scope: str, template: str, values: dict[str, Any]) -> dict[str, Any]:
-        return self._request("POST", f"{self._api_base_url}/files/{quote(file_id, safe='')}/metadata/{quote(scope, safe='')}/{quote(template, safe='')}", json_body=values)

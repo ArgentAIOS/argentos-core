@@ -11,24 +11,17 @@ from .errors import CliError
 from .output import emit, failure, success
 from .runtime import (
     capabilities_snapshot,
-    collaboration_create_result,
     collaboration_list_result,
     config_show_result,
     doctor_snapshot,
-    file_copy_result,
     file_download_result,
     file_get_result,
     file_list_result,
-    file_move_result,
-    file_upload_result,
-    folder_create_result,
     folder_get_result,
     folder_list_result,
     health_snapshot,
     metadata_get_result,
-    metadata_set_result,
     search_query_result,
-    share_update_result,
 )
 
 
@@ -141,17 +134,6 @@ def file_get(ctx: click.Context, file_id: str | None) -> None:
     _emit_success(ctx, "file.get", file_get_result(ctx.obj, file_id=file_id))
 
 
-@file_group.command("upload")
-@click.option("--folder-id", default=None)
-@click.option("--file-path", default=None)
-@click.option("--name", default=None)
-@click.pass_context
-def file_upload(ctx: click.Context, folder_id: str | None, file_path: str | None, name: str | None) -> None:
-    _set_command(ctx, "file.upload")
-    require_mode(ctx, "file.upload")
-    _emit_success(ctx, "file.upload", file_upload_result(ctx.obj, folder_id=folder_id, file_path=file_path, name=name))
-
-
 @file_group.command("download")
 @click.argument("file_id", required=False)
 @click.pass_context
@@ -159,27 +141,6 @@ def file_download(ctx: click.Context, file_id: str | None) -> None:
     _set_command(ctx, "file.download")
     require_mode(ctx, "file.download")
     _emit_success(ctx, "file.download", file_download_result(ctx.obj, file_id=file_id))
-
-
-@file_group.command("copy")
-@click.argument("file_id", required=False)
-@click.option("--parent-id", default=None)
-@click.option("--name", default=None)
-@click.pass_context
-def file_copy(ctx: click.Context, file_id: str | None, parent_id: str | None, name: str | None) -> None:
-    _set_command(ctx, "file.copy")
-    require_mode(ctx, "file.copy")
-    _emit_success(ctx, "file.copy", file_copy_result(ctx.obj, file_id=file_id, parent_id=parent_id, name=name))
-
-
-@file_group.command("move")
-@click.argument("file_id", required=False)
-@click.option("--parent-id", default=None)
-@click.pass_context
-def file_move(ctx: click.Context, file_id: str | None, parent_id: str | None) -> None:
-    _set_command(ctx, "file.move")
-    require_mode(ctx, "file.move")
-    _emit_success(ctx, "file.move", file_move_result(ctx.obj, file_id=file_id, parent_id=parent_id))
 
 
 @cli.group("folder")
@@ -197,16 +158,6 @@ def folder_list(ctx: click.Context, folder_id: str | None, limit: int) -> None:
     _emit_success(ctx, "folder.list", folder_list_result(ctx.obj, folder_id=folder_id, limit=limit))
 
 
-@folder_group.command("create")
-@click.option("--name", default=None)
-@click.option("--parent-id", default=None)
-@click.pass_context
-def folder_create(ctx: click.Context, name: str | None, parent_id: str | None) -> None:
-    _set_command(ctx, "folder.create")
-    require_mode(ctx, "folder.create")
-    _emit_success(ctx, "folder.create", folder_create_result(ctx.obj, name=name, parent_id=parent_id))
-
-
 @folder_group.command("get")
 @click.argument("folder_id", required=False)
 @click.pass_context
@@ -214,31 +165,6 @@ def folder_get(ctx: click.Context, folder_id: str | None) -> None:
     _set_command(ctx, "folder.get")
     require_mode(ctx, "folder.get")
     _emit_success(ctx, "folder.get", folder_get_result(ctx.obj, folder_id=folder_id))
-
-
-@cli.group("share")
-def share_group() -> None:
-    pass
-
-
-@share_group.command("create")
-@click.argument("file_id", required=False)
-@click.option("--access", default=None)
-@click.pass_context
-def share_create(ctx: click.Context, file_id: str | None, access: str | None) -> None:
-    _set_command(ctx, "share.create")
-    require_mode(ctx, "share.create")
-    _emit_success(ctx, "share.create", share_update_result(ctx.obj, file_id=file_id, access=access, command_id="share.create"))
-
-
-@share_group.command("update")
-@click.argument("file_id", required=False)
-@click.option("--access", default=None)
-@click.pass_context
-def share_update(ctx: click.Context, file_id: str | None, access: str | None) -> None:
-    _set_command(ctx, "share.update")
-    require_mode(ctx, "share.update")
-    _emit_success(ctx, "share.update", share_update_result(ctx.obj, file_id=file_id, access=access, command_id="share.update"))
 
 
 @cli.group("collaboration")
@@ -253,17 +179,6 @@ def collaboration_list(ctx: click.Context, folder_id: str | None) -> None:
     _set_command(ctx, "collaboration.list")
     require_mode(ctx, "collaboration.list")
     _emit_success(ctx, "collaboration.list", collaboration_list_result(ctx.obj, folder_id=folder_id))
-
-
-@collaboration_group.command("create")
-@click.option("--folder-id", default=None)
-@click.option("--email", default=None)
-@click.option("--role", default=None)
-@click.pass_context
-def collaboration_create(ctx: click.Context, folder_id: str | None, email: str | None, role: str | None) -> None:
-    _set_command(ctx, "collaboration.create")
-    require_mode(ctx, "collaboration.create")
-    _emit_success(ctx, "collaboration.create", collaboration_create_result(ctx.obj, folder_id=folder_id, email=email, role=role))
 
 
 @cli.group("search")
@@ -293,13 +208,3 @@ def metadata_get(ctx: click.Context, file_id: str | None) -> None:
     _set_command(ctx, "metadata.get")
     require_mode(ctx, "metadata.get")
     _emit_success(ctx, "metadata.get", metadata_get_result(ctx.obj, file_id=file_id))
-
-
-@metadata_group.command("set")
-@click.argument("file_id", required=False)
-@click.option("--metadata-json", default=None)
-@click.pass_context
-def metadata_set(ctx: click.Context, file_id: str | None, metadata_json: str | None) -> None:
-    _set_command(ctx, "metadata.set")
-    require_mode(ctx, "metadata.set")
-    _emit_success(ctx, "metadata.set", metadata_set_result(ctx.obj, file_id=file_id, metadata_json=metadata_json))

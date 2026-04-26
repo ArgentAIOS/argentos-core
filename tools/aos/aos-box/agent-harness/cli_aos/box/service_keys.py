@@ -6,7 +6,15 @@ from functools import lru_cache
 from pathlib import Path
 
 ARGENTOS_ROOT = Path(__file__).resolve().parents[6]
-SERVICE_KEY_VARIABLES = {'BOX_CLIENT_SECRET', 'BOX_ACCESS_TOKEN', 'BOX_CLIENT_ID'}
+SERVICE_KEY_VARIABLES = {
+    "BOX_ACCESS_TOKEN",
+    "BOX_CLIENT_ID",
+    "BOX_CLIENT_SECRET",
+    "BOX_JWT_CONFIG",
+    "BOX_FOLDER_ID",
+    "BOX_FILE_ID",
+    "BOX_QUERY",
+}
 
 
 @lru_cache(maxsize=64)
@@ -44,3 +52,14 @@ def service_key_env(variable: str, default: str | None = None) -> str | None:
     if value is not None:
         return value
     return default
+
+
+def service_key_source(variable: str) -> str | None:
+    if variable in SERVICE_KEY_VARIABLES:
+        value = resolve_service_key(variable)
+        if value:
+            return "service-keys"
+    value = os.getenv(variable)
+    if value:
+        return "process.env"
+    return None
