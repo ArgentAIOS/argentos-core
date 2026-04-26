@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from contextvars import ContextVar
 import json
 import mimetypes
 from pathlib import Path
@@ -13,7 +14,20 @@ from typing import Any
 from .config import runtime_config
 from .constants import RESOURCE_PATHS, TAXONOMY_PATHS, TOOL_NAME
 from .errors import CliError
-from .service_keys import service_key_env
+
+_RUNTIME_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar("wordpress_runtime_context", default=None)
+
+
+def set_runtime_context(ctx_obj: dict[str, Any] | None):
+    return _RUNTIME_CONTEXT.set(ctx_obj)
+
+
+def reset_runtime_context(token) -> None:
+    _RUNTIME_CONTEXT.reset(token)
+
+
+def _runtime_config() -> dict[str, Any]:
+    return runtime_config(_RUNTIME_CONTEXT.get())
 
 
 def _ensure_resource(resource: str) -> str:
@@ -46,7 +60,7 @@ def _request_json(
     payload: dict[str, Any] | None = None,
     config: dict[str, Any] | None = None,
 ) -> Any:
-    runtime = config or runtime_config()
+    runtime = config or _runtime_config()
     if not runtime["base_url_present"]:
         raise CliError(
             code="CONFIG_ERROR",
@@ -65,7 +79,7 @@ def _request_json(
         "User-Agent": f"{TOOL_NAME}/1.0",
     }
     if runtime["auth_ready"]:
-        username, password = _auth_credentials()
+        username, password = _auth_credentials(runtime)
         auth_value = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
         headers["Authorization"] = f"Basic {auth_value}"
 
@@ -146,7 +160,7 @@ def _request_bytes(
     headers: dict[str, str],
     config: dict[str, Any] | None = None,
 ) -> Any:
-    runtime = config or runtime_config()
+    runtime = config or _runtime_config()
     if not runtime["base_url_present"]:
         raise CliError(
             code="CONFIG_ERROR",
@@ -163,7 +177,7 @@ def _request_bytes(
         )
 
     url = f"{runtime['api_root_url'].rstrip('/')}/{path.lstrip('/')}"
-    username, password = _auth_credentials()
+    username, password = _auth_credentials(runtime)
     auth_value = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
     request_headers = {
         "Accept": "application/json",
@@ -248,12 +262,10 @@ def _error_message(error_payload: Any, fallback: str) -> str:
     return str(fallback)
 
 
-def _auth_credentials() -> tuple[str, str]:
-    from .config import runtime_config
-
-    config = runtime_config()
-    username = config.get("username_source") and _env_value(config["username_source"])
-    password = config.get("application_password_source") and _env_value(config["application_password_source"])
+def _auth_credentials(config: dict[str, Any] | None = None) -> tuple[str, str]:
+    config = config or _runtime_config()
+    username = config.get("username")
+    password = config.get("application_password")
     if not username or not password:
         raise CliError(
             code="CONFIG_ERROR",
@@ -271,10 +283,6 @@ def _auth_credentials() -> tuple[str, str]:
             },
         )
     return username, password
-
-
-def _env_value(name: str) -> str:
-    return service_key_env(name, "") or ""
 
 
 def _missing_auth_keys(config: dict[str, Any]) -> list[str]:
@@ -344,7 +352,7 @@ def _build_content_payload(
 
 
 def _require_auth_ready() -> dict[str, Any]:
-    config = runtime_config()
+    config = _runtime_config()
     if not config["auth_ready"]:
         raise CliError(
             code="CONFIG_ERROR",
@@ -356,7 +364,7 @@ def _require_auth_ready() -> dict[str, Any]:
 
 
 def probe_site(config: dict[str, Any] | None = None) -> dict[str, Any]:
-    runtime = config or runtime_config()
+    runtime = config or _runtime_config()
     if not runtime["base_url_present"]:
         return {
             "ok": False,
@@ -384,7 +392,7 @@ def probe_site(config: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def probe_api(config: dict[str, Any] | None = None) -> dict[str, Any]:
-    runtime = config or runtime_config()
+    runtime = config or _runtime_config()
     if not runtime["auth_ready"]:
         return {
             "ok": False,

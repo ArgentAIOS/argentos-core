@@ -3,12 +3,26 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import click
 
 from . import __version__
 from .bridge import config_snapshot, doctor_snapshot, health_snapshot
-from .constants import COMMAND_SPECS, CONNECTOR_AUTH, CONNECTOR_CATEGORY, CONNECTOR_CATEGORIES, CONNECTOR_LABEL, CONNECTOR_RESOURCES, MANIFEST_SCHEMA_VERSION, MODE_ORDER, PERMISSIONS_PATH, TOOL_NAME
+from .constants import (
+    COMMAND_SPECS,
+    CONNECTOR_AUTH,
+    CONNECTOR_CATEGORY,
+    CONNECTOR_CATEGORIES,
+    CONNECTOR_LABEL,
+    CONNECTOR_RESOURCES,
+    CONNECTOR_SCOPE,
+    IMPLEMENTED_WRITE_COMMANDS,
+    MANIFEST_SCHEMA_VERSION,
+    MODE_ORDER,
+    PERMISSIONS_PATH,
+    TOOL_NAME,
+)
 from .errors import CliError
 from .runtime import (
     assign_taxonomy_terms,
@@ -20,11 +34,15 @@ from .runtime import (
     publish_post,
     read_content,
     read_site,
+    reset_runtime_context,
     schedule_post,
     search_content,
+    set_runtime_context,
     update_draft_content,
     upload_media,
 )
+
+CONNECTOR_PATH = Path(__file__).resolve().parents[3] / "connector.json"
 
 
 def _mode_allows(actual: str, required: str) -> bool:
@@ -88,10 +106,13 @@ def _emit_error(ctx: click.Context, command_id: str, err: CliError) -> None:
 
 def _run(ctx: click.Context, command_id: str, fn, *args, **kwargs) -> None:
     require_mode(ctx, command_id)
+    token = set_runtime_context(ctx.obj)
     try:
         data = fn(*args, **kwargs)
     except CliError as err:
         _emit_error(ctx, command_id, err)
+    finally:
+        reset_runtime_context(token)
     payload = _result(
         ok=True,
         command=command_id,
@@ -136,6 +157,7 @@ def cli(ctx: click.Context, as_json: bool, mode: str, verbose: bool) -> None:
 @cli.command("capabilities")
 @click.pass_context
 def capabilities(ctx: click.Context) -> None:
+    manifest = json.loads(CONNECTOR_PATH.read_text())
     payload = {
         "tool": TOOL_NAME,
         "version": __version__,
@@ -148,7 +170,19 @@ def capabilities(ctx: click.Context) -> None:
             "categories": CONNECTOR_CATEGORIES,
             "resources": CONNECTOR_RESOURCES,
         },
+        "scope": CONNECTOR_SCOPE,
+        "fields": manifest.get("fields", {}),
+        "worker_visible_actions": manifest.get("worker_visible_actions", []),
         "auth": CONNECTOR_AUTH,
+        "read_support": {
+            command["id"]: command["required_mode"] == "readonly" for command in COMMAND_SPECS
+        },
+        "write_support": {
+            "live_writes_enabled": True,
+            "write_bridge_available": True,
+            "live_write_smoke_tested": False,
+            "implemented_write_commands": IMPLEMENTED_WRITE_COMMANDS,
+        },
         "commands": COMMAND_SPECS,
     }
     _emit(payload, True)
