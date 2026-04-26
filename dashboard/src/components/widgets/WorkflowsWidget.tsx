@@ -5448,7 +5448,7 @@ function OutputForm({
     if (value.startsWith("connector:")) {
       const connectorId = value.slice("connector:".length);
       const connector = runnableConnectors.find((entry) => entry.id === connectorId);
-      const firstCommand = connector?.commands?.[0];
+      const firstCommand = connectorOutputCommands(connector)[0];
       onUpdate(nodeId, {
         ...data,
         target: "connector_action",
@@ -5584,6 +5584,7 @@ function OutputForm({
                 <option key={connector.id} value={`connector:${connector.id}`}>
                   {connector.name}
                   {connector.readinessState === "setup_required" ? " (needs setup)" : ""}
+                  {` - ${connectorOutputCommands(connector).length} action${connectorOutputCommands(connector).length === 1 ? "" : "s"}`}
                 </option>
               ))}
             </optgroup>
@@ -5706,10 +5707,17 @@ function OutputForm({
               {runnableConnectors.map((connector) => (
                 <option key={connector.id} value={connector.id}>
                   {connector.name} ({connector.category})
+                  {` - ${connectorOutputCommands(connector).length} action${connectorOutputCommands(connector).length === 1 ? "" : "s"}`}
                 </option>
               ))}
             </select>
           </div>
+          {selectedConnector?.readinessState === "setup_required" && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              {selectedConnector.name} is available to design with, but it still needs operator
+              setup before a live run can deliver through it.
+            </div>
+          )}
           <div className="space-y-1.5">
             <label className={DOCK_LABEL}>Operation</label>
             <select
@@ -5729,8 +5737,7 @@ function OutputForm({
               <option value="">Select operation...</option>
               {connectorCommands.map((command) => (
                 <option key={command.id} value={command.id}>
-                  {command.id}
-                  {command.actionClass ? ` (${command.actionClass})` : ""}
+                  {connectorCommandLabel(command)}
                 </option>
               ))}
             </select>
@@ -6343,7 +6350,16 @@ function isConnectorOutputCommand(command: { id: string; actionClass?: string })
 }
 
 function connectorOutputCommands(connector?: ConnectorEntry) {
-  return connector?.commands.filter(isConnectorOutputCommand) ?? [];
+  const commands = connector?.commands.filter(isConnectorOutputCommand) ?? [];
+  return [...commands].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function connectorCommandLabel(command: { id: string; summary?: string; actionClass?: string }) {
+  const summary = stringValue(command.summary);
+  if (summary) {
+    return `${command.id} - ${summary}`;
+  }
+  return command.actionClass ? `${command.id} (${command.actionClass})` : command.id;
 }
 
 function hasRunValue(value: unknown): boolean {
