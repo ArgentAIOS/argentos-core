@@ -11,9 +11,7 @@
     "list.read": "readonly",
     "profile.list": "readonly",
     "profile.read": "readonly",
-    "profile.upsert": "write",
     "campaign.list": "readonly",
-    "campaign.read": "readonly",
-    "campaign.create": "write"
+    "campaign.read": "readonly"
   }
 }

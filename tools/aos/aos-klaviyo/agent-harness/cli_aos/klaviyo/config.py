@@ -368,7 +368,7 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "summary": "Klaviyo connector configuration snapshot.",
         "backend": BACKEND_NAME,
         "runtime": {
-            "implementation_mode": "live_read_with_scaffolded_writes",
+            "implementation_mode": "live_read_only",
             "live_read_available": runtime["api_key_present"],
             "live_write_available": False,
             "write_bridge_available": False,
@@ -434,8 +434,7 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "campaign.read": True,
         },
         "write_support": {
-            "campaign.create": "scaffold_only",
-            "profile.upsert": "scaffold_only",
-            "scaffold_only": True,
+            "live_writes_enabled": False,
+            "scaffold_only": False,
         },
     }
