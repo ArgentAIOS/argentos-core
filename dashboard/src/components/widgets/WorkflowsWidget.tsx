@@ -232,6 +232,25 @@ interface WorkflowBindingValue {
   label?: string;
 }
 
+interface AppForgeBasePickerOption {
+  id: string;
+  name: string;
+  appId?: string;
+  revision?: number;
+  activeTableId?: string;
+  tableCount?: number;
+  tables?: AppForgeTablePickerOption[];
+}
+
+interface AppForgeTablePickerOption {
+  id: string;
+  name: string;
+  revision?: number;
+  fieldCount?: number;
+  recordCount?: number;
+  fields?: Array<{ id?: string; name?: string; type?: string }>;
+}
+
 interface WorkflowImportPreviewResponse {
   package?: unknown;
   workflow?: unknown;
@@ -4613,6 +4632,67 @@ function replaceBindingTokens(
   return tokens.reduce((next, token) => next.split(token).join(value), text);
 }
 
+function normalizeAppForgeTablePickerOption(value: unknown): AppForgeTablePickerOption | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const id = stringValue(value.id);
+  if (!id) {
+    return null;
+  }
+  const fields: Array<{ id?: string; name?: string; type?: string }> = [];
+  for (const field of objectArray(value.fields)) {
+    if (!isRecord(field)) {
+      continue;
+    }
+    fields.push({
+      id: stringValue(field.id) || undefined,
+      name: stringValue(field.name) || undefined,
+      type: stringValue(field.type) || undefined,
+    });
+  }
+  return {
+    id,
+    name: stringValue(value.name, id),
+    revision: typeof value.revision === "number" ? value.revision : undefined,
+    fieldCount:
+      typeof value.fieldCount === "number"
+        ? value.fieldCount
+        : fields.length > 0
+          ? fields.length
+          : undefined,
+    recordCount: typeof value.recordCount === "number" ? value.recordCount : undefined,
+    fields,
+  };
+}
+
+function normalizeAppForgeBasePickerOption(value: unknown): AppForgeBasePickerOption | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const id = stringValue(value.id);
+  if (!id) {
+    return null;
+  }
+  const tables = objectArray(value.tables)
+    .map(normalizeAppForgeTablePickerOption)
+    .filter((table): table is AppForgeTablePickerOption => Boolean(table));
+  return {
+    id,
+    name: stringValue(value.name, id),
+    appId: stringValue(value.appId) || undefined,
+    revision: typeof value.revision === "number" ? value.revision : undefined,
+    activeTableId: stringValue(value.activeTableId) || undefined,
+    tableCount:
+      typeof value.tableCount === "number"
+        ? value.tableCount
+        : tables.length > 0
+          ? tables.length
+          : undefined,
+    tables,
+  };
+}
+
 function applyBindingToUnknown(
   value: unknown,
   requirement: WorkflowBindingRequirement,
@@ -4664,6 +4744,15 @@ function applyBindingToUnknown(
     if (stringValue(next.base) === requirement.label || stringValue(next.base) === requirement.id) {
       next.base = binding.value;
     }
+    if (!stringValue(next.baseId) || stringValue(next.baseId) === requirement.id) {
+      next.baseId = binding.value;
+    }
+    if (
+      binding.target &&
+      (!stringValue(next.tableId) || stringValue(next.tableId) === requirement.id)
+    ) {
+      next.tableId = binding.target;
+    }
   }
   if (requirement.kind === "knowledge_collection") {
     if (stringValue(next.collectionId) === requirement.id || !stringValue(next.collectionId)) {
@@ -4711,6 +4800,14 @@ function BindingWizard({
   const completeCount = requirements.filter(
     (requirement) => bindings[requirement.key]?.value,
   ).length;
+  const hasAppForgeRequirements = requirements.some(
+    (requirement) => requirement.kind === "appforge_base",
+  );
+  const [appForgeBases, setAppForgeBases] = useState<AppForgeBasePickerOption[]>([]);
+  const [appForgeTablesByBase, setAppForgeTablesByBase] = useState<
+    Record<string, AppForgeTablePickerOption[]>
+  >({});
+  const [appForgePickerError, setAppForgePickerError] = useState<string | null>(null);
   const appForgeBaseOptions = Array.from(
     new Set(
       nodes
@@ -4723,6 +4820,63 @@ function BindingWizard({
         .map((entry) => entry.trim()),
     ),
   );
+  const loadAppForgeTables = useCallback(
+    async (baseId: string) => {
+      if (!baseId || !gateway.connected || appForgeTablesByBase[baseId]) {
+        return;
+      }
+      try {
+        const res = await gateway.request<{ tables?: unknown[] }>("appforge.tables.list", {
+          baseId,
+        });
+        setAppForgeTablesByBase((prev) => ({
+          ...prev,
+          [baseId]: (res?.tables ?? [])
+            .map(normalizeAppForgeTablePickerOption)
+            .filter((table): table is AppForgeTablePickerOption => Boolean(table)),
+        }));
+      } catch (err) {
+        setAppForgePickerError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [appForgeTablesByBase, gateway],
+  );
+
+  useEffect(() => {
+    if (!gateway.connected || !hasAppForgeRequirements) {
+      return;
+    }
+    let cancelled = false;
+    void gateway
+      .request<{ bases?: unknown[] }>("appforge.bases.list", {})
+      .then((res) => {
+        if (cancelled) {
+          return;
+        }
+        const bases = (res?.bases ?? [])
+          .map(normalizeAppForgeBasePickerOption)
+          .filter((base): base is AppForgeBasePickerOption => Boolean(base));
+        setAppForgeBases(bases);
+        setAppForgePickerError(null);
+        const tables: Record<string, AppForgeTablePickerOption[]> = {};
+        for (const base of bases) {
+          if (base.tables?.length) {
+            tables[base.id] = base.tables;
+          }
+        }
+        if (Object.keys(tables).length > 0) {
+          setAppForgeTablesByBase((prev) => ({ ...tables, ...prev }));
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setAppForgePickerError(err instanceof Error ? err.message : String(err));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [gateway, hasAppForgeRequirements]);
 
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55 p-6 backdrop-blur-sm">
@@ -4888,20 +5042,73 @@ function BindingWizard({
                         <select
                           className={DOCK_INPUT}
                           value={binding.value}
-                          onChange={(event) =>
-                            updateBinding(requirement.key, { value: event.target.value })
-                          }
+                          onChange={(event) => {
+                            const base = appForgeBases.find(
+                              (candidate) => candidate.id === event.target.value,
+                            );
+                            const firstTableId = base?.activeTableId || base?.tables?.[0]?.id;
+                            updateBinding(requirement.key, {
+                              value: event.target.value,
+                              label: base?.name,
+                              target: firstTableId,
+                            });
+                            if (event.target.value) {
+                              void loadAppForgeTables(event.target.value);
+                            }
+                          }}
                         >
                           <option value="">Select AppForge base...</option>
-                          {appForgeBaseOptions.map((base) => (
-                            <option key={base} value={base}>
-                              {base}
+                          {appForgeBases.map((base) => (
+                            <option key={base.id} value={base.id}>
+                              {base.name}
+                              {base.tableCount ? ` (${base.tableCount} tables)` : ""}
                             </option>
                           ))}
-                          {binding.value && !appForgeBaseOptions.includes(binding.value) && (
-                            <option value={binding.value}>Saved custom: {binding.value}</option>
-                          )}
+                          {appForgeBaseOptions.map((base) => (
+                            <option key={base} value={base}>
+                              {base} (canvas value)
+                            </option>
+                          ))}
+                          {binding.value &&
+                            !appForgeBaseOptions.includes(binding.value) &&
+                            !appForgeBases.some((base) => base.id === binding.value) && (
+                              <option value={binding.value}>Saved custom: {binding.value}</option>
+                            )}
                         </select>
+                        {binding.value && (
+                          <select
+                            className={DOCK_INPUT}
+                            value={binding.target ?? ""}
+                            onChange={(event) =>
+                              updateBinding(requirement.key, { target: event.target.value })
+                            }
+                          >
+                            <option value="">Default/active table...</option>
+                            {(appForgeTablesByBase[binding.value] ?? [])
+                              .concat(
+                                appForgeBases.find((base) => base.id === binding.value)?.tables ??
+                                  [],
+                              )
+                              .filter(
+                                (table, index, all) =>
+                                  all.findIndex((candidate) => candidate.id === table.id) === index,
+                              )
+                              .map((table) => (
+                                <option key={table.id} value={table.id}>
+                                  {table.name}
+                                  {table.fieldCount ? ` (${table.fieldCount} fields)` : ""}
+                                </option>
+                              ))}
+                            {binding.target &&
+                              !(appForgeTablesByBase[binding.value] ?? []).some(
+                                (table) => table.id === binding.target,
+                              ) && (
+                                <option value={binding.target}>
+                                  Saved table: {binding.target}
+                                </option>
+                              )}
+                          </select>
+                        )}
                         <input
                           className={DOCK_INPUT}
                           value={binding.value}
@@ -4911,8 +5118,9 @@ function BindingWizard({
                           placeholder="Base name or id"
                         />
                         <div className="text-[10px] text-[hsl(var(--muted-foreground))]">
-                          AppForge durable base pickers are still coming from the AppForge lane;
-                          this field supports manual binding until that gateway picker lands.
+                          {appForgePickerError
+                            ? `AppForge picker unavailable: ${appForgePickerError}. Manual base binding remains available.`
+                            : "AppForge bases and tables load from the gateway picker contract. Manual base binding remains available for empty or legacy states."}
                         </div>
                       </div>
                     )}
