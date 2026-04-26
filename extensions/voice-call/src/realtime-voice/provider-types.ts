@@ -49,7 +49,7 @@ export type RealtimeVoiceBridge = {
   triggerGreeting?(instructions?: string): void;
   submitToolResult(callId: string, result: unknown): void;
   acknowledgeMark(): void;
-  close(): void;
+  close(reason?: RealtimeVoiceCloseReason): void;
   isConnected(): boolean;
 };
 

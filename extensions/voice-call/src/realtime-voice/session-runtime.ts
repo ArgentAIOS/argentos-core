@@ -39,7 +39,10 @@ export type RealtimeVoiceBridgeSessionParams = {
   triggerGreetingOnReady?: boolean;
   tools?: RealtimeVoiceTool[];
   onTranscript?: (role: RealtimeVoiceRole, text: string, isFinal: boolean) => void;
-  onToolCall?: (event: RealtimeVoiceToolCallEvent, session: RealtimeVoiceBridgeSession) => void;
+  onToolCall?: (
+    event: RealtimeVoiceToolCallEvent,
+    session: RealtimeVoiceBridgeSession,
+  ) => void | Promise<void>;
   onReady?: (session: RealtimeVoiceBridgeSession) => void;
   onError?: (error: Error) => void;
   onClose?: (reason: RealtimeVoiceCloseReason) => void;
@@ -97,7 +100,19 @@ export function createRealtimeVoiceBridgeSession(
     onTranscript: params.onTranscript,
     onToolCall: (event) => {
       if (bridge) {
-        params.onToolCall?.(event, session);
+        const handleToolError = (err: unknown) => {
+          const error = err instanceof Error ? err : new Error(String(err));
+          params.onError?.(error);
+          bridge?.close("error");
+        };
+        try {
+          const result = params.onToolCall?.(event, session);
+          if (result && typeof result === "object" && "then" in result) {
+            result.catch(handleToolError);
+          }
+        } catch (err) {
+          handleToolError(err);
+        }
       }
     },
     onReady: () => {

@@ -1,4 +1,12 @@
 export {
+  createFakeRealtimeVoiceProvider,
+  FakeRealtimeVoiceBridge,
+  FakeRealtimeVoiceProvider,
+  type FakeRealtimeVoiceBridgeState,
+  type FakeRealtimeVoiceProviderConfig,
+  type FakeRealtimeVoiceScriptEvent,
+} from "./fake-provider.js";
+export {
   canonicalizeRealtimeVoiceProviderId,
   getRealtimeVoiceProvider,
   listRealtimeVoiceProviders,
