@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import tempfile
 from typing import Any
 
 from click.testing import CliRunner
@@ -36,8 +37,8 @@ class FakeResponse:
 
 @pytest.fixture(autouse=True)
 def no_operator_service_key_by_default(monkeypatch):
-    service_keys.resolve_service_key.cache_clear()
-    monkeypatch.setattr(service_keys, "resolve_service_key", lambda variable: None)
+    path = Path(tempfile.mkdtemp(prefix="dart-missing-service-keys-")) / "service-keys.json"
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
 
 
 def invoke_json(
@@ -48,12 +49,35 @@ def invoke_json(
     service_key_values: dict[str, str] | None = None,
 ) -> dict[str, object]:
     if service_key_values is not None:
-        monkeypatch.setattr(service_keys, "resolve_service_key", lambda variable: service_key_values.get(variable))
+        monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", write_service_keys(service_key_values))
     if transport is not None:
         monkeypatch.setattr(dart_client, "urlopen", transport)
     result = CliRunner().invoke(cli, ["--json", *args])
     assert result.exit_code == 0, result.output
     return json.loads(result.output)
+
+
+def write_service_keys(values: dict[str, str], *, extra: dict[str, Any] | None = None) -> Path:
+    path = Path(tempfile.mkdtemp(prefix="dart-service-keys-")) / "service-keys.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "keys": [
+                    {
+                        "id": f"sk-{key}",
+                        "name": key,
+                        "variable": key,
+                        "value": value,
+                        "enabled": True,
+                        **(extra or {}),
+                    }
+                    for key, value in values.items()
+                ],
+            }
+        )
+    )
+    return path
 
 
 def write_transport_for(
@@ -103,6 +127,9 @@ def test_capabilities_exposes_manifest(monkeypatch):
     assert payload["data"]["manifest_schema_version"] == "1.0.0"
     assert payload["data"]["modes"] == ["readonly", "write", "full", "admin"]
     assert "task.create" in json.dumps(payload["data"]["commands"])
+    assert payload["data"]["read_support"]["task.list"] is True
+    assert payload["data"]["write_support"]["live_writes_enabled"] is True
+    assert payload["data"]["write_support"]["live_write_smoke_tested"] is False
 
 
 def test_health_requires_api_key(monkeypatch):
@@ -126,9 +153,10 @@ def test_config_show_redacts_key(monkeypatch):
     assert "env-secret-key" not in json.dumps(data)
     assert "operator-secret-key" not in json.dumps(data)
     assert data["config"]["api_key"] == "<redacted>"
-    assert data["auth"]["sources"]["DART_API_KEY"] == "service-keys"
+    assert data["auth"]["sources"]["DART_API_KEY"] == "repo-service-key"
+    assert data["auth"]["usable"]["DART_API_KEY"] is True
     assert data["runtime"]["implementation_mode"] == "live_read_write"
-    assert data["runtime"]["service_key_precedence"] == "service-keys-first-with-env-fallback"
+    assert data["runtime"]["service_key_precedence"] == "operator-service-keys-first-with-env-fallback-only-when-unmanaged"
     assert data["scope"]["dartboard_id"] == "db_abc123"
 
 
@@ -199,6 +227,34 @@ def test_task_create_prefers_operator_service_keys_for_live_write(monkeypatch):
     assert payload["data"]["status"] == "live_write"
     assert payload["data"]["task"]["id"] == "task_123"
     assert payload["data"]["scope_preview"]["dartboard_id"] == "db_123"
+
+
+def test_encrypted_repo_service_key_falls_back_to_env_like_core_resolver(monkeypatch):
+    monkeypatch.setenv("DART_API_KEY", "env-secret-key")
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", write_service_keys({"DART_API_KEY": "enc:v1:abc:def:ghi"}))
+    payload = invoke_json(["config", "show"], monkeypatch)
+    data = payload["data"]
+    assert data["auth"]["sources"]["DART_API_KEY"] == "env_fallback"
+    assert data["auth"]["configured"]["DART_API_KEY"] is True
+    assert data["auth"]["present"]["DART_API_KEY"] is True
+    assert data["auth"]["usable"]["DART_API_KEY"] is True
+    assert data["config"]["api_key"] == "<redacted>"
+
+
+def test_scoped_repo_service_key_blocks_env_fallback(monkeypatch):
+    monkeypatch.setenv("DART_API_KEY", "env-secret-key")
+    monkeypatch.setattr(
+        service_keys,
+        "SERVICE_KEYS_PATH",
+        write_service_keys({"DART_API_KEY": "repo-secret-key"}, extra={"allowedRoles": ["operator"]}),
+    )
+    payload = invoke_json(["config", "show"], monkeypatch)
+    data = payload["data"]
+    assert data["auth"]["sources"]["DART_API_KEY"] == "repo-service-key-scoped"
+    assert data["auth"]["configured"]["DART_API_KEY"] is False
+    assert data["auth"]["present"]["DART_API_KEY"] is True
+    assert data["auth"]["usable"]["DART_API_KEY"] is False
+    assert data["config"]["api_key"] is None
 
 
 def test_task_update_rejects_empty_write(monkeypatch):

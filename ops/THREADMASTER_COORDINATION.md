@@ -215,6 +215,14 @@ Owned files/directories: `tools/aos/**`, with active connector ownership over Ai
 Shared contract changes: connector manifests, permissions, and command capability declarations remain the public contract; operator-controlled service keys are the key source for linked external systems. Klaviyo is now a truthful live read connector and does not advertise mutation/write actions until those are implemented.
 Workflows/AppForge/AOU reaction: consume manifests/capabilities only; do not infer private connector internals or assume scaffolded writes exist. AOU Stub Finder should treat Klaviyo at `ad3fb0b9` as a real read-only baseline and track future mutation work separately.
 
+### 2026-04-26 — AOS Dart Connector
+
+Lane: `AOS Dart connector`
+Branch/commit: `codex/aos-dart-loop` in progress.
+Owned files/directories: `tools/aos/aos-dart/**` plus this coordination note.
+Shared contract changes: Dart is being verified as a true AOS CLI connector with live REST read/write command paths, operator-controlled service-key resolution, and explicit smoke truth. Required service key is `DART_API_KEY`; optional scope keys remain declared through `scope.optional` for `DART_BASE_URL`, `DART_DARTBOARD_ID`, `DART_TASK_ID`, and `DART_DOC_ID`.
+Workflows/AppForge/AOU reaction: consume Dart manifest/capabilities only; treat Dart write commands as consequential live mutations requiring write mode plus operator service-key binding, not as smoke-proven production writes.
+
 ### 2026-04-26 — Master Threadmaster Roster
 
 Current active core threadmasters: AppForge 2.0, Work flow building master, AOU Stub Finder, and Compare OpenClaw 4.24 features. Treat the Workflows threadmaster as the master coordinator for cross-project lane awareness while it continues implementing the workflow canvas/runtime.

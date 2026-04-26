@@ -10,6 +10,7 @@
     "live_read_available": true,
     "live_write_available": true,
     "write_bridge_available": true,
+    "live_write_smoke_tested": false,
     "required": ["DART_API_KEY"],
     "optional": ["DART_DARTBOARD_ID", "DART_TASK_ID", "DART_DOC_ID", "DART_BASE_URL"],
     "workerFields": ["dartboard_id", "task_id", "assignee", "status", "priority"],
@@ -210,11 +211,11 @@
     "interactive_setup": [
       "Create a Dart API key from your Dart workspace settings.",
       "Add DART_API_KEY to operator-controlled service keys before enabling live reads or writes.",
-      "Use the DART_API_KEY environment variable only as a local harness fallback when operator keys are unavailable.",
+      "Use the DART_API_KEY environment variable only as a local harness fallback when no operator-managed key is present.",
       "Optionally set DART_DARTBOARD_ID to pin a default dartboard scope.",
       "Optionally set DART_TASK_ID for default task scope.",
       "Optionally set DART_DOC_ID for doc-scoped reads and DART_BASE_URL only when targeting a non-default API origin.",
-      "The connector exposes truthful live reads and live writes for tasks, dartboards, docs, comments, and properties."
+      "The connector exposes live REST reads and mode-gated live writes; live write smoke is not claimed until tested against an operator Dart workspace."
     ]
   },
   "commands": [
