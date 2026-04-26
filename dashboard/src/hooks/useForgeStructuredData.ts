@@ -394,6 +394,19 @@ function recordValues(table: ForgeStructuredTable, recordId: string): Record<str
   );
 }
 
+function tableEventPayload(
+  table: ForgeStructuredTable,
+  extras: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    tableId: table.id,
+    tableName: table.name,
+    fieldIds: table.fields.map((field) => field.id),
+    recordCount: table.records.length,
+    ...extras,
+  };
+}
+
 type GatewayRecordValue = ForgeStructuredRecordValue | string[];
 
 type GatewayStructuredRecord = ForgeStructuredRecord & {
@@ -670,9 +683,20 @@ export function useForgeStructuredData({
         ...activeBase,
         tables: activeBase.tables.map((table) => (table.id === activeTable.id ? nextTable : table)),
       };
+      const workflowEvent =
+        event ??
+        ({
+          eventType: "forge.table.updated",
+          tableId: activeTable.id,
+          payload: tableEventPayload(nextTable, {
+            changeType: "table.updated",
+          }),
+        } satisfies Omit<AppForgeWorkflowEventRequest, "payload"> & {
+          payload?: Record<string, unknown>;
+        });
       await persistBase(
         nextBase,
-        event,
+        workflowEvent,
         gatewayMutation?.({
           previousBase: activeBase,
           previousTable: activeTable,
@@ -697,7 +721,15 @@ export function useForgeStructuredData({
       activeTableId: table.id,
       tables: [...activeBase.tables, table],
     };
-    await persistBase(nextBase, undefined, { kind: "table.put", table });
+    await persistBase(
+      nextBase,
+      {
+        eventType: "forge.table.created",
+        tableId: table.id,
+        payload: tableEventPayload(table, { changeType: "table.created" }),
+      },
+      { kind: "table.put", table },
+    );
   }, [activeBase, persistBase]);
 
   const updateTable = useCallback(
@@ -717,7 +749,16 @@ export function useForgeStructuredData({
       };
       await persistBase(
         nextBase,
-        undefined,
+        nextTable
+          ? {
+              eventType: "forge.table.updated",
+              tableId,
+              payload: tableEventPayload(nextTable, {
+                changeType: "table.renamed",
+                previousName: activeBase.tables.find((table) => table.id === tableId)?.name,
+              }),
+            }
+          : undefined,
         nextTable ? { kind: "table.put", table: nextTable } : { kind: "base.put" },
       );
     },
@@ -758,7 +799,18 @@ export function useForgeStructuredData({
         activeTableId: table.id,
         tables: [...activeBase.tables, table],
       };
-      await persistBase(nextBase, undefined, { kind: "table.put", table });
+      await persistBase(
+        nextBase,
+        {
+          eventType: "forge.table.created",
+          tableId: table.id,
+          payload: tableEventPayload(table, {
+            changeType: "table.duplicated",
+            duplicatedFrom: source.id,
+          }),
+        },
+        { kind: "table.put", table },
+      );
     },
     [activeBase, persistBase],
   );
@@ -775,11 +827,25 @@ export function useForgeStructuredData({
             : activeBase.activeTableId,
         tables,
       };
-      await persistBase(nextBase, undefined, {
-        kind: "table.delete",
-        tableId,
-        seedBase: activeBase,
-      });
+      const deletedTable = activeBase.tables.find((table) => table.id === tableId);
+      await persistBase(
+        nextBase,
+        deletedTable
+          ? {
+              eventType: "forge.table.deleted",
+              tableId,
+              payload: tableEventPayload(deletedTable, {
+                changeType: "table.deleted",
+                nextActiveTableId: nextBase.activeTableId,
+              }),
+            }
+          : undefined,
+        {
+          kind: "table.delete",
+          tableId,
+          seedBase: activeBase,
+        },
+      );
     },
     [activeBase, persistBase],
   );

@@ -1,4 +1,7 @@
 export const APPFORGE_WORKFLOW_EVENT_TYPES = [
+  "forge.table.created",
+  "forge.table.updated",
+  "forge.table.deleted",
   "forge.record.created",
   "forge.record.updated",
   "forge.record.deleted",
@@ -37,6 +40,15 @@ export type NormalizedAppForgeWorkflowEvent = {
 };
 
 const EVENT_ALIASES: Record<string, AppForgeWorkflowEventType> = {
+  "table.created": "forge.table.created",
+  table_created: "forge.table.created",
+  "forge.table.created": "forge.table.created",
+  "table.updated": "forge.table.updated",
+  table_updated: "forge.table.updated",
+  "forge.table.updated": "forge.table.updated",
+  "table.deleted": "forge.table.deleted",
+  table_deleted: "forge.table.deleted",
+  "forge.table.deleted": "forge.table.deleted",
   created: "forge.record.created",
   "record.created": "forge.record.created",
   record_created: "forge.record.created",

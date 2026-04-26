@@ -6,6 +6,9 @@ import {
 
 describe("AppForge workflow events", () => {
   it.each([
+    ["table_created", "forge.table.created"],
+    ["table.updated", "forge.table.updated"],
+    ["forge.table.deleted", "forge.table.deleted"],
     ["created", "forge.record.created"],
     ["record_updated", "forge.record.updated"],
     ["record.deleted", "forge.record.deleted"],
@@ -44,6 +47,31 @@ describe("AppForge workflow events", () => {
       },
     });
     expect(typeof event.payload.emittedAt).toBe("string");
+  });
+
+  it("normalizes table events for workflow triggers and waits", () => {
+    const event = normalizeAppForgeWorkflowEvent({
+      action: "table_updated",
+      appId: "app-1",
+      tableId: "table-1",
+      payload: {
+        changeType: "field.updated",
+        tableName: "Campaign Review",
+      },
+    });
+
+    expect(event).toMatchObject({
+      eventType: "forge.table.updated",
+      appId: "app-1",
+      payload: {
+        source: "appforge",
+        eventType: "forge.table.updated",
+        appId: "app-1",
+        tableId: "table-1",
+        changeType: "field.updated",
+        tableName: "Campaign Review",
+      },
+    });
   });
 
   it("preserves custom capability event types and workflow resume targeting", () => {

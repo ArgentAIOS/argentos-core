@@ -42,7 +42,7 @@ Bus docs: `ops/threadmaster-bus/README.md`.
 | Lane                                                  | Threadmaster                     | Scope                                                                                                                     | Current State                                                                                                                                                      | Shared Boundaries                                                                                           |
 | ----------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
 | Master coordination + Workflows canvas/runtime        | Codex workflow threadmaster      | Cross-lane coordination, workflow builder canvas, workflow gateway/runtime, output channels, approval/wait/event surfaces | Bus/coordination lane in progress at `1f30784b`; output node configurability and real channel discovery pushed to `dev` at `ad964716`                              | Consumes AppForge through metadata/events only; consumes AOS connectors through manifests/capabilities only |
-| AppForge 2.0                                          | AppForge threadmaster            | Airtable-like core workspace, AppForge adapter/model/gateway, structured metadata, AppForge event producers               | Dashboard gateway mirror slice pushed to `dev` at `b36fb45e`; completion posted as `tm-20260426125013-mtk57p`                                                      | Must not import Workflow dashboard internals; coordinate before touching workflow files                     |
+| AppForge 2.0                                          | AppForge threadmaster            | Airtable-like core workspace, AppForge adapter/model/gateway, structured metadata, AppForge event producers               | Structured local event contract slice active on `codex/appforge-structured-events`; task `task-20260426155725-f6z379`                                              | Must not import Workflow dashboard internals; coordinate before touching workflow files                     |
 | AOU Stub Finder                                       | AOU threadmaster                 | Stub discovery, connector/tool completeness, skeleton-vs-live implementation inventory                                    | Active in its own threadmaster lane                                                                                                                                | Report stub findings here before changing shared runtime or connector surfaces                              |
 | AOS connectors                                        | Codex AOS connector threadmaster | `tools/aos/**`, connector manifests, operator service-key resolution, connector command capability surfaces               | Branch `codex/aos-next-connector-wave`; latest lane commit `ad3fb0b9` stabilizes Klaviyo as truthful read-only live connector; prior next-wave baseline `83a9bcb7` | Workflows/AppForge should consume connector metadata/capabilities, not private connector internals          |
 | OpenClaw 4.24 realtime/browser/marketplace comparison | Codex comparison threadmaster    | Upstream 4.24 feature comparison, browser harness/realtime voice/Google Meet marketplace-plugin recommendations           | Active on `codex/aos-next-connector-wave` at `ad3fb0b9`; read-only analysis so far                                                                                 | Owns comparison/planning notes only; no shared implementation files without another board update            |
@@ -77,12 +77,12 @@ Bus docs: `ops/threadmaster-bus/README.md`.
 ### Lane
 
 - Repo: `ArgentAIOS/argentos-core`
-- Local path from AppForge lane: `/tmp/argent-core-appforge-threadmaster`
-- Branch: `codex/appforge-threadmaster-next`
+- Local path from AppForge lane: `/Users/sem/code/argent-core-appforge-dev`
+- Branch: `codex/appforge-structured-events`
 - Target branch: `dev`
-- Current known commits on `origin/dev`: `77f7046f`, `7aa18ab4`, `ff95fe20`, `73814fbd`, `c48f6e61`, `e22dc0e8`
-- Current bus state: `appforge` has no unacked messages and no assigned tasks after acking `tm-20260426121155-p07tc6`.
-- Current slice: dashboard gateway mirror pushed to `dev` at `b36fb45e`; completion posted as `tm-20260426125013-mtk57p`.
+- Current known commits on `origin/dev`: `e22dc0e8`, `b36fb45e`, `a90966c3`, `90215928`, `7acd9d2e`, `6507221d`
+- Current bus state: `appforge` has no unacked messages and active task `task-20260426155725-f6z379`.
+- Current slice: structured local event contract active under task `task-20260426155725-f6z379`; started after bus post `tm-20260426155728-j9r7fz`.
 - Forbidden repo for this lane: `ArgentAIOS/argentos`
 
 ### Owned Files And Directories
@@ -140,7 +140,10 @@ AppForge gateway:
 
 AppForge workflow bridge:
 
-- Canonical events remain:
+- Canonical events:
+  - `forge.table.created`
+  - `forge.table.updated`
+  - `forge.table.deleted`
   - `forge.record.created`
   - `forge.record.updated`
   - `forge.record.deleted`
@@ -163,6 +166,7 @@ Workflows:
 - Continue consuming AppForge only through metadata and `workflows.emitAppForgeEvent`.
 - Do not depend on AppForge UI/component internals.
 - Runtime event bridge work can rely on the canonical `forge.*` event names above.
+- Table trigger/wait filters can now target `forge.table.created`, `forge.table.updated`, and `forge.table.deleted`; see `ops/HANDOFF_APP_FORGE_WORKFLOW_EVENTS.md`.
 
 AppForge:
 
