@@ -5,14 +5,21 @@ from pathlib import Path
 from typing import Any
 
 from click.testing import CliRunner
+import pytest
 
 from cli_aos.klaviyo.cli import cli
 import cli_aos.klaviyo.runtime as runtime
+import cli_aos.klaviyo.service_keys as service_keys
 
 
 AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
 CONNECTOR_PATH = AGENT_HARNESS_ROOT.parent / "connector.json"
 PERMISSIONS_PATH = AGENT_HARNESS_ROOT / "permissions.json"
+
+
+@pytest.fixture(autouse=True)
+def no_operator_service_key_by_default(monkeypatch):
+    monkeypatch.setattr(service_keys, "resolve_service_key", lambda variable: None)
 
 
 class FakeKlaviyoClient:
@@ -98,12 +105,6 @@ def invoke_json(args: list[str]) -> dict[str, Any]:
     return json.loads(result.output)
 
 
-def invoke_json_with_mode(mode: str, args: list[str]) -> dict[str, Any]:
-    result = CliRunner().invoke(cli, ["--json", "--mode", mode, *args])
-    assert result.exit_code == 0, result.output
-    return json.loads(result.output)
-
-
 def test_manifest_and_permissions_are_in_sync():
     manifest = json.loads(CONNECTOR_PATH.read_text())
     permissions = json.loads(PERMISSIONS_PATH.read_text())["permissions"]
@@ -156,7 +157,7 @@ def test_config_show_redacts_and_surfaces_scope(monkeypatch):
     data = payload["data"]
     assert "pk_test_secret" not in json.dumps(data)
     assert data["scope"]["list_id"] == "list_1"
-    assert data["runtime"]["implementation_mode"] == "live_read_with_scaffolded_writes"
+    assert data["runtime"]["implementation_mode"] == "live_read_only"
     assert data["runtime"]["command_defaults"]["account.read"]["selection_surface"] == "account"
     assert data["runtime"]["picker_scopes"]["list"]["pickers"]["list"]["command"] == "list.list"
     assert data["runtime"]["picker_scopes"]["profile"]["pickers"]["profile"]["command"] == "profile.list"
@@ -208,10 +209,3 @@ def test_campaign_read_uses_scoped_campaign(monkeypatch):
     assert payload["data"]["campaign"]["id"] == "camp_1"
     assert payload["data"]["scope_preview"]["selection_surface"] == "campaign"
     assert payload["data"]["scope_preview"]["command_id"] == "campaign.read"
-
-
-def test_scaffold_write_commands_do_not_execute_live_mutations(monkeypatch):
-    monkeypatch.setenv("KLAVIYO_API_KEY", "pk_test_abc")
-    payload = invoke_json_with_mode("write", ["campaign", "create", "Spring launch"])
-    assert payload["data"]["status"] == "scaffold_write_only"
-    assert payload["data"]["command"] == "campaign.create"

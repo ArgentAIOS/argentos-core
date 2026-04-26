@@ -162,8 +162,7 @@
       "Use the KLAVIYO_API_KEY environment variable only as a local harness fallback when operator keys are unavailable.",
       "Optionally set KLAVIYO_REVISION to pin the API revision header used by the connector.",
       "Set KLAVIYO_LIST_ID, KLAVIYO_PROFILE_ID, KLAVIYO_PROFILE_EMAIL, and KLAVIYO_CAMPAIGN_ID to give worker flows stable list, profile, and campaign scope defaults.",
-      "The connector exposes live reads and scaffold-only write placeholders that never mutate Klaviyo.",
-      "Do not enable live Klaviyo mutation workflows until approval and compliance safeguards are explicitly shipped."
+      "The connector exposes live reads only; Klaviyo mutation commands are not advertised until approval and compliance safeguards are explicitly shipped."
     ]
   },
   "commands": [
@@ -240,14 +239,6 @@
       "action_class": "read"
     },
     {
-      "id": "profile.upsert",
-      "summary": "Scaffold placeholder for Klaviyo profile upsert",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "profile",
-      "action_class": "write"
-    },
-    {
       "id": "campaign.list",
       "summary": "List Klaviyo email campaigns",
       "required_mode": "readonly",
@@ -262,14 +253,6 @@
       "supports_json": true,
       "resource": "campaign",
       "action_class": "read"
-    },
-    {
-      "id": "campaign.create",
-      "summary": "Scaffold placeholder for Klaviyo campaign creation",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "campaign",
-      "action_class": "write"
     }
   ]
 }
