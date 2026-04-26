@@ -231,6 +231,10 @@ Lane: `openclaw`. Branch: `codex/openclaw-realtime-fake-provider` rebased onto `
 
 Lane: `openclaw`. Branch: `codex/openclaw-realtime-fake-provider` at `c6f8554c` before this slice. Owned files for this slice: `extensions/voice-call/src/realtime-voice/**` and this coordination note only unless master explicitly widens scope. Shared contract change: add a clearly labeled live OpenAI Realtime provider adapter beside the fake test-only provider; fake remains test-only and should not be registered as an operator-facing CLI surface. Boundaries: no Workflows, AppForge, AOS, schema, browser, Google Meet live runtime, existing telephony provider behavior, credentials, or live microphone/audio claims. Required reaction: live smoke remains blocked until `OPENAI_API_KEY` is visible to the running process; current local checks did not find it in `~/.argentos/.env`, repo `.env`, or `process.env`.
 
+### 2026-04-26 — OpenClaw Live OpenAI Realtime Smoke Wave
+
+Lane: `openclaw`. Branch: `codex/openclaw-realtime-fake-provider` at `05b22380` before this slice. Owned files for this slice: `extensions/voice-call/src/realtime-voice/**` and this coordination note only. Shared contract change: add a reusable live OpenAI Realtime smoke helper that uses the live-labeled OpenAI provider to send one local text prompt and require both a final assistant transcript and audio output chunks without exposing secrets. Boundaries: fake provider remains test-only; no Workflows, AppForge, AOS, schema, browser, Google Meet runtime, existing telephony provider behavior, or microphone/playback claims. Required reaction: other lanes may treat this as live OpenAI text-to-audio session evidence only when the helper output reports `ok: true`, final transcript, and `audioChunkCount > 0`; live microphone/speaker and synthetic input-audio fixtures remain separate follow-up work.
+
 ## Verification Snapshot
 
 Latest AppForge focused verification after rebase onto `origin/dev`:

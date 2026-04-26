@@ -24,6 +24,11 @@ export {
   type OpenAiRealtimeWebSocketLike,
 } from "./openai-realtime-provider.js";
 export {
+  runOpenAiRealtimeLiveSmoke,
+  type OpenAiRealtimeLiveSmokeOptions,
+  type OpenAiRealtimeLiveSmokeResult,
+} from "./openai-realtime-live-smoke.js";
+export {
   createRealtimeVoiceOperatorSession,
   type RealtimeVoiceOperatorSession,
   type RealtimeVoiceOperatorSessionEvent,
