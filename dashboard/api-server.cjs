@@ -3070,7 +3070,16 @@ function statusToStorage(status) {
 }
 
 function normalizeMetadata(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
 }
 
 function extractTaskType(meta, parentTaskId) {
@@ -7015,7 +7024,7 @@ function createPgAppsCompatDb() {
           id, name, description, icon, code, version, creator, created_at, updated_at, metadata
         ) VALUES (
           ${id}, ${name}, ${description || null}, ${icon || null}, ${code}, 1,
-          ${creator || "ai"}, ${now}, ${now}, ${normalizeMetadata(metadata)}
+          ${creator || "ai"}, ${now}, ${now}, ${JSON.stringify(normalizeMetadata(metadata))}::jsonb
         )
         RETURNING
           id, name, description, icon, code, version, creator,
@@ -7052,8 +7061,8 @@ function createPgAppsCompatDb() {
           },
           metadata = ${
             Object.prototype.hasOwnProperty.call(updates, "metadata")
-              ? normalizeMetadata(updates.metadata)
-              : normalizeMetadata(existing.metadata)
+              ? JSON.stringify(normalizeMetadata(updates.metadata))
+              : JSON.stringify(normalizeMetadata(existing.metadata))
           },
           updated_at = ${now}
         WHERE id = ${id} AND deleted_at IS NULL
