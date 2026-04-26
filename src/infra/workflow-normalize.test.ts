@@ -129,6 +129,26 @@ describe("workflow-normalize", () => {
     expect(result.canvasLayout.nodes).toHaveLength(1);
   });
 
+  it("normalizes executable nodes from canvas layout when the persisted engine node list is empty", () => {
+    const result = normalizeWorkflow({
+      id: "wf-canvas-only",
+      name: "Canvas only",
+      nodes: [],
+      edges: [],
+      canvasLayout: {
+        nodes: [
+          { id: "trigger", type: "trigger", data: { triggerType: "manual" } },
+          { id: "out", type: "output", data: { target: "doc_panel", title: "Done" } },
+        ],
+        edges: [{ id: "e1", source: "trigger", target: "out" }],
+      },
+    });
+
+    expect(result.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    expect(result.workflow.nodes.map((node) => node.kind)).toEqual(["trigger", "output"]);
+    expect(result.workflow.edges).toEqual([{ id: "e1", source: "trigger", target: "out" }]);
+  });
+
   it("normalizes model, memory, and tool side-port nodes into agent runtime bindings", () => {
     const result = normalizeWorkflow({
       id: "wf-agent-marketing",

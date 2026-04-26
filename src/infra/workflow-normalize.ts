@@ -800,9 +800,8 @@ export function normalizeWorkflow(input: WorkflowNormalizationInput): WorkflowNo
   const canvasLayout = normalizeCanvasLayout(input.canvasLayout, sourceNodes, sourceEdges);
   const issues: WorkflowIssue[] = [];
 
-  const canonicalNodes = sourceNodes.every(isCanonicalNode)
-    ? (sourceNodes as WorkflowNode[])
-    : null;
+  const canonicalNodes =
+    sourceNodes.length > 0 && sourceNodes.every(isCanonicalNode) ? sourceNodes : null;
   const engineEdges = normalizeEdges(canonicalNodes ? sourceEdges : canvasLayout.edges);
   const rawEngineNodes =
     canonicalNodes ??
