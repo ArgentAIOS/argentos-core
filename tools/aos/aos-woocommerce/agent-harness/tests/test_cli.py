@@ -67,12 +67,49 @@ def invoke_json(args: list[str]) -> dict[str, Any]:
     return json.loads(result.output)
 
 
+def invoke_result(args: list[str]):
+    return CliRunner().invoke(cli, ["--json", *args])
+
+
 def test_manifest_and_permissions_are_in_sync():
     manifest = json.loads(CONNECTOR_PATH.read_text())
     permissions = json.loads(PERMISSIONS_PATH.read_text())["permissions"]
     command_ids = [command["id"] for command in manifest["commands"]]
     assert set(command_ids) == set(permissions.keys())
     assert manifest["scope"]["kind"] == "commerce"
+    assert {command["required_mode"] for command in manifest["commands"]} == {"readonly"}
+    assert "order.create" not in command_ids
+    assert "coupon.create" not in command_ids
+
+
+def test_manifest_field_applicability_matches_read_surface():
+    manifest = json.loads(CONNECTOR_PATH.read_text())
+    command_ids = {command["id"] for command in manifest["commands"]}
+    command_defaults = manifest["scope"]["commandDefaults"]
+    field_contracts = {
+        "store_url": None,
+        "order_id": ("args", "WOO_ORDER_ID"),
+        "product_id": ("args", "WOO_PRODUCT_ID"),
+        "customer_id": ("args", "WOO_CUSTOMER_ID"),
+        "status": ("status_env", {"WOO_ORDER_STATUS", "WOO_PRODUCT_STATUS"}),
+        "sku": ("args", "WOO_SKU"),
+    }
+
+    for field in manifest["scope"]["fields"]:
+        contract = field_contracts[field["id"]]
+        for command_id in field["applies_to"]:
+            assert command_id in command_ids
+            defaults = command_defaults[command_id]
+            if contract is None:
+                continue
+            key, expected = contract
+            actual = defaults.get(key, [])
+            if isinstance(expected, set):
+                assert actual in expected
+            elif isinstance(actual, list):
+                assert expected in actual
+            else:
+                assert actual == expected
 
 
 def test_capabilities_exposes_manifest():
@@ -81,6 +118,7 @@ def test_capabilities_exposes_manifest():
     assert payload["data"]["backend"] == "woocommerce-rest-api"
     assert "order.list" in json.dumps(payload["data"])
     assert "report.sales" in json.dumps(payload["data"])
+    assert "order.create" not in json.dumps(payload["data"])
 
 
 def test_health_requires_credentials(monkeypatch):
@@ -137,20 +175,13 @@ def test_order_get_requires_id(monkeypatch):
     assert payload["error"]["code"] == "WOO_ORDER_REQUIRED"
 
 
-def test_order_create_is_scaffolded(monkeypatch):
+def test_removed_write_command_returns_usage_error(monkeypatch):
     monkeypatch.setenv("WOO_CONSUMER_KEY", "ck_test")
     monkeypatch.setenv("WOO_CONSUMER_SECRET", "cs_test")
     monkeypatch.setenv("WOO_STORE_URL", "https://mystore.example.com")
-    payload = invoke_json(["--mode", "write", "order", "create"])
-    assert payload["data"]["status"] == "scaffold_write_only"
-
-
-def test_write_commands_require_write_mode():
-    result = CliRunner().invoke(cli, ["--json", "order", "create"])
-    assert result.exit_code == 3, result.output
-    payload = json.loads(result.output)
-    assert payload["error"]["code"] == "PERMISSION_DENIED"
-    assert payload["error"]["details"] == {"required_mode": "write", "actual_mode": "readonly"}
+    result = invoke_result(["--mode", "write", "order", "create"])
+    assert result.exit_code != 0
+    assert "No such command" in result.output
 
 
 def test_report_sales_returns_data(monkeypatch):
@@ -173,14 +204,15 @@ def test_config_show_redacts_secrets(monkeypatch):
     assert data["scope"]["store_url"] == "https://mystore.example.com"
 
 
-def test_config_show_reports_live_reads_and_scaffolded_writes(monkeypatch):
+def test_config_show_reports_live_read_only(monkeypatch):
     monkeypatch.setenv("WOO_STORE_URL", "https://mystore.example.com")
     payload = invoke_json(["config", "show"])
     runtime_payload = payload["data"]["runtime"]
-    assert runtime_payload["implementation_mode"] == "live_reads_with_scaffolded_writes"
+    assert runtime_payload["implementation_mode"] == "live_read_only"
     assert "order.list" in runtime_payload["live_read_commands"]
-    assert "coupon.create" in runtime_payload["scaffolded_write_commands"]
-    assert "coupon" in runtime_payload["scaffolded_surfaces"]
+    assert runtime_payload["scaffolded_write_commands"] == []
+    assert runtime_payload["scaffolded_surfaces"] == []
+    assert "WOO_ORDER_ID" in payload["data"]["auth"]["service_keys"]
 
 
 def test_resolve_config_prefers_service_key_helper_for_store_and_credentials(monkeypatch):
@@ -188,6 +220,12 @@ def test_resolve_config_prefers_service_key_helper_for_store_and_credentials(mon
         "WOO_STORE_URL": "https://service-keys.example.com",
         "WOO_CONSUMER_KEY": "ck_service",
         "WOO_CONSUMER_SECRET": "cs_service",
+        "WOO_ORDER_ID": "1234",
+        "WOO_PRODUCT_ID": "567",
+        "WOO_CUSTOMER_ID": "89",
+        "WOO_ORDER_STATUS": "processing",
+        "WOO_PRODUCT_STATUS": "publish",
+        "WOO_SKU": "WOO-001",
     }
 
     def fake_service_key_env(name: str, default: str | None = None) -> str | None:
@@ -199,3 +237,9 @@ def test_resolve_config_prefers_service_key_helper_for_store_and_credentials(mon
     assert resolved.base_url == "https://service-keys.example.com/wp-json/wc/v3"
     assert resolved.consumer_key == "ck_service"
     assert resolved.consumer_secret == "cs_service"
+    assert resolved.order_id == "1234"
+    assert resolved.product_id == "567"
+    assert resolved.customer_id == "89"
+    assert resolved.order_status == "processing"
+    assert resolved.product_status == "publish"
+    assert resolved.sku == "WOO-001"

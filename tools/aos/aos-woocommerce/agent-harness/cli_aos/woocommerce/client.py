@@ -80,22 +80,6 @@ class WooCommerceClient:
         response = self._request("GET", f"/orders/{order_id}")
         return response.data or {}
 
-    def create_order(self, *, line_items: list[dict[str, Any]] | None = None, customer_id: str | None = None) -> dict[str, Any]:
-        return {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "WooCommerce order creation remains scaffolded until write workflows are approved.",
-            "order": {"line_items": line_items or [], "customer_id": customer_id},
-        }
-
-    def update_order(self, order_id: str, **fields: Any) -> dict[str, Any]:
-        return {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "WooCommerce order update remains scaffolded until write workflows are approved.",
-            "order": {"id": order_id, **fields},
-        }
-
     def list_products(self, *, status: str | None = None, sku: str | None = None, limit: int = 10) -> dict[str, Any]:
         params: dict[str, str | int | None] = {"per_page": limit}
         if status:
@@ -109,22 +93,6 @@ class WooCommerceClient:
         response = self._request("GET", f"/products/{product_id}")
         return response.data or {}
 
-    def create_product(self, *, name: str, sku: str | None = None, status: str = "draft") -> dict[str, Any]:
-        return {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "WooCommerce product creation remains scaffolded until write workflows are approved.",
-            "product": {"name": name, "sku": sku, "status": status},
-        }
-
-    def update_product(self, product_id: str, **fields: Any) -> dict[str, Any]:
-        return {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "WooCommerce product update remains scaffolded until write workflows are approved.",
-            "product": {"id": product_id, **fields},
-        }
-
     def list_customers(self, *, limit: int = 10) -> dict[str, Any]:
         response = self._request("GET", "/customers", params={"per_page": limit})
         return {"customers": response.data or []}
@@ -133,25 +101,9 @@ class WooCommerceClient:
         response = self._request("GET", f"/customers/{customer_id}")
         return response.data or {}
 
-    def create_customer(self, *, email: str, first_name: str | None = None, last_name: str | None = None) -> dict[str, Any]:
-        return {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "WooCommerce customer creation remains scaffolded until write workflows are approved.",
-            "customer": {"email": email, "first_name": first_name, "last_name": last_name},
-        }
-
     def list_coupons(self, *, limit: int = 10) -> dict[str, Any]:
         response = self._request("GET", "/coupons", params={"per_page": limit})
         return {"coupons": response.data or []}
-
-    def create_coupon(self, *, code: str, discount_type: str = "percent", amount: str = "10") -> dict[str, Any]:
-        return {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "WooCommerce coupon creation remains scaffolded until write workflows are approved.",
-            "coupon": {"code": code, "discount_type": discount_type, "amount": amount},
-        }
 
     def report_sales(self) -> dict[str, Any]:
         response = self._request("GET", "/reports/sales")

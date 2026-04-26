@@ -8,17 +8,11 @@
     "doctor": "readonly",
     "order.list": "readonly",
     "order.get": "readonly",
-    "order.create": "write",
-    "order.update": "write",
     "product.list": "readonly",
     "product.get": "readonly",
-    "product.create": "write",
-    "product.update": "write",
     "customer.list": "readonly",
     "customer.get": "readonly",
-    "customer.create": "write",
     "coupon.list": "readonly",
-    "coupon.create": "write",
     "report.sales": "readonly",
     "report.top_sellers": "readonly"
   }
