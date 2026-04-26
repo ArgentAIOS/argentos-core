@@ -11,6 +11,7 @@ import type {
 export type OpenAiRealtimeAudioFormat = "pcm16" | "g711_ulaw" | "g711_alaw";
 
 export type OpenAiRealtimeAudioFormatConfig =
+  | OpenAiRealtimeAudioFormat
   | { type: "audio/pcm"; rate: 24000 }
   | { type: "audio/pcmu" }
   | { type: "audio/pcma" };
@@ -220,21 +221,16 @@ export class OpenAiRealtimeVoiceBridge implements RealtimeVoiceBridge {
     return {
       type: "session.update",
       session: {
-        type: "realtime",
         model: this.config.model ?? DEFAULT_MODEL,
         instructions: this.request.instructions,
-        output_modalities: ["audio"],
-        audio: {
-          input: {
-            format: this.toRealtimeAudioFormat(this.config.inputAudioFormat ?? "pcm16"),
-            transcription: this.config.inputTranscription ?? null,
-            turn_detection: this.config.turnDetection ?? null,
-          },
-          output: {
-            format: this.toRealtimeAudioFormat(this.config.outputAudioFormat ?? "pcm16"),
-            voice: this.config.voice ?? DEFAULT_VOICE,
-          },
-        },
+        modalities: ["audio", "text"],
+        voice: this.config.voice ?? DEFAULT_VOICE,
+        input_audio_format: this.toRealtimeBetaAudioFormat(this.config.inputAudioFormat ?? "pcm16"),
+        output_audio_format: this.toRealtimeBetaAudioFormat(
+          this.config.outputAudioFormat ?? "pcm16",
+        ),
+        input_audio_transcription: this.config.inputTranscription ?? null,
+        turn_detection: this.config.turnDetection ?? null,
         tools: this.request.tools,
       },
     };
@@ -247,17 +243,8 @@ export class OpenAiRealtimeVoiceBridge implements RealtimeVoiceBridge {
     this.ws.send(JSON.stringify(event));
   }
 
-  private toRealtimeAudioFormat(
-    format: OpenAiRealtimeAudioFormat,
-  ): OpenAiRealtimeAudioFormatConfig {
-    switch (format) {
-      case "pcm16":
-        return { type: "audio/pcm", rate: 24000 };
-      case "g711_ulaw":
-        return { type: "audio/pcmu" };
-      case "g711_alaw":
-        return { type: "audio/pcma" };
-    }
+  private toRealtimeBetaAudioFormat(format: OpenAiRealtimeAudioFormat): OpenAiRealtimeAudioFormat {
+    return format;
   }
 
   private handleMessage(data: Buffer | string): void {
