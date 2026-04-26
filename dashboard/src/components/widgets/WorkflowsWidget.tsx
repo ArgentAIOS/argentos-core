@@ -3405,6 +3405,7 @@ function OutputForm({
     Boolean(selectedChannelId) &&
     (data.target === "channel" || data.target === "discord" || data.target === "telegram") &&
     !selectedChannel;
+  const legacyVariableSelected = data.target === "variable";
   const sourceMode = typeof record.sourceMode === "string" ? record.sourceMode : "previous";
   const sourceNodeOptions = nodes
     .filter((node) => {
@@ -3518,9 +3519,13 @@ function OutputForm({
         >
           <optgroup label="Local">
             <option value="doc_panel">DocPanel</option>
-            <option value="variable">Variable</option>
             <option value="knowledge">Knowledge</option>
           </optgroup>
+          {legacyVariableSelected && (
+            <option value="variable" disabled>
+              Variable (not executable yet)
+            </option>
+          )}
           <optgroup label="Channels">
             {outputChannels.map((channel) => (
               <option key={channel.id} value={`channel:${channel.id}`}>
