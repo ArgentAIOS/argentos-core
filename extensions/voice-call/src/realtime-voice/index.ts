@@ -19,6 +19,14 @@ export {
   type RealtimeVoiceOperatorSessionParams,
 } from "./operator-session.js";
 export {
+  createRealtimeVoiceOperatorCliHarness,
+  type RealtimeVoiceOperatorCliHarness,
+  type RealtimeVoiceOperatorCliHarnessParams,
+  type RealtimeVoiceOperatorHarnessCommand,
+  type RealtimeVoiceOperatorHarnessLogEntry,
+  type RealtimeVoiceOperatorHarnessSessionEvent,
+} from "./operator-cli-harness.js";
+export {
   resolveConfiguredRealtimeVoiceProvider,
   type ResolveConfiguredRealtimeVoiceProviderParams,
   type ResolvedRealtimeVoiceProvider,
