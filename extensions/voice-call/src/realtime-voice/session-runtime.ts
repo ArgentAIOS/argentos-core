@@ -108,7 +108,7 @@ export function createRealtimeVoiceBridgeSession(
         try {
           const result = params.onToolCall?.(event, session);
           if (result && typeof result === "object" && "then" in result) {
-            result.catch(handleToolError);
+            return result.catch(handleToolError);
           }
         } catch (err) {
           handleToolError(err);

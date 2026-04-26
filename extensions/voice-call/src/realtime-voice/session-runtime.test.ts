@@ -75,7 +75,7 @@ describe("createRealtimeVoiceBridgeSession", () => {
     expect(acknowledgeMark).toHaveBeenCalledOnce();
   });
 
-  it("passes tool calls the active session", () => {
+  it("passes tool calls the active session", async () => {
     let callbacks!: RealtimeVoiceBridgeCallbacks;
     const provider: RealtimeVoiceProvider = {
       id: "fake",
@@ -93,7 +93,7 @@ describe("createRealtimeVoiceBridgeSession", () => {
     });
 
     const event = { itemId: "item", callId: "call", name: "lookup", args: { q: "x" } };
-    callbacks.onToolCall?.(event);
+    await callbacks.onToolCall?.(event);
 
     expect(onToolCall).toHaveBeenCalledWith(event, session);
   });
@@ -120,7 +120,7 @@ describe("createRealtimeVoiceBridgeSession", () => {
     expect(triggerGreeting).toHaveBeenCalledWith("hello");
   });
 
-  it("surfaces tool call handler failures and closes the bridge", () => {
+  it("surfaces tool call handler failures and closes the bridge", async () => {
     let callbacks!: RealtimeVoiceBridgeCallbacks;
     const close = vi.fn();
     const onClose = vi.fn();
@@ -151,7 +151,7 @@ describe("createRealtimeVoiceBridgeSession", () => {
       onClose,
     });
 
-    callbacks.onToolCall?.({ itemId: "item", callId: "call", name: "lookup", args: {} });
+    await callbacks.onToolCall?.({ itemId: "item", callId: "call", name: "lookup", args: {} });
 
     expect(onError.mock.calls[0]?.[0]).toMatchObject({ message: "tool failed" });
     expect(close).toHaveBeenCalledWith("error");
@@ -180,8 +180,7 @@ describe("createRealtimeVoiceBridgeSession", () => {
       onError,
     });
 
-    callbacks.onToolCall?.({ itemId: "item", callId: "call", name: "lookup", args: {} });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await callbacks.onToolCall?.({ itemId: "item", callId: "call", name: "lookup", args: {} });
 
     expect(onError.mock.calls[0]?.[0]).toMatchObject({ message: "async tool failed" });
     expect(close).toHaveBeenCalledWith("error");
