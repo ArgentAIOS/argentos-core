@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgentConfig } from "../../config/config.js";
+import type { WorkflowDefinition } from "../../infra/workflow-types.js";
 import {
   buildWorkflowConnectorCapabilities,
   buildWorkflowConnectorCapabilitiesSafely,
   buildWorkflowOutputChannels,
+  validateWorkflowRuntimeCapabilities,
 } from "./workflows.js";
 
 const mocks = vi.hoisted(() => ({
@@ -133,5 +135,92 @@ describe("buildWorkflowOutputChannels", () => {
     mocks.discoverConnectorCatalog.mockRejectedValue(new Error("catalog unavailable"));
 
     await expect(buildWorkflowConnectorCapabilitiesSafely()).resolves.toEqual([]);
+  });
+
+  it("flags workflow destinations that are not currently runnable", async () => {
+    mocks.config = {
+      channels: {
+        discord: {
+          channels: {
+            "123": { requireMention: false },
+          },
+        },
+      },
+    } as ArgentConfig;
+    mocks.discoverConnectorCatalog.mockResolvedValue({
+      connectors: [
+        {
+          tool: "aos-placeholder",
+          label: "Placeholder",
+          category: "general",
+          categories: ["general"],
+          commands: [{ id: "message.send", summary: "Send message", actionClass: "write" }],
+          installState: "repo-only",
+          status: { ok: false },
+        },
+      ],
+    });
+
+    const workflow: WorkflowDefinition = {
+      id: "wf-runtime",
+      name: "Runtime Validation",
+      version: 1,
+      ownerAgentId: "argent",
+      deploymentStage: "live",
+      defaultOnError: { strategy: "fail", notifyOnError: true },
+      maxRunDurationMs: 60000,
+      nodes: [
+        {
+          kind: "trigger",
+          id: "trigger",
+          label: "Manual",
+          config: { triggerType: "manual" },
+        },
+        {
+          kind: "action",
+          id: "send",
+          label: "Send message",
+          config: {
+            actionType: {
+              type: "send_message",
+              channelType: "discord",
+              channelId: "123",
+              template: "Hi",
+            },
+          },
+        },
+        {
+          kind: "output",
+          id: "out",
+          label: "Output",
+          config: {
+            outputType: "connector_action",
+            connectorId: "aos-placeholder",
+            resource: "message",
+            operation: "message.send",
+            parameters: { text: "{{previous.text}}" },
+          },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "trigger", target: "send" },
+        { id: "e2", source: "send", target: "out" },
+      ],
+    };
+
+    const issues = await validateWorkflowRuntimeCapabilities(workflow);
+
+    expect(issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "workflow_action_channel_unavailable",
+          nodeId: "send",
+        }),
+        expect.objectContaining({
+          code: "workflow_output_connector_unavailable",
+          nodeId: "out",
+        }),
+      ]),
+    );
   });
 });

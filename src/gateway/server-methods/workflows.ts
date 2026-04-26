@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import postgres from "postgres";
 import type { ArgentConfig } from "../../config/config.js";
+import type { WorkflowDefinition } from "../../infra/workflow-types.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { createOutboundSendDeps } from "../../cli/deps.js";
 import {
@@ -51,7 +52,11 @@ import {
   type WorkflowRow,
   workflowFromRow,
 } from "../../infra/workflow-execution-service.js";
-import { hasBlockingWorkflowIssues, normalizeWorkflow } from "../../infra/workflow-normalize.js";
+import {
+  hasBlockingWorkflowIssues,
+  normalizeWorkflow,
+  type WorkflowIssue,
+} from "../../infra/workflow-normalize.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { dashboardApiHeaders } from "../../utils/dashboard-api.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
@@ -947,6 +952,92 @@ export async function buildWorkflowConnectorCapabilitiesSafely(): Promise<
   }
 }
 
+export async function validateWorkflowRuntimeCapabilities(
+  workflow: WorkflowDefinition,
+): Promise<WorkflowIssue[]> {
+  const issues: WorkflowIssue[] = [];
+  const [outputChannels, connectors] = await Promise.all([
+    buildWorkflowOutputChannels().catch((err) => {
+      log.warn(`workflow runtime channel validation unavailable: ${String(err)}`);
+      return [];
+    }),
+    buildWorkflowConnectorCapabilitiesSafely(),
+  ]);
+  const availableChannels = new Set(
+    outputChannels
+      .filter((channel) => channel.configured !== false)
+      .map((channel) => channel.id.toLowerCase()),
+  );
+  const availableConnectors = new Set(
+    connectors
+      .filter((connector) => !connector.scaffoldOnly && connector.readinessState !== "blocked")
+      .map((connector) => connector.id),
+  );
+  const channelLabel = outputChannels.length
+    ? outputChannels.map((channel) => channel.label).join(", ")
+    : "none";
+
+  for (const node of workflow.nodes) {
+    if (node.kind === "action") {
+      const actionType = node.config.actionType;
+      if (
+        actionType.type === "send_message" &&
+        actionType.channelType.trim() &&
+        !availableChannels.has(actionType.channelType.toLowerCase())
+      ) {
+        issues.push({
+          severity: "error",
+          code: "workflow_action_channel_unavailable",
+          nodeId: node.id,
+          message: `Message action uses "${actionType.channelType}", but that channel is not configured for workflow delivery. Active channels: ${channelLabel}.`,
+        });
+      }
+      if (
+        actionType.type === "connector_action" &&
+        actionType.connectorId.trim() &&
+        !availableConnectors.has(actionType.connectorId)
+      ) {
+        issues.push({
+          severity: "error",
+          code: "workflow_action_connector_unavailable",
+          nodeId: node.id,
+          message: `Connector action uses "${actionType.connectorId}", but that connector is not currently runnable.`,
+        });
+      }
+    }
+
+    if (node.kind === "output") {
+      const config = node.config;
+      if (
+        config.outputType === "channel" &&
+        config.channelType.trim() &&
+        !availableChannels.has(config.channelType.toLowerCase())
+      ) {
+        issues.push({
+          severity: "error",
+          code: "workflow_output_channel_unavailable",
+          nodeId: node.id,
+          message: `Output uses "${config.channelType}", but that channel is not configured for workflow delivery. Active channels: ${channelLabel}.`,
+        });
+      }
+      if (
+        config.outputType === "connector_action" &&
+        config.connectorId.trim() &&
+        !availableConnectors.has(config.connectorId)
+      ) {
+        issues.push({
+          severity: "error",
+          code: "workflow_output_connector_unavailable",
+          nodeId: node.id,
+          message: `Output uses connector "${config.connectorId}", but that connector is not currently runnable.`,
+        });
+      }
+    }
+  }
+
+  return issues;
+}
+
 export async function startAppForgeEventTriggeredWorkflows(opts: {
   sql: ReturnType<typeof postgres>;
   event: NormalizedAppForgeWorkflowEvent;
@@ -1365,9 +1456,11 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           return;
         }
         const normalized = workflowFromRow(row as unknown as WorkflowRow);
+        const runtimeIssues = await validateWorkflowRuntimeCapabilities(normalized.workflow);
+        const issues = [...normalized.issues, ...runtimeIssues];
         respond(true, {
-          ok: !hasBlockingWorkflowIssues(normalized.issues),
-          issues: normalized.issues,
+          ok: !hasBlockingWorkflowIssues(issues),
+          issues,
           definition: normalized.workflow,
           canvasLayout: normalized.canvasLayout,
         });
@@ -1392,9 +1485,11 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         canvasLayout,
         deploymentStage: "live",
       });
+      const runtimeIssues = await validateWorkflowRuntimeCapabilities(normalized.workflow);
+      const issues = [...normalized.issues, ...runtimeIssues];
       respond(true, {
-        ok: !hasBlockingWorkflowIssues(normalized.issues),
-        issues: normalized.issues,
+        ok: !hasBlockingWorkflowIssues(issues),
+        issues,
         definition: normalized.workflow,
         canvasLayout: normalized.canvasLayout,
       });
@@ -1589,6 +1684,23 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       const triggerPayload = optionalObject(params, "triggerPayload") ?? {};
       const fromStepId = optionalString(params, "fromStepId");
       const sourceRunId = optionalString(params, "sourceRunId");
+      const normalizedForRun = workflowFromRow(wf);
+      const runtimeIssues = await validateWorkflowRuntimeCapabilities(normalizedForRun.workflow);
+      const runIssues = [...normalizedForRun.issues, ...runtimeIssues];
+      if (hasBlockingWorkflowIssues(runIssues)) {
+        respond(
+          false,
+          undefined,
+          errorShape(
+            ErrorCodes.INVALID_REQUEST,
+            `Workflow validation failed: ${runIssues
+              .filter((issue) => issue.severity === "error")
+              .map((issue) => issue.message)
+              .join("; ")}`,
+          ),
+        );
+        return;
+      }
 
       let resume;
       if (fromStepId) {
@@ -1600,26 +1712,11 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           );
           return;
         }
-        const { workflow, issues } = workflowFromRow(wf);
-        if (hasBlockingWorkflowIssues(issues)) {
-          respond(
-            false,
-            undefined,
-            errorShape(
-              ErrorCodes.INVALID_REQUEST,
-              `Workflow validation failed: ${issues
-                .filter((issue) => issue.severity === "error")
-                .map((issue) => issue.message)
-                .join("; ")}`,
-            ),
-          );
-          return;
-        }
         resume = await buildWorkflowRetryFromStepResumeOptions({
           sql,
           sourceRunId,
           fromStepNodeId: fromStepId,
-          workflow,
+          workflow: normalizedForRun.workflow,
           triggerSource: "gateway:retry_from_step",
         });
       }
