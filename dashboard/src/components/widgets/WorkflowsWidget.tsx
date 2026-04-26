@@ -767,6 +767,16 @@ interface OutputChannelOption {
   }>;
 }
 
+interface KnowledgeCollectionOption {
+  collection: string;
+  collectionTag?: string;
+  collectionId?: string;
+  ownerAgentId?: string | null;
+  canRead?: boolean;
+  canWrite?: boolean;
+  isOwner?: boolean;
+}
+
 function toolCapabilitySourceLabel(source?: ToolPaletteEntry["source"]): string {
   switch (source) {
     case "connector":
@@ -2684,12 +2694,14 @@ function ActionForm({
   nodeId,
   gateway,
   connectors,
+  knowledgeCollections,
 }: {
   data: ActionNodeData;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
   nodeId: string;
   gateway: ReturnType<typeof useGateway>;
   connectors: ConnectorEntry[];
+  knowledgeCollections: KnowledgeCollectionOption[];
 }) {
   const update = (field: string, value: unknown) => {
     onUpdate(nodeId, { ...data, [field]: value });
@@ -2998,15 +3010,13 @@ function ActionForm({
 
       {data.actionType === "store_knowledge" && (
         <>
-          <div className="space-y-1.5">
-            <label className={DOCK_LABEL}>Collection ID</label>
-            <input
-              className={DOCK_INPUT}
-              value={cfgValue("collectionId")}
-              onChange={(e) => cfgUpdate("collectionId", e.target.value)}
-              placeholder="collection-name"
-            />
-          </div>
+          <KnowledgeCollectionPicker
+            label="Collection"
+            value={String(cfgValue("collectionId"))}
+            onChange={(value) => cfgUpdate("collectionId", value)}
+            collections={knowledgeCollections}
+            requireWrite
+          />
           <div className="space-y-1.5">
             <label className={DOCK_LABEL}>Content</label>
             <textarea
@@ -3627,6 +3637,82 @@ function stringifyOutputJson(value: unknown, fallback = "{}"): string {
   return fallback;
 }
 
+function KnowledgeCollectionPicker({
+  label = "Knowledge collection",
+  value,
+  onChange,
+  collections,
+  requireWrite = false,
+  placeholder = "Select collection...",
+}: {
+  label?: string;
+  value: string;
+  onChange: (value: string) => void;
+  collections: KnowledgeCollectionOption[];
+  requireWrite?: boolean;
+  placeholder?: string;
+}) {
+  const [customValue, setCustomValue] = useState<string | null>(null);
+  const availableCollections = collections.filter((collection) =>
+    requireWrite
+      ? collection.canWrite || collection.isOwner
+      : collection.canRead || collection.isOwner,
+  );
+  const selectedKnown = availableCollections.some((collection) => collection.collection === value);
+  const customMode = customValue !== null && customValue === value;
+  const selectValue = customMode || (value && !selectedKnown) ? "__custom" : value;
+  const showCustomInput =
+    customMode || selectValue === "__custom" || availableCollections.length === 0;
+
+  return (
+    <div className="space-y-1.5">
+      <label className={DOCK_LABEL}>{label}</label>
+      <select
+        className={DOCK_INPUT}
+        value={selectValue}
+        onChange={(event) => {
+          if (event.target.value === "__custom") {
+            setCustomValue(value);
+            return;
+          }
+          setCustomValue(null);
+          onChange(event.target.value);
+        }}
+      >
+        <option value="">{placeholder}</option>
+        {availableCollections.map((collection) => (
+          <option
+            key={collection.collectionId ?? collection.collection}
+            value={collection.collection}
+          >
+            {collection.collection}
+            {collection.canWrite || collection.isOwner ? "" : " (read only)"}
+          </option>
+        ))}
+        {value && !selectedKnown && <option value="__custom">Saved custom: {value}</option>}
+        <option value="__custom">Custom collection...</option>
+      </select>
+      {showCustomInput && (
+        <input
+          className={DOCK_INPUT}
+          value={value}
+          onChange={(event) => {
+            setCustomValue(event.target.value);
+            onChange(event.target.value);
+          }}
+          placeholder="collection name"
+        />
+      )}
+      {availableCollections.length === 0 && (
+        <div className="text-[10px] leading-relaxed text-[hsl(var(--muted-foreground))]">
+          No {requireWrite ? "writable " : ""}knowledge collections were discovered. You can enter a
+          collection name manually for now.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function outputSideEffectLabel(target: OutputNodeData["target"]): string {
   switch (target) {
     case "channel":
@@ -3653,6 +3739,7 @@ function OutputForm({
   outputChannels,
   nodes,
   connectors,
+  knowledgeCollections,
 }: {
   data: OutputNodeData;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
@@ -3660,6 +3747,7 @@ function OutputForm({
   outputChannels: OutputChannelOption[];
   nodes: Node[];
   connectors: ConnectorEntry[];
+  knowledgeCollections: KnowledgeCollectionOption[];
 }) {
   const update = (field: string, value: unknown) => {
     onUpdate(nodeId, { ...data, [field]: value });
@@ -4134,15 +4222,14 @@ function OutputForm({
       )}
 
       {data.target === "knowledge" && (
-        <div className="space-y-1.5">
-          <label className={DOCK_LABEL}>Collection</label>
-          <input
-            className={DOCK_INPUT}
-            value={(record.collectionId as string) || ""}
-            onChange={(e) => update("collectionId", e.target.value)}
-            placeholder="workflow-results"
-          />
-        </div>
+        <KnowledgeCollectionPicker
+          label="Collection"
+          value={(record.collectionId as string) || ""}
+          onChange={(value) => update("collectionId", value)}
+          collections={knowledgeCollections}
+          requireWrite
+          placeholder="Select output collection..."
+        />
       )}
 
       {data.target === "task_update" && (
@@ -4375,10 +4462,12 @@ function MemorySourceForm({
   data,
   onUpdate,
   nodeId,
+  knowledgeCollections,
 }: {
   data: SubPortNodeData;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
   nodeId: string;
+  knowledgeCollections: KnowledgeCollectionOption[];
 }) {
   const cfg = data.config ?? {};
   const update = (field: string, value: unknown) => {
@@ -4400,15 +4489,13 @@ function MemorySourceForm({
         </select>
       </div>
       {cfg.sourceType === "knowledge_collection" && (
-        <div className="space-y-1.5">
-          <label className={DOCK_LABEL}>Collection ID</label>
-          <input
-            className={DOCK_INPUT}
-            value={(cfg.collectionId as string) || ""}
-            onChange={(e) => update("collectionId", e.target.value)}
-            placeholder="collection-name"
-          />
-        </div>
+        <KnowledgeCollectionPicker
+          label="Collection"
+          value={(cfg.collectionId as string) || ""}
+          onChange={(value) => update("collectionId", value)}
+          collections={knowledgeCollections}
+          placeholder="Select knowledge base..."
+        />
       )}
       {cfg.sourceType === "agent_memory" && (
         <div className="space-y-1.5">
@@ -5441,6 +5528,7 @@ function WorkflowCanvasInner({
   const [availableTools, setAvailableTools] = useState<ToolPaletteEntry[]>([...AVAILABLE_TOOLS]);
   const [appForgeEventOptions, setAppForgeEventOptions] = useState<AppForgeEventOption[]>([]);
   const [outputChannels, setOutputChannels] = useState<OutputChannelOption[]>([]);
+  const [knowledgeCollections, setKnowledgeCollections] = useState<KnowledgeCollectionOption[]>([]);
 
   // ── Run State ─────────────────────────────────────────────────────
   const [running, setRunning] = useState(false);
@@ -5588,6 +5676,7 @@ function WorkflowCanvasInner({
       setAvailableTools([...AVAILABLE_TOOLS]);
       setAppForgeEventOptions([]);
       setOutputChannels([]);
+      setKnowledgeCollections([]);
       return;
     }
     let cancelled = false;
@@ -5730,6 +5819,30 @@ function WorkflowCanvasInner({
       cancelled = true;
     };
   }, [gateway.connected, gateway.request]);
+
+  useEffect(() => {
+    if (!gateway.connected) {
+      setKnowledgeCollections([]);
+      return;
+    }
+    let cancelled = false;
+    void gateway
+      .request<{ collections?: KnowledgeCollectionOption[] }>("knowledge.collections.list", {})
+      .then((res) => {
+        if (!cancelled) {
+          setKnowledgeCollections(res?.collections ?? []);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setKnowledgeCollections([]);
+        }
+        console.warn("[Workflows] Knowledge collections unavailable:", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [gateway.connected, gateway]);
 
   const handleApprove = useCallback(
     async (runId: string, nodeId: string) => {
@@ -6866,6 +6979,7 @@ function WorkflowCanvasInner({
                         nodeId={selectedNode.id}
                         gateway={gateway}
                         connectors={connectors}
+                        knowledgeCollections={knowledgeCollections}
                       />
                     )}
                     {selectedNode.type === "gate" && (
@@ -6884,6 +6998,7 @@ function WorkflowCanvasInner({
                         outputChannels={outputChannels}
                         nodes={nodes}
                         connectors={connectors}
+                        knowledgeCollections={knowledgeCollections}
                       />
                     )}
                     {selectedNode.type === "modelProvider" && (
@@ -6898,6 +7013,7 @@ function WorkflowCanvasInner({
                         data={selectedNode.data as unknown as SubPortNodeData}
                         onUpdate={onUpdateNodeData}
                         nodeId={selectedNode.id}
+                        knowledgeCollections={knowledgeCollections}
                       />
                     )}
                     {selectedNode.type === "toolGrant" && (
