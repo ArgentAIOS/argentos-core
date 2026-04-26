@@ -227,6 +227,10 @@ Lane: OpenClaw 4.24 realtime/browser/marketplace comparison. Branch/commit: `cod
 
 Lane: `openclaw`. Branch: `codex/openclaw-realtime-fake-provider` from `origin/dev` / `85abcdc4`. Owned files for this slice: `extensions/voice-call/src/realtime-voice/**` and this coordination note only. Shared contract change: add deterministic fake-provider lifecycle coverage for realtime voice bridge/session behavior before any live OpenAI adapter work. Boundaries: no edits to existing voice-call telephony providers, `extensions/voice-call/src/media-stream.ts`, Google Meet runtime, browser runtime, Workflows, AppForge, AOS, schema, or gateway registry files. Required reaction: other lanes should not consume this as live OpenAI/Google/terminal voice support; fake provider is local deterministic lifecycle proof only.
 
+### 2026-04-26 — OpenClaw Local Operator Fake Session Wave
+
+Lane: `openclaw`. Branch: `codex/openclaw-realtime-fake-provider` rebased onto `origin/dev` / `bdbf18fa`; prior fake-provider determinism commit replayed as `e6d7c3d5`. Owned files for this slice: `extensions/voice-call/src/realtime-voice/**` and this coordination note only. Shared contract change: add an operator-facing realtime voice session contract that can run against the deterministic fake provider, recording transcript/audio/tool/close events and preserving handoff points for future OpenAI/Google adapters; `RealtimeVoiceCloseReason` now includes `cancelled` for operator-initiated cancellation. Boundaries: no Workflows, AppForge, AOS, schema, gateway, browser, Google Meet, existing telephony provider behavior, live microphone/audio, or live provider support claims. Required reaction: other lanes should treat this as a local deterministic operator harness only until a separate live adapter task is assigned and verified.
+
 ## Verification Snapshot
 
 Latest AppForge focused verification after rebase onto `origin/dev`:

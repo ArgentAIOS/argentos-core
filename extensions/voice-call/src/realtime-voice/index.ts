@@ -13,6 +13,12 @@ export {
   normalizeRealtimeVoiceProviderId,
 } from "./provider-registry.js";
 export {
+  createRealtimeVoiceOperatorSession,
+  type RealtimeVoiceOperatorSession,
+  type RealtimeVoiceOperatorSessionEvent,
+  type RealtimeVoiceOperatorSessionParams,
+} from "./operator-session.js";
+export {
   resolveConfiguredRealtimeVoiceProvider,
   type ResolveConfiguredRealtimeVoiceProviderParams,
   type ResolvedRealtimeVoiceProvider,

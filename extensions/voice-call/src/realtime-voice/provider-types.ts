@@ -2,7 +2,7 @@ export type RealtimeVoiceProviderId = string;
 
 export type RealtimeVoiceRole = "user" | "assistant";
 
-export type RealtimeVoiceCloseReason = "completed" | "error";
+export type RealtimeVoiceCloseReason = "completed" | "error" | "cancelled";
 
 export type RealtimeVoiceProviderConfig = Record<string, unknown>;
 

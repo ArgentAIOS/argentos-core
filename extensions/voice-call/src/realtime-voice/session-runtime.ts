@@ -20,7 +20,7 @@ export type RealtimeVoiceMarkStrategy = "transport" | "ack-immediately" | "ignor
 export type RealtimeVoiceBridgeSession = {
   bridge: RealtimeVoiceBridge;
   acknowledgeMark(): void;
-  close(): void;
+  close(reason?: RealtimeVoiceCloseReason): void;
   connect(): Promise<void>;
   sendAudio(audio: Buffer): void;
   sendUserMessage(text: string): void;
@@ -63,7 +63,7 @@ export function createRealtimeVoiceBridgeSession(
       return requireBridge();
     },
     acknowledgeMark: () => requireBridge().acknowledgeMark(),
-    close: () => requireBridge().close(),
+    close: (reason) => requireBridge().close(reason),
     connect: () => requireBridge().connect(),
     sendAudio: (audio) => requireBridge().sendAudio(audio),
     sendUserMessage: (text) => requireBridge().sendUserMessage?.(text),
