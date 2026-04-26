@@ -10,7 +10,7 @@ Reason: pure core foundation work
 
 ## Current Position
 
-AppForge is past the mock-shell stage and is now a usable single-user, metadata-backed workspace. Phase 1 is late-stage foundation work; Phase 2 now has a pure core model, an explicit adapter contract, and an initial `appforge.bases.*` gateway surface. Durable storage and table/record-level gateway migration are still pending.
+AppForge is past the mock-shell stage and is now a usable single-user, metadata-backed workspace. Phase 1 is late-stage foundation work; Phase 2 now has a pure core model, an expanded adapter contract, and an initial `appforge.bases.*` gateway surface. Durable storage and table/record-level gateway migration are still pending.
 
 Latest pushed AppForge commits:
 
@@ -21,7 +21,7 @@ Latest pushed AppForge commits:
 ## Phase Progress
 
 - Phase 1, workspace MVP: roughly 75-80% complete.
-- Phase 2, first-class data domain: started, roughly 15-20% complete.
+- Phase 2, first-class data domain: started, roughly 20-25% complete.
 - Phase 3, grid/saved view quality: partially started early through typed editors plus per-view filter/sort/group controls.
 - Phase 5, workflow event bridge: producer/consumer foundation is stronger than expected; coverage and targeted resume hardening remain.
 - Phase 6, permissions/audit: design risk identified; do not ship multi-user semantics until actor binding and AppForge-specific authorization exist.
@@ -53,6 +53,7 @@ Completed in this run:
 
 - Added `src/infra/app-forge-adapter.ts`.
 - Added `src/infra/app-forge-adapter.test.ts`.
+- Expanded the adapter contract to table and record operations.
 - Added `src/gateway/server-methods/app-forge.ts`.
 - Added `src/gateway/server-methods/app-forge.test.ts`.
 - Registered `appforge.bases.list`, `appforge.bases.get`, `appforge.bases.put`, and `appforge.bases.delete` for discovery and gateway auth.
@@ -93,6 +94,12 @@ Current gateway write scope is too coarse for mature AppForge. `workflows.emitAp
 
 Security review marked this as a hard pre-multi-user gate, not a blocker for the current single-operator base gateway foundation.
 
+Completed in this run:
+
+- Added `src/infra/app-forge-permissions.ts`.
+- Added `src/infra/app-forge-permissions.test.ts`.
+- Defined the pure actor envelope, ACL roles, permission checks, and audit event builders.
+
 Do not treat Phase 6 as ready until:
 
 - AppForge has owner/editor/viewer policy checks.
@@ -105,9 +112,11 @@ Do not treat Phase 6 as ready until:
 Passing:
 
 - `pnpm check:repo-lane`
+- `pnpm exec vitest run src/infra/app-forge-adapter.test.ts src/infra/app-forge-permissions.test.ts src/gateway/server-methods/app-forge.test.ts src/infra/app-forge-model.test.ts src/infra/appforge-workflow-events.test.ts src/gateway/server-methods/workflows.appforge-events.test.ts src/infra/appforge-workflow-capabilities.test.ts src/infra/app-forge-structured-data.test.ts`
 - `pnpm exec vitest run src/gateway/server-methods/app-forge.test.ts src/infra/app-forge-adapter.test.ts src/infra/app-forge-model.test.ts src/infra/appforge-workflow-events.test.ts src/gateway/server-methods/workflows.appforge-events.test.ts`
 - `pnpm exec vitest run src/infra/app-forge-model.test.ts src/infra/app-forge-structured-data.test.ts src/infra/appforge-workflow-events.test.ts src/infra/appforge-workflow-capabilities.test.ts src/gateway/server-methods/workflows.appforge-events.test.ts`
 - `node --test --test-name-pattern='Apps' dashboard/tests/api-server.test.cjs`
+- `pnpm exec oxlint --type-aware src/infra/app-forge-adapter.ts src/infra/app-forge-adapter.test.ts src/infra/app-forge-permissions.ts src/infra/app-forge-permissions.test.ts src/gateway/server-methods/app-forge.ts src/gateway/server-methods/app-forge.test.ts`
 - `pnpm exec oxlint --type-aware src/gateway/server-methods/app-forge.ts src/gateway/server-methods/app-forge.test.ts src/gateway/server-methods.ts src/gateway/server-methods-list.ts src/infra/appforge-workflow-events.test.ts src/gateway/server-methods/workflows.appforge-events.test.ts`
 - `pnpm exec oxlint --type-aware src/infra/app-forge-model.ts src/infra/app-forge-model.test.ts src/infra/app-forge-structured-data.test.ts`
 - File diagnostics for AppForge model/test and structured hook/test surfaces
