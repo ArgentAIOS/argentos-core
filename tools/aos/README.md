@@ -50,6 +50,30 @@ Every tool must implement:
 - `health`
 - `config show`
 
+## Readiness Index
+
+Generate the workflow-facing connector metadata index with:
+
+```bash
+node tools/aos/readiness-index.mjs
+node tools/aos/readiness-index.mjs --check
+```
+
+The generated `tools/aos/readiness-index.json` is the public AOS contract for Workflows, AppForge, and AOU. Consumers should use it instead of inspecting connector internals.
+
+Important fields:
+
+- Connector `readiness`: `live-ready`, `read-only`, `preview-only`, `manifest-only`, or `scaffold/deferred`.
+- Connector `auth.service_keys` and `auth.service_key_provider`: operator service-key requirements for linked external systems.
+- Connector `workflow.output_destination_allowed`: true only when at least one live writable command has bindable operator service keys and is eligible for Workflow output destinations.
+- Command `workflow_source_allowed`: true for runtime-backed read/source actions, excluding connector diagnostics and configuration commands.
+- Command `workflow_destination_allowed`: true only for explicitly live writable output actions with bindable operator service keys.
+- Command `side_effect_class`: derived or manifest-provided side-effect class. Use top-level `side_effect_classes` for the observed values in the generated index.
+- Command `writable_resource`, `writable_operation`, `resource_label`, and `operation_label`: resource/operation metadata for Workflow pickers.
+- Command `dry_run_supported`, `test_supported`, and `picker_hint`: UI and validation hints when the command or manifest provides enough evidence. `test_supported=true` requires command-level evidence and is not inferred from the presence of a connector test directory.
+
+`workflow_destination_allowed=true` is metadata eligibility, not proof that operator credentials are configured at runtime. A write command is not destination-eligible unless the connector declares an explicit live write bridge and required operator service keys. External mutations remain approval-gated through `approval_required` unless a later contract explicitly changes that policy.
+
 ## Initial Targets
 
 - `aos-obsidian`

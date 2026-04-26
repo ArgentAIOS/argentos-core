@@ -215,6 +215,14 @@ Owned files/directories: `tools/aos/**`, with active connector ownership over Ai
 Shared contract changes: connector manifests, permissions, and command capability declarations remain the public contract; operator-controlled service keys are the key source for linked external systems. Klaviyo is now a truthful live read connector and does not advertise mutation/write actions until those are implemented.
 Workflows/AppForge/AOU reaction: consume manifests/capabilities only; do not infer private connector internals or assume scaffolded writes exist. AOU Stub Finder should treat Klaviyo at `ad3fb0b9` as a real read-only baseline and track future mutation work separately.
 
+### 2026-04-26 — AOS Readiness Metadata To Workflows/AppForge/AOU
+
+Lane: `AOS readiness side-effect metadata`
+Branch/commit: `codex/aos-readiness-side-effects` in progress.
+Owned files/directories: `tools/aos/readiness-index.mjs`, `tools/aos/readiness-index.test.mjs`, `tools/aos/readiness-index.json`, and `tools/aos/README.md`.
+Shared contract changes: the generated readiness index will expose per-command side-effect class, read/write/preview/scaffold truth, writable resource/operation labels, required operator service keys, dry-run/test support flags, picker hints, and Workflow source/destination allow flags. Destination eligibility requires an explicit live write bridge plus operator service-key binding.
+Workflows/AppForge/AOU reaction: consume this generated metadata only. Hide output destinations unless `workflow_destination_allowed=true`; expose read/source actions only from `workflow_source_allowed=true`; keep diagnostics/config commands out of workflow event sources; keep external writes approval-gated unless a future contract explicitly narrows that policy.
+
 ### 2026-04-26 — Master Threadmaster Roster
 
 Current active core threadmasters: AppForge 2.0, Work flow building master, AOU Stub Finder, and Compare OpenClaw 4.24 features. Treat the Workflows threadmaster as the master coordinator for cross-project lane awareness while it continues implementing the workflow canvas/runtime.
