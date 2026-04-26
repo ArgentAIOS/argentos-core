@@ -63,6 +63,12 @@ export {
   type RealtimeLocalAudioToolProbe,
 } from "./local-audio-process.js";
 export {
+  createRealtimeLocalAudioOperatorSession,
+  type RealtimeLocalAudioOperatorInputConfig,
+  type RealtimeLocalAudioOperatorOutputConfig,
+  type RealtimeLocalAudioOperatorSessionParams,
+} from "./local-audio-process-session.js";
+export {
   createRealtimeVoiceOperatorSession,
   type RealtimeVoiceOperatorSession,
   type RealtimeVoiceOperatorSessionEvent,

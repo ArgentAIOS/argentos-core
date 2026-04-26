@@ -251,6 +251,10 @@ Lane: `openclaw`. Branch: `codex/openclaw-realtime-fake-provider` at `80fdc6d4` 
 
 Lane: `openclaw`. Branch: `codex/openclaw-audio-process` rebased/reconstructed from `origin/dev` / `3e9a1357`, with prior realtime voice commits replayed through `e8d3cc7b` before this slice. Owned files for this slice: `extensions/voice-call/src/realtime-voice/local-audio-process.ts`, `extensions/voice-call/src/realtime-voice/local-audio-process.test.ts`, `extensions/voice-call/src/realtime-voice/index.ts`, and this coordination note only. Shared contract change: add explicit-gate local device probe and macOS ffmpeg/ffplay process wrapper foundation for future microphone capture/speaker playback. Boundaries: default disabled, no live mic loop claim, no raw audio persistence unless `ARGENT_REALTIME_AUDIO_CAPTURE_PATH` is explicit, no Workflows, AppForge, AOS, schema, browser, Google Meet runtime, telephony default, or marketplace contract changes.
 
+### 2026-04-26 — OpenClaw Gated Local Audio Operator Session Wave
+
+Lane: `openclaw`. Branch: `codex/openclaw-audio-process` rebased onto `origin/dev` / `6805cc0c`, with process-wrapper commit replayed as `6b79a660` before this slice. Owned files for this slice: `extensions/voice-call/src/realtime-voice/local-audio-process-session.ts`, `extensions/voice-call/src/realtime-voice/local-audio-process-session.test.ts`, `extensions/voice-call/src/realtime-voice/index.ts`, and this coordination note only. Shared contract change: add a gated local audio operator session factory that connects the existing realtime operator session to process input/output adapters or dry-run synthetic/capture adapters while requiring `ARGENT_REALTIME_AUDIO_PROCESS_ENABLE=1` and `ARGENT_REALTIME_AUDIO_CONFIRM_LIVE=1`. Boundaries: default disabled, tests do not touch live devices, no operator CLI wiring, no live mic/speaker support claim, and no Workflows/AppForge/AOS/schema/browser/Google Meet runtime or telephony default changes.
+
 ## Verification Snapshot
 
 Latest AppForge focused verification after rebase onto `origin/dev`:
