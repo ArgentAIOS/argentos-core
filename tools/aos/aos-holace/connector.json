@@ -5,34 +5,33 @@
   "scope": {
     "kind": "legal-practice",
     "surface": "case-client-document-billing",
-    "scaffold_only": true,
-    "live_backend_available": false,
+    "scaffold_only": false,
+    "live_backend_available": true,
     "live_read_available": true,
-    "write_bridge_available": true,
-    "workerFields": ["case_id", "client_id", "document_type", "attorney_id"],
+    "write_bridge_available": false,
+    "workerFields": [
+      "case_id",
+      "client_id",
+      "document_id",
+      "settlement_id",
+      "attorney_id",
+      "case_type",
+      "statute_state"
+    ],
     "worker_visible_actions": [
       "case.list",
       "case.get",
-      "case.create",
-      "case.update",
       "case.timeline",
       "client.list",
       "client.get",
-      "client.create",
-      "client.intake",
       "document.list",
       "document.get",
-      "document.generate",
-      "document.upload",
       "deadline.list",
-      "deadline.create",
       "deadline.check_statute",
       "settlement.list",
       "settlement.get",
       "settlement.tracker",
       "billing.list",
-      "billing.create_invoice",
-      "communication.log",
       "communication.list",
       "report.case_status",
       "report.pipeline"
@@ -44,90 +43,118 @@
         "required": false,
         "applies_to": [
           "case.get",
-          "case.update",
           "case.timeline",
           "document.list",
           "deadline.list",
           "settlement.list",
-          "communication.list"
+          "billing.list",
+          "communication.list",
+          "report.case_status"
         ],
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
-        "description": ""
+        "description": "HoLaCe case identifier. May be supplied by operator scope key HOLACE_CASE_ID."
       },
       {
         "id": "client_id",
         "label": "Client ID",
         "required": false,
-        "applies_to": ["client.get", "client.intake", "case.create"],
+        "applies_to": [
+          "client.get",
+          "case.list"
+        ],
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
-        "description": ""
+        "description": "HoLaCe client identifier. May be supplied by operator scope key HOLACE_CLIENT_ID."
       },
       {
-        "id": "document_type",
-        "label": "Document Type",
+        "id": "document_id",
+        "label": "Document ID",
         "required": false,
-        "applies_to": ["document.generate"],
-        "example": "demand_letter",
+        "applies_to": [
+          "document.get"
+        ],
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
-        "description": ""
+        "description": "HoLaCe document identifier. May be supplied by operator scope key HOLACE_DOCUMENT_ID."
+      },
+      {
+        "id": "settlement_id",
+        "label": "Settlement ID",
+        "required": false,
+        "applies_to": [
+          "settlement.get"
+        ],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "HoLaCe settlement identifier. May be supplied by operator scope key HOLACE_SETTLEMENT_ID."
       },
       {
         "id": "attorney_id",
         "label": "Attorney",
         "required": false,
-        "applies_to": ["case.list", "case.create", "report.case_status"],
+        "applies_to": [
+          "case.list",
+          "report.pipeline"
+        ],
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
-        "description": ""
+        "description": "Attorney filter. May be supplied by operator scope key HOLACE_ATTORNEY_ID."
       },
       {
         "id": "case_type",
         "label": "Case Type",
         "required": false,
-        "applies_to": ["case.create", "case.list"],
+        "applies_to": [
+          "case.list",
+          "deadline.check_statute"
+        ],
         "example": "personal_injury",
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
-        "description": ""
+        "description": "Case type filter or statute lookup context."
       },
       {
         "id": "statute_state",
-        "label": "State (for statute lookup)",
+        "label": "State",
         "required": false,
-        "applies_to": ["deadline.check_statute"],
+        "applies_to": [
+          "deadline.check_statute"
+        ],
+        "example": "CA",
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
-        "description": ""
+        "description": "US state code for statute-of-limitations lookup."
       }
     ],
     "commandDefaults": {
       "case.list": {
         "selection_surface": "case",
+        "args": [
+          "HOLACE_ATTORNEY_ID",
+          "HOLACE_CLIENT_ID",
+          "HOLACE_CASE_TYPE"
+        ],
         "limit": 25
       },
       "case.get": {
         "selection_surface": "case",
-        "args": ["HOLACE_CASE_ID"]
-      },
-      "case.create": {
-        "selection_surface": "case"
-      },
-      "case.update": {
-        "selection_surface": "case",
-        "args": ["HOLACE_CASE_ID"]
+        "args": [
+          "HOLACE_CASE_ID"
+        ]
       },
       "case.timeline": {
         "selection_surface": "case",
-        "args": ["HOLACE_CASE_ID"]
+        "args": [
+          "HOLACE_CASE_ID"
+        ]
       },
       "client.list": {
         "selection_surface": "client",
@@ -135,69 +162,78 @@
       },
       "client.get": {
         "selection_surface": "client",
-        "args": ["HOLACE_CLIENT_ID"]
-      },
-      "client.create": {
-        "selection_surface": "client"
-      },
-      "client.intake": {
-        "selection_surface": "client",
-        "args": ["HOLACE_CLIENT_ID"]
+        "args": [
+          "HOLACE_CLIENT_ID"
+        ]
       },
       "document.list": {
         "selection_surface": "document",
+        "args": [
+          "HOLACE_CASE_ID"
+        ],
         "limit": 25
       },
       "document.get": {
         "selection_surface": "document",
-        "args": ["HOLACE_DOCUMENT_ID"]
-      },
-      "document.generate": {
-        "selection_surface": "document"
-      },
-      "document.upload": {
-        "selection_surface": "document"
+        "args": [
+          "HOLACE_DOCUMENT_ID"
+        ]
       },
       "deadline.list": {
         "selection_surface": "deadline",
+        "args": [
+          "HOLACE_CASE_ID"
+        ],
         "limit": 20
       },
-      "deadline.create": {
-        "selection_surface": "deadline"
-      },
       "deadline.check_statute": {
-        "selection_surface": "deadline"
+        "selection_surface": "deadline",
+        "args": [
+          "HOLACE_STATUTE_STATE",
+          "HOLACE_CASE_TYPE"
+        ]
       },
       "settlement.list": {
         "selection_surface": "settlement",
+        "args": [
+          "HOLACE_CASE_ID"
+        ],
         "limit": 10
       },
       "settlement.get": {
         "selection_surface": "settlement",
-        "args": ["HOLACE_SETTLEMENT_ID"]
+        "args": [
+          "HOLACE_SETTLEMENT_ID"
+        ]
       },
       "settlement.tracker": {
         "selection_surface": "settlement"
       },
       "billing.list": {
         "selection_surface": "billing",
+        "args": [
+          "HOLACE_CASE_ID"
+        ],
         "limit": 25
-      },
-      "billing.create_invoice": {
-        "selection_surface": "billing"
-      },
-      "communication.log": {
-        "selection_surface": "communication"
       },
       "communication.list": {
         "selection_surface": "communication",
+        "args": [
+          "HOLACE_CASE_ID"
+        ],
         "limit": 25
       },
       "report.case_status": {
-        "selection_surface": "report"
+        "selection_surface": "report",
+        "args": [
+          "HOLACE_CASE_ID"
+        ]
       },
       "report.pipeline": {
-        "selection_surface": "report"
+        "selection_surface": "report",
+        "args": [
+          "HOLACE_ATTORNEY_ID"
+        ]
       }
     },
     "pickerHints": {
@@ -221,35 +257,66 @@
         "selection_surface": "client",
         "resource": "holace.client",
         "source_command": "client.list",
-        "source_fields": ["id", "name", "email", "phone", "intake_date", "case_count"]
+        "source_fields": [
+          "id",
+          "name",
+          "email",
+          "phone",
+          "intake_date",
+          "case_count"
+        ]
       },
       "document": {
         "kind": "document",
         "selection_surface": "document",
         "resource": "holace.document",
         "source_command": "document.list",
-        "source_fields": ["id", "title", "type", "case_id", "created", "status"]
+        "source_fields": [
+          "id",
+          "title",
+          "type",
+          "case_id",
+          "created",
+          "status"
+        ]
       },
       "deadline": {
         "kind": "deadline",
         "selection_surface": "deadline",
         "resource": "holace.deadline",
         "source_command": "deadline.list",
-        "source_fields": ["id", "title", "due_date", "case_id", "type", "status"]
+        "source_fields": [
+          "id",
+          "title",
+          "due_date",
+          "case_id",
+          "type",
+          "status"
+        ]
       },
       "settlement": {
         "kind": "settlement",
         "selection_surface": "settlement",
         "resource": "holace.settlement",
         "source_command": "settlement.list",
-        "source_fields": ["id", "case_id", "amount", "status", "date"]
+        "source_fields": [
+          "id",
+          "case_id",
+          "amount",
+          "status",
+          "date"
+        ]
       }
     }
   },
   "connector": {
     "label": "HoLaCe",
     "category": "legal-practice",
-    "categories": ["legal-practice", "case-management", "personal-injury"],
+    "categories": [
+      "legal-practice",
+      "case-management",
+      "personal-injury"
+    ],
     "resources": [
       "case",
       "client",
@@ -264,16 +331,60 @@
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": ["HOLACE_API_KEY"],
+    "service_keys": [
+      "HOLACE_API_KEY",
+      "HOLACE_API_BASE_URL"
+    ],
+    "optional_scope_service_keys": [
+      "HOLACE_ATTORNEY_ID",
+      "HOLACE_CASE_ID",
+      "HOLACE_CLIENT_ID",
+      "HOLACE_DOCUMENT_ID",
+      "HOLACE_SETTLEMENT_ID",
+      "HOLACE_CASE_TYPE",
+      "HOLACE_STATUTE_STATE"
+    ],
     "interactive_setup": [
-      "Create or retrieve your HoLaCe API key from the firm admin panel.",
-      "Add HOLACE_API_KEY in API Keys before enabling live reads.",
-      "Set HOLACE_ATTORNEY_ID to default attorney filters.",
-      "Set HOLACE_CASE_ID to preselect a case scope.",
-      "All read and write paths are live \u2014 this is a first-party connector."
+      "Add HOLACE_API_KEY in operator-controlled service keys before enabling live reads.",
+      "Add HOLACE_API_BASE_URL in operator-controlled service keys for the firm HoLaCe API host.",
+      "Optionally set HOLACE_ATTORNEY_ID, HOLACE_CASE_ID, HOLACE_CLIENT_ID, HOLACE_DOCUMENT_ID, HOLACE_SETTLEMENT_ID, HOLACE_CASE_TYPE, and HOLACE_STATUTE_STATE as operator scope defaults.",
+      "Local HOLACE_* environment variables are only a development harness fallback.",
+      "Write commands are not advertised until a write bridge is implemented and smoke-tested."
     ]
   },
   "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
     {
       "id": "case.list",
       "summary": "List cases",
@@ -291,24 +402,8 @@
       "action_class": "read"
     },
     {
-      "id": "case.create",
-      "summary": "Create a new case",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "case",
-      "action_class": "write"
-    },
-    {
-      "id": "case.update",
-      "summary": "Update case details",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "case",
-      "action_class": "write"
-    },
-    {
       "id": "case.timeline",
-      "summary": "Get the full timeline for a case",
+      "summary": "Get the timeline for a case",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "case",
@@ -331,22 +426,6 @@
       "action_class": "read"
     },
     {
-      "id": "client.create",
-      "summary": "Create a new client record",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "client",
-      "action_class": "write"
-    },
-    {
-      "id": "client.intake",
-      "summary": "Run the client intake workflow",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "client",
-      "action_class": "write"
-    },
-    {
       "id": "document.list",
       "summary": "List documents for a case",
       "required_mode": "readonly",
@@ -363,36 +442,12 @@
       "action_class": "read"
     },
     {
-      "id": "document.generate",
-      "summary": "Generate a document from template (e.g. demand letter)",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "document",
-      "action_class": "write"
-    },
-    {
-      "id": "document.upload",
-      "summary": "Upload a document to a case",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "document",
-      "action_class": "write"
-    },
-    {
       "id": "deadline.list",
       "summary": "List deadlines and statute dates",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "deadline",
       "action_class": "read"
-    },
-    {
-      "id": "deadline.create",
-      "summary": "Create a deadline or reminder",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "deadline",
-      "action_class": "write"
     },
     {
       "id": "deadline.check_statute",
@@ -435,22 +490,6 @@
       "action_class": "read"
     },
     {
-      "id": "billing.create_invoice",
-      "summary": "Create an invoice for a case",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "billing",
-      "action_class": "write"
-    },
-    {
-      "id": "communication.log",
-      "summary": "Log a client communication",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "communication",
-      "action_class": "write"
-    },
-    {
       "id": "communication.list",
       "summary": "List communications for a case",
       "required_mode": "readonly",
@@ -468,42 +507,10 @@
     },
     {
       "id": "report.pipeline",
-      "summary": "Generate case pipeline report",
+      "summary": "Generate pipeline report",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "report",
-      "action_class": "read"
-    },
-    {
-      "id": "capabilities",
-      "summary": "Describe the connector manifest",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "connector",
-      "action_class": "read"
-    },
-    {
-      "id": "config.show",
-      "summary": "Show redacted connector configuration",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "connector",
-      "action_class": "read"
-    },
-    {
-      "id": "health",
-      "summary": "Report connector health and setup readiness",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "connector",
-      "action_class": "read"
-    },
-    {
-      "id": "doctor",
-      "summary": "Run connector diagnostics",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "connector",
       "action_class": "read"
     }
   ]
