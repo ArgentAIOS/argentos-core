@@ -582,6 +582,7 @@ function execStateClass(state?: NodeExecState): string {
 function stripExecState(data: Node["data"] | undefined): Record<string, unknown> {
   const cleanData = { ...((data ?? {}) as Record<string, unknown>) };
   delete cleanData.execState;
+  delete cleanData.validationIssues;
   return cleanData;
 }
 
@@ -615,6 +616,23 @@ function RetryBadge({ retryCount }: { retryCount?: number }) {
   return (
     <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 rounded-full text-[8px] text-black font-bold flex items-center justify-center z-20">
       {retryCount}
+    </div>
+  );
+}
+
+function NodeIssueBadge({ issues }: { issues?: WorkflowValidationIssue[] }) {
+  if (!issues?.length) return null;
+  const errorCount = issues.filter((issue) => issue.severity === "error").length;
+  const isError = errorCount > 0;
+  const count = isError ? errorCount : issues.length;
+  return (
+    <div
+      className={`absolute -top-1.5 -left-1.5 min-w-4 h-4 px-1 rounded-full flex items-center justify-center text-[8px] font-bold z-20 ${
+        isError ? "bg-red-500 text-white" : "bg-amber-500 text-black"
+      }`}
+      title={issues.map((issue) => issue.message).join("\n")}
+    >
+      {count}
     </div>
   );
 }
@@ -1112,6 +1130,7 @@ function TriggerNode({ data, selected }: NodeProps<Node<TriggerNodeData>>) {
     >
       <ExecOverlay state={data.execState} />
       <RetryBadge retryCount={data.retryCount} />
+      <NodeIssueBadge issues={data.validationIssues as WorkflowValidationIssue[] | undefined} />
       <div className="flex items-center gap-2 mb-1">
         <span className="text-base">&#9889;</span>
         <span className="text-xs font-semibold text-[hsl(var(--foreground))]">Trigger</span>
@@ -1159,6 +1178,7 @@ function AgentStepNode({ data, selected }: NodeProps<Node<AgentStepNodeData>>) {
     >
       <ExecOverlay state={data.execState} />
       <RetryBadge retryCount={data.retryCount} />
+      <NodeIssueBadge issues={data.validationIssues as WorkflowValidationIssue[] | undefined} />
       <Handle
         type="target"
         position={Position.Top}
@@ -1248,6 +1268,7 @@ function ModelProviderNode({ data, selected }: NodeProps<Node<SubPortNodeData>>)
         borderStyle: "dashed",
       }}
     >
+      <NodeIssueBadge issues={data.validationIssues as WorkflowValidationIssue[] | undefined} />
       <Handle
         type="source"
         position={Position.Top}
@@ -1280,6 +1301,7 @@ function MemorySourceNode({ data, selected }: NodeProps<Node<SubPortNodeData>>) 
         borderStyle: "dashed",
       }}
     >
+      <NodeIssueBadge issues={data.validationIssues as WorkflowValidationIssue[] | undefined} />
       <Handle
         type="source"
         position={Position.Top}
@@ -1315,6 +1337,7 @@ function ToolGrantNode({ data, selected }: NodeProps<Node<SubPortNodeData>>) {
         borderStyle: "dashed",
       }}
     >
+      <NodeIssueBadge issues={data.validationIssues as WorkflowValidationIssue[] | undefined} />
       <Handle
         type="source"
         position={Position.Top}
@@ -1368,6 +1391,7 @@ function OutputNode({ data, selected }: NodeProps<Node<OutputNodeData>>) {
     >
       <ExecOverlay state={data.execState} />
       <RetryBadge retryCount={data.retryCount} />
+      <NodeIssueBadge issues={data.validationIssues as WorkflowValidationIssue[] | undefined} />
       <Handle
         type="target"
         position={Position.Top}
@@ -1426,6 +1450,7 @@ function ActionNode({ data, selected }: NodeProps<Node<ActionNodeData>>) {
     >
       <ExecOverlay state={data.execState} />
       <RetryBadge retryCount={data.retryCount} />
+      <NodeIssueBadge issues={data.validationIssues as WorkflowValidationIssue[] | undefined} />
       <Handle
         type="target"
         position={Position.Top}
@@ -1522,6 +1547,7 @@ function GateNode({ data, selected }: NodeProps<Node<GateNodeData>>) {
     >
       <ExecOverlay state={data.execState} />
       <RetryBadge retryCount={data.retryCount} />
+      <NodeIssueBadge issues={data.validationIssues as WorkflowValidationIssue[] | undefined} />
       {/* Diamond shape */}
       <div
         className="absolute inset-0 border-2"
@@ -4877,7 +4903,7 @@ function WorkflowCanvasInner({
   onRunsChanged: (runs: RunRecord[]) => void;
 }) {
   const gateway = useGateway();
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, setCenter } = useReactFlow();
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -5253,6 +5279,69 @@ function WorkflowCanvasInner({
     );
   }, [setNodes]);
 
+  const applyValidationIssuesToCanvas = useCallback(
+    (issues: WorkflowValidationIssue[]) => {
+      const issuesByNode = new Map<string, WorkflowValidationIssue[]>();
+      for (const issue of issues) {
+        if (!issue.nodeId) continue;
+        const nodeIssues = issuesByNode.get(issue.nodeId) ?? [];
+        nodeIssues.push(issue);
+        issuesByNode.set(issue.nodeId, nodeIssues);
+      }
+
+      setNodes((nds) =>
+        nds.map((node) => {
+          const nextIssues = issuesByNode.get(node.id);
+          const hasCurrentIssues = Boolean((node.data as Record<string, unknown>).validationIssues);
+          if (!nextIssues && !hasCurrentIssues) {
+            return node;
+          }
+          const nextData = { ...(node.data as Record<string, unknown>) };
+          if (nextIssues) {
+            nextData.validationIssues = nextIssues;
+          } else {
+            delete nextData.validationIssues;
+          }
+          return { ...node, data: nextData };
+        }),
+      );
+
+      setSelectedNode((prev) => {
+        if (!prev) return prev;
+        const nextIssues = issuesByNode.get(prev.id);
+        const nextData = { ...(prev.data as Record<string, unknown>) };
+        if (nextIssues) {
+          nextData.validationIssues = nextIssues;
+        } else {
+          delete nextData.validationIssues;
+        }
+        return { ...prev, data: nextData };
+      });
+    },
+    [setNodes],
+  );
+
+  const clearValidationIssuesFromCanvas = useCallback(() => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (!(node.data as Record<string, unknown>).validationIssues) {
+          return node;
+        }
+        const nextData = { ...(node.data as Record<string, unknown>) };
+        delete nextData.validationIssues;
+        return { ...node, data: nextData };
+      }),
+    );
+    setSelectedNode((prev) => {
+      if (!prev || !(prev.data as Record<string, unknown>).validationIssues) {
+        return prev;
+      }
+      const nextData = { ...(prev.data as Record<string, unknown>) };
+      delete nextData.validationIssues;
+      return { ...prev, data: nextData };
+    });
+  }, [setNodes]);
+
   // ── Gateway live step events ──────────────────────────────────────
 
   useEffect(() => {
@@ -5434,10 +5523,7 @@ function WorkflowCanvasInner({
   const cleanWorkflowNodes = useCallback(
     () =>
       nodes.map((n) => {
-        if (n.data?.execState) {
-          return { ...n, data: stripExecState(n.data) };
-        }
-        return n;
+        return { ...n, data: stripExecState(n.data) };
       }),
     [nodes],
   );
@@ -5446,6 +5532,7 @@ function WorkflowCanvasInner({
     if (!activeWorkflowId || !gateway.connected) {
       setValidationIssues([]);
       setValidationCheckedAt(null);
+      clearValidationIssuesFromCanvas();
       return true;
     }
     setValidationStatus("checking");
@@ -5460,10 +5547,12 @@ function WorkflowCanvasInner({
       );
       const issues = normalizeValidationIssues(res?.issues);
       setValidationIssues(issues);
+      applyValidationIssuesToCanvas(issues);
       setValidationCheckedAt(new Date().toISOString());
       setValidationStatus("idle");
       return res?.ok !== false && !issues.some((issue) => issue.severity === "error");
     } catch (err) {
+      clearValidationIssuesFromCanvas();
       setValidationStatus("error");
       setValidationCheckedAt(new Date().toISOString());
       setValidationIssues([
@@ -5475,7 +5564,15 @@ function WorkflowCanvasInner({
       ]);
       return false;
     }
-  }, [activeWorkflowId, cleanWorkflowNodes, edges, gateway, workflows]);
+  }, [
+    activeWorkflowId,
+    applyValidationIssuesToCanvas,
+    cleanWorkflowNodes,
+    clearValidationIssuesFromCanvas,
+    edges,
+    gateway,
+    workflows,
+  ]);
 
   // ── Run Handler ───────────────────────────────────────────────────
 
@@ -5514,6 +5611,9 @@ function WorkflowCanvasInner({
       setEdges([]);
     }
     setSelectedNode(null);
+    setValidationIssues([]);
+    setValidationCheckedAt(null);
+    setValidationStatus("idle");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkflowId]);
 
@@ -5711,8 +5811,11 @@ function WorkflowCanvasInner({
   // Update node data from properties panel
   const onUpdateNodeData = useCallback(
     (id: string, data: Record<string, unknown>) => {
-      setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...data } } : n)));
-      setSelectedNode((prev) => (prev && prev.id === id ? { ...prev, data: { ...data } } : prev));
+      const nextData = { ...data };
+      delete nextData.validationIssues;
+      setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: nextData } : n)));
+      setSelectedNode((prev) => (prev && prev.id === id ? { ...prev, data: nextData } : prev));
+      setValidationIssues((prev) => prev.filter((issue) => issue.nodeId !== id));
     },
     [setNodes],
   );
@@ -5747,6 +5850,19 @@ function WorkflowCanvasInner({
   const validationWarningCount = validationIssues.filter(
     (issue) => issue.severity === "warning",
   ).length;
+  const selectedNodeIssues = selectedNode
+    ? validationIssues.filter((issue) => issue.nodeId === selectedNode.id)
+    : [];
+  const focusValidationIssue = useCallback(
+    (issue: WorkflowValidationIssue) => {
+      if (!issue.nodeId) return;
+      const node = nodes.find((candidate) => candidate.id === issue.nodeId);
+      if (!node) return;
+      setSelectedNode(node);
+      setCenter(node.position.x + 90, node.position.y + 45, { zoom: 1, duration: 250 });
+    },
+    [nodes, setCenter],
+  );
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -5915,9 +6031,12 @@ function WorkflowCanvasInner({
             </div>
             <div className="flex-1 min-w-0 space-y-1">
               {validationIssues.slice(0, 4).map((issue, index) => (
-                <div
+                <button
                   key={`${issue.code ?? "issue"}-${issue.nodeId ?? issue.edgeId ?? index}`}
-                  className="truncate text-[11px] text-[hsl(var(--foreground))]"
+                  type="button"
+                  disabled={!issue.nodeId}
+                  onClick={() => focusValidationIssue(issue)}
+                  className="block w-full truncate rounded text-left text-[11px] text-[hsl(var(--foreground))] disabled:cursor-default disabled:opacity-100 enabled:hover:bg-[hsl(var(--background))]/50"
                   title={issue.message}
                 >
                   {issue.nodeId && (
@@ -5926,7 +6045,7 @@ function WorkflowCanvasInner({
                     </span>
                   )}
                   {issue.message}
-                </div>
+                </button>
               ))}
               {validationIssues.length > 4 && (
                 <div className="text-[10px] text-[hsl(var(--muted-foreground))]">
@@ -6117,6 +6236,35 @@ function WorkflowCanvasInner({
 
                   {/* Properties form — scrollable */}
                   <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {selectedNodeIssues.length > 0 && (
+                      <div
+                        className={`rounded-lg border p-3 ${
+                          selectedNodeIssues.some((issue) => issue.severity === "error")
+                            ? "border-red-500/30 bg-red-500/10"
+                            : "border-amber-500/30 bg-amber-500/10"
+                        }`}
+                      >
+                        <div
+                          className={`mb-2 text-[11px] font-semibold uppercase tracking-wide ${
+                            selectedNodeIssues.some((issue) => issue.severity === "error")
+                              ? "text-red-300"
+                              : "text-amber-300"
+                          }`}
+                        >
+                          Needs attention
+                        </div>
+                        <div className="space-y-1.5">
+                          {selectedNodeIssues.map((issue, index) => (
+                            <div
+                              key={`${issue.code ?? issue.severity}-${index}`}
+                              className="text-[11px] leading-relaxed text-[hsl(var(--foreground))]"
+                            >
+                              {issue.message}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {selectedNode.type === "trigger" && (
                       <TriggerForm
                         data={selectedNode.data as unknown as TriggerNodeData}
