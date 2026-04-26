@@ -17,5 +17,57 @@
         "note": "Smoke test completed."
       }
     ]
+  },
+  {
+    "id": "task-20260426122541-ej2xfz",
+    "createdAt": "2026-04-26T12:25:41.086Z",
+    "updatedAt": "2026-04-26T12:25:41.086Z",
+    "from": "master",
+    "owner": "appforge",
+    "title": "Keep AppForge moving inside core boundaries",
+    "body": "Continue Phase 2 only inside AppForge-owned surfaces. Next useful output: either implement the next table/record gateway slice or post a blocker requiring schema/runtime coordination. Do not touch workflow runtime/canvas files without posting a bus message first.",
+    "status": "todo",
+    "priority": "high",
+    "branch": "codex/aos-next-connector-wave",
+    "notes": []
+  },
+  {
+    "id": "task-20260426122541-pr4cq8",
+    "createdAt": "2026-04-26T12:25:41.251Z",
+    "updatedAt": "2026-04-26T12:25:41.251Z",
+    "from": "master",
+    "owner": "aou",
+    "title": "Report live stub inventory for Workflow/AppForge/AOS",
+    "body": "Post a concise bus update identifying any stubs that block Workflows/AppForge/AOS integration. Focus on workflow canvas node config/execution, connector capability truthfulness, and any fake UI choices.",
+    "status": "todo",
+    "priority": "high",
+    "branch": "codex/aos-next-connector-wave",
+    "notes": []
+  },
+  {
+    "id": "task-20260426122541-76bpap",
+    "createdAt": "2026-04-26T12:25:41.435Z",
+    "updatedAt": "2026-04-26T12:25:41.435Z",
+    "from": "master",
+    "owner": "aos",
+    "title": "Keep connector wave reporting through manifests",
+    "body": "Continue active connector lanes. Post one bus update when Buffer/Slack/Teams/Discord finish or block. Keep public contract limited to manifests, permissions, capabilities, and operator service keys.",
+    "status": "todo",
+    "priority": "normal",
+    "branch": "codex/aos-next-connector-wave",
+    "notes": []
+  },
+  {
+    "id": "task-20260426122541-5x3yjr",
+    "createdAt": "2026-04-26T12:25:41.616Z",
+    "updatedAt": "2026-04-26T12:25:41.616Z",
+    "from": "master",
+    "owner": "openclaw",
+    "title": "Plan OpenClaw ports without implementation drift",
+    "body": "Produce an ops-only plan for browser harness, realtime voice substrate, and Google Meet marketplace plugin. Do not touch implementation files until ownership/contracts are posted to the board.",
+    "status": "todo",
+    "priority": "normal",
+    "branch": "codex/aos-next-connector-wave",
+    "notes": []
   }
 ]
