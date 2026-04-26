@@ -1393,7 +1393,13 @@ function ToolGrantNode({ data, selected }: NodeProps<Node<SubPortNodeData>>) {
   );
 }
 
-function OutputNode({ data, selected }: NodeProps<Node<OutputNodeData>>) {
+function compactNodeText(value: unknown, fallback: string, maxLength = 34): string {
+  const raw = typeof value === "string" && value.trim() ? value.trim() : fallback;
+  return raw.length <= maxLength ? raw : `${raw.slice(0, maxLength - 1)}…`;
+}
+
+function outputNodeTargetLabel(data: OutputNodeData): string {
+  const record = data as Record<string, unknown>;
   const targetLabels: Record<string, string> = {
     doc_panel: "DocPanel",
     channel: "Channel",
@@ -1413,15 +1419,62 @@ function OutputNode({ data, selected }: NodeProps<Node<OutputNodeData>>) {
       : data.target === "discord" || data.target === "telegram"
         ? data.target
         : "";
-  const targetLabel =
-    data.target === "channel" && channelType
-      ? channelType
-      : data.target === "connector_action" && typeof data.connectorName === "string"
-        ? data.connectorName
-        : targetLabels[data.target] || data.target;
+  if (data.target === "channel" && channelType) {
+    const destination = typeof record.channelId === "string" ? record.channelId.trim() : "";
+    return destination
+      ? `${compactNodeText(channelType, "Channel", 18)} / ${compactNodeText(destination, "target", 18)}`
+      : compactNodeText(channelType, "Channel");
+  }
+  if (data.target === "connector_action") {
+    const connectorName =
+      typeof data.connectorName === "string" && data.connectorName.trim()
+        ? data.connectorName.trim()
+        : typeof record.connectorId === "string"
+          ? record.connectorId
+          : "";
+    const operation = typeof record.operation === "string" ? record.operation.trim() : "";
+    return operation
+      ? `${compactNodeText(connectorName, "Connector", 18)} / ${compactNodeText(operation, "operation", 18)}`
+      : compactNodeText(connectorName, "Connector Action");
+  }
+  if (data.target === "email") {
+    return compactNodeText(record.recipient ?? record.to, "Email");
+  }
+  if (data.target === "webhook") {
+    return compactNodeText(record.webhookUrl ?? record.url, "Webhook");
+  }
+  if (data.target === "next_workflow") {
+    return compactNodeText(record.workflowId, "Next Workflow");
+  }
+  if (data.target === "knowledge") {
+    return compactNodeText(record.collectionId, "Knowledge");
+  }
+  return targetLabels[data.target] || data.target;
+}
+
+function outputNodeSourceLabel(data: OutputNodeData): string {
+  const record = data as Record<string, unknown>;
+  const sourceMode = typeof record.sourceMode === "string" ? record.sourceMode : "previous";
+  if (sourceMode === "summary") {
+    return "Workflow summary";
+  }
+  if (sourceMode === "custom") {
+    return "Custom payload";
+  }
+  if (sourceMode === "node") {
+    return compactNodeText(record.sourceNodeId, "Selected node");
+  }
+  return "Previous result";
+}
+
+function OutputNode({ data, selected }: NodeProps<Node<OutputNodeData>>) {
+  const record = data as Record<string, unknown>;
+  const outputName = compactNodeText(record.title ?? data.label, "Output", 30);
+  const targetLabel = outputNodeTargetLabel(data);
+  const sourceLabel = outputNodeSourceLabel(data);
   return (
     <div
-      className={`relative px-4 py-3 rounded-lg border min-w-[160px] transition-shadow ${execStateClass(data.execState)} ${
+      className={`relative px-4 py-3 rounded-lg border w-[220px] transition-shadow ${execStateClass(data.execState)} ${
         selected
           ? "border-[hsl(var(--primary))] shadow-[0_0_12px_hsl(var(--primary)/0.4)]"
           : data.execState
@@ -1440,9 +1493,12 @@ function OutputNode({ data, selected }: NodeProps<Node<OutputNodeData>>) {
       />
       <div className="flex items-center gap-2 mb-1">
         <span className="text-base">&#128228;</span>
-        <span className="text-xs font-semibold text-[hsl(var(--foreground))]">Output</span>
+        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[hsl(var(--foreground))]">
+          {outputName}
+        </span>
       </div>
-      <div className="text-[10px] text-[hsl(var(--muted-foreground))]">{targetLabel}</div>
+      <div className="truncate text-[10px] font-medium text-cyan-200">{targetLabel}</div>
+      <div className="truncate text-[9px] text-[hsl(var(--muted-foreground))]">{sourceLabel}</div>
     </div>
   );
 }
@@ -3897,12 +3953,12 @@ function outputSideEffectLabel(target: OutputNodeData["target"]): string {
     case "task_update":
     case "next_workflow":
     case "connector_action":
-      return "External write";
+      return "Approval gate required";
     case "knowledge":
     case "doc_panel":
-      return "Core write";
+      return "Argent write";
     default:
-      return "Draft";
+      return "Not executable";
   }
 }
 
@@ -4525,7 +4581,9 @@ function OutputForm({
           <input
             className={DOCK_INPUT}
             value={(record.title as string) || ""}
-            onChange={(e) => update("title", e.target.value)}
+            onChange={(e) =>
+              onUpdate(nodeId, { ...data, title: e.target.value, label: e.target.value })
+            }
             placeholder="Workflow output"
           />
         </div>
@@ -4533,12 +4591,14 @@ function OutputForm({
 
       {data.target !== "doc_panel" && (
         <div className="space-y-1.5">
-          <label className={DOCK_LABEL}>Node label</label>
+          <label className={DOCK_LABEL}>Output name</label>
           <input
             className={DOCK_INPUT}
             value={(record.title as string) || ""}
-            onChange={(e) => update("title", e.target.value)}
-            placeholder="Output"
+            onChange={(e) =>
+              onUpdate(nodeId, { ...data, title: e.target.value, label: e.target.value })
+            }
+            placeholder="Delivery step"
           />
         </div>
       )}
