@@ -349,6 +349,13 @@ function injectWorkflowStyles(): void {
     .wf-node-waiting { animation: wf-pulse-waiting 1.5s ease-in-out infinite; border-color: #f59e0b !important; }
     .wf-node-completed { border-color: #00ffcc !important; }
     .wf-node-failed    { border-color: #ff3d57 !important; }
+    .workflow-canvas .react-flow__node-output {
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+      padding: 0;
+      width: auto;
+    }
     /* Dark theme overrides for React Flow controls */
     .react-flow__controls button { background: hsl(var(--card)); color: hsl(var(--foreground)); border-color: hsl(var(--border)); fill: hsl(var(--foreground)); }
     .react-flow__controls button:hover { background: hsl(var(--muted)); }
@@ -5679,6 +5686,7 @@ function WorkflowCanvasInner({
 
         <div className="absolute inset-0 dark" onKeyDown={onKeyDown} tabIndex={0}>
           <ReactFlow
+            className="workflow-canvas"
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
