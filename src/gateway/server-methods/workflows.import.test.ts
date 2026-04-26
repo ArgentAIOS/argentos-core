@@ -42,6 +42,10 @@ describe("workflows.importPreview", () => {
       readiness: { okForImport: true, okForPinnedTestRun: true },
       validation: { ok: true },
     });
+    expect(
+      (payload as { workflow?: { nodes?: Array<{ config?: { pinnedOutput?: unknown } }> } })
+        .workflow?.nodes?.[0]?.config?.pinnedOutput,
+    ).toBeDefined();
   });
 
   it("previews canonical YAML packages for drag/drop import", async () => {

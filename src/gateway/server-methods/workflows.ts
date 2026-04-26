@@ -58,6 +58,7 @@ import {
   type WorkflowIssue,
 } from "../../infra/workflow-normalize.js";
 import {
+  applyWorkflowPackageTestFixtures,
   importWorkflowPackage,
   parseWorkflowPackageText,
   type WorkflowPackageFormat,
@@ -1269,7 +1270,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       const imported = importWorkflowPackage(workflowPackage);
       respond(true, {
         package: workflowPackage,
-        workflow: imported.normalized.workflow,
+        workflow: applyWorkflowPackageTestFixtures(workflowPackage),
         canvasLayout: imported.normalized.canvasLayout,
         readiness: imported.readiness,
         validation: {
