@@ -4355,26 +4355,6 @@ function stringifyOutputJson(value: unknown, fallback = "{}"): string {
   return fallback;
 }
 
-function nodeOutputSummary(output: unknown): string {
-  if (!output) {
-    return "No execution data for this node yet.";
-  }
-  if (isRecord(output) && Array.isArray(output.items)) {
-    const items = output.items as unknown[];
-    const first = items.find(isRecord);
-    const firstText = typeof first?.text === "string" ? first.text : "";
-    const firstJson = isRecord(first?.json) ? first.json : undefined;
-    if (firstText.trim()) {
-      return firstText.length > 220 ? `${firstText.slice(0, 217)}...` : firstText;
-    }
-    if (firstJson) {
-      return JSON.stringify(firstJson, null, 2);
-    }
-    return `${items.length} item${items.length === 1 ? "" : "s"}`;
-  }
-  return stringifyOutputJson(output, String(output));
-}
-
 function ExecutionDataPanel({
   node,
   latestStep,
@@ -4444,13 +4424,23 @@ function ExecutionDataPanel({
       <div className="space-y-2">
         <div>
           <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-            Latest output
+            Latest run data
           </div>
-          <pre className="max-h-28 overflow-auto whitespace-pre-wrap rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15 p-2 text-[10px] leading-relaxed text-[hsl(var(--foreground))]">
-            {latestStep
-              ? nodeOutputSummary(latestStep.output)
-              : "Run or select a run to inspect data."}
-          </pre>
+          {latestStep ? (
+            <div className="grid gap-1">
+              <RunStepDataPreview label="Input" value={latestStep.input} />
+              <RunStepDataPreview label="Output" value={latestStep.output} />
+              {!hasRunValue(latestStep.input) && !hasRunValue(latestStep.output) && (
+                <div className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15 p-2 text-[10px] leading-relaxed text-[hsl(var(--muted-foreground))]">
+                  This run did not record input or output for this node.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15 p-2 text-[10px] leading-relaxed text-[hsl(var(--muted-foreground))]">
+              Run or select a run to inspect data.
+            </div>
+          )}
         </div>
 
         <div>
@@ -6356,6 +6346,87 @@ function connectorOutputCommands(connector?: ConnectorEntry) {
   return connector?.commands.filter(isConnectorOutputCommand) ?? [];
 }
 
+function hasRunValue(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  if (isRecord(value)) {
+    return Object.keys(value).length > 0;
+  }
+  return true;
+}
+
+function truncateInline(value: string, maxLength = 180): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  return compact.length > maxLength ? `${compact.slice(0, maxLength - 1)}...` : compact;
+}
+
+function runValueSummary(value: unknown): string {
+  if (!hasRunValue(value)) {
+    return "No data";
+  }
+  if (typeof value === "string") {
+    return truncateInline(value);
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    const first = value[0];
+    const suffix = value.length === 1 ? "item" : "items";
+    return first === undefined
+      ? `${value.length} ${suffix}`
+      : `${value.length} ${suffix}: ${runValueSummary(first)}`;
+  }
+  if (isRecord(value)) {
+    const items = Array.isArray(value.items) ? value.items : undefined;
+    if (items && items.length > 0) {
+      return runValueSummary(items);
+    }
+    const text = stringValue(value.text);
+    if (text) {
+      return truncateInline(text);
+    }
+    if (isRecord(value.json)) {
+      return runValueSummary(value.json);
+    }
+    const keys = Object.keys(value);
+    const json = truncateInline(safeJson(value), 180);
+    return json || keys.join(", ");
+  }
+  return truncateInline(String(value));
+}
+
+function runValueDetail(value: unknown): string {
+  const detail = typeof value === "string" ? value : safeJson(value);
+  return detail.length > 4000 ? `${detail.slice(0, 4000)}...` : detail;
+}
+
+function RunStepDataPreview({ label, value }: { label: string; value: unknown }) {
+  if (!hasRunValue(value)) {
+    return null;
+  }
+  return (
+    <div
+      className="rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))]/50 px-1.5 py-1"
+      title={runValueDetail(value)}
+    >
+      <div className="text-[8px] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+        {label}
+      </div>
+      <div className="mt-0.5 line-clamp-2 text-[9px] leading-snug text-[hsl(var(--foreground))]">
+        {runValueSummary(value)}
+      </div>
+    </div>
+  );
+}
+
 interface SidebarProps {
   workflows: WorkflowDefinition[];
   activeWorkflowId: string | null;
@@ -6710,6 +6781,12 @@ function Sidebar({
                                       title={step.error}
                                     >
                                       {step.error}
+                                    </div>
+                                  )}
+                                  {(hasRunValue(step.input) || hasRunValue(step.output)) && (
+                                    <div className="ml-4 mt-1 grid grid-cols-1 gap-1">
+                                      <RunStepDataPreview label="Input" value={step.input} />
+                                      <RunStepDataPreview label="Output" value={step.output} />
                                     </div>
                                   )}
                                   {step.status === "failed" &&
