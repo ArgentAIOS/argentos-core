@@ -215,6 +215,10 @@ Current active core threadmasters: AppForge 2.0, Work flow building master, AOU 
 
 Lane: OpenClaw 4.24 realtime/browser/marketplace comparison. Branch/commit: `codex/aos-next-connector-wave` at `ad3fb0b9`. Owned files/directories for this lane: `ops/THREADMASTER_COORDINATION.md` for coordination updates; future comparison artifacts under `ops/**` only unless the board is updated first. Shared contract changes: none yet. Workflows/AppForge/AOU reaction: proposed direction is browser harness first, provider-neutral realtime voice substrate second, then Google Meet as a marketplace-distributed capability plugin; no implementation dependency is active until a follow-up plan claims specific files/contracts.
 
+### 2026-04-26 — OpenClaw Realtime Voice Fake Provider Wave
+
+Lane: `openclaw`. Branch: `codex/openclaw-realtime-fake-provider` from `origin/dev` / `85abcdc4`. Owned files for this slice: `extensions/voice-call/src/realtime-voice/**` and this coordination note only. Shared contract change: add deterministic fake-provider lifecycle coverage for realtime voice bridge/session behavior before any live OpenAI adapter work. Boundaries: no edits to existing voice-call telephony providers, `extensions/voice-call/src/media-stream.ts`, Google Meet runtime, browser runtime, Workflows, AppForge, AOS, schema, or gateway registry files. Required reaction: other lanes should not consume this as live OpenAI/Google/terminal voice support; fake provider is local deterministic lifecycle proof only.
+
 ## Verification Snapshot
 
 Latest AppForge focused verification after rebase onto `origin/dev`:
