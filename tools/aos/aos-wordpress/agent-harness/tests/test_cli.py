@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from click.testing import CliRunner
 
 import cli_aos.wordpress.bridge as bridge
@@ -80,6 +82,23 @@ def test_runtime_config_accepts_wp_json_suffix(monkeypatch):
     assert config["api_root_url"] == "https://example.com/wp-json"
 
 
+def test_runtime_config_prefers_operator_service_keys(monkeypatch):
+    for key in REQUIRED_ENV:
+        monkeypatch.setenv(key, f"env-{key}")
+
+    def fake_service_key_env(name: str, default: str | None = None) -> str | None:
+        if name in REQUIRED_ENV:
+            return REQUIRED_ENV[name]
+        return default
+
+    monkeypatch.setattr(config_module, "service_key_env", fake_service_key_env)
+    config = config_module.runtime_config()
+    assert config["base_url"] == "https://example.com"
+    assert config["base_url_source"] == "WORDPRESS_BASE_URL"
+    assert config["username_present"] is True
+    assert config["application_password_present"] is True
+
+
 def test_site_read_uses_runtime(monkeypatch):
     _set_required_env(monkeypatch)
 
@@ -114,6 +133,43 @@ def test_page_create_draft_uses_pages_endpoint(monkeypatch):
     assert calls[0]["payload"]["status"] == "draft"
     assert calls[0]["payload"]["slug"] == "landing"
     assert '"resource": "page"' in result.output
+
+
+def test_post_create_draft_uses_posts_endpoint(monkeypatch):
+    _set_required_env(monkeypatch)
+    calls: list[dict[str, object]] = []
+
+    def fake_request_json(method, path, **kwargs):
+        calls.append({"method": method, "path": path, **kwargs})
+        return {"id": 88, "status": "draft", "title": {"rendered": "Launch"}}
+
+    monkeypatch.setattr(runtime, "_request_json", fake_request_json)
+    result = CliRunner().invoke(cli, ["--json", "--mode", "write", "post", "create_draft", "--title", "Launch"])
+    assert result.exit_code == 0
+    assert calls[0]["method"] == "POST"
+    assert calls[0]["path"] == "/wp/v2/posts"
+    assert calls[0]["payload"]["status"] == "draft"
+    assert calls[0]["payload"]["title"] == "Launch"
+
+
+def test_post_update_draft_uses_posts_endpoint(monkeypatch):
+    _set_required_env(monkeypatch)
+    calls: list[dict[str, object]] = []
+
+    def fake_request_json(method, path, **kwargs):
+        calls.append({"method": method, "path": path, **kwargs})
+        return {"id": 88, "status": "draft", "title": {"rendered": "Launch edit"}}
+
+    monkeypatch.setattr(runtime, "_request_json", fake_request_json)
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--mode", "write", "post", "update_draft", "88", "--title", "Launch edit"],
+    )
+    assert result.exit_code == 0
+    assert calls[0]["method"] == "POST"
+    assert calls[0]["path"] == "/wp/v2/posts/88"
+    assert calls[0]["payload"]["status"] == "draft"
+    assert calls[0]["payload"]["title"] == "Launch edit"
 
 
 def test_page_publish_uses_pages_endpoint(monkeypatch):
@@ -168,3 +224,66 @@ def test_taxonomy_list_uses_categories_and_tags(monkeypatch):
     assert calls[0]["query"]["search"] == "mark"
     assert '"SEO"' in result.output
     assert '"Marketing"' in result.output
+
+
+def test_media_upload_posts_file_bytes_and_updates_metadata(monkeypatch, tmp_path):
+    _set_required_env(monkeypatch)
+    media_file = tmp_path / "logo.txt"
+    media_file.write_text("hello media", encoding="utf-8")
+    calls: list[dict[str, object]] = []
+
+    def fake_request_bytes(method, path, **kwargs):
+        calls.append({"method": method, "path": path, **kwargs})
+        return {"id": 44, "source_url": "https://example.com/logo.txt"}
+
+    def fake_request_json(method, path, **kwargs):
+        calls.append({"method": method, "path": path, **kwargs})
+        return {"id": 44, "title": {"rendered": "Logo"}}
+
+    monkeypatch.setattr(runtime, "_request_bytes", fake_request_bytes)
+    monkeypatch.setattr(runtime, "_request_json", fake_request_json)
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "--mode",
+            "write",
+            "media",
+            "upload",
+            str(media_file),
+            "title=Logo",
+            "alt_text=Company logo",
+        ],
+    )
+    assert result.exit_code == 0
+    assert calls[0]["method"] == "POST"
+    assert calls[0]["path"] == "/wp/v2/media"
+    assert calls[0]["body"] == b"hello media"
+    assert calls[0]["headers"]["Content-Disposition"] == 'attachment; filename="logo.txt"'
+    assert calls[1]["path"] == "/wp/v2/media/44"
+    assert calls[1]["payload"]["alt_text"] == "Company logo"
+    payload = json.loads(result.output)["data"]
+    assert payload["operation"] == "upload"
+    assert payload["metadata"]["title"] == "Logo"
+
+
+def test_taxonomy_assign_terms_updates_post_terms(monkeypatch):
+    _set_required_env(monkeypatch)
+    calls: list[dict[str, object]] = []
+
+    def fake_request_json(method, path, **kwargs):
+        calls.append({"method": method, "path": path, **kwargs})
+        return {"id": 123, "categories": [3, 4], "tags": [5]}
+
+    monkeypatch.setattr(runtime, "_request_json", fake_request_json)
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--mode", "write", "taxonomy", "assign_terms", "post_id=123", "categories=3,4", "tags=5"],
+    )
+    assert result.exit_code == 0
+    assert calls[0]["method"] == "POST"
+    assert calls[0]["path"] == "/wp/v2/posts/123"
+    assert calls[0]["payload"] == {"categories": [3, 4], "tags": [5]}
+    payload = json.loads(result.output)["data"]
+    assert payload["operation"] == "assign_terms"
+    assert payload["target"] == {"resource": "post", "id": "123"}

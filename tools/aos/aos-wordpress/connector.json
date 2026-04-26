@@ -4,7 +4,7 @@
     "label": "WordPress",
     "category": "marketing-publishing",
     "categories": ["marketing-publishing", "knowledge-docs", "web-content"],
-    "resources": ["site", "post", "page", "media", "comment", "taxonomy", "user", "form"]
+    "resources": ["site", "post", "page", "media", "taxonomy"]
   },
   "auth": {
     "kind": "service-key",
@@ -14,8 +14,7 @@
       "Create a dedicated WordPress service user on the target site.",
       "Generate an Application Password for that user.",
       "Add WORDPRESS_BASE_URL, WORDPRESS_USERNAME, and WORDPRESS_APPLICATION_PASSWORD in API Keys.",
-      "Restrict post types, status transitions, taxonomy scope, and media usage before going live.",
-      "For form submissions, ensure WPForms, GravityForms, or CF7 REST API add-on is installed."
+      "Restrict post types, status transitions, taxonomy scope, and media usage before going live."
     ]
   },
   "fields": {
@@ -25,9 +24,9 @@
       "renderAs": "text",
       "expressionEnabled": false,
       "valueType": "string",
-      "description": "Base URL of the WordPress site (e.g. https://example.com)",
+      "description": "Base URL of the WordPress site.",
       "placeholder": "https://example.com",
-      "required_for": ["site.info"]
+      "required_for": ["site.read"]
     },
     "post_id": {
       "label": "Post ID",
@@ -35,9 +34,9 @@
       "renderAs": "number",
       "expressionEnabled": true,
       "valueType": "number",
-      "description": "WordPress post ID for single-item operations",
+      "description": "WordPress post ID for read, update, schedule, publish, or taxonomy assignment.",
       "placeholder": "123",
-      "required_for": ["post.get", "post.update", "post.delete"]
+      "required_for": ["post.read", "post.update_draft", "post.publish"]
     },
     "page_id": {
       "label": "Page ID",
@@ -45,9 +44,9 @@
       "renderAs": "number",
       "expressionEnabled": true,
       "valueType": "number",
-      "description": "WordPress page ID for single-item operations",
+      "description": "WordPress page ID for read, update, publish, or taxonomy assignment.",
       "placeholder": "456",
-      "required_for": ["page.get", "page.update"]
+      "required_for": ["page.read", "page.update_draft", "page.publish"]
     },
     "title": {
       "label": "Title",
@@ -55,9 +54,9 @@
       "renderAs": "text",
       "expressionEnabled": true,
       "valueType": "string",
-      "description": "Title for posts or pages",
-      "placeholder": "My New Post",
-      "required_for": ["post.create", "page.create"]
+      "description": "Title for draft or scheduled content.",
+      "placeholder": "Launch notes",
+      "required_for": ["post.create_draft", "page.create_draft"]
     },
     "content": {
       "label": "Content",
@@ -65,12 +64,47 @@
       "renderAs": "richtext",
       "expressionEnabled": true,
       "valueType": "string",
-      "description": "HTML or block content body",
-      "placeholder": "<p>Post content here</p>",
-      "required_for": ["post.create", "page.create"]
+      "description": "HTML or block content body.",
+      "placeholder": "<p>Content here</p>"
+    },
+    "excerpt": {
+      "label": "Excerpt",
+      "type": "string",
+      "renderAs": "textarea",
+      "expressionEnabled": true,
+      "valueType": "string",
+      "description": "Optional post or page excerpt."
+    },
+    "slug": {
+      "label": "Slug",
+      "type": "string",
+      "renderAs": "text",
+      "expressionEnabled": true,
+      "valueType": "string",
+      "description": "Optional URL slug.",
+      "placeholder": "launch-notes"
+    },
+    "publish_at": {
+      "label": "Publish At",
+      "type": "string",
+      "renderAs": "text",
+      "expressionEnabled": true,
+      "valueType": "string",
+      "description": "RFC3339 date/time for scheduled posts.",
+      "placeholder": "2026-05-01T15:00:00Z",
+      "required_for": ["post.schedule"]
+    },
+    "search_query": {
+      "label": "Search Query",
+      "type": "string",
+      "renderAs": "text",
+      "expressionEnabled": true,
+      "valueType": "string",
+      "description": "Search term for post, page, media, or taxonomy listing.",
+      "placeholder": "release"
     },
     "status": {
-      "label": "Status",
+      "label": "Status Filter",
       "type": "string",
       "renderAs": "select",
       "expressionEnabled": false,
@@ -82,68 +116,7 @@
         { "value": "future", "label": "Scheduled" },
         { "value": "private", "label": "Private" }
       ],
-      "description": "Publication status",
-      "default": "draft"
-    },
-    "form_id": {
-      "label": "Form ID",
-      "type": "string",
-      "renderAs": "text",
-      "expressionEnabled": true,
-      "valueType": "string",
-      "description": "Form ID for WPForms, GravityForms, or CF7 submission retrieval",
-      "placeholder": "form_1",
-      "required_for": ["form.submissions"]
-    },
-    "form_provider": {
-      "label": "Form Provider",
-      "type": "string",
-      "renderAs": "select",
-      "expressionEnabled": false,
-      "valueType": "string",
-      "options": [
-        { "value": "wpforms", "label": "WPForms" },
-        { "value": "gravityforms", "label": "Gravity Forms" },
-        { "value": "cf7", "label": "Contact Form 7" }
-      ],
-      "description": "Which form plugin to query",
-      "default": "wpforms"
-    },
-    "category": {
-      "label": "Category",
-      "type": "string",
-      "renderAs": "text",
-      "expressionEnabled": true,
-      "valueType": "string",
-      "description": "Category slug or ID for filtering posts",
-      "placeholder": "news"
-    },
-    "tag": {
-      "label": "Tag",
-      "type": "string",
-      "renderAs": "text",
-      "expressionEnabled": true,
-      "valueType": "string",
-      "description": "Tag slug or ID for filtering posts",
-      "placeholder": "featured"
-    },
-    "media_file": {
-      "label": "Media File",
-      "type": "string",
-      "renderAs": "text",
-      "expressionEnabled": true,
-      "valueType": "string",
-      "description": "File path or URL for media upload",
-      "placeholder": "/path/to/image.jpg"
-    },
-    "search_query": {
-      "label": "Search Query",
-      "type": "string",
-      "renderAs": "text",
-      "expressionEnabled": true,
-      "valueType": "string",
-      "description": "Search term for listing/filtering",
-      "placeholder": "wordpress tutorial"
+      "description": "Optional status filter for post and page list/search commands."
     },
     "per_page": {
       "label": "Per Page",
@@ -151,58 +124,78 @@
       "renderAs": "number",
       "expressionEnabled": true,
       "valueType": "number",
-      "description": "Number of results per page (max 100)",
+      "description": "Number of results per page.",
       "placeholder": "10",
       "default": 10
     },
-    "comment_content": {
-      "label": "Comment Content",
+    "media_file": {
+      "label": "Media File",
       "type": "string",
-      "renderAs": "richtext",
+      "renderAs": "text",
       "expressionEnabled": true,
       "valueType": "string",
-      "description": "Comment body text",
-      "placeholder": "Great post!",
-      "required_for": ["comment.create"]
+      "description": "Local file path for media upload.",
+      "placeholder": "/path/to/image.jpg",
+      "required_for": ["media.upload"]
     },
-    "comment_status": {
-      "label": "Comment Status",
+    "media_type": {
+      "label": "Media Type",
       "type": "string",
-      "renderAs": "select",
-      "expressionEnabled": false,
+      "renderAs": "text",
+      "expressionEnabled": true,
       "valueType": "string",
-      "options": [
-        { "value": "approved", "label": "Approved" },
-        { "value": "hold", "label": "Hold" },
-        { "value": "spam", "label": "Spam" },
-        { "value": "trash", "label": "Trash" }
-      ],
-      "description": "Moderation status for comments",
-      "required_for": ["comment.moderate"]
+      "description": "Optional media type filter such as image or file.",
+      "placeholder": "image"
+    },
+    "mime_type": {
+      "label": "MIME Type",
+      "type": "string",
+      "renderAs": "text",
+      "expressionEnabled": true,
+      "valueType": "string",
+      "description": "Optional MIME type filter or upload content type.",
+      "placeholder": "image/jpeg"
+    },
+    "category_ids": {
+      "label": "Category IDs",
+      "type": "string",
+      "renderAs": "text",
+      "expressionEnabled": true,
+      "valueType": "string",
+      "description": "Comma-separated category IDs for taxonomy assignment.",
+      "placeholder": "3,4",
+      "required_for": ["taxonomy.assign_terms"]
+    },
+    "tag_ids": {
+      "label": "Tag IDs",
+      "type": "string",
+      "renderAs": "text",
+      "expressionEnabled": true,
+      "valueType": "string",
+      "description": "Comma-separated tag IDs for taxonomy assignment.",
+      "placeholder": "5,8",
+      "required_for": ["taxonomy.assign_terms"]
     }
   },
   "worker_visible_actions": [
+    "site.read",
     "post.list",
-    "post.get",
-    "post.create",
-    "post.update",
-    "post.delete",
+    "post.search",
+    "post.read",
+    "post.create_draft",
+    "post.update_draft",
+    "post.schedule",
+    "post.publish",
     "page.list",
-    "page.get",
-    "page.create",
-    "page.update",
+    "page.search",
+    "page.read",
+    "page.create_draft",
+    "page.update_draft",
+    "page.publish",
     "media.list",
     "media.upload",
-    "comment.list",
-    "comment.create",
-    "comment.moderate",
-    "category.list",
-    "tag.list",
-    "user.list",
-    "user.get",
-    "form.submissions",
-    "form.list",
-    "site.info"
+    "taxonomy.list",
+    "taxonomy.assign_terms"
   ],
   "commands": [
     {
@@ -230,8 +223,8 @@
       "action_class": "read"
     },
     {
-      "id": "site.info",
-      "summary": "Read WordPress site info (name, description, URL, version)",
+      "id": "site.read",
+      "summary": "Read WordPress site info",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "site",
@@ -239,39 +232,55 @@
     },
     {
       "id": "post.list",
-      "summary": "List posts with optional category/tag/search filtering",
+      "summary": "List posts",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "post",
       "action_class": "read"
     },
     {
-      "id": "post.get",
-      "summary": "Get a single post by ID",
+      "id": "post.search",
+      "summary": "Search posts",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "post",
       "action_class": "read"
     },
     {
-      "id": "post.create",
-      "summary": "Create a new post (draft or published)",
+      "id": "post.read",
+      "summary": "Read a post",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "post",
+      "action_class": "read"
+    },
+    {
+      "id": "post.create_draft",
+      "summary": "Create a draft post",
       "required_mode": "write",
       "supports_json": true,
       "resource": "post",
       "action_class": "write"
     },
     {
-      "id": "post.update",
-      "summary": "Update an existing post by ID",
+      "id": "post.update_draft",
+      "summary": "Update a draft post",
       "required_mode": "write",
       "supports_json": true,
       "resource": "post",
       "action_class": "write"
     },
     {
-      "id": "post.delete",
-      "summary": "Delete a post by ID (moves to trash)",
+      "id": "post.schedule",
+      "summary": "Schedule a post",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "post",
+      "action_class": "write"
+    },
+    {
+      "id": "post.publish",
+      "summary": "Publish an approved post",
       "required_mode": "write",
       "supports_json": true,
       "resource": "post",
@@ -279,31 +288,47 @@
     },
     {
       "id": "page.list",
-      "summary": "List pages with optional search filtering",
+      "summary": "List pages",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "page",
       "action_class": "read"
     },
     {
-      "id": "page.get",
-      "summary": "Get a single page by ID",
+      "id": "page.search",
+      "summary": "Search pages",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "page",
       "action_class": "read"
     },
     {
-      "id": "page.create",
-      "summary": "Create a new page (draft or published)",
+      "id": "page.read",
+      "summary": "Read a page",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "page",
+      "action_class": "read"
+    },
+    {
+      "id": "page.create_draft",
+      "summary": "Create a draft page",
       "required_mode": "write",
       "supports_json": true,
       "resource": "page",
       "action_class": "write"
     },
     {
-      "id": "page.update",
-      "summary": "Update an existing page by ID",
+      "id": "page.update_draft",
+      "summary": "Update a draft page",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "page",
+      "action_class": "write"
+    },
+    {
+      "id": "page.publish",
+      "summary": "Publish an approved page",
       "required_mode": "write",
       "supports_json": true,
       "resource": "page",
@@ -311,7 +336,7 @@
     },
     {
       "id": "media.list",
-      "summary": "List media library items",
+      "summary": "List media items",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "media",
@@ -319,83 +344,27 @@
     },
     {
       "id": "media.upload",
-      "summary": "Upload a file to the media library",
+      "summary": "Upload a media item",
       "required_mode": "write",
       "supports_json": true,
       "resource": "media",
       "action_class": "write"
     },
     {
-      "id": "comment.list",
-      "summary": "List comments with optional post/status filtering",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "comment",
-      "action_class": "read"
-    },
-    {
-      "id": "comment.create",
-      "summary": "Create a new comment on a post",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "comment",
-      "action_class": "write"
-    },
-    {
-      "id": "comment.moderate",
-      "summary": "Moderate a comment (approve, hold, spam, trash)",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "comment",
-      "action_class": "write"
-    },
-    {
-      "id": "category.list",
-      "summary": "List all categories",
+      "id": "taxonomy.list",
+      "summary": "List categories and tags",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "taxonomy",
       "action_class": "read"
     },
     {
-      "id": "tag.list",
-      "summary": "List all tags",
-      "required_mode": "readonly",
+      "id": "taxonomy.assign_terms",
+      "summary": "Assign categories or tags",
+      "required_mode": "write",
       "supports_json": true,
       "resource": "taxonomy",
-      "action_class": "read"
-    },
-    {
-      "id": "user.list",
-      "summary": "List WordPress users",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "user",
-      "action_class": "read"
-    },
-    {
-      "id": "user.get",
-      "summary": "Get a single user by ID",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "user",
-      "action_class": "read"
-    },
-    {
-      "id": "form.list",
-      "summary": "List available forms (WPForms, GravityForms, or CF7)",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "form",
-      "action_class": "read"
-    },
-    {
-      "id": "form.submissions",
-      "summary": "Get form submissions by form ID",
-      "required_mode": "readonly",
-      "supports_json": true,
-      "resource": "form",
-      "action_class": "read"
+      "action_class": "write"
     }
   ]
 }

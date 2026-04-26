@@ -1,6 +1,6 @@
 # aos-wordpress
 
-Agent-native WordPress connector with full CRUD, comment moderation, and form submission support.
+Agent-native WordPress REST connector for site checks, posts, pages, media, and taxonomy.
 
 ## Generated From ArgentOS
 
@@ -10,132 +10,99 @@ Agent-native WordPress connector with full CRUD, comment moderation, and form su
 
 ## Actions
 
-### Posts
-
-| Action        | Mode     | Description                                            |
-| ------------- | -------- | ------------------------------------------------------ |
-| `post.list`   | readonly | List posts with optional category/tag/search filtering |
-| `post.get`    | readonly | Get a single post by ID                                |
-| `post.create` | write    | Create a new post (draft or published)                 |
-| `post.update` | write    | Update an existing post by ID                          |
-| `post.delete` | write    | Delete a post by ID (moves to trash)                   |
-
-### Pages
-
-| Action        | Mode     | Description                               |
-| ------------- | -------- | ----------------------------------------- |
-| `page.list`   | readonly | List pages with optional search filtering |
-| `page.get`    | readonly | Get a single page by ID                   |
-| `page.create` | write    | Create a new page (draft or published)    |
-| `page.update` | write    | Update an existing page by ID             |
-
-### Media
-
-| Action         | Mode     | Description                        |
-| -------------- | -------- | ---------------------------------- |
-| `media.list`   | readonly | List media library items           |
-| `media.upload` | write    | Upload a file to the media library |
-
-### Comments
-
-| Action             | Mode     | Description                                       |
-| ------------------ | -------- | ------------------------------------------------- |
-| `comment.list`     | readonly | List comments with optional post/status filtering |
-| `comment.create`   | write    | Create a new comment on a post                    |
-| `comment.moderate` | write    | Moderate a comment (approve, hold, spam, trash)   |
-
-### Taxonomy
-
-| Action          | Mode     | Description         |
-| --------------- | -------- | ------------------- |
-| `category.list` | readonly | List all categories |
-| `tag.list`      | readonly | List all tags       |
-
-### Users
-
-| Action      | Mode     | Description             |
-| ----------- | -------- | ----------------------- |
-| `user.list` | readonly | List WordPress users    |
-| `user.get`  | readonly | Get a single user by ID |
-
-### Forms (WPForms / GravityForms / CF7)
-
-| Action             | Mode     | Description                                          |
-| ------------------ | -------- | ---------------------------------------------------- |
-| `form.list`        | readonly | List available forms from the configured form plugin |
-| `form.submissions` | readonly | Get form submissions by form ID                      |
-
-Form integration requires one of these plugins with REST API access enabled:
-
-- **WPForms** (default) -- REST API available in Pro/Elite
-- **GravityForms** -- REST API v2 built-in
-- **Contact Form 7** (CF7) -- requires the [CF7 REST API](https://wordpress.org/plugins/contact-form-7-rest-api/) add-on
-
 ### Site
 
 | Action        | Mode     | Description                                     |
 | ------------- | -------- | ----------------------------------------------- |
-| `site.info`   | readonly | Read site name, description, URL, and version   |
 | `health`      | readonly | Check WordPress connectivity and auth readiness |
 | `doctor`      | readonly | Run a detailed WordPress runtime diagnosis      |
 | `config.show` | readonly | Show redacted connector config                  |
+| `site.read`   | readonly | Read site metadata and authenticated user       |
+
+### Posts
+
+| Action              | Mode     | Description                       |
+| ------------------- | -------- | --------------------------------- |
+| `post.list`         | readonly | List posts                        |
+| `post.search`       | readonly | Search posts                      |
+| `post.read`         | readonly | Read a post by ID                 |
+| `post.create_draft` | write    | Create a draft post               |
+| `post.update_draft` | write    | Update a draft post               |
+| `post.schedule`     | write    | Create or update a scheduled post |
+| `post.publish`      | write    | Publish an approved post by ID    |
+
+### Pages
+
+| Action              | Mode     | Description                    |
+| ------------------- | -------- | ------------------------------ |
+| `page.list`         | readonly | List pages                     |
+| `page.search`       | readonly | Search pages                   |
+| `page.read`         | readonly | Read a page by ID              |
+| `page.create_draft` | write    | Create a draft page            |
+| `page.update_draft` | write    | Update a draft page            |
+| `page.publish`      | write    | Publish an approved page by ID |
+
+### Media
+
+| Action         | Mode     | Description                  |
+| -------------- | -------- | ---------------------------- |
+| `media.list`   | readonly | List media library items     |
+| `media.upload` | write    | Upload a local file to media |
+
+### Taxonomy
+
+| Action                  | Mode     | Description                           |
+| ----------------------- | -------- | ------------------------------------- |
+| `taxonomy.list`         | readonly | List categories and tags              |
+| `taxonomy.assign_terms` | write    | Assign category or tag IDs to content |
 
 ## Fields
 
-| Field             | Type   | Description                                                            |
-| ----------------- | ------ | ---------------------------------------------------------------------- |
-| `site_url`        | string | WordPress site URL                                                     |
-| `post_id`         | number | Post ID for single-item operations                                     |
-| `page_id`         | number | Page ID for single-item operations                                     |
-| `title`           | string | Title for posts or pages                                               |
-| `content`         | string | HTML or block content body                                             |
-| `status`          | string | Publication status: `draft`, `publish`, `pending`, `future`, `private` |
-| `form_id`         | string | Form ID for submission retrieval                                       |
-| `form_provider`   | string | Form plugin: `wpforms`, `gravityforms`, or `cf7`                       |
-| `category`        | string | Category slug or ID for filtering                                      |
-| `tag`             | string | Tag slug or ID for filtering                                           |
-| `media_file`      | string | File path or URL for media upload                                      |
-| `search_query`    | string | Search term for listing/filtering                                      |
-| `per_page`        | number | Results per page (max 100, default 10)                                 |
-| `comment_content` | string | Comment body text                                                      |
-| `comment_status`  | string | Moderation status: `approved`, `hold`, `spam`, `trash`                 |
+| Field          | Type   | Description                                           |
+| -------------- | ------ | ----------------------------------------------------- |
+| `site_url`     | string | WordPress site URL                                    |
+| `post_id`      | number | Post ID for read, update, schedule, publish, taxonomy |
+| `page_id`      | number | Page ID for read, update, publish, taxonomy           |
+| `title`        | string | Title for draft or scheduled content                  |
+| `content`      | string | HTML or block content body                            |
+| `excerpt`      | string | Optional excerpt                                      |
+| `slug`         | string | Optional URL slug                                     |
+| `publish_at`   | string | RFC3339 date/time for scheduled posts                 |
+| `search_query` | string | Search term for listing/searching                     |
+| `status`       | string | Optional post/page status filter                      |
+| `per_page`     | number | Results per page                                      |
+| `media_file`   | string | Local file path for media upload                      |
+| `media_type`   | string | Optional media type filter such as `image`            |
+| `mime_type`    | string | Optional MIME type filter or upload content type      |
+| `category_ids` | string | Comma-separated category IDs                          |
+| `tag_ids`      | string | Comma-separated tag IDs                               |
 
 ## Auth
 
 - Kind: service-key
 - Required: yes
 - Service keys:
-  - `WORDPRESS_BASE_URL` -- Full site URL (e.g. `https://example.com`)
-  - `WORDPRESS_USERNAME` -- WordPress user with appropriate permissions
-  - `WORDPRESS_APPLICATION_PASSWORD` -- Application Password (not the user's login password)
+  - `WORDPRESS_BASE_URL` -- Full site URL, for example `https://example.com`
+  - `WORDPRESS_USERNAME` -- dedicated WordPress service user
+  - `WORDPRESS_APPLICATION_PASSWORD` -- WordPress Application Password
 - Setup:
   1. Create a dedicated WordPress service user on the target site.
-  2. Generate an Application Password for that user (Users > Profile > Application Passwords).
-  3. Add `WORDPRESS_BASE_URL`, `WORDPRESS_USERNAME`, and `WORDPRESS_APPLICATION_PASSWORD` in API Keys.
-  4. For form submissions, install the appropriate form plugin with REST API support.
-  5. Restrict post types, status transitions, taxonomy scope, and media usage before going live.
+  2. Generate an Application Password for that user from Users > Profile > Application Passwords.
+  3. Add `WORDPRESS_BASE_URL`, `WORDPRESS_USERNAME`, and `WORDPRESS_APPLICATION_PASSWORD` in operator-controlled API Keys.
+  4. Restrict post types, status transitions, taxonomy scope, and media usage before going live.
 
 ## Quick Start
 
 ```bash
-# Install
-python3 -m venv .venv && source .venv/bin/activate && pip install -e '.[dev]'
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
 
-# Set credentials
-export WORDPRESS_BASE_URL="https://example.com"
-export WORDPRESS_USERNAME="service-bot"
-export WORDPRESS_APPLICATION_PASSWORD="xxxx xxxx xxxx xxxx"
-
-# Verify connectivity
 aos-wordpress --json health
 aos-wordpress --json doctor
-
-# List posts
+aos-wordpress --json site read
 aos-wordpress --json post list
-
-# Create a draft post
-aos-wordpress --json post create --title "My Post" --content "<p>Hello</p>" --status draft
-
-# Get form submissions
-aos-wordpress --json form submissions --form-id 5 --form-provider wpforms
+aos-wordpress --json --mode write post create_draft --title "My Post" --content "<p>Hello</p>"
+aos-wordpress --json --mode write media upload /path/to/image.jpg title=Hero alt_text="Hero image"
+aos-wordpress --json --mode write taxonomy assign_terms post_id=123 categories=3,4 tags=8
 ```

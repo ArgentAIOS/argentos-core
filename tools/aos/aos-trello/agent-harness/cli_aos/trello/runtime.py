@@ -655,41 +655,6 @@ def card_read_result(ctx_obj: dict[str, Any], *, card_id: str | None) -> dict[st
     }
 
 
-def scaffold_result(
-    ctx_obj: dict[str, Any],
-    *,
-    command_id: str,
-    resource: str,
-    operation: str,
-    inputs: dict[str, Any],
-    consequential: bool = False,
-) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    return {
-        "status": "scaffold",
-        "backend": BACKEND_NAME,
-        "command_id": command_id,
-        "resource": resource,
-        "operation": operation,
-        "executed": False,
-        "consequential": consequential,
-        "live_write_available": False,
-        "scaffold_only": True,
-        "inputs": inputs,
-        "summary": "Write bridge not implemented yet; returning draft payload only.",
-        "scope": {
-            "kind": resource,
-            "selection_surface": runtime["scope"].get("pickerScopes", {}).get(resource, {}).get("selection_surface", resource),
-        },
-        "scope_preview": _scope_preview(
-            command_id=command_id,
-            selection_surface=runtime["scope"].get("pickerScopes", {}).get(resource, {}).get("selection_surface", resource),
-            label=operation.replace("_", " "),
-            scope_id=str(inputs.get("card_id") or inputs.get("list_id") or ""),
-        ),
-    }
-
-
 def create_card_result(ctx_obj: dict[str, Any], *, list_id: str | None, name: str, desc: str) -> dict[str, Any]:
     client = create_client(ctx_obj)
     resolved_list_id = _list_id(ctx_obj, list_id)

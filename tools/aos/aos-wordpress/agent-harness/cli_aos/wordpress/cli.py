@@ -11,6 +11,7 @@ from .bridge import config_snapshot, doctor_snapshot, health_snapshot
 from .constants import COMMAND_SPECS, CONNECTOR_AUTH, CONNECTOR_CATEGORY, CONNECTOR_CATEGORIES, CONNECTOR_LABEL, CONNECTOR_RESOURCES, MANIFEST_SCHEMA_VERSION, MODE_ORDER, PERMISSIONS_PATH, TOOL_NAME
 from .errors import CliError
 from .runtime import (
+    assign_taxonomy_terms,
     create_draft_content,
     list_content,
     list_media,
@@ -22,6 +23,7 @@ from .runtime import (
     schedule_post,
     search_content,
     update_draft_content,
+    upload_media,
 )
 
 
@@ -294,7 +296,8 @@ def post_create_draft(ctx: click.Context, title: str, content: str | None, excer
     _run(
         ctx,
         "post.create_draft",
-        create_draft_post,
+        create_draft_content,
+        "post",
         title=title,
         content=content,
         excerpt=excerpt,
@@ -320,8 +323,9 @@ def post_update_draft(
     _run(
         ctx,
         "post.update_draft",
-        update_draft_post,
-        post_id=post_id,
+        update_draft_content,
+        "post",
+        object_id=post_id,
         title=title,
         content=content,
         excerpt=excerpt,
@@ -440,20 +444,6 @@ def page_read(ctx: click.Context, page_id: str) -> None:
     _run(ctx, "page.read", read_content, "page", object_id=page_id)
 
 
-def _scaffold_result(command_id: str, resource: str, operation: str, inputs: dict[str, object]) -> dict[str, object]:
-    return {
-        "status": "scaffold",
-        "scaffold_only": True,
-        "executed": False,
-        "backend": "wordpress-rest-api",
-        "resource": resource,
-        "operation": operation,
-        "command_id": command_id,
-        "inputs": inputs,
-        "next_step": "Wire this command to a narrow WordPress REST implementation before enabling it.",
-    }
-
-
 @page_group.command("create_draft")
 @click.option("--title", required=True, help="Page title")
 @click.option("--content", default=None, help="Page body")
@@ -550,15 +540,7 @@ def media_list_cmd(
 @click.argument("items", nargs=-1)
 @click.pass_context
 def media_upload(ctx: click.Context, items: tuple[str, ...]) -> None:
-    require_mode(ctx, "media.upload")
-    payload = _result(
-        ok=True,
-        command="media.upload",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=_scaffold_result("media.upload", "media", "upload", {"items": list(items)}),
-    )
-    _emit(payload, ctx.obj["json"])
+    _run(ctx, "media.upload", upload_media, items)
 
 
 @cli.group("taxonomy")
@@ -586,15 +568,7 @@ def taxonomy_list_cmd(ctx: click.Context, per_page: int, page: int, search: str)
 @click.argument("items", nargs=-1)
 @click.pass_context
 def taxonomy_assign_terms(ctx: click.Context, items: tuple[str, ...]) -> None:
-    require_mode(ctx, "taxonomy.assign_terms")
-    payload = _result(
-        ok=True,
-        command="taxonomy.assign_terms",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=_scaffold_result("taxonomy.assign_terms", "taxonomy", "assign_terms", {"items": list(items)}),
-    )
-    _emit(payload, ctx.obj["json"])
+    _run(ctx, "taxonomy.assign_terms", assign_taxonomy_terms, items)
 
 
 if __name__ == "__main__":

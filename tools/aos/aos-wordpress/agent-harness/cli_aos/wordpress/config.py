@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from .constants import (
@@ -11,11 +10,12 @@ from .constants import (
     LEGACY_BASE_URL_ENV,
     LEGACY_USERNAME_ENV,
 )
+from .service_keys import service_key_env
 
 
 def _first_present_env(*names: str) -> tuple[str, str]:
     for name in names:
-        value = os.getenv(name, "")
+        value = service_key_env(name, "") or ""
         if value:
             return name, value
     return "", ""

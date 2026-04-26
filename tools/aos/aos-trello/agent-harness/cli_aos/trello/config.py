@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from . import __version__
@@ -129,7 +128,7 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         DEFAULT_MEMBER_ID_ENV: bool(member_id),
         DEFAULT_LIST_ID_ENV: bool(list_id),
         DEFAULT_CARD_ID_ENV: bool(card_id),
-        DEFAULT_API_BASE_URL_ENV: bool(os.getenv(DEFAULT_API_BASE_URL_ENV, "").strip()),
+        DEFAULT_API_BASE_URL_ENV: bool(api_base_url and api_base_url != DEFAULT_API_BASE_URL),
     }
     missing_keys = [name for name in (DEFAULT_API_KEY_ENV, DEFAULT_TOKEN_ENV) if not configured[name]]
     auth_ready = bool(api_key and token)

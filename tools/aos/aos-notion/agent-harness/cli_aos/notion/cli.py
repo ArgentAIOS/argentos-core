@@ -124,34 +124,6 @@ def config_show(ctx: click.Context) -> None:
     emit(_success(ctx, "config.show", config_snapshot(ctx.obj)), as_json=ctx.obj["json"])
 
 
-def _scaffold_command(
-    ctx: click.Context,
-    *,
-    command_id: str,
-    resource: str,
-    operation: str,
-    inputs: dict[str, Any],
-    consequential: bool = False,
-) -> None:
-    _set_command(ctx, command_id)
-    require_mode(ctx, command_id)
-    emit(
-        _success(
-            ctx,
-            command_id,
-            runtime_module.scaffold_result(
-                ctx.obj,
-                command_id=command_id,
-                resource=resource,
-                operation=operation,
-                inputs=inputs,
-                consequential=consequential,
-            ),
-        ),
-        as_json=ctx.obj["json"],
-    )
-
-
 def _live_command(
     ctx: click.Context,
     *,

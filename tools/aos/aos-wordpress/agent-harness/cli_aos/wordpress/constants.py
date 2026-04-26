@@ -232,9 +232,8 @@ IMPLEMENTED_WRITE_COMMANDS = [
     "page.create_draft",
     "page.update_draft",
     "page.publish",
-]
-
-SCAFFOLDED_WRITE_COMMANDS = [
     "media.upload",
     "taxonomy.assign_terms",
 ]
+
+SCAFFOLDED_WRITE_COMMANDS: list[str] = []

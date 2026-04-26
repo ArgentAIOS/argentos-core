@@ -1,6 +1,6 @@
 # aos-wordpress agent harness
 
-Python Click harness for WordPress with live REST calls.
+Python Click harness for WordPress with live REST calls through the AOS connector substrate.
 
 ## Install
 
@@ -16,4 +16,6 @@ aos-wordpress --json doctor
 
 ## Notes
 
-The connector uses WordPress Application Password auth and keeps mutating commands scoped to draft creation, draft updates, scheduling, and explicit publish operations.
+The connector resolves `WORDPRESS_BASE_URL`, `WORDPRESS_USERNAME`, and `WORDPRESS_APPLICATION_PASSWORD` through operator-controlled service keys before falling back to local environment variables.
+
+Mutating commands are scoped to draft creation, draft updates, scheduling, explicit publish operations, local media uploads, and category/tag assignment.

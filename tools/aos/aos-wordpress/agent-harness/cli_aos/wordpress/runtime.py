@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import json
+import mimetypes
+from pathlib import Path
 import socket
 import urllib.error
 import urllib.parse
@@ -11,6 +13,7 @@ from typing import Any
 from .config import runtime_config
 from .constants import RESOURCE_PATHS, TAXONOMY_PATHS, TOOL_NAME
 from .errors import CliError
+from .service_keys import service_key_env
 
 
 def _ensure_resource(resource: str) -> str:
@@ -135,6 +138,95 @@ def _request_json(
     return {"value": decoded}
 
 
+def _request_bytes(
+    method: str,
+    path: str,
+    *,
+    body: bytes,
+    headers: dict[str, str],
+    config: dict[str, Any] | None = None,
+) -> Any:
+    runtime = config or runtime_config()
+    if not runtime["base_url_present"]:
+        raise CliError(
+            code="CONFIG_ERROR",
+            message="WORDPRESS_BASE_URL is required",
+            exit_code=4,
+            details={"missing": ["WORDPRESS_BASE_URL"]},
+        )
+    if not runtime["auth_ready"]:
+        raise CliError(
+            code="CONFIG_ERROR",
+            message="WordPress media upload requires WORDPRESS_USERNAME and WORDPRESS_APPLICATION_PASSWORD",
+            exit_code=4,
+            details={"missing": _missing_auth_keys(runtime)},
+        )
+
+    url = f"{runtime['api_root_url'].rstrip('/')}/{path.lstrip('/')}"
+    username, password = _auth_credentials()
+    auth_value = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
+    request_headers = {
+        "Accept": "application/json",
+        "Authorization": f"Basic {auth_value}",
+        "User-Agent": f"{TOOL_NAME}/1.0",
+        **headers,
+    }
+    request = urllib.request.Request(url, data=body, headers=request_headers, method=method)
+
+    try:
+        with urllib.request.urlopen(request, timeout=runtime["request_timeout_s"]) as response:
+            response_body = response.read()
+    except urllib.error.HTTPError as exc:
+        error_payload = _decode_response_body(exc.read())
+        details = {"status_code": exc.code, "url": url, "response": error_payload}
+        if exc.code in (400, 422):
+            raise CliError(
+                code="INVALID_USAGE",
+                message=_error_message(error_payload, exc.reason),
+                exit_code=2,
+                details=details,
+            ) from exc
+        if exc.code in (401, 403):
+            raise CliError(
+                code="AUTH_ERROR",
+                message=_error_message(error_payload, exc.reason),
+                exit_code=4,
+                details=details,
+            ) from exc
+        if exc.code == 404:
+            raise CliError(
+                code="NOT_FOUND",
+                message=_error_message(error_payload, exc.reason),
+                exit_code=6,
+                details=details,
+            ) from exc
+        if exc.code >= 500:
+            raise CliError(
+                code="BACKEND_UNAVAILABLE",
+                message=_error_message(error_payload, exc.reason),
+                exit_code=5,
+                details=details,
+            ) from exc
+        raise CliError(
+            code="REQUEST_FAILED",
+            message=_error_message(error_payload, exc.reason),
+            exit_code=10,
+            details=details,
+        ) from exc
+    except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
+        raise CliError(
+            code="BACKEND_UNAVAILABLE",
+            message=f"Unable to reach WordPress at {runtime['base_url']}",
+            exit_code=5,
+            details={"url": url, "reason": str(exc)},
+        ) from exc
+
+    decoded = _decode_response_body(response_body)
+    if isinstance(decoded, (dict, list)):
+        return decoded
+    return {"value": decoded}
+
+
 def _decode_response_body(body: bytes) -> Any:
     if not body:
         return {}
@@ -182,9 +274,19 @@ def _auth_credentials() -> tuple[str, str]:
 
 
 def _env_value(name: str) -> str:
-    import os
+    return service_key_env(name, "") or ""
 
-    return os.getenv(name, "")
+
+def _missing_auth_keys(config: dict[str, Any]) -> list[str]:
+    return [
+        key
+        for key, present in (
+            ("WORDPRESS_BASE_URL", config["base_url_present"]),
+            ("WORDPRESS_USERNAME", config["username_present"]),
+            ("WORDPRESS_APPLICATION_PASSWORD", config["application_password_present"]),
+        )
+        if not present
+    ]
 
 
 def _summarize_root(payload: dict[str, Any]) -> dict[str, Any]:
@@ -248,17 +350,7 @@ def _require_auth_ready() -> dict[str, Any]:
             code="CONFIG_ERROR",
             message="WordPress live commands require WORDPRESS_BASE_URL, WORDPRESS_USERNAME, and WORDPRESS_APPLICATION_PASSWORD",
             exit_code=4,
-            details={
-                "missing": [
-                    key
-                    for key, present in (
-                        ("WORDPRESS_BASE_URL", config["base_url_present"]),
-                        ("WORDPRESS_USERNAME", config["username_present"]),
-                        ("WORDPRESS_APPLICATION_PASSWORD", config["application_password_present"]),
-                    )
-                    if not present
-                ]
-            },
+            details={"missing": _missing_auth_keys(config)},
         )
     return config
 
@@ -424,32 +516,6 @@ def read_content(
     }
 
 
-def create_draft_post(
-    *,
-    title: str,
-    content: str | None = None,
-    excerpt: str | None = None,
-    slug: str | None = None,
-    status: str = "draft",
-) -> dict[str, Any]:
-    runtime = _require_auth_ready()
-    title = _require_nonempty(title, field="title")
-    payload = {"title": title, "status": status}
-    if content is not None:
-        payload["content"] = content
-    if excerpt is not None:
-        payload["excerpt"] = excerpt
-    if slug is not None:
-        payload["slug"] = slug
-    result = _request_json("POST", "/wp/v2/posts", payload=payload, config=runtime)
-    return {
-        "status": "ok",
-        "resource": "post",
-        "operation": "create_draft",
-        "result": result,
-    }
-
-
 def create_draft_content(
     resource: str,
     *,
@@ -472,43 +538,6 @@ def create_draft_content(
         "status": "ok",
         "resource": resource,
         "operation": "create_draft",
-        "result": result,
-    }
-
-
-def update_draft_post(
-    *,
-    post_id: str,
-    title: str | None = None,
-    content: str | None = None,
-    excerpt: str | None = None,
-    slug: str | None = None,
-    status: str = "draft",
-) -> dict[str, Any]:
-    runtime = _require_auth_ready()
-    post_id = _require_nonempty(post_id, field="post_id")
-    payload: dict[str, Any] = {"status": status}
-    if title is not None:
-        payload["title"] = title
-    if content is not None:
-        payload["content"] = content
-    if excerpt is not None:
-        payload["excerpt"] = excerpt
-    if slug is not None:
-        payload["slug"] = slug
-    if len(payload) == 1:
-        raise CliError(
-            code="INVALID_USAGE",
-            message="At least one field is required to update a draft",
-            exit_code=2,
-            details={"field_count": 0},
-        )
-    result = _request_json("POST", f"/wp/v2/posts/{post_id}", payload=payload, config=runtime)
-    return {
-        "status": "ok",
-        "resource": "post",
-        "operation": "update_draft",
-        "id": post_id,
         "result": result,
     }
 
@@ -666,6 +695,96 @@ def list_media(
     }
 
 
+def _parse_items(items: tuple[str, ...]) -> tuple[dict[str, str], list[str]]:
+    options: dict[str, str] = {}
+    positional: list[str] = []
+    for item in items:
+        if "=" not in item:
+            positional.append(item)
+            continue
+        key, value = item.split("=", 1)
+        key = key.strip().lower().replace("-", "_")
+        if not key:
+            positional.append(item)
+            continue
+        options[key] = value.strip()
+    return options, positional
+
+
+def _csv_ints(value: str | None, *, field: str) -> list[int]:
+    if not value:
+        return []
+    parsed: list[int] = []
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            parsed.append(int(item))
+        except ValueError as exc:
+            raise CliError(
+                code="INVALID_USAGE",
+                message=f"{field} must contain comma-separated numeric IDs",
+                exit_code=2,
+                details={"field": field, "value": value},
+            ) from exc
+    return parsed
+
+
+def upload_media(items: tuple[str, ...]) -> dict[str, Any]:
+    runtime = _require_auth_ready()
+    options, positional = _parse_items(items)
+    file_arg = (
+        options.get("file")
+        or options.get("path")
+        or options.get("media_file")
+        or (positional[0] if positional else "")
+    )
+    file_path = Path(_require_nonempty(file_arg, field="file"))
+    if not file_path.is_file():
+        raise CliError(
+            code="INVALID_USAGE",
+            message="media.upload requires a local file path",
+            exit_code=2,
+            details={"file": str(file_path)},
+        )
+    filename = options.get("filename") or file_path.name
+    content_type = options.get("mime_type") or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    uploaded = _request_bytes(
+        "POST",
+        "/wp/v2/media",
+        body=file_path.read_bytes(),
+        headers={
+            "Content-Type": content_type,
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+        config=runtime,
+    )
+    metadata = {
+        key: value
+        for key, value in {
+            "title": options.get("title"),
+            "alt_text": options.get("alt_text") or options.get("alt"),
+            "caption": options.get("caption"),
+            "description": options.get("description"),
+        }.items()
+        if value
+    }
+    result = uploaded
+    media_id = uploaded.get("id") if isinstance(uploaded, dict) else None
+    if metadata and media_id is not None:
+        result = _request_json("POST", f"/wp/v2/media/{media_id}", payload=metadata, config=runtime)
+    return {
+        "status": "ok",
+        "resource": "media",
+        "operation": "upload",
+        "filename": filename,
+        "content_type": content_type,
+        "metadata": metadata,
+        "result": result,
+    }
+
+
 def list_taxonomy_terms(
     *,
     per_page: int = 25,
@@ -697,4 +816,48 @@ def list_taxonomy_terms(
         "categories": category_results,
         "tags": tag_results,
         "count": len(category_results) + len(tag_results),
+    }
+
+
+def assign_taxonomy_terms(items: tuple[str, ...]) -> dict[str, Any]:
+    runtime = _require_auth_ready()
+    options, positional = _parse_items(items)
+    resource = (options.get("resource") or options.get("type") or "post").strip().lower()
+    if resource not in {"post", "page"}:
+        raise CliError(
+            code="INVALID_USAGE",
+            message="taxonomy.assign_terms supports resource=post or resource=page",
+            exit_code=2,
+            details={"resource": resource},
+        )
+    object_id = (
+        options.get("id")
+        or options.get("object_id")
+        or options.get(f"{resource}_id")
+        or (positional[0] if positional else "")
+    )
+    object_id = _require_nonempty(object_id, field=f"{resource}_id")
+    categories = _csv_ints(options.get("categories") or options.get("category_ids"), field="categories")
+    tags = _csv_ints(options.get("tags") or options.get("tag_ids"), field="tags")
+    payload: dict[str, Any] = {}
+    if categories:
+        payload["categories"] = categories
+    if tags:
+        payload["tags"] = tags
+    if not payload:
+        raise CliError(
+            code="INVALID_USAGE",
+            message="taxonomy.assign_terms requires categories=<ids> or tags=<ids>",
+            exit_code=2,
+            details={"accepted_keys": ["categories", "category_ids", "tags", "tag_ids"]},
+        )
+    resource_path = _ensure_resource(resource)
+    result = _request_json("POST", f"/wp/v2/{resource_path}/{object_id}", payload=payload, config=runtime)
+    return {
+        "status": "ok",
+        "resource": "taxonomy",
+        "operation": "assign_terms",
+        "target": {"resource": resource, "id": object_id},
+        "assigned": payload,
+        "result": result,
     }
