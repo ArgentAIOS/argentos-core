@@ -56,12 +56,16 @@ def _item_preview(item: dict[str, Any]) -> str:
 
 def create_client(ctx_obj: dict[str, Any]) -> MondayClient:
     runtime = resolve_runtime_values(ctx_obj)
-    if not runtime["token_present"]:
+    if not runtime["token_usable"]:
         raise CliError(
             code="MONDAY_SETUP_REQUIRED",
-            message="MONDAY_TOKEN is not configured",
+            message="MONDAY_TOKEN must be available through operator service-key injection or development env fallback",
             exit_code=4,
-            details={"missing_keys": [runtime["token_env"]]},
+            details={
+                "missing_keys": [] if runtime["token_present"] else [runtime["token_env"]],
+                "unusable_keys": [runtime["token_env"]] if runtime["token_present"] else [],
+                "token_source": runtime["details"][runtime["token_env"]]["source"],
+            },
         )
     return MondayClient(
         token=str(runtime["token"] or ""),
@@ -72,13 +76,15 @@ def create_client(ctx_obj: dict[str, Any]) -> MondayClient:
 
 def probe_runtime(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
-    if not runtime["token_present"]:
+    if not runtime["token_usable"]:
         return {
             "ok": False,
             "code": "MONDAY_SETUP_REQUIRED",
-            "message": "MONDAY_TOKEN is not configured",
+            "message": "MONDAY_TOKEN is not usable by the standalone harness",
             "details": {
                 "env": runtime["token_env"],
+                "token_present": runtime["token_present"],
+                "token_source": runtime["details"][runtime["token_env"]]["source"],
                 "live_backend_available": False,
                 "probe_mode": "setup-required",
             },
@@ -128,10 +134,14 @@ def probe_runtime(ctx_obj: dict[str, Any]) -> dict[str, Any]:
 def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
     probe = probe_runtime(ctx_obj)
-    if not runtime["token_present"]:
+    if not runtime["token_usable"]:
         status = "needs_setup"
-        summary = "Monday runtime needs MONDAY_TOKEN before live read commands can run."
-        next_steps = [f"Set {runtime['token_env']} to a monday personal API token."]
+        summary = "Monday runtime needs a usable MONDAY_TOKEN before live read commands can run."
+        next_steps = [
+            f"Set {runtime['token_env']} in operator-controlled service keys.",
+            "If the service key is encrypted or scoped, run the connector through the operator runtime so the decrypted key is injected in context.",
+            "Use local MONDAY_* environment variables only as development harness fallback when no operator-managed key is present.",
+        ]
     elif probe["ok"]:
         status = "ready"
         summary = "Monday live read runtime is ready."
@@ -161,16 +171,23 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "auth": {
             "token_env": runtime["token_env"],
             "token_present": runtime["token_present"],
+            "token_usable": runtime["token_usable"],
+            "token_source": runtime["details"][runtime["token_env"]]["source"],
             "api_version_env": runtime["api_version_env"],
             "api_version_present": runtime["api_version_present"],
+            "api_version_source": runtime["details"][runtime["api_version_env"]]["source"],
             "api_url_env": runtime["api_url_env"],
             "api_url_present": runtime["api_url_present"],
+            "api_url_source": runtime["details"][runtime["api_url_env"]]["source"],
         },
         "checks": [
             {
                 "name": "required_env",
-                "ok": runtime["token_present"],
-                "details": {"missing_keys": [] if runtime["token_present"] else [runtime["token_env"]]},
+                "ok": runtime["token_usable"],
+                "details": {
+                    "missing_keys": [] if runtime["token_present"] else [runtime["token_env"]],
+                    "unusable_keys": [runtime["token_env"]] if runtime["token_present"] and not runtime["token_usable"] else [],
+                },
             },
             {
                 "name": "live_backend",
@@ -191,12 +208,13 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
 def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
     probe = probe_runtime(ctx_obj)
-    setup_complete = runtime["token_present"]
+    setup_complete = runtime["token_usable"]
     live_ready = bool(probe.get("ok"))
     next_steps = [
-        f"Set {runtime['token_env']} in API Keys.",
+        f"Set {runtime['token_env']} in operator-controlled service keys.",
+        "If the service key is encrypted or scoped, run through the operator runtime so the decrypted key is injected in context.",
         "Share the target boards and workspaces with the monday token owner.",
-        "Run write commands in write mode or higher; item.create, item.update, and update.create execute live monday mutations.",
+        "Run write commands in write mode or higher only after operator approval; item.create, item.update, and update.create execute live monday mutations.",
     ]
     return {
         "status": "needs_setup" if not setup_complete else ("ready" if live_ready else "degraded"),
@@ -204,10 +222,13 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "runtime_ready": live_ready,
         "live_backend_available": live_ready,
         "live_read_available": live_ready,
-        "write_bridge_available": live_ready,
+        "write_bridge_available": True,
+        "write_bridge_runtime_ready": live_ready,
+        "live_write_smoke_tested": False,
         "write_paths_scaffolded": False,
         "setup_complete": setup_complete,
-        "missing_keys": [] if setup_complete else [runtime["token_env"]],
+        "missing_keys": [] if runtime["token_present"] else [runtime["token_env"]],
+        "unusable_keys": [runtime["token_env"]] if runtime["token_present"] and not runtime["token_usable"] else [],
         "next_steps": next_steps,
         "probe": probe,
         "runtime": {
@@ -215,6 +236,13 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "api_url": runtime["api_url"],
             "workspace_id_present": runtime["workspace_id_present"],
             "board_id_present": runtime["board_id_present"],
+            "item_id_present": runtime["item_id_present"],
+            "column_id_present": runtime["column_id_present"],
+            "tenant_smoke_tested": False,
+            "sampled_probe_commands": ["account.read"],
+            "live_write_smoke_tested": False,
+            "write_bridge_runtime_ready": live_ready,
+            "write_commands": ["item.create", "item.update", "update.create"],
             "probe_mode": probe["details"].get("probe_mode") if probe.get("details") else "setup-required",
         },
     }
@@ -306,9 +334,11 @@ def list_boards(ctx_obj: dict[str, Any], *, limit: int) -> dict[str, Any]:
     }
 
 
-def read_board(ctx_obj: dict[str, Any], *, board_id: str, limit: int) -> dict[str, Any]:
+def read_board(ctx_obj: dict[str, Any], *, board_id: str | None, limit: int) -> dict[str, Any]:
     client = create_client(ctx_obj)
     probe_runtime(ctx_obj)
+    runtime = resolve_runtime_values(ctx_obj)
+    board_id = _require_text(board_id or runtime["board_id"], field="board_id")
     board = client.read_board(board_id, limit=limit)
     if not board:
         raise CliError(
@@ -325,9 +355,11 @@ def read_board(ctx_obj: dict[str, Any], *, board_id: str, limit: int) -> dict[st
     }
 
 
-def read_item(ctx_obj: dict[str, Any], *, item_id: str) -> dict[str, Any]:
+def read_item(ctx_obj: dict[str, Any], *, item_id: str | None) -> dict[str, Any]:
     client = create_client(ctx_obj)
     probe_runtime(ctx_obj)
+    runtime = resolve_runtime_values(ctx_obj)
+    item_id = _require_text(item_id or runtime["item_id"], field="item_id")
     item = client.read_item(item_id)
     if not item:
         raise CliError(
@@ -434,13 +466,14 @@ def _normalize_column_values(value: str | None) -> str | None:
 def create_item(
     ctx_obj: dict[str, Any],
     *,
-    board_id: str,
+    board_id: str | None,
     item_name: str,
     group_id: str | None = None,
     column_values: str | None = None,
 ) -> dict[str, Any]:
     client = create_client(ctx_obj)
-    board_id = _require_text(board_id, field="board_id")
+    runtime = resolve_runtime_values(ctx_obj)
+    board_id = _require_text(board_id or runtime["board_id"], field="board_id")
     item_name = _require_text(item_name, field="item_name")
     normalized_column_values = _normalize_column_values(column_values)
     item = client.create_item(
@@ -475,15 +508,16 @@ def create_item(
 def update_item(
     ctx_obj: dict[str, Any],
     *,
-    item_id: str,
-    board_id: str,
+    item_id: str | None,
+    board_id: str | None,
     column_id: str | None = None,
     column_value: str | None = None,
     column_values: str | None = None,
 ) -> dict[str, Any]:
     client = create_client(ctx_obj)
-    item_id = _require_text(item_id, field="item_id")
-    board_id = _require_text(board_id, field="board_id")
+    runtime = resolve_runtime_values(ctx_obj)
+    item_id = _require_text(item_id or runtime["item_id"], field="item_id")
+    board_id = _require_text(board_id or runtime["board_id"], field="board_id")
     normalized_column_values = _normalize_column_values(column_values)
     if normalized_column_values:
         item = client.change_multiple_column_values(
@@ -493,7 +527,7 @@ def update_item(
         )
         operation = "change_multiple_column_values"
     else:
-        column_id = _require_text(column_id, field="column_id")
+        column_id = _require_text(column_id or runtime["column_id"], field="column_id")
         column_value = _require_text(column_value, field="column_value")
         item = client.change_simple_column_value(
             board_id=board_id,
@@ -526,9 +560,10 @@ def update_item(
     }
 
 
-def create_update(ctx_obj: dict[str, Any], *, item_id: str, body: str) -> dict[str, Any]:
+def create_update(ctx_obj: dict[str, Any], *, item_id: str | None, body: str) -> dict[str, Any]:
     client = create_client(ctx_obj)
-    item_id = _require_text(item_id, field="item_id")
+    runtime = resolve_runtime_values(ctx_obj)
+    item_id = _require_text(item_id or runtime["item_id"], field="item_id")
     body = _require_text(body, field="body")
     update = client.create_update(item_id=item_id, body=body)
     return {

@@ -9,6 +9,7 @@
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": true,
+    "live_write_smoke_tested": false,
     "workerFields": ["workspace_id", "board_id", "item_id", "column_id"],
     "worker_visible_actions": [
       "workspace.list",
@@ -30,7 +31,7 @@
         "expressionEnabled": true,
         "valueType": "string",
         "placeholder": "Select workspace...",
-        "description": "Monday workspace to operate in"
+        "description": "Monday workspace to operate in; may default from operator service key MONDAY_WORKSPACE_ID."
       },
       {
         "id": "board_id",
@@ -41,7 +42,7 @@
         "expressionEnabled": true,
         "valueType": "string",
         "placeholder": "Select board...",
-        "description": "Monday board ID to operate on"
+        "description": "Monday board ID to operate on; may default from operator service key MONDAY_BOARD_ID."
       },
       {
         "id": "item_id",
@@ -52,7 +53,7 @@
         "expressionEnabled": true,
         "valueType": "string",
         "placeholder": "Select item...",
-        "description": "Monday item ID to operate on"
+        "description": "Monday item ID to operate on; may default from operator service key MONDAY_ITEM_ID."
       },
       {
         "id": "item_name",
@@ -75,7 +76,7 @@
         "expressionEnabled": true,
         "valueType": "string",
         "placeholder": "Select column...",
-        "description": "Monday column ID for status or field updates"
+        "description": "Monday column ID for status or field updates; may default from operator service key MONDAY_COLUMN_ID."
       },
       {
         "id": "column_value",
@@ -89,7 +90,41 @@
         "placeholder": "Enter value...",
         "description": "Value to set in the specified column"
       }
-    ]
+    ],
+    "commandDefaults": {
+      "account.read": {
+        "selection_surface": "account"
+      },
+      "workspace.list": {
+        "selection_surface": "workspace"
+      },
+      "board.list": {
+        "selection_surface": "board"
+      },
+      "board.read": {
+        "selection_surface": "board",
+        "args": ["MONDAY_BOARD_ID"]
+      },
+      "item.read": {
+        "selection_surface": "item",
+        "args": ["MONDAY_ITEM_ID"]
+      },
+      "item.create": {
+        "selection_surface": "item",
+        "args": ["MONDAY_BOARD_ID"]
+      },
+      "item.update": {
+        "selection_surface": "item",
+        "args": ["MONDAY_ITEM_ID", "MONDAY_BOARD_ID", "MONDAY_COLUMN_ID"]
+      },
+      "update.list": {
+        "selection_surface": "update"
+      },
+      "update.create": {
+        "selection_surface": "update",
+        "args": ["MONDAY_ITEM_ID"]
+      }
+    }
   },
   "connector": {
     "label": "Monday.com",
@@ -101,12 +136,21 @@
     "kind": "service-key",
     "required": true,
     "service_keys": ["MONDAY_TOKEN"],
+    "optional_scope_service_keys": [
+      "MONDAY_API_URL",
+      "MONDAY_API_VERSION",
+      "MONDAY_WORKSPACE_ID",
+      "MONDAY_BOARD_ID",
+      "MONDAY_ITEM_ID",
+      "MONDAY_COLUMN_ID"
+    ],
     "interactive_setup": [
       "Create or copy a monday.com personal API token from the Developer Center.",
-      "Add MONDAY_TOKEN in API Keys before enabling any worker-visible commands.",
-      "Optionally set MONDAY_API_VERSION to pin a stable monday API version; the connector defaults to the current stable release.",
+      "Add MONDAY_TOKEN in operator-controlled service keys before enabling worker-visible commands.",
+      "Optionally set MONDAY_API_URL and MONDAY_API_VERSION as operator-controlled service keys for endpoint/version pinning.",
+      "Optionally set MONDAY_WORKSPACE_ID, MONDAY_BOARD_ID, MONDAY_ITEM_ID, and MONDAY_COLUMN_ID as operator-controlled scope defaults.",
       "Share the boards and workspaces you want this worker to read with the account that owns the token.",
-      "Live reads and writes are enabled for account, workspace, board, item, and update commands."
+      "Read commands and consequential write commands are live GraphQL operations; writes require write mode or higher."
     ]
   },
   "commands": [

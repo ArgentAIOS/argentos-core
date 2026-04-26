@@ -215,6 +215,14 @@ Owned files/directories: `tools/aos/**`, with active connector ownership over Ai
 Shared contract changes: connector manifests, permissions, and command capability declarations remain the public contract; operator-controlled service keys are the key source for linked external systems. Klaviyo is now a truthful live read connector and does not advertise mutation/write actions until those are implemented.
 Workflows/AppForge/AOU reaction: consume manifests/capabilities only; do not infer private connector internals or assume scaffolded writes exist. AOU Stub Finder should treat Klaviyo at `ad3fb0b9` as a real read-only baseline and track future mutation work separately.
 
+### 2026-04-26 — AOS Monday Connector
+
+Lane: `AOS Monday connector`
+Branch/commit: `codex/aos-monday-loop` in progress.
+Owned files/directories: `tools/aos/aos-monday/**` plus this coordination note.
+Shared contract changes: Monday is being verified as a true AOS CLI connector with GraphQL read/write command paths, operator-controlled service-key resolution, and explicit truth labels for live read/write probes. Required operator-controlled service key is `MONDAY_TOKEN`; optional service keys include API URL/version and workspace/board/item/column defaults.
+Workflows/AppForge/AOU reaction: consume Monday manifest/capabilities only; treat write commands as consequential live mutations that require write mode plus configured operator service keys, and do not infer production tenant smoke beyond the connector health/doctor evidence.
+
 ### 2026-04-26 — Master Threadmaster Roster
 
 Current active core threadmasters: AppForge 2.0, Work flow building master, AOU Stub Finder, and Compare OpenClaw 4.24 features. Treat the Workflows threadmaster as the master coordinator for cross-project lane awareness while it continues implementing the workflow canvas/runtime.
