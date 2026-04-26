@@ -1,8 +1,11 @@
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity,
+  ArrowLeft,
+  ArrowRight,
   Boxes,
   ChevronDown,
+  Copy,
   Ellipsis,
   ExternalLink,
   Lock,
@@ -57,6 +60,7 @@ type WorkflowEventStatus = {
 
 type AppFilter = "all" | "pinned" | "running";
 type ForgeViewMode = "grid" | "kanban" | "form" | "review";
+type ForgeInspectorMode = "field" | "table";
 
 type EditingCell = {
   recordId: string;
@@ -138,6 +142,45 @@ const FORGE_VIEW_MODES: Array<{ id: ForgeViewMode; label: string }> = [
   { id: "review", label: "Review" },
 ];
 
+const APP_FORGE_UI_STATE_KEY = "argent.appForge.workspaceState.v1";
+
+type AppForgeUiState = {
+  selectedAppId?: string | null;
+  activeSection?: (typeof APP_FORGE_NAV)[number]["id"];
+  activeViewMode?: ForgeViewMode;
+  inspectorMode?: ForgeInspectorMode;
+};
+
+function isForgeSection(value: unknown): value is (typeof APP_FORGE_NAV)[number]["id"] {
+  return typeof value === "string" && APP_FORGE_NAV.some((item) => item.id === value);
+}
+
+function isForgeViewMode(value: unknown): value is ForgeViewMode {
+  return typeof value === "string" && FORGE_VIEW_MODES.some((item) => item.id === value);
+}
+
+function isForgeInspectorMode(value: unknown): value is ForgeInspectorMode {
+  return value === "field" || value === "table";
+}
+
+function loadAppForgeUiState(): AppForgeUiState {
+  if (typeof window === "undefined") return {};
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(APP_FORGE_UI_STATE_KEY) ?? "{}",
+    ) as Record<string, unknown> | null;
+    if (!parsed) return {};
+    return {
+      selectedAppId: typeof parsed.selectedAppId === "string" ? parsed.selectedAppId : null,
+      activeSection: isForgeSection(parsed.activeSection) ? parsed.activeSection : undefined,
+      activeViewMode: isForgeViewMode(parsed.activeViewMode) ? parsed.activeViewMode : undefined,
+      inspectorMode: isForgeInspectorMode(parsed.inspectorMode) ? parsed.inspectorMode : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
 function fieldValue(value: ForgeStructuredRecordValue | undefined): string {
   return value === null || value === undefined ? "" : String(value);
 }
@@ -194,6 +237,7 @@ export function AppForge({
   onFocusApp,
   onEmitWorkflowEvent,
 }: AppForgeProps) {
+  const [persistedUiState] = useState<AppForgeUiState>(loadAppForgeUiState);
   const [searchQuery, setSearchQuery] = useState("");
   const [contextMenu, setContextMenu] = useState<{ appId: string; x: number; y: number } | null>(
     null,
@@ -208,10 +252,18 @@ export function AppForge({
   const [newAppDescription, setNewAppDescription] = useState("");
   const [workflowEventStatus, setWorkflowEventStatus] = useState<WorkflowEventStatus | null>(null);
   const [activeFilter, setActiveFilter] = useState<AppFilter>("all");
-  const [activeSection, setActiveSection] =
-    useState<(typeof APP_FORGE_NAV)[number]["id"]>("desktop");
-  const [activeViewMode, setActiveViewMode] = useState<ForgeViewMode>("grid");
-  const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<(typeof APP_FORGE_NAV)[number]["id"]>(
+    persistedUiState.activeSection ?? "desktop",
+  );
+  const [activeViewMode, setActiveViewMode] = useState<ForgeViewMode>(
+    persistedUiState.activeViewMode ?? "grid",
+  );
+  const [inspectorMode, setInspectorMode] = useState<ForgeInspectorMode>(
+    persistedUiState.inspectorMode ?? "field",
+  );
+  const [selectedAppId, setSelectedAppId] = useState<string | null>(
+    persistedUiState.selectedAppId ?? null,
+  );
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -222,24 +274,36 @@ export function AppForge({
     if (isOpen) {
       setTimeout(() => searchRef.current?.focus(), 200);
     } else {
-      setSearchQuery("");
-      setContextMenu(null);
-      setDeleteMode(false);
-      setPendingDeleteApp(null);
-      setDeletingAppId(null);
-      setDeleteError(null);
-      setShowNewAppInput(false);
-      setNewAppName("");
-      setNewAppDescription("");
-      setBuilding(false);
-      setWorkflowEventStatus(null);
-      setActiveFilter("all");
-      setActiveSection("desktop");
-      setActiveViewMode("grid");
-      setSelectedAppId(null);
-      setEditingCell(null);
+      queueMicrotask(() => {
+        setSearchQuery("");
+        setContextMenu(null);
+        setDeleteMode(false);
+        setPendingDeleteApp(null);
+        setDeletingAppId(null);
+        setDeleteError(null);
+        setShowNewAppInput(false);
+        setNewAppName("");
+        setNewAppDescription("");
+        setBuilding(false);
+        setWorkflowEventStatus(null);
+        setActiveFilter("all");
+        setEditingCell(null);
+      });
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      APP_FORGE_UI_STATE_KEY,
+      JSON.stringify({
+        selectedAppId,
+        activeSection,
+        activeViewMode,
+        inspectorMode,
+      }),
+    );
+  }, [activeSection, activeViewMode, inspectorMode, selectedAppId]);
 
   // Focus name input when form shown
   useEffect(() => {
@@ -251,8 +315,10 @@ export function AppForge({
   // Detect when a new app arrives while building
   useEffect(() => {
     if (building && apps.length > appCountAtBuild.current) {
-      setBuilding(false);
-      setShowNewAppInput(false);
+      queueMicrotask(() => {
+        setBuilding(false);
+        setShowNewAppInput(false);
+      });
     }
   }, [building, apps.length]);
 
@@ -440,26 +506,27 @@ export function AppForge({
     await structured.updateCell(editingCell.recordId, editingCell.fieldId, nextValue);
   }, [editingCell, structured]);
 
-  const handleReviewDecision = useCallback(
-    async (record: ForgeStructuredRecord, decision: "approved" | "denied") => {
-      if (!selectedApp) return;
-      setWorkflowEventStatus({
-        kind: "pending",
-        appId: selectedApp.id,
-        message: `${decision === "approved" ? "Approving" : "Denying"} ${recordTitle(
-          structured.activeTable,
-          record,
-        )}...`,
-      });
-      await structured.completeReview(record.id, decision);
-      setWorkflowEventStatus({
-        kind: "success",
-        appId: selectedApp.id,
-        message: `Review ${decision} for ${recordTitle(structured.activeTable, record)}.`,
-      });
-    },
-    [selectedApp, structured],
-  );
+  async function handleReviewDecision(
+    record: ForgeStructuredRecord,
+    decision: "approved" | "denied",
+  ) {
+    if (!selectedApp?.id) return;
+    const appId = selectedApp.id;
+    setWorkflowEventStatus({
+      kind: "pending",
+      appId,
+      message: `${decision === "approved" ? "Approving" : "Denying"} ${recordTitle(
+        structured.activeTable,
+        record,
+      )}...`,
+    });
+    await structured.completeReview(record.id, decision);
+    setWorkflowEventStatus({
+      kind: "success",
+      appId,
+      message: `Review ${decision} for ${recordTitle(structured.activeTable, record)}.`,
+    });
+  }
 
   return (
     <AnimatePresence>
@@ -890,23 +957,43 @@ export function AppForge({
                           </div>
                           <div className="space-y-1">
                             {(structured.activeBase?.tables ?? []).map((table) => (
-                              <button
+                              <div
                                 key={table.id}
-                                onClick={() => void structured.selectTable(table.id)}
-                                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                                className={`group flex w-full items-center gap-1 rounded-lg px-2 py-1.5 text-sm transition-colors ${
                                   structured.activeTable?.id === table.id
                                     ? "bg-sky-500/14 text-sky-100"
                                     : "text-white/55 hover:bg-white/[0.05] hover:text-white/78"
                                 }`}
                               >
-                                <span className="flex min-w-0 items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    setInspectorMode("table");
+                                    void structured.selectTable(table.id);
+                                  }}
+                                  className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left"
+                                >
                                   <Table2 className="h-4 w-4 shrink-0" />
                                   <span className="truncate">{table.name}</span>
-                                </span>
-                                <span className="text-xs text-white/34">
-                                  {table.records.length}
-                                </span>
-                              </button>
+                                  <span className="ml-auto text-xs text-white/34">
+                                    {table.records.length}
+                                  </span>
+                                </button>
+                                <button
+                                  onClick={() => void structured.duplicateTable(table.id)}
+                                  className="rounded p-1 text-white/25 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white/75"
+                                  title="Duplicate table"
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => void structured.deleteTable(table.id)}
+                                  disabled={(structured.activeBase?.tables.length ?? 0) <= 1}
+                                  className="rounded p-1 text-white/25 opacity-0 transition group-hover:opacity-100 hover:bg-red-500/15 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-20"
+                                  title="Delete table"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
                             ))}
                           </div>
                           <button
@@ -933,10 +1020,38 @@ export function AppForge({
                                     {visibleFields.map((field) => (
                                       <th
                                         key={field.id}
-                                        onClick={() => structured.selectField(field.id)}
-                                        className="min-w-36 cursor-pointer border-b border-r border-white/10 px-4 py-3 hover:text-white/62"
+                                        className="group min-w-36 border-b border-r border-white/10 px-3 py-3 hover:text-white/62"
                                       >
-                                        {field.name}
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            onClick={() => {
+                                              setInspectorMode("field");
+                                              structured.selectField(field.id);
+                                            }}
+                                            className="min-w-0 flex-1 truncate text-left"
+                                            title={field.name}
+                                          >
+                                            {field.name}
+                                          </button>
+                                          <button
+                                            onClick={() =>
+                                              void structured.moveField(field.id, "left")
+                                            }
+                                            className="rounded p-1 text-white/20 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white/70"
+                                            title="Move field left"
+                                          >
+                                            <ArrowLeft className="h-3 w-3" />
+                                          </button>
+                                          <button
+                                            onClick={() =>
+                                              void structured.moveField(field.id, "right")
+                                            }
+                                            className="rounded p-1 text-white/20 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white/70"
+                                            title="Move field right"
+                                          >
+                                            <ArrowRight className="h-3 w-3" />
+                                          </button>
+                                        </div>
                                       </th>
                                     ))}
                                     <th className="w-12 border-b border-white/10 px-3 py-3">
@@ -956,12 +1071,25 @@ export function AppForge({
                                       key={record.id}
                                       className="group border-b border-white/[0.07] transition-colors hover:bg-white/[0.04]"
                                     >
-                                      <td className="border-r border-white/[0.07] px-3 py-2">
-                                        <button
-                                          onClick={() => void structured.deleteRecord(record.id)}
-                                          className="block h-4 w-4 rounded border border-white/20 transition-colors group-hover:border-red-300/70"
-                                          title="Delete record"
-                                        />
+                                      <td className="border-r border-white/[0.07] px-2 py-2">
+                                        <div className="flex items-center gap-1">
+                                          <button
+                                            onClick={() =>
+                                              void structured.duplicateRecord(record.id)
+                                            }
+                                            className="rounded p-1 text-white/18 transition-colors group-hover:text-white/55 hover:bg-white/10 hover:text-white"
+                                            title="Duplicate record"
+                                          >
+                                            <Copy className="h-3.5 w-3.5" />
+                                          </button>
+                                          <button
+                                            onClick={() => void structured.deleteRecord(record.id)}
+                                            className="rounded p-1 text-white/18 transition-colors group-hover:text-red-200 hover:bg-red-500/15 hover:text-red-100"
+                                            title="Delete record"
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
                                       </td>
                                       <td className="border-r border-white/[0.07] px-3 py-2 text-white/42">
                                         {index + 1}
@@ -1276,154 +1404,270 @@ export function AppForge({
                     </div>
 
                     <div className="mb-4 grid grid-cols-2 border-b border-white/10 text-sm">
-                      <button className="border-b-2 border-sky-400 px-3 py-2 text-sky-200">
+                      <button
+                        onClick={() => setInspectorMode("field")}
+                        className={`border-b-2 px-3 py-2 transition-colors ${
+                          inspectorMode === "field"
+                            ? "border-sky-400 text-sky-200"
+                            : "border-transparent text-white/45 hover:text-white/70"
+                        }`}
+                      >
                         Field
                       </button>
-                      <button className="border-b-2 border-transparent px-3 py-2 text-white/45 hover:text-white/70">
+                      <button
+                        onClick={() => setInspectorMode("table")}
+                        className={`border-b-2 px-3 py-2 transition-colors ${
+                          inspectorMode === "table"
+                            ? "border-sky-400 text-sky-200"
+                            : "border-transparent text-white/45 hover:text-white/70"
+                        }`}
+                      >
                         Table
                       </button>
                     </div>
 
-                    <div className="space-y-5 text-sm">
-                      <label className="block">
-                        <span className="mb-2 block text-xs text-white/38">Field name</span>
-                        <input
-                          value={structured.selectedField?.name ?? ""}
-                          onChange={(event) => {
-                            if (!structured.selectedField) return;
-                            void structured.updateField(structured.selectedField.id, {
-                              name: event.target.value,
-                            });
-                          }}
-                          className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
-                        />
-                      </label>
-
-                      <label className="block">
-                        <span className="mb-2 block text-xs text-white/38">Field type</span>
-                        <select
-                          value={structured.selectedField?.type ?? "text"}
-                          onChange={(event) => {
-                            if (!structured.selectedField) return;
-                            void structured.updateField(structured.selectedField.id, {
-                              type: event.target.value as
-                                | "text"
-                                | "single_select"
-                                | "number"
-                                | "date"
-                                | "checkbox",
-                            });
-                          }}
-                          className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
-                        >
-                          <option value="text">Text</option>
-                          <option value="single_select">Single select</option>
-                          <option value="number">Number</option>
-                          <option value="date">Date</option>
-                          <option value="checkbox">Checkbox</option>
-                        </select>
-                      </label>
-
-                      {structured.selectedField?.type === "single_select" && (
-                        <div>
-                          <div className="mb-2 text-xs text-white/38">Options</div>
-                          <div className="space-y-2">
-                            {(structured.selectedField.options ?? []).map((label, index) => (
-                              <div
-                                key={`${label}-${index}`}
-                                className="flex items-center justify-between rounded-lg bg-white/[0.05] px-3 py-2 text-white/65"
-                              >
-                                <span className="flex items-center gap-2">
-                                  <span className="h-3 w-3 rounded-full bg-emerald-400" />
-                                  {label}
-                                </span>
-                                <Ellipsis className="h-4 w-4 text-white/30" />
-                              </div>
-                            ))}
-                          </div>
-                          <button
-                            onClick={() => {
+                    {inspectorMode === "field" ? (
+                      <div className="space-y-5 text-sm">
+                        <label className="block">
+                          <span className="mb-2 block text-xs text-white/38">Field name</span>
+                          <input
+                            value={structured.selectedField?.name ?? ""}
+                            onChange={(event) => {
                               if (!structured.selectedField) return;
                               void structured.updateField(structured.selectedField.id, {
-                                options: [
-                                  ...(structured.selectedField.options ?? []),
-                                  `Option ${(structured.selectedField.options ?? []).length + 1}`,
-                                ],
+                                name: event.target.value,
                               });
                             }}
-                            className="mt-3 flex items-center gap-2 text-sm text-sky-300/80 hover:text-sky-200"
+                            className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="mb-2 block text-xs text-white/38">Field type</span>
+                          <select
+                            value={structured.selectedField?.type ?? "text"}
+                            onChange={(event) => {
+                              if (!structured.selectedField) return;
+                              void structured.updateField(structured.selectedField.id, {
+                                type: event.target.value as
+                                  | "text"
+                                  | "single_select"
+                                  | "number"
+                                  | "date"
+                                  | "checkbox",
+                              });
+                            }}
+                            className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
                           >
-                            <Plus className="h-4 w-4" />
-                            Add option
+                            <option value="text">Text</option>
+                            <option value="single_select">Single select</option>
+                            <option value="number">Number</option>
+                            <option value="date">Date</option>
+                            <option value="checkbox">Checkbox</option>
+                          </select>
+                        </label>
+
+                        {structured.selectedField?.type === "single_select" && (
+                          <div>
+                            <div className="mb-2 text-xs text-white/38">Options</div>
+                            <div className="space-y-2">
+                              {(structured.selectedField.options ?? []).map((label, index) => (
+                                <div
+                                  key={`${label}-${index}`}
+                                  className="flex items-center gap-2 rounded-lg bg-white/[0.05] px-2 py-2 text-white/65"
+                                >
+                                  <span className="h-3 w-3 shrink-0 rounded-full bg-emerald-400" />
+                                  <input
+                                    value={label}
+                                    onChange={(event) => {
+                                      if (!structured.selectedField) return;
+                                      const options = [...(structured.selectedField.options ?? [])];
+                                      options[index] = event.target.value;
+                                      void structured.updateField(structured.selectedField.id, {
+                                        options: options.filter((option) => option.trim()),
+                                      });
+                                    }}
+                                    className="min-w-0 flex-1 bg-transparent text-sm text-white/72 outline-none"
+                                  />
+                                  <button
+                                    onClick={() => {
+                                      if (!structured.selectedField) return;
+                                      void structured.updateField(structured.selectedField.id, {
+                                        options: (structured.selectedField.options ?? []).filter(
+                                          (_option, optionIndex) => optionIndex !== index,
+                                        ),
+                                      });
+                                    }}
+                                    className="rounded p-1 text-white/30 transition-colors hover:bg-red-500/15 hover:text-red-200"
+                                    title="Delete option"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                            <button
+                              onClick={() => {
+                                if (!structured.selectedField) return;
+                                void structured.updateField(structured.selectedField.id, {
+                                  options: [
+                                    ...(structured.selectedField.options ?? []),
+                                    `Option ${(structured.selectedField.options ?? []).length + 1}`,
+                                  ],
+                                });
+                              }}
+                              className="mt-3 flex items-center gap-2 text-sm text-sky-300/80 hover:text-sky-200"
+                            >
+                              <Plus className="h-4 w-4" />
+                              Add option
+                            </button>
+                          </div>
+                        )}
+
+                        <label className="block">
+                          <span className="mb-2 block text-xs text-white/38">Description</span>
+                          <textarea
+                            value={structured.selectedField?.description ?? ""}
+                            onChange={(event) => {
+                              if (!structured.selectedField) return;
+                              void structured.updateField(structured.selectedField.id, {
+                                description: event.target.value,
+                              });
+                            }}
+                            rows={3}
+                            className="w-full resize-none rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
+                          />
+                        </label>
+
+                        <label className="flex items-center justify-between border-t border-white/10 pt-4">
+                          <span className="text-sm text-white/55">Required</span>
+                          <input
+                            type="checkbox"
+                            checked={!!structured.selectedField?.required}
+                            onChange={(event) => {
+                              if (!structured.selectedField) return;
+                              void structured.updateField(structured.selectedField.id, {
+                                required: event.target.checked,
+                              });
+                            }}
+                            className="h-4 w-4 accent-sky-400"
+                          />
+                        </label>
+
+                        <div className="grid grid-cols-2 gap-2 border-t border-white/10 pt-4">
+                          <button
+                            onClick={() =>
+                              structured.selectedField &&
+                              void structured.duplicateField(structured.selectedField.id)
+                            }
+                            className="flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition-colors hover:bg-white/5 hover:text-white"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                            Duplicate
+                          </button>
+                          <button
+                            onClick={() =>
+                              structured.selectedField &&
+                              void structured.deleteField(structured.selectedField.id)
+                            }
+                            disabled={(structured.activeTable?.fields.length ?? 0) <= 1}
+                            className="flex items-center justify-center gap-2 rounded-lg border border-red-400/15 px-3 py-2 text-xs text-red-200/75 transition-colors hover:bg-red-500/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-35"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete
                           </button>
                         </div>
-                      )}
+                      </div>
+                    ) : (
+                      <div className="space-y-5 text-sm">
+                        <label className="block">
+                          <span className="mb-2 block text-xs text-white/38">Table name</span>
+                          <input
+                            value={structured.activeTable?.name ?? ""}
+                            onChange={(event) => {
+                              if (!structured.activeTable) return;
+                              void structured.updateTable(structured.activeTable.id, {
+                                name: event.target.value,
+                              });
+                            }}
+                            className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
+                          />
+                        </label>
 
-                      <label className="block">
-                        <span className="mb-2 block text-xs text-white/38">Description</span>
-                        <textarea
-                          value={structured.selectedField?.description ?? ""}
-                          onChange={(event) => {
-                            if (!structured.selectedField) return;
-                            void structured.updateField(structured.selectedField.id, {
-                              description: event.target.value,
-                            });
-                          }}
-                          rows={3}
-                          className="w-full resize-none rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
-                        />
-                      </label>
-
-                      <div className="border-t border-white/10 pt-4">
-                        <div className="mb-3 flex items-center justify-between">
-                          <span className="text-xs text-white/38">Current table</span>
-                          <span className="rounded-md bg-white/10 px-2 py-1 text-xs font-medium text-white/65">
-                            {structured.activeTable?.name ?? "No table"}
-                          </span>
-                        </div>
                         <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <div className="text-xs text-white/30">Records</div>
-                            <div className="truncate text-white/60">
-                              {structured.activeTable?.records.length ?? 0}
-                            </div>
+                          <button
+                            onClick={() =>
+                              structured.activeTable &&
+                              void structured.duplicateTable(structured.activeTable.id)
+                            }
+                            className="flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition-colors hover:bg-white/5 hover:text-white"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                            Duplicate
+                          </button>
+                          <button
+                            onClick={() =>
+                              structured.activeTable &&
+                              void structured.deleteTable(structured.activeTable.id)
+                            }
+                            disabled={(structured.activeBase?.tables.length ?? 0) <= 1}
+                            className="flex items-center justify-center gap-2 rounded-lg border border-red-400/15 px-3 py-2 text-xs text-red-200/75 transition-colors hover:bg-red-500/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-35"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete
+                          </button>
+                          <button
+                            onClick={() => void structured.addField()}
+                            className="flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition-colors hover:bg-white/5 hover:text-white"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Field
+                          </button>
+                          <button
+                            onClick={() => void structured.addRecord()}
+                            className="flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition-colors hover:bg-white/5 hover:text-white"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Record
+                          </button>
+                        </div>
+
+                        <div className="border-t border-white/10 pt-4">
+                          <div className="mb-3 flex items-center justify-between">
+                            <span className="text-xs text-white/38">Current table</span>
+                            <span className="rounded-md bg-white/10 px-2 py-1 text-xs font-medium text-white/65">
+                              {structured.activeTable?.name ?? "No table"}
+                            </span>
                           </div>
-                          <div>
-                            <div className="text-xs text-white/30">Fields</div>
-                            <div className="text-white/60">
-                              {structured.activeTable?.fields.length ?? 0}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <div className="text-xs text-white/30">Records</div>
+                              <div className="truncate text-white/60">
+                                {structured.activeTable?.records.length ?? 0}
+                              </div>
                             </div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-white/30">Capability</div>
-                            <div className="truncate text-white/60">
-                              {selectedCapability.id ?? "None"}
+                            <div>
+                              <div className="text-xs text-white/30">Fields</div>
+                              <div className="text-white/60">
+                                {structured.activeTable?.fields.length ?? 0}
+                              </div>
                             </div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-white/30">State</div>
-                            <div className="text-white/60">
-                              {selectedWindow ? "Running" : "Closed"}
+                            <div>
+                              <div className="text-xs text-white/30">Capability</div>
+                              <div className="truncate text-white/60">
+                                {selectedCapability.id ?? "None"}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-white/30">State</div>
+                              <div className="text-white/60">
+                                {selectedWindow ? "Running" : "Closed"}
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
-
-                      <label className="flex items-center justify-between border-t border-white/10 pt-4">
-                        <span className="text-sm text-white/55">Required</span>
-                        <input
-                          type="checkbox"
-                          checked={!!structured.selectedField?.required}
-                          onChange={(event) => {
-                            if (!structured.selectedField) return;
-                            void structured.updateField(structured.selectedField.id, {
-                              required: event.target.checked,
-                            });
-                          }}
-                          className="h-4 w-4 accent-sky-400"
-                        />
-                      </label>
-                    </div>
+                    )}
 
                     <div className="mt-auto grid gap-2 pt-5">
                       <button

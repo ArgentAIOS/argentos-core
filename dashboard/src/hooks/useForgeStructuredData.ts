@@ -67,9 +67,19 @@ type UseForgeStructuredDataReturn = {
   selectTable: (tableId: string) => Promise<void>;
   selectField: (fieldId: string) => void;
   addTable: () => Promise<void>;
+  updateTable: (
+    tableId: string,
+    updates: Partial<Pick<ForgeStructuredTable, "name">>,
+  ) => Promise<void>;
+  duplicateTable: (tableId: string) => Promise<void>;
+  deleteTable: (tableId: string) => Promise<void>;
   addField: () => Promise<void>;
   updateField: (fieldId: string, updates: Partial<ForgeStructuredField>) => Promise<void>;
+  duplicateField: (fieldId: string) => Promise<void>;
+  deleteField: (fieldId: string) => Promise<void>;
+  moveField: (fieldId: string, direction: "left" | "right") => Promise<void>;
   addRecord: () => Promise<void>;
+  duplicateRecord: (recordId: string) => Promise<void>;
   updateCell: (
     recordId: string,
     fieldId: string,
@@ -103,6 +113,39 @@ function newId(prefix: string): string {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function cloneValue(value: ForgeStructuredRecordValue): ForgeStructuredRecordValue {
+  return value;
+}
+
+function defaultValueForField(field: ForgeStructuredField, label = ""): ForgeStructuredRecordValue {
+  if (field.type === "number") return 0;
+  if (field.type === "checkbox") return false;
+  if (field.type === "single_select") return field.options?.[0] ?? "";
+  return label;
+}
+
+function coerceValueForField(
+  value: ForgeStructuredRecordValue | undefined,
+  field: ForgeStructuredField,
+): ForgeStructuredRecordValue {
+  if (field.type === "number") {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+  }
+  if (field.type === "checkbox") {
+    return value === true || value === "true";
+  }
+  if (field.type === "single_select") {
+    const text = value === null || value === undefined ? "" : String(value);
+    return field.options?.includes(text) ? text : (field.options?.[0] ?? "");
+  }
+  return value === null || value === undefined ? "" : String(value);
 }
 
 function workflowCapabilityId(app: ForgeApp): string {
@@ -344,6 +387,10 @@ function recordValues(table: ForgeStructuredTable, recordId: string): Record<str
   );
 }
 
+function storedFieldSelectionKey(appId: string, tableId: string): string {
+  return `argent.appForge.selectedField.${appId}.${tableId}`;
+}
+
 export function useForgeStructuredData({
   apps,
   selectedAppId,
@@ -381,6 +428,16 @@ export function useForgeStructuredData({
     if (!selectedField || selectedField.id === selectedFieldId) return;
     setSelectedFieldId(selectedField.id);
   }, [selectedField, selectedFieldId]);
+
+  useEffect(() => {
+    if (!selectedAppId || !activeTable || typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(
+      storedFieldSelectionKey(selectedAppId, activeTable.id),
+    );
+    if (stored && activeTable.fields.some((field) => field.id === stored)) {
+      setSelectedFieldId(stored);
+    }
+  }, [activeTable, selectedAppId]);
 
   const persistBase = useCallback(
     async (
@@ -431,9 +488,18 @@ export function useForgeStructuredData({
     [activeBase, persistBase],
   );
 
-  const selectField = useCallback((fieldId: string) => {
-    setSelectedFieldId(fieldId);
-  }, []);
+  const selectField = useCallback(
+    (fieldId: string) => {
+      setSelectedFieldId(fieldId);
+      if (selectedAppId && activeTable && typeof window !== "undefined") {
+        window.localStorage.setItem(
+          storedFieldSelectionKey(selectedAppId, activeTable.id),
+          fieldId,
+        );
+      }
+    },
+    [activeTable, selectedAppId],
+  );
 
   const updateActiveTable = useCallback(
     async (
@@ -466,6 +532,78 @@ export function useForgeStructuredData({
     });
   }, [activeBase, persistBase]);
 
+  const updateTable = useCallback(
+    async (tableId: string, updates: Partial<Pick<ForgeStructuredTable, "name">>) => {
+      if (!activeBase) return;
+      await persistBase({
+        ...activeBase,
+        tables: activeBase.tables.map((table) =>
+          table.id === tableId
+            ? {
+                ...table,
+                name: updates.name?.trim() || table.name,
+              }
+            : table,
+        ),
+      });
+    },
+    [activeBase, persistBase],
+  );
+
+  const duplicateTable = useCallback(
+    async (tableId: string) => {
+      if (!activeBase) return;
+      const source = activeBase.tables.find((table) => table.id === tableId);
+      if (!source) return;
+      const fieldIdMap = new Map(source.fields.map((field) => [field.id, newId("field")]));
+      const table: ForgeStructuredTable = {
+        id: newId("table"),
+        name: `${source.name} Copy`,
+        fields: source.fields.map((field) => ({
+          ...field,
+          id: fieldIdMap.get(field.id) ?? newId("field"),
+          options: field.options ? [...field.options] : undefined,
+        })),
+        records: source.records.map((record) => {
+          const recordId = newId("record");
+          return {
+            id: recordId,
+            createdAt: nowIso(),
+            updatedAt: nowIso(),
+            values: Object.fromEntries(
+              source.fields.map((field) => [
+                fieldIdMap.get(field.id) ?? field.id,
+                cloneValue(record.values[field.id] ?? defaultValueForField(field)),
+              ]),
+            ),
+          };
+        }),
+      };
+      await persistBase({
+        ...activeBase,
+        activeTableId: table.id,
+        tables: [...activeBase.tables, table],
+      });
+    },
+    [activeBase, persistBase],
+  );
+
+  const deleteTable = useCallback(
+    async (tableId: string) => {
+      if (!activeBase || activeBase.tables.length <= 1) return;
+      const tables = activeBase.tables.filter((table) => table.id !== tableId);
+      await persistBase({
+        ...activeBase,
+        activeTableId:
+          activeBase.activeTableId === tableId
+            ? (tables[0]?.id ?? activeBase.activeTableId)
+            : activeBase.activeTableId,
+        tables,
+      });
+    },
+    [activeBase, persistBase],
+  );
+
   const addField = useCallback(async () => {
     const field: ForgeStructuredField = {
       id: newId("field"),
@@ -489,19 +627,110 @@ export function useForgeStructuredData({
     async (fieldId: string, updates: Partial<ForgeStructuredField>) => {
       await updateActiveTable((table) => ({
         ...table,
-        fields: table.fields.map((field) =>
-          field.id === fieldId
-            ? {
-                ...field,
-                ...updates,
-                id: field.id,
-                name: updates.name?.trim() || field.name,
-              }
-            : field,
-        ),
+        fields: table.fields.map((field) => {
+          if (field.id !== fieldId) return field;
+          const nextField = {
+            ...field,
+            ...updates,
+            id: field.id,
+            name: updates.name?.trim() || field.name,
+            options:
+              updates.type && updates.type !== "single_select"
+                ? undefined
+                : (updates.options ?? field.options),
+          };
+          return nextField;
+        }),
+        records: table.records.map((record) => {
+          const field = table.fields.find((candidate) => candidate.id === fieldId);
+          if (!field) return record;
+          const nextField = { ...field, ...updates, id: field.id };
+          return {
+            ...record,
+            values: {
+              ...record.values,
+              [fieldId]: coerceValueForField(record.values[fieldId], nextField),
+            },
+            updatedAt: nowIso(),
+          };
+        }),
       }));
     },
     [updateActiveTable],
+  );
+
+  const duplicateField = useCallback(
+    async (fieldId: string) => {
+      if (!activeTable) return;
+      const source = activeTable.fields.find((field) => field.id === fieldId);
+      if (!source) return;
+      const sourceIndex = activeTable.fields.findIndex((field) => field.id === fieldId);
+      const field: ForgeStructuredField = {
+        ...source,
+        id: newId("field"),
+        name: `${source.name} Copy`,
+        options: source.options ? [...source.options] : undefined,
+      };
+      await updateActiveTable((table) => ({
+        ...table,
+        fields: [
+          ...table.fields.slice(0, sourceIndex + 1),
+          field,
+          ...table.fields.slice(sourceIndex + 1),
+        ],
+        records: table.records.map((record) => ({
+          ...record,
+          values: {
+            ...record.values,
+            [field.id]: cloneValue(record.values[fieldId] ?? defaultValueForField(field)),
+          },
+          updatedAt: nowIso(),
+        })),
+      }));
+      setSelectedFieldId(field.id);
+    },
+    [activeTable, updateActiveTable],
+  );
+
+  const deleteField = useCallback(
+    async (fieldId: string) => {
+      if (!activeTable || activeTable.fields.length <= 1) return;
+      const nextField = activeTable.fields.find((field) => field.id !== fieldId);
+      await updateActiveTable((table) => ({
+        ...table,
+        fields: table.fields.filter((field) => field.id !== fieldId),
+        records: table.records.map((record) => {
+          return {
+            ...record,
+            values: Object.fromEntries(
+              Object.entries(record.values).filter(([key]) => key !== fieldId),
+            ),
+            updatedAt: nowIso(),
+          };
+        }),
+      }));
+      if (nextField) {
+        setSelectedFieldId(nextField.id);
+      }
+    },
+    [activeTable, updateActiveTable],
+  );
+
+  const moveField = useCallback(
+    async (fieldId: string, direction: "left" | "right") => {
+      if (!activeTable) return;
+      const index = activeTable.fields.findIndex((field) => field.id === fieldId);
+      const targetIndex = direction === "left" ? index - 1 : index + 1;
+      if (index < 0 || targetIndex < 0 || targetIndex >= activeTable.fields.length) return;
+      await updateActiveTable((table) => {
+        const fields = [...table.fields];
+        const [field] = fields.splice(index, 1);
+        if (!field) return table;
+        fields.splice(targetIndex, 0, field);
+        return { ...table, fields };
+      });
+    },
+    [activeTable, updateActiveTable],
   );
 
   const addRecord = useCallback(async () => {
@@ -511,7 +740,10 @@ export function useForgeStructuredData({
     const values = Object.fromEntries(
       activeTable.fields.map((field, index) => [
         field.id,
-        index === 0 ? `Untitled ${activeTable.records.length + 1}` : "",
+        defaultValueForField(
+          field,
+          index === 0 ? `Untitled ${activeTable.records.length + 1}` : "",
+        ),
       ]),
     );
     await updateActiveTable(
@@ -527,6 +759,56 @@ export function useForgeStructuredData({
       },
     );
   }, [activeBase, activeTable, updateActiveTable]);
+
+  const duplicateRecord = useCallback(
+    async (recordId: string) => {
+      if (!activeTable) return;
+      const source = activeTable.records.find((record) => record.id === recordId);
+      if (!source) return;
+      const nextRecordId = newId("record");
+      const createdAt = nowIso();
+      const values = Object.fromEntries(
+        activeTable.fields.map((field, index) => {
+          const value = cloneValue(source.values[field.id] ?? defaultValueForField(field));
+          return [
+            field.id,
+            index === 0 && typeof value === "string" && value.trim() ? `${value} Copy` : value,
+          ];
+        }),
+      );
+      await updateActiveTable(
+        (table) => {
+          const sourceIndex = table.records.findIndex((record) => record.id === recordId);
+          const nextRecord = {
+            id: nextRecordId,
+            createdAt,
+            updatedAt: createdAt,
+            values,
+          };
+          return {
+            ...table,
+            records: [
+              ...table.records.slice(0, sourceIndex + 1),
+              nextRecord,
+              ...table.records.slice(sourceIndex + 1),
+            ],
+          };
+        },
+        {
+          eventType: "forge.record.created",
+          tableId: activeTable.id,
+          recordId: nextRecordId,
+          payload: {
+            tableId: activeTable.id,
+            recordId: nextRecordId,
+            values,
+            duplicatedFrom: recordId,
+          },
+        },
+      );
+    },
+    [activeTable, updateActiveTable],
+  );
 
   const updateCell = useCallback(
     async (recordId: string, fieldId: string, value: ForgeStructuredRecordValue) => {
@@ -702,9 +984,16 @@ export function useForgeStructuredData({
     selectTable,
     selectField,
     addTable,
+    updateTable,
+    duplicateTable,
+    deleteTable,
     addField,
     updateField,
+    duplicateField,
+    deleteField,
+    moveField,
     addRecord,
+    duplicateRecord,
     updateCell,
     deleteRecord,
     requestReview,
