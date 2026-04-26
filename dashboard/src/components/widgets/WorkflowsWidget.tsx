@@ -8730,6 +8730,34 @@ function WorkflowCanvasInner({
   const selectedNodeLatestStep = selectedNode
     ? [...(replayRun?.steps ?? [])].reverse().find((step) => step.nodeId === selectedNode.id)
     : undefined;
+  const testDisabledReason = !activeWorkflowId
+    ? "Create a workflow before testing."
+    : !gateway.connected
+      ? "Connect to the gateway before testing live wiring."
+      : validationStatus === "checking"
+        ? "Workflow validation is already running."
+        : "";
+  const saveDisabledReason = !activeWorkflowId
+    ? "Create a workflow before saving."
+    : saving
+      ? "Workflow is already saving."
+      : "";
+  const runDisabledReason = !activeWorkflowId
+    ? "Create a workflow before running."
+    : running
+      ? "Workflow is already running."
+      : saving
+        ? "Wait for the save to finish before running."
+        : !gateway.connected
+          ? "Connect to the gateway before running workflows."
+          : "";
+  const scheduleDisabledReason = !activeWorkflowId
+    ? "Create a workflow before scheduling."
+    : scheduling
+      ? "Workflow scheduling is already in progress."
+      : !gateway.connected
+        ? "Connect to the gateway before scheduling workflows."
+        : "";
   const focusValidationIssue = useCallback(
     (issue: WorkflowValidationIssue) => {
       if (!issue.nodeId) return;
@@ -8802,7 +8830,7 @@ function WorkflowCanvasInner({
               void validateCurrentWorkflow();
             }}
             className="px-3 py-1 rounded text-[11px] font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] disabled:opacity-40 transition-colors"
-            title="Test workflow wiring"
+            title={testDisabledReason || "Test workflow wiring"}
           >
             {validationStatus === "checking" ? "Testing..." : "Test"}
           </button>
@@ -8816,7 +8844,7 @@ function WorkflowCanvasInner({
               });
             }}
             className="px-3 py-1 rounded text-[11px] font-medium bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/25 disabled:opacity-40 transition-colors"
-            title={saving ? "Saving workflow..." : "Save workflow"}
+            title={saveDisabledReason || "Save workflow"}
           >
             {saving ? "Saving..." : "Save"}
           </button>
@@ -8903,7 +8931,7 @@ function WorkflowCanvasInner({
                 ? "bg-yellow-500/15 text-yellow-400"
                 : "bg-green-500/15 text-green-400 hover:bg-green-500/25"
             }`}
-            title={running ? "Workflow running..." : "Run workflow"}
+            title={runDisabledReason || "Run workflow"}
           >
             {running ? "Running..." : activeDeploymentStage === "simulate" ? "Run fixture" : "Run"}
           </button>
@@ -8913,7 +8941,7 @@ function WorkflowCanvasInner({
               void handleSchedule();
             }}
             className="px-3 py-1 rounded text-[11px] font-medium bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 disabled:opacity-40 transition-colors"
-            title={scheduling ? "Scheduling workflow..." : "Schedule workflow"}
+            title={scheduleDisabledReason || "Schedule workflow"}
           >
             {scheduling ? "Scheduling..." : "Schedule"}
           </button>
