@@ -126,21 +126,6 @@ class MockHootsuiteHandler(BaseHTTPRequestHandler):
 
         self._send_json(404, {"message": "not found"})
 
-    def do_POST(self) -> None:  # noqa: N802
-        path, _ = self._record("POST")
-        content_length = int(self.headers.get("Content-Length") or "0")
-        body_text = self.rfile.read(content_length).decode("utf-8") if content_length else ""
-        try:
-            body = json.loads(body_text) if body_text else {}
-        except json.JSONDecodeError:
-            body = body_text
-        self.__class__.requests[-1]["body"] = body
-        if path == "/v1/messages":
-            self._send_json(201, {"id": "msg-new", "state": "scheduled"})
-            return
-        self._send_json(404, {"message": "not found"})
-
-
 @contextmanager
 def mock_hootsuite_server():
     MockHootsuiteHandler.requests = []
@@ -191,7 +176,8 @@ def test_manifest_and_permissions_are_in_sync():
     command_ids = [command["id"] for command in manifest["commands"]]
     assert set(command_ids) == set(permissions.keys())
     assert manifest["scope"]["kind"] == "social-scheduling"
-    assert "message.schedule" in command_ids
+    assert "message.schedule" not in command_ids
+    assert {command["required_mode"] for command in manifest["commands"]} == {"readonly"}
     assert manifest["scope"]["commandDefaults"]["social_profile.list"]["args"] == ["HOOTSUITE_ORGANIZATION_ID"]
     assert manifest["scope"]["commandDefaults"]["message.list"]["args"] == ["HOOTSUITE_SOCIAL_PROFILE_ID"]
 
@@ -202,17 +188,18 @@ def test_capabilities_exposes_manifest():
     assert payload["meta"]["version"] == "0.1.0"
     assert payload["data"]["backend"] == "hootsuite-rest-api"
     assert payload["data"]["modes"] == ["readonly", "write", "full", "admin"]
-    assert payload["data"]["write_support"]["scaffold_only"] is True
+    assert payload["data"]["write_support"]["scaffold_only"] is False
+    assert payload["data"]["write_support"]["scaffolded_commands"] == []
     assert "organization.read" in json.dumps(payload["data"])
-    assert "scaffolded Hootsuite outbound message schedule" in json.dumps(payload["data"])
+    assert "message.schedule" not in json.dumps(payload["data"])
 
 
-def test_json_error_envelope_includes_meta_for_permission_denied():
+def test_removed_write_command_returns_json_usage_error():
     result = CliRunner().invoke(cli, ["--json", "message", "schedule", "Launch post"])
-    assert result.exit_code == 3, result.output
+    assert result.exit_code == 2, result.output
     payload = json.loads(result.output)
     assert payload["ok"] is False
-    assert payload["error"]["code"] == "PERMISSION_DENIED"
+    assert payload["error"]["code"] == "INVALID_USAGE"
     assert payload["meta"]["mode"] == "readonly"
     assert payload["meta"]["version"] == "0.1.0"
     assert "duration_ms" in payload["meta"]
@@ -248,7 +235,7 @@ def test_config_show_redacts_and_surfaces_scope(monkeypatch):
     assert "very-secret-token" not in json.dumps(data)
     assert data["auth"]["access_token_source"] == "env_fallback"
     assert data["scope"]["access_token"] == "<redacted>"
-    assert data["runtime"]["implementation_mode"] == "live_read_with_scaffolded_writes"
+    assert data["runtime"]["implementation_mode"] == "live_read_only"
     assert data["runtime"]["command_defaults"]["organization.read"]["args"][0] == "HOOTSUITE_ORGANIZATION_ID"
     assert data["runtime"]["picker_scopes"]["organization"]["selected"]["organization_id"] == "org-1"
     assert data["runtime"]["picker_scopes"]["social_profile"]["selected"]["social_profile_id"] == "sp-1"
@@ -266,6 +253,55 @@ def test_operator_service_key_context_wins_over_env_fallback(monkeypatch):
         )
         assert payload["data"]["member"]["fullName"] == "Jane Social"
         assert server["requests"][0]["auth"] == "Bearer operator-token"
+
+
+def test_operator_service_key_context_wins_for_base_url(monkeypatch):
+    with mock_hootsuite_server() as server:
+        monkeypatch.setenv("HOOTSUITE_ACCESS_TOKEN", "env-token")
+        monkeypatch.setenv("HOOTSUITE_BASE_URL", "http://127.0.0.1:1")
+        payload = invoke_json_with_obj(
+            ["me", "read"],
+            obj={
+                "service_keys": {
+                    "HOOTSUITE_ACCESS_TOKEN": "operator-token",
+                    "HOOTSUITE_BASE_URL": server["base_url"],
+                }
+            },
+        )
+        assert payload["data"]["member"]["fullName"] == "Jane Social"
+        assert server["requests"][0]["path"] == "/v1/me"
+        assert server["requests"][0]["auth"] == "Bearer operator-token"
+
+
+def test_operator_service_key_context_supplies_scope_defaults(monkeypatch):
+    monkeypatch.setenv("HOOTSUITE_ORGANIZATION_ID", "env-org")
+    monkeypatch.setenv("HOOTSUITE_SOCIAL_PROFILE_ID", "env-profile")
+    payload = invoke_json_with_obj(
+        ["config", "show"],
+        obj={
+            "service_keys": {
+                "HOOTSUITE_ACCESS_TOKEN": "operator-token",
+                "HOOTSUITE_ORGANIZATION_ID": "operator-org",
+                "HOOTSUITE_SOCIAL_PROFILE_ID": "operator-profile",
+                "HOOTSUITE_TEAM_ID": "operator-team",
+                "HOOTSUITE_MESSAGE_ID": "operator-message",
+            }
+        },
+    )
+    data = payload["data"]
+    assert data["auth"]["service_keys"] == [
+        "HOOTSUITE_ACCESS_TOKEN",
+        "HOOTSUITE_BASE_URL",
+        "HOOTSUITE_ORGANIZATION_ID",
+        "HOOTSUITE_SOCIAL_PROFILE_ID",
+        "HOOTSUITE_TEAM_ID",
+        "HOOTSUITE_MESSAGE_ID",
+    ]
+    assert data["runtime"]["picker_scopes"]["organization"]["selected"]["organization_id"] == "operator-org"
+    assert data["runtime"]["picker_scopes"]["social_profile"]["selected"]["social_profile_id"] == "operator-profile"
+    assert data["runtime"]["picker_scopes"]["team"]["selected"]["team_id"] == "operator-team"
+    assert data["runtime"]["picker_scopes"]["message"]["selected"]["message_id"] == "operator-message"
+    assert data["scope"]["organization_id_source"] == "operator:service_keys"
 
 
 def test_member_read_returns_scope_preview(monkeypatch):
@@ -328,21 +364,3 @@ def test_message_list_and_read(monkeypatch):
         read_payload = invoke_json(["message", "read", "msg-1"])
         assert read_payload["data"]["message"]["id"] == "msg-1"
         assert read_payload["data"]["scope_preview"]["message_id"] == "msg-1"
-
-
-def test_scaffold_write_remains_scaffolded(monkeypatch):
-    monkeypatch.setenv("HOOTSUITE_ACCESS_TOKEN", "secret-token")
-    payload = invoke_json([
-        "--mode",
-        "write",
-        "message",
-        "schedule",
-        "Launch post",
-        "--social-profile-id",
-        "sp-1",
-        "--scheduled-send-time",
-        "2026-03-20T12:00:00Z",
-    ])
-    assert payload["data"]["status"] == "scaffold_write_only"
-    assert payload["data"]["command"] == "message.schedule"
-    assert payload["data"]["inputs"]["social_profile_id"] == "sp-1"

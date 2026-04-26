@@ -7,7 +7,14 @@ from pathlib import Path
 from typing import Any
 
 ARGENTOS_ROOT = Path(__file__).resolve().parents[6]
-SERVICE_KEY_VARIABLES = {"HOOTSUITE_ACCESS_TOKEN"}
+SERVICE_KEY_VARIABLES = {
+    "HOOTSUITE_ACCESS_TOKEN",
+    "HOOTSUITE_BASE_URL",
+    "HOOTSUITE_ORGANIZATION_ID",
+    "HOOTSUITE_SOCIAL_PROFILE_ID",
+    "HOOTSUITE_TEAM_ID",
+    "HOOTSUITE_MESSAGE_ID",
+}
 TOOL_SCOPE_KEYS = ("aos-hootsuite", "hootsuite")
 SERVICE_KEY_CONTEXT_FIELDS = ("service_keys", "service_key_values", "api_keys", "secrets")
 
@@ -30,6 +37,16 @@ def _candidate_keys(variable: str) -> tuple[str, ...]:
     keys = [variable, variable.lower()]
     if variable == "HOOTSUITE_ACCESS_TOKEN":
         keys.extend(["access_token", "token"])
+    elif variable == "HOOTSUITE_BASE_URL":
+        keys.extend(["base_url", "api_url", "url"])
+    elif variable == "HOOTSUITE_ORGANIZATION_ID":
+        keys.extend(["organization_id", "org_id", "organization"])
+    elif variable == "HOOTSUITE_SOCIAL_PROFILE_ID":
+        keys.extend(["social_profile_id", "profile_id", "social_profile"])
+    elif variable == "HOOTSUITE_TEAM_ID":
+        keys.extend(["team_id", "team"])
+    elif variable == "HOOTSUITE_MESSAGE_ID":
+        keys.extend(["message_id", "message"])
     return tuple(keys)
 
 

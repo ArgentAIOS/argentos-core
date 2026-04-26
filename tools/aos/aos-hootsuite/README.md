@@ -11,5 +11,5 @@ This first pass gives ArgentOS a truthful Hootsuite surface for:
 - team reads and lists
 - outbound message reads and lists
 
-`message.schedule` is included as a scaffold-only write command until publish approvals,
-artifact handling, and safety rules are ready for a live bridge.
+Publish and schedule writes are intentionally not advertised until a live write bridge,
+artifact handling, and approval safety rules are implemented.
