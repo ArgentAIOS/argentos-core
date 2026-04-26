@@ -7049,9 +7049,9 @@ function WorkflowCanvasInner({
               void validateCurrentWorkflow();
             }}
             className="px-3 py-1 rounded text-[11px] font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] disabled:opacity-40 transition-colors"
-            title="Validate workflow"
+            title="Test workflow wiring"
           >
-            {validationStatus === "checking" ? "Checking..." : "Validate"}
+            {validationStatus === "checking" ? "Testing..." : "Test"}
           </button>
           <button
             disabled={!activeWorkflowId || saving}
