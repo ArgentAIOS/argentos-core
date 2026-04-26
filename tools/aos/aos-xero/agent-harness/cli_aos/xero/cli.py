@@ -14,7 +14,6 @@ from .runtime import (
     doctor_snapshot,
     health_snapshot,
     run_read_command,
-    scaffold_write_command,
 )
 from .constants import MODE_ORDER, PERMISSIONS_PATH
 from .errors import CliError
@@ -107,24 +106,6 @@ def _run_read(ctx: click.Context, command_id: str, items: tuple[str, ...]) -> No
     _emit(payload, ctx.obj["json"])
 
 
-def _run_scaffold(ctx: click.Context, command_id: str, items: tuple[str, ...]) -> None:
-    require_mode(ctx, command_id)
-    scaffold = scaffold_write_command(command_id, items, ctx.obj)
-    payload = _result(
-        ok=False,
-        command=command_id,
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        error={
-            "code": "NOT_IMPLEMENTED",
-            "message": f"{command_id} is scaffolded but not implemented yet",
-            "details": scaffold,
-        },
-    )
-    _emit(payload, ctx.obj["json"])
-    raise SystemExit(10)
-
-
 @click.group()
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON output")
 @click.option("--mode", type=click.Choice(MODE_ORDER), default="readonly", show_default=True)
@@ -188,20 +169,6 @@ def invoice_get(ctx: click.Context, items: tuple[str, ...]) -> None:
     _run_read(ctx, "invoice.get", items)
 
 
-@invoice_group.command("create")
-@click.argument("items", nargs=-1)
-@click.pass_context
-def invoice_create(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _run_scaffold(ctx, "invoice.create", items)
-
-
-@invoice_group.command("send")
-@click.argument("items", nargs=-1)
-@click.pass_context
-def invoice_send(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _run_scaffold(ctx, "invoice.send", items)
-
-
 @cli.group("contact")
 def contact_group() -> None:
     pass
@@ -221,13 +188,6 @@ def contact_get(ctx: click.Context, items: tuple[str, ...]) -> None:
     _run_read(ctx, "contact.get", items)
 
 
-@contact_group.command("create")
-@click.argument("items", nargs=-1)
-@click.pass_context
-def contact_create(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _run_scaffold(ctx, "contact.create", items)
-
-
 @cli.group("payment")
 def payment_group() -> None:
     pass
@@ -245,13 +205,6 @@ def payment_list(ctx: click.Context, items: tuple[str, ...]) -> None:
 @click.pass_context
 def payment_get(ctx: click.Context, items: tuple[str, ...]) -> None:
     _run_read(ctx, "payment.get", items)
-
-
-@payment_group.command("create")
-@click.argument("items", nargs=-1)
-@click.pass_context
-def payment_create(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _run_scaffold(ctx, "payment.create", items)
 
 
 @cli.group("account")
@@ -276,13 +229,6 @@ def bank_transaction_group() -> None:
 @click.pass_context
 def bank_transaction_list(ctx: click.Context, items: tuple[str, ...]) -> None:
     _run_read(ctx, "bank_transaction.list", items)
-
-
-@bank_transaction_group.command("create")
-@click.argument("items", nargs=-1)
-@click.pass_context
-def bank_transaction_create(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _run_scaffold(ctx, "bank_transaction.create", items)
 
 
 @cli.group("report")
@@ -313,10 +259,3 @@ def quote_group() -> None:
 @click.pass_context
 def quote_list(ctx: click.Context, items: tuple[str, ...]) -> None:
     _run_read(ctx, "quote.list", items)
-
-
-@quote_group.command("create")
-@click.argument("items", nargs=-1)
-@click.pass_context
-def quote_create(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _run_scaffold(ctx, "quote.create", items)

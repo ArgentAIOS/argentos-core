@@ -128,7 +128,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "live_backend_available": bool(probe["ok"]),
             "live_read_available": bool(probe["ok"]),
             "write_bridge_available": False,
-            "scaffold_only": True,
+            "scaffold_only": False,
         },
         "auth": {
             "client_id_env": runtime["client_id_env"],
@@ -139,6 +139,10 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "refresh_token_present": runtime["refresh_token_present"],
             "tenant_id_env": runtime["tenant_id_env"],
             "tenant_id_present": runtime["tenant_id_present"],
+            "service_keys": runtime["service_keys"],
+            "operator_service_keys": runtime["service_keys"],
+            "sources": runtime["sources"],
+            "development_fallback": runtime["service_keys"],
         },
         "scope": {
             "contact_id": runtime["contact_id"],
@@ -165,8 +169,9 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "runtime_ready": bool(probe["ok"]),
         "probe": probe,
         "next_steps": [
-            f"Set {runtime['client_id_env']}, {runtime['client_secret_env']}, {runtime['refresh_token_env']}, and {runtime['tenant_id_env']} in API Keys.",
+            f"Set {runtime['client_id_env']}, {runtime['client_secret_env']}, {runtime['refresh_token_env']}, and {runtime['tenant_id_env']} in operator-controlled API Keys.",
             "Use invoice.list or contact.list to confirm the live backend responds.",
+            "Do not advertise Xero write commands until live write workflows and approval policy are implemented.",
         ],
     }
 
@@ -183,21 +188,15 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "command_readiness": {
                 "invoice.list": ready,
                 "invoice.get": ready,
-                "invoice.create": False,
-                "invoice.send": False,
                 "contact.list": ready,
                 "contact.get": ready,
-                "contact.create": False,
                 "payment.list": ready,
                 "payment.get": ready,
-                "payment.create": False,
                 "account.list": ready,
                 "bank_transaction.list": ready,
-                "bank_transaction.create": False,
                 "report.profit_loss": ready,
                 "report.balance_sheet": ready,
                 "quote.list": ready,
-                "quote.create": False,
             },
         },
         "checks": [
@@ -217,14 +216,7 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "report.balance_sheet",
             "quote.list",
         ],
-        "supported_write_commands": [
-            "invoice.create",
-            "invoice.send",
-            "contact.create",
-            "payment.create",
-            "bank_transaction.create",
-            "quote.create",
-        ],
+        "supported_write_commands": [],
     }
 
 
@@ -387,15 +379,3 @@ def run_read_command(command_id: str, items: tuple[str, ...], ctx_obj: dict[str,
         quotes = [_normalize_quote(item) for item in _extract_entries(data, "Quotes")]
         return {"status": "live_read", "backend": BACKEND_NAME, "summary": f"Listed {len(quotes)} quote(s).", "quotes": quotes, "picker": _picker([{"value": item["id"], "label": item["number"] or item["id"], "subtitle": item.get("contact"), "selected": False} for item in quotes], kind="xero_quote"), "scope_preview": _scope_preview("quote.list", "quote", {"tenant_id": runtime["tenant_id"]})}
     raise CliError(code="XERO_UNKNOWN_COMMAND", message=f"Unsupported command: {command_id}", exit_code=2, details={})
-
-
-def scaffold_write_command(command_id: str, items: tuple[str, ...], ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
-    ctx = ctx_obj or {}
-    runtime = resolve_runtime_values(ctx)
-    return {
-        "command_id": command_id,
-        "status": "scaffold_only",
-        "backend": BACKEND_NAME,
-        "requested": list(items),
-        "scope_preview": _scope_preview(command_id, command_id.split(".")[0], {"tenant_id": runtime["tenant_id"] or None}),
-    }

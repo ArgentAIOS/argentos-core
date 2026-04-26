@@ -7,6 +7,7 @@ from typing import Any
 from click.testing import CliRunner
 
 from cli_aos.xero.cli import cli
+import cli_aos.xero.config as config
 import cli_aos.xero.runtime as runtime
 
 
@@ -114,19 +115,51 @@ def invoke_json_with_mode(mode: str, args: list[str]) -> dict[str, Any]:
     return json.loads(result.output)
 
 
+def invoke_result(args: list[str]):
+    return CliRunner().invoke(cli, ["--json", *args])
+
+
 def test_manifest_and_permissions_are_in_sync():
     manifest = json.loads(CONNECTOR_PATH.read_text())
     permissions = json.loads(PERMISSIONS_PATH.read_text())["permissions"]
     command_ids = [command["id"] for command in manifest["commands"]]
     assert set(command_ids) == set(permissions.keys())
     assert manifest["scope"]["kind"] == "accounting"
+    assert {command["required_mode"] for command in manifest["commands"]} == {"readonly"}
+    assert "invoice.create" not in command_ids
+    assert "quote.create" not in command_ids
+    field_ids = {field["id"] for field in manifest["scope"]["fields"]}
+    assert set(manifest["scope"]["workerFields"]) <= field_ids
+
+
+def test_manifest_field_applicability_matches_read_surface():
+    manifest = json.loads(CONNECTOR_PATH.read_text())
+    command_ids = {command["id"] for command in manifest["commands"]}
+    command_defaults = manifest["scope"]["commandDefaults"]
+    field_contracts = {
+        "tenant_id": None,
+        "contact_id": ("args", "XERO_CONTACT_ID"),
+        "invoice_id": ("args", "XERO_INVOICE_ID"),
+        "payment_id": ("args", "XERO_PAYMENT_ID"),
+        "date": ("args", "XERO_DATE"),
+    }
+
+    for field in manifest["scope"]["fields"]:
+        contract = field_contracts[field["id"]]
+        for command_id in field["applies_to"]:
+            assert command_id in command_ids
+            defaults = command_defaults[command_id]
+            if contract is None:
+                continue
+            key, expected = contract
+            assert expected in defaults.get(key, [])
 
 
 def test_capabilities_exposes_manifest():
     payload = invoke_json(["capabilities"])
     assert payload["tool"] == "aos-xero"
     assert payload["data"]["backend"] == "xero-api"
-    assert "invoice.create" in json.dumps(payload["data"])
+    assert "invoice.create" not in json.dumps(payload["data"])
     assert "report.balance_sheet" in json.dumps(payload["data"])
 
 
@@ -173,15 +206,14 @@ def test_invoice_list_returns_picker(monkeypatch):
     assert payload["data"]["picker"]["kind"] == "xero_invoice"
 
 
-def test_invoice_create_is_scaffolded_in_write_mode(monkeypatch):
+def test_removed_write_command_returns_usage_error(monkeypatch):
     monkeypatch.setenv("XERO_CLIENT_ID", "client-id")
     monkeypatch.setenv("XERO_CLIENT_SECRET", "client-secret")
     monkeypatch.setenv("XERO_REFRESH_TOKEN", "refresh-token")
     monkeypatch.setenv("XERO_TENANT_ID", "tenant-123")
     result = CliRunner().invoke(cli, ["--json", "--mode", "write", "invoice", "create"])
-    payload = json.loads(result.output)
-    assert payload["ok"] is False
-    assert payload["error"]["code"] == "NOT_IMPLEMENTED"
+    assert result.exit_code != 0
+    assert "No such command" in result.output
 
 
 def test_contact_get_uses_runtime_default(monkeypatch):
@@ -214,3 +246,32 @@ def test_quote_list_returns_picker(monkeypatch):
     payload = invoke_json(["quote", "list"])
     assert payload["data"]["quotes"][0]["id"] == "quote-1"
     assert payload["data"]["picker"]["kind"] == "xero_quote"
+
+
+def test_resolve_runtime_values_prefers_operator_service_keys(monkeypatch):
+    values = {
+        "XERO_CLIENT_ID": "svc-client",
+        "XERO_CLIENT_SECRET": "svc-secret",
+        "XERO_REFRESH_TOKEN": "svc-refresh",
+        "XERO_TENANT_ID": "svc-tenant",
+        "XERO_CONTACT_ID": "svc-contact",
+        "XERO_INVOICE_ID": "svc-invoice",
+        "XERO_PAYMENT_ID": "svc-payment",
+        "XERO_DATE": "2026-03-26",
+        "XERO_API_BASE_URL": "https://svc-api.example.com",
+        "XERO_TOKEN_URL": "https://svc-token.example.com",
+    }
+    monkeypatch.setenv("XERO_CLIENT_ID", "env-client")
+    monkeypatch.setattr("cli_aos.xero.service_keys.resolve_service_key", lambda variable: values.get(variable))
+    runtime_values = config.resolve_runtime_values({})
+    assert runtime_values["client_id"] == "svc-client"
+    assert runtime_values["client_secret"] == "svc-secret"
+    assert runtime_values["refresh_token"] == "svc-refresh"
+    assert runtime_values["tenant_id"] == "svc-tenant"
+    assert runtime_values["contact_id"] == "svc-contact"
+    assert runtime_values["invoice_id"] == "svc-invoice"
+    assert runtime_values["payment_id"] == "svc-payment"
+    assert runtime_values["date"] == "2026-03-26"
+    assert runtime_values["api_base_url"] == "https://svc-api.example.com"
+    assert runtime_values["token_url"] == "https://svc-token.example.com"
+    assert runtime_values["sources"]["XERO_CLIENT_ID"] == "service-keys"

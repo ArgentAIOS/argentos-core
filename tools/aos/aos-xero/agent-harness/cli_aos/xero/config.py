@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from .constants import (
@@ -14,6 +13,7 @@ from .constants import (
     TENANT_ID_ENV,
     TOKEN_URL_ENV,
 )
+from .service_keys import SERVICE_KEY_VARIABLES, service_key_env, service_key_source
 
 
 def _mask(value: str | None) -> str | None:
@@ -25,21 +25,16 @@ def _mask(value: str | None) -> str | None:
 
 
 def resolve_runtime_values(_ctx_obj: dict[str, Any]) -> dict[str, Any]:
-    client_id = os.getenv(CLIENT_ID_ENV, "").strip()
-    client_secret = os.getenv(CLIENT_SECRET_ENV, "").strip()
-    refresh_token = os.getenv(REFRESH_TOKEN_ENV, "").strip()
-    tenant_id = os.getenv(TENANT_ID_ENV, "").strip()
-    contact_id = os.getenv(CONTACT_ID_ENV, "").strip()
-    invoice_id = os.getenv(INVOICE_ID_ENV, "").strip()
-    payment_id = os.getenv(PAYMENT_ID_ENV, "").strip()
-    amount = os.getenv("XERO_AMOUNT", "").strip()
-    currency = os.getenv("XERO_CURRENCY", "").strip()
-    account_code = os.getenv("XERO_ACCOUNT_CODE", "").strip()
-    date = os.getenv("XERO_DATE", "").strip()
-    due_date = os.getenv("XERO_DUE_DATE", "").strip()
-    description = os.getenv("XERO_DESCRIPTION", "").strip()
-    api_base_url = os.getenv(API_BASE_URL_ENV, "").strip()
-    token_url = os.getenv(TOKEN_URL_ENV, "").strip()
+    client_id = (service_key_env(CLIENT_ID_ENV) or "").strip()
+    client_secret = (service_key_env(CLIENT_SECRET_ENV) or "").strip()
+    refresh_token = (service_key_env(REFRESH_TOKEN_ENV) or "").strip()
+    tenant_id = (service_key_env(TENANT_ID_ENV) or "").strip()
+    contact_id = (service_key_env(CONTACT_ID_ENV) or "").strip()
+    invoice_id = (service_key_env(INVOICE_ID_ENV) or "").strip()
+    payment_id = (service_key_env(PAYMENT_ID_ENV) or "").strip()
+    date = (service_key_env("XERO_DATE") or "").strip()
+    api_base_url = (service_key_env(API_BASE_URL_ENV) or "").strip()
+    token_url = (service_key_env(TOKEN_URL_ENV) or "").strip()
     return {
         "client_id": client_id,
         "client_id_present": bool(client_id),
@@ -59,23 +54,15 @@ def resolve_runtime_values(_ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "invoice_id_env": INVOICE_ID_ENV,
         "payment_id": payment_id or None,
         "payment_id_env": PAYMENT_ID_ENV,
-        "amount": amount or None,
-        "amount_env": "XERO_AMOUNT",
-        "currency": currency or None,
-        "currency_env": "XERO_CURRENCY",
-        "account_code": account_code or None,
-        "account_code_env": "XERO_ACCOUNT_CODE",
         "date": date or None,
         "date_env": "XERO_DATE",
-        "due_date": due_date or None,
-        "due_date_env": "XERO_DUE_DATE",
-        "description": description or None,
-        "description_env": "XERO_DESCRIPTION",
         "api_base_url": api_base_url or None,
         "api_base_url_env": API_BASE_URL_ENV,
         "token_url": token_url or None,
         "token_url_env": TOKEN_URL_ENV,
         "credentials_present": bool(client_id and client_secret and refresh_token and tenant_id),
+        "service_keys": sorted(SERVICE_KEY_VARIABLES),
+        "sources": {key: service_key_source(key) for key in sorted(SERVICE_KEY_VARIABLES)},
     }
 
 
@@ -95,17 +82,16 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "tenant_id_env": runtime["tenant_id_env"],
             "tenant_id_present": runtime["tenant_id_present"],
             "tenant_id_preview": _mask(runtime["tenant_id"]),
+            "service_keys": runtime["service_keys"],
+            "operator_service_keys": runtime["service_keys"],
+            "sources": runtime["sources"],
+            "development_fallback": runtime["service_keys"],
         },
         "scope": {
             "contact_id": runtime["contact_id"],
             "invoice_id": runtime["invoice_id"],
             "payment_id": runtime["payment_id"],
-            "amount": runtime["amount"],
-            "currency": runtime["currency"],
-            "account_code": runtime["account_code"],
             "date": runtime["date"],
-            "due_date": runtime["due_date"],
-            "description": runtime["description"],
             "api_base_url": runtime["api_base_url"],
             "token_url": runtime["token_url"],
         },
