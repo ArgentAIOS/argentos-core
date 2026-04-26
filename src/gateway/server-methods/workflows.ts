@@ -1768,7 +1768,11 @@ export const workflowsHandlers: GatewayRequestHandlers = {
 
   "workflows.draft": async ({ params, respond }) => {
     try {
-      const toolStatus = buildToolsStatusPayload(params);
+      const requestedAgentId =
+        optionalString(params, "preferredAgentId") ?? optionalString(params, "ownerAgentId");
+      const toolStatus = buildToolsStatusPayload(
+        requestedAgentId ? { agentId: requestedAgentId } : {},
+      );
       const skillCapabilities = await buildWorkflowPersonalSkillCapabilities(params).catch(() => ({
         agentId: toolStatus.agentId,
         personalSkills: [],

@@ -46,6 +46,15 @@ async function callTemplateGet(params: Record<string, unknown>) {
   return respond.mock.calls[0] as [boolean, unknown, unknown?];
 }
 
+async function callDraft(params: Record<string, unknown>) {
+  const respond = vi.fn();
+  await workflowsHandlers["workflows.draft"]({
+    params,
+    respond,
+  } as unknown as GatewayRequestHandlerOptions);
+  return respond.mock.calls[0] as [boolean, unknown, unknown?];
+}
+
 describe("workflows.importPreview", () => {
   it("previews canonical JSON packages without persisting them", async () => {
     const source = OWNER_OPERATOR_WORKFLOW_PACKAGES[0];
@@ -96,6 +105,25 @@ describe("workflows.importPreview", () => {
     expect(ok).toBe(false);
     expect(error).toMatchObject({
       code: "INVALID_REQUEST",
+    });
+  });
+});
+
+describe("workflows.draft", () => {
+  it("accepts operator intent and workflow name without leaking them into tools.status", async () => {
+    const [ok, payload, error] = await callDraft({
+      name: "Daily AI Tech Brief",
+      intent:
+        "- GitHub\n- the latest models\n- large movements from big frontier companies\n- open-source big movers\nSummarize it all and send it to me in Telegram like a podcast",
+    });
+
+    expect(ok).toBe(true);
+    expect(error).toBeUndefined();
+    expect(payload).toMatchObject({
+      name: "Daily AI Tech Brief",
+      nodes: expect.any(Array),
+      edges: expect.any(Array),
+      canvasLayout: { nodes: expect.any(Array), edges: expect.any(Array) },
     });
   });
 });
