@@ -194,6 +194,16 @@ interface WorkflowValidationIssue {
   edgeId?: string;
 }
 
+interface WorkflowCronJob {
+  id: string;
+  name?: string;
+  enabled?: boolean;
+  payload?: {
+    kind?: string;
+    workflowId?: string;
+  };
+}
+
 function normalizeValidationIssue(raw: unknown): WorkflowValidationIssue | null {
   if (!raw || typeof raw !== "object") {
     return null;
@@ -5764,6 +5774,7 @@ function WorkflowCanvasInner({
 
   // ── Run State ─────────────────────────────────────────────────────
   const [running, setRunning] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [, setCompletedNodeIds] = useState<Set<string>>(new Set());
   const [, setFailedNodeIds] = useState<Set<string>>(new Set());
@@ -6470,6 +6481,78 @@ function WorkflowCanvasInner({
     }
   }, [activeWorkflowId, running, gateway, clearExecState, validateCurrentWorkflow]);
 
+  const handleSchedule = useCallback(async () => {
+    if (!activeWorkflowId || scheduling || !gateway.connected) return;
+    const workflow = workflows.find((candidate) => candidate.id === activeWorkflowId);
+    const scheduleTrigger = nodes.find((node) => {
+      if (node.type !== "trigger") return false;
+      const data = node.data as Record<string, unknown>;
+      return data.triggerType === "schedule";
+    });
+    const triggerData = scheduleTrigger?.data as Record<string, unknown> | undefined;
+    const cronExpression =
+      typeof triggerData?.cronExpression === "string" ? triggerData.cronExpression.trim() : "";
+    const timezone = typeof triggerData?.timezone === "string" ? triggerData.timezone : undefined;
+    if (!cronExpression) {
+      alert("Set the trigger to Schedule and choose a schedule before creating the cron job.");
+      return;
+    }
+
+    setScheduling(true);
+    try {
+      const valid = await validateCurrentWorkflow();
+      if (!valid) {
+        return;
+      }
+
+      const cleanNodes = cleanWorkflowNodes();
+      await gateway.request("workflows.update", {
+        workflowId: activeWorkflowId,
+        name: workflow?.name,
+        canvasData: { nodes: cleanNodes, edges },
+        triggerType: "schedule",
+        triggerConfig: { cronExpression, timezone },
+        changeSummary: "Saved workflow schedule from canvas toolbar",
+      });
+
+      const cronList = await gateway.request<{ jobs?: WorkflowCronJob[] }>("cron.list", {
+        includeDisabled: true,
+      });
+      const existing = (cronList?.jobs ?? []).find(
+        (job) => job.payload?.kind === "workflowRun" && job.payload.workflowId === activeWorkflowId,
+      );
+      const cronPatch = {
+        name: `Workflow: ${workflow?.name ?? activeWorkflowId}`,
+        enabled: true,
+        schedule: { kind: "cron", expr: cronExpression, ...(timezone ? { tz: timezone } : {}) },
+        sessionTarget: "main",
+        wakeMode: "next-heartbeat",
+        payload: { kind: "workflowRun", workflowId: activeWorkflowId },
+        delivery: { mode: "none" },
+      };
+      if (existing) {
+        await gateway.request("cron.update", { id: existing.id, patch: cronPatch });
+      } else {
+        await gateway.request("cron.add", cronPatch);
+      }
+      alert(`Scheduled ${workflow?.name ?? "workflow"} with ${cronExpression}.`);
+    } catch (err) {
+      console.error("[Workflows] Schedule failed:", err);
+      alert(`Could not schedule workflow: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setScheduling(false);
+    }
+  }, [
+    activeWorkflowId,
+    cleanWorkflowNodes,
+    edges,
+    gateway,
+    nodes,
+    scheduling,
+    validateCurrentWorkflow,
+    workflows,
+  ]);
+
   // Load active workflow into canvas
   const activeWorkflow = useMemo(
     () => workflows.find((w) => w.id === activeWorkflowId) ?? null,
@@ -6897,11 +6980,14 @@ function WorkflowCanvasInner({
             {running ? "Running..." : "Run"}
           </button>
           <button
-            disabled={!activeWorkflowId}
+            disabled={!activeWorkflowId || scheduling || !gateway.connected}
+            onClick={() => {
+              void handleSchedule();
+            }}
             className="px-3 py-1 rounded text-[11px] font-medium bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 disabled:opacity-40 transition-colors"
-            title="Schedule workflow"
+            title={scheduling ? "Scheduling workflow..." : "Schedule workflow"}
           >
-            Schedule
+            {scheduling ? "Scheduling..." : "Schedule"}
           </button>
         </div>
       </div>
