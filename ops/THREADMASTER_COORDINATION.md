@@ -211,6 +211,15 @@ Workflows/AppForge/AOU reaction: consume manifests/capabilities only; do not inf
 
 Current active core threadmasters: AppForge 2.0, Work flow building master, AOU Stub Finder, and Compare OpenClaw 4.24 features. Treat the Workflows threadmaster as the master coordinator for cross-project lane awareness while it continues implementing the workflow canvas/runtime.
 
+### 2026-04-26 — AOS Klaviyo Connector Slice
+
+Lane: `AOS Klaviyo connector`
+Branch/status: `codex/aos-klaviyo-loop` in progress.
+Owned files/directories: `tools/aos/aos-klaviyo/**` plus this coordination note.
+Shared contract change: Klaviyo remains a truthful live read-only connector with `account.read`, list/profile/campaign reads, and connector utility commands only. No Klaviyo mutation commands are advertised until approval and compliance safeguards are shipped.
+Operator key contract: `KLAVIYO_API_KEY`, `KLAVIYO_REVISION`, `KLAVIYO_LIST_ID`, `KLAVIYO_PROFILE_ID`, `KLAVIYO_PROFILE_EMAIL`, and `KLAVIYO_CAMPAIGN_ID` resolve from operator service keys before local environment fallback.
+Workflows/AppForge/AOU reaction: consume Klaviyo manifest/capabilities only; treat Klaviyo as live read-only and do not present it as an output/write destination.
+
 ### 2026-04-26 — OpenClaw 4.24 Comparison Lane
 
 Lane: OpenClaw 4.24 realtime/browser/marketplace comparison. Branch/commit: `codex/aos-next-connector-wave` at `ad3fb0b9`. Owned files/directories for this lane: `ops/THREADMASTER_COORDINATION.md` for coordination updates; future comparison artifacts under `ops/**` only unless the board is updated first. Shared contract changes: none yet. Workflows/AppForge/AOU reaction: proposed direction is browser harness first, provider-neutral realtime voice substrate second, then Google Meet as a marketplace-distributed capability plugin; no implementation dependency is active until a follow-up plan claims specific files/contracts.

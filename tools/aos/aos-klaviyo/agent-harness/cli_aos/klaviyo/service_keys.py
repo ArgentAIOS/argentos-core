@@ -6,7 +6,14 @@ from functools import lru_cache
 from pathlib import Path
 
 ARGENTOS_ROOT = Path(__file__).resolve().parents[6]
-SERVICE_KEY_VARIABLES = {"KLAVIYO_API_KEY"}
+SERVICE_KEY_VARIABLES = {
+    "KLAVIYO_API_KEY",
+    "KLAVIYO_REVISION",
+    "KLAVIYO_LIST_ID",
+    "KLAVIYO_PROFILE_ID",
+    "KLAVIYO_PROFILE_EMAIL",
+    "KLAVIYO_CAMPAIGN_ID",
+}
 
 
 @lru_cache(maxsize=64)
