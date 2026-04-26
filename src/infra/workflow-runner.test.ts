@@ -25,6 +25,16 @@ const storageMocks = vi.hoisted(() => ({
   })),
 }));
 
+const connectorMocks = vi.hoisted(() => ({
+  runConnectorCommandJson: vi.fn(async () => ({
+    ok: true,
+    exitCode: 0,
+    stdout: '{"id":"msg-1","status":"sent"}',
+    stderr: "",
+    data: { id: "msg-1", status: "sent" },
+  })),
+}));
+
 // Mock redis-client to avoid real Redis connections in tests
 vi.mock("../data/redis-client.js", () => ({
   refreshPresence: vi.fn(),
@@ -39,6 +49,20 @@ vi.mock("../data/storage-factory.js", () => ({
       update: vi.fn(),
     },
   })),
+}));
+
+vi.mock("../connectors/catalog.js", () => ({
+  defaultRepoRoots: () => [],
+  discoverConnectorCatalog: vi.fn(async () => ({
+    total: 1,
+    connectors: [
+      {
+        tool: "aos-slack",
+        discovery: { binaryPath: "/tmp/aos-slack", harnessDir: "/tmp" },
+      },
+    ],
+  })),
+  runConnectorCommandJson: connectorMocks.runConnectorCommandJson,
 }));
 
 // Mock subsystem logger
@@ -310,6 +334,60 @@ describe("executeWorkflow", () => {
         docId: "doc-real-1",
       },
       artifacts: [{ type: "docpanel", id: "doc:doc-real-1", title: "Brief mock output" }],
+    });
+  });
+
+  it("delivers output through a connector action destination", async () => {
+    connectorMocks.runConnectorCommandJson.mockClear();
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output: OutputNode = {
+      ...makeOutput(),
+      config: {
+        outputType: "connector_action",
+        connectorId: "aos-slack",
+        resource: "message",
+        operation: "message.send",
+        parameters: { channel_id: "ops", text: "Rendered: {{previous.result}}" },
+        outputMapping: { messageId: "id" },
+      },
+    };
+
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-output-connector",
+      dispatcher: mockDispatcher,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(connectorMocks.runConnectorCommandJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: [
+          "--json",
+          "message",
+          "send",
+          "--channel-id",
+          "ops",
+          "--text",
+          "Rendered: mock output",
+        ],
+        binaryPath: "/tmp/aos-slack",
+      }),
+    );
+    expect(result.steps[2].output.items[0]).toMatchObject({
+      text: '{"id":"msg-1","status":"sent"}',
+      json: {
+        ok: true,
+        connectorId: "aos-slack",
+        operation: "message.send",
+        resource: "message",
+        messageId: "msg-1",
+      },
     });
   });
 

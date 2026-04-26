@@ -571,6 +571,31 @@ function normalizeOutputConfig(
             "Next workflow input mapping",
           ) ?? undefined,
       };
+    case "connector_action":
+      return {
+        ...source,
+        outputType: "connector_action",
+        connectorId: asString(config.connectorId ?? data.connectorId),
+        credentialId: asString(config.credentialId ?? data.credentialId) || undefined,
+        resource: asString(config.resource ?? data.resource, "message"),
+        operation: asString(config.operation ?? data.operation),
+        parameters: parseJsonObject(
+          config.parameters ?? data.parameters ?? config.parametersJson ?? data.parametersJson,
+          issues,
+          nodeId,
+          "Connector parameters",
+        ) ?? { text: "{{previous.text}}" },
+        outputMapping:
+          parseStringRecord(
+            config.outputMapping ??
+              data.outputMapping ??
+              config.outputMappingJson ??
+              data.outputMappingJson,
+            issues,
+            nodeId,
+            "Connector output mapping",
+          ) ?? undefined,
+      };
     case "variable":
       issues.push({
         severity: "warning",
@@ -824,9 +849,14 @@ function reachableFrom(starts: string[], edges: WorkflowEdge[]) {
 
 function isUnsafeNode(node: WorkflowNode): boolean {
   if (node.kind === "output") {
-    return ["channel", "email", "webhook", "task_update", "next_workflow"].includes(
-      node.config.outputType,
-    );
+    return [
+      "channel",
+      "email",
+      "webhook",
+      "task_update",
+      "next_workflow",
+      "connector_action",
+    ].includes(node.config.outputType);
   }
   if (node.kind !== "action") {
     return false;
@@ -988,6 +1018,20 @@ export function validateWorkflow(
               code: "output_next_workflow_required",
               nodeId: node.id,
               message: "Next workflow output requires a workflow ID.",
+            });
+          }
+          break;
+        case "connector_action":
+          if (
+            !config.connectorId?.trim() ||
+            !config.resource?.trim() ||
+            !config.operation?.trim()
+          ) {
+            issues.push({
+              severity: "error",
+              code: "output_connector_action_incomplete",
+              nodeId: node.id,
+              message: "Connector output requires connectorId, resource, and operation.",
             });
           }
           break;

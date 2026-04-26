@@ -107,7 +107,8 @@ interface OutputNodeData {
     | "variable"
     | "knowledge"
     | "task_update"
-    | "next_workflow";
+    | "next_workflow"
+    | "connector_action";
   format: string;
   execState?: NodeExecState;
   retryCount?: number;
@@ -1372,6 +1373,7 @@ function OutputNode({ data, selected }: NodeProps<Node<OutputNodeData>>) {
     knowledge: "Knowledge",
     task_update: "Task Manager",
     next_workflow: "Next Workflow",
+    connector_action: "Connector Action",
   };
   const channelType =
     typeof data.channelType === "string" && data.channelType.trim()
@@ -1382,7 +1384,9 @@ function OutputNode({ data, selected }: NodeProps<Node<OutputNodeData>>) {
   const targetLabel =
     data.target === "channel" && channelType
       ? channelType
-      : targetLabels[data.target] || data.target;
+      : data.target === "connector_action" && typeof data.connectorName === "string"
+        ? data.connectorName
+        : targetLabels[data.target] || data.target;
   return (
     <div
       className={`relative px-4 py-3 rounded-lg border min-w-[160px] transition-shadow ${execStateClass(data.execState)} ${
@@ -3538,6 +3542,10 @@ function outputDestinationLabel(
       return record.taskId ? `Task update / ${record.taskId}` : "Task update";
     case "next_workflow":
       return record.workflowId ? `Workflow / ${record.workflowId}` : "Start workflow";
+    case "connector_action":
+      return record.connectorName || record.connectorId
+        ? `Connector / ${record.connectorName || record.connectorId}`
+        : "Connector action";
     case "variable":
       return "Variable";
     case "doc_panel":
@@ -3570,6 +3578,20 @@ function outputPreviewText(
     .replaceAll(/\{\{steps\.([^}]+)\}\}/g, "Example step value");
 }
 
+function stringifyOutputJson(value: unknown, fallback = "{}"): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value && typeof value === "object") {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
 function outputSideEffectLabel(target: OutputNodeData["target"]): string {
   switch (target) {
     case "channel":
@@ -3579,6 +3601,7 @@ function outputSideEffectLabel(target: OutputNodeData["target"]): string {
     case "webhook":
     case "task_update":
     case "next_workflow":
+    case "connector_action":
       return "External write";
     case "knowledge":
     case "doc_panel":
@@ -3594,12 +3617,14 @@ function OutputForm({
   nodeId,
   outputChannels,
   nodes,
+  connectors,
 }: {
   data: OutputNodeData;
   onUpdate: (id: string, data: Record<string, unknown>) => void;
   nodeId: string;
   outputChannels: OutputChannelOption[];
   nodes: Node[];
+  connectors: ConnectorEntry[];
 }) {
   const update = (field: string, value: unknown) => {
     onUpdate(nodeId, { ...data, [field]: value });
@@ -3616,7 +3641,9 @@ function OutputForm({
       ? selectedChannelId
         ? `channel:${selectedChannelId}`
         : "channel:"
-      : data.target;
+      : data.target === "connector_action" && typeof record.connectorId === "string"
+        ? `connector:${record.connectorId}`
+        : data.target;
   const selectedChannel = outputChannels.find((channel) => channel.id === selectedChannelId);
   const selectedChannelTargets = selectedChannel?.targets ?? [];
   const selectedChannelTargetIds = new Set(selectedChannelTargets.map((target) => target.id));
@@ -3631,6 +3658,14 @@ function OutputForm({
     Boolean(selectedChannelId) &&
     (data.target === "channel" || data.target === "discord" || data.target === "telegram") &&
     !selectedChannel;
+  const runnableConnectors = connectors.filter(
+    (connector) => !connector.scaffoldOnly && connector.readinessState !== "blocked",
+  );
+  const selectedConnector =
+    typeof record.connectorId === "string"
+      ? runnableConnectors.find((connector) => connector.id === record.connectorId)
+      : undefined;
+  const connectorCommands = selectedConnector?.commands ?? [];
   const legacyVariableSelected = data.target === "variable";
   const sourceMode = typeof record.sourceMode === "string" ? record.sourceMode : "previous";
   const sourceNodeOptions = nodes
@@ -3654,25 +3689,30 @@ function OutputForm({
     });
   const selectedSourceNodeId = typeof record.sourceNodeId === "string" ? record.sourceNodeId : "";
   const payloadValue =
-    sourceMode === "custom" && typeof record.contentTemplate !== "string"
-      ? ""
-      : data.target === "channel" || data.target === "discord" || data.target === "telegram"
-        ? typeof record.template === "string"
-          ? record.template
-          : typeof record.contentTemplate === "string"
-            ? record.contentTemplate
-            : "{{previous.text}}"
-        : data.target === "email" || data.target === "webhook"
-          ? typeof record.bodyTemplate === "string"
-            ? record.bodyTemplate
+    data.target === "connector_action"
+      ? stringifyOutputJson(
+          record.parametersJson ?? record.parameters,
+          '{\n  "text": "{{previous.text}}"\n}',
+        )
+      : sourceMode === "custom" && typeof record.contentTemplate !== "string"
+        ? ""
+        : data.target === "channel" || data.target === "discord" || data.target === "telegram"
+          ? typeof record.template === "string"
+            ? record.template
             : typeof record.contentTemplate === "string"
               ? record.contentTemplate
-              : data.target === "webhook"
-                ? "{{previous.json}}"
-                : "{{previous.text}}"
-          : typeof record.contentTemplate === "string"
-            ? record.contentTemplate
-            : "{{previous.text}}";
+              : "{{previous.text}}"
+          : data.target === "email" || data.target === "webhook"
+            ? typeof record.bodyTemplate === "string"
+              ? record.bodyTemplate
+              : typeof record.contentTemplate === "string"
+                ? record.contentTemplate
+                : data.target === "webhook"
+                  ? "{{previous.json}}"
+                  : "{{previous.text}}"
+            : typeof record.contentTemplate === "string"
+              ? record.contentTemplate
+              : "{{previous.text}}";
   const selectedSourceLabel = outputSourceLabel(
     sourceMode,
     selectedSourceNodeId,
@@ -3682,6 +3722,10 @@ function OutputForm({
   const previewText = outputPreviewText(payloadValue, sourceMode, selectedSourceLabel);
   const sideEffectLabel = outputSideEffectLabel(data.target);
   const updatePayload = (value: string) => {
+    if (data.target === "connector_action") {
+      onUpdate(nodeId, { ...data, parametersJson: value, parameters: value });
+      return;
+    }
     if (data.target === "channel" || data.target === "discord" || data.target === "telegram") {
       onUpdate(nodeId, { ...data, template: value, contentTemplate: value });
       return;
@@ -3704,6 +3748,29 @@ function OutputForm({
         ...(firstTarget && !(record.channelId as string | undefined)
           ? { channelId: firstTarget }
           : {}),
+      });
+      return;
+    }
+    if (value.startsWith("connector:")) {
+      const connectorId = value.slice("connector:".length);
+      const connector = runnableConnectors.find((entry) => entry.id === connectorId);
+      const firstCommand = connector?.commands?.[0];
+      onUpdate(nodeId, {
+        ...data,
+        target: "connector_action",
+        connectorId,
+        connectorName: connector?.name ?? connectorId,
+        connectorCategory: connector?.category ?? "general",
+        resource: firstCommand?.id?.split(".")[0] ?? "message",
+        operation: firstCommand?.id ?? "",
+        parametersJson:
+          typeof record.parametersJson === "string"
+            ? record.parametersJson
+            : '{\n  "text": "{{previous.text}}"\n}',
+        parameters:
+          typeof record.parametersJson === "string"
+            ? record.parametersJson
+            : '{\n  "text": "{{previous.text}}"\n}',
       });
       return;
     }
@@ -3809,6 +3876,16 @@ function OutputForm({
               {selectedChannelId} (not configured)
             </option>
           )}
+          {runnableConnectors.length > 0 && (
+            <optgroup label="Connector actions">
+              {runnableConnectors.map((connector) => (
+                <option key={connector.id} value={`connector:${connector.id}`}>
+                  {connector.name}
+                  {connector.readinessState === "setup_required" ? " (needs setup)" : ""}
+                </option>
+              ))}
+            </optgroup>
+          )}
           <optgroup label="Manual endpoints">
             <option value="email">Email</option>
             <option value="webhook">Webhook</option>
@@ -3911,6 +3988,97 @@ function OutputForm({
               />
             </div>
           )}
+        </>
+      )}
+
+      {data.target === "connector_action" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Connector</label>
+            <select
+              className={DOCK_INPUT}
+              value={(record.connectorId as string) || ""}
+              onChange={(e) => updateTarget(`connector:${e.target.value}`)}
+            >
+              <option value="">Select connector...</option>
+              {runnableConnectors.map((connector) => (
+                <option key={connector.id} value={connector.id}>
+                  {connector.name} ({connector.category})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Operation</label>
+            <select
+              className={DOCK_INPUT}
+              value={(record.operation as string) || ""}
+              onChange={(e) => {
+                const operation = e.target.value;
+                onUpdate(nodeId, {
+                  ...data,
+                  operation,
+                  ...(!record.resource && operation.includes(".")
+                    ? { resource: operation.split(".")[0] }
+                    : {}),
+                });
+              }}
+            >
+              <option value="">Select operation...</option>
+              {connectorCommands.map((command) => (
+                <option key={command.id} value={command.id}>
+                  {command.id}
+                  {command.actionClass ? ` (${command.actionClass})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          {connectorCommands.length === 0 && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              This connector is visible but has no manifest command surfaced for workflow output
+              delivery yet.
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Resource</label>
+            <input
+              className={DOCK_INPUT}
+              value={(record.resource as string) || ""}
+              onChange={(e) => update("resource", e.target.value)}
+              placeholder="message"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL + " flex items-center gap-1"}>
+              Credential ID
+              <HelpTip text="Optional workflow credential record. Operator service keys remain the preferred connector auth path." />
+            </label>
+            <input
+              className={DOCK_INPUT}
+              value={(record.credentialId as string) || ""}
+              onChange={(e) => update("credentialId", e.target.value)}
+              placeholder="optional"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL + " flex items-center gap-1"}>
+              Output mapping
+              <HelpTip text="Optional JSON object mapping workflow output fields to connector response paths." />
+            </label>
+            <textarea
+              className={DOCK_INPUT + " font-mono text-[11px] resize-y"}
+              rows={3}
+              value={stringifyOutputJson(record.outputMappingJson ?? record.outputMapping, "")}
+              onChange={(e) => {
+                onUpdate(nodeId, {
+                  ...data,
+                  outputMappingJson: e.target.value,
+                  outputMapping: e.target.value,
+                });
+              }}
+              placeholder='{"messageId": "json.id"}'
+            />
+          </div>
         </>
       )}
 
@@ -6611,6 +6779,7 @@ function WorkflowCanvasInner({
                         nodeId={selectedNode.id}
                         outputChannels={outputChannels}
                         nodes={nodes}
+                        connectors={connectors}
                       />
                     )}
                     {selectedNode.type === "modelProvider" && (

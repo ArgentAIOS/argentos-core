@@ -27,6 +27,7 @@ import type {
   TriggerNode,
   AgentNode,
   ActionNode,
+  ActionType,
   GateNode,
   OutputNode,
   AgentDispatcher,
@@ -1860,180 +1861,178 @@ async function executeAction(
     }
 
     case "connector_action": {
-      const { connectorId, credentialId, resource, operation, parameters, outputMapping } =
-        actionType;
-      try {
-        // 1. Discover connector binary from catalog
-        const { discoverConnectorCatalog, runConnectorCommandJson, defaultRepoRoots } =
-          await import("../connectors/catalog.js");
-        const catalog = await discoverConnectorCatalog();
-        const connector = catalog.connectors.find((c) => c.tool === connectorId);
-        if (!connector?.discovery.binaryPath) {
-          throw new Error(`Connector "${connectorId}" not found or has no runnable binary`);
-        }
-
-        // 2. Load connector manifest for auth requirements
-        const fs = await import("node:fs");
-        const nodePath = await import("node:path");
-        let manifest: Record<string, unknown> | null = null;
-        for (const root of defaultRepoRoots()) {
-          const manifestPath = nodePath.join(root, connectorId, "connector.json");
-          if (fs.existsSync(manifestPath)) {
-            try {
-              manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as Record<
-                string,
-                unknown
-              >;
-              break;
-            } catch {
-              /* try next root */
-            }
-          }
-        }
-
-        // 2b. Guard: block manifest-only connectors from execution
-        if (manifest) {
-          const scope =
-            manifest.scope && typeof manifest.scope === "object"
-              ? (manifest.scope as Record<string, unknown>)
-              : {};
-          if (scope.scaffold_only === true || scope.live_backend_available === false) {
-            return {
-              items: [
-                {
-                  text: `Connector "${connectorId}" is manifest-only — no runtime harness available. This connector cannot be executed until a Python CLI harness is implemented.`,
-                  json: {
-                    connectorId,
-                    operation,
-                    status: "blocked",
-                    reason: "manifest_only_no_runtime",
-                  },
-                },
-              ],
-            };
-          }
-        }
-        // 3. Resolve credential secrets from pg-secret-store
-        let secretsEnv: Record<string, string> = {};
-        if (credentialId) {
-          const { pgGetServiceKeyByVariable } = await import("./pg-secret-store.js");
-          const { resolvePostgresUrl } = await import("../data/storage-resolver.js");
-          const postgres = (await import("postgres")).default;
-          const sql = postgres(resolvePostgresUrl(), {
-            max: 1,
-            idle_timeout: 5,
-            connect_timeout: 5,
-            prepare: false,
-          });
-          try {
-            const variable = `WORKFLOW_CRED_${credentialId}`;
-            const key = await pgGetServiceKeyByVariable(sql, variable);
-            if (key?.value) {
-              try {
-                const parsed = JSON.parse(key.value);
-                if (parsed && typeof parsed === "object") {
-                  secretsEnv = Object.fromEntries(
-                    Object.entries(parsed as Record<string, unknown>)
-                      .filter(([, v]) => typeof v === "string")
-                      .map(([k, v]) => [k, v as string]),
-                  );
-                }
-              } catch {
-                log.warn("connector_action: failed to parse credential secrets", {
-                  credentialId,
-                });
-              }
-            } else {
-              log.warn("connector_action: credential not found or empty", { credentialId });
-            }
-          } finally {
-            await sql.end({ timeout: 2 }).catch(() => {});
-          }
-        }
-
-        // 4. Build args: --json <operation> with parameters as JSON on stdin or args
-        const resolvedParams: Record<string, unknown> = {};
-        for (const [key, val] of Object.entries(parameters ?? {})) {
-          resolvedParams[key] = typeof val === "string" ? resolveTemplate(val, context) : val;
-        }
-
-        const args = ["--json", ...connectorCommandToCliArgs(operation)];
-        // Pass parameters as flattened Click option args for connector harnesses.
-        for (const [key, val] of Object.entries(resolvedParams)) {
-          const cliArg = connectorCommandExtraArgToCliArg(val);
-          if (cliArg !== undefined) {
-            args.push(`--${key.replaceAll("_", "-")}`, cliArg);
-          }
-        }
-
-        // 5. Execute connector command
-        const result = await runConnectorCommandJson({
-          binaryPath: connector.discovery.binaryPath,
-          args,
-          cwd: connector.discovery.harnessDir,
-          timeoutMs: node.config.timeoutMs ?? 30_000,
-          env: secretsEnv,
-        });
-
-        if (!result.ok) {
-          throw new Error(
-            `Connector ${connectorId} command "${operation}" failed: ${result.detail || result.stderr}`,
-          );
-        }
-
-        // 6. Map result to ItemSet output ports
-        let responseData: Record<string, unknown> = {};
-        if (result.data && typeof result.data === "object" && !Array.isArray(result.data)) {
-          responseData = result.data as Record<string, unknown>;
-        } else if (result.envelope && typeof result.envelope === "object") {
-          responseData = result.envelope as Record<string, unknown>;
-        } else if (typeof result.data === "string") {
-          try {
-            responseData = JSON.parse(result.data) as Record<string, unknown>;
-          } catch {
-            responseData = { raw: result.data };
-          }
-        }
-
-        const mapped = outputMapping
-          ? { ...responseData, ...applyOutputMapping(responseData, outputMapping) }
-          : responseData;
-
-        log.info("connector_action: SUCCESS", {
-          connectorId,
-          operation,
-          resource,
-          hasOutputMapping: !!outputMapping,
-        });
-
-        return {
-          items: [
-            {
-              json: {
-                ok: true,
-                connectorId,
-                operation,
-                resource,
-                ...mapped,
-              },
-              text: result.stdout?.trim() || JSON.stringify(mapped),
-            },
-          ],
-        };
-      } catch (err) {
-        log.error("connector_action: FAILED", {
-          nodeId: node.id,
-          connectorId,
-          operation,
-          error: String(err),
-        });
-        throw err;
-      }
+      return executeConnectorAction(actionType, node.id, node.config.timeoutMs ?? 30_000, context);
     }
 
     default:
       log.warn("unknown action type", { nodeId: node.id, actionType: actionName });
       return emptyItemSet();
+  }
+}
+
+async function executeConnectorAction(
+  actionType: Extract<ActionType, { type: "connector_action" }>,
+  nodeId: string,
+  timeoutMs: number,
+  context: PipelineContext,
+): Promise<ItemSet> {
+  const { connectorId, credentialId, resource, operation, parameters, outputMapping } = actionType;
+  try {
+    const { discoverConnectorCatalog, runConnectorCommandJson, defaultRepoRoots } =
+      await import("../connectors/catalog.js");
+    const catalog = await discoverConnectorCatalog();
+    const connector = catalog.connectors.find((c) => c.tool === connectorId);
+    if (!connector?.discovery.binaryPath) {
+      throw new Error(`Connector "${connectorId}" not found or has no runnable binary`);
+    }
+
+    const fs = await import("node:fs");
+    const nodePath = await import("node:path");
+    let manifest: Record<string, unknown> | null = null;
+    for (const root of defaultRepoRoots()) {
+      const manifestPath = nodePath.join(root, connectorId, "connector.json");
+      if (fs.existsSync(manifestPath)) {
+        try {
+          manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as Record<string, unknown>;
+          break;
+        } catch {
+          /* try next root */
+        }
+      }
+    }
+
+    if (manifest) {
+      const scope =
+        manifest.scope && typeof manifest.scope === "object"
+          ? (manifest.scope as Record<string, unknown>)
+          : {};
+      if (scope.scaffold_only === true || scope.live_backend_available === false) {
+        return {
+          items: [
+            {
+              text: `Connector "${connectorId}" is manifest-only — no runtime harness available. This connector cannot be executed until a Python CLI harness is implemented.`,
+              json: {
+                connectorId,
+                operation,
+                status: "blocked",
+                reason: "manifest_only_no_runtime",
+              },
+            },
+          ],
+        };
+      }
+    }
+
+    let secretsEnv: Record<string, string> = {};
+    if (credentialId) {
+      const { pgGetServiceKeyByVariable } = await import("./pg-secret-store.js");
+      const { resolvePostgresUrl } = await import("../data/storage-resolver.js");
+      const postgres = (await import("postgres")).default;
+      const sql = postgres(resolvePostgresUrl(), {
+        max: 1,
+        idle_timeout: 5,
+        connect_timeout: 5,
+        prepare: false,
+      });
+      try {
+        const variable = `WORKFLOW_CRED_${credentialId}`;
+        const key = await pgGetServiceKeyByVariable(sql, variable);
+        if (key?.value) {
+          try {
+            const parsed = JSON.parse(key.value);
+            if (parsed && typeof parsed === "object") {
+              secretsEnv = Object.fromEntries(
+                Object.entries(parsed as Record<string, unknown>)
+                  .filter(([, v]) => typeof v === "string")
+                  .map(([k, v]) => [k, v as string]),
+              );
+            }
+          } catch {
+            log.warn("connector_action: failed to parse credential secrets", {
+              credentialId,
+            });
+          }
+        } else {
+          log.warn("connector_action: credential not found or empty", { credentialId });
+        }
+      } finally {
+        await sql.end({ timeout: 2 }).catch(() => {});
+      }
+    }
+
+    const resolvedParams: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(parameters ?? {})) {
+      resolvedParams[key] = typeof val === "string" ? resolveTemplate(val, context) : val;
+    }
+
+    const args = ["--json", ...connectorCommandToCliArgs(operation)];
+    for (const [key, val] of Object.entries(resolvedParams)) {
+      const cliArg = connectorCommandExtraArgToCliArg(val);
+      if (cliArg !== undefined) {
+        args.push(`--${key.replaceAll("_", "-")}`, cliArg);
+      }
+    }
+
+    const result = await runConnectorCommandJson({
+      binaryPath: connector.discovery.binaryPath,
+      args,
+      cwd: connector.discovery.harnessDir,
+      timeoutMs,
+      env: secretsEnv,
+    });
+
+    if (!result.ok) {
+      throw new Error(
+        `Connector ${connectorId} command "${operation}" failed: ${result.detail || result.stderr}`,
+      );
+    }
+
+    let responseData: Record<string, unknown> = {};
+    if (result.data && typeof result.data === "object" && !Array.isArray(result.data)) {
+      responseData = result.data as Record<string, unknown>;
+    } else if (result.envelope && typeof result.envelope === "object") {
+      responseData = result.envelope as Record<string, unknown>;
+    } else if (typeof result.data === "string") {
+      try {
+        responseData = JSON.parse(result.data) as Record<string, unknown>;
+      } catch {
+        responseData = { raw: result.data };
+      }
+    }
+
+    const mapped = outputMapping
+      ? { ...responseData, ...applyOutputMapping(responseData, outputMapping) }
+      : responseData;
+
+    log.info("connector_action: SUCCESS", {
+      connectorId,
+      operation,
+      resource,
+      hasOutputMapping: !!outputMapping,
+    });
+
+    return {
+      items: [
+        {
+          json: {
+            ok: true,
+            connectorId,
+            operation,
+            resource,
+            ...mapped,
+          },
+          text: result.stdout?.trim() || JSON.stringify(mapped),
+        },
+      ],
+    };
+  } catch (err) {
+    log.error("connector_action: FAILED", {
+      nodeId,
+      connectorId,
+      operation,
+      error: String(err),
+    });
+    throw err;
   }
 }
 
@@ -2480,7 +2479,7 @@ async function executeOutput(
       const item = await adapter.memory.createItem({
         memoryType: "knowledge",
         summary: content,
-        significance: 0.6,
+        significance: "noteworthy",
         extra: {
           ...config.metadata,
           collection: collectionId,
@@ -2561,6 +2560,23 @@ async function executeOutput(
           },
         ],
       };
+    }
+
+    case "connector_action": {
+      return executeConnectorAction(
+        {
+          type: "connector_action",
+          connectorId: config.connectorId,
+          credentialId: config.credentialId ?? "",
+          resource: config.resource,
+          operation: config.operation,
+          parameters: config.parameters,
+          outputMapping: config.outputMapping,
+        },
+        node.id,
+        30_000,
+        context,
+      );
     }
 
     default:

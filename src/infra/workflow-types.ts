@@ -350,6 +350,15 @@ export type OutputConfig = OutputPayloadConfig &
     | { outputType: "knowledge"; collectionId: string; metadata?: Record<string, unknown> }
     | { outputType: "task_update"; taskId: string; status: string; evidence?: string }
     | { outputType: "next_workflow"; workflowId: string; inputMapping?: Record<string, string> }
+    | {
+        outputType: "connector_action";
+        connectorId: string;
+        credentialId?: string;
+        resource: string;
+        operation: string;
+        parameters: Record<string, unknown>;
+        outputMapping?: Record<string, string>;
+      }
   );
 
 export interface OutputNode {

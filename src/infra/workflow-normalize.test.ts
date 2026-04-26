@@ -473,6 +473,44 @@ describe("workflow-normalize", () => {
     }
   });
 
+  it("normalizes connector action output destinations", () => {
+    const result = normalizeWorkflow({
+      id: "wf-output-connector",
+      name: "Connector Output",
+      deploymentStage: "draft",
+      nodes: [
+        { id: "trigger", type: "trigger", data: { triggerType: "manual" } },
+        {
+          id: "out",
+          type: "output",
+          data: {
+            target: "connector_action",
+            connectorId: "aos-slack",
+            resource: "message",
+            operation: "message.send",
+            parametersJson: '{"channel_id":"ops","text":"{{previous.text}}"}',
+            outputMappingJson: '{"messageId":"id"}',
+          },
+        },
+      ],
+      edges: [{ id: "e1", source: "trigger", target: "out" }],
+    });
+
+    const output = result.workflow.nodes.find((node) => node.id === "out");
+    expect(output?.kind).toBe("output");
+    if (output?.kind === "output") {
+      expect(output.config).toMatchObject({
+        outputType: "connector_action",
+        connectorId: "aos-slack",
+        resource: "message",
+        operation: "message.send",
+        parameters: { channel_id: "ops", text: "{{previous.text}}" },
+        outputMapping: { messageId: "id" },
+      });
+    }
+    expect(result.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+  });
+
   it("validates output destinations and explicit source node references", () => {
     const result = normalizeWorkflow({
       id: "wf-output-validation",
