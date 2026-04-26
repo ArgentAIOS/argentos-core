@@ -189,10 +189,15 @@ export function SafetyPanel({
   const hasCredential = !!credentialId;
   const anyRunning =
     testStatus === "running" || authStatus === "running" || dryRunStatus === "running";
+  const testDisabled = !hasCredential || anyRunning || !onTestNode;
+  const authDisabled = !hasCredential || anyRunning || !onCheckAuth;
+  const dryRunDisabled = !hasCredential || anyRunning || !onDryRun;
 
   const runAction = useCallback(
     async (handler: (() => void) | undefined, setStatus: (s: ActionStatus) => void) => {
-      if (!handler) return;
+      if (!handler) {
+        return;
+      }
       setStatus("running");
       try {
         await Promise.resolve(handler());
@@ -262,13 +267,17 @@ export function SafetyPanel({
       <div style={styles.buttonRow}>
         <button
           type="button"
-          style={styles.actionButton(testStatus, !hasCredential || anyRunning)}
-          disabled={!hasCredential || anyRunning}
+          style={styles.actionButton(testStatus, testDisabled)}
+          disabled={testDisabled}
           onClick={() => runAction(onTestNode, setTestStatus)}
           title={
-            hasCredential
-              ? `Execute ${operationId} on ${connectorId} with real credentials`
-              : "Bind a credential first"
+            !hasCredential
+              ? "Bind a credential first"
+              : !onTestNode
+                ? sideEffectLevel === "none"
+                  ? "Select a runnable operation before testing"
+                  : "Write and delivery operations must run through workflow approval, not panel test"
+                : `Execute ${operationId} on ${connectorId} with real credentials`
           }
         >
           {buttonLabel("Test Node", testStatus)}
@@ -276,13 +285,15 @@ export function SafetyPanel({
 
         <button
           type="button"
-          style={styles.actionButton(authStatus, !hasCredential || anyRunning)}
-          disabled={!hasCredential || anyRunning}
+          style={styles.actionButton(authStatus, authDisabled)}
+          disabled={authDisabled}
           onClick={() => runAction(onCheckAuth, setAuthStatus)}
           title={
-            hasCredential
-              ? "Validate credential against connector health check"
-              : "Bind a credential first"
+            !hasCredential
+              ? "Bind a credential first"
+              : !onCheckAuth
+                ? "Credential health check is unavailable for this connector"
+                : "Validate credential against connector health check"
           }
         >
           {buttonLabel("Check Auth", authStatus)}
@@ -290,13 +301,15 @@ export function SafetyPanel({
 
         <button
           type="button"
-          style={styles.actionButton(dryRunStatus, !hasCredential || anyRunning)}
-          disabled={!hasCredential || anyRunning}
+          style={styles.actionButton(dryRunStatus, dryRunDisabled)}
+          disabled={dryRunDisabled}
           onClick={() => runAction(onDryRun, setDryRunStatus)}
           title={
-            hasCredential
-              ? "Execute with dryRun flag — shows what would happen without side effects"
-              : "Bind a credential first"
+            !hasCredential
+              ? "Bind a credential first"
+              : !onDryRun
+                ? "Dry run is not declared by this connector operation"
+                : "Execute with dryRun flag — shows what would happen without side effects"
           }
         >
           {buttonLabel("Dry Run", dryRunStatus)}

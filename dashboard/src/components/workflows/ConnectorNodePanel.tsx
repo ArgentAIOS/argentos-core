@@ -130,7 +130,9 @@ export function ConnectorNodePanel({
 
   // ── Load manifest ──────────────────────────────────────────────────────
   useEffect(() => {
-    if (!connected) return;
+    if (!connected) {
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -164,7 +166,9 @@ export function ConnectorNodePanel({
 
   // ── Filtered operations for selected resource ──────────────────────────
   const filteredOperations = useMemo(() => {
-    if (!manifest || !selectedResource) return [];
+    if (!manifest || !selectedResource) {
+      return [];
+    }
     return manifest.operations.filter((op) => op.resource === selectedResource);
   }, [manifest, selectedResource]);
 
@@ -191,7 +195,9 @@ export function ConnectorNodePanel({
 
   // ── Fields filtered by appliesTo ───────────────────────────────────────
   const activeFields = useMemo(() => {
-    if (!manifest || !selectedOperation) return [];
+    if (!manifest || !selectedOperation) {
+      return [];
+    }
     return manifest.nodeInputs.filter(
       (f) => !f.appliesTo || f.appliesTo.length === 0 || f.appliesTo.includes(selectedOperation),
     );
@@ -213,7 +219,9 @@ export function ConnectorNodePanel({
 
   // ── Side-effect badge for current operation ────────────────────────────
   const sideEffectBadge = useMemo(() => {
-    if (!currentOp) return null;
+    if (!currentOp) {
+      return null;
+    }
     if (currentOp.sideEffectLevel === "outbound_delivery") {
       return (
         <span className="inline-flex items-center gap-1 text-[10px] font-medium text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded-full">
@@ -356,7 +364,9 @@ export function ConnectorNodePanel({
                   <option value="">Select operation...</option>
                   {(["Read", "Write", "Meta"] as const).map((group) => {
                     const ops = groupedOperations[group];
-                    if (!ops || ops.length === 0) return null;
+                    if (!ops || ops.length === 0) {
+                      return null;
+                    }
                     const writeDisabled =
                       group === "Write" && manifest.readiness?.canRunWriteOps === false;
                     return (
@@ -436,18 +446,13 @@ export function ConnectorNodePanel({
                 connectorId={connectorId}
                 credentialId={credentialId || undefined}
                 onTestNode={
-                  manifest.readiness?.state !== "blocked"
+                  manifest.readiness?.state !== "blocked" && currentOp.sideEffectLevel === "none"
                     ? async () => {
                         await request("workflows.connectorCommand", {
                           connectorId,
                           command: currentOp.id,
                           credentialId,
-                          args: Object.entries(nodeConfig)
-                            .filter(
-                              ([k]) =>
-                                k !== "credentialId" && k !== "resource" && k !== "operation",
-                            )
-                            .map(([, v]) => String(v ?? "")),
+                          args: buildConnectorCommandArgs(nodeConfig),
                         });
                       }
                     : undefined
@@ -459,7 +464,6 @@ export function ConnectorNodePanel({
                           connectorId,
                           command: "health",
                           credentialId,
-                          args: ["--json"],
                         });
                       }
                     : undefined
@@ -495,6 +499,42 @@ interface ConnectorFieldContext {
   gatewayRequest: <T = unknown>(method: string, params?: Record<string, unknown>) => Promise<T>;
 }
 
+function connectorValueToArg(value: unknown): string | undefined {
+  if (value === null || value === undefined || value === "") {
+    return undefined;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
+function buildConnectorCommandArgs(nodeConfig: Record<string, unknown>): string[] {
+  const ignored = new Set([
+    "connectorId",
+    "connectorName",
+    "connectorCategory",
+    "credentialId",
+    "resource",
+    "operation",
+  ]);
+  const args: string[] = [];
+  for (const [key, value] of Object.entries(nodeConfig)) {
+    if (ignored.has(key)) {
+      continue;
+    }
+    const arg = connectorValueToArg(value);
+    if (arg === undefined) {
+      continue;
+    }
+    args.push(`--${key.replaceAll("_", "-")}`, arg);
+  }
+  return args;
+}
+
 // ── DynamicField — renders a single field based on renderAs ──────────────────
 
 function DynamicField({
@@ -513,7 +553,9 @@ function DynamicField({
   // Conditional visibility: check showWhen
   if (field.showWhen) {
     const refValue = allValues[field.showWhen.field];
-    if (refValue !== field.showWhen.equals) return null;
+    if (refValue !== field.showWhen.equals) {
+      return null;
+    }
   }
 
   const effectiveValue = value ?? field.default ?? "";

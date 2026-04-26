@@ -45,6 +45,10 @@ import type {
 // Real system integrations — these are the actual delivery systems, not stubs
 import { refreshPresence } from "../data/redis-client.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import {
+  connectorCommandExtraArgToCliArg,
+  connectorCommandToCliArgs,
+} from "./workflow-connector-command.js";
 import { buildAgentStepPrompt, buildRetryPrompt } from "./workflow-context.js";
 
 const log = createSubsystemLogger("infra/workflow-runner");
@@ -1953,11 +1957,12 @@ async function executeAction(
           resolvedParams[key] = typeof val === "string" ? resolveTemplate(val, context) : val;
         }
 
-        const args = ["--json", operation];
-        // Pass parameters as flattened --key=value args for the connector harness
+        const args = ["--json", ...connectorCommandToCliArgs(operation)];
+        // Pass parameters as flattened Click option args for connector harnesses.
         for (const [key, val] of Object.entries(resolvedParams)) {
-          if (val !== undefined && val !== null) {
-            args.push(`--${key}`, String(val));
+          const cliArg = connectorCommandExtraArgToCliArg(val);
+          if (cliArg !== undefined) {
+            args.push(`--${key.replaceAll("_", "-")}`, cliArg);
           }
         }
 

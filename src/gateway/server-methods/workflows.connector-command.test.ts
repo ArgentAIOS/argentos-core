@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { connectorCommandToCliArgs } from "./workflows.js";
+import {
+  connectorCommandExtraArgToCliArg,
+  connectorCommandToCliArgs,
+} from "../../infra/workflow-connector-command.js";
 
 describe("connectorCommandToCliArgs", () => {
   it("splits manifest command ids into Click group/subcommand argv", () => {
@@ -14,5 +17,12 @@ describe("connectorCommandToCliArgs", () => {
 
   it("accepts explicit argv strings for hand-authored calls", () => {
     expect(connectorCommandToCliArgs("config show")).toEqual(["config", "show"]);
+  });
+
+  it("stringifies connector command arguments without object toString output", () => {
+    expect(connectorCommandExtraArgToCliArg("hello")).toBe("hello");
+    expect(connectorCommandExtraArgToCliArg(3)).toBe("3");
+    expect(connectorCommandExtraArgToCliArg({ dryRun: true })).toBe('{"dryRun":true}');
+    expect(connectorCommandExtraArgToCliArg(undefined)).toBeUndefined();
   });
 });
