@@ -5559,10 +5559,21 @@ export function WorkflowsWidget() {
   const createWorkflow = useCallback(
     async (name: string, templateNodes: Node[] = [], templateEdges: Edge[] = []) => {
       const id = `wf-${Date.now()}`;
+      const nodes =
+        templateNodes.length > 0
+          ? templateNodes
+          : [
+              {
+                id: `trigger-${Date.now()}`,
+                type: "trigger",
+                position: { x: 140, y: 120 },
+                data: createDefaultTriggerData(),
+              },
+            ];
       const newWf: WorkflowDefinition = {
         id,
         name,
-        nodes: templateNodes,
+        nodes,
         edges: templateEdges,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -5773,6 +5784,8 @@ function WorkflowCanvasInner({
   const [knowledgeCollections, setKnowledgeCollections] = useState<KnowledgeCollectionOption[]>([]);
 
   // ── Run State ─────────────────────────────────────────────────────
+  const [saving, setSaving] = useState(false);
+  const [lastSaveStatus, setLastSaveStatus] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
@@ -6413,6 +6426,54 @@ function WorkflowCanvasInner({
     [nodes],
   );
 
+  const saveCurrentWorkflow = useCallback(
+    async (changeSummary = "Saved workflow from canvas toolbar"): Promise<boolean> => {
+      if (!activeWorkflowId) {
+        return false;
+      }
+      const workflow = workflows.find((candidate) => candidate.id === activeWorkflowId);
+      const cleanNodes = cleanWorkflowNodes();
+      const updatedAt = new Date().toISOString();
+      setSaving(true);
+      setLastSaveStatus(null);
+      setWorkflows((prev) => {
+        const next = prev.map((w) =>
+          w.id === activeWorkflowId
+            ? {
+                ...w,
+                name: workflow?.name ?? w.name,
+                nodes: cleanNodes,
+                edges,
+                updatedAt,
+              }
+            : w,
+        );
+        saveWorkflowsLocal(next);
+        return next;
+      });
+
+      try {
+        if (gateway.connected) {
+          await gateway.request("workflows.update", {
+            workflowId: activeWorkflowId,
+            name: workflow?.name,
+            canvasData: { nodes: cleanNodes, edges },
+            changeSummary,
+          });
+        }
+        setLastSaveStatus(`Saved ${new Date(updatedAt).toLocaleTimeString()}`);
+        return true;
+      } catch (err) {
+        console.error("[Workflows] Save failed:", err);
+        setLastSaveStatus("Saved locally");
+        return false;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [activeWorkflowId, cleanWorkflowNodes, edges, gateway, setWorkflows, workflows],
+  );
+
   const validateCurrentWorkflow = useCallback(async (): Promise<boolean> => {
     if (!activeWorkflowId || !gateway.connected) {
       setValidationIssues([]);
@@ -6466,6 +6527,11 @@ function WorkflowCanvasInner({
     try {
       setRunning(true);
       clearExecState();
+      const saved = await saveCurrentWorkflow("Saved workflow before run");
+      if (!saved) {
+        setRunning(false);
+        return;
+      }
       const valid = await validateCurrentWorkflow();
       if (!valid) {
         setRunning(false);
@@ -6479,7 +6545,14 @@ function WorkflowCanvasInner({
       console.error("[Workflows] Run failed:", err);
       setRunning(false);
     }
-  }, [activeWorkflowId, running, gateway, clearExecState, validateCurrentWorkflow]);
+  }, [
+    activeWorkflowId,
+    running,
+    gateway,
+    clearExecState,
+    saveCurrentWorkflow,
+    validateCurrentWorkflow,
+  ]);
 
   const handleSchedule = useCallback(async () => {
     if (!activeWorkflowId || scheduling || !gateway.connected) return;
@@ -6892,37 +6965,24 @@ function WorkflowCanvasInner({
             {validationStatus === "checking" ? "Checking..." : "Validate"}
           </button>
           <button
-            disabled={!activeWorkflowId}
+            disabled={!activeWorkflowId || saving}
             onClick={() => {
-              if (!activeWorkflowId) return;
-              // Immediate save to PG + localStorage
-              const cleanNodes = cleanWorkflowNodes();
-              if (gateway.connected) {
-                gateway
-                  .request("workflows.update", {
-                    workflowId: activeWorkflowId,
-                    name: activeWorkflow?.name,
-                    canvasData: { nodes: cleanNodes, edges },
-                    changeSummary: "Saved workflow from canvas toolbar",
-                  })
-                  .catch(() => {});
-              }
-              setWorkflows((prev) => {
-                const next = prev.map((w) =>
-                  w.id === activeWorkflowId
-                    ? { ...w, nodes: cleanNodes, edges, updatedAt: new Date().toISOString() }
-                    : w,
-                );
-                saveWorkflowsLocal(next);
-                return next;
+              void saveCurrentWorkflow().then((saved) => {
+                if (saved) {
+                  void validateCurrentWorkflow();
+                }
               });
-              void validateCurrentWorkflow();
             }}
             className="px-3 py-1 rounded text-[11px] font-medium bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/25 disabled:opacity-40 transition-colors"
-            title="Save workflow"
+            title={saving ? "Saving workflow..." : "Save workflow"}
           >
-            Save
+            {saving ? "Saving..." : "Save"}
           </button>
+          {lastSaveStatus && (
+            <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+              {lastSaveStatus}
+            </span>
+          )}
           <button
             disabled={!activeWorkflowId}
             onClick={() => {
@@ -6968,7 +7028,7 @@ function WorkflowCanvasInner({
             Export
           </button>
           <button
-            disabled={!activeWorkflowId || running || !gateway.connected}
+            disabled={!activeWorkflowId || running || saving || !gateway.connected}
             onClick={handleRun}
             className={`px-3 py-1 rounded text-[11px] font-medium transition-colors disabled:opacity-40 ${
               running
