@@ -21,6 +21,8 @@ The harness resolves `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SLACK_WORKSPACE`,
 `SLACK_TEAM_ID`, `SLACK_CHANNEL_ID`, `SLACK_THREAD_TS`, and `SLACK_USER_ID`
 through operator-controlled service keys first, then falls back to local
 environment variables only for local harness runs.
+`SLACK_BOT_TOKEN` is required; the other keys are optional defaults. Scoped repo
+service keys block env fallback. Live write smoke is not claimed.
 
 `people.list` requires `users:read`.
 `message.reply` requires `chat:write`.

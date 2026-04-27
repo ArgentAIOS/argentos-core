@@ -9,6 +9,16 @@
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": true,
+    "live_write_smoke_tested": false,
+    "required": ["SLACK_BOT_TOKEN"],
+    "optional": [
+      "SLACK_APP_TOKEN",
+      "SLACK_WORKSPACE",
+      "SLACK_TEAM_ID",
+      "SLACK_CHANNEL_ID",
+      "SLACK_THREAD_TS",
+      "SLACK_USER_ID"
+    ],
     "workerFields": ["channel", "message_text", "thread_ts", "user_id"],
     "worker_visible_actions": [
       "message.search",
@@ -157,8 +167,8 @@
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": [
-      "SLACK_BOT_TOKEN",
+    "service_keys": ["SLACK_BOT_TOKEN"],
+    "optional_service_keys": [
       "SLACK_APP_TOKEN",
       "SLACK_WORKSPACE",
       "SLACK_TEAM_ID",
@@ -170,11 +180,13 @@
       "Create or install a Slack app for the target workspace.",
       "Add SLACK_BOT_TOKEN in operator-controlled API Keys before enabling live reads or replies.",
       "Use local SLACK_BOT_TOKEN environment variables only as a harness fallback when operator service keys are unavailable.",
+      "Scoped service-key entries must be injected by the operator runtime and are not bypassed with local env.",
       "Grant the bot the read scopes it needs: channels:read, search:read, users:read, and reactions:read.",
       "Add groups:read too if you expect channel.list --include-private to inspect private channels.",
       "Add chat:write if you plan to use message.reply.",
       "Optional: pin SLACK_WORKSPACE, SLACK_TEAM_ID, SLACK_CHANNEL_ID, SLACK_THREAD_TS, and SLACK_USER_ID in operator-controlled API Keys when workers need stable Slack scope defaults.",
-      "Optional: add SLACK_APP_TOKEN only for future Socket Mode wiring; this connector does not advertise event-ingestion commands today."
+      "Optional: add SLACK_APP_TOKEN only for future Socket Mode wiring; this connector does not advertise event-ingestion commands today.",
+      "Keep live_write_smoke_tested=false unless a real operator Slack workspace smoke test verifies writes."
     ]
   },
   "commands": [

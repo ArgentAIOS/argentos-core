@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
+from typing import Any
 
 from click.testing import CliRunner
 import pytest
@@ -14,11 +16,75 @@ BOT_TOKEN = "xoxb-test-token"
 AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
 CONNECTOR_PATH = AGENT_HARNESS_ROOT.parent / "connector.json"
 PERMISSIONS_PATH = AGENT_HARNESS_ROOT / "permissions.json"
+ALL_ENV_KEYS = (
+    "SLACK_BOT_TOKEN",
+    "AOS_SLACK_BOT_TOKEN",
+    "SLACK_APP_TOKEN",
+    "AOS_SLACK_APP_TOKEN",
+    "SLACK_WORKSPACE",
+    "AOS_SLACK_WORKSPACE",
+    "SLACK_TEAM_ID",
+    "AOS_SLACK_TEAM_ID",
+    "SLACK_CHANNEL_ID",
+    "SLACK_THREAD_TS",
+    "SLACK_USER_ID",
+)
+
+
+def write_service_keys(tmp_path: Path, values: dict[str, str], *, extra: dict[str, Any] | None = None) -> Path:
+    path = tmp_path / "service-keys.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "keys": [
+                    {
+                        "id": f"sk-{key}",
+                        "name": key,
+                        "variable": key,
+                        "value": value,
+                        "enabled": True,
+                        **(extra or {}),
+                    }
+                    for key, value in values.items()
+                ],
+            }
+        )
+    )
+    return path
+
+
+def encrypt_secret(tmp_path: Path, plaintext: str) -> str:
+    home = tmp_path / "home"
+    key_dir = home / ".argentos"
+    key_dir.mkdir(parents=True, exist_ok=True)
+    (key_dir / ".master-key").write_text("11" * 32)
+    script = r"""
+const { createCipheriv } = require("node:crypto");
+const plaintext = process.argv[1];
+const key = Buffer.from("11".repeat(32), "hex");
+const iv = Buffer.from("22".repeat(12), "hex");
+const cipher = createCipheriv("aes-256-gcm", key, iv);
+let encrypted = cipher.update(plaintext, "utf8", "hex");
+encrypted += cipher.final("hex");
+const tag = cipher.getAuthTag().toString("hex");
+process.stdout.write(`enc:v1:${iv.toString("hex")}:${tag}:${encrypted}`);
+"""
+    result = subprocess.run(
+        ["node", "-e", script, plaintext],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+    )
+    return result.stdout
 
 
 @pytest.fixture(autouse=True)
-def no_operator_service_key_by_default(monkeypatch):
-    monkeypatch.setattr(service_keys, "resolve_service_key", lambda variable: None)
+def no_operator_service_key_by_default(monkeypatch, tmp_path):
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", tmp_path / "missing-service-keys.json")
+    for key in ALL_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
 
 
 def _set_bot_token(monkeypatch) -> None:
@@ -141,7 +207,15 @@ def _fake_slack_api(calls: list[tuple[str, dict[str, object]]]):
 
 
 def _set_operator_service_keys(monkeypatch, values: dict[str, str]) -> None:
-    monkeypatch.setattr(service_keys, "resolve_service_key", lambda variable: values.get(variable))
+    real_details = service_keys.service_key_details
+
+    def fake_details(variable: str, ctx_obj: dict[str, object] | None = None, default: str | None = None) -> dict[str, object]:
+        if variable in values:
+            return {"value": values[variable], "present": True, "usable": True, "source": "operator:service_keys", "variable": variable}
+        return real_details(variable, ctx_obj, default=default)
+
+    monkeypatch.setattr(service_keys, "service_key_details", fake_details)
+    monkeypatch.setattr(runtime, "service_key_details", fake_details)
 
 
 def test_manifest_and_permissions_are_in_sync():
@@ -152,6 +226,10 @@ def test_manifest_and_permissions_are_in_sync():
     assert permissions["backend"] == manifest["backend"]
     assert set(manifest_command_ids) == set(permissions["permissions"].keys())
     assert manifest["scope"]["workerFields"] == ["channel", "message_text", "thread_ts", "user_id"]
+    assert manifest["scope"]["live_write_smoke_tested"] is False
+    assert manifest["scope"]["required"] == ["SLACK_BOT_TOKEN"]
+    assert manifest["auth"]["service_keys"] == ["SLACK_BOT_TOKEN"]
+    assert "SLACK_CHANNEL_ID" in manifest["auth"]["optional_service_keys"]
     assert manifest["scope"]["commandDefaults"]["message.reply"]["args"] == ["SLACK_CHANNEL_ID"]
     assert manifest["scope"]["commandDefaults"]["people.list"]["options"]["user-id"] == "SLACK_USER_ID"
 
@@ -240,13 +318,80 @@ def test_config_show_prefers_operator_service_keys_for_auth_and_scope(monkeypatc
     data = payload["data"]["config"]
     assert BOT_TOKEN not in result.output
     assert "env-token" not in result.output
-    assert data["bot_token"]["source"] == "service-keys"
+    assert data["bot_token"]["source"] == "operator:service_keys"
     assert data["channel_id_hint"] == "COPERATOR"
     assert data["thread_ts_hint"] == "123.456"
     assert data["user_id_hint"] == "UOPERATOR"
     assert data["workspace_hint"] == "Operator Workspace"
     assert data["team_id_hint"] == "TOPERATOR"
-    assert data["resolution_order"] == ["service-keys", "process.env"]
+    assert data["resolution_order"] == [
+        "operator runtime service_keys/service_key_values/api_keys/secrets",
+        "unmanaged repo service-keys.json",
+        "local environment fallback",
+    ]
+    assert data["live_write_smoke_tested"] is False
+
+
+def test_encrypted_repo_service_key_decrypts_with_master_key(monkeypatch, tmp_path):
+    encrypted = encrypt_secret(tmp_path, BOT_TOKEN)
+    path = write_service_keys(tmp_path, {"SLACK_BOT_TOKEN": encrypted})
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+    details = service_keys.service_key_details("SLACK_BOT_TOKEN")
+
+    assert details["value"] == BOT_TOKEN
+    assert details["source"] == "repo-service-key"
+
+
+def test_unreadable_encrypted_repo_service_key_falls_back_to_env_like_core_resolver(monkeypatch, tmp_path):
+    path = write_service_keys(tmp_path, {"SLACK_BOT_TOKEN": "enc:v1:bad:bad:bad"})
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("SLACK_BOT_TOKEN", "env-token")
+
+    details = service_keys.service_key_details("SLACK_BOT_TOKEN")
+
+    assert details["value"] == "env-token"
+    assert details["source"] == "env_fallback"
+
+
+def test_scoped_repo_service_key_blocks_env_fallback(monkeypatch, tmp_path):
+    path = write_service_keys(
+        tmp_path,
+        {"SLACK_BOT_TOKEN": "scoped-token"},
+        extra={"allowedRoles": ["operator"]},
+    )
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("SLACK_BOT_TOKEN", "env-token")
+
+    details = service_keys.service_key_details("SLACK_BOT_TOKEN")
+
+    assert details["value"] == ""
+    assert details["source"] == "repo-service-key-scoped"
+    assert details["blocked"] is True
+
+
+def test_scoped_primary_service_key_blocks_legacy_env_aliases(monkeypatch, tmp_path):
+    path = write_service_keys(
+        tmp_path,
+        {
+            "SLACK_BOT_TOKEN": "scoped-token",
+            "SLACK_TEAM_ID": "scoped-team",
+        },
+        extra={"allowedRoles": ["operator"]},
+    )
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("AOS_SLACK_BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setenv("AOS_SLACK_TEAM_ID", "TLEGACY")
+
+    config = runtime.runtime_config()
+
+    assert config["bot_token"] is None
+    assert config["bot_token_env"] == "SLACK_BOT_TOKEN"
+    assert config["bot_token_source"] == "repo-service-key-scoped"
+    assert config["team_id_hint"] is None
+    assert config["team_id_hint_env"] == "SLACK_TEAM_ID"
+    assert config["team_id_hint_source"] == "repo-service-key-scoped"
 
 
 def test_doctor_includes_runtime_probes(monkeypatch):

@@ -29,7 +29,7 @@ from .constants import (
     WRITE_SCOPES,
 )
 from .errors import CliError
-from .service_keys import service_key_env, service_key_source
+from .service_keys import service_key_details
 
 API_TIMEOUT_SECONDS = 20
 SLACK_API_BASE_URL = "https://slack.com/api"
@@ -61,22 +61,25 @@ _BACKEND_ERROR_CODES = {
 }
 
 
-def _resolve_env(*names: str) -> tuple[str | None, str | None, str | None]:
+def _resolve_env(*names: str, ctx_obj: dict[str, Any] | None = None) -> tuple[str | None, str | None, str | None]:
     for name in names:
-        value = service_key_env(name)
+        details = service_key_details(name, ctx_obj=ctx_obj)
+        value = details["value"]
         if value:
-            return value, name, service_key_source(name)
+            return value, name, details["source"]
+        if details.get("blocked"):
+            return None, name, details["source"]
     return None, None, None
 
 
-def runtime_config() -> dict[str, Any]:
-    bot_token, bot_token_env, bot_token_source = _resolve_env(DEFAULT_BOT_TOKEN_ENV, LEGACY_BOT_TOKEN_ENV)
-    app_token, app_token_env, app_token_source = _resolve_env(DEFAULT_APP_TOKEN_ENV, LEGACY_APP_TOKEN_ENV)
-    workspace_hint, workspace_hint_env, workspace_hint_source = _resolve_env(DEFAULT_WORKSPACE_ENV, LEGACY_WORKSPACE_ENV)
-    team_id_hint, team_id_hint_env, team_id_hint_source = _resolve_env(DEFAULT_TEAM_ID_ENV, LEGACY_TEAM_ID_ENV)
-    channel_id_hint, channel_id_hint_env, channel_id_hint_source = _resolve_env(DEFAULT_CHANNEL_ID_ENV)
-    thread_ts_hint, thread_ts_hint_env, thread_ts_hint_source = _resolve_env(DEFAULT_THREAD_TS_ENV)
-    user_id_hint, user_id_hint_env, user_id_hint_source = _resolve_env(DEFAULT_USER_ID_ENV)
+def runtime_config(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
+    bot_token, bot_token_env, bot_token_source = _resolve_env(DEFAULT_BOT_TOKEN_ENV, LEGACY_BOT_TOKEN_ENV, ctx_obj=ctx_obj)
+    app_token, app_token_env, app_token_source = _resolve_env(DEFAULT_APP_TOKEN_ENV, LEGACY_APP_TOKEN_ENV, ctx_obj=ctx_obj)
+    workspace_hint, workspace_hint_env, workspace_hint_source = _resolve_env(DEFAULT_WORKSPACE_ENV, LEGACY_WORKSPACE_ENV, ctx_obj=ctx_obj)
+    team_id_hint, team_id_hint_env, team_id_hint_source = _resolve_env(DEFAULT_TEAM_ID_ENV, LEGACY_TEAM_ID_ENV, ctx_obj=ctx_obj)
+    channel_id_hint, channel_id_hint_env, channel_id_hint_source = _resolve_env(DEFAULT_CHANNEL_ID_ENV, ctx_obj=ctx_obj)
+    thread_ts_hint, thread_ts_hint_env, thread_ts_hint_source = _resolve_env(DEFAULT_THREAD_TS_ENV, ctx_obj=ctx_obj)
+    user_id_hint, user_id_hint_env, user_id_hint_source = _resolve_env(DEFAULT_USER_ID_ENV, ctx_obj=ctx_obj)
     return {
         "backend": BACKEND,
         "tool": TOOL_NAME,
@@ -103,7 +106,11 @@ def runtime_config() -> dict[str, Any]:
         "user_id_hint": user_id_hint,
         "user_id_hint_env": user_id_hint_env,
         "user_id_hint_source": user_id_hint_source,
-        "resolution_order": ["service-keys", "process.env"],
+        "resolution_order": [
+            "operator runtime service_keys/service_key_values/api_keys/secrets",
+            "unmanaged repo service-keys.json",
+            "local environment fallback",
+        ],
     }
 
 
@@ -1134,7 +1141,7 @@ def _health_checks(config: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
-    config = runtime_config()
+    config = runtime_config(ctx_obj)
     checks = _health_checks(config)
     status, summary, next_step = _runtime_summary(config, checks)
     next_steps = [next_step]
@@ -1165,13 +1172,15 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
         },
         "auth": CONNECTOR_AUTH,
         "checks": checks,
+        "live_write_smoke_tested": False,
+        "write_bridge_available": True,
         "next_steps": next_steps,
     }
 
 
 def config_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
     health = health_snapshot(ctx_obj)
-    config = runtime_config()
+    config = runtime_config(ctx_obj)
     return {
         **health,
         "config": {
@@ -1205,6 +1214,7 @@ def config_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
             "resolution_order": config["resolution_order"],
             "runtime_ready": health["status"] == "ok",
             "implementation_mode": "live_read_with_live_reply_write",
+            "live_write_smoke_tested": False,
             "required_read_scopes": READ_SCOPES,
             "required_write_scopes": WRITE_SCOPES,
             "supported_commands": [
@@ -1218,7 +1228,7 @@ def config_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
 
 def doctor_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
     health = health_snapshot(ctx_obj)
-    config = runtime_config()
+    config = runtime_config(ctx_obj)
     return {
         **health,
         "backend": BACKEND,

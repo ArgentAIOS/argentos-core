@@ -29,6 +29,7 @@ permission-gated live reply path.
 - Required: yes
 - Service keys:
   - SLACK_BOT_TOKEN
+- Optional service keys:
   - SLACK_APP_TOKEN
   - SLACK_WORKSPACE
   - SLACK_TEAM_ID
@@ -39,6 +40,8 @@ permission-gated live reply path.
 The harness resolves operator-controlled service keys first for Slack auth and
 stable scope defaults, then falls back to local environment variables only for
 local harness runs.
+Scoped repo service keys are not bypassed with env fallback. `live_write_smoke_tested`
+remains false until a real operator Slack workspace write smoke is run.
 
 ## Truthful Surface
 

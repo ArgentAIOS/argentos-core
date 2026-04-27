@@ -29,8 +29,8 @@ WRITE_SCOPES = ["chat:write"]
 CONNECTOR_AUTH = {
     "kind": "service-key",
     "required": True,
-    "service_keys": [
-        DEFAULT_BOT_TOKEN_ENV,
+    "service_keys": [DEFAULT_BOT_TOKEN_ENV],
+    "optional_service_keys": [
         DEFAULT_APP_TOKEN_ENV,
         DEFAULT_WORKSPACE_ENV,
         DEFAULT_TEAM_ID_ENV,
@@ -42,11 +42,13 @@ CONNECTOR_AUTH = {
         "Create or install a Slack app for the target workspace.",
         "Add SLACK_BOT_TOKEN in operator-controlled API Keys before enabling live reads or replies.",
         "Use local SLACK_BOT_TOKEN environment variables only as a harness fallback when operator service keys are unavailable.",
+        "Scoped service-key entries must be injected by the operator runtime and are not bypassed with local env.",
         "Grant the bot the read scopes it needs: channels:read, search:read, users:read, and reactions:read.",
         "Add groups:read too if you expect channel.list --include-private to inspect private channels.",
         "Add chat:write if you plan to use message.reply.",
         "Optional: pin SLACK_WORKSPACE, SLACK_TEAM_ID, SLACK_CHANNEL_ID, SLACK_THREAD_TS, and SLACK_USER_ID in operator-controlled API Keys when workers need stable Slack scope defaults.",
         "Optional: add SLACK_APP_TOKEN only for future Socket Mode wiring; this connector does not advertise event-ingestion commands today.",
+        "Keep live_write_smoke_tested=false unless a real operator Slack workspace smoke test verifies writes.",
     ],
 }
 

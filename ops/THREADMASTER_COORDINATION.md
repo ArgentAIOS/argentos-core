@@ -339,6 +339,14 @@ Owned files/directories: `tools/aos/aos-hootsuite/**`; this coordination note.
 Shared contract change in progress: Hootsuite remains truthful live read-only. `HOOTSUITE_ACCESS_TOKEN` is the only required operator service key; `HOOTSUITE_BASE_URL`, `HOOTSUITE_ORGANIZATION_ID`, `HOOTSUITE_SOCIAL_PROFILE_ID`, `HOOTSUITE_TEAM_ID`, and `HOOTSUITE_MESSAGE_ID` are optional operator-controlled defaults. Scoped repo service keys block env fallback; valid `enc:v1` repo keys decrypt; unreadable encrypted repo keys fall back like the core resolver. `live_write_smoke_tested` stays false.
 Workflows/AppForge/AOU reaction: consume manifest/auth/scope/capability truth only. Do not present Hootsuite publish/schedule writes until a later live write bridge and approval policy are implemented and smoke-tested.
 
+### 2026-04-27 — AOS Slack Service-Key Hardening
+
+Lane: `AOS Slack service keys`
+Branch/status: `codex/aos-slack-service-keys-loop` from `origin/dev` `63da5f8a`.
+Owned files/directories: `tools/aos/aos-slack/**`; this coordination note.
+Shared contract change in progress: Basic Slack keeps live reads plus the permission-gated `message.reply` write path. `SLACK_BOT_TOKEN` is the only required operator service key; `SLACK_APP_TOKEN`, `SLACK_WORKSPACE`, `SLACK_TEAM_ID`, `SLACK_CHANNEL_ID`, `SLACK_THREAD_TS`, and `SLACK_USER_ID` are optional operator-controlled defaults. Scoped repo service keys block env fallback; valid `enc:v1` repo keys decrypt; unreadable encrypted repo keys fall back like the core resolver. `live_write_smoke_tested` stays false until a real operator Slack workspace write smoke is run.
+Workflows/AppForge/AOU reaction: consume manifest/auth/scope/capability truth only. Treat Slack `message.reply` as live-ready only when the operator provides a bot token with `chat:write`; do not infer Socket Mode or event-ingestion support.
+
 ### 2026-04-26 — OpenClaw 4.24 Comparison Lane
 
 Lane: OpenClaw 4.24 realtime/browser/marketplace comparison. Branch/commit: `codex/aos-next-connector-wave` at `ad3fb0b9`. Owned files/directories for this lane: `ops/THREADMASTER_COORDINATION.md` for coordination updates; future comparison artifacts under `ops/**` only unless the board is updated first. Shared contract changes: none yet. Workflows/AppForge/AOU reaction: proposed direction is browser harness first, provider-neutral realtime voice substrate second, then Google Meet as a marketplace-distributed capability plugin; no implementation dependency is active until a follow-up plan claims specific files/contracts.
