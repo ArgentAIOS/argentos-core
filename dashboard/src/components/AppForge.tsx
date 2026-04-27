@@ -38,6 +38,7 @@ import {
   type ForgeStructuredField,
   type ForgeStructuredRecord,
   type ForgeStructuredRecordValue,
+  type ForgeStructuredSelectOption,
   type ForgeStructuredTable,
   type ForgeStructuredViewType,
 } from "../hooks/useForgeStructuredData";
@@ -55,6 +56,7 @@ interface AppForgeProps {
   onNewApp: (name: string, description: string) => void;
   onRestoreApp: (appId: string) => void;
   onFocusApp: (appId: string) => void;
+  gatewayConnected?: boolean;
   gatewayRequest?: GatewayRequestFn;
   onEmitWorkflowEvent?: (appId: string, event: AppForgeWorkflowEventRequest) => Promise<boolean>;
 }
@@ -247,6 +249,80 @@ function fieldInputType(field: ForgeStructuredField): string {
     return "email";
   }
   return "text";
+}
+
+const SELECT_OPTION_PALETTE = [
+  { id: "emerald", label: "Emerald", color: "#34d399" },
+  { id: "sky", label: "Sky", color: "#38bdf8" },
+  { id: "violet", label: "Violet", color: "#a78bfa" },
+  { id: "amber", label: "Amber", color: "#fbbf24" },
+  { id: "rose", label: "Rose", color: "#fb7185" },
+  { id: "cyan", label: "Cyan", color: "#22d3ee" },
+  { id: "lime", label: "Lime", color: "#a3e635" },
+  { id: "orange", label: "Orange", color: "#fb923c" },
+] as const;
+
+function optionColorValue(color: string | undefined): string {
+  return SELECT_OPTION_PALETTE.find((entry) => entry.id === color)?.color ?? "#34d399";
+}
+
+function fieldSupportsDefaultValue(type: ForgeFieldType): boolean {
+  return type !== "attachment" && type !== "linked_record";
+}
+
+function fieldSupportsSelectOptions(type: ForgeFieldType): boolean {
+  return type === "single_select" || type === "multi_select";
+}
+
+function fieldDefaultInputType(type: ForgeFieldType): string {
+  if (type === "number") {
+    return "number";
+  }
+  if (type === "date") {
+    return "date";
+  }
+  if (type === "url") {
+    return "url";
+  }
+  if (type === "email") {
+    return "email";
+  }
+  return "text";
+}
+
+function fieldTypeConversionWarning(from: ForgeFieldType, to: ForgeFieldType): string | null {
+  if (from === to) {
+    return null;
+  }
+  if (
+    from === "attachment" ||
+    from === "linked_record" ||
+    to === "attachment" ||
+    to === "linked_record"
+  ) {
+    return "Attachment and linked-record fields are metadata-only in this slice. Existing cell values will be coerced to the new field shape.";
+  }
+  if (from === "multi_select" || to === "multi_select") {
+    return "Multi-select conversions can split or collapse values. Existing cells will be normalized when you apply the type change.";
+  }
+  if (to === "number" || to === "checkbox" || to === "date") {
+    return "This type conversion may rewrite existing cell values that do not match the new field type.";
+  }
+  if (fieldSupportsSelectOptions(from) || fieldSupportsSelectOptions(to)) {
+    return "Select conversions will keep option labels where possible and normalize unmatched values.";
+  }
+  return "Existing cells will be coerced to the new field type when you apply this change.";
+}
+
+function selectOptionsForField(field: ForgeStructuredField): ForgeStructuredSelectOption[] {
+  if (field.selectOptions?.length) {
+    return field.selectOptions;
+  }
+  return (field.options ?? []).map((label, index) => ({
+    id: `opt-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "option"}-${index + 1}`,
+    label,
+    color: SELECT_OPTION_PALETTE[index % SELECT_OPTION_PALETTE.length].id,
+  }));
 }
 
 function cellValueFromInput(
@@ -478,6 +554,7 @@ export function AppForge({
   onDeleteApp,
   onRestoreApp,
   onFocusApp,
+  gatewayConnected = false,
   gatewayRequest,
   onEmitWorkflowEvent,
 }: AppForgeProps) {
@@ -514,6 +591,11 @@ export function AppForge({
   const [newTableName, setNewTableName] = useState("");
   const [newFieldName, setNewFieldName] = useState("");
   const [newFieldType, setNewFieldType] = useState<ForgeFieldType>("text");
+  const [pendingFieldType, setPendingFieldType] = useState<ForgeFieldType>("text");
+  const [fieldNameDraft, setFieldNameDraft] = useState("");
+  const [fieldDescriptionDraft, setFieldDescriptionDraft] = useState("");
+  const [fieldDefaultDraft, setFieldDefaultDraft] = useState("");
+  const [selectOptionDrafts, setSelectOptionDrafts] = useState<Record<string, string>>({});
   const [newViewName, setNewViewName] = useState("");
   const [newViewType, setNewViewType] = useState<ForgeStructuredViewType>("grid");
   const [formRecordId, setFormRecordId] = useState<string | null>(null);
@@ -521,6 +603,7 @@ export function AppForge({
   const nameInputRef = useRef<HTMLInputElement>(null);
   const baseWorkspaceRef = useRef<HTMLDivElement>(null);
   const appCountAtBuild = useRef(0);
+  const effectiveGatewayRequest = gatewayConnected ? gatewayRequest : undefined;
 
   // Focus search on open
   useEffect(() => {
@@ -624,9 +707,9 @@ export function AppForge({
       }
       const base = { ...pendingBase, appId: created.app.id };
       let gatewayWriteFailed = false;
-      if (gatewayRequest) {
+      if (effectiveGatewayRequest) {
         try {
-          const gatewayWrite = gatewayRequest("appforge.bases.put", {
+          const gatewayWrite = effectiveGatewayRequest("appforge.bases.put", {
             base,
             expectedRevision: 0,
             idempotencyKey: `create-base:${created.app.id}`,
@@ -683,7 +766,7 @@ export function AppForge({
     } finally {
       setBuilding(false);
     }
-  }, [newAppName, apps.length, newAppDescription, gatewayRequest]);
+  }, [newAppName, apps.length, newAppDescription, effectiveGatewayRequest]);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -749,9 +832,25 @@ export function AppForge({
     apps: displayApps,
     selectedAppId,
     onSelectApp: setSelectedAppId,
-    gatewayRequest,
+    gatewayRequest: effectiveGatewayRequest,
     emitWorkflowEvent: onEmitWorkflowEvent,
   });
+  useEffect(() => {
+    if (structured.selectedField) {
+      setPendingFieldType(structured.selectedField.type);
+      setFieldNameDraft(structured.selectedField.name);
+      setFieldDescriptionDraft(structured.selectedField.description ?? "");
+      setFieldDefaultDraft(fieldValue(structured.selectedField.defaultValue));
+      setSelectOptionDrafts(
+        Object.fromEntries(
+          selectOptionsForField(structured.selectedField).map((option) => [
+            option.id,
+            option.label,
+          ]),
+        ),
+      );
+    }
+  }, [structured.selectedField]);
   const baseByAppId = useMemo(
     () => new Map(structured.bases.map((base) => [base.appId, base])),
     [structured.bases],
@@ -785,6 +884,129 @@ export function AppForge({
     setInspectorMode("field");
     setActiveViewMode("grid");
   }, [newFieldName, newFieldType, structured]);
+  const handleApplyFieldType = useCallback(async () => {
+    if (!structured.selectedField || pendingFieldType === structured.selectedField.type) {
+      return;
+    }
+    await structured.updateField(structured.selectedField.id, { type: pendingFieldType });
+  }, [pendingFieldType, structured]);
+  const handleUpdateSelectOption = useCallback(
+    async (
+      optionId: string,
+      updates: Partial<Pick<ForgeStructuredSelectOption, "label" | "color">>,
+    ) => {
+      if (!structured.selectedField) {
+        return;
+      }
+      const selectOptions = selectOptionsForField(structured.selectedField)
+        .map((option) =>
+          option.id === optionId
+            ? {
+                ...option,
+                ...updates,
+                label: updates.label !== undefined ? updates.label : option.label,
+              }
+            : option,
+        )
+        .filter((option) => option.label.trim());
+      await structured.updateField(structured.selectedField.id, {
+        selectOptions,
+        options: selectOptions.map((option) => option.label),
+      });
+    },
+    [structured],
+  );
+  const handleAddSelectOption = useCallback(async () => {
+    if (!structured.selectedField) {
+      return;
+    }
+    const selectOptions = selectOptionsForField(structured.selectedField);
+    const nextIndex = selectOptions.length;
+    const option = {
+      id: `opt-option-${Date.now().toString(36)}-${nextIndex + 1}`,
+      label: `Option ${nextIndex + 1}`,
+      color: SELECT_OPTION_PALETTE[nextIndex % SELECT_OPTION_PALETTE.length].id,
+    };
+    const nextOptions = [...selectOptions, option];
+    await structured.updateField(structured.selectedField.id, {
+      selectOptions: nextOptions,
+      options: nextOptions.map((entry) => entry.label),
+    });
+  }, [structured]);
+  const handleDeleteSelectOption = useCallback(
+    async (optionId: string) => {
+      if (!structured.selectedField) {
+        return;
+      }
+      const selectOptions = selectOptionsForField(structured.selectedField).filter(
+        (option) => option.id !== optionId,
+      );
+      await structured.updateField(structured.selectedField.id, {
+        selectOptions,
+        options: selectOptions.map((option) => option.label),
+      });
+    },
+    [structured],
+  );
+  const handleUpdateDefaultValue = useCallback(
+    async (field: ForgeStructuredField, rawValue: string | boolean) => {
+      const value =
+        field.type === "number"
+          ? Number(rawValue) || 0
+          : field.type === "checkbox"
+            ? rawValue === true
+            : field.type === "multi_select"
+              ? String(rawValue)
+                  .split(/[\n,]/)
+                  .map((entry) => entry.trim())
+                  .filter(Boolean)
+              : String(rawValue);
+      await structured.updateField(field.id, { defaultValue: value });
+    },
+    [structured],
+  );
+  const commitFieldNameDraft = useCallback(async () => {
+    const field = structured.selectedField;
+    if (!field) {
+      return;
+    }
+    const name = fieldNameDraft.trim() || field.name;
+    setFieldNameDraft(name);
+    if (name !== field.name) {
+      await structured.updateField(field.id, { name });
+    }
+  }, [fieldNameDraft, structured]);
+  const commitFieldDescriptionDraft = useCallback(async () => {
+    const field = structured.selectedField;
+    if (!field) {
+      return;
+    }
+    if (fieldDescriptionDraft !== (field.description ?? "")) {
+      await structured.updateField(field.id, { description: fieldDescriptionDraft });
+    }
+  }, [fieldDescriptionDraft, structured]);
+  const commitDefaultDraft = useCallback(async () => {
+    const field = structured.selectedField;
+    if (!field || !fieldSupportsDefaultValue(field.type)) {
+      return;
+    }
+    if (fieldDefaultDraft !== fieldValue(field.defaultValue)) {
+      await handleUpdateDefaultValue(field, fieldDefaultDraft);
+    }
+  }, [fieldDefaultDraft, handleUpdateDefaultValue, structured.selectedField]);
+  const commitSelectOptionDraft = useCallback(
+    async (option: ForgeStructuredSelectOption) => {
+      const label = (selectOptionDrafts[option.id] ?? option.label).trim();
+      if (!label) {
+        setSelectOptionDrafts((current) => ({ ...current, [option.id]: option.label }));
+        return;
+      }
+      if (label !== option.label) {
+        await handleUpdateSelectOption(option.id, { label });
+      }
+    },
+    [handleUpdateSelectOption, selectOptionDrafts],
+  );
   const viewSettings: ForgeViewSettings = useMemo(
     () => ({
       filterText: structured.activeView?.filterText ?? DEFAULT_VIEW_SETTINGS.filterText,
@@ -2374,165 +2596,318 @@ export function AppForge({
 
                     {inspectorMode === "field" ? (
                       <div className="space-y-5 text-sm">
-                        <label className="block">
-                          <span className="mb-2 block text-xs text-white/38">Field name</span>
-                          <input
-                            value={structured.selectedField?.name ?? ""}
-                            onChange={(event) => {
-                              if (!structured.selectedField) {
-                                return;
-                              }
-                              void structured.updateField(structured.selectedField.id, {
-                                name: event.target.value,
-                              });
-                            }}
-                            className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
-                          />
-                        </label>
-
-                        <label className="block">
-                          <span className="mb-2 block text-xs text-white/38">Field type</span>
-                          <select
-                            value={structured.selectedField?.type ?? "text"}
-                            onChange={(event) => {
-                              if (!structured.selectedField) {
-                                return;
-                              }
-                              void structured.updateField(structured.selectedField.id, {
-                                type: event.target.value as ForgeFieldType,
-                              });
-                            }}
-                            className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
-                          >
-                            {FIELD_TYPE_OPTIONS.map((fieldType) => (
-                              <option key={fieldType.value} value={fieldType.value}>
-                                {fieldType.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-
-                        {(structured.selectedField?.type === "single_select" ||
-                          structured.selectedField?.type === "multi_select") && (
-                          <div>
-                            <div className="mb-2 text-xs text-white/38">Options</div>
-                            <div className="space-y-2">
-                              {(structured.selectedField.options ?? []).map((label, index) => (
-                                <div
-                                  key={`${label}-${index}`}
-                                  className="flex items-center gap-2 rounded-lg bg-white/[0.05] px-2 py-2 text-white/65"
-                                >
-                                  <span className="h-3 w-3 shrink-0 rounded-full bg-emerald-400" />
-                                  <input
-                                    value={label}
-                                    onChange={(event) => {
-                                      if (!structured.selectedField) {
-                                        return;
-                                      }
-                                      const options = [...(structured.selectedField.options ?? [])];
-                                      options[index] = event.target.value;
-                                      void structured.updateField(structured.selectedField.id, {
-                                        options: options.filter((option) => option.trim()),
-                                      });
-                                    }}
-                                    className="min-w-0 flex-1 bg-transparent text-sm text-white/72 outline-none"
-                                  />
-                                  <button
-                                    onClick={() => {
-                                      if (!structured.selectedField) {
-                                        return;
-                                      }
-                                      void structured.updateField(structured.selectedField.id, {
-                                        options: (structured.selectedField.options ?? []).filter(
-                                          (_option, optionIndex) => optionIndex !== index,
-                                        ),
-                                      });
-                                    }}
-                                    className="rounded p-1 text-white/30 transition-colors hover:bg-red-500/15 hover:text-red-200"
-                                    title="Delete option"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                              ))}
+                        {structured.selectedField ? (
+                          <>
+                            <div className="rounded-xl border border-emerald-300/15 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-100/80">
+                              Live field settings. Changes save through the structured base path and
+                              reopen with this table.
                             </div>
-                            <button
-                              onClick={() => {
-                                if (!structured.selectedField) {
-                                  return;
+
+                            <label className="block">
+                              <span className="mb-2 block text-xs text-white/38">Field label</span>
+                              <input
+                                data-testid="appforge-field-name-input"
+                                value={fieldNameDraft}
+                                onChange={(event) => setFieldNameDraft(event.target.value)}
+                                onBlur={() => void commitFieldNameDraft()}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    event.currentTarget.blur();
+                                  }
+                                  if (event.key === "Escape") {
+                                    setFieldNameDraft(structured.selectedField?.name ?? "");
+                                    event.currentTarget.blur();
+                                  }
+                                }}
+                                className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
+                              />
+                            </label>
+
+                            <div>
+                              <label className="block">
+                                <span className="mb-2 block text-xs text-white/38">Field type</span>
+                                <select
+                                  data-testid="appforge-field-type-select"
+                                  value={pendingFieldType}
+                                  onChange={(event) =>
+                                    setPendingFieldType(event.target.value as ForgeFieldType)
+                                  }
+                                  className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
+                                >
+                                  {FIELD_TYPE_OPTIONS.map((fieldType) => (
+                                    <option key={fieldType.value} value={fieldType.value}>
+                                      {fieldType.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              {pendingFieldType !== structured.selectedField.type && (
+                                <div
+                                  data-testid="appforge-field-type-warning"
+                                  className="mt-3 rounded-xl border border-amber-300/25 bg-amber-400/10 p-3 text-xs leading-relaxed text-amber-100/85"
+                                >
+                                  <div className="font-medium text-amber-100">
+                                    Conversion requires confirmation
+                                  </div>
+                                  <div className="mt-1">
+                                    {fieldTypeConversionWarning(
+                                      structured.selectedField.type,
+                                      pendingFieldType,
+                                    )}
+                                  </div>
+                                  <div className="mt-3 flex gap-2">
+                                    <button
+                                      data-testid="appforge-field-type-apply"
+                                      onClick={() => void handleApplyFieldType()}
+                                      className="rounded-lg border border-amber-200/25 bg-amber-300/12 px-3 py-1.5 text-amber-50 transition-colors hover:bg-amber-300/18"
+                                    >
+                                      Apply type change
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        setPendingFieldType(
+                                          structured.selectedField?.type ?? "text",
+                                        )
+                                      }
+                                      className="rounded-lg border border-white/10 px-3 py-1.5 text-white/62 transition-colors hover:bg-white/5"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {fieldSupportsSelectOptions(structured.selectedField.type) && (
+                              <div>
+                                <div className="mb-2 flex items-center justify-between">
+                                  <span className="text-xs text-white/38">Select options</span>
+                                  <span className="text-[11px] text-white/30">
+                                    Stable ids + color metadata
+                                  </span>
+                                </div>
+                                <div className="space-y-2">
+                                  {selectOptionsForField(structured.selectedField).map((option) => (
+                                    <div
+                                      key={option.id}
+                                      className="grid grid-cols-[auto_minmax(0,1fr)_84px_auto] items-center gap-2 rounded-lg bg-white/[0.05] px-2 py-2 text-white/65"
+                                    >
+                                      <span
+                                        className="h-3 w-3 shrink-0 rounded-full"
+                                        style={{ backgroundColor: optionColorValue(option.color) }}
+                                      />
+                                      <input
+                                        value={selectOptionDrafts[option.id] ?? option.label}
+                                        onChange={(event) =>
+                                          setSelectOptionDrafts((current) => ({
+                                            ...current,
+                                            [option.id]: event.target.value,
+                                          }))
+                                        }
+                                        onBlur={() => void commitSelectOptionDraft(option)}
+                                        onKeyDown={(event) => {
+                                          if (event.key === "Enter") {
+                                            event.currentTarget.blur();
+                                          }
+                                          if (event.key === "Escape") {
+                                            setSelectOptionDrafts((current) => ({
+                                              ...current,
+                                              [option.id]: option.label,
+                                            }));
+                                            event.currentTarget.blur();
+                                          }
+                                        }}
+                                        className="min-w-0 bg-transparent text-sm text-white/72 outline-none"
+                                      />
+                                      <select
+                                        value={option.color}
+                                        onChange={(event) =>
+                                          void handleUpdateSelectOption(option.id, {
+                                            color: event.target.value,
+                                          })
+                                        }
+                                        className="rounded border border-white/10 bg-black/30 px-1.5 py-1 text-xs text-white/60 outline-none"
+                                      >
+                                        {SELECT_OPTION_PALETTE.map((palette) => (
+                                          <option key={palette.id} value={palette.id}>
+                                            {palette.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <button
+                                        onClick={() => void handleDeleteSelectOption(option.id)}
+                                        className="rounded p-1 text-white/30 transition-colors hover:bg-red-500/15 hover:text-red-200"
+                                        title="Delete option"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                                <button
+                                  onClick={() => void handleAddSelectOption()}
+                                  className="mt-3 flex items-center gap-2 text-sm text-sky-300/80 hover:text-sky-200"
+                                >
+                                  <Plus className="h-4 w-4" />
+                                  Add option
+                                </button>
+                              </div>
+                            )}
+
+                            <label className="block">
+                              <span className="mb-2 block text-xs text-white/38">Description</span>
+                              <textarea
+                                data-testid="appforge-field-description-input"
+                                value={fieldDescriptionDraft}
+                                onChange={(event) => setFieldDescriptionDraft(event.target.value)}
+                                onBlur={() => void commitFieldDescriptionDraft()}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                                    event.currentTarget.blur();
+                                  }
+                                  if (event.key === "Escape") {
+                                    setFieldDescriptionDraft(
+                                      structured.selectedField?.description ?? "",
+                                    );
+                                    event.currentTarget.blur();
+                                  }
+                                }}
+                                rows={3}
+                                className="w-full resize-none rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
+                              />
+                            </label>
+
+                            <div className="rounded-xl border border-white/10 bg-black/15 p-3">
+                              <div className="mb-2 text-xs text-white/38">Default value</div>
+                              {fieldSupportsDefaultValue(structured.selectedField.type) ? (
+                                structured.selectedField.type === "checkbox" ? (
+                                  <label className="flex items-center justify-between text-sm text-white/60">
+                                    Checked by default
+                                    <input
+                                      data-testid="appforge-field-default-checkbox"
+                                      type="checkbox"
+                                      checked={structured.selectedField.defaultValue === true}
+                                      onChange={(event) =>
+                                        void handleUpdateDefaultValue(
+                                          structured.selectedField as ForgeStructuredField,
+                                          event.target.checked,
+                                        )
+                                      }
+                                      className="h-4 w-4 accent-sky-400"
+                                    />
+                                  </label>
+                                ) : structured.selectedField.type === "single_select" ? (
+                                  <select
+                                    data-testid="appforge-field-default-input"
+                                    value={fieldValue(structured.selectedField.defaultValue)}
+                                    onChange={(event) =>
+                                      event.target.value
+                                        ? void handleUpdateDefaultValue(
+                                            structured.selectedField as ForgeStructuredField,
+                                            event.target.value,
+                                          )
+                                        : void structured.updateField(structured.selectedField.id, {
+                                            defaultValue: undefined,
+                                          })
+                                    }
+                                    className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
+                                  >
+                                    <option value="">No default</option>
+                                    {selectOptionsForField(structured.selectedField).map(
+                                      (option) => (
+                                        <option key={option.id} value={option.label}>
+                                          {option.label}
+                                        </option>
+                                      ),
+                                    )}
+                                  </select>
+                                ) : (
+                                  <input
+                                    data-testid="appforge-field-default-input"
+                                    type={fieldDefaultInputType(structured.selectedField.type)}
+                                    value={fieldDefaultDraft}
+                                    onChange={(event) => setFieldDefaultDraft(event.target.value)}
+                                    onBlur={() => void commitDefaultDraft()}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter") {
+                                        event.currentTarget.blur();
+                                      }
+                                      if (event.key === "Escape") {
+                                        setFieldDefaultDraft(
+                                          fieldValue(structured.selectedField?.defaultValue),
+                                        );
+                                        event.currentTarget.blur();
+                                      }
+                                    }}
+                                    placeholder={
+                                      structured.selectedField.type === "multi_select"
+                                        ? "Planning, Review"
+                                        : "No default"
+                                    }
+                                    className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none placeholder:text-white/28"
+                                  />
+                                )
+                              ) : (
+                                <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/45">
+                                  Planned: defaults for attachment and linked-record fields require
+                                  the next relation/asset storage slice.
+                                </div>
+                              )}
+                            </div>
+
+                            <label className="flex items-center justify-between border-t border-white/10 pt-4">
+                              <span>
+                                <span className="block text-sm text-white/55">Required</span>
+                                <span className="text-[11px] text-white/30">
+                                  Live metadata only; enforcement lands with validation rules.
+                                </span>
+                              </span>
+                              <input
+                                data-testid="appforge-field-required-toggle"
+                                type="checkbox"
+                                checked={!!structured.selectedField.required}
+                                onChange={(event) => {
+                                  if (!structured.selectedField) {
+                                    return;
+                                  }
+                                  void structured.updateField(structured.selectedField.id, {
+                                    required: event.target.checked,
+                                  });
+                                }}
+                                className="h-4 w-4 accent-sky-400"
+                              />
+                            </label>
+
+                            <div className="grid grid-cols-2 gap-2 border-t border-white/10 pt-4">
+                              <button
+                                onClick={() =>
+                                  structured.selectedField &&
+                                  void structured.duplicateField(structured.selectedField.id)
                                 }
-                                void structured.updateField(structured.selectedField.id, {
-                                  options: [
-                                    ...(structured.selectedField.options ?? []),
-                                    `Option ${(structured.selectedField.options ?? []).length + 1}`,
-                                  ],
-                                });
-                              }}
-                              className="mt-3 flex items-center gap-2 text-sm text-sky-300/80 hover:text-sky-200"
-                            >
-                              <Plus className="h-4 w-4" />
-                              Add option
-                            </button>
+                                className="flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition-colors hover:bg-white/5 hover:text-white"
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                                Duplicate
+                              </button>
+                              <button
+                                onClick={() =>
+                                  structured.selectedField &&
+                                  void structured.deleteField(structured.selectedField.id)
+                                }
+                                disabled={(structured.activeTable?.fields.length ?? 0) <= 1}
+                                className="flex items-center justify-center gap-2 rounded-lg border border-red-400/15 px-3 py-2 text-xs text-red-200/75 transition-colors hover:bg-red-500/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-35"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Delete
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/50">
+                            Select a field from the grid header or Tables section to edit live
+                            TableForge field settings.
                           </div>
                         )}
-
-                        <label className="block">
-                          <span className="mb-2 block text-xs text-white/38">Description</span>
-                          <textarea
-                            value={structured.selectedField?.description ?? ""}
-                            onChange={(event) => {
-                              if (!structured.selectedField) {
-                                return;
-                              }
-                              void structured.updateField(structured.selectedField.id, {
-                                description: event.target.value,
-                              });
-                            }}
-                            rows={3}
-                            className="w-full resize-none rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
-                          />
-                        </label>
-
-                        <label className="flex items-center justify-between border-t border-white/10 pt-4">
-                          <span className="text-sm text-white/55">Required</span>
-                          <input
-                            type="checkbox"
-                            checked={!!structured.selectedField?.required}
-                            onChange={(event) => {
-                              if (!structured.selectedField) {
-                                return;
-                              }
-                              void structured.updateField(structured.selectedField.id, {
-                                required: event.target.checked,
-                              });
-                            }}
-                            className="h-4 w-4 accent-sky-400"
-                          />
-                        </label>
-
-                        <div className="grid grid-cols-2 gap-2 border-t border-white/10 pt-4">
-                          <button
-                            onClick={() =>
-                              structured.selectedField &&
-                              void structured.duplicateField(structured.selectedField.id)
-                            }
-                            className="flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition-colors hover:bg-white/5 hover:text-white"
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                            Duplicate
-                          </button>
-                          <button
-                            onClick={() =>
-                              structured.selectedField &&
-                              void structured.deleteField(structured.selectedField.id)
-                            }
-                            disabled={(structured.activeTable?.fields.length ?? 0) <= 1}
-                            className="flex items-center justify-center gap-2 rounded-lg border border-red-400/15 px-3 py-2 text-xs text-red-200/75 transition-colors hover:bg-red-500/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-35"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            Delete
-                          </button>
-                        </div>
                       </div>
                     ) : (
                       <div className="space-y-5 text-sm">
