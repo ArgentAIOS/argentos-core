@@ -9,6 +9,22 @@
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": true,
+    "live_write_smoke_tested": false,
+    "required": ["DISCORD_BOT_TOKEN"],
+    "optional": [
+      "DISCORD_WEBHOOK_URL",
+      "DISCORD_API_BASE_URL",
+      "DISCORD_GUILD_ID",
+      "DISCORD_CHANNEL_ID",
+      "DISCORD_MESSAGE_ID",
+      "DISCORD_ROLE_ID",
+      "DISCORD_MEMBER_ID",
+      "DISCORD_CONTENT",
+      "DISCORD_EMBED_JSON",
+      "DISCORD_THREAD_NAME",
+      "DISCORD_CHANNEL_NAME",
+      "DISCORD_REACTION"
+    ],
     "workerFields": ["guild_id", "channel_id", "message_id", "content", "embed_json"],
     "worker_visible_actions": [
       "message.send",
@@ -162,14 +178,20 @@
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": [
-      "DISCORD_BOT_TOKEN",
+    "service_keys": ["DISCORD_BOT_TOKEN"],
+    "optional_service_keys": [
       "DISCORD_WEBHOOK_URL",
+      "DISCORD_API_BASE_URL",
       "DISCORD_GUILD_ID",
       "DISCORD_CHANNEL_ID",
       "DISCORD_MESSAGE_ID",
       "DISCORD_ROLE_ID",
-      "DISCORD_MEMBER_ID"
+      "DISCORD_MEMBER_ID",
+      "DISCORD_CONTENT",
+      "DISCORD_EMBED_JSON",
+      "DISCORD_THREAD_NAME",
+      "DISCORD_CHANNEL_NAME",
+      "DISCORD_REACTION"
     ],
     "interactive_setup": [
       "Create a Discord application and bot at https://discord.com/developers/applications.",
@@ -179,7 +201,9 @@
       "Invite the bot with permissions: Send Messages, Manage Messages, Add Reactions, Manage Channels, Manage Roles, Attach Files, Create Public Threads, Send Messages in Threads, Use External Emojis.",
       "Set DISCORD_GUILD_ID, DISCORD_CHANNEL_ID, DISCORD_MESSAGE_ID, DISCORD_ROLE_ID, and DISCORD_MEMBER_ID as operator linking keys when worker flows need stable scope defaults.",
       "For webhook.send, configure DISCORD_WEBHOOK_URL as an operator-controlled service key; the environment variable is only a local harness fallback.",
-      "webhook.send can run with DISCORD_WEBHOOK_URL alone, but all other live Discord commands require DISCORD_BOT_TOKEN plus the relevant bot permissions."
+      "webhook.send can run with DISCORD_WEBHOOK_URL alone, but all other live Discord commands require DISCORD_BOT_TOKEN plus the relevant bot permissions.",
+      "Scoped repo service keys cannot be bypassed with local environment variables.",
+      "Keep live_write_smoke_tested=false until a real operator Discord guild/webhook smoke test verifies writes."
     ]
   },
   "commands": [

@@ -231,6 +231,14 @@ Owned files/directories: `tools/aos/aos-holace/**`; this slice may also update t
 Shared contract changes: Holace changes from manifest-only stub to read-only AOS CLI connector. Public manifest/permissions now advertise read-only commands only, `write_bridge_available: false`, operator service keys `HOLACE_API_KEY` and `HOLACE_API_BASE_URL`, optional scope keys, and doctor/health metadata that distinguishes sampled API probe readiness from per-resource tenant smoke.
 Workflows/AppForge/AOU reaction: no runtime/UI changes required; continue consuming connector manifests, permissions, command capabilities, `action_class`, and readiness metadata only. Treat Holace writes as unavailable until a verified write bridge and smoke evidence are added.
 
+### 2026-04-27 — AOS Discord Workflow Connector
+
+Lane: `AOS Discord Workflow connector`
+Branch/commit: `codex/aos-discord-workflow-loop` in progress.
+Owned files/directories: `tools/aos/aos-discord-workflow/**` plus this coordination note.
+Shared contract changes: Discord Workflow remains a live Discord bot/webhook connector, but credentials and worker defaults now resolve from operator-controlled service keys first. Required service key is `DISCORD_BOT_TOKEN` for bot-backed commands; `DISCORD_WEBHOOK_URL` is optional and can power `webhook.send` without bot auth. Optional scope/default keys include `DISCORD_API_BASE_URL`, `DISCORD_GUILD_ID`, `DISCORD_CHANNEL_ID`, `DISCORD_MESSAGE_ID`, `DISCORD_ROLE_ID`, `DISCORD_MEMBER_ID`, `DISCORD_CONTENT`, `DISCORD_EMBED_JSON`, `DISCORD_THREAD_NAME`, `DISCORD_CHANNEL_NAME`, and `DISCORD_REACTION`. Scoped repo service keys block local env fallback and encrypted repo keys use the core-compatible `enc:v1` AES-GCM format.
+Workflows/AppForge/AOU reaction: consume manifest/capabilities only. Treat Discord write commands as consequential writes requiring write mode, operator service-key binding, bot/webhook permissions, and approval; `live_write_smoke_tested` remains `false` until a real operator Discord guild/webhook smoke test runs.
+
 ### 2026-04-26 — Master Threadmaster Roster
 
 Current active core threadmasters: AppForge 2.0, Work flow building master, AOU Stub Finder, and Compare OpenClaw 4.24 features. Treat the Workflows threadmaster as the master coordinator for cross-project lane awareness while it continues implementing the workflow canvas/runtime.
