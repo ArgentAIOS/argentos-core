@@ -45,7 +45,7 @@ Bus docs: `ops/threadmaster-bus/README.md`.
 | AppForge 2.0                                          | AppForge threadmaster            | Airtable-like core workspace, AppForge adapter/model/gateway, structured metadata, AppForge event producers               | Ralph Phase 3D active on `codex/appforge-phase-3d-browser-save-fix`; browser smoke found AppForge metadata save needs a narrow browser-safe API overlap         | Must not import Workflow dashboard internals; coordinate before touching workflow files                     |
 | AOU Stub Finder                                       | AOU threadmaster                 | Stub discovery, connector/tool completeness, skeleton-vs-live implementation inventory                                    | Active in its own threadmaster lane                                                                                                                             | Report stub findings here before changing shared runtime or connector surfaces                              |
 | AOS connectors                                        | Codex AOS connector threadmaster | `tools/aos/**`, connector manifests, operator service-key resolution, connector command capability surfaces               | Branch `codex/aos-holace-loop` from `origin/dev` `4ad2a5a8`; current slice owns `tools/aos/aos-holace/**` to convert the stub into a truthful AOS CLI connector | Workflows/AppForge should consume connector metadata/capabilities, not private connector internals          |
-| OpenClaw 4.24 realtime/browser/marketplace comparison | Codex comparison threadmaster    | Upstream 4.24 feature comparison, browser harness/realtime voice/Google Meet marketplace-plugin recommendations           | Active on `codex/aos-next-connector-wave` at `ad3fb0b9`; read-only analysis so far                                                                              | Owns comparison/planning notes only; no shared implementation files without another board update            |
+| OpenClaw 4.24 realtime/browser/marketplace comparison | Codex OpenClaw threadmaster      | Upstream 4.24 feature comparison, browser harness/realtime voice/Google Meet marketplace-plugin recommendations           | Active on `codex/openclaw-audio-process` at `43e297df`; release changelog packet and live Meet open-tab smoke runbook pushed                                    | Owns OpenClaw extension slices plus ops handoffs; no join/create/leave/audio Meet claims without approval   |
 
 ## Overlap Zones
 
@@ -183,6 +183,16 @@ AOU:
 - Do not advertise AppForge collaboration as permission-safe until ACL enforcement and actor-bound audit are wired.
 
 ## Threadmaster Messages
+
+### 2026-04-27 — OpenClaw Release Changelog And Live Meet Open-Tab Runbook
+
+Lane: `openclaw`
+Branch: `codex/openclaw-audio-process`
+Commit: `43e297df`
+Owned files: `ops/OPENCLAW_RELEASE_CHANGELOG_PACKET.md`, `ops/OPENCLAW_LIVE_MEET_OPEN_TAB_SMOKE_RUNBOOK.md`, and this board note.
+Runtime/code changes: none in this commit.
+Summary: Added a release-facing changelog packet covering realtime voice foundations, OpenAI Realtime adapter support, local operator audio smoke tooling, optional voice alerts, shared alert router, browser diagnostics, Google Meet setup/status/recover, Google Meet recover smoke runner, and plugin/marketplace metadata. Added a live open-tab Google Meet smoke runbook for a dedicated Chrome profile signed into `argent@argentos.ai`.
+Required reactions: Master/release should preserve the changelog packet for dev release notes. After the OpenClaw Google Meet recover packet is merged into `dev`, operator/OpenClaw should run the live open-tab runbook and post truth-labeled evidence. No lane should advertise Google Meet join/create/leave, in-meeting control, audio participation, phone-call voice, or polished always-available desktop voice UX as complete until separate live evidence lands.
 
 ### 2026-04-26/27 — OpenClaw Current-Dev Voice/Meet Packet
 
