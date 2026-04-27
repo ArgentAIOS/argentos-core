@@ -32,8 +32,15 @@ export type GoogleMeetSetupCheck = {
 
 export type GoogleMeetSetupStatus = {
   enabled: boolean;
+  browserProfileConfigured: boolean;
+  browserProfileName?: string;
+  oauthTokenConfigured: boolean;
+  oauthTokenPresent: boolean;
+  audioBridgeConfigured: boolean;
+  readyForBrowserRecovery: boolean;
   readyForLiveActions: boolean;
   defaultTransport: "chrome-node" | "local-chrome" | "websocket";
+  readiness: "setup-only" | "browser-profile-ready" | "audio-bridge-ready" | "live-ready";
   checks: GoogleMeetSetupCheck[];
 };
 
@@ -102,17 +109,39 @@ function checkAudioBridge(config: GoogleMeetConfig["audioBridge"]): GoogleMeetSe
 
 export function resolveGoogleMeetSetupStatus(config: GoogleMeetConfig = {}): GoogleMeetSetupStatus {
   const defaultTransport = config.defaultTransport ?? "chrome-node";
+  const enabled = config.enabled === true;
+  const browserProfileName = config.browser?.profile?.trim() || undefined;
+  const browserProfileConfigured = Boolean(browserProfileName);
+  const oauthTokenConfigured = hasText(config.oauth?.tokenPath);
+  const oauthTokenPresent = oauthTokenConfigured && fs.existsSync(config.oauth!.tokenPath!);
+  const audioBridgeConfigured =
+    hasText(config.audioBridge?.recordCommand) && hasText(config.audioBridge?.playCommand);
   const checks = [
     checkTokenPath(config.oauth?.tokenPath),
     checkBrowserProfile(config.browser?.profile),
     checkAudioBridge(config.audioBridge),
   ];
-  const readyForLiveActions = checks.every((check) => check.status === "pass");
+  const readyForBrowserRecovery = enabled && browserProfileConfigured;
+  const readyForLiveActions = enabled && checks.every((check) => check.status === "pass");
+  const readiness = readyForLiveActions
+    ? "live-ready"
+    : audioBridgeConfigured && readyForBrowserRecovery
+      ? "audio-bridge-ready"
+      : readyForBrowserRecovery
+        ? "browser-profile-ready"
+        : "setup-only";
 
   return {
-    enabled: config.enabled === true,
+    enabled,
+    browserProfileConfigured,
+    ...(browserProfileName ? { browserProfileName } : {}),
+    oauthTokenConfigured,
+    oauthTokenPresent,
+    audioBridgeConfigured,
+    readyForBrowserRecovery,
     readyForLiveActions,
     defaultTransport,
+    readiness,
     checks,
   };
 }
