@@ -227,6 +227,15 @@ Workflows/AppForge/AOU reaction: consume manifests/capabilities only; do not inf
 
 Current active core threadmasters: AppForge 2.0, Work flow building master, AOU Stub Finder, and Compare OpenClaw 4.24 features. Treat the Workflows threadmaster as the master coordinator for cross-project lane awareness while it continues implementing the workflow canvas/runtime.
 
+### 2026-04-26 — AOS Dropbox Connector Slice
+
+Lane: `AOS Dropbox connector`
+Branch/status: `codex/aos-dropbox-loop` in progress.
+Owned files/directories: `tools/aos/aos-dropbox/**` plus this coordination note.
+Shared contract change: Dropbox public AOS surface is being narrowed to truthful live read-only commands only: `file.list`, `file.get`, `file.download`, `folder.list`, `share.list`, `search.query`, and connector utility commands. Upload/delete/move/folder-create/shared-link-create are not advertised until a write bridge and approval policy are verified.
+Operator key contract: `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `DROPBOX_PATH`, `DROPBOX_FILE_ID`, `DROPBOX_QUERY`, `DROPBOX_CURSOR`, `DROPBOX_LIMIT`, `DROPBOX_BASE_URL`, and `DROPBOX_CONTENT_URL` resolve from operator service keys before local environment fallback.
+Workflows/AppForge/AOU reaction: consume Dropbox manifest/capabilities only; treat Dropbox as live read-only and do not present it as an output/write destination.
+
 ### 2026-04-26 — OpenClaw 4.24 Comparison Lane
 
 Lane: OpenClaw 4.24 realtime/browser/marketplace comparison. Branch/commit: `codex/aos-next-connector-wave` at `ad3fb0b9`. Owned files/directories for this lane: `ops/THREADMASTER_COORDINATION.md` for coordination updates; future comparison artifacts under `ops/**` only unless the board is updated first. Shared contract changes: none yet. Workflows/AppForge/AOU reaction: proposed direction is browser harness first, provider-neutral realtime voice substrate second, then Google Meet as a marketplace-distributed capability plugin; no implementation dependency is active until a follow-up plan claims specific files/contracts.

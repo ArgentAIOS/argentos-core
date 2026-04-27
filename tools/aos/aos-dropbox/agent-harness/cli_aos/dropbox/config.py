@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import json
-import os
-from .service_keys import service_key_env
 from typing import Any
 
+from .service_keys import SERVICE_KEY_VARIABLES, service_key_env, service_key_source
 from .constants import (
     BACKEND_NAME,
     DEFAULT_API_BASE_URL,
@@ -14,15 +12,11 @@ from .constants import (
     DROPBOX_BASE_URL_ENV,
     DROPBOX_CONTENT_URL_ENV,
     DROPBOX_CURSOR_ENV,
-    DROPBOX_DEST_PATH_ENV,
     DROPBOX_FILE_ID_ENV,
     DROPBOX_LIMIT_ENV,
-    DROPBOX_OUTPUT_FILE_ENV,
     DROPBOX_PATH_ENV,
     DROPBOX_QUERY_ENV,
     DROPBOX_REFRESH_TOKEN_ENV,
-    DROPBOX_SHARED_LINK_SETTINGS_ENV,
-    DROPBOX_SOURCE_FILE_ENV,
 )
 
 
@@ -51,10 +45,6 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     file_id_env = ctx_obj.get("file_id_env") or DROPBOX_FILE_ID_ENV
     query_env = ctx_obj.get("query_env") or DROPBOX_QUERY_ENV
     cursor_env = ctx_obj.get("cursor_env") or DROPBOX_CURSOR_ENV
-    shared_link_settings_env = ctx_obj.get("shared_link_settings_env") or DROPBOX_SHARED_LINK_SETTINGS_ENV
-    source_file_env = ctx_obj.get("source_file_env") or DROPBOX_SOURCE_FILE_ENV
-    dest_path_env = ctx_obj.get("dest_path_env") or DROPBOX_DEST_PATH_ENV
-    output_file_env = ctx_obj.get("output_file_env") or DROPBOX_OUTPUT_FILE_ENV
     limit_env = ctx_obj.get("limit_env") or DROPBOX_LIMIT_ENV
 
     app_key = (service_key_env(app_key_env) or "").strip()
@@ -66,10 +56,6 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     file_id = (service_key_env(file_id_env) or "").strip()
     query = (service_key_env(query_env) or "").strip()
     cursor = (service_key_env(cursor_env) or "").strip()
-    shared_link_settings = (service_key_env(shared_link_settings_env) or "").strip()
-    source_file = (service_key_env(source_file_env) or "").strip()
-    dest_path = (service_key_env(dest_path_env) or "").strip()
-    output_file = (service_key_env(output_file_env) or "").strip()
     limit = _int_or_none(service_key_env(limit_env))
 
     return {
@@ -83,10 +69,6 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "file_id_env": file_id_env,
         "query_env": query_env,
         "cursor_env": cursor_env,
-        "shared_link_settings_env": shared_link_settings_env,
-        "source_file_env": source_file_env,
-        "dest_path_env": dest_path_env,
-        "output_file_env": output_file_env,
         "limit_env": limit_env,
         "app_key": app_key,
         "app_secret": app_secret,
@@ -97,15 +79,13 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "file_id": file_id,
         "query": query,
         "cursor": cursor,
-        "shared_link_settings": shared_link_settings,
-        "source_file": source_file,
-        "dest_path": dest_path,
-        "output_file": output_file,
         "limit": limit,
         "app_key_present": bool(app_key),
         "app_secret_present": bool(app_secret),
         "refresh_token_present": bool(refresh_token),
         "runtime_ready": bool(app_key and app_secret and refresh_token),
+        "service_keys": sorted(SERVICE_KEY_VARIABLES),
+        "sources": {key: service_key_source(key) for key in sorted(SERVICE_KEY_VARIABLES)},
     }
 
 
@@ -123,21 +103,19 @@ def config_snapshot(ctx_obj: dict[str, Any], *, probe: dict[str, Any] | None = N
             "refresh_token_env": runtime["refresh_token_env"],
             "refresh_token_present": runtime["refresh_token_present"],
             "refresh_token_masked": _mask(runtime["refresh_token"]),
+            "service_keys": sorted(SERVICE_KEY_VARIABLES),
+            "operator_service_keys": sorted(SERVICE_KEY_VARIABLES),
+            "sources": {key: service_key_source(key) for key in sorted(SERVICE_KEY_VARIABLES)},
+            "development_fallback": sorted(SERVICE_KEY_VARIABLES),
         },
         "scope": {
             "path": runtime["path"] or None,
             "file_id": runtime["file_id"] or None,
             "query": runtime["query"] or None,
             "cursor": runtime["cursor"] or None,
-            "shared_link_settings": (
-                json.loads(runtime["shared_link_settings"]) if runtime["shared_link_settings"] else None
-            ),
-            "source_file": runtime["source_file"] or None,
-            "dest_path": runtime["dest_path"] or None,
-            "output_file": runtime["output_file"] or None,
         },
         "runtime": {
-            "implementation_mode": "live_read_write",
+            "implementation_mode": "live_read_only",
             "runtime_ready": bool(probe["ok"]) if probe else runtime["runtime_ready"],
             "limit": runtime["limit"],
             "base_url": runtime["base_url"],

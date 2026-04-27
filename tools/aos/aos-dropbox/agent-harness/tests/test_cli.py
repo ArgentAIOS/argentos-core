@@ -8,6 +8,7 @@ from click.testing import CliRunner
 
 from cli_aos.dropbox.cli import cli
 import cli_aos.dropbox.runtime as runtime
+import cli_aos.dropbox.service_keys as service_keys
 
 
 AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
@@ -66,21 +67,6 @@ class FakeDropboxClient:
             "content_hash": "abc123",
         }
 
-    def upload_file(self, *, dropbox_path: str, source_file: str) -> dict[str, Any]:
-        return {
-            "status": "uploaded",
-            "source_file": Path(source_file).name,
-            "metadata": {
-                "id": "id:file_upload",
-                "name": Path(dropbox_path).name,
-                "path_lower": dropbox_path.lower(),
-                "path_display": dropbox_path,
-                "tag": "file",
-                "size": 2048,
-            },
-            "raw": {},
-        }
-
     def download_file(self, *, path_or_id: str) -> dict[str, Any]:
         return {
             "metadata": {
@@ -93,29 +79,6 @@ class FakeDropboxClient:
             "bytes": b"binary-data",
             "content_base64": "YmluYXJ5LWRhdGE=",
             "raw": {},
-        }
-
-    def delete_file(self, *, path_or_id: str) -> dict[str, Any]:
-        return {"metadata": {"id": path_or_id, "name": "Quarterly Budget.xlsx", "tag": "file"}, "raw": {}}
-
-    def move_file(self, *, source_path: str, dest_path: str) -> dict[str, Any]:
-        return {"metadata": {"id": "id:file_1", "name": Path(dest_path).name, "path_display": dest_path, "tag": "file"}, "raw": {}}
-
-    def create_folder(self, *, path: str) -> dict[str, Any]:
-        return {"metadata": {"id": "id:folder_new", "name": Path(path).name, "path_display": path, "tag": "folder"}, "raw": {}}
-
-    def create_shared_link(self, *, path: str, settings: dict[str, Any] | None = None) -> dict[str, Any]:
-        return {
-            "shared_link": {
-                "id": "sl.test",
-                "url": "https://dropbox.test/shared",
-                "name": Path(path).name,
-                "path_lower": path.lower(),
-                "visibility": "public",
-                "expires": None,
-                "raw": {},
-            },
-            "raw": {"settings": settings or {}},
         }
 
     def list_shared_links(self, *, path: str) -> dict[str, Any]:
@@ -158,18 +121,33 @@ def invoke_json(args: list[str]) -> dict[str, Any]:
     return json.loads(result.output)
 
 
-def invoke_json_with_mode(mode: str, args: list[str]) -> dict[str, Any]:
-    result = CliRunner().invoke(cli, ["--json", "--mode", mode, *args])
-    assert result.exit_code == 0, result.output
-    return json.loads(result.output)
-
-
 def test_manifest_and_permissions_are_in_sync():
     manifest = json.loads(CONNECTOR_PATH.read_text())
     permissions = json.loads(PERMISSIONS_PATH.read_text())["permissions"]
     command_ids = [command["id"] for command in manifest["commands"]]
     assert set(command_ids) == set(permissions.keys())
     assert manifest["scope"]["kind"] == "document-storage"
+    assert manifest["scope"]["write_bridge_available"] is False
+    assert all(command["required_mode"] == "readonly" for command in manifest["commands"])
+    assert not any(command["action_class"] == "write" for command in manifest["commands"])
+
+
+def test_manifest_field_applicability_matches_commands():
+    manifest = json.loads(CONNECTOR_PATH.read_text())
+    command_ids = {command["id"] for command in manifest["commands"]}
+    assert set(manifest["scope"]["workerFields"]) == {"path", "file_id", "query", "cursor"}
+    for field in manifest["scope"]["fields"]:
+        assert set(field["applies_to"]).issubset(command_ids)
+    assert set(manifest["scope"]["commandDefaults"]).issubset(command_ids)
+
+
+def test_manifest_selection_surfaces_are_consistent():
+    manifest = json.loads(CONNECTOR_PATH.read_text())
+    picker_surfaces = set(manifest["scope"]["pickerHints"])
+    for command in manifest["commands"]:
+        surface = manifest["scope"]["commandDefaults"].get(command["id"], {}).get("selection_surface")
+        if surface:
+            assert surface in picker_surfaces
 
 
 def test_capabilities_exposes_manifest():
@@ -177,7 +155,8 @@ def test_capabilities_exposes_manifest():
     assert payload["tool"] == "aos-dropbox"
     assert payload["data"]["backend"] == "dropbox-api"
     assert "file.list" in json.dumps(payload["data"])
-    assert "share.create_link" in json.dumps(payload["data"])
+    assert payload["data"]["write_support"] == {}
+    assert "share.list" in json.dumps(payload["data"])
 
 
 def test_health_requires_credentials(monkeypatch):
@@ -211,7 +190,31 @@ def test_config_show_redacts_credentials(monkeypatch):
     assert "dropbox_app_secret_secret" not in json.dumps(data)
     assert "dropbox_refresh_token_secret" not in json.dumps(data)
     assert data["scope"]["path"] == "/Docs"
-    assert data["runtime"]["implementation_mode"] == "live_read_write"
+    assert data["runtime"]["implementation_mode"] == "live_read_only"
+    assert "DROPBOX_PATH" in data["auth"]["operator_service_keys"]
+
+
+def test_service_keys_take_precedence_over_environment(monkeypatch):
+    service_key_values = {
+        "DROPBOX_APP_KEY": "operator_app_key",
+        "DROPBOX_APP_SECRET": "operator_app_secret",
+        "DROPBOX_REFRESH_TOKEN": "operator_refresh_token",
+        "DROPBOX_PATH": "/OperatorDocs",
+        "DROPBOX_QUERY": "operator budget",
+    }
+    for variable in service_key_values:
+        monkeypatch.setenv(variable, f"env_{variable.lower()}")
+    monkeypatch.setattr(service_keys, "resolve_service_key", lambda variable: service_key_values.get(variable))
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeDropboxClient())
+
+    payload = invoke_json(["config", "show"])
+    data = payload["data"]
+
+    assert data["scope"]["path"] == "/OperatorDocs"
+    assert data["scope"]["query"] == "operator budget"
+    assert data["auth"]["sources"]["DROPBOX_PATH"] == "service-keys"
+    assert "env_dropbox_app_key" not in json.dumps(data)
+    assert "operator_app_key" not in json.dumps(data)
 
 
 def test_file_list_returns_picker_metadata(monkeypatch):
@@ -225,26 +228,24 @@ def test_file_list_returns_picker_metadata(monkeypatch):
     assert payload["data"]["scope_preview"]["command_id"] == "file.list"
 
 
-def test_folder_create_requires_write_mode(monkeypatch):
+def test_removed_write_commands_are_not_exposed(monkeypatch):
     monkeypatch.setenv("DROPBOX_APP_KEY", "app_key")
     monkeypatch.setenv("DROPBOX_APP_SECRET", "app_secret")
     monkeypatch.setenv("DROPBOX_REFRESH_TOKEN", "refresh_token")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeDropboxClient())
-    result = CliRunner().invoke(cli, ["--json", "--mode", "readonly", "folder", "create", "--path", "/Docs/New"])
-    payload = json.loads(result.output)
-    assert payload["ok"] is False
-    assert payload["error"]["code"] == "PERMISSION_DENIED"
-
-
-def test_folder_create_succeeds_in_write_mode(monkeypatch):
-    monkeypatch.setenv("DROPBOX_APP_KEY", "app_key")
-    monkeypatch.setenv("DROPBOX_APP_SECRET", "app_secret")
-    monkeypatch.setenv("DROPBOX_REFRESH_TOKEN", "refresh_token")
-    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeDropboxClient())
-    payload = invoke_json_with_mode("write", ["folder", "create", "--path", "/Docs/New"])
-    assert payload["data"]["status"] == "live_write"
-    assert payload["data"]["folder"]["metadata"]["path_display"] == "/Docs/New"
-    assert payload["data"]["scope_preview"]["command_id"] == "folder.create"
+    commands = [
+        ["file", "upload", "--path", "/Docs/New.txt"],
+        ["file", "delete", "--path", "/Docs/Old.txt"],
+        ["file", "move", "--path", "/Docs/Old.txt", "--dest-path", "/Docs/New.txt"],
+        ["folder", "create", "--path", "/Docs/New"],
+        ["share", "create-link", "--path", "/Docs/Quarterly Budget.xlsx"],
+    ]
+    for command in commands:
+        result = CliRunner().invoke(cli, ["--json", "--mode", "write", *command])
+        payload = json.loads(result.output)
+        assert result.exit_code == 2
+        assert payload["ok"] is False
+        assert payload["error"]["code"] == "INVALID_USAGE"
 
 
 def test_search_query_returns_picker_metadata(monkeypatch):

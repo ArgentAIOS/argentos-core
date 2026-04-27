@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
-import mimetypes
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -46,16 +44,6 @@ def _list_or_empty(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
-def _guess_content_type(filename: str) -> str:
-    return mimetypes.guess_type(filename)[0] or "application/octet-stream"
-
-
-def _load_source_file(source: str) -> tuple[str, bytes, str]:
-    path = Path(source).expanduser()
-    payload = path.read_bytes()
-    return path.name, payload, _guess_content_type(path.name)
-
-
 def _normalize_entry(raw: dict[str, Any]) -> dict[str, Any]:
     tag = raw.get(".tag")
     return {
@@ -68,17 +56,6 @@ def _normalize_entry(raw: dict[str, Any]) -> dict[str, Any]:
         "server_modified": raw.get("server_modified"),
         "content_hash": raw.get("content_hash"),
         "client_modified": raw.get("client_modified"),
-        "raw": raw,
-    }
-
-
-def _normalize_folder(raw: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": raw.get("id"),
-        "name": raw.get("name"),
-        "path_lower": raw.get("path_lower"),
-        "path_display": raw.get("path_display"),
-        "tag": raw.get(".tag"),
         "raw": raw,
     }
 
@@ -303,25 +280,6 @@ class DropboxClient:
         raw = self._request_json("POST", "/2/files/get_metadata", body={"path": path_or_id})
         return _normalize_entry(raw)
 
-    def upload_file(self, *, dropbox_path: str, source_file: str) -> dict[str, Any]:
-        filename, payload, content_type = _load_source_file(source_file)
-        headers = {
-            "Dropbox-API-Arg": json.dumps({"path": dropbox_path, "mode": "add", "autorename": True, "mute": False}),
-            "Content-Type": content_type or "application/octet-stream",
-        }
-        raw = self._request_bytes(
-            "POST",
-            "/2/files/upload",
-            body=payload,
-            headers=headers,
-        )
-        return {
-            "status": "uploaded",
-            "source_file": filename,
-            "metadata": _normalize_entry(_dict_or_empty(_load_json(raw["bytes"])) if raw["content_type"] and "json" in raw["content_type"] else {}),
-            "raw": raw,
-        }
-
     def download_file(self, *, path_or_id: str) -> dict[str, Any]:
         raw = self._request_bytes(
             "POST",
@@ -341,32 +299,6 @@ class DropboxClient:
             "content_base64": base64.b64encode(raw.get("bytes", b"")).decode("utf-8"),
             "raw": raw,
         }
-
-    def delete_file(self, *, path_or_id: str) -> dict[str, Any]:
-        raw = self._request_json("POST", "/2/files/delete_v2", body={"path": path_or_id})
-        metadata = _dict_or_empty(raw.get("metadata"))
-        return {"metadata": _normalize_entry(metadata), "raw": raw}
-
-    def move_file(self, *, source_path: str, dest_path: str) -> dict[str, Any]:
-        raw = self._request_json("POST", "/2/files/move_v2", body={"from_path": source_path, "to_path": dest_path})
-        metadata = _dict_or_empty(raw.get("metadata"))
-        return {"metadata": _normalize_entry(metadata), "raw": raw}
-
-    def create_folder(self, *, path: str) -> dict[str, Any]:
-        raw = self._request_json("POST", "/2/files/create_folder_v2", body={"path": path, "autorename": False})
-        metadata = _dict_or_empty(raw.get("metadata"))
-        return {"metadata": _normalize_folder(metadata), "raw": raw}
-
-    def create_shared_link(self, *, path: str, settings: dict[str, Any] | None = None) -> dict[str, Any]:
-        if settings:
-            raw = self._request_json(
-                "POST",
-                "/2/sharing/create_shared_link_with_settings",
-                body={"path": path, "settings": settings},
-            )
-        else:
-            raw = self._request_json("POST", "/2/sharing/create_shared_link_with_settings", body={"path": path})
-        return {"shared_link": _normalize_shared_link(_dict_or_empty(raw.get("url") and raw or raw)), "raw": raw}
 
     def list_shared_links(self, *, path: str) -> dict[str, Any]:
         raw = self._request_json("POST", "/2/sharing/list_shared_links", body={"path": path, "direct_only": True})

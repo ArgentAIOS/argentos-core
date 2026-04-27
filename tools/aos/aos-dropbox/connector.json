@@ -9,8 +9,8 @@
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": false,
-    "workerFields": ["path", "file_id", "query", "cursor", "shared_link_settings"],
-    "worker_visible_actions": ["file.list", "file.get", "folder.list", "search.query"],
+    "workerFields": ["path", "file_id", "query", "cursor"],
+    "worker_visible_actions": ["file.list", "file.get", "file.download", "folder.list", "share.list", "search.query"],
     "fields": [
       {
         "id": "path",
@@ -25,12 +25,9 @@
         "applies_to": [
           "file.list",
           "file.get",
-          "file.upload",
           "file.download",
-          "file.delete",
-          "file.move",
           "folder.list",
-          "folder.create"
+          "share.list"
         ],
         "example": "/Documents/Reports/Q4.pdf"
       },
@@ -44,7 +41,7 @@
         "valueType": "string",
         "description": "Dropbox file ID (used for operations when path is unavailable)",
         "placeholder": "id:a4ayc_80_OEAAAAAAAAAXw",
-        "applies_to": ["file.get", "file.download", "file.delete", "file.move"],
+        "applies_to": ["file.get", "file.download"],
         "example": "id:a4ayc_80_OEAAAAAAAAAXw"
       },
       {
@@ -72,19 +69,6 @@
         "placeholder": "ZtkX9_EHj3x7PMkVuFIhwKYXEpwpLwyxp9vMKomUhllil9q7eWiAu",
         "applies_to": ["file.list", "folder.list", "search.query"],
         "example": "ZtkX9_EHj3x7PMkVuFIhwKYXEpwpLwyxp9vMKomUhllil9q7eWiAu"
-      },
-      {
-        "id": "shared_link_settings",
-        "label": "Shared link settings",
-        "type": "json",
-        "renderAs": "json",
-        "required": false,
-        "expressionEnabled": true,
-        "valueType": "json",
-        "description": "JSON configuration for shared link visibility and access",
-        "placeholder": "{\"requested_visibility\": \"public\", \"audience\": \"public\"}",
-        "applies_to": ["share.create_link"],
-        "example": "{\"requested_visibility\": \"public\", \"audience\": \"public\"}"
       }
     ],
     "commandDefaults": {
@@ -97,35 +81,14 @@
         "selection_surface": "file",
         "args": ["DROPBOX_FILE_ID"]
       },
-      "file.upload": {
-        "selection_surface": "file",
-        "args": ["DROPBOX_PATH"]
-      },
       "file.download": {
         "selection_surface": "file",
         "args": ["DROPBOX_FILE_ID"]
-      },
-      "file.delete": {
-        "selection_surface": "file",
-        "args": ["DROPBOX_PATH"]
-      },
-      "file.move": {
-        "selection_surface": "file",
-        "args": ["DROPBOX_PATH"]
       },
       "folder.list": {
         "selection_surface": "folder",
         "args": ["DROPBOX_PATH"],
         "limit": 25
-      },
-      "folder.create": {
-        "selection_surface": "folder",
-        "args": ["DROPBOX_PATH"]
-      },
-      "share.create_link": {
-        "selection_surface": "share",
-        "args": ["DROPBOX_PATH"],
-        "settings": "DROPBOX_SHARED_LINK_SETTINGS"
       },
       "share.list": {
         "selection_surface": "share",
@@ -170,15 +133,27 @@
   "auth": {
     "kind": "oauth2",
     "required": true,
-    "service_keys": ["DROPBOX_APP_KEY", "DROPBOX_APP_SECRET", "DROPBOX_REFRESH_TOKEN"],
+    "service_keys": [
+      "DROPBOX_APP_KEY",
+      "DROPBOX_APP_SECRET",
+      "DROPBOX_REFRESH_TOKEN",
+      "DROPBOX_PATH",
+      "DROPBOX_FILE_ID",
+      "DROPBOX_QUERY",
+      "DROPBOX_CURSOR",
+      "DROPBOX_LIMIT",
+      "DROPBOX_BASE_URL",
+      "DROPBOX_CONTENT_URL"
+    ],
     "interactive_setup": [
       "Create a Dropbox app at https://www.dropbox.com/developers/apps.",
       "Choose 'Scoped access' and select 'Full Dropbox' or 'App folder' access type.",
       "Add DROPBOX_APP_KEY, DROPBOX_APP_SECRET, and DROPBOX_REFRESH_TOKEN in API Keys.",
-      "Required scopes: files.metadata.read, files.content.read for read-only; add files.content.write, sharing.write for write operations.",
+      "Required scopes: files.metadata.read, files.content.read, and sharing.read.",
       "Set DROPBOX_PATH to scope default listings to a specific folder path (optional).",
       "Cursor-based pagination: pass the cursor from a previous response to continue listing.",
-      "The connector is live-read-first and will report API failures instead of masking them."
+      "The connector is live read-only and will report API failures instead of masking them.",
+      "Dropbox write operations are not advertised until a write bridge and approval policy are verified."
     ]
   },
   "commands": [
@@ -199,14 +174,6 @@
       "action_class": "read"
     },
     {
-      "id": "file.upload",
-      "summary": "Upload a file to Dropbox",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "file",
-      "action_class": "write"
-    },
-    {
       "id": "file.download",
       "summary": "Download a file from Dropbox",
       "required_mode": "readonly",
@@ -215,44 +182,12 @@
       "action_class": "read"
     },
     {
-      "id": "file.delete",
-      "summary": "Delete a file from Dropbox",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "file",
-      "action_class": "write"
-    },
-    {
-      "id": "file.move",
-      "summary": "Move a Dropbox file to a different path",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "file",
-      "action_class": "write"
-    },
-    {
       "id": "folder.list",
       "summary": "List subfolders in a Dropbox folder",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "folder",
       "action_class": "read"
-    },
-    {
-      "id": "folder.create",
-      "summary": "Create a new folder in Dropbox",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "folder",
-      "action_class": "write"
-    },
-    {
-      "id": "share.create_link",
-      "summary": "Create a shared link for a Dropbox file or folder",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "share",
-      "action_class": "write"
     },
     {
       "id": "share.list",
