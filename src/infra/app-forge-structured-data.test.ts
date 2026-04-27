@@ -84,6 +84,22 @@ describe("forge structured data metadata", () => {
                   },
                   { values: { title: "Missing id" } },
                 ],
+                views: [
+                  {
+                    id: "view-review",
+                    name: "Review queue",
+                    type: "grid",
+                    filterText: "asset",
+                    sortFieldId: "title",
+                    sortDirection: "desc",
+                    groupFieldId: "bad-field",
+                    visibleFieldIds: ["title", "missing-field"],
+                    createdAt: "2026-04-25T21:00:00.000Z",
+                    updatedAt: "2026-04-25T21:00:00.000Z",
+                  },
+                  { id: "bad-view", name: "Bad view", type: "timeline" },
+                ],
+                activeViewId: "view-review",
               },
             ],
           },
@@ -99,6 +115,19 @@ describe("forge structured data metadata", () => {
     expect(base.tables).toHaveLength(1);
     expect(base.tables[0]?.fields.map((field) => field.id)).toEqual(["title", "approved"]);
     expect(base.tables[0]?.records).toHaveLength(1);
+    expect(base.tables[0]?.activeViewId).toBe("view-review");
+    expect(base.tables[0]?.views).toEqual([
+      expect.objectContaining({
+        id: "view-review",
+        name: "Review queue",
+        type: "grid",
+        filterText: "asset",
+        sortFieldId: "title",
+        sortDirection: "desc",
+        groupFieldId: "",
+        visibleFieldIds: ["title"],
+      }),
+    ]);
     expect(base.tables[0]?.records[0]?.values).toEqual({
       title: "Asset A",
       approved: true,
@@ -109,6 +138,19 @@ describe("forge structured data metadata", () => {
         version: 1,
         baseId: "base-existing",
         activeTableId: "table-review",
+        tables: [
+          expect.objectContaining({
+            id: "table-review",
+            activeViewId: "view-review",
+            views: [
+              expect.objectContaining({
+                id: "view-review",
+                name: "Review queue",
+                filterText: "asset",
+              }),
+            ],
+          }),
+        ],
       },
     });
   });
@@ -142,6 +184,44 @@ describe("forge structured data metadata", () => {
       "dueDate",
       "capability",
     ]);
+    expect(base.tables[0]?.views).toEqual([
+      expect.objectContaining({ id: "view-grid", name: "Grid", type: "grid" }),
+    ]);
+    expect(base.tables[0]?.activeViewId).toBe("view-grid");
+  });
+
+  it("normalizes legacy tables with no views into a default grid view", () => {
+    const base = forgeStructuredDataTestUtils.normalizeBase(
+      app({
+        metadata: {
+          appForge: {
+            structured: {
+              baseId: "base-existing",
+              activeTableId: "table-review",
+              updatedAt: "2026-04-25T21:00:00.000Z",
+              tables: [
+                {
+                  id: "table-review",
+                  name: "Reviews",
+                  fields: [{ id: "title", name: "Title", type: "text" }],
+                  records: [],
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    expect(base.tables[0]?.views).toEqual([
+      expect.objectContaining({
+        id: "view-grid",
+        name: "Grid",
+        type: "grid",
+        sortDirection: "asc",
+      }),
+    ]);
+    expect(base.tables[0]?.activeViewId).toBe("view-grid");
   });
 
   it("normalizes gateway-backed bases and preserves revisions", () => {
