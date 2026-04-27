@@ -1,0 +1,22 @@
+{
+  "tool": "aos-paypunch",
+  "backend": "paypunch-api",
+  "permissions": {
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "timesheet.list": "readonly",
+    "timesheet.get": "readonly",
+    "employee.list": "readonly",
+    "employee.get": "readonly",
+    "company.list": "readonly",
+    "company.get": "readonly",
+    "export.quickbooks_iif": "readonly",
+    "export.csv": "readonly",
+    "pay_period.list": "readonly",
+    "pay_period.current": "readonly",
+    "report.hours_summary": "readonly",
+    "report.overtime": "readonly"
+  }
+}

@@ -1,28 +1,42 @@
 # aos-paypunch
 
-Agent-native PayPunch connector — first-party reference implementation.
+Agent-native PayPunch connector for AOS.
 
-PayPunch is a multi-tenant time tracking platform for bookkeepers. Field workers log hours via mobile, bookkeepers approve timesheets, and data exports to QuickBooks.
+PayPunch is treated here as a live read-only payroll/time-tracking surface. The connector exposes read commands for timesheets, employees, companies, pay periods, exports, and reports. It does not advertise approval, rejection, employee creation, or any other write command until a write bridge is implemented and verified.
+
+## Commands
 
 - `timesheet.list` and `timesheet.get` browse timesheet entries.
-- `timesheet.approve` and `timesheet.reject` manage the approval workflow.
-- `employee.list`, `employee.get`, and `employee.create` manage the workforce.
-- `company.list` and `company.get` browse client companies within a tenant.
-- `export.quickbooks_iif` and `export.csv` generate payroll export files.
+- `employee.list` and `employee.get` browse employees.
+- `company.list` and `company.get` browse client companies.
+- `export.quickbooks_iif` and `export.csv` read export payloads.
 - `pay_period.list` and `pay_period.current` navigate pay periods.
-- `report.hours_summary` and `report.overtime` generate analytics.
+- `report.hours_summary` and `report.overtime` read report payloads.
 
 ## Auth
 
-The connector expects a PayPunch API key via `PAYPUNCH_API_KEY`.
+The connector requires operator-controlled service keys:
 
-Optional scope hints:
+- `PAYPUNCH_API_KEY`
+- `PAYPUNCH_API_BASE_URL`
 
-- `PAYPUNCH_TENANT_ID` to scope to a specific bookkeeper tenant.
-- `PAYPUNCH_COMPANY_ID` to default to a specific client company.
-- `PAYPUNCH_EMPLOYEE_ID` to preselect an employee scope.
-- `PAYPUNCH_TIMESHEET_ID` to preselect a timesheet scope.
+Optional operator-controlled scope defaults:
 
-## Live Reads + Writes
+- `PAYPUNCH_TENANT_ID`
+- `PAYPUNCH_COMPANY_ID`
+- `PAYPUNCH_EMPLOYEE_ID`
+- `PAYPUNCH_TIMESHEET_ID`
+- `PAYPUNCH_PAY_PERIOD`
 
-This is a first-party connector with full live read and write support. Timesheet approval/rejection, employee creation, and all read operations hit the PayPunch API directly. Export commands generate files on demand.
+Local `PAYPUNCH_*` environment variables remain a development harness fallback only. Linked production systems should bind credentials through operator service keys.
+
+## Readiness
+
+`health` samples `timesheet.list` and `employee.list` when the required service keys are present. Company, pay-period, export, and report commands are implemented but not separately tenant-smoked in this repo.
+
+Readiness truth:
+
+- `live_backend_available: true`
+- `live_read_available: true`
+- `write_bridge_available: false`
+- `scaffold_only: false`
