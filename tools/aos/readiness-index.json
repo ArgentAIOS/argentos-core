@@ -34,14 +34,14 @@
   ],
   "totals": {
     "connectors": 64,
-    "commands": 986,
-    "read_commands": 717,
-    "write_commands": 269,
+    "commands": 928,
+    "read_commands": 718,
+    "write_commands": 210,
     "by_readiness": {
       "live-ready": 46,
-      "read-only": 6,
-      "preview-only": 9,
-      "manifest-only": 3,
+      "read-only": 18,
+      "preview-only": 0,
+      "manifest-only": 0,
       "scaffold/deferred": 0
     }
   },
@@ -838,7 +838,7 @@
       "backend": "box-api",
       "path": "tools/aos/aos-box",
       "manifest_schema_version": "1.0.0",
-      "readiness": "preview-only",
+      "readiness": "read-only",
       "production_smoke_tested": false,
       "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
       "scope": {
@@ -860,9 +860,9 @@
           "pyproject": true,
           "tests": true
         },
-        "command_count": 20,
+        "command_count": 12,
         "read_command_count": 12,
-        "write_command_count": 8
+        "write_command_count": 0
       },
       "commands": [
         {
@@ -886,16 +886,6 @@
           "supports_json": true
         },
         {
-          "id": "file.upload",
-          "summary": "Upload a file to Box",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
           "id": "file.download",
           "summary": "Download a file from Box",
           "required_mode": "readonly",
@@ -903,26 +893,6 @@
           "readiness": "read-only",
           "runtime_available": true,
           "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "file.copy",
-          "summary": "Copy a Box file",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
-          "id": "file.move",
-          "summary": "Move a Box file to a different folder",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
           "supports_json": true
         },
         {
@@ -936,16 +906,6 @@
           "supports_json": true
         },
         {
-          "id": "folder.create",
-          "summary": "Create a new folder in Box",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
           "id": "folder.get",
           "summary": "Get metadata for a Box folder",
           "required_mode": "readonly",
@@ -956,26 +916,6 @@
           "supports_json": true
         },
         {
-          "id": "share.create",
-          "summary": "Create a shared link for a Box file",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
-          "id": "share.update",
-          "summary": "Update shared link settings for a Box file",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
           "id": "collaboration.list",
           "summary": "List collaborations on a Box folder",
           "required_mode": "readonly",
@@ -983,16 +923,6 @@
           "readiness": "read-only",
           "runtime_available": true,
           "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "collaboration.create",
-          "summary": "Add a collaborator to a Box folder",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
           "supports_json": true
         },
         {
@@ -1013,16 +943,6 @@
           "readiness": "read-only",
           "runtime_available": true,
           "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "metadata.set",
-          "summary": "Set metadata on a Box file",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
           "supports_json": true
         },
         {
@@ -1072,7 +992,7 @@
       "backend": "buffer-graphql-api",
       "path": "tools/aos/aos-buffer",
       "manifest_schema_version": "1.0.0",
-      "readiness": "preview-only",
+      "readiness": "read-only",
       "production_smoke_tested": false,
       "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
       "scope": {
@@ -1099,9 +1019,9 @@
           "pyproject": true,
           "tests": true
         },
-        "command_count": 13,
+        "command_count": 11,
         "read_command_count": 11,
-        "write_command_count": 2
+        "write_command_count": 0
       },
       "commands": [
         {
@@ -1212,26 +1132,6 @@
           "readiness": "read-only",
           "runtime_available": true,
           "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "post.create_draft",
-          "summary": "Preview a Buffer draft-post mutation without executing it",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
-          "id": "post.schedule",
-          "summary": "Preview a Buffer scheduled-post mutation without executing it",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
           "supports_json": true
         }
       ]
@@ -1395,200 +1295,40 @@
       "backend": "callscrub-api",
       "path": "tools/aos/aos-callscrub",
       "manifest_schema_version": "1.0.0",
-      "readiness": "manifest-only",
+      "readiness": "read-only",
       "production_smoke_tested": false,
       "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
       "scope": {
         "kind": "sales-analytics",
         "surface": "call-transcript-coaching",
-        "scaffold_only": true,
-        "live_backend_available": false,
+        "scaffold_only": false,
+        "live_backend_available": true,
         "live_read_available": true,
-        "write_bridge_available": true
+        "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["CALLSCRUB_API_KEY", "CALLSCRUB_TEAM_ID"],
+        "service_keys": ["CALLSCRUB_API_BASE_URL", "CALLSCRUB_API_KEY", "CALLSCRUB_TEAM_ID"],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
       "runtime": {
         "harness": {
-          "present": false,
-          "pyproject": false,
-          "tests": false
+          "present": true,
+          "pyproject": true,
+          "tests": true
         },
-        "command_count": 20,
+        "command_count": 16,
         "read_command_count": 16,
-        "write_command_count": 4
+        "write_command_count": 0
       },
       "commands": [
-        {
-          "id": "call.list",
-          "summary": "List recorded sales calls",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "call.get",
-          "summary": "Get details for a specific call",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "call.upload",
-          "summary": "Upload a call recording for processing",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "external_mutation",
-          "supports_json": true
-        },
-        {
-          "id": "call.analyze",
-          "summary": "Trigger AI analysis on a call",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "external_mutation",
-          "supports_json": true
-        },
-        {
-          "id": "transcript.get",
-          "summary": "Get the transcript for a call",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "transcript.search",
-          "summary": "Search across all call transcripts",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "coaching.generate",
-          "summary": "Generate AI coaching recommendations for a call",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "external_mutation",
-          "supports_json": true
-        },
-        {
-          "id": "coaching.list",
-          "summary": "List coaching reports",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "coaching.get",
-          "summary": "Get a specific coaching report",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "agent.list",
-          "summary": "List sales agents",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "agent.stats",
-          "summary": "Get performance stats for a sales agent",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "agent.scorecard",
-          "summary": "Get the full scorecard for a sales agent",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "team.list",
-          "summary": "List sales teams",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "team.stats",
-          "summary": "Get performance stats for a team",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "report.generate",
-          "summary": "Generate a performance report",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "external_mutation",
-          "supports_json": true
-        },
-        {
-          "id": "report.list",
-          "summary": "List generated reports",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
         {
           "id": "capabilities",
           "summary": "Describe the connector manifest",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -1597,8 +1337,8 @@
           "summary": "Show redacted connector configuration",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -1607,8 +1347,8 @@
           "summary": "Report connector health and setup readiness",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -1617,8 +1357,128 @@
           "summary": "Run connector diagnostics",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "call.list",
+          "summary": "List recorded sales calls",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "call.get",
+          "summary": "Get details for a specific call",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "transcript.get",
+          "summary": "Get the transcript for a call",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "transcript.search",
+          "summary": "Search across call transcripts",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "coaching.list",
+          "summary": "List coaching reports",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "coaching.get",
+          "summary": "Get a coaching report",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "agent.list",
+          "summary": "List sales agents",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "agent.stats",
+          "summary": "Get performance stats for a sales agent",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "agent.scorecard",
+          "summary": "Get the scorecard for a sales agent",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "team.list",
+          "summary": "List sales teams",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "team.stats",
+          "summary": "Get performance stats for a team",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "report.list",
+          "summary": "List generated reports",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         }
@@ -3849,7 +3709,7 @@
       "backend": "dropbox-api",
       "path": "tools/aos/aos-dropbox",
       "manifest_schema_version": "1.0.0",
-      "readiness": "preview-only",
+      "readiness": "read-only",
       "production_smoke_tested": false,
       "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
       "scope": {
@@ -3861,7 +3721,13 @@
         "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["DROPBOX_APP_KEY", "DROPBOX_APP_SECRET", "DROPBOX_REFRESH_TOKEN"],
+        "service_keys": [
+          "DROPBOX_APP_KEY",
+          "DROPBOX_APP_SECRET",
+          "DROPBOX_BASE_URL",
+          "DROPBOX_CONTENT_URL",
+          "DROPBOX_REFRESH_TOKEN"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -3871,9 +3737,9 @@
           "pyproject": true,
           "tests": true
         },
-        "command_count": 15,
+        "command_count": 10,
         "read_command_count": 10,
-        "write_command_count": 5
+        "write_command_count": 0
       },
       "commands": [
         {
@@ -3897,16 +3763,6 @@
           "supports_json": true
         },
         {
-          "id": "file.upload",
-          "summary": "Upload a file to Dropbox",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
           "id": "file.download",
           "summary": "Download a file from Dropbox",
           "required_mode": "readonly",
@@ -3917,26 +3773,6 @@
           "supports_json": true
         },
         {
-          "id": "file.delete",
-          "summary": "Delete a file from Dropbox",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
-          "id": "file.move",
-          "summary": "Move a Dropbox file to a different path",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
           "id": "folder.list",
           "summary": "List subfolders in a Dropbox folder",
           "required_mode": "readonly",
@@ -3944,26 +3780,6 @@
           "readiness": "read-only",
           "runtime_available": true,
           "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "folder.create",
-          "summary": "Create a new folder in Dropbox",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
-          "id": "share.create_link",
-          "summary": "Create a shared link for a Dropbox file or folder",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
           "supports_json": true
         },
         {
@@ -4639,7 +4455,7 @@
       "backend": "google-drive-api",
       "path": "tools/aos/aos-google-drive",
       "manifest_schema_version": "1.0.0",
-      "readiness": "preview-only",
+      "readiness": "read-only",
       "production_smoke_tested": false,
       "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
       "scope": {
@@ -4652,6 +4468,7 @@
       },
       "auth": {
         "service_keys": [
+          "GOOGLE_DRIVE_BASE_URL",
           "GOOGLE_DRIVE_CLIENT_ID",
           "GOOGLE_DRIVE_CLIENT_SECRET",
           "GOOGLE_DRIVE_REFRESH_TOKEN"
@@ -4665,9 +4482,9 @@
           "pyproject": true,
           "tests": true
         },
-        "command_count": 17,
+        "command_count": 11,
         "read_command_count": 11,
-        "write_command_count": 6
+        "write_command_count": 0
       },
       "commands": [
         {
@@ -4691,46 +4508,6 @@
           "supports_json": true
         },
         {
-          "id": "file.create",
-          "summary": "Create a new file in Google Drive",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
-          "id": "file.copy",
-          "summary": "Copy a Google Drive file",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
-          "id": "file.move",
-          "summary": "Move a Google Drive file to a different folder",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
-          "id": "file.delete",
-          "summary": "Delete a Google Drive file",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
           "id": "folder.list",
           "summary": "List subfolders in a Google Drive folder",
           "required_mode": "readonly",
@@ -4738,26 +4515,6 @@
           "readiness": "read-only",
           "runtime_available": true,
           "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "folder.create",
-          "summary": "Create a new folder in Google Drive",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
-          "id": "share.create",
-          "summary": "Share a Google Drive file with a user",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
           "supports_json": true
         },
         {
@@ -4951,290 +4708,40 @@
       "backend": "holace-api",
       "path": "tools/aos/aos-holace",
       "manifest_schema_version": "1.0.0",
-      "readiness": "manifest-only",
+      "readiness": "read-only",
       "production_smoke_tested": false,
       "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
       "scope": {
         "kind": "legal-practice",
         "surface": "case-client-document-billing",
-        "scaffold_only": true,
-        "live_backend_available": false,
+        "scaffold_only": false,
+        "live_backend_available": true,
         "live_read_available": true,
-        "write_bridge_available": true
+        "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["HOLACE_API_KEY", "HOLACE_CLIENT_ID"],
+        "service_keys": ["HOLACE_API_BASE_URL", "HOLACE_API_KEY", "HOLACE_CLIENT_ID"],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
       "runtime": {
         "harness": {
-          "present": false,
-          "pyproject": false,
-          "tests": false
+          "present": true,
+          "pyproject": true,
+          "tests": true
         },
-        "command_count": 29,
+        "command_count": 20,
         "read_command_count": 20,
-        "write_command_count": 9
+        "write_command_count": 0
       },
       "commands": [
-        {
-          "id": "case.list",
-          "summary": "List cases",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "case.get",
-          "summary": "Get case details",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "case.create",
-          "summary": "Create a new case",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "external_mutation",
-          "supports_json": true
-        },
-        {
-          "id": "case.update",
-          "summary": "Update case details",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "external_mutation",
-          "supports_json": true
-        },
-        {
-          "id": "case.timeline",
-          "summary": "Get the full timeline for a case",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "client.list",
-          "summary": "List clients",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "client.get",
-          "summary": "Get client details",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "client.create",
-          "summary": "Create a new client record",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "external_mutation",
-          "supports_json": true
-        },
-        {
-          "id": "client.intake",
-          "summary": "Run the client intake workflow",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "external_mutation",
-          "supports_json": true
-        },
-        {
-          "id": "document.list",
-          "summary": "List documents for a case",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "document.get",
-          "summary": "Get a specific document",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "document.generate",
-          "summary": "Generate a document from template (e.g. demand letter)",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "external_mutation",
-          "supports_json": true
-        },
-        {
-          "id": "document.upload",
-          "summary": "Upload a document to a case",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "external_mutation",
-          "supports_json": true
-        },
-        {
-          "id": "deadline.list",
-          "summary": "List deadlines and statute dates",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "deadline.create",
-          "summary": "Create a deadline or reminder",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "external_mutation",
-          "supports_json": true
-        },
-        {
-          "id": "deadline.check_statute",
-          "summary": "Check statute of limitations for a state",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "settlement.list",
-          "summary": "List settlements",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "settlement.get",
-          "summary": "Get settlement details",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "settlement.tracker",
-          "summary": "View settlement pipeline tracker",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "billing.list",
-          "summary": "List billing entries and invoices",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "billing.create_invoice",
-          "summary": "Create an invoice for a case",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "external_mutation",
-          "supports_json": true
-        },
-        {
-          "id": "communication.log",
-          "summary": "Log a client communication",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "external_mutation",
-          "supports_json": true
-        },
-        {
-          "id": "communication.list",
-          "summary": "List communications for a case",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "report.case_status",
-          "summary": "Generate case status report",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "report.pipeline",
-          "summary": "Generate case pipeline report",
-          "required_mode": "readonly",
-          "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "none",
-          "supports_json": true
-        },
         {
           "id": "capabilities",
           "summary": "Describe the connector manifest",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -5243,8 +4750,8 @@
           "summary": "Show redacted connector configuration",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -5253,8 +4760,8 @@
           "summary": "Report connector health and setup readiness",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -5263,8 +4770,168 @@
           "summary": "Run connector diagnostics",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "case.list",
+          "summary": "List cases",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "case.get",
+          "summary": "Get case details",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "case.timeline",
+          "summary": "Get the timeline for a case",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "client.list",
+          "summary": "List clients",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "client.get",
+          "summary": "Get client details",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "document.list",
+          "summary": "List documents for a case",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "document.get",
+          "summary": "Get a specific document",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "deadline.list",
+          "summary": "List deadlines and statute dates",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "deadline.check_statute",
+          "summary": "Check statute of limitations for a state",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "settlement.list",
+          "summary": "List settlements",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "settlement.get",
+          "summary": "Get settlement details",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "settlement.tracker",
+          "summary": "View settlement pipeline tracker",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "billing.list",
+          "summary": "List billing entries and invoices",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "communication.list",
+          "summary": "List communications for a case",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "report.case_status",
+          "summary": "Generate case status report",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "report.pipeline",
+          "summary": "Generate pipeline report",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         }
@@ -5275,7 +4942,7 @@
       "backend": "hootsuite-rest-api",
       "path": "tools/aos/aos-hootsuite",
       "manifest_schema_version": "1.0.0",
-      "readiness": "preview-only",
+      "readiness": "read-only",
       "production_smoke_tested": false,
       "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
       "scope": {
@@ -5297,9 +4964,9 @@
           "pyproject": true,
           "tests": true
         },
-        "command_count": 14,
+        "command_count": 13,
         "read_command_count": 13,
-        "write_command_count": 1
+        "write_command_count": 0
       },
       "commands": [
         {
@@ -5431,16 +5098,6 @@
           "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
-        },
-        {
-          "id": "message.schedule",
-          "summary": "Validate inputs for a scaffolded Hootsuite outbound message schedule",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
         }
       ]
     },
@@ -5461,7 +5118,12 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["HUBSPOT_ACCESS_TOKEN", "HUBSPOT_PORTAL_ID"],
+        "service_keys": [
+          "HUBSPOT_ACCESS_TOKEN",
+          "HUBSPOT_BASE_URL",
+          "HUBSPOT_PORTAL_ID",
+          "HUBSPOT_WEBHOOK_SECRET"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -6693,7 +6355,7 @@
       "backend": "mailchimp-marketing-api",
       "path": "tools/aos/aos-mailchimp",
       "manifest_schema_version": "1.0.0",
-      "readiness": "preview-only",
+      "readiness": "read-only",
       "production_smoke_tested": false,
       "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
       "scope": {
@@ -6715,9 +6377,9 @@
           "pyproject": true,
           "tests": true
         },
-        "command_count": 15,
+        "command_count": 13,
         "read_command_count": 13,
-        "write_command_count": 2
+        "write_command_count": 0
       },
       "commands": [
         {
@@ -6849,26 +6511,6 @@
           "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
-        },
-        {
-          "id": "campaign.create_draft",
-          "summary": "Scaffold placeholder for draft Mailchimp campaign creation",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
-          "id": "member.upsert",
-          "summary": "Scaffold placeholder for Mailchimp audience member upsert",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
         }
       ]
     },
@@ -6889,7 +6531,7 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["MAKE_API_KEY", "MAKE_API_URL", "MAKE_WEBHOOK_BASE_URL"],
+        "service_keys": ["MAKE_API_KEY", "MAKE_API_URL", "MAKE_TEAM_ID", "MAKE_WEBHOOK_BASE_URL"],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -7053,7 +6695,7 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["MONDAY_TOKEN"],
+        "service_keys": ["MONDAY_API_URL", "MONDAY_TOKEN"],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -7213,8 +6855,8 @@
         "surface": "workflow",
         "scaffold_only": false,
         "live_backend_available": true,
-        "live_read_available": null,
-        "write_bridge_available": null
+        "live_read_available": true,
+        "write_bridge_available": true
       },
       "auth": {
         "service_keys": ["N8N_API_KEY", "N8N_API_URL", "N8N_WEBHOOK_BASE_URL"],
@@ -8069,31 +7711,31 @@
       "backend": "paypunch-api",
       "path": "tools/aos/aos-paypunch",
       "manifest_schema_version": "1.0.0",
-      "readiness": "manifest-only",
+      "readiness": "read-only",
       "production_smoke_tested": false,
       "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
       "scope": {
         "kind": "time-tracking",
         "surface": "timesheet-employee-export",
-        "scaffold_only": true,
-        "live_backend_available": false,
+        "scaffold_only": false,
+        "live_backend_available": true,
         "live_read_available": true,
-        "write_bridge_available": true
+        "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["PAYPUNCH_API_KEY", "PAYPUNCH_TENANT_ID"],
+        "service_keys": ["PAYPUNCH_API_BASE_URL", "PAYPUNCH_API_KEY", "PAYPUNCH_TENANT_ID"],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
       "runtime": {
         "harness": {
-          "present": false,
-          "pyproject": false,
-          "tests": false
+          "present": true,
+          "pyproject": true,
+          "tests": true
         },
-        "command_count": 19,
+        "command_count": 16,
         "read_command_count": 16,
-        "write_command_count": 3
+        "write_command_count": 0
       },
       "commands": [
         {
@@ -8101,8 +7743,8 @@
           "summary": "List timesheets",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -8111,29 +7753,9 @@
           "summary": "Get a specific timesheet entry",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "timesheet.approve",
-          "summary": "Approve a timesheet for payroll",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "external_mutation",
-          "supports_json": true
-        },
-        {
-          "id": "timesheet.reject",
-          "summary": "Reject a timesheet with reason",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "external_mutation",
           "supports_json": true
         },
         {
@@ -8141,8 +7763,8 @@
           "summary": "List employees",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -8151,19 +7773,9 @@
           "summary": "Get employee details",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "employee.create",
-          "summary": "Create a new employee",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
-          "side_effect_level": "external_mutation",
           "supports_json": true
         },
         {
@@ -8171,8 +7783,8 @@
           "summary": "List client companies",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -8181,28 +7793,28 @@
           "summary": "Get company details",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
         {
           "id": "export.quickbooks_iif",
-          "summary": "Export timesheet data as QuickBooks IIF",
+          "summary": "Read a QuickBooks IIF export payload",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
         {
           "id": "export.csv",
-          "summary": "Export timesheet data as CSV",
+          "summary": "Read a CSV export payload",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -8211,8 +7823,8 @@
           "summary": "List pay periods",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -8221,28 +7833,28 @@
           "summary": "Get the current active pay period",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
         {
           "id": "report.hours_summary",
-          "summary": "Generate hours summary report",
+          "summary": "Read an hours summary report",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
         {
           "id": "report.overtime",
-          "summary": "Generate overtime report",
+          "summary": "Read an overtime report",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -8251,8 +7863,8 @@
           "summary": "Describe the connector manifest",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -8261,8 +7873,8 @@
           "summary": "Show redacted connector configuration",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -8271,8 +7883,8 @@
           "summary": "Report connector health and setup readiness",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -8281,8 +7893,8 @@
           "summary": "Run connector diagnostics",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         }
@@ -10199,7 +9811,7 @@
       "backend": "square-api",
       "path": "tools/aos/aos-square",
       "manifest_schema_version": "1.0.0",
-      "readiness": "preview-only",
+      "readiness": "read-only",
       "production_smoke_tested": false,
       "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
       "scope": {
@@ -10221,9 +9833,9 @@
           "pyproject": true,
           "tests": true
         },
-        "command_count": 21,
+        "command_count": 14,
         "read_command_count": 14,
-        "write_command_count": 7
+        "write_command_count": 0
       },
       "commands": [
         {
@@ -10287,16 +9899,6 @@
           "supports_json": true
         },
         {
-          "id": "payment.create",
-          "summary": "Create a Square payment",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
           "id": "customer.list",
           "summary": "List Square customers",
           "required_mode": "readonly",
@@ -10314,26 +9916,6 @@
           "readiness": "read-only",
           "runtime_available": true,
           "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "customer.create",
-          "summary": "Create a Square customer",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
-          "id": "customer.update",
-          "summary": "Update a Square customer",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
           "supports_json": true
         },
         {
@@ -10357,16 +9939,6 @@
           "supports_json": true
         },
         {
-          "id": "order.create",
-          "summary": "Create a Square order",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
           "id": "item.list",
           "summary": "List Square catalog items",
           "required_mode": "readonly",
@@ -10387,16 +9959,6 @@
           "supports_json": true
         },
         {
-          "id": "item.create",
-          "summary": "Create a Square catalog item",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
           "id": "invoice.list",
           "summary": "List Square invoices",
           "required_mode": "readonly",
@@ -10404,26 +9966,6 @@
           "readiness": "read-only",
           "runtime_available": true,
           "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "invoice.create",
-          "summary": "Create a Square invoice",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
-          "id": "invoice.send",
-          "summary": "Send a Square invoice",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
           "supports_json": true
         },
         {
@@ -11299,7 +10841,7 @@
       "backend": "woocommerce-rest-api",
       "path": "tools/aos/aos-woocommerce",
       "manifest_schema_version": "1.0.0",
-      "readiness": "preview-only",
+      "readiness": "read-only",
       "production_smoke_tested": false,
       "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
       "scope": {
@@ -11321,9 +10863,9 @@
           "pyproject": true,
           "tests": true
         },
-        "command_count": 19,
+        "command_count": 13,
         "read_command_count": 13,
-        "write_command_count": 6
+        "write_command_count": 0
       },
       "commands": [
         {
@@ -11387,26 +10929,6 @@
           "supports_json": true
         },
         {
-          "id": "order.create",
-          "summary": "Scaffold placeholder for creating a WooCommerce order",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
-          "id": "order.update",
-          "summary": "Scaffold placeholder for updating a WooCommerce order",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
           "id": "product.list",
           "summary": "List WooCommerce products",
           "required_mode": "readonly",
@@ -11424,26 +10946,6 @@
           "readiness": "read-only",
           "runtime_available": true,
           "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "product.create",
-          "summary": "Scaffold placeholder for creating a WooCommerce product",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
-          "id": "product.update",
-          "summary": "Scaffold placeholder for updating a WooCommerce product",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
           "supports_json": true
         },
         {
@@ -11467,16 +10969,6 @@
           "supports_json": true
         },
         {
-          "id": "customer.create",
-          "summary": "Scaffold placeholder for creating a WooCommerce customer",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
           "id": "coupon.list",
           "summary": "List WooCommerce coupons",
           "required_mode": "readonly",
@@ -11484,16 +10976,6 @@
           "readiness": "read-only",
           "runtime_available": true,
           "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "coupon.create",
-          "summary": "Scaffold placeholder for creating a WooCommerce coupon",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
           "supports_json": true
         },
         {
@@ -11522,20 +11004,20 @@
       "tool": "aos-wordpress",
       "backend": "wordpress-rest-api",
       "path": "tools/aos/aos-wordpress",
-      "manifest_schema_version": null,
+      "manifest_schema_version": "1.0.0",
       "readiness": "live-ready",
       "production_smoke_tested": false,
       "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
       "scope": {
-        "kind": null,
-        "surface": null,
-        "scaffold_only": null,
-        "live_backend_available": null,
-        "live_read_available": null,
-        "write_bridge_available": null
+        "kind": "wordpress-rest",
+        "surface": "site-content",
+        "scaffold_only": false,
+        "live_backend_available": true,
+        "live_read_available": true,
+        "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["WORDPRESS_BASE_URL"],
+        "service_keys": ["AOS_WORDPRESS_BASE_URL", "WORDPRESS_BASE_URL"],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -11545,11 +11027,21 @@
           "pyproject": true,
           "tests": true
         },
-        "command_count": 21,
-        "read_command_count": 12,
+        "command_count": 22,
+        "read_command_count": 13,
         "write_command_count": 9
       },
       "commands": [
+        {
+          "id": "capabilities",
+          "summary": "Describe the WordPress connector manifest",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
         {
           "id": "health",
           "summary": "Check WordPress connectivity and auth readiness",
@@ -11767,19 +11259,26 @@
       "backend": "xero-api",
       "path": "tools/aos/aos-xero",
       "manifest_schema_version": "1.0.0",
-      "readiness": "preview-only",
+      "readiness": "read-only",
       "production_smoke_tested": false,
       "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
       "scope": {
         "kind": "accounting",
-        "surface": "invoice-contact-payment-report",
+        "surface": "invoice-contact-payment-account-bank-transaction-report-quote",
         "scaffold_only": false,
         "live_backend_available": true,
         "live_read_available": true,
         "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["XERO_CLIENT_ID", "XERO_CLIENT_SECRET", "XERO_TENANT_ID"],
+        "service_keys": [
+          "XERO_API_BASE_URL",
+          "XERO_CLIENT_ID",
+          "XERO_CLIENT_SECRET",
+          "XERO_REFRESH_TOKEN",
+          "XERO_TENANT_ID",
+          "XERO_TOKEN_URL"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -11789,9 +11288,9 @@
           "pyproject": true,
           "tests": true
         },
-        "command_count": 21,
+        "command_count": 15,
         "read_command_count": 15,
-        "write_command_count": 6
+        "write_command_count": 0
       },
       "commands": [
         {
@@ -11815,26 +11314,6 @@
           "supports_json": true
         },
         {
-          "id": "invoice.create",
-          "summary": "Create a Xero invoice",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
-          "id": "invoice.send",
-          "summary": "Send a Xero invoice by email",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
           "id": "contact.list",
           "summary": "List Xero contacts",
           "required_mode": "readonly",
@@ -11852,16 +11331,6 @@
           "readiness": "read-only",
           "runtime_available": true,
           "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "contact.create",
-          "summary": "Create a Xero contact",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
           "supports_json": true
         },
         {
@@ -11885,16 +11354,6 @@
           "supports_json": true
         },
         {
-          "id": "payment.create",
-          "summary": "Create a Xero payment",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
-          "supports_json": true
-        },
-        {
           "id": "account.list",
           "summary": "List Xero chart of accounts",
           "required_mode": "readonly",
@@ -11912,16 +11371,6 @@
           "readiness": "read-only",
           "runtime_available": true,
           "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "bank_transaction.create",
-          "summary": "Create a Xero bank transaction",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
           "supports_json": true
         },
         {
@@ -11952,16 +11401,6 @@
           "readiness": "read-only",
           "runtime_available": true,
           "side_effect_level": "none",
-          "supports_json": true
-        },
-        {
-          "id": "quote.create",
-          "summary": "Create a Xero quote",
-          "required_mode": "write",
-          "action_class": "write",
-          "readiness": "preview-only",
-          "runtime_available": true,
-          "side_effect_level": "preview_or_scaffold_only",
           "supports_json": true
         },
         {

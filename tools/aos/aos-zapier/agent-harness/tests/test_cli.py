@@ -56,11 +56,6 @@ def write_service_keys(tmp_path: Path, values: dict[str, str], *, extra: dict[st
     return path
 
 
-@pytest.fixture(autouse=True)
-def no_operator_service_key_by_default(monkeypatch):
-    monkeypatch.setattr(service_keys_module, "resolve_service_key", lambda variable: None)
-
-
 class FakeZapierClient:
     def __init__(
         self,
