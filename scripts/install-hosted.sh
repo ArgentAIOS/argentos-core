@@ -1374,6 +1374,8 @@ install_git() {
   run_git_nohooks -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
   run_pnpm "$GIT_DIR" build
   run_pnpm "$GIT_DIR" rebuild better-sqlite3
+  run_cmd "$NODE_BIN" "$GIT_DIR/scripts/install-bundled-aos-harnesses.mjs" \
+    || warn "Bundled AOS harness install failed — Cognee may require manual setup"
   snapshot_git_runtime "$GIT_DIR" "$PACKAGE_DIR_OVERRIDE"
   ok "Installed stable runtime snapshot: $PACKAGE_DIR_OVERRIDE"
   write_git_wrapper "$BIN_DIR_OVERRIDE"

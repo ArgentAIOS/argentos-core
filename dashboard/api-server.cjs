@@ -10359,6 +10359,70 @@ function commandExists(cmd) {
   }
 }
 
+function findBundledAosBinary(tool) {
+  const pathResult = (() => {
+    try {
+      const output = execSync(`command -v ${tool} 2>/dev/null || true`, {
+        encoding: "utf8",
+      }).trim();
+      return output || null;
+    } catch {
+      return null;
+    }
+  })();
+  if (pathResult) return pathResult;
+
+  const binaryName = process.platform === "win32" ? `${tool}.exe` : tool;
+  const candidates =
+    process.platform === "win32"
+      ? [
+          path.join(
+            DASHBOARD_REPO_ROOT,
+            "tools",
+            "aos",
+            tool,
+            "agent-harness",
+            ".venv",
+            "Scripts",
+            binaryName,
+          ),
+          path.join(
+            DASHBOARD_REPO_ROOT,
+            "tools",
+            "aos",
+            tool,
+            "agent-harness",
+            "venv",
+            "Scripts",
+            binaryName,
+          ),
+        ]
+      : [
+          path.join(
+            DASHBOARD_REPO_ROOT,
+            "tools",
+            "aos",
+            tool,
+            "agent-harness",
+            ".venv",
+            "bin",
+            binaryName,
+          ),
+          path.join(
+            DASHBOARD_REPO_ROOT,
+            "tools",
+            "aos",
+            tool,
+            "agent-harness",
+            "venv",
+            "bin",
+            binaryName,
+          ),
+        ];
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
+}
+
 function ensureAosGoogleConfigDir() {
   fs.mkdirSync(AOS_GOOGLE_CONFIG_DIR, { recursive: true });
   return AOS_GOOGLE_CONFIG_DIR;
@@ -10481,15 +10545,7 @@ function getMemoryV3StatusPayload(config) {
       ? "internal"
       : "external";
 
-  let aosCogneePath = null;
-  try {
-    const output = execSync("command -v aos-cognee 2>/dev/null || true", {
-      encoding: "utf8",
-    }).trim();
-    aosCogneePath = output || null;
-  } catch {
-    aosCogneePath = null;
-  }
+  const aosCogneePath = findBundledAosBinary("aos-cognee");
 
   return {
     vault: {
