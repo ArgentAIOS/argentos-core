@@ -96,7 +96,7 @@ describe("OpenAiRealtimeVoiceProvider", () => {
     expect(resolved.provider).toBe(provider);
     expect(resolved.providerConfig).toMatchObject({
       apiKey: "env-key",
-      model: "gpt-realtime",
+      model: "gpt-realtime-1.5",
       voice: "alloy",
       inputAudioFormat: "pcm16",
       inputTranscription: { model: "gpt-4o-transcribe" },
@@ -147,6 +147,7 @@ describe("OpenAiRealtimeVoiceProvider", () => {
     const connected = session.connect();
     sockets[0]?.emitOpen();
     await connected;
+    sockets[0]?.emitMessage({ type: "session.updated" });
 
     expect(calls[0]?.url).toBe("wss://api.openai.com/v1/realtime?model=gpt-realtime");
     expect(calls[0]?.options.headers.Authorization).toBe("Bearer test-key");
@@ -161,7 +162,13 @@ describe("OpenAiRealtimeVoiceProvider", () => {
         input_audio_format: "pcm16",
         output_audio_format: "pcm16",
         input_audio_transcription: { model: "gpt-4o-transcribe" },
-        turn_detection: { type: "server_vad" },
+        turn_detection: {
+          type: "server_vad",
+          threshold: 0.5,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 500,
+          create_response: true,
+        },
       },
     });
   });
@@ -178,6 +185,7 @@ describe("OpenAiRealtimeVoiceProvider", () => {
     const connected = session.connect();
     sockets[0]?.emitOpen();
     await connected;
+    sockets[0]?.emitMessage({ type: "session.updated" });
     session.sendAudio(Buffer.from([1, 2, 3]));
     session.sendUserMessage("hello");
     session.triggerGreeting("say hi");
@@ -227,6 +235,7 @@ describe("OpenAiRealtimeVoiceProvider", () => {
     const connected = session.connect();
     sockets[0]?.emitOpen();
     await connected;
+    sockets[0]?.emitMessage({ type: "session.updated" });
     sockets[0]?.emitMessage({ type: "response.output_audio.delta", delta: "AQID" });
     sockets[0]?.emitMessage({ type: "response.audio_transcript.delta", delta: "hel" });
     sockets[0]?.emitMessage({ type: "response.audio_transcript.delta", delta: "lo" });
@@ -279,9 +288,49 @@ describe("OpenAiRealtimeVoiceProvider", () => {
     const connected = session.connect();
     sockets[0]?.emitOpen();
     await connected;
+    sockets[0]?.emitMessage({ type: "session.updated" });
     session.close("cancelled");
 
     expect(sockets[0]?.closeCalls).toEqual([{ code: 1000, reason: "cancelled" }]);
     expect(onClose).toHaveBeenCalledWith("cancelled");
+  });
+
+  it("mints browser WebRTC sessions with OpenAI client secrets", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ client_secret: { value: "client-secret" }, expires_at: 123 }),
+          {
+            status: 200,
+          },
+        ),
+    );
+    const provider = createOpenAiRealtimeVoiceProvider({
+      env: {} as NodeJS.ProcessEnv,
+      fetch: fetchMock as typeof fetch,
+    });
+
+    const session = await provider.createBrowserSession({
+      providerConfig: { apiKey: "test-key", voice: "marin" },
+      instructions: "Browser voice.",
+      model: "gpt-realtime",
+    });
+
+    expect(session).toEqual({
+      provider: "openai",
+      transport: "webrtc-sdp",
+      clientSecret: "client-secret",
+      offerUrl: "https://api.openai.com/v1/realtime/calls",
+      model: "gpt-realtime",
+      voice: "marin",
+      expiresAt: 123,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.openai.com/v1/realtime/client_secrets",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer test-key" }),
+      }),
+    );
   });
 });
