@@ -50,6 +50,28 @@ Every tool must implement:
 - `health`
 - `config show`
 
+## Readiness Index
+
+`readiness-index.json` is the machine-readable connector availability contract
+for Workflows, AppForge, and AOU. It is generated from connector manifests plus
+local harness evidence and intentionally does not claim production external
+account smoke coverage.
+
+Regenerate it after connector manifest or harness changes:
+
+```bash
+node tools/aos/readiness-index.mjs
+node tools/aos/readiness-index.mjs --check
+```
+
+Readiness labels are:
+
+- `live-ready`: non-preview runtime command surface exists in the harness.
+- `read-only`: read commands exist, but no write bridge is exposed.
+- `preview-only`: writes are surfaced only as preview/scaffold behavior or no live write bridge is available.
+- `manifest-only`: manifest metadata exists without usable harness evidence.
+- `scaffold/deferred`: connector or commands are explicitly deferred.
+
 ## Initial Targets
 
 - `aos-obsidian`
