@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 from typing import Any
 
 from .client import (
@@ -13,6 +14,20 @@ from .client import (
 from .config import redacted_config_snapshot, resolve_runtime_values, workflow_trigger_builder_snapshot
 from .constants import BACKEND_NAME, CONNECTOR_CATEGORIES, CONNECTOR_CATEGORY, CONNECTOR_LABEL, CONNECTOR_RESOURCES
 from .errors import ConnectorError
+
+_RUNTIME_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar("n8n_runtime_context", default=None)
+
+
+def set_runtime_context(ctx_obj: dict[str, Any] | None):
+    return _RUNTIME_CONTEXT.set(ctx_obj)
+
+
+def reset_runtime_context(token) -> None:
+    _RUNTIME_CONTEXT.reset(token)
+
+
+def _current_context() -> dict[str, Any]:
+    return _RUNTIME_CONTEXT.get() or {}
 
 
 def _probe_exit_code(code: str | None) -> int:
@@ -172,6 +187,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "live_backend_available": live_backend_available,
             "live_read_available": read_ready,
             "write_bridge_available": write_ready,
+            "live_write_smoke_tested": False,
             "scaffold_only": False,
         },
         "auth": {
@@ -206,6 +222,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "live_backend_available": live_backend_available,
         "live_read_available": read_ready,
         "write_bridge_available": write_ready,
+        "live_write_smoke_tested": False,
         "scaffold_only": False,
         "probe": {"read": read_probe, "write": write_probe},
         "next_steps": next_steps,
@@ -370,6 +387,7 @@ def _workflow_list(
         "live_backend_available": read_ready and write_ready,
         "live_read_available": read_ready,
         "write_bridge_available": write_ready,
+        "live_write_smoke_tested": False,
         "count": live["count"],
         "limit": limit,
         "filters": status_filter,
@@ -456,6 +474,7 @@ def _workflow_status(
         "live_backend_available": read_ready and write_ready,
         "live_read_available": read_ready,
         "write_bridge_available": write_ready,
+        "live_write_smoke_tested": False,
         "workflow": workflow,
         "resolved_target": lookup,
         "picker_options": picker,
@@ -471,7 +490,7 @@ def _workflow_status(
 
 
 def run_read_command(command_id: str, items: tuple[str, ...]) -> dict[str, Any]:
-    runtime, read_probe, write_probe = _resolve_runtime_probes({})
+    runtime, read_probe, write_probe = _resolve_runtime_probes(_current_context())
     if not read_probe.get("ok"):
         raise ConnectorError(
             read_probe.get("code", "N8N_LIVE_READ_UNAVAILABLE"),
@@ -488,7 +507,7 @@ def run_read_command(command_id: str, items: tuple[str, ...]) -> dict[str, Any]:
 
 
 def run_trigger_command(inputs: dict[str, Any]) -> dict[str, Any]:
-    runtime, read_probe, write_probe = _resolve_runtime_probes({})
+    runtime, read_probe, write_probe = _resolve_runtime_probes(_current_context())
     if not write_probe.get("ok"):
         raise ConnectorError(
             write_probe.get("code", "N8N_WRITE_BRIDGE_REQUIRED"),
@@ -567,6 +586,7 @@ def run_trigger_command(inputs: dict[str, Any]) -> dict[str, Any]:
         "live_backend_available": live_backend_available,
         "live_read_available": read_ready,
         "write_bridge_available": True,
+        "live_write_smoke_tested": False,
         "workflow": workflow,
         "request": bridge_payload,
         "bridge": trigger_result,

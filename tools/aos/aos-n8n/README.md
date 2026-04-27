@@ -14,7 +14,9 @@ n8n connector for live workflow reads and a live workflow trigger bridge.
 This connector has a live read path for workflows and a live workflow.trigger bridge.
 
 The harness resolves operator-controlled service keys first, then falls back to
-local environment variables for harness-only development.
+local environment variables for harness-only development. Scoped service-key
+entries must be injected by the operator runtime and are not bypassed with
+local env.
 
 The runtime accepts these variables for setup tracking and bridge wiring:
 
@@ -35,4 +37,5 @@ The runtime accepts these variables for setup tracking and bridge wiring:
 - Response normalization: `ok`, `status_code`, `response_kind`, `execution_id`, `response_status`, `summary`
 
 `workflow.trigger` posts a live webhook payload through
-`N8N_WEBHOOK_BASE_URL` and does not fake execution results.
+`N8N_WEBHOOK_BASE_URL` and does not fake execution results. Production
+live-write smoke is not claimed until tested against an operator n8n instance.

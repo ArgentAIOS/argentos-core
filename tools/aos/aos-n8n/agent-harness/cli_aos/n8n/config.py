@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from .constants import (
@@ -18,7 +17,7 @@ from .constants import (
 )
 from .client import normalize_api_base_url, normalize_webhook_base_url, probe_live_read, probe_write_bridge
 from .errors import ConnectorError
-from .service_keys import service_key_env, service_key_source
+from . import service_keys
 
 
 def _present(value: str | None) -> bool:
@@ -78,9 +77,12 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     api_key_env = N8N_API_KEY_ENV
     webhook_base_url_env = N8N_WEBHOOK_BASE_URL_ENV
 
-    api_url = service_key_env(api_url_env)
-    api_key = service_key_env(api_key_env)
-    webhook_base_url = service_key_env(webhook_base_url_env)
+    api_url_detail = service_keys.service_key_details(api_url_env, ctx_obj)
+    api_key_detail = service_keys.service_key_details(api_key_env, ctx_obj)
+    webhook_base_url_detail = service_keys.service_key_details(webhook_base_url_env, ctx_obj)
+    api_url = api_url_detail["value"] or None
+    api_key = api_key_detail["value"] or None
+    webhook_base_url = webhook_base_url_detail["value"] or None
     api_base_url = None
     api_base_url_present = False
     api_base_url_redacted = None
@@ -104,10 +106,10 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         except (ConnectorError, ValueError) as err:
             webhook_base_url_error = str(err)
 
-    workspace_name = os.getenv(N8N_WORKSPACE_NAME_ENV)
-    workflow_id = os.getenv(N8N_WORKFLOW_ID_ENV)
-    workflow_name = os.getenv(N8N_WORKFLOW_NAME_ENV)
-    workflow_status = os.getenv(N8N_WORKFLOW_STATUS_ENV)
+    workspace_name_detail = service_keys.service_key_details(N8N_WORKSPACE_NAME_ENV, ctx_obj)
+    workflow_id_detail = service_keys.service_key_details(N8N_WORKFLOW_ID_ENV, ctx_obj)
+    workflow_name_detail = service_keys.service_key_details(N8N_WORKFLOW_NAME_ENV, ctx_obj)
+    workflow_status_detail = service_keys.service_key_details(N8N_WORKFLOW_STATUS_ENV, ctx_obj)
 
     return {
         "backend": BACKEND_NAME,
@@ -116,28 +118,35 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "webhook_base_url_env": webhook_base_url_env,
         "api_url": api_url,
         "api_url_present": _present(api_url),
+        "api_url_usable": api_url_detail["usable"],
         "api_url_redacted": _redact(api_url),
-        "api_url_source": service_key_source(api_url_env),
+        "api_url_source": api_url_detail["source"],
         "api_key": api_key,
         "api_key_present": _present(api_key),
+        "api_key_usable": api_key_detail["usable"],
         "api_key_redacted": _redact(api_key),
-        "api_key_source": service_key_source(api_key_env),
+        "api_key_source": api_key_detail["source"],
         "api_base_url": api_base_url,
         "api_base_url_present": api_base_url_present,
         "api_base_url_redacted": api_base_url_redacted,
         "api_base_url_error": api_base_url_error,
         "webhook_base_url": webhook_base_url,
         "webhook_base_url_present": _present(webhook_base_url),
+        "webhook_base_url_usable": webhook_base_url_detail["usable"],
         "webhook_base_url_redacted": _redact(webhook_base_url),
-        "webhook_base_url_source": service_key_source(webhook_base_url_env),
+        "webhook_base_url_source": webhook_base_url_detail["source"],
         "webhook_base_url_error": webhook_base_url_error,
         "webhook_bridge_url": webhook_bridge_url,
         "webhook_bridge_url_present": webhook_bridge_url_present,
         "webhook_bridge_url_redacted": webhook_bridge_url_redacted,
-        "workspace_name": workspace_name.strip() if workspace_name and workspace_name.strip() else None,
-        "workflow_id": workflow_id.strip() if workflow_id and workflow_id.strip() else None,
-        "workflow_name": workflow_name.strip() if workflow_name and workflow_name.strip() else None,
-        "workflow_status": workflow_status.strip() if workflow_status and workflow_status.strip() else None,
+        "workspace_name": workspace_name_detail["value"] or None,
+        "workspace_name_source": workspace_name_detail["source"] if workspace_name_detail["present"] else None,
+        "workflow_id": workflow_id_detail["value"] or None,
+        "workflow_id_source": workflow_id_detail["source"] if workflow_id_detail["present"] else None,
+        "workflow_name": workflow_name_detail["value"] or None,
+        "workflow_name_source": workflow_name_detail["source"] if workflow_name_detail["present"] else None,
+        "workflow_status": workflow_status_detail["value"] or None,
+        "workflow_status_source": workflow_status_detail["source"] if workflow_status_detail["present"] else None,
         "verbose": bool(ctx_obj.get("verbose")),
     }
 
@@ -167,6 +176,7 @@ def redacted_config_snapshot(ctx_obj: dict[str, Any], *, probe: dict[str, Any] |
         "auth": {
             "api_url_env": runtime["api_url_env"],
             "api_url_present": runtime["api_url_present"],
+            "api_url_usable": runtime["api_url_usable"],
             "api_url_redacted": runtime["api_url_redacted"],
             "api_url_source": runtime["api_url_source"],
             "api_base_url_present": runtime["api_base_url_present"],
@@ -174,10 +184,12 @@ def redacted_config_snapshot(ctx_obj: dict[str, Any], *, probe: dict[str, Any] |
             "api_base_url_error": runtime["api_base_url_error"],
             "api_key_env": runtime["api_key_env"],
             "api_key_present": runtime["api_key_present"],
+            "api_key_usable": runtime["api_key_usable"],
             "api_key_redacted": runtime["api_key_redacted"],
             "api_key_source": runtime["api_key_source"],
             "webhook_base_url_env": runtime["webhook_base_url_env"],
             "webhook_base_url_present": runtime["webhook_base_url_present"],
+            "webhook_base_url_usable": runtime["webhook_base_url_usable"],
             "webhook_base_url_redacted": runtime["webhook_base_url_redacted"],
             "webhook_base_url_source": runtime["webhook_base_url_source"],
             "webhook_base_url_error": runtime["webhook_base_url_error"],
@@ -188,19 +200,24 @@ def redacted_config_snapshot(ctx_obj: dict[str, Any], *, probe: dict[str, Any] |
                 runtime["api_key_env"]: runtime["api_key_source"],
                 runtime["webhook_base_url_env"]: runtime["webhook_base_url_source"],
             },
+            "resolution_order": ["operator-context", "service-keys", "process.env"],
         },
         "runtime": {
             "workspace_name": runtime["workspace_name"],
+            "workspace_name_source": runtime["workspace_name_source"],
             "workflow_id": runtime["workflow_id"],
+            "workflow_id_source": runtime["workflow_id_source"],
             "workflow_name": runtime["workflow_name"],
+            "workflow_name_source": runtime["workflow_name_source"],
             "workflow_status": runtime["workflow_status"],
+            "workflow_status_source": runtime["workflow_status_source"],
             "auth_ready": auth_ready,
             "read_bridge_available": live_read_available,
             "write_bridge_available": write_bridge_available,
+            "live_write_smoke_tested": False,
             "runtime_ready": runtime_ready,
             "live_backend_available": live_backend_available,
             "live_read_available": live_read_available,
-            "write_bridge_available": write_bridge_available,
             "scaffold_only": False,
             "trigger_builder": trigger_builder,
         },
@@ -211,5 +228,6 @@ def redacted_config_snapshot(ctx_obj: dict[str, Any], *, probe: dict[str, Any] |
         "live_backend_available": live_backend_available,
         "live_read_available": live_read_available,
         "write_bridge_available": write_bridge_available,
+        "live_write_smoke_tested": False,
         "scaffold_only": False,
     }
