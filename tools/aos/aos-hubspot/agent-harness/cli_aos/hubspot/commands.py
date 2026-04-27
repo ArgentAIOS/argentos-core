@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 import click
 
 from .bridge import config_snapshot, health_snapshot
-from .constants import AUTH_DESCRIPTOR, COMMAND_SPECS, CONNECTOR_DESCRIPTOR, MANIFEST_SCHEMA_VERSION, MODE_ORDER
+from .constants import (
+    AUTH_DESCRIPTOR,
+    COMMAND_SPECS,
+    CONNECTOR_DESCRIPTOR,
+    MANIFEST_SCHEMA_VERSION,
+    MODE_ORDER,
+    SCOPE_DESCRIPTOR,
+)
 from .errors import CliError
 from .permissions import require_mode
 from .runtime import (
@@ -21,6 +30,8 @@ from .runtime import (
     update_object,
     update_ticket_status,
 )
+
+CONNECTOR_PATH = Path(__file__).resolve().parents[3] / "connector.json"
 
 
 def _set_result(ctx: click.Context, command_id: str, data: dict[str, Any]) -> None:
@@ -50,6 +61,15 @@ def _parse_properties(values: tuple[str, ...], *, flag_name: str) -> dict[str, s
             )
         parsed[key] = value
     return parsed
+
+
+def _manifest_scope() -> dict[str, Any]:
+    try:
+        manifest = json.loads(CONNECTOR_PATH.read_text())
+    except (OSError, json.JSONDecodeError):
+        return dict(SCOPE_DESCRIPTOR)
+    scope = manifest.get("scope")
+    return scope if isinstance(scope, dict) else dict(SCOPE_DESCRIPTOR)
 
 
 @click.group("owner")
@@ -577,6 +597,7 @@ def capabilities(ctx: click.Context) -> None:
             "modes": MODE_ORDER,
             "connector": CONNECTOR_DESCRIPTOR,
             "auth": AUTH_DESCRIPTOR,
+            "scope": _manifest_scope(),
             "delivery_model": "hybrid",
             "commands": COMMAND_SPECS,
         },

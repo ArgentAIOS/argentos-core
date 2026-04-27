@@ -23,16 +23,78 @@ CONNECTOR_DESCRIPTOR = {
     "resources": ["contact", "company", "deal", "ticket", "note", "owner", "pipeline"],
 }
 
+WORKER_FIELDS = [
+    "contact_id",
+    "company_id",
+    "deal_id",
+    "ticket_id",
+    "owner_id",
+    "pipeline_id",
+    "email",
+    "query",
+]
+
+WORKER_VISIBLE_ACTIONS = [
+    "owner.list",
+    "owner.assign",
+    "pipeline.list",
+    "contact.list",
+    "contact.search",
+    "contact.read",
+    "contact.create",
+    "contact.update",
+    "company.list",
+    "company.search",
+    "company.read",
+    "company.create",
+    "company.update",
+    "deal.list",
+    "deal.search",
+    "deal.read",
+    "deal.create",
+    "deal.update_stage",
+    "ticket.list",
+    "ticket.search",
+    "ticket.read",
+    "ticket.create",
+    "ticket.update_status",
+    "note.create",
+]
+
+SCOPE_DESCRIPTOR = {
+    "kind": "crm",
+    "surface": "contact-company-deal-ticket",
+    "scaffold_only": False,
+    "live_backend_available": True,
+    "live_read_available": True,
+    "live_write_available": True,
+    "write_bridge_available": True,
+    "live_write_smoke_tested": False,
+    "required": [DEFAULT_ACCESS_TOKEN_ENV, DEFAULT_PORTAL_ID_ENV],
+    "optional": [DEFAULT_ACCOUNT_ALIAS_ENV, DEFAULT_APP_ID_ENV, DEFAULT_WEBHOOK_SECRET_ENV, "HUBSPOT_BASE_URL"],
+    "workerFields": WORKER_FIELDS,
+    "worker_visible_actions": WORKER_VISIBLE_ACTIONS,
+}
+
 AUTH_DESCRIPTOR = {
     "kind": "oauth-service-key",
     "required": True,
     "service_keys": [DEFAULT_ACCESS_TOKEN_ENV, DEFAULT_PORTAL_ID_ENV],
+    "optional_service_keys": [
+        DEFAULT_ACCOUNT_ALIAS_ENV,
+        DEFAULT_APP_ID_ENV,
+        DEFAULT_WEBHOOK_SECRET_ENV,
+        "HUBSPOT_BASE_URL",
+    ],
     "interactive_setup": [
         "Create a HubSpot app or private app for the target portal.",
         "Add HUBSPOT_ACCESS_TOKEN and HUBSPOT_PORTAL_ID in operator-controlled service keys for the portal you want this worker to use.",
+        "Optionally add HUBSPOT_ACCOUNT_ALIAS, HUBSPOT_APP_ID, HUBSPOT_WEBHOOK_SECRET, and HUBSPOT_BASE_URL in service keys for account labeling and app/webhook metadata.",
         "Use local HUBSPOT_* environment variables only as harness fallback when operator service keys are unavailable.",
+        "Scoped service-key entries must be injected by the operator runtime and are not bypassed with local env.",
         "Legacy AOS_HUBSPOT_* variable names are still accepted for backward compatibility.",
         "Restrict pipelines, owners, teams, and ticket queues before enabling write actions.",
+        "Production live-write smoke is not claimed until tested against an operator HubSpot portal.",
     ],
 }
 
