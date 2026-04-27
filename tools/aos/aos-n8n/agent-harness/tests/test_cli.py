@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import threading
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -9,6 +10,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from click.testing import CliRunner
+import pytest
 
 from cli_aos.n8n.cli import cli
 import cli_aos.n8n.service_keys as service_keys
@@ -17,6 +19,15 @@ import cli_aos.n8n.service_keys as service_keys
 AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
 CONNECTOR_PATH = AGENT_HARNESS_ROOT.parent / "connector.json"
 PERMISSIONS_PATH = AGENT_HARNESS_ROOT / "permissions.json"
+ALL_ENV_KEYS = (
+    "N8N_API_URL",
+    "N8N_API_KEY",
+    "N8N_WEBHOOK_BASE_URL",
+    "N8N_WORKSPACE_NAME",
+    "N8N_WORKFLOW_ID",
+    "N8N_WORKFLOW_NAME",
+    "N8N_WORKFLOW_STATUS",
+)
 
 LIVE_WORKFLOWS = [
     {
@@ -47,14 +58,76 @@ LIVE_WORKFLOW = {
 }
 
 
-def _clear_service_key_cache() -> None:
-    service_keys.resolve_service_key.cache_clear()
+def write_service_keys(tmp_path: Path, values: dict[str, str], *, extra: dict[str, Any] | None = None) -> Path:
+    path = tmp_path / "service-keys.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "keys": [
+                    {
+                        "id": f"sk-{key}",
+                        "name": key,
+                        "variable": key,
+                        "value": value,
+                        "enabled": True,
+                        **(extra or {}),
+                    }
+                    for key, value in values.items()
+                ],
+            }
+        )
+    )
+    return path
+
+
+def encrypt_secret(tmp_path: Path, plaintext: str) -> str:
+    home = tmp_path / "home"
+    key_dir = home / ".argentos"
+    key_dir.mkdir(parents=True, exist_ok=True)
+    (key_dir / ".master-key").write_text("11" * 32)
+    script = r"""
+const { createCipheriv } = require("node:crypto");
+const plaintext = process.argv[1];
+const key = Buffer.from("11".repeat(32), "hex");
+const iv = Buffer.from("22".repeat(12), "hex");
+const cipher = createCipheriv("aes-256-gcm", key, iv);
+let encrypted = cipher.update(plaintext, "utf8", "hex");
+encrypted += cipher.final("hex");
+const tag = cipher.getAuthTag().toString("hex");
+process.stdout.write(`enc:v1:${iv.toString("hex")}:${tag}:${encrypted}`);
+"""
+    result = subprocess.run(
+        ["node", "-e", script, plaintext],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+    )
+    return result.stdout
+
+
+def _clear_env(monkeypatch) -> None:
+    for key in ALL_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_operator_service_key_by_default(monkeypatch, tmp_path):
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", tmp_path / "missing-service-keys.json")
+    _clear_env(monkeypatch)
 
 
 def _mock_service_keys(monkeypatch, values: dict[str, str] | None = None) -> None:
-    _clear_service_key_cache()
-    resolver = lambda variable: (values or {}).get(variable)
-    monkeypatch.setattr(service_keys, "resolve_service_key", resolver)
+    real_service_key_details = service_keys.service_key_details
+
+    def fake_service_key_details(variable: str, ctx_obj=None, default=None):  # noqa: ANN001
+        value = (values or {}).get(variable)
+        if value:
+            return {"value": value, "present": True, "usable": True, "source": "service-keys", "variable": variable}
+        return real_service_key_details(variable, ctx_obj, default)
+
+    monkeypatch.setattr(service_keys, "service_key_details", fake_service_key_details)
 
 
 class MockN8NHandler(BaseHTTPRequestHandler):
@@ -176,6 +249,9 @@ def test_manifest_and_permissions_are_in_sync():
     assert manifest["backend"] == "n8n-live-bridge"
     assert manifest["scope"]["scaffold_only"] is False
     assert manifest["scope"]["live_backend_available"] is True
+    assert manifest["scope"]["live_read_available"] is True
+    assert manifest["scope"]["write_bridge_available"] is True
+    assert manifest["scope"]["live_write_smoke_tested"] is False
     trigger_command = next(command for command in manifest["commands"] if command["id"] == "workflow.trigger")
     assert trigger_command["input_hints"]["event"]["default"] == "manual"
     assert "payload" in trigger_command["input_hints"]
@@ -241,8 +317,8 @@ def test_config_show_reports_live_read_truthfully(monkeypatch):
         assert payload["api_probe"]["ok"] is True
         assert payload["api_probe"]["details"]["sample_count"] == 1
         assert payload["write_probe"]["ok"] is True
-        assert payload["auth"]["sources"]["N8N_API_URL"] == "process.env"
-        assert payload["auth"]["sources"]["N8N_WEBHOOK_BASE_URL"] == "process.env"
+        assert payload["auth"]["sources"]["N8N_API_URL"] == "env_fallback"
+        assert payload["auth"]["sources"]["N8N_WEBHOOK_BASE_URL"] == "env_fallback"
         assert payload["runtime"]["workflow_name"] == "Onboarding Sync"
         assert payload["trigger_builder"]["event_hints"][0]["value"] == "manual"
         assert payload["trigger_builder"]["payload_hints"]["shape"] == "flat key-value map"
@@ -280,6 +356,88 @@ def test_config_show_prefers_operator_service_keys_for_live_endpoints(monkeypatc
             request["path"] == "/api/v1/workflows"
             and request["query"] == "limit=1&active=true"
             and request["auth"] == "operator-secret-key"
+            for request in server["requests"]
+        )
+
+
+def test_encrypted_repo_service_key_decrypts_with_master_key(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    key_dir = home / ".argentos"
+    key_dir.mkdir(parents=True, exist_ok=True)
+    (key_dir / ".master-key").write_text("11" * 32)
+    monkeypatch.setenv("HOME", str(home))
+    encrypted = encrypt_secret(tmp_path, "operator-secret-key")
+    monkeypatch.setattr(
+        service_keys,
+        "SERVICE_KEYS_PATH",
+        write_service_keys(tmp_path, {"N8N_API_KEY": encrypted}),
+    )
+
+    from cli_aos.n8n.config import resolve_runtime_values
+
+    runtime = resolve_runtime_values({})
+    assert runtime["api_key"] == "operator-secret-key"
+    assert runtime["api_key_source"] == "repo-service-key"
+    assert runtime["api_key_usable"] is True
+
+
+def test_unreadable_encrypted_repo_service_key_falls_back_to_env_like_core_resolver(monkeypatch, tmp_path):
+    monkeypatch.setenv("N8N_API_KEY", "env-secret-key")
+    monkeypatch.setattr(
+        service_keys,
+        "SERVICE_KEYS_PATH",
+        write_service_keys(tmp_path, {"N8N_API_KEY": "enc:v1:abc:def:ghi"}),
+    )
+
+    from cli_aos.n8n.config import resolve_runtime_values
+
+    runtime = resolve_runtime_values({})
+    assert runtime["api_key"] == "env-secret-key"
+    assert runtime["api_key_source"] == "env_fallback"
+    assert runtime["api_key_usable"] is True
+
+
+def test_scoped_repo_service_key_blocks_env_fallback(monkeypatch, tmp_path):
+    monkeypatch.setenv("N8N_API_KEY", "env-secret-key")
+    monkeypatch.setattr(
+        service_keys,
+        "SERVICE_KEYS_PATH",
+        write_service_keys(tmp_path, {"N8N_API_KEY": "repo-secret-key"}, extra={"allowedRoles": ["operator"]}),
+    )
+
+    from cli_aos.n8n.config import resolve_runtime_values
+
+    runtime = resolve_runtime_values({})
+    assert runtime["api_key"] is None
+    assert runtime["api_key_source"] == "repo-service-key-scoped"
+    assert runtime["api_key_usable"] is False
+
+
+def test_live_read_uses_operator_context_keys(monkeypatch):
+    with mock_n8n_server() as server:
+        _mock_service_keys(monkeypatch)
+        result = CliRunner().invoke(
+            cli,
+            ["--json", "workflow", "list", "--limit", "2", "--status", "active"],
+            obj={
+                "service_keys": {
+                    "aos-n8n": {
+                        "api_url": server["base_url"],
+                        "api_key": "operator-context-key",
+                        "webhook_base_url": server["base_url"],
+                        "workflow_name": "Onboarding Sync",
+                    }
+                }
+            },
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)["data"]
+        assert payload["count"] == 2
+        assert any(
+            request["path"] == "/api/v1/workflows"
+            and request["query"] == "limit=2&active=true"
+            and request["auth"] == "operator-context-key"
             for request in server["requests"]
         )
 
@@ -435,5 +593,42 @@ def test_workflow_trigger_executes_bridge_and_posts_payload(monkeypatch):
             and request["body"]["event"] == "manual"
             and request["body"]["payload"] == {"source": "agent"}
             and request["body"]["workflow"]["workflow_id"] == "workflow-123"
+            for request in server["requests"]
+        )
+
+
+def test_workflow_trigger_uses_operator_context_keys(monkeypatch):
+    with mock_n8n_server() as server:
+        _mock_service_keys(monkeypatch)
+        result = CliRunner().invoke(
+            cli,
+            ["--json", "--mode", "write", "workflow", "trigger", "workflow-123", "--event", "manual", "--payload", "source=operator"],
+            obj={
+                "service_keys": {
+                    "aos-n8n": {
+                        "api_url": server["base_url"],
+                        "api_key": "operator-trigger-key",
+                        "webhook_base_url": server["base_url"],
+                        "workflow_name": "Onboarding Sync",
+                    }
+                }
+            },
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)["data"]
+        assert payload["status"] == "triggered"
+        assert payload["request"]["payload"] == {"source": "operator"}
+        assert any(
+            request["method"] == "GET"
+            and request["path"] == "/api/v1/workflows"
+            and request["query"] == "limit=1&active=true"
+            and request["auth"] == "operator-trigger-key"
+            for request in server["requests"]
+        )
+        assert any(
+            request["method"] == "POST"
+            and request["path"] == "/aos-n8n/workflow-trigger"
+            and request["body"]["payload"] == {"source": "operator"}
             for request in server["requests"]
         )
