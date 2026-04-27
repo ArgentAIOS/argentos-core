@@ -46,21 +46,6 @@ def _scope_preview(*, command_id: str, selection_surface: str, **extra: Any) -> 
     }
 
 
-def _picker_items(items: list[dict[str, Any]], *, kind: str, label_keys: tuple[str, ...], subtitle_keys: tuple[str, ...] = ()) -> list[dict[str, Any]]:
-    picker: list[dict[str, Any]] = []
-    for item in items:
-        value = _pick_text(item, "id", "organizationId", "socialProfileId", "teamId", "messageId")
-        if not value:
-            continue
-        label = _pick_text(item, *label_keys) or value
-        subtitle = _pick_text(item, *subtitle_keys)
-        option: dict[str, Any] = {"value": value, "label": label, "kind": kind}
-        if subtitle:
-            option["subtitle"] = subtitle
-        picker.append(option)
-    return picker
-
-
 def create_client(ctx_obj: dict[str, Any] | None = None) -> HootsuiteClient:
     runtime = resolve_runtime_values(ctx_obj)
     if not runtime["access_token"]:
@@ -141,8 +126,8 @@ def capabilities_snapshot() -> dict[str, Any]:
         },
         "write_support": {
             "live_writes_enabled": False,
-            "scaffold_only": True,
-            "scaffolded_commands": ["message.schedule"],
+            "scaffold_only": False,
+            "scaffolded_commands": [],
         },
     }
 
@@ -204,7 +189,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         summary = "Hootsuite live reads are ready."
         next_steps = [
             "Use me.read, organization.list/read, social_profile.list/read, team.list/read, and message.list/read.",
-            "Keep message.schedule scaffolded until publish approval and safety rules are finalized.",
+            "Do not advertise Hootsuite publish actions until a live write bridge and approval policy are implemented.",
         ]
     return {
         "status": status,
@@ -277,7 +262,7 @@ def doctor_snapshot(ctx_obj: dict[str, Any], *, health: dict[str, Any] | None = 
     else:
         recommendations = [
             "Use me.read, organization.list/read, social_profile.list/read, team.list/read, and message.list/read.",
-            "Keep message.schedule scaffolded until publish approval is implemented.",
+            "Keep publish/schedule actions out of the manifest until a live write bridge is implemented.",
         ]
     return {
         **health,
@@ -489,15 +474,4 @@ def message_read_result(ctx_obj: dict[str, Any], message_id: str | None) -> dict
         "message_id": resolved,
         "scope_preview": _scope_preview(command_id="message.read", selection_surface="message", message_id=resolved),
         "summary": _pick_text(message, "text", "summary", "subject") or f"Message {resolved}",
-    }
-
-
-def scaffold_write_result(ctx_obj: dict[str, Any], *, command_id: str, inputs: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "status": "scaffold_write_only",
-        "command": command_id,
-        "tool": "aos-hootsuite",
-        "scaffold_only": True,
-        "inputs": inputs,
-        "summary": "This connector keeps publish actions scaffolded until approval and publish-safety rules are implemented.",
     }

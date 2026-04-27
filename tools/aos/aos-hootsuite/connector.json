@@ -42,7 +42,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": ["team.list", "social_profile.list"],
+        "applies_to": ["organization.read", "team.list", "social_profile.list"],
         "placeholder": "626731",
         "description": "Hootsuite organization ID. Required to list teams and social profiles."
       },
@@ -54,9 +54,9 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": ["social_profile.read", "message.list", "message.schedule"],
+        "applies_to": ["social_profile.read", "message.list"],
         "placeholder": "115185509",
-        "description": "The Hootsuite social profile ID (Twitter, Facebook, LinkedIn, Instagram, etc.) to fetch or scope scaffolded outbound message actions on."
+        "description": "The Hootsuite social profile ID (Twitter, Facebook, LinkedIn, Instagram, etc.) to fetch scoped outbound message reads."
       },
       {
         "id": "team_id",
@@ -119,10 +119,6 @@
       "message.read": {
         "selection_surface": "message",
         "args": ["HOOTSUITE_MESSAGE_ID"]
-      },
-      "message.schedule": {
-        "selection_surface": "message",
-        "args": ["HOOTSUITE_SOCIAL_PROFILE_ID"]
       }
     },
     "pickerHints": {
@@ -172,14 +168,21 @@
   "auth": {
     "kind": "oauth-service-key",
     "required": true,
-    "service_keys": ["HOOTSUITE_ACCESS_TOKEN"],
+    "service_keys": [
+      "HOOTSUITE_ACCESS_TOKEN",
+      "HOOTSUITE_BASE_URL",
+      "HOOTSUITE_ORGANIZATION_ID",
+      "HOOTSUITE_SOCIAL_PROFILE_ID",
+      "HOOTSUITE_TEAM_ID",
+      "HOOTSUITE_MESSAGE_ID"
+    ],
     "interactive_setup": [
       "Create a Hootsuite developer app and complete OAuth2 for the member and organization context this worker should use.",
       "Add the resulting HOOTSUITE_ACCESS_TOKEN to operator-controlled service keys before enabling live reads.",
-      "Optional: set HOOTSUITE_BASE_URL only if you need a non-default Hootsuite API host.",
-      "Optional: pin HOOTSUITE_ORGANIZATION_ID, HOOTSUITE_SOCIAL_PROFILE_ID, HOOTSUITE_TEAM_ID, and HOOTSUITE_MESSAGE_ID for worker scope defaults.",
+      "Optional: set HOOTSUITE_BASE_URL in operator-controlled service keys only if you need a non-default Hootsuite API host.",
+      "Optional: pin HOOTSUITE_ORGANIZATION_ID, HOOTSUITE_SOCIAL_PROFILE_ID, HOOTSUITE_TEAM_ID, and HOOTSUITE_MESSAGE_ID in operator-controlled service keys for worker scope defaults.",
       "Live reads are enabled for member, organization, social profile, team, and outbound message discovery; local env is harness-only fallback.",
-      "Keep message.schedule scaffolded until approval and publish safety rules are implemented."
+      "No publish or schedule write command is advertised until a live write bridge and approval policy are implemented."
     ]
   },
   "commands": [
@@ -286,14 +289,6 @@
       "supports_json": true,
       "resource": "message",
       "action_class": "read"
-    },
-    {
-      "id": "message.schedule",
-      "summary": "Validate inputs for a scaffolded Hootsuite outbound message schedule",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "message",
-      "action_class": "write"
     }
   ]
 }

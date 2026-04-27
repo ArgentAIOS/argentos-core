@@ -19,7 +19,6 @@ from .runtime import (
     organization_list_result,
     organization_read_result,
     me_read_result,
-    scaffold_write_result,
     social_profile_list_result,
     social_profile_read_result,
     team_list_result,
@@ -277,34 +276,6 @@ def message_read(ctx: click.Context, message_id: str | None) -> None:
     _set_command(ctx, "message.read")
     require_mode(ctx, "message.read")
     _emit_success(ctx, "message.read", message_read_result(ctx.obj, message_id))
-
-
-@message_group.command("schedule")
-@click.argument("text", required=False)
-@click.option("--social-profile-id", default=None, help="Social profile ID for the scheduled message")
-@click.option("--scheduled-send-time", default=None, help="Optional ISO-8601 send time")
-@click.pass_context
-def message_schedule(
-    ctx: click.Context,
-    text: str | None,
-    social_profile_id: str | None,
-    scheduled_send_time: str | None,
-) -> None:
-    _set_command(ctx, "message.schedule")
-    require_mode(ctx, "message.schedule")
-    _emit_success(
-        ctx,
-        "message.schedule",
-        scaffold_write_result(
-            ctx.obj,
-            command_id="message.schedule",
-            inputs={
-                "text": text,
-                "social_profile_id": social_profile_id,
-                "scheduled_send_time": scheduled_send_time,
-            },
-        ),
-    )
 
 
 if __name__ == "__main__":
