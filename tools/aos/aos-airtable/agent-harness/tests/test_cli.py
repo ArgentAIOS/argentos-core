@@ -1,19 +1,89 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
 from click.testing import CliRunner
+import pytest
 
 from cli_aos.airtable.cli import cli
 from cli_aos.airtable import client as airtable_client
 from cli_aos.airtable import config as airtable_config
+from cli_aos.airtable import service_keys
 
 
 AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
 CONNECTOR_PATH = AGENT_HARNESS_ROOT.parent / "connector.json"
 PERMISSIONS_PATH = AGENT_HARNESS_ROOT / "permissions.json"
+ALL_ENV_KEYS = (
+    "AIRTABLE_API_TOKEN",
+    "AOS_AIRTABLE_API_TOKEN",
+    "AIRTABLE_BASE_ID",
+    "AOS_AIRTABLE_BASE_ID",
+    "AIRTABLE_TABLE_NAME",
+    "AOS_AIRTABLE_TABLE_NAME",
+    "AIRTABLE_WORKSPACE_ID",
+    "AOS_AIRTABLE_WORKSPACE_ID",
+    "AIRTABLE_API_BASE_URL",
+)
+
+
+@pytest.fixture(autouse=True)
+def no_operator_service_keys_by_default(monkeypatch, tmp_path):
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", tmp_path / "missing-service-keys.json")
+    for key in ALL_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
+
+def write_service_keys(tmp_path: Path, values: dict[str, str], *, extra: dict[str, Any] | None = None) -> Path:
+    path = tmp_path / "service-keys.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "keys": [
+                    {
+                        "id": f"sk-{key}",
+                        "name": key,
+                        "variable": key,
+                        "value": value,
+                        "enabled": True,
+                        **(extra or {}),
+                    }
+                    for key, value in values.items()
+                ],
+            }
+        )
+    )
+    return path
+
+
+def encrypt_secret(tmp_path: Path, plaintext: str) -> str:
+    home = tmp_path / "home"
+    key_dir = home / ".argentos"
+    key_dir.mkdir(parents=True, exist_ok=True)
+    (key_dir / ".master-key").write_text("11" * 32)
+    script = r"""
+const { createCipheriv } = require("node:crypto");
+const plaintext = process.argv[1];
+const key = Buffer.from("11".repeat(32), "hex");
+const iv = Buffer.from("22".repeat(12), "hex");
+const cipher = createCipheriv("aes-256-gcm", key, iv);
+let encrypted = cipher.update(plaintext, "utf8", "hex");
+encrypted += cipher.final("hex");
+const tag = cipher.getAuthTag().toString("hex");
+process.stdout.write(`enc:v1:${iv.toString("hex")}:${tag}:${encrypted}`);
+"""
+    result = subprocess.run(
+        ["node", "-e", script, plaintext],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+    )
+    return result.stdout
 
 
 class FakeResponse:
@@ -36,9 +106,16 @@ class FakeResponse:
 
 def invoke_json(args: list[str], monkeypatch, transport=None, service_keys: dict[str, str] | None = None) -> dict[str, Any]:
     if monkeypatch is not None:
-        resolver = lambda name: (service_keys or {}).get(name)
-        monkeypatch.setattr(airtable_config, "resolve_service_key", resolver)
-        monkeypatch.setattr(airtable_client, "resolve_service_key", resolver)
+        real_resolver = airtable_config.resolve_named_value
+
+        def resolver(*names: str, ctx_obj=None, default=None):
+            for name in names:
+                if name in (service_keys or {}):
+                    return {"value": service_keys[name], "present": True, "usable": True, "source": "operator:service_keys", "variable": name}
+            return real_resolver(*names, ctx_obj=ctx_obj, default=default)
+
+        monkeypatch.setattr(airtable_config, "resolve_named_value", resolver)
+        monkeypatch.setattr(airtable_client, "resolve_named_value", resolver)
     if transport is not None:
         monkeypatch.setattr(airtable_client, "urlopen", transport)
     result = CliRunner().invoke(cli, ["--json", *args])
@@ -77,6 +154,9 @@ def test_manifest_and_permissions_are_in_sync():
     assert "doctor" in manifest_command_ids
     assert set(manifest_command_ids) == set(permissions.keys())
     assert manifest["scope"]["kind"] == "base-table-record"
+    assert manifest["scope"]["live_write_smoke_tested"] is False
+    assert manifest["auth"]["service_keys"] == ["AIRTABLE_API_TOKEN", "AIRTABLE_BASE_ID"]
+    assert "AIRTABLE_API_BASE_URL" in manifest["auth"]["optional_service_keys"]
     assert manifest["scope"]["commandDefaults"]["record.list"]["options"]["table"] == "AIRTABLE_TABLE_NAME"
 
 
@@ -154,9 +234,85 @@ def test_config_show_prefers_operator_service_keys(monkeypatch):
     data = payload["data"]
     assert "operator_token" not in json.dumps(data)
     assert "env_token" not in json.dumps(data)
-    assert data["auth"]["sources"]["AIRTABLE_API_TOKEN"] == "service-keys"
+    assert data["auth"]["sources"]["AIRTABLE_API_TOKEN"] == "operator:service_keys"
     assert data["scope"]["base_id"] == "operator_base"
     assert data["scope"]["table_name"] == "Operator Table"
+
+
+def test_encrypted_repo_service_key_decrypts_with_master_key(monkeypatch, tmp_path):
+    encrypted = encrypt_secret(tmp_path, "pat_encrypted")
+    path = write_service_keys(tmp_path, {"AIRTABLE_API_TOKEN": encrypted})
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+    details = service_keys.service_key_details("AIRTABLE_API_TOKEN")
+
+    assert details["value"] == "pat_encrypted"
+    assert details["source"] == "repo-service-key"
+
+
+def test_unreadable_encrypted_repo_service_key_falls_back_to_env_like_core_resolver(monkeypatch, tmp_path):
+    path = write_service_keys(tmp_path, {"AIRTABLE_API_TOKEN": "enc:v1:bad:bad:bad"})
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("AIRTABLE_API_TOKEN", "env-token")
+
+    details = service_keys.service_key_details("AIRTABLE_API_TOKEN")
+
+    assert details["value"] == "env-token"
+    assert details["source"] == "env_fallback"
+
+
+def test_scoped_repo_service_key_blocks_env_and_legacy_alias_fallback(monkeypatch, tmp_path):
+    path = write_service_keys(
+        tmp_path,
+        {
+            "AIRTABLE_API_TOKEN": "scoped-token",
+            "AIRTABLE_BASE_ID": "scoped-base",
+        },
+        extra={"allowedRoles": ["operator"]},
+    )
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("AIRTABLE_API_TOKEN", "env-token")
+    monkeypatch.setenv("AOS_AIRTABLE_API_TOKEN", "legacy-env-token")
+    monkeypatch.setenv("AIRTABLE_BASE_ID", "env-base")
+    monkeypatch.setenv("AOS_AIRTABLE_BASE_ID", "legacy-env-base")
+
+    token = service_keys.resolve_named_value("AIRTABLE_API_TOKEN", "AOS_AIRTABLE_API_TOKEN")
+    base = service_keys.resolve_named_value("AIRTABLE_BASE_ID", "AOS_AIRTABLE_BASE_ID")
+
+    assert token["value"] == ""
+    assert token["source"] == "repo-service-key-scoped"
+    assert token["blocked"] is True
+    assert base["value"] == ""
+    assert base["source"] == "repo-service-key-scoped"
+
+
+def test_operator_table_default_reaches_live_record_command(monkeypatch):
+    transport = transport_for(
+        {
+            "/v0/operator_base/Operator%20Table?pageSize=2": {
+                "records": [
+                    {"id": "rec1", "createdTime": "2026-03-18T00:00:00.000Z", "fields": {"Name": "Alpha"}},
+                ]
+            }
+        }
+    )
+
+    payload = invoke_json(
+        ["record", "list", "--limit", "2"],
+        monkeypatch,
+        transport=transport,
+        service_keys={
+            "AIRTABLE_API_TOKEN": "operator_token",
+            "AIRTABLE_BASE_ID": "operator_base",
+            "AIRTABLE_TABLE_NAME": "Operator Table",
+        },
+    )
+
+    data = payload["data"]
+    assert data["status"] == "live_read"
+    assert data["table"] == "Operator Table"
+    assert data["record_count"] == 1
 
 
 def test_doctor_reports_live_read_support_when_setup_present(monkeypatch):

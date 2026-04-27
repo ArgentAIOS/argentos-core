@@ -124,7 +124,7 @@ def _health_checks(config: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
-    config = runtime_config()
+    config = runtime_config(ctx_obj)
     runtime = config["runtime"]
     if not runtime["auth_ready"]:
         return {
@@ -179,7 +179,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
 
 
 def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
-    config = runtime_config()
+    config = runtime_config(ctx_obj)
     runtime = config["runtime"]
     setup_ready = runtime["auth_ready"]
     fully_ready = runtime["base_scoped_read_ready"]
@@ -236,7 +236,7 @@ def live_write_result(
     inputs: dict[str, Any],
     fetcher: Any,
 ) -> dict[str, Any]:
-    config = runtime_config()
+    config = runtime_config(ctx_obj)
     client = AirtableClient.from_config(config)
     details = fetcher(client)
     scope_preview = details.pop("scope_preview", None)
@@ -276,7 +276,7 @@ def live_read_result(
     fetcher: Any,
     consequential: bool = False,
 ) -> dict[str, Any]:
-    config = runtime_config()
+    config = runtime_config(ctx_obj)
     client = AirtableClient.from_config(config)
     details = fetcher(client)
     scope_preview = details.pop("scope_preview", None)
@@ -307,4 +307,4 @@ def live_read_result(
 
 
 def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
-    return redacted_config_snapshot()
+    return redacted_config_snapshot(ctx_obj)
