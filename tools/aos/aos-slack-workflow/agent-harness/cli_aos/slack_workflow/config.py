@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import os
-from .service_keys import service_key_env
 from typing import Any
 
+from . import service_keys
 from .constants import (
     BACKEND_NAME,
     DEFAULT_BASE_URL,
@@ -56,24 +55,43 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     reminder_time_env = ctx_obj.get("reminder_time_env") or SLACK_REMINDER_TIME_ENV
     reminder_user_env = ctx_obj.get("reminder_user_env") or SLACK_REMINDER_USER_ENV
 
-    bot_token = (service_key_env(bot_token_env) or "").strip()
-    app_token = (service_key_env(app_token_env) or "").strip()
-    base_url = (service_key_env(base_url_env) or DEFAULT_BASE_URL).strip().rstrip("/")
-    channel_id = (service_key_env(channel_id_env) or "").strip()
-    thread_ts = (service_key_env(thread_ts_env) or "").strip()
-    text = (service_key_env(text_env) or "").strip()
-    emoji = (service_key_env(emoji_env) or "").strip()
-    user_id = (service_key_env(user_id_env) or "").strip()
-    channel_name = (service_key_env(channel_name_env) or "").strip()
-    canvas_id = (service_key_env(canvas_id_env) or "").strip()
-    canvas_title = (service_key_env(canvas_title_env) or "").strip()
-    canvas_content = (service_key_env(canvas_content_env) or "").strip()
-    canvas_changes = (service_key_env(canvas_changes_env) or "").strip()
-    file_path = (service_key_env(file_path_env) or "").strip()
-    file_title = (service_key_env(file_title_env) or "").strip()
-    reminder_text = (service_key_env(reminder_text_env) or "").strip()
-    reminder_time = (service_key_env(reminder_time_env) or "").strip()
-    reminder_user = (service_key_env(reminder_user_env) or "").strip()
+    bot_token_detail = service_keys.service_key_details(bot_token_env, ctx_obj)
+    app_token_detail = service_keys.service_key_details(app_token_env, ctx_obj)
+    base_url_detail = service_keys.service_key_details(base_url_env, ctx_obj, default=DEFAULT_BASE_URL)
+    channel_id_detail = service_keys.service_key_details(channel_id_env, ctx_obj)
+    thread_ts_detail = service_keys.service_key_details(thread_ts_env, ctx_obj)
+    text_detail = service_keys.service_key_details(text_env, ctx_obj)
+    emoji_detail = service_keys.service_key_details(emoji_env, ctx_obj)
+    user_id_detail = service_keys.service_key_details(user_id_env, ctx_obj)
+    channel_name_detail = service_keys.service_key_details(channel_name_env, ctx_obj)
+    canvas_id_detail = service_keys.service_key_details(canvas_id_env, ctx_obj)
+    canvas_title_detail = service_keys.service_key_details(canvas_title_env, ctx_obj)
+    canvas_content_detail = service_keys.service_key_details(canvas_content_env, ctx_obj)
+    canvas_changes_detail = service_keys.service_key_details(canvas_changes_env, ctx_obj)
+    file_path_detail = service_keys.service_key_details(file_path_env, ctx_obj)
+    file_title_detail = service_keys.service_key_details(file_title_env, ctx_obj)
+    reminder_text_detail = service_keys.service_key_details(reminder_text_env, ctx_obj)
+    reminder_time_detail = service_keys.service_key_details(reminder_time_env, ctx_obj)
+    reminder_user_detail = service_keys.service_key_details(reminder_user_env, ctx_obj)
+
+    bot_token = (bot_token_detail["value"] or "").strip()
+    app_token = (app_token_detail["value"] or "").strip()
+    base_url = (base_url_detail["value"] or DEFAULT_BASE_URL).strip().rstrip("/")
+    channel_id = (channel_id_detail["value"] or "").strip()
+    thread_ts = (thread_ts_detail["value"] or "").strip()
+    text = (text_detail["value"] or "").strip()
+    emoji = (emoji_detail["value"] or "").strip()
+    user_id = (user_id_detail["value"] or "").strip()
+    channel_name = (channel_name_detail["value"] or "").strip()
+    canvas_id = (canvas_id_detail["value"] or "").strip()
+    canvas_title = (canvas_title_detail["value"] or "").strip()
+    canvas_content = (canvas_content_detail["value"] or "").strip()
+    canvas_changes = (canvas_changes_detail["value"] or "").strip()
+    file_path = (file_path_detail["value"] or "").strip()
+    file_title = (file_title_detail["value"] or "").strip()
+    reminder_text = (reminder_text_detail["value"] or "").strip()
+    reminder_time = (reminder_time_detail["value"] or "").strip()
+    reminder_user = (reminder_user_detail["value"] or "").strip()
 
     return {
         "backend": BACKEND_NAME,
@@ -96,23 +114,44 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "reminder_time_env": reminder_time_env,
         "reminder_user_env": reminder_user_env,
         "bot_token": bot_token,
+        "bot_token_usable": bot_token_detail["usable"],
+        "bot_token_source": bot_token_detail["source"],
         "app_token": app_token,
+        "app_token_usable": app_token_detail["usable"],
+        "app_token_source": app_token_detail["source"],
         "base_url": base_url,
+        "base_url_usable": base_url_detail["usable"],
+        "base_url_source": base_url_detail["source"],
         "channel_id": channel_id,
+        "channel_id_source": channel_id_detail["source"] if channel_id_detail["present"] else None,
         "thread_ts": thread_ts,
+        "thread_ts_source": thread_ts_detail["source"] if thread_ts_detail["present"] else None,
         "text": text,
+        "text_source": text_detail["source"] if text_detail["present"] else None,
         "emoji": emoji,
+        "emoji_source": emoji_detail["source"] if emoji_detail["present"] else None,
         "user_id": user_id,
+        "user_id_source": user_id_detail["source"] if user_id_detail["present"] else None,
         "channel_name": channel_name,
+        "channel_name_source": channel_name_detail["source"] if channel_name_detail["present"] else None,
         "canvas_id": canvas_id,
+        "canvas_id_source": canvas_id_detail["source"] if canvas_id_detail["present"] else None,
         "canvas_title": canvas_title,
+        "canvas_title_source": canvas_title_detail["source"] if canvas_title_detail["present"] else None,
         "canvas_content": canvas_content,
+        "canvas_content_source": canvas_content_detail["source"] if canvas_content_detail["present"] else None,
         "canvas_changes": canvas_changes,
+        "canvas_changes_source": canvas_changes_detail["source"] if canvas_changes_detail["present"] else None,
         "file_path": file_path,
+        "file_path_source": file_path_detail["source"] if file_path_detail["present"] else None,
         "file_title": file_title,
+        "file_title_source": file_title_detail["source"] if file_title_detail["present"] else None,
         "reminder_text": reminder_text,
+        "reminder_text_source": reminder_text_detail["source"] if reminder_text_detail["present"] else None,
         "reminder_time": reminder_time,
+        "reminder_time_source": reminder_time_detail["source"] if reminder_time_detail["present"] else None,
         "reminder_user": reminder_user,
+        "reminder_user_source": reminder_user_detail["source"] if reminder_user_detail["present"] else None,
         "bot_token_present": bool(bot_token),
         "app_token_present": bool(app_token),
         "channel_id_present": bool(channel_id),
@@ -141,10 +180,23 @@ def config_snapshot(ctx_obj: dict[str, Any], *, probe: dict[str, Any] | None = N
         "auth": {
             "bot_token_env": runtime["bot_token_env"],
             "bot_token_present": runtime["bot_token_present"],
+            "bot_token_usable": runtime["bot_token_usable"],
             "bot_token_masked": _mask(runtime["bot_token"]),
+            "bot_token_source": runtime["bot_token_source"],
             "app_token_env": runtime["app_token_env"],
             "app_token_present": runtime["app_token_present"],
+            "app_token_usable": runtime["app_token_usable"],
             "app_token_masked": _mask(runtime["app_token"]),
+            "app_token_source": runtime["app_token_source"],
+            "base_url_env": runtime["base_url_env"],
+            "base_url": runtime["base_url"],
+            "base_url_source": runtime["base_url_source"],
+            "sources": {
+                runtime["bot_token_env"]: runtime["bot_token_source"],
+                runtime["app_token_env"]: runtime["app_token_source"],
+                runtime["base_url_env"]: runtime["base_url_source"],
+            },
+            "resolution_order": ["operator-context", "service-keys", "process.env", "default"],
         },
         "scope": {
             "base_url": runtime["base_url"],
