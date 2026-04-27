@@ -109,22 +109,6 @@ def order_get(ctx: click.Context, order_id: str | None) -> None:
     emit(ctx, runtime.build_order_get_payload(order_id=order_id))
 
 
-@order.command(name="create")
-@click.pass_context
-def order_create(ctx: click.Context) -> None:
-    require_mode(ctx, "order.create")
-    emit(ctx, runtime.build_order_create_payload())
-
-
-@order.command(name="update")
-@click.option("--order-id", type=str, default=None)
-@click.option("--status", type=str, default=None)
-@click.pass_context
-def order_update(ctx: click.Context, order_id: str | None, status: str | None) -> None:
-    require_mode(ctx, "order.update")
-    emit(ctx, runtime.build_order_update_payload(order_id=order_id, status=status))
-
-
 @cli.group()
 @click.pass_context
 def product(ctx: click.Context) -> None:
@@ -147,23 +131,6 @@ def product_get(ctx: click.Context, product_id: str | None) -> None:
     emit(ctx, runtime.build_product_get_payload(product_id=product_id))
 
 
-@product.command(name="create")
-@click.option("--name", type=str, default=None)
-@click.pass_context
-def product_create(ctx: click.Context, name: str | None) -> None:
-    require_mode(ctx, "product.create")
-    emit(ctx, runtime.build_product_create_payload(name=name))
-
-
-@product.command(name="update")
-@click.option("--product-id", type=str, default=None)
-@click.option("--status", type=str, default=None)
-@click.pass_context
-def product_update(ctx: click.Context, product_id: str | None, status: str | None) -> None:
-    require_mode(ctx, "product.update")
-    emit(ctx, runtime.build_product_update_payload(product_id=product_id, status=status))
-
-
 @cli.group()
 @click.pass_context
 def customer(ctx: click.Context) -> None:
@@ -184,14 +151,6 @@ def customer_get(ctx: click.Context, customer_id: str | None) -> None:
     emit(ctx, runtime.build_customer_get_payload(customer_id=customer_id))
 
 
-@customer.command(name="create")
-@click.option("--email", type=str, default=None)
-@click.pass_context
-def customer_create(ctx: click.Context, email: str | None) -> None:
-    require_mode(ctx, "customer.create")
-    emit(ctx, runtime.build_customer_create_payload(email=email))
-
-
 @cli.group()
 @click.pass_context
 def coupon(ctx: click.Context) -> None:
@@ -203,14 +162,6 @@ def coupon(ctx: click.Context) -> None:
 @click.pass_context
 def coupon_list(ctx: click.Context, limit: int) -> None:
     emit(ctx, runtime.build_coupon_list_payload(limit=limit))
-
-
-@coupon.command(name="create")
-@click.option("--code", type=str, default=None)
-@click.pass_context
-def coupon_create(ctx: click.Context, code: str | None) -> None:
-    require_mode(ctx, "coupon.create")
-    emit(ctx, runtime.build_coupon_create_payload(code=code))
 
 
 @cli.group()
