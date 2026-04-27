@@ -8,7 +8,24 @@
     "scaffold_only": false,
     "live_backend_available": true,
     "live_read_available": true,
+    "live_write_available": true,
     "write_bridge_available": true,
+    "live_write_smoke_tested": false,
+    "required": ["MAKE_API_URL", "MAKE_API_KEY"],
+    "optional": [
+      "MAKE_WEBHOOK_BASE_URL",
+      "MAKE_ORGANIZATION_ID",
+      "MAKE_ORGANIZATION_NAME",
+      "MAKE_TEAM_ID",
+      "MAKE_TEAM_NAME",
+      "MAKE_SCENARIO_ID",
+      "MAKE_SCENARIO_NAME",
+      "MAKE_SCENARIO_STATUS",
+      "MAKE_CONNECTION_ID",
+      "MAKE_CONNECTION_NAME",
+      "MAKE_EXECUTION_ID",
+      "MAKE_RUN_ID"
+    ],
     "worker_visible_actions": [
       "organization.list",
       "team.list",
@@ -224,13 +241,29 @@
     "kind": "service-key",
     "required": true,
     "service_keys": ["MAKE_API_URL", "MAKE_API_KEY"],
+    "optional_service_keys": [
+      "MAKE_WEBHOOK_BASE_URL",
+      "MAKE_ORGANIZATION_ID",
+      "MAKE_ORGANIZATION_NAME",
+      "MAKE_TEAM_ID",
+      "MAKE_TEAM_NAME",
+      "MAKE_SCENARIO_ID",
+      "MAKE_SCENARIO_NAME",
+      "MAKE_SCENARIO_STATUS",
+      "MAKE_CONNECTION_ID",
+      "MAKE_CONNECTION_NAME",
+      "MAKE_EXECUTION_ID",
+      "MAKE_RUN_ID"
+    ],
     "interactive_setup": [
       "Connect or proxy a live Make bridge for the workspace you want this worker to use.",
-      "Add MAKE_API_URL and MAKE_API_KEY in API Keys.",
-      "Set MAKE_WEBHOOK_BASE_URL if you need a stable public base for trigger execution callbacks.",
-      "Set MAKE_ORGANIZATION_NAME, MAKE_TEAM_NAME, MAKE_SCENARIO_NAME, and MAKE_CONNECTION_NAME to preview the selected scope.",
+      "Add MAKE_API_URL and MAKE_API_KEY in operator-controlled service keys.",
+      "Optionally set MAKE_WEBHOOK_BASE_URL if you need a stable public base for trigger execution callbacks.",
+      "Optionally set MAKE_ORGANIZATION_NAME, MAKE_TEAM_NAME, MAKE_SCENARIO_NAME, and MAKE_CONNECTION_NAME in service keys to preview the selected scope.",
+      "Use local MAKE_* environment variables only as harness fallbacks when operator keys are unavailable.",
+      "Scoped service-key entries must be injected by the operator runtime and are not bypassed with local env.",
       "scenario.list, scenario.status, connection.list, and execution.list use the live Make read path.",
-      "scenario.trigger and execution.run post a live execution payload through the configured bridge."
+      "scenario.trigger and execution.run post a live execution payload through the configured bridge, but production live-write smoke is not claimed until tested against an operator Make bridge."
     ]
   },
   "commands": [

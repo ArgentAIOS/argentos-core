@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import os
-from .service_keys import service_key_env
 from typing import Any
 
+from . import service_keys
 from .constants import (
     BACKEND_NAME,
     MAKE_API_KEY_ENV,
@@ -44,9 +43,23 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     api_key_env = (ctx_obj.get("api_key_env") or MAKE_API_KEY_ENV).strip() or MAKE_API_KEY_ENV
     webhook_base_url_env = (ctx_obj.get("webhook_base_url_env") or MAKE_WEBHOOK_BASE_URL_ENV).strip() or MAKE_WEBHOOK_BASE_URL_ENV
 
-    api_url = service_key_env(api_url_env)
-    api_key = service_key_env(api_key_env)
-    webhook_base_url = service_key_env(webhook_base_url_env)
+    api_url_detail = service_keys.service_key_details(api_url_env, ctx_obj)
+    api_key_detail = service_keys.service_key_details(api_key_env, ctx_obj)
+    webhook_base_url_detail = service_keys.service_key_details(webhook_base_url_env, ctx_obj)
+    api_url = api_url_detail["value"] or None
+    api_key = api_key_detail["value"] or None
+    webhook_base_url = webhook_base_url_detail["value"] or None
+    organization_id_detail = service_keys.service_key_details(MAKE_ORGANIZATION_ID_ENV, ctx_obj)
+    organization_name_detail = service_keys.service_key_details(MAKE_ORGANIZATION_NAME_ENV, ctx_obj)
+    team_id_detail = service_keys.service_key_details(MAKE_TEAM_ID_ENV, ctx_obj)
+    team_name_detail = service_keys.service_key_details(MAKE_TEAM_NAME_ENV, ctx_obj)
+    scenario_id_detail = service_keys.service_key_details(MAKE_SCENARIO_ID_ENV, ctx_obj)
+    scenario_name_detail = service_keys.service_key_details(MAKE_SCENARIO_NAME_ENV, ctx_obj)
+    scenario_status_detail = service_keys.service_key_details(MAKE_SCENARIO_STATUS_ENV, ctx_obj)
+    connection_id_detail = service_keys.service_key_details(MAKE_CONNECTION_ID_ENV, ctx_obj)
+    connection_name_detail = service_keys.service_key_details(MAKE_CONNECTION_NAME_ENV, ctx_obj)
+    execution_id_detail = service_keys.service_key_details(MAKE_EXECUTION_ID_ENV, ctx_obj)
+    run_id_detail = service_keys.service_key_details(MAKE_RUN_ID_ENV, ctx_obj)
 
     return {
         "backend": BACKEND_NAME,
@@ -55,24 +68,41 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "webhook_base_url_env": webhook_base_url_env,
         "api_url": api_url,
         "api_url_present": _present(api_url),
+        "api_url_usable": api_url_detail["usable"],
         "api_url_redacted": _redact(api_url),
+        "api_url_source": api_url_detail["source"],
         "api_key": api_key,
         "api_key_present": _present(api_key),
+        "api_key_usable": api_key_detail["usable"],
         "api_key_redacted": _redact(api_key),
+        "api_key_source": api_key_detail["source"],
         "webhook_base_url": webhook_base_url,
         "webhook_base_url_present": _present(webhook_base_url),
+        "webhook_base_url_usable": webhook_base_url_detail["usable"],
         "webhook_base_url_redacted": _redact(webhook_base_url),
-        "organization_id": (service_key_env(MAKE_ORGANIZATION_ID_ENV) or "").strip() or None,
-        "organization_name": (service_key_env(MAKE_ORGANIZATION_NAME_ENV) or "").strip() or None,
-        "team_id": (service_key_env(MAKE_TEAM_ID_ENV) or "").strip() or None,
-        "team_name": (service_key_env(MAKE_TEAM_NAME_ENV) or "").strip() or None,
-        "scenario_id": (service_key_env(MAKE_SCENARIO_ID_ENV) or "").strip() or None,
-        "scenario_name": (service_key_env(MAKE_SCENARIO_NAME_ENV) or "").strip() or None,
-        "scenario_status": (service_key_env(MAKE_SCENARIO_STATUS_ENV) or "").strip() or None,
-        "connection_id": (service_key_env(MAKE_CONNECTION_ID_ENV) or "").strip() or None,
-        "connection_name": (service_key_env(MAKE_CONNECTION_NAME_ENV) or "").strip() or None,
-        "execution_id": (service_key_env(MAKE_EXECUTION_ID_ENV) or "").strip() or None,
-        "run_id": (service_key_env(MAKE_RUN_ID_ENV) or "").strip() or None,
+        "webhook_base_url_source": webhook_base_url_detail["source"],
+        "organization_id": organization_id_detail["value"] or None,
+        "organization_id_source": organization_id_detail["source"] if organization_id_detail["present"] else None,
+        "organization_name": organization_name_detail["value"] or None,
+        "organization_name_source": organization_name_detail["source"] if organization_name_detail["present"] else None,
+        "team_id": team_id_detail["value"] or None,
+        "team_id_source": team_id_detail["source"] if team_id_detail["present"] else None,
+        "team_name": team_name_detail["value"] or None,
+        "team_name_source": team_name_detail["source"] if team_name_detail["present"] else None,
+        "scenario_id": scenario_id_detail["value"] or None,
+        "scenario_id_source": scenario_id_detail["source"] if scenario_id_detail["present"] else None,
+        "scenario_name": scenario_name_detail["value"] or None,
+        "scenario_name_source": scenario_name_detail["source"] if scenario_name_detail["present"] else None,
+        "scenario_status": scenario_status_detail["value"] or None,
+        "scenario_status_source": scenario_status_detail["source"] if scenario_status_detail["present"] else None,
+        "connection_id": connection_id_detail["value"] or None,
+        "connection_id_source": connection_id_detail["source"] if connection_id_detail["present"] else None,
+        "connection_name": connection_name_detail["value"] or None,
+        "connection_name_source": connection_name_detail["source"] if connection_name_detail["present"] else None,
+        "execution_id": execution_id_detail["value"] or None,
+        "execution_id_source": execution_id_detail["source"] if execution_id_detail["present"] else None,
+        "run_id": run_id_detail["value"] or None,
+        "run_id_source": run_id_detail["source"] if run_id_detail["present"] else None,
         "verbose": bool(ctx_obj.get("verbose")),
     }
 
@@ -146,31 +176,55 @@ def redacted_config_snapshot(
         "auth": {
             "api_url_env": runtime["api_url_env"],
             "api_url_present": runtime["api_url_present"],
+            "api_url_usable": runtime["api_url_usable"],
             "api_url_redacted": runtime["api_url_redacted"],
+            "api_url_source": runtime["api_url_source"],
             "api_key_env": runtime["api_key_env"],
             "api_key_present": runtime["api_key_present"],
+            "api_key_usable": runtime["api_key_usable"],
             "api_key_redacted": runtime["api_key_redacted"],
+            "api_key_source": runtime["api_key_source"],
             "webhook_base_url_env": runtime["webhook_base_url_env"],
             "webhook_base_url_present": runtime["webhook_base_url_present"],
+            "webhook_base_url_usable": runtime["webhook_base_url_usable"],
             "webhook_base_url_redacted": runtime["webhook_base_url_redacted"],
+            "webhook_base_url_source": runtime["webhook_base_url_source"],
+            "sources": {
+                runtime["api_url_env"]: runtime["api_url_source"],
+                runtime["api_key_env"]: runtime["api_key_source"],
+                runtime["webhook_base_url_env"]: runtime["webhook_base_url_source"],
+            },
+            "resolution_order": ["operator-context", "service-keys", "process.env"],
         },
         "runtime": {
             "organization_id": runtime["organization_id"],
+            "organization_id_source": runtime["organization_id_source"],
             "organization_name": runtime["organization_name"],
+            "organization_name_source": runtime["organization_name_source"],
             "team_id": runtime["team_id"],
+            "team_id_source": runtime["team_id_source"],
             "team_name": runtime["team_name"],
+            "team_name_source": runtime["team_name_source"],
             "scenario_id": runtime["scenario_id"],
+            "scenario_id_source": runtime["scenario_id_source"],
             "scenario_name": runtime["scenario_name"],
+            "scenario_name_source": runtime["scenario_name_source"],
             "scenario_status": runtime["scenario_status"],
+            "scenario_status_source": runtime["scenario_status_source"],
             "connection_id": runtime["connection_id"],
+            "connection_id_source": runtime["connection_id_source"],
             "connection_name": runtime["connection_name"],
+            "connection_name_source": runtime["connection_name_source"],
             "execution_id": runtime["execution_id"],
+            "execution_id_source": runtime["execution_id_source"],
             "run_id": runtime["run_id"],
+            "run_id_source": runtime["run_id_source"],
             "auth_ready": auth_ready,
             "runtime_ready": runtime_ready,
             "live_backend_available": live_backend_available,
             "live_read_available": live_read_available,
             "write_bridge_available": write_bridge_available,
+            "live_write_smoke_tested": False,
             "scaffold_only": False,
             "scope_preview": _scope_preview(runtime),
             "trigger_builder": trigger_builder,
@@ -183,5 +237,6 @@ def redacted_config_snapshot(
         "live_backend_available": live_backend_available,
         "live_read_available": live_read_available,
         "write_bridge_available": write_bridge_available,
+        "live_write_smoke_tested": False,
         "scaffold_only": False,
     }

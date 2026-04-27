@@ -205,6 +205,7 @@ def _scope_preview(
         "live_backend_available": True,
         "live_read_available": operation == "read",
         "write_bridge_available": operation == "write",
+        "live_write_smoke_tested": False,
         "candidate_count": len(picker_options),
         "picker": {"kind": resource, "items": picker_options},
         "organization_name": runtime.get("organization_name"),
@@ -239,6 +240,7 @@ def _collection_result(
         "live_backend_available": True,
         "live_read_available": True,
         "write_bridge_available": True,
+        "live_write_smoke_tested": False,
         "scaffold_only": False,
     }
 
@@ -334,11 +336,11 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     live_backend_available = read_ready and write_ready
     if not auth_ready:
         status = "needs_setup"
-        summary = "Configure MAKE_API_URL, MAKE_API_KEY, and MAKE_WEBHOOK_BASE_URL before using live Make reads and triggers."
+        summary = "Configure MAKE_API_URL and MAKE_API_KEY before using live Make reads; add MAKE_WEBHOOK_BASE_URL to enable live triggers."
         next_steps = [
             f"Set {runtime['api_url_env']} to the target Make API base URL.",
             f"Set {runtime['api_key_env']} to a valid Make API key.",
-            f"Set {runtime['webhook_base_url_env']} to the public webhook base used by scenario.trigger.",
+            f"Optionally set {runtime['webhook_base_url_env']} to the public webhook base used by scenario.trigger.",
         ]
     elif not read_ready:
         status = "degraded"
@@ -373,6 +375,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "live_backend_available": live_backend_available,
             "live_read_available": read_ready,
             "write_bridge_available": write_ready,
+            "live_write_smoke_tested": False,
             "scaffold_only": False,
         },
         "auth": {
@@ -404,6 +407,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "live_backend_available": live_backend_available,
         "live_read_available": read_ready,
         "write_bridge_available": write_ready,
+        "live_write_smoke_tested": False,
         "scaffold_only": False,
         "probe": {"read": read_probe, "write": write_probe},
         "next_steps": next_steps,
@@ -414,7 +418,8 @@ def doctor_snapshot(ctx_obj: dict[str, Any], *, health: dict[str, Any] | None = 
     health = health or health_snapshot(ctx_obj)
     if health["status"] == "needs_setup":
         recommendations = [
-            "Configure the Make API URL, API key, and webhook base URL before handing this connector to a worker.",
+            "Configure the Make API URL and API key before handing this connector to a worker.",
+            "Configure the webhook base URL only when the worker needs scenario.trigger or execution.run.",
             "scenario.list and scenario.status remain available only after the API is reachable.",
         ]
     elif health["status"] == "degraded":
@@ -519,6 +524,7 @@ def run_read_command(ctx_obj: dict[str, Any], command_id: str, items: tuple[str,
             "live_backend_available": True,
             "live_read_available": True,
             "write_bridge_available": True,
+            "live_write_smoke_tested": False,
             "scaffold_only": False,
         }
     if command_id == "connection.list":
@@ -546,6 +552,7 @@ def run_read_command(ctx_obj: dict[str, Any], command_id: str, items: tuple[str,
             "live_backend_available": True,
             "live_read_available": True,
             "write_bridge_available": True,
+            "live_write_smoke_tested": False,
             "scaffold_only": False,
         }
     raise ConnectorError("MAKE_INVALID_USAGE", f"Unknown command: {command_id}", 2)
@@ -583,9 +590,9 @@ def run_trigger_command(ctx_obj: dict[str, Any], command_id: str, inputs: dict[s
         target.get("scenario_id"),
         event=event,
         payload=payload,
-        organization_name=runtime.get("organization_name"),
-        team_name=runtime.get("team_name"),
-        connection_id=runtime.get("connection_id"),
+        organization_name=inputs.get("organization_name") or runtime.get("organization_name"),
+        team_name=inputs.get("team_name") or runtime.get("team_name"),
+        connection_id=inputs.get("connection_id") or runtime.get("connection_id"),
     )
     normalized_response = response if isinstance(response, dict) else {"response": response}
     trigger_builder = trigger_builder_hints(runtime=runtime, probe={"details": {"write_probe": write_probe}}, payload=payload, response=normalized_response)
@@ -617,5 +624,6 @@ def run_trigger_command(ctx_obj: dict[str, Any], command_id: str, inputs: dict[s
         "live_backend_available": True,
         "live_read_available": True,
         "write_bridge_available": True,
+        "live_write_smoke_tested": False,
         "scaffold_only": False,
     }

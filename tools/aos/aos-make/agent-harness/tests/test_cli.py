@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import threading
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -9,13 +10,32 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from click.testing import CliRunner
+import pytest
 
+from cli_aos.make import config as make_config
 from cli_aos.make.cli import cli
+import cli_aos.make.service_keys as service_keys
 
 
 AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
 CONNECTOR_PATH = AGENT_HARNESS_ROOT.parent / "connector.json"
 PERMISSIONS_PATH = AGENT_HARNESS_ROOT / "permissions.json"
+ALL_ENV_KEYS = (
+    "MAKE_API_URL",
+    "MAKE_API_KEY",
+    "MAKE_WEBHOOK_BASE_URL",
+    "MAKE_ORGANIZATION_ID",
+    "MAKE_ORGANIZATION_NAME",
+    "MAKE_TEAM_ID",
+    "MAKE_TEAM_NAME",
+    "MAKE_SCENARIO_ID",
+    "MAKE_SCENARIO_NAME",
+    "MAKE_SCENARIO_STATUS",
+    "MAKE_CONNECTION_ID",
+    "MAKE_CONNECTION_NAME",
+    "MAKE_EXECUTION_ID",
+    "MAKE_RUN_ID",
+)
 
 LIVE_ORGANIZATIONS = [
     {"id": "org-123", "name": "Ops Org", "status": "active"},
@@ -63,6 +83,66 @@ LIVE_EXECUTIONS = [
         "started_at": "2026-03-19T11:30:00Z",
     },
 ]
+
+
+def write_service_keys(tmp_path: Path, values: dict[str, str], *, extra: dict[str, Any] | None = None) -> Path:
+    path = tmp_path / "service-keys.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "keys": [
+                    {
+                        "id": f"sk-{key}",
+                        "name": key,
+                        "variable": key,
+                        "value": value,
+                        "enabled": True,
+                        **(extra or {}),
+                    }
+                    for key, value in values.items()
+                ],
+            }
+        )
+    )
+    return path
+
+
+def encrypt_secret(tmp_path: Path, plaintext: str) -> str:
+    home = tmp_path / "home"
+    key_dir = home / ".argentos"
+    key_dir.mkdir(parents=True, exist_ok=True)
+    (key_dir / ".master-key").write_text("11" * 32)
+    script = r"""
+const { createCipheriv } = require("node:crypto");
+const plaintext = process.argv[1];
+const key = Buffer.from("11".repeat(32), "hex");
+const iv = Buffer.from("22".repeat(12), "hex");
+const cipher = createCipheriv("aes-256-gcm", key, iv);
+let encrypted = cipher.update(plaintext, "utf8", "hex");
+encrypted += cipher.final("hex");
+const tag = cipher.getAuthTag().toString("hex");
+process.stdout.write(`enc:v1:${iv.toString("hex")}:${tag}:${encrypted}`);
+"""
+    result = subprocess.run(
+        ["node", "-e", script, plaintext],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+    )
+    return result.stdout
+
+
+def _clear_env(monkeypatch) -> None:
+    for key in ALL_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_operator_service_keys_by_default(monkeypatch, tmp_path):
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", tmp_path / "missing-service-keys.json")
+    _clear_env(monkeypatch)
 
 
 class MockMakeHandler(BaseHTTPRequestHandler):
@@ -196,6 +276,10 @@ def test_manifest_and_permissions_are_in_sync():
     assert "scenario.trigger" in manifest_command_ids
     assert "execution.run" in manifest_command_ids
     assert manifest["backend"] == "make-live-bridge"
+    assert manifest["scope"]["live_read_available"] is True
+    assert manifest["scope"]["write_bridge_available"] is True
+    assert manifest["scope"]["live_write_smoke_tested"] is False
+    assert manifest["scope"]["required"] == ["MAKE_API_URL", "MAKE_API_KEY"]
     assert manifest["scope"]["write_bridge_available"] is True
 
 
@@ -258,6 +342,87 @@ def test_config_show_reports_live_bridges_truthfully(monkeypatch):
         assert payload["scaffold_only"] is False
         assert payload["api_probe"]["ok"] is True
         assert payload["write_probe"]["ok"] is True
+        assert payload["auth"]["sources"]["MAKE_API_URL"] == "env_fallback"
+        assert payload["auth"]["sources"]["MAKE_API_KEY"] == "env_fallback"
+
+
+def test_config_show_prefers_operator_service_keys_over_local_env(monkeypatch, tmp_path):
+    with mock_make_server() as server:
+        monkeypatch.setenv("MAKE_API_URL", "https://env.example.com")
+        monkeypatch.setenv("MAKE_API_KEY", "env-secret-key")
+        monkeypatch.setenv("MAKE_WEBHOOK_BASE_URL", "https://env-hooks.example.com")
+        monkeypatch.setattr(
+            service_keys,
+            "SERVICE_KEYS_PATH",
+            write_service_keys(
+                tmp_path,
+                {
+                    "MAKE_API_URL": server["base_url"],
+                    "MAKE_API_KEY": "operator-make-key",
+                    "MAKE_WEBHOOK_BASE_URL": f"{server['base_url']}/hooks",
+                },
+            ),
+        )
+
+        payload = invoke_json(["config", "show"])
+        serialized = json.dumps(payload)
+        assert "operator-make-key" not in serialized
+        assert "env-secret-key" not in serialized
+        assert payload["data"]["auth"]["sources"]["MAKE_API_URL"] == "repo-service-key"
+        assert payload["data"]["auth"]["sources"]["MAKE_API_KEY"] == "repo-service-key"
+        assert any(
+            request["method"] == "GET"
+            and request["path"] == "/health"
+            and request["api_key"] == "operator-make-key"
+            for request in server["requests"]
+        )
+
+
+def test_encrypted_repo_service_key_decrypts_with_master_key(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    key_dir = home / ".argentos"
+    key_dir.mkdir(parents=True, exist_ok=True)
+    (key_dir / ".master-key").write_text("11" * 32)
+    monkeypatch.setenv("HOME", str(home))
+    encrypted = encrypt_secret(tmp_path, "operator-make-key")
+    monkeypatch.setattr(
+        service_keys,
+        "SERVICE_KEYS_PATH",
+        write_service_keys(tmp_path, {"MAKE_API_KEY": encrypted}),
+    )
+
+    runtime = make_config.resolve_runtime_values({})
+    assert runtime["api_key"] == "operator-make-key"
+    assert runtime["api_key_source"] == "repo-service-key"
+    assert runtime["api_key_usable"] is True
+
+
+def test_unreadable_encrypted_repo_service_key_falls_back_to_env_like_core_resolver(monkeypatch, tmp_path):
+    monkeypatch.setenv("MAKE_API_KEY", "env-make-key")
+    monkeypatch.setattr(
+        service_keys,
+        "SERVICE_KEYS_PATH",
+        write_service_keys(tmp_path, {"MAKE_API_KEY": "enc:v1:abc:def:ghi"}),
+    )
+
+    runtime = make_config.resolve_runtime_values({})
+    assert runtime["api_key"] == "env-make-key"
+    assert runtime["api_key_source"] == "env_fallback"
+    assert runtime["api_key_usable"] is True
+
+
+def test_scoped_repo_service_key_blocks_env_fallback(monkeypatch, tmp_path):
+    monkeypatch.setenv("MAKE_API_KEY", "env-make-key")
+    monkeypatch.setattr(
+        service_keys,
+        "SERVICE_KEYS_PATH",
+        write_service_keys(tmp_path, {"MAKE_API_KEY": "repo-make-key"}, extra={"allowedRoles": ["operator"]}),
+    )
+
+    runtime = make_config.resolve_runtime_values({})
+    assert runtime["api_key"] is None
+    assert runtime["api_key_source"] == "repo-service-key-scoped"
+    assert runtime["api_key_usable"] is False
 
 
 def test_organization_and_team_lists_use_live_api(monkeypatch):
@@ -287,6 +452,33 @@ def test_organization_and_team_lists_use_live_api(monkeypatch):
             request["method"] == "GET"
             and request["path"] == "/api/v1/teams"
             and request["params"].get("organization_name") == ["Ops Org"]
+            for request in server["requests"]
+        )
+
+
+def test_live_read_uses_operator_context_keys():
+    with mock_make_server() as server:
+        result = CliRunner().invoke(
+            cli,
+            ["--json", "organization", "list", "--limit", "2"],
+            obj={
+                "service_keys": {
+                    "aos-make": {
+                        "api_url": server["base_url"],
+                        "api_key": "operator-context-key",
+                        "webhook_base_url": f"{server['base_url']}/hooks",
+                    }
+                }
+            },
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)["data"]
+        assert payload["count"] == 2
+        assert any(
+            request["method"] == "GET"
+            and request["path"] == "/api/v1/organizations"
+            and request["api_key"] == "operator-context-key"
             for request in server["requests"]
         )
 
@@ -334,9 +526,11 @@ def test_scenario_trigger_posts_live_payload(monkeypatch):
             "--payload",
             "reason=follow-up",
             "--organization-name",
-            "Ops Org",
+            "CLI Org",
             "--team-name",
-            "Ops Team",
+            "CLI Team",
+            "--connection-id",
+            "cli-conn",
         ])
 
         assert payload["data"]["execution"]["ok"] is True
@@ -345,6 +539,55 @@ def test_scenario_trigger_posts_live_payload(monkeypatch):
             request["method"] == "POST"
             and request["path"] == "/api/v1/scenarios/scenario-123/execute"
             and request["body"]["payload"] == {"source": "agent", "reason": "follow-up"}
+            and request["body"]["organization_name"] == "CLI Org"
+            and request["body"]["team_name"] == "CLI Team"
+            and request["body"]["connection_id"] == "cli-conn"
+            for request in server["requests"]
+        )
+
+
+def test_live_write_uses_operator_context_keys():
+    with mock_make_server() as server:
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "--mode",
+                "write",
+                "scenario",
+                "trigger",
+                "scenario-123",
+                "--event",
+                "manual",
+                "--payload",
+                "source=operator",
+            ],
+            obj={
+                "service_keys": {
+                    "aos-make": {
+                        "api_url": server["base_url"],
+                        "api_key": "operator-write-key",
+                        "webhook_base_url": f"{server['base_url']}/hooks",
+                        "scenario_id": "scenario-123",
+                    }
+                }
+            },
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)["data"]
+        assert payload["execution"]["execution_id"] == "exec-123"
+        assert any(
+            request["method"] == "OPTIONS"
+            and request["path"] == "/api/v1/scenarios/scenario-123/execute"
+            and request["api_key"] == "operator-write-key"
+            for request in server["requests"]
+        )
+        assert any(
+            request["method"] == "POST"
+            and request["path"] == "/api/v1/scenarios/scenario-123/execute"
+            and request["api_key"] == "operator-write-key"
+            and request["body"]["payload"] == {"source": "operator"}
             for request in server["requests"]
         )
 
