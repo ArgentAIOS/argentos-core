@@ -168,6 +168,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "live_backend_available": bool(probe.get("ok")),
             "live_read_available": bool(probe.get("ok")),
             "write_bridge_available": bool(probe.get("ok")) or webhook_ready,
+            "live_write_smoke_tested": False,
             "scaffold_only": False,
         },
         "auth": {
@@ -202,6 +203,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "live_backend_available": bool(probe.get("ok")),
         "live_read_available": bool(probe.get("ok")),
         "write_bridge_available": bool(probe.get("ok")) or webhook_ready,
+        "live_write_smoke_tested": False,
         "scaffold_only": False,
         "probe": probe,
         "next_steps": [
@@ -294,6 +296,7 @@ def message_send_result(ctx_obj: dict[str, Any], *, channel_id: str | None, cont
         "summary": f"Sent message to channel {resolved_channel_id}.",
         "message": message,
         "scope_preview": _scope_preview("message.send", "message", {"channel_id": resolved_channel_id}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -310,6 +313,7 @@ def message_edit_result(ctx_obj: dict[str, Any], *, channel_id: str | None, mess
         "summary": f"Edited message {resolved_message_id}.",
         "message": message,
         "scope_preview": _scope_preview("message.edit", "message", {"channel_id": resolved_channel_id, "message_id": resolved_message_id}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -325,6 +329,7 @@ def message_delete_result(ctx_obj: dict[str, Any], *, channel_id: str | None, me
         "summary": f"Deleted message {resolved_message_id}.",
         "result": result,
         "scope_preview": _scope_preview("message.delete", "message", {"channel_id": resolved_channel_id, "message_id": resolved_message_id}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -341,6 +346,7 @@ def reaction_add_result(ctx_obj: dict[str, Any], *, channel_id: str | None, mess
         "summary": f"Added reaction to message {resolved_message_id}.",
         "result": result,
         "scope_preview": _scope_preview("reaction.add", "reaction", {"channel_id": resolved_channel_id, "message_id": resolved_message_id}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -380,6 +386,7 @@ def channel_create_result(ctx_obj: dict[str, Any], *, guild_id: str | None, name
         "summary": f"Created channel {resolved_name}.",
         "channel": channel,
         "scope_preview": _scope_preview("channel.create", "channel", {"guild_id": resolved_guild_id, "name": resolved_name}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -397,6 +404,7 @@ def thread_create_result(ctx_obj: dict[str, Any], *, channel_id: str | None, mes
         "summary": f"Created thread {resolved_name}.",
         "thread": thread,
         "scope_preview": _scope_preview("thread.create", "thread", {"channel_id": resolved_channel_id, "message_id": resolved_message_id}),
+        "live_write_smoke_tested": False,
     }
     if initial_content:
         result["initial_message"] = client.send_message(channel_id=thread["id"], content=initial_content)
@@ -417,6 +425,7 @@ def embed_send_result(ctx_obj: dict[str, Any], *, channel_id: str | None, embed_
         "summary": f"Sent embed to channel {resolved_channel_id}.",
         "message": message,
         "scope_preview": _scope_preview("embed.send", "embed", {"channel_id": resolved_channel_id}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -457,6 +466,7 @@ def role_assign_result(ctx_obj: dict[str, Any], *, guild_id: str | None, member_
         "summary": f"Assigned role {resolved_role_id} to member {resolved_member_id}.",
         "result": result,
         "scope_preview": _scope_preview("role.assign", "role", {"guild_id": resolved_guild_id, "member_id": resolved_member_id, "role_id": resolved_role_id}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -510,6 +520,7 @@ def webhook_send_result(ctx_obj: dict[str, Any], *, webhook_url: str | None, con
         "summary": "Sent Discord webhook message.",
         "result": result,
         "scope_preview": _scope_preview("webhook.send", "webhook", {"webhook_url_present": True}),
+        "live_write_smoke_tested": False,
     }
 
 

@@ -1,18 +1,96 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
 from click.testing import CliRunner
+import pytest
 
 from cli_aos.discord_workflow.cli import cli
 import cli_aos.discord_workflow.runtime as runtime
+import cli_aos.discord_workflow.service_keys as service_keys
 
 
 AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
 CONNECTOR_PATH = AGENT_HARNESS_ROOT.parent / "connector.json"
 PERMISSIONS_PATH = AGENT_HARNESS_ROOT / "permissions.json"
+ALL_ENV_KEYS = (
+    "DISCORD_BOT_TOKEN",
+    "DISCORD_WEBHOOK_URL",
+    "DISCORD_API_BASE_URL",
+    "DISCORD_GUILD_ID",
+    "DISCORD_CHANNEL_ID",
+    "DISCORD_MESSAGE_ID",
+    "DISCORD_ROLE_ID",
+    "DISCORD_MEMBER_ID",
+    "DISCORD_CONTENT",
+    "DISCORD_EMBED_JSON",
+    "DISCORD_THREAD_NAME",
+    "DISCORD_CHANNEL_NAME",
+    "DISCORD_REACTION",
+)
+
+
+def write_service_keys(tmp_path: Path, values: dict[str, str], *, extra: dict[str, Any] | None = None) -> Path:
+    path = tmp_path / "service-keys.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "keys": [
+                    {
+                        "id": f"sk-{key}",
+                        "name": key,
+                        "variable": key,
+                        "value": value,
+                        "enabled": True,
+                        **(extra or {}),
+                    }
+                    for key, value in values.items()
+                ],
+            }
+        )
+    )
+    return path
+
+
+def encrypt_secret(tmp_path: Path, plaintext: str) -> str:
+    home = tmp_path / "home"
+    key_dir = home / ".argentos"
+    key_dir.mkdir(parents=True, exist_ok=True)
+    (key_dir / ".master-key").write_text("11" * 32)
+    script = r"""
+const { createCipheriv } = require("node:crypto");
+const plaintext = process.argv[1];
+const key = Buffer.from("11".repeat(32), "hex");
+const iv = Buffer.from("22".repeat(12), "hex");
+const cipher = createCipheriv("aes-256-gcm", key, iv);
+let encrypted = cipher.update(plaintext, "utf8", "hex");
+encrypted += cipher.final("hex");
+const tag = cipher.getAuthTag().toString("hex");
+process.stdout.write(`enc:v1:${iv.toString("hex")}:${tag}:${encrypted}`);
+"""
+    result = subprocess.run(
+        ["node", "-e", script, plaintext],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+    )
+    return result.stdout
+
+
+def _clear_env(monkeypatch) -> None:
+    for key in ALL_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_operator_service_keys_by_default(monkeypatch, tmp_path):
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", tmp_path / "missing-service-keys.json")
+    _clear_env(monkeypatch)
 
 
 class FakeDiscordClient:
@@ -92,6 +170,12 @@ def test_manifest_and_permissions_are_in_sync():
     command_ids = [command["id"] for command in manifest["commands"]]
     assert set(command_ids) == set(permissions.keys())
     assert manifest["scope"]["kind"] == "communication"
+    assert manifest["scope"]["live_read_available"] is True
+    assert manifest["scope"]["write_bridge_available"] is True
+    assert manifest["scope"]["live_write_smoke_tested"] is False
+    assert manifest["scope"]["required"] == ["DISCORD_BOT_TOKEN"]
+    assert manifest["auth"]["service_keys"] == ["DISCORD_BOT_TOKEN"]
+    assert "DISCORD_WEBHOOK_URL" in manifest["auth"]["optional_service_keys"]
 
 
 def test_capabilities_exposes_manifest():
@@ -151,8 +235,14 @@ def test_config_show_prefers_operator_service_keys(monkeypatch):
                 "aos-discord-workflow": {
                     "DISCORD_BOT_TOKEN": "operator-token",
                     "DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/operator/token",
+                    "DISCORD_API_BASE_URL": "https://discord.example/api/v10",
                     "DISCORD_GUILD_ID": "operator_guild",
                     "DISCORD_CHANNEL_ID": "operator_channel",
+                    "DISCORD_CONTENT": "operator content",
+                    "DISCORD_EMBED_JSON": "{\"title\":\"operator\"}",
+                    "DISCORD_THREAD_NAME": "operator thread",
+                    "DISCORD_CHANNEL_NAME": "operator channel name",
+                    "DISCORD_REACTION": "white_check_mark",
                 }
             }
         },
@@ -164,7 +254,50 @@ def test_config_show_prefers_operator_service_keys(monkeypatch):
     assert data["auth"]["sources"]["DISCORD_WEBHOOK_URL"] == "operator:service_keys:tool"
     assert data["scope"]["guild_id"] == "operator_guild"
     assert data["scope"]["channel_id"] == "operator_channel"
+    assert data["scope"]["api_base_url"] == "https://discord.example/api/v10"
+    assert data["scope"]["content"] == "operator content"
+    assert data["scope"]["embed_json_present"] is True
+    assert data["scope"]["thread_name"] == "operator thread"
+    assert data["scope"]["channel_name"] == "operator channel name"
+    assert data["scope"]["reaction"] == "white_check_mark"
     assert data["scope"]["sources"]["DISCORD_CHANNEL_ID"] == "operator:service_keys:tool"
+    assert data["scope"]["sources"]["DISCORD_CONTENT"] == "operator:service_keys:tool"
+    assert data["scope"]["sources"]["DISCORD_REACTION"] == "operator:service_keys:tool"
+
+
+def test_encrypted_repo_service_key_decrypts_with_master_key(monkeypatch, tmp_path):
+    encrypted = encrypt_secret(tmp_path, "bot-token-encrypted")
+    path = write_service_keys(tmp_path, {"DISCORD_BOT_TOKEN": encrypted})
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+    details = service_keys.service_key_details("DISCORD_BOT_TOKEN")
+
+    assert details["value"] == "bot-token-encrypted"
+    assert details["source"] == "repo-service-key"
+
+
+def test_unreadable_encrypted_repo_service_key_falls_back_to_env_like_core_resolver(monkeypatch, tmp_path):
+    path = write_service_keys(tmp_path, {"DISCORD_BOT_TOKEN": "enc:v1:bad:bad:bad"})
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "env-token")
+
+    details = service_keys.service_key_details("DISCORD_BOT_TOKEN")
+
+    assert details["value"] == "env-token"
+    assert details["source"] == "env_fallback"
+
+
+def test_scoped_repo_service_key_blocks_env_fallback(monkeypatch, tmp_path):
+    path = write_service_keys(tmp_path, {"DISCORD_BOT_TOKEN": "scoped-token"}, extra={"allowedRoles": ["admin"]})
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "env-token")
+
+    details = service_keys.service_key_details("DISCORD_BOT_TOKEN")
+
+    assert details["value"] == ""
+    assert details["source"] == "repo-service-key-scoped"
+    assert details["blocked"] is True
 
 
 def test_message_send_requires_write_mode(monkeypatch):

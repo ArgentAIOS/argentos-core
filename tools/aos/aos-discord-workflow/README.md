@@ -44,7 +44,9 @@ Agent-native Discord workflow connector for message, embed, role, and webhook op
 - Required intents: SERVER MEMBERS, MESSAGE CONTENT
 - Required permissions: Send Messages, Manage Messages, Add Reactions, Manage Channels, Manage Roles, Attach Files, Create Public Threads, Send Messages in Threads, Use External Emojis
 - Operator-controlled service keys are resolved before local environment variables.
+- Scoped repo service keys block local environment fallback because the operator runtime must inject them.
 - `webhook.send` can run from `DISCORD_WEBHOOK_URL` without a bot token; the rest of the live read/write commands require `DISCORD_BOT_TOKEN`.
+- `live_write_smoke_tested=false` until a real operator Discord guild or webhook smoke test verifies writes.
 
 ## Next Steps
 
