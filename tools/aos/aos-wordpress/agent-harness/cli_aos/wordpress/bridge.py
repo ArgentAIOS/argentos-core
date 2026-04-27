@@ -16,7 +16,7 @@ from .runtime import probe_api, probe_site
 
 
 def config_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
-    config = runtime_config()
+    config = runtime_config(ctx_obj)
     site_probe = probe_site(config)
     api_probe = probe_api(config)
     runtime_ready = bool(api_probe["ok"])
@@ -31,7 +31,7 @@ def config_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
         },
         "auth": CONNECTOR_AUTH,
         "config": {
-            **redacted_config_snapshot(),
+            **redacted_config_snapshot(ctx_obj),
             "site_probe": site_probe,
             "api_probe": api_probe,
             "runtime_ready": runtime_ready,
@@ -42,7 +42,7 @@ def config_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
-    config = runtime_config()
+    config = runtime_config(ctx_obj)
     site_probe = probe_site(config)
     api_probe = probe_api(config)
 
@@ -53,6 +53,8 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
             "details": {
                 "present": config["base_url_present"],
                 "source": config["base_url_source"],
+                "variable": config["base_url_variable"],
+                "usable": config["base_url_usable"],
                 "value": config["base_url"] or None,
             },
         },
@@ -67,6 +69,8 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
             "details": {
                 "present": config["username_present"],
                 "source": config["username_source"],
+                "variable": config["username_variable"],
+                "usable": config["username_usable"],
             },
         },
         {
@@ -75,6 +79,8 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
             "details": {
                 "present": config["application_password_present"],
                 "source": config["application_password_source"],
+                "variable": config["application_password_variable"],
+                "usable": config["application_password_usable"],
             },
         },
         {
@@ -130,6 +136,12 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
         },
         "auth": CONNECTOR_AUTH,
         "checks": checks,
+        "runtime_ready": status == "ok",
+        "live_backend_available": bool(site_probe["ok"]),
+        "live_read_available": status == "ok",
+        "write_bridge_available": status == "ok",
+        "live_write_smoke_tested": False,
+        "scaffold_only": False,
         "next_steps": next_steps,
     }
 
@@ -144,6 +156,12 @@ def doctor_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
         "connector": health["connector"],
         "auth": health["auth"],
         "checks": health["checks"],
+        "runtime_ready": health["runtime_ready"],
+        "live_backend_available": health["live_backend_available"],
+        "live_read_available": health["live_read_available"],
+        "write_bridge_available": health["write_bridge_available"],
+        "live_write_smoke_tested": health["live_write_smoke_tested"],
+        "scaffold_only": health["scaffold_only"],
         "next_steps": health["next_steps"],
         "config": config["config"],
     }

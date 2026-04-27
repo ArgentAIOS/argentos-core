@@ -88,8 +88,10 @@ Agent-native WordPress REST connector for site checks, posts, pages, media, and 
 - Setup:
   1. Create a dedicated WordPress service user on the target site.
   2. Generate an Application Password for that user from Users > Profile > Application Passwords.
-  3. Add `WORDPRESS_BASE_URL`, `WORDPRESS_USERNAME`, and `WORDPRESS_APPLICATION_PASSWORD` in operator-controlled API Keys.
+  3. Add `WORDPRESS_BASE_URL`, `WORDPRESS_USERNAME`, and `WORDPRESS_APPLICATION_PASSWORD` in operator-controlled service keys.
   4. Restrict post types, status transitions, taxonomy scope, and media usage before going live.
+
+This connector has real REST read and write paths, but production live-write smoke is not claimed until tested against an operator WordPress site.
 
 ## Quick Start
 

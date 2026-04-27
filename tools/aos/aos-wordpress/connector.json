@@ -1,5 +1,61 @@
 {
+  "tool": "aos-wordpress",
   "backend": "wordpress-rest-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "wordpress-rest",
+    "surface": "site-content",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "live_write_available": true,
+    "write_bridge_available": true,
+    "live_write_smoke_tested": false,
+    "required": ["WORDPRESS_BASE_URL", "WORDPRESS_USERNAME", "WORDPRESS_APPLICATION_PASSWORD"],
+    "optional": [
+      "AOS_WORDPRESS_BASE_URL",
+      "AOS_WORDPRESS_USERNAME",
+      "AOS_WORDPRESS_APPLICATION_PASSWORD"
+    ],
+    "workerFields": [
+      "site_url",
+      "post_id",
+      "page_id",
+      "title",
+      "content",
+      "excerpt",
+      "slug",
+      "publish_at",
+      "search_query",
+      "status",
+      "per_page",
+      "media_file",
+      "media_type",
+      "mime_type",
+      "category_ids",
+      "tag_ids"
+    ],
+    "worker_visible_actions": [
+      "site.read",
+      "post.list",
+      "post.search",
+      "post.read",
+      "post.create_draft",
+      "post.update_draft",
+      "post.schedule",
+      "post.publish",
+      "page.list",
+      "page.search",
+      "page.read",
+      "page.create_draft",
+      "page.update_draft",
+      "page.publish",
+      "media.list",
+      "media.upload",
+      "taxonomy.list",
+      "taxonomy.assign_terms"
+    ]
+  },
   "connector": {
     "label": "WordPress",
     "category": "marketing-publishing",
@@ -13,8 +69,9 @@
     "interactive_setup": [
       "Create a dedicated WordPress service user on the target site.",
       "Generate an Application Password for that user.",
-      "Add WORDPRESS_BASE_URL, WORDPRESS_USERNAME, and WORDPRESS_APPLICATION_PASSWORD in API Keys.",
-      "Restrict post types, status transitions, taxonomy scope, and media usage before going live."
+      "Add WORDPRESS_BASE_URL, WORDPRESS_USERNAME, and WORDPRESS_APPLICATION_PASSWORD in operator-controlled service keys.",
+      "Restrict post types, status transitions, taxonomy scope, and media usage before going live.",
+      "Live write smoke is not claimed until tested against an operator WordPress site."
     ]
   },
   "fields": {
@@ -198,6 +255,14 @@
     "taxonomy.assign_terms"
   ],
   "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the WordPress connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
     {
       "id": "health",
       "summary": "Check WordPress connectivity and auth readiness",

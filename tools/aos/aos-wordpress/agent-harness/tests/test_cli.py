@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+import subprocess
+from typing import Any
 
 from click.testing import CliRunner
+import pytest
 
 import cli_aos.wordpress.bridge as bridge
 import cli_aos.wordpress.config as config_module
 import cli_aos.wordpress.runtime as runtime
+import cli_aos.wordpress.service_keys as service_keys_module
 from cli_aos.wordpress.cli import cli
 
 REQUIRED_ENV = {
@@ -14,6 +19,104 @@ REQUIRED_ENV = {
     "WORDPRESS_USERNAME": "agent-bot",
     "WORDPRESS_APPLICATION_PASSWORD": "secret app password",
 }
+ALL_ENV_KEYS = (
+    "WORDPRESS_BASE_URL",
+    "WORDPRESS_USERNAME",
+    "WORDPRESS_APPLICATION_PASSWORD",
+    "AOS_WORDPRESS_BASE_URL",
+    "AOS_WORDPRESS_USERNAME",
+    "AOS_WORDPRESS_APPLICATION_PASSWORD",
+)
+AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
+CONNECTOR_PATH = AGENT_HARNESS_ROOT.parent / "connector.json"
+PERMISSIONS_PATH = AGENT_HARNESS_ROOT / "permissions.json"
+
+
+def write_service_keys(tmp_path: Path, values: dict[str, str], *, extra: dict[str, Any] | None = None) -> Path:
+    path = tmp_path / "service-keys.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "keys": [
+                    {
+                        "id": f"sk-{key}",
+                        "name": key,
+                        "variable": key,
+                        "value": value,
+                        "enabled": True,
+                        **(extra or {}),
+                    }
+                    for key, value in values.items()
+                ],
+            }
+        )
+    )
+    return path
+
+
+def encrypt_secret(tmp_path: Path, plaintext: str) -> str:
+    home = tmp_path / "home"
+    key_dir = home / ".argentos"
+    key_dir.mkdir(parents=True, exist_ok=True)
+    (key_dir / ".master-key").write_text("11" * 32)
+    script = r"""
+const { createCipheriv } = require("node:crypto");
+const plaintext = process.argv[1];
+const key = Buffer.from("11".repeat(32), "hex");
+const iv = Buffer.from("22".repeat(12), "hex");
+const cipher = createCipheriv("aes-256-gcm", key, iv);
+let encrypted = cipher.update(plaintext, "utf8", "hex");
+encrypted += cipher.final("hex");
+const tag = cipher.getAuthTag().toString("hex");
+process.stdout.write(`enc:v1:${iv.toString("hex")}:${tag}:${encrypted}`);
+"""
+    result = subprocess.run(
+        ["node", "-e", script, plaintext],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+    )
+    return result.stdout
+
+
+def _clear_env(monkeypatch) -> None:
+    for key in ALL_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_operator_service_key_by_default(monkeypatch, tmp_path):
+    monkeypatch.setattr(service_keys_module, "SERVICE_KEYS_PATH", tmp_path / "missing-service-keys.json")
+    _clear_env(monkeypatch)
+
+
+def test_manifest_and_permissions_are_in_sync():
+    manifest = json.loads(CONNECTOR_PATH.read_text())
+    permissions = json.loads(PERMISSIONS_PATH.read_text())["permissions"]
+    manifest_command_ids = [command["id"] for command in manifest["commands"]]
+
+    assert manifest["tool"] == "aos-wordpress"
+    assert manifest["manifest_schema_version"] == "1.0.0"
+    assert manifest["scope"]["live_write_smoke_tested"] is False
+    assert set(manifest_command_ids) == set(permissions.keys())
+
+
+def test_capabilities_exposes_manifest_scope(monkeypatch):
+    _clear_env(monkeypatch)
+    result = CliRunner().invoke(cli, ["--json", "capabilities"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.output)
+    manifest = json.loads(CONNECTOR_PATH.read_text())
+    assert payload["tool"] == "aos-wordpress"
+    assert payload["scope"] == manifest["scope"]
+    assert payload["fields"] == manifest["fields"]
+    assert payload["worker_visible_actions"] == manifest["worker_visible_actions"]
+    assert payload["auth"] == manifest["auth"]
+    assert payload["commands"] == manifest["commands"]
+    assert payload["write_support"]["live_write_smoke_tested"] is False
 
 
 def _set_required_env(monkeypatch) -> None:
@@ -82,21 +185,126 @@ def test_runtime_config_accepts_wp_json_suffix(monkeypatch):
     assert config["api_root_url"] == "https://example.com/wp-json"
 
 
-def test_runtime_config_prefers_operator_service_keys(monkeypatch):
+def test_runtime_config_prefers_operator_service_keys(monkeypatch, tmp_path):
     for key in REQUIRED_ENV:
         monkeypatch.setenv(key, f"env-{key}")
 
-    def fake_service_key_env(name: str, default: str | None = None) -> str | None:
-        if name in REQUIRED_ENV:
-            return REQUIRED_ENV[name]
-        return default
-
-    monkeypatch.setattr(config_module, "service_key_env", fake_service_key_env)
+    monkeypatch.setattr(service_keys_module, "SERVICE_KEYS_PATH", write_service_keys(tmp_path, REQUIRED_ENV))
     config = config_module.runtime_config()
     assert config["base_url"] == "https://example.com"
-    assert config["base_url_source"] == "WORDPRESS_BASE_URL"
+    assert config["base_url_source"] == "repo-service-key"
+    assert config["base_url_variable"] == "WORDPRESS_BASE_URL"
     assert config["username_present"] is True
+    assert config["username_source"] == "repo-service-key"
     assert config["application_password_present"] is True
+    assert config["application_password_source"] == "repo-service-key"
+
+
+def test_encrypted_repo_service_key_decrypts_with_master_key(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    key_dir = home / ".argentos"
+    key_dir.mkdir(parents=True)
+    (key_dir / ".master-key").write_text("11" * 32)
+    monkeypatch.setenv("HOME", str(home))
+    encrypted = encrypt_secret(tmp_path, "operator-secret-password")
+    monkeypatch.setattr(
+        service_keys_module,
+        "SERVICE_KEYS_PATH",
+        write_service_keys(tmp_path, {"WORDPRESS_APPLICATION_PASSWORD": encrypted}),
+    )
+
+    config = config_module.runtime_config()
+    assert config["application_password"] == "operator-secret-password"
+    assert config["application_password_source"] == "repo-service-key"
+    assert config["application_password_usable"] is True
+
+
+def test_unreadable_encrypted_repo_service_key_falls_back_to_env_like_core_resolver(monkeypatch, tmp_path):
+    _set_required_env(monkeypatch)
+    monkeypatch.setattr(
+        service_keys_module,
+        "SERVICE_KEYS_PATH",
+        write_service_keys(tmp_path, {"WORDPRESS_APPLICATION_PASSWORD": "enc:v1:abc:def:ghi"}),
+    )
+
+    config = config_module.runtime_config()
+    assert config["application_password"] == "secret app password"
+    assert config["application_password_source"] == "env_fallback"
+    assert config["application_password_usable"] is True
+
+
+def test_scoped_repo_service_key_blocks_env_fallback(monkeypatch, tmp_path):
+    _set_required_env(monkeypatch)
+    monkeypatch.setattr(
+        service_keys_module,
+        "SERVICE_KEYS_PATH",
+        write_service_keys(
+            tmp_path,
+            {"WORDPRESS_APPLICATION_PASSWORD": "repo-secret-key"},
+            extra={"allowedRoles": ["operator"]},
+        ),
+    )
+
+    config = config_module.runtime_config()
+    assert config["application_password"] == ""
+    assert config["application_password_source"] == "repo-service-key-scoped"
+    assert config["application_password_present"] is False
+    assert config["application_password_usable"] is False
+
+
+def test_operator_context_can_supply_tool_scoped_keys():
+    config = config_module.runtime_config(
+        {
+            "service_keys": {
+                "aos-wordpress": {
+                    "base_url": "https://operator-context.example.com",
+                    "username": "operator-user",
+                    "application_password": "operator-password",
+                }
+            }
+        }
+    )
+
+    assert config["base_url"] == "https://operator-context.example.com"
+    assert config["username"] == "operator-user"
+    assert config["application_password"] == "operator-password"
+    assert config["base_url_source"] == "operator:service_keys:tool"
+    assert config["application_password_source"] == "operator:service_keys:tool"
+
+
+def test_live_command_uses_operator_context_keys(monkeypatch):
+    calls: list[dict[str, object]] = []
+
+    def fake_request_json(method, path, **kwargs):
+        calls.append({"method": method, "path": path, **kwargs})
+        config = kwargs["config"]
+        assert config["base_url_source"] == "operator:service_keys:tool"
+        assert config["username"] == "operator-user"
+        assert config["application_password"] == "operator-password"
+        if path == "/":
+            return {"name": "Example Site", "url": "https://operator-context.example.com", "routes": {"/wp/v2/posts": {}}}
+        if path == "/wp/v2/users/me":
+            return {"id": 9, "name": "Operator User", "slug": "operator-user", "roles": ["editor"]}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(runtime, "_request_json", fake_request_json)
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "site", "read"],
+        obj={
+            "service_keys": {
+                "aos-wordpress": {
+                    "base_url": "https://operator-context.example.com",
+                    "username": "operator-user",
+                    "application_password": "operator-password",
+                }
+            }
+        },
+    )
+
+    assert result.exit_code == 0
+    assert len(calls) == 2
+    assert '"Operator User"' in result.output
 
 
 def test_site_read_uses_runtime(monkeypatch):
