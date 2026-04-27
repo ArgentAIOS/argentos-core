@@ -2,7 +2,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppForgeWorkflowEventRequest, ForgeApp } from "./useApps";
 import { fetchLocalApi } from "../utils/localApiFetch";
 
-export type ForgeFieldType = "text" | "single_select" | "number" | "date" | "checkbox";
+export type ForgeFieldType =
+  | "text"
+  | "long_text"
+  | "single_select"
+  | "multi_select"
+  | "number"
+  | "date"
+  | "checkbox"
+  | "url"
+  | "email"
+  | "attachment"
+  | "linked_record";
 
 export type ForgeStructuredField = {
   id: string;
@@ -13,7 +24,7 @@ export type ForgeStructuredField = {
   options?: string[];
 };
 
-export type ForgeStructuredRecordValue = string | number | boolean | null;
+export type ForgeStructuredRecordValue = string | number | boolean | string[] | null;
 
 export type ForgeStructuredRecord = {
   id: string;
@@ -91,14 +102,14 @@ type UseForgeStructuredDataReturn = {
   selectBase: (appId: string) => void;
   selectTable: (tableId: string) => Promise<void>;
   selectField: (fieldId: string) => void;
-  addTable: () => Promise<void>;
+  addTable: (input?: { name?: string }) => Promise<void>;
   updateTable: (
     tableId: string,
     updates: Partial<Pick<ForgeStructuredTable, "name">>,
   ) => Promise<void>;
   duplicateTable: (tableId: string) => Promise<void>;
   deleteTable: (tableId: string) => Promise<void>;
-  addField: () => Promise<void>;
+  addField: (input?: { name?: string; type?: ForgeFieldType }) => Promise<void>;
   updateField: (fieldId: string, updates: Partial<ForgeStructuredField>) => Promise<void>;
   duplicateField: (fieldId: string) => Promise<void>;
   deleteField: (fieldId: string) => Promise<void>;
@@ -140,8 +151,16 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function isArrayFieldType(type: ForgeFieldType): boolean {
+  return type === "multi_select" || type === "attachment" || type === "linked_record";
+}
+
+function fieldSupportsOptions(type: ForgeFieldType): boolean {
+  return type === "single_select" || type === "multi_select";
+}
+
 function cloneValue(value: ForgeStructuredRecordValue): ForgeStructuredRecordValue {
-  return value;
+  return Array.isArray(value) ? [...value] : value;
 }
 
 function defaultValueForField(field: ForgeStructuredField, label = ""): ForgeStructuredRecordValue {
@@ -150,6 +169,9 @@ function defaultValueForField(field: ForgeStructuredField, label = ""): ForgeStr
   }
   if (field.type === "checkbox") {
     return false;
+  }
+  if (isArrayFieldType(field.type)) {
+    return [];
   }
   if (field.type === "single_select") {
     return field.options?.[0] ?? "";
@@ -173,6 +195,18 @@ function coerceValueForField(
   }
   if (field.type === "checkbox") {
     return value === true || value === "true";
+  }
+  if (isArrayFieldType(field.type)) {
+    if (Array.isArray(value)) {
+      return value.filter((entry): entry is string => typeof entry === "string");
+    }
+    if (typeof value === "string" && value.trim()) {
+      return value
+        .split(/[\n,]/)
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    }
+    return [];
   }
   if (field.type === "single_select") {
     const text = value === null || value === undefined ? "" : String(value);
@@ -300,9 +334,15 @@ function normalizeField(value: unknown): ForgeStructuredField | null {
   const rawType = stringValue(value.type);
   const type: ForgeFieldType =
     rawType === "single_select" ||
+    rawType === "long_text" ||
+    rawType === "multi_select" ||
     rawType === "number" ||
     rawType === "date" ||
-    rawType === "checkbox"
+    rawType === "checkbox" ||
+    rawType === "url" ||
+    rawType === "email" ||
+    rawType === "attachment" ||
+    rawType === "linked_record"
       ? rawType
       : "text";
   return {
@@ -330,6 +370,10 @@ function normalizeRecord(value: unknown): ForgeStructuredRecord | null {
   for (const [key, raw] of Object.entries(values)) {
     if (raw === null || typeof raw === "string" || typeof raw === "boolean") {
       normalizedValues[key] = raw as ForgeStructuredRecordValue;
+      continue;
+    }
+    if (Array.isArray(raw)) {
+      normalizedValues[key] = raw.filter((entry): entry is string => typeof entry === "string");
       continue;
     }
     const numeric = numberValue(raw);
@@ -730,8 +774,7 @@ export function useForgeStructuredData({
     updatedAt: null,
   });
   const [reloadVersion, setReloadVersion] = useState(0);
-  const appKey = useMemo(() => apps.map((app) => app.id).join("\0"), [apps]);
-  const gatewayLoadAppIds = useMemo(() => (appKey ? appKey.split("\0") : []), [appKey]);
+  const gatewayLoadAppIds = useMemo(() => apps.map((app) => app.id), [apps]);
 
   const bases = useMemo(
     () => apps.map((app) => overrides[app.id] ?? gatewayBases[app.id] ?? normalizeBase(app)),
@@ -1068,31 +1111,35 @@ export function useForgeStructuredData({
     [activeBase, activeTable, persistBase],
   );
 
-  const addTable = useCallback(async () => {
-    if (!activeBase) {
-      return;
-    }
-    const table: ForgeStructuredTable = {
-      id: newId("table"),
-      name: `Table ${activeBase.tables.length + 1}`,
-      fields: defaultFields(),
-      records: [],
-    };
-    const nextBase = {
-      ...activeBase,
-      activeTableId: table.id,
-      tables: [...activeBase.tables, table],
-    };
-    await persistBase(
-      nextBase,
-      {
-        eventType: "forge.table.created",
-        tableId: table.id,
-        payload: tableEventPayload(table, { changeType: "table.created" }),
-      },
-      { kind: "table.put", table },
-    );
-  }, [activeBase, persistBase]);
+  const addTable = useCallback(
+    async (input?: { name?: string }) => {
+      if (!activeBase) {
+        return;
+      }
+      const name = input?.name?.trim() || `Table ${activeBase.tables.length + 1}`;
+      const table: ForgeStructuredTable = {
+        id: newId("table"),
+        name,
+        fields: defaultFields(),
+        records: [],
+      };
+      const nextBase = {
+        ...activeBase,
+        activeTableId: table.id,
+        tables: [...activeBase.tables, table],
+      };
+      await persistBase(
+        nextBase,
+        {
+          eventType: "forge.table.created",
+          tableId: table.id,
+          payload: tableEventPayload(table, { changeType: "table.created" }),
+        },
+        { kind: "table.put", table },
+      );
+    },
+    [activeBase, persistBase],
+  );
 
   const updateTable = useCallback(
     async (tableId: string, updates: Partial<Pick<ForgeStructuredTable, "name">>) => {
@@ -1220,24 +1267,29 @@ export function useForgeStructuredData({
     [activeBase, persistBase],
   );
 
-  const addField = useCallback(async () => {
-    const field: ForgeStructuredField = {
-      id: newId("field"),
-      name: "New Field",
-      type: "text",
-      description: "New structured field",
-    };
-    await updateActiveTable((table) => ({
-      ...table,
-      fields: [...table.fields, field],
-      records: table.records.map((record) => ({
-        ...record,
-        values: { ...record.values, [field.id]: "" },
-        updatedAt: nowIso(),
-      })),
-    }));
-    setSelectedFieldId(field.id);
-  }, [updateActiveTable]);
+  const addField = useCallback(
+    async (input?: { name?: string; type?: ForgeFieldType }) => {
+      const type = input?.type ?? "text";
+      const field: ForgeStructuredField = {
+        id: newId("field"),
+        name: input?.name?.trim() || "New Field",
+        type,
+        options: fieldSupportsOptions(type) ? ["Option 1", "Option 2"] : undefined,
+        description: "New structured field",
+      };
+      await updateActiveTable((table) => ({
+        ...table,
+        fields: [...table.fields, field],
+        records: table.records.map((record) => ({
+          ...record,
+          values: { ...record.values, [field.id]: defaultValueForField(field) },
+          updatedAt: nowIso(),
+        })),
+      }));
+      setSelectedFieldId(field.id);
+    },
+    [updateActiveTable],
+  );
 
   const updateField = useCallback(
     async (fieldId: string, updates: Partial<ForgeStructuredField>) => {
@@ -1253,9 +1305,11 @@ export function useForgeStructuredData({
             id: field.id,
             name: updates.name?.trim() || field.name,
             options:
-              updates.type && updates.type !== "single_select"
+              updates.type && !fieldSupportsOptions(updates.type)
                 ? undefined
-                : (updates.options ?? field.options),
+                : updates.type && fieldSupportsOptions(updates.type)
+                  ? (updates.options ?? field.options ?? ["Option 1", "Option 2"])
+                  : (updates.options ?? field.options),
           };
           return nextField;
         }),

@@ -2,6 +2,64 @@
 
 Docs: https://docs.argentos.ai
 
+## 2026.4.24-dev.1
+
+### Changes
+
+- Workflows: make the canvas closer to an end-to-end operator tool with
+  visible-canvas run snapshots, JSON/YAML import/export, owner-operator
+  templates, richer binding reports, connector-backed output destinations,
+  active channel discovery, approval records, run history, and clearer run/test
+  failure feedback.
+- Argent Tables/AppForge: advance the AppForge shell toward an Airtable-style
+  workspace with truthful Live/Preview/Declaration labels, native base/table
+  onboarding, typed field editing, record add/edit/delete flows, and persistence
+  proof after reload. Non-live areas such as permissions, connectors,
+  interfaces, and automations are now labeled honestly instead of implying
+  finished behavior.
+- AOS connectors: expand the service-key-first connector wave for workflow
+  usage. Current dev includes readiness metadata plus truth-labeled work across
+  CallScrub, PayPunch, Monday, Dart, Zapier, WordPress, n8n, HubSpot, Make,
+  Slack Workflow, Teams, and Discord Workflow. Write-capable connectors remain
+  approval-sensitive and are marked `live_write_smoke_tested=false` unless a
+  real operator tenant/account smoke test has been run.
+- OpenClaw: add browser diagnostics, realtime voice foundations, OpenAI
+  Realtime adapter support, local audio smoke tooling, optional operator
+  voice-alert routing foundations, and Google Meet setup/status plus
+  browser-only recovery for an already-open Meet tab.
+- Coordination: add Threadmaster lane-lock and bus discipline around Core work
+  so AppForge, Workflows, AOS, AOU, and OpenClaw handoffs stay in
+  `ArgentAIOS/argentos-core` and preserve public changelog notes before dev is
+  promoted.
+
+### Testing Notes
+
+- Workflows: test import, save, reload, bind, validate, and run with the Daily
+  Marketing Brief, VIP Email Alert, Client Onboarding, Operations Cleanup, and
+  Newsletter Builder templates. Connector writes and outbound delivery should
+  pause for approval unless the destination is explicitly trusted.
+- Argent Tables/AppForge: test Create Base -> Create Table -> Add Field -> Add
+  Record -> Edit Record -> Delete Record -> Reload. Any degraded fallback state
+  should be visible in the UI.
+- AOS: configure operator service keys before expecting live connector reads or
+  writes. Harness tests passed for the merged connector packets, but production
+  accounts were not broadly smoke-tested.
+- OpenClaw: set `OPENAI_API_KEY` before live realtime voice smoke. Google Meet
+  recovery requires a dedicated Chrome profile signed into the operator account
+  and an already-open Meet tab; join/create/leave remain deferred.
+
+### Known Gaps
+
+- Workflow browser smoke is still the main usability gate before calling the
+  canvas broadly operator-ready.
+- AppForge/Argent Tables is not yet a full TableForge/Airtable replacement:
+  saved views, relational fields, permissions enforcement, connector-backed
+  tables, interface building, and deep automations are still planned/follow-up.
+- AOS connector claims are truth-labeled from manifests and harness tests; most
+  live external-account smoke tests still need operator credentials.
+- OpenClaw Google Meet does not yet create, join, leave, control, or participate
+  with audio in meetings.
+
 ## 2026.4.25-dev.0
 
 ### Changes

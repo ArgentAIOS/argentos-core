@@ -33,6 +33,7 @@ import type { AppWindowState } from "../hooks/useAppWindows";
 import {
   useForgeStructuredData,
   type GatewayRequestFn,
+  type ForgeFieldType,
   type ForgeStructuredBase,
   type ForgeStructuredField,
   type ForgeStructuredRecord,
@@ -80,6 +81,20 @@ type EditingCell = {
   fieldId: string;
   value: string;
 };
+
+const FIELD_TYPE_OPTIONS: Array<{ value: ForgeFieldType; label: string }> = [
+  { value: "text", label: "Text" },
+  { value: "long_text", label: "Long text" },
+  { value: "single_select", label: "Single select" },
+  { value: "multi_select", label: "Multi select" },
+  { value: "number", label: "Number" },
+  { value: "date", label: "Date" },
+  { value: "checkbox", label: "Checkbox" },
+  { value: "url", label: "URL" },
+  { value: "email", label: "Email" },
+  { value: "attachment", label: "Attachment" },
+  { value: "linked_record", label: "Linked record" },
+];
 
 function sanitizeSvg(svg: string): string {
   return svg
@@ -235,6 +250,9 @@ function loadViewSettings(key: string | null): ForgeViewSettings {
 }
 
 function fieldValue(value: ForgeStructuredRecordValue | undefined): string {
+  if (Array.isArray(value)) {
+    return value.join(", ");
+  }
   return value === null || value === undefined ? "" : String(value);
 }
 
@@ -244,6 +262,12 @@ function fieldInputType(field: ForgeStructuredField): string {
   }
   if (field.type === "date") {
     return "date";
+  }
+  if (field.type === "url") {
+    return "url";
+  }
+  if (field.type === "email") {
+    return "email";
   }
   return "text";
 }
@@ -258,6 +282,16 @@ function cellValueFromInput(
   }
   if (field.type === "checkbox") {
     return value === "true";
+  }
+  if (
+    field.type === "multi_select" ||
+    field.type === "attachment" ||
+    field.type === "linked_record"
+  ) {
+    return value
+      .split(/[\n,]/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
   }
   return value;
 }
@@ -490,6 +524,9 @@ export function AppForge({
   );
   const [hoveredBaseId, setHoveredBaseId] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const [newTableName, setNewTableName] = useState("");
+  const [newFieldName, setNewFieldName] = useState("");
+  const [newFieldType, setNewFieldType] = useState<ForgeFieldType>("text");
   const [formRecordId, setFormRecordId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -517,6 +554,9 @@ export function AppForge({
         setActiveFilter("all");
         setEditingCell(null);
         setHoveredBaseId(null);
+        setNewTableName("");
+        setNewFieldName("");
+        setNewFieldType("text");
       });
     }
   }, [isOpen]);
@@ -716,7 +756,7 @@ export function AppForge({
   const shortcutApps = filteredApps.slice(0, 5);
   const capabilityCount = displayApps.filter((app) => appWorkflowCapability(app).id).length;
   const structured = useForgeStructuredData({
-    apps: filteredApps,
+    apps: displayApps,
     selectedAppId,
     onSelectApp: setSelectedAppId,
     gatewayRequest,
@@ -737,6 +777,24 @@ export function AppForge({
     [structured],
   );
   const visibleFields = structured.activeTable?.fields.slice(0, 6) ?? [];
+  const handleCreateTable = useCallback(async () => {
+    const name = newTableName.trim();
+    await structured.addTable(name ? { name } : undefined);
+    setNewTableName("");
+    setInspectorMode("table");
+    setActiveViewMode("grid");
+  }, [newTableName, structured]);
+  const handleCreateField = useCallback(async () => {
+    const name = newFieldName.trim();
+    await structured.addField({
+      name: name || undefined,
+      type: newFieldType,
+    });
+    setNewFieldName("");
+    setNewFieldType("text");
+    setInspectorMode("field");
+    setActiveViewMode("grid");
+  }, [newFieldName, newFieldType, structured]);
   const activeViewSettingsKey =
     selectedApp?.id && structured.activeTable?.id
       ? viewSettingsKey(selectedApp.id, structured.activeTable.id, activeViewMode)
@@ -1185,7 +1243,8 @@ export function AppForge({
                               aria-label={`Select ${app.name} base. ${tableCount} ${
                                 tableCount === 1 ? "table" : "tables"
                               }, ${recordCount} ${recordCount === 1 ? "record" : "records"}.`}
-                              data-testid="appforge-base-card"
+                              data-app-id={app.id}
+                              data-testid={`appforge-base-card-${app.id}`}
                               className={`group relative flex min-h-[138px] flex-col items-center justify-center gap-3 rounded-xl border p-3 transition-colors ${
                                 isSelected
                                   ? "border-sky-400/30 bg-sky-400/10"
@@ -1531,7 +1590,7 @@ export function AppForge({
                           <div className="mb-3 flex items-center justify-between text-sm text-white/72">
                             <span>Tables</span>
                             <button
-                              onClick={() => void structured.addTable()}
+                              onClick={() => void handleCreateTable()}
                               className="rounded p-1 text-white/38 transition-colors hover:bg-white/10 hover:text-white/75"
                               title="Add table"
                             >
@@ -1579,18 +1638,84 @@ export function AppForge({
                               </div>
                             ))}
                           </div>
-                          <button
-                            onClick={() => void structured.addTable()}
-                            className="mt-5 flex items-center gap-2 px-3 text-sm text-white/48 transition-colors hover:text-white/75"
-                          >
-                            <Plus className="h-4 w-4" />
-                            Add or import table
-                          </button>
+                          <div className="mt-5 rounded-xl border border-white/10 bg-black/18 p-2">
+                            <div className="mb-2 text-xs text-white/36">New table</div>
+                            <div className="flex gap-2">
+                              <input
+                                data-testid="appforge-create-table-input"
+                                value={newTableName}
+                                onChange={(event) => setNewTableName(event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    void handleCreateTable();
+                                  }
+                                }}
+                                placeholder="Customers"
+                                className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-white/72 outline-none placeholder:text-white/28"
+                              />
+                              <button
+                                data-testid="appforge-create-table-button"
+                                onClick={() => void handleCreateTable()}
+                                className="rounded-lg border border-white/10 px-2 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+                                title="Create table"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </button>
+                            </div>
+                            <div className="mt-2 text-[11px] leading-snug text-white/30">
+                              Imports are planned. This creates a live native TableForge table.
+                            </div>
+                          </div>
                         </div>
 
                         <div className="overflow-auto">
                           {activeViewMode === "grid" && (
                             <>
+                              <div className="flex flex-wrap items-center gap-2 border-b border-white/10 bg-black/16 px-3 py-2 text-xs text-white/45">
+                                <span>Add field</span>
+                                <input
+                                  data-testid="appforge-create-field-input"
+                                  value={newFieldName}
+                                  onChange={(event) => setNewFieldName(event.target.value)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") {
+                                      void handleCreateField();
+                                    }
+                                  }}
+                                  placeholder="Budget"
+                                  className="h-8 w-36 rounded-lg border border-white/10 bg-black/28 px-2 text-white/70 outline-none placeholder:text-white/28"
+                                />
+                                <select
+                                  data-testid="appforge-create-field-type"
+                                  value={newFieldType}
+                                  onChange={(event) =>
+                                    setNewFieldType(event.target.value as ForgeFieldType)
+                                  }
+                                  className="h-8 rounded-lg border border-white/10 bg-black/28 px-2 text-white/70 outline-none"
+                                >
+                                  {FIELD_TYPE_OPTIONS.map((fieldType) => (
+                                    <option key={fieldType.value} value={fieldType.value}>
+                                      {fieldType.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  data-testid="appforge-create-field-button"
+                                  onClick={() => void handleCreateField()}
+                                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 px-2 text-white/62 transition-colors hover:bg-white/10 hover:text-white"
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                  Field
+                                </button>
+                                <button
+                                  data-testid="appforge-add-record-button"
+                                  onClick={() => void structured.addRecord()}
+                                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 px-2 text-white/62 transition-colors hover:bg-white/10 hover:text-white"
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                  Record
+                                </button>
+                              </div>
                               <table className="w-full min-w-[780px] border-collapse text-left text-sm">
                                 <thead className="sticky top-0 z-10 bg-[#11171a] text-xs font-medium uppercase tracking-[0.08em] text-white/38">
                                   <tr>
@@ -1639,7 +1764,7 @@ export function AppForge({
                                     ))}
                                     <th className="w-12 border-b border-white/10 px-3 py-3">
                                       <button
-                                        onClick={() => void structured.addField()}
+                                        onClick={() => void handleCreateField()}
                                         className="rounded p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white"
                                         title="Add field"
                                       >
@@ -1666,6 +1791,7 @@ export function AppForge({
                                             <Copy className="h-3.5 w-3.5" />
                                           </button>
                                           <button
+                                            data-testid="appforge-delete-record-button"
                                             onClick={() => void structured.deleteRecord(record.id)}
                                             className="rounded p-1 text-white/18 transition-colors group-hover:text-red-200 hover:bg-red-500/15 hover:text-red-100"
                                             title="Delete record"
@@ -2191,25 +2317,21 @@ export function AppForge({
                                 return;
                               }
                               void structured.updateField(structured.selectedField.id, {
-                                type: event.target.value as
-                                  | "text"
-                                  | "single_select"
-                                  | "number"
-                                  | "date"
-                                  | "checkbox",
+                                type: event.target.value as ForgeFieldType,
                               });
                             }}
                             className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-white/72 outline-none"
                           >
-                            <option value="text">Text</option>
-                            <option value="single_select">Single select</option>
-                            <option value="number">Number</option>
-                            <option value="date">Date</option>
-                            <option value="checkbox">Checkbox</option>
+                            {FIELD_TYPE_OPTIONS.map((fieldType) => (
+                              <option key={fieldType.value} value={fieldType.value}>
+                                {fieldType.label}
+                              </option>
+                            ))}
                           </select>
                         </label>
 
-                        {structured.selectedField?.type === "single_select" && (
+                        {(structured.selectedField?.type === "single_select" ||
+                          structured.selectedField?.type === "multi_select") && (
                           <div>
                             <div className="mb-2 text-xs text-white/38">Options</div>
                             <div className="space-y-2">

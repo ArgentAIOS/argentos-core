@@ -1,12 +1,6 @@
 import { Type } from "@sinclair/typebox";
+import type { BrowserStatus, BrowserTab } from "../../../src/browser/client.js";
 import type { ArgentPluginApi } from "../../../src/plugins/types.js";
-import {
-  browserFocusTab,
-  browserStatus,
-  browserTabs,
-  type BrowserStatus,
-  type BrowserTab,
-} from "../../../src/browser/client.js";
 import { resolveGoogleMeetSetupStatus, type GoogleMeetConfig } from "./setup.js";
 
 const GoogleMeetToolSchema = Type.Object({
@@ -49,9 +43,18 @@ function json(payload: unknown) {
 
 function createDefaultBrowserRuntime(): GoogleMeetBrowserRuntime {
   return {
-    status: async (profile) => await browserStatus(undefined, { profile }),
-    tabs: async (profile) => await browserTabs(undefined, { profile }),
-    focusTab: async (targetId, profile) => await browserFocusTab(undefined, targetId, { profile }),
+    status: async (profile) => {
+      const { browserStatus } = await import("../../../src/browser/client.js");
+      return await browserStatus(undefined, { profile });
+    },
+    tabs: async (profile) => {
+      const { browserTabs } = await import("../../../src/browser/client.js");
+      return await browserTabs(undefined, { profile });
+    },
+    focusTab: async (targetId, profile) => {
+      const { browserFocusTab } = await import("../../../src/browser/client.js");
+      return await browserFocusTab(undefined, targetId, { profile });
+    },
   };
 }
 
