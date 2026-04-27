@@ -1,8 +1,14 @@
 const DEFAULT_TIMEOUT_MS = 10_000;
 
+type WebKitMessageHandlerWindow = Window & {
+  webkit?: {
+    messageHandlers?: Record<string, unknown>;
+  };
+};
+
 function isNativeShell(): boolean {
   if (typeof window === "undefined") return false;
-  return Boolean(window.webkit?.messageHandlers);
+  return Boolean((window as WebKitMessageHandlerWindow).webkit?.messageHandlers);
 }
 
 function dashboardApiTokenFromUrl(): string | null {
