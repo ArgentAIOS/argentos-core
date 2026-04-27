@@ -9,7 +9,7 @@ import type {
   SkillMatchCandidate,
   SkillSnapshot,
 } from "./types.js";
-import { formatSkillsForPrompt, loadSkillsFromDir, type Skill } from "../../agent-core/coding.js";
+import { loadSkillsFromDir, type Skill } from "../../agent-core/coding.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { CONFIG_DIR, resolveUserPath } from "../../utils.js";
 import { resolveBundledSkillsDir } from "./bundled-dir.js";
@@ -25,6 +25,7 @@ import { serializeByKey } from "./serialize.js";
 const fsp = fs.promises;
 const skillsLogger = createSubsystemLogger("skills");
 const skillCommandDebugOnce = new Set<string>();
+const categoryDescriptionCache = new Map<string, string | undefined>();
 const SKILL_MATCH_STOPWORDS = new Set([
   "a",
   "an",
@@ -236,6 +237,129 @@ function toSkillSourceLabel(entry: { skill: { source?: string } }): string {
   return raw;
 }
 
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function splitPathParts(filePath: string): string[] {
+  return filePath.split(/[\\/]+/g).filter(Boolean);
+}
+
+function resolveSkillCategoryParts(skill: Skill): string[] {
+  const parts = splitPathParts(skill.filePath);
+  const skillsIndex = parts.lastIndexOf("skills");
+  if (skillsIndex !== -1) {
+    return parts.slice(skillsIndex + 1, Math.max(skillsIndex + 1, parts.length - 2));
+  }
+  const hermesIndex = parts.indexOf("hermes");
+  if (hermesIndex !== -1) {
+    return parts.slice(hermesIndex, Math.max(hermesIndex, parts.length - 2));
+  }
+  return [];
+}
+
+function resolveSkillCategoryDir(skill: Skill, categoryParts: string[]): string | undefined {
+  if (categoryParts.length === 0) {
+    return undefined;
+  }
+  const skillPathParts = splitPathParts(skill.filePath);
+  const skillsIndex = skillPathParts.lastIndexOf("skills");
+  const hermesIndex = skillPathParts.indexOf("hermes");
+  const categoryStart = skillsIndex !== -1 ? skillsIndex + 1 : hermesIndex;
+  if (categoryStart === -1) {
+    return undefined;
+  }
+  const prefix = skill.filePath.startsWith(path.sep) ? path.sep : "";
+  return path.join(prefix, ...skillPathParts.slice(0, categoryStart), ...categoryParts);
+}
+
+function resolveSkillCategory(skill: Skill): { key: string; label: string; parts: string[] } {
+  const parts = resolveSkillCategoryParts(skill);
+  if (parts.length === 0) {
+    return { key: "general", label: "general", parts };
+  }
+  const label = parts.join("/");
+  return { key: label, label, parts };
+}
+
+function readCategoryDescription(skill: Skill, categoryParts: string[]): string | undefined {
+  if (categoryParts.length === 0) {
+    return undefined;
+  }
+  const categoryDir = resolveSkillCategoryDir(skill, categoryParts);
+  if (!categoryDir) {
+    return undefined;
+  }
+  const descriptionPath = path.join(categoryDir, "DESCRIPTION.md");
+  if (categoryDescriptionCache.has(descriptionPath)) {
+    return categoryDescriptionCache.get(descriptionPath);
+  }
+  let description: string | undefined;
+  try {
+    const raw = fs.readFileSync(descriptionPath, "utf-8");
+    const frontmatter = parseFrontmatter(raw);
+    description =
+      typeof frontmatter.description === "string" && frontmatter.description.trim()
+        ? frontmatter.description.trim()
+        : undefined;
+  } catch {
+    description = undefined;
+  }
+  categoryDescriptionCache.set(descriptionPath, description);
+  return description;
+}
+
+function formatSkillEntriesForPrompt(entries: SkillEntry[]): string {
+  const visible = entries.filter((entry) => entry.invocation?.disableModelInvocation !== true);
+  if (visible.length === 0) {
+    return "";
+  }
+
+  const grouped = new Map<string, { label: string; description?: string; skills: Skill[] }>();
+  for (const entry of visible) {
+    const category = resolveSkillCategory(entry.skill);
+    const existing =
+      grouped.get(category.key) ??
+      ({
+        label: category.label,
+        description: readCategoryDescription(entry.skill, category.parts),
+        skills: [],
+      } satisfies { label: string; description?: string; skills: Skill[] });
+    existing.skills.push(entry.skill);
+    grouped.set(category.key, existing);
+  }
+
+  const lines = [
+    "",
+    "",
+    "The following skills provide specialized instructions for specific tasks.",
+    "Skills are grouped by category. Use the read tool to load a skill's file when the task matches, overlaps with, or is partially covered by its description.",
+    "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+    "",
+    "<available_skills>",
+  ];
+
+  for (const [key, group] of [...grouped.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const description = group.description ? ` description="${escapeXml(group.description)}"` : "";
+    lines.push(`  <category name="${escapeXml(group.label)}"${description}>`);
+    for (const skill of group.skills.sort((a, b) => a.name.localeCompare(b.name))) {
+      lines.push("    <skill>");
+      lines.push(`      <name>${escapeXml(skill.name)}</name>`);
+      lines.push(`      <description>${escapeXml(skill.description ?? "")}</description>`);
+      lines.push(`      <location>${escapeXml(skill.filePath)}</location>`);
+      lines.push("    </skill>");
+    }
+    lines.push("  </category>");
+  }
+
+  lines.push("</available_skills>");
+  return lines.join("\n");
+}
+
 export function matchSkillCandidatesForPrompt(params: {
   prompt: string;
   entries?: SkillEntry[];
@@ -322,7 +446,9 @@ export function buildWorkspaceSkillSnapshot(
   );
   const resolvedSkills = promptEntries.map((entry) => entry.skill);
   const remoteNote = opts?.eligibility?.remote?.note?.trim();
-  const prompt = [remoteNote, formatSkillsForPrompt(resolvedSkills)].filter(Boolean).join("\n");
+  const prompt = [remoteNote, formatSkillEntriesForPrompt(promptEntries)]
+    .filter(Boolean)
+    .join("\n");
   return {
     prompt,
     skills: eligible.map((entry) => ({
@@ -357,9 +483,7 @@ export function buildWorkspaceSkillsPrompt(
     (entry) => entry.invocation?.disableModelInvocation !== true,
   );
   const remoteNote = opts?.eligibility?.remote?.note?.trim();
-  return [remoteNote, formatSkillsForPrompt(promptEntries.map((entry) => entry.skill))]
-    .filter(Boolean)
-    .join("\n");
+  return [remoteNote, formatSkillEntriesForPrompt(promptEntries)].filter(Boolean).join("\n");
 }
 
 export function resolveSkillsPromptForRun(params: {
