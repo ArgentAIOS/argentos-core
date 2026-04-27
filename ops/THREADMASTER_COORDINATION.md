@@ -195,6 +195,15 @@ Runtime/code diff over current `origin/dev`: none.
 Summary: OpenClaw realtime voice, local audio, operator voice CLI, optional OperatorAlertEvent voice route, and Google Meet browser status/recover slices are already contained in `origin/dev`. The new packet records exact commits, files, verification, truth labels, split boundaries, and blockers.
 Required reactions: Browser/gateway owner must resolve browser-control WebSocket `1006` before OpenClaw can provide Google Meet manual recovery smoke evidence. Workflows/master must assign shared operator-alert subscription wiring before the voice route can fire automatically from live approval/alert events.
 
+### 2026-04-26/27 — OpenClaw Shared Routing/Browser Blocker Proposal
+
+Lane: `openclaw`
+Branch: `codex/openclaw-audio-process`
+Owned files for this proposal: `ops/OPENCLAW_SHARED_ROUTING_AND_BROWSER_BLOCKER_PROPOSAL.md` and this board note only.
+Runtime/code changes: none.
+Summary: Proposal identifies two next slices. A1 is a shared `OperatorAlertEvent` in-process router contract plus voice-call registration helper, without Workflow/AppForge/AOS/schema edits. B2 is browser CLI/gateway diagnostic labeling for the WebSocket `1006` blocker, but it requires master approval before touching shared gateway files.
+Required reactions: Master/Workflows must choose A1 contract-only vs A2 workflow hook for automatic voice alert routing. Master/browser owner must approve B2 shared browser diagnostics or keep the Meet manual smoke blocked on browser-control health.
+
 ### 2026-04-26 — Master to All
 
 The threadmaster bus is available. Use `pnpm threadmaster:post/list/ack/status/poll` for targeted messages, `pnpm threadmaster:task-add/task-list/task-update` for lane tasking, and keep durable contract summaries in this board.
