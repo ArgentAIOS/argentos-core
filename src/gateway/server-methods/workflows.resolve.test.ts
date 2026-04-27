@@ -1,6 +1,6 @@
 import postgres from "postgres";
 import { describe, expect, it, vi } from "vitest";
-import { resolveRunnableWorkflowRow } from "./workflows.js";
+import { resolveRunnableWorkflowRow, workflowRowWithCanvasOverride } from "./workflows.js";
 
 type WorkflowSql = ReturnType<typeof postgres>;
 
@@ -75,5 +75,40 @@ describe("resolveRunnableWorkflowRow", () => {
       error: "workflowId or workflowName is required",
     });
     expect(vi.mocked(sql)).not.toHaveBeenCalled();
+  });
+});
+
+describe("workflowRowWithCanvasOverride", () => {
+  it("uses the fresh canvas payload for same-click run validation", () => {
+    const row = {
+      id: "wf-stale",
+      name: "Stale Workflow",
+      nodes: [],
+      edges: [],
+      canvas_layout: { nodes: [], edges: [] },
+      deployment_stage: "simulate" as const,
+    };
+
+    const next = workflowRowWithCanvasOverride(row, {
+      canvasData: {
+        nodes: [
+          { id: "trigger", type: "trigger", data: { triggerType: "manual" } },
+          { id: "out", type: "output", data: { target: "doc_panel", title: "Result" } },
+        ],
+        edges: [{ id: "e1", source: "trigger", target: "out" }],
+      },
+      deploymentStage: "simulate",
+    });
+
+    expect(next.nodes?.map((node) => (node as { kind?: string }).kind)).toEqual([
+      "trigger",
+      "output",
+    ]);
+    expect(next.canvas_layout).toMatchObject({
+      nodes: [
+        { id: "trigger", type: "trigger" },
+        { id: "out", type: "output" },
+      ],
+    });
   });
 });
