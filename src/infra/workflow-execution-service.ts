@@ -10,7 +10,10 @@ import type {
 } from "./workflow-types.js";
 import { getAgentFamily } from "../data/agent-family.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { notifyWorkflowApprovalRequest } from "./workflow-approval-notifier.js";
+import {
+  buildWorkflowApprovalOperatorAlertEvent,
+  notifyWorkflowApprovalRequest,
+} from "./workflow-approval-notifier.js";
 import {
   markWorkflowApprovalNotified,
   upsertDurableWorkflowApproval,
@@ -62,6 +65,28 @@ function numberOrUndefined(value: unknown): number | undefined {
     return Number.isFinite(parsed) ? parsed : undefined;
   }
   return undefined;
+}
+
+function scalarText(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return undefined;
+}
+
+function timestampMsOrNow(value: unknown, fallback = Date.now()): number {
+  const text = scalarText(value);
+  if (!text) {
+    return fallback;
+  }
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 export function workflowFromRow(row: WorkflowRow): NormalizedWorkflowRow {
@@ -246,9 +271,9 @@ function workflowStepRowToRecord(
   workflow: WorkflowDefinition,
   order: Map<string, number>,
 ): StepRecord {
-  const nodeId = String(row.node_id ?? "");
-  const startedAt = row.started_at ? Date.parse(String(row.started_at)) : Date.now();
-  const endedAt = row.ended_at ? Date.parse(String(row.ended_at)) : startedAt;
+  const nodeId = scalarText(row.node_id) ?? "";
+  const startedAt = timestampMsOrNow(row.started_at);
+  const endedAt = timestampMsOrNow(row.ended_at, startedAt);
   return {
     nodeId,
     nodeKind: getNodeKindForHistory(row.node_kind),
@@ -260,8 +285,8 @@ function workflowStepRowToRecord(
     output: itemSetFromStoredOutput(row.output_items),
     tokensUsed: typeof row.tokens_used === "number" ? row.tokens_used : undefined,
     costUsd: numberOrUndefined(row.cost_usd),
-    startedAt: Number.isFinite(startedAt) ? startedAt : Date.now(),
-    endedAt: Number.isFinite(endedAt) ? endedAt : Date.now(),
+    startedAt,
+    endedAt,
   };
 }
 
@@ -314,16 +339,14 @@ async function buildWorkflowResumeOptions(params: {
     params.runRow.trigger_payload && typeof params.runRow.trigger_payload === "object"
       ? (params.runRow.trigger_payload as Record<string, unknown>)
       : {};
-  const startedAt = params.runRow.started_at
-    ? Date.parse(String(params.runRow.started_at))
-    : Date.now();
+  const startedAt = timestampMsOrNow(params.runRow.started_at);
 
   return {
     afterNodeId: params.resumeNodeId,
     history: [...byNode.values()].toSorted((a, b) => a.stepIndex - b.stepIndex),
     trigger: {
       triggerType: (params.runRow.trigger_type as TriggerType | undefined) ?? "manual",
-      firedAt: Number.isFinite(startedAt) ? startedAt : Date.now(),
+      firedAt: startedAt,
       payload: triggerPayload,
       source: params.triggerSource,
     },
@@ -373,14 +396,14 @@ export async function buildWorkflowRetryFromStepResumeOptions(params: {
     sourceRun.trigger_payload && typeof sourceRun.trigger_payload === "object"
       ? (sourceRun.trigger_payload as Record<string, unknown>)
       : {};
-  const startedAt = sourceRun.started_at ? Date.parse(String(sourceRun.started_at)) : Date.now();
+  const startedAt = timestampMsOrNow(sourceRun.started_at);
 
   return {
     afterNodeId: history.at(-1)?.nodeId ?? "__workflow_start__",
     history,
     trigger: {
       triggerType: (sourceRun.trigger_type as TriggerType | undefined) ?? "manual",
-      firedAt: Number.isFinite(startedAt) ? startedAt : Date.now(),
+      firedAt: startedAt,
       payload: triggerPayload,
       source: params.triggerSource,
     },
@@ -465,22 +488,30 @@ export async function executeWorkflowRunFromRow(opts: {
             denyAction: row.deny_action,
           });
 
+          const approvalNotificationRequest = {
+            approvalId: String(row.id),
+            runId: request.runId,
+            workflowId: workflow.id,
+            workflowName: workflow.name,
+            nodeId: request.nodeId,
+            nodeLabel: typeof row.node_label === "string" ? row.node_label : null,
+            message: request.message,
+            sideEffectClass:
+              typeof row.side_effect_class === "string" ? row.side_effect_class : null,
+            previousOutputPreview: row.previous_output_preview,
+            timeoutAt: row.timeout_at
+              ? new Date(row.timeout_at as string | number | Date).toISOString()
+              : null,
+            timeoutAction: request.timeoutAction,
+            requestedAt: request.requestedAt,
+          };
+          opts.broadcast?.(
+            "operator.alert.requested",
+            buildWorkflowApprovalOperatorAlertEvent(approvalNotificationRequest),
+          );
+
           const notification = await notifyWorkflowApprovalRequest({
-            request: {
-              approvalId: row.id,
-              runId: request.runId,
-              workflowId: workflow.id,
-              workflowName: workflow.name,
-              nodeId: request.nodeId,
-              nodeLabel: row.node_label,
-              message: request.message,
-              sideEffectClass: row.side_effect_class,
-              previousOutputPreview: row.previous_output_preview,
-              timeoutAt: row.timeout_at
-                ? new Date(row.timeout_at as string | number | Date).toISOString()
-                : null,
-              timeoutAction: request.timeoutAction,
-            },
+            request: approvalNotificationRequest,
             deps: { outboundDeps: opts.outboundDeps },
           });
           await markWorkflowApprovalNotified(opts.sql, {

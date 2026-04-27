@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ArgentConfig } from "../config/config.js";
 import type { StepRecord, WorkflowDefinition } from "./workflow-types.js";
 import {
+  buildWorkflowApprovalOperatorAlertEvent,
   buildWorkflowApprovalNotificationText,
   notifyWorkflowApprovalRequest,
 } from "./workflow-approval-notifier.js";
@@ -110,7 +111,7 @@ describe("workflow approvals", () => {
 
   it("truncates step previews before persistence and notification", () => {
     const largeStep = step();
-    largeStep.output.items[0]!.text = "x".repeat(3_000);
+    largeStep.output.items[0].text = "x".repeat(3_000);
 
     const preview = previewWorkflowStepOutput(largeStep);
 
@@ -164,5 +165,66 @@ describe("workflow approvals", () => {
 
     expect(text).toContain("workflows.approve runId=run-1 nodeId=approval-1");
     expect(text).toContain("workflows.deny runId=run-1 nodeId=approval-1");
+  });
+
+  it("builds a shared operator alert event for workflow approvals", () => {
+    const event = buildWorkflowApprovalOperatorAlertEvent({
+      approvalId: "approval-1",
+      runId: "run-1",
+      workflowId: "wf-1",
+      workflowName: "Morning Brief",
+      nodeId: "approval-1",
+      nodeLabel: "Approve Telegram Send",
+      message: "Send the brief?",
+      sideEffectClass: "outbound",
+      previousOutputPreview: { text: "Draft brief" },
+      timeoutAt: "2026-04-25T18:01:00.000Z",
+      timeoutAction: "deny",
+      requestedAt: Date.parse("2026-04-25T18:00:00.000Z"),
+    });
+
+    expect(event).toMatchObject({
+      schemaVersion: 1,
+      id: "operator-alert-approval-1",
+      type: "workflow.approval.requested",
+      source: "workflows",
+      severity: "action_required",
+      privacy: "sensitive",
+      workflow: {
+        workflowId: "wf-1",
+        workflowName: "Morning Brief",
+        runId: "run-1",
+        nodeId: "approval-1",
+        nodeLabel: "Approve Telegram Send",
+      },
+      approval: {
+        approvalId: "approval-1",
+        sideEffectClass: "outbound",
+        previousOutputPreview: { text: "Draft brief" },
+      },
+      timeout: {
+        at: "2026-04-25T18:01:00.000Z",
+        action: "deny",
+        label: "auto-deny",
+      },
+      audit: {
+        requestedAt: "2026-04-25T18:00:00.000Z",
+        requestedBy: "workflow",
+        requiresOperatorDecision: true,
+      },
+    });
+    expect(event.actions).toEqual([
+      expect.objectContaining({
+        id: "approve",
+        method: "workflows.approve",
+        params: { runId: "run-1", nodeId: "approval-1" },
+      }),
+      expect.objectContaining({
+        id: "deny",
+        method: "workflows.deny",
+        params: { runId: "run-1", nodeId: "approval-1" },
+        destructive: true,
+      }),
+    ]);
   });
 });

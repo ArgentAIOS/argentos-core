@@ -1,7 +1,9 @@
 import type { ArgentConfig } from "../config/config.js";
+import type { OperatorAlertEvent } from "./operator-alerts.js";
 import type { OutboundDeliveryResult, OutboundSendDeps } from "./outbound/deliver.js";
 import { loadConfig } from "../config/config.js";
 import { isDeliverableMessageChannel, normalizeMessageChannel } from "../utils/message-channel.js";
+import { formatOperatorAlertEventText } from "./operator-alerts.js";
 import { deliverOutboundPayloads } from "./outbound/deliver.js";
 
 export interface WorkflowApprovalNotificationRequest {
@@ -16,6 +18,9 @@ export interface WorkflowApprovalNotificationRequest {
   previousOutputPreview?: unknown;
   timeoutAt?: string | null;
   timeoutAction?: "approve" | "deny" | null;
+  requestedAt?: number | string | null;
+  approveAction?: { method: string; params?: Record<string, unknown> } | null;
+  denyAction?: { method: string; params?: Record<string, unknown> } | null;
 }
 
 export type WorkflowApprovalNotificationResult =
@@ -33,54 +38,92 @@ export type WorkflowApprovalNotificationDeps = {
   outboundDeps?: OutboundSendDeps;
 };
 
-function previewToText(preview: unknown): string | null {
-  if (preview === undefined || preview === null) {
-    return null;
+function toIso(value: number | string | null | undefined): string {
+  const fallback = new Date().toISOString();
+  if (typeof value === "number") {
+    const date = new Date(value);
+    return Number.isFinite(date.getTime()) ? date.toISOString() : fallback;
   }
-  if (typeof preview === "string") {
-    return preview;
+  if (typeof value === "string" && value.trim()) {
+    const date = new Date(value);
+    return Number.isFinite(date.getTime()) ? date.toISOString() : fallback;
   }
-  try {
-    return JSON.stringify(preview, null, 2);
-  } catch {
-    return String(preview);
-  }
+  return fallback;
 }
 
-function truncateLine(value: string, max = 900): string {
-  return value.length <= max ? value : `${value.slice(0, max - 3)}...`;
+export function buildWorkflowApprovalOperatorAlertEvent(
+  request: WorkflowApprovalNotificationRequest,
+): OperatorAlertEvent {
+  const approveAction = request.approveAction ?? {
+    method: "workflows.approve",
+    params: { runId: request.runId, nodeId: request.nodeId },
+  };
+  const denyAction = request.denyAction ?? {
+    method: "workflows.deny",
+    params: { runId: request.runId, nodeId: request.nodeId },
+  };
+  const workflowName = request.workflowName || request.workflowId;
+  const nodeLabel = request.nodeLabel || request.nodeId;
+
+  return {
+    schemaVersion: 1,
+    id: `operator-alert-${request.approvalId}`,
+    type: "workflow.approval.requested",
+    source: "workflows",
+    createdAt: toIso(request.requestedAt),
+    severity: "action_required",
+    privacy: "sensitive",
+    title: "Argent workflow approval needed",
+    summary: `${workflowName}: ${nodeLabel}`,
+    body: request.message,
+    workflow: {
+      workflowId: request.workflowId,
+      workflowName: request.workflowName,
+      runId: request.runId,
+      nodeId: request.nodeId,
+      nodeLabel: request.nodeLabel,
+    },
+    approval: {
+      approvalId: request.approvalId,
+      sideEffectClass: request.sideEffectClass,
+      previousOutputPreview: request.previousOutputPreview,
+    },
+    actions: [
+      {
+        id: "approve",
+        label: "Approve",
+        kind: "approve",
+        method: approveAction.method,
+        params: approveAction.params,
+      },
+      {
+        id: "deny",
+        label: "Deny",
+        kind: "deny",
+        method: denyAction.method,
+        params: denyAction.params,
+        destructive: true,
+      },
+    ],
+    timeout: request.timeoutAt
+      ? {
+          at: request.timeoutAt,
+          action: request.timeoutAction ?? "deny",
+          label: request.timeoutAction === "approve" ? "auto-approve" : "auto-deny",
+        }
+      : null,
+    audit: {
+      requestedAt: toIso(request.requestedAt),
+      requestedBy: "workflow",
+      requiresOperatorDecision: true,
+    },
+  };
 }
 
 export function buildWorkflowApprovalNotificationText(
   request: WorkflowApprovalNotificationRequest,
 ): string {
-  const lines = ["Argent workflow approval needed."];
-  lines.push("", `Workflow: ${request.workflowName || request.workflowId}`);
-  lines.push(`Step: ${request.nodeLabel || request.nodeId}`);
-  if (request.sideEffectClass) {
-    lines.push(`Side effect: ${request.sideEffectClass}`);
-  }
-  lines.push("", request.message);
-
-  const preview = previewToText(request.previousOutputPreview);
-  if (preview) {
-    lines.push("", "Previous output preview:", truncateLine(preview));
-  }
-
-  if (request.timeoutAt) {
-    lines.push(
-      "",
-      `Timeout: ${request.timeoutAt} (${request.timeoutAction === "approve" ? "auto-approve" : "auto-deny"})`,
-    );
-  }
-
-  lines.push(
-    "",
-    `Approve: workflows.approve runId=${request.runId} nodeId=${request.nodeId}`,
-    `Deny: workflows.deny runId=${request.runId} nodeId=${request.nodeId}`,
-    `Approval ID: ${request.approvalId}`,
-  );
-  return lines.join("\n");
+  return formatOperatorAlertEventText(buildWorkflowApprovalOperatorAlertEvent(request));
 }
 
 export async function notifyWorkflowApprovalRequest(params: {
@@ -99,7 +142,8 @@ export async function notifyWorkflowApprovalRequest(params: {
     return { status: "no-targets" };
   }
 
-  const text = buildWorkflowApprovalNotificationText(params.request);
+  const event = buildWorkflowApprovalOperatorAlertEvent(params.request);
+  const text = formatOperatorAlertEventText(event);
   const deliver = params.deps?.deliver ?? deliverOutboundPayloads;
   const delivered: OutboundDeliveryResult[] = [];
   const errors: string[] = [];
