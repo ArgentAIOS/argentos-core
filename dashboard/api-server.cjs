@@ -8385,6 +8385,11 @@ const AUTH_PROFILES_PATH = path.join(
 const OPENAI_CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const OPENAI_CODEX_AUTH_URL = "https://auth.openai.com/oauth/authorize";
 const OPENAI_CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token";
+const OPENAI_CODEX_DEVICE_URL = "https://auth.openai.com/codex/device";
+const OPENAI_CODEX_DEVICE_USER_CODE_URL =
+  "https://auth.openai.com/api/accounts/deviceauth/usercode";
+const OPENAI_CODEX_DEVICE_TOKEN_URL = "https://auth.openai.com/api/accounts/deviceauth/token";
+const OPENAI_CODEX_DEVICE_REDIRECT_URI = "https://auth.openai.com/deviceauth/callback";
 const OPENAI_CODEX_AUDIENCE = "https://api.openai.com/v1";
 const OPENAI_CODEX_SCOPE =
   "openid profile email offline_access api.connectors.read api.connectors.invoke";
@@ -8456,6 +8461,80 @@ function writeOpenAICodexOAuthProfile(tokenData) {
   if (!data.lastGood) data.lastGood = {};
   data.lastGood["openai-codex"] = "openai-codex:default";
   writeAuthProfiles(data);
+}
+
+async function pollOpenAICodexDeviceSession(state) {
+  const session = openAICodexAuthSessions.get(state);
+  if (!session || session.kind !== "device") {
+    return;
+  }
+
+  const deadline = (session.createdAt || Date.now()) + OPENAI_CODEX_OAUTH_TTL_MS;
+  try {
+    while (Date.now() < deadline) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.max(3, Number(session.pollIntervalSeconds || 5)) * 1000),
+      );
+      if (!openAICodexAuthSessions.has(state)) {
+        return;
+      }
+      const pollResp = await fetch(OPENAI_CODEX_DEVICE_TOKEN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          device_auth_id: session.deviceAuthId,
+          user_code: session.userCode,
+        }),
+      });
+      if (pollResp.status === 403 || pollResp.status === 404) {
+        continue;
+      }
+      if (!pollResp.ok) {
+        const detail = await pollResp.text().catch(() => "");
+        throw new Error(
+          `Device auth polling failed (${pollResp.status}): ${detail || "unknown error"}`,
+        );
+      }
+
+      const pollData = await pollResp.json();
+      const authorizationCode = String(pollData.authorization_code || "").trim();
+      const codeVerifier = String(pollData.code_verifier || "").trim();
+      if (!authorizationCode || !codeVerifier) {
+        throw new Error("Device auth response missing authorization_code or code_verifier");
+      }
+
+      const tokenBody = new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: OPENAI_CODEX_CLIENT_ID,
+        code_verifier: codeVerifier,
+        code: authorizationCode,
+        redirect_uri: OPENAI_CODEX_DEVICE_REDIRECT_URI,
+      });
+      const tokenRes = await fetch(OPENAI_CODEX_TOKEN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: tokenBody.toString(),
+      });
+      if (!tokenRes.ok) {
+        const detail = await tokenRes.text().catch(() => "");
+        throw new Error(`Token exchange failed (${tokenRes.status}): ${detail || "unknown error"}`);
+      }
+      const tokenData = await tokenRes.json();
+      writeOpenAICodexOAuthProfile(tokenData);
+      session.status = "success";
+      session.error = null;
+      session.completedAt = Date.now();
+      return;
+    }
+    throw new Error("OpenAI Codex device login timed out");
+  } catch (err) {
+    if (openAICodexAuthSessions.has(state)) {
+      session.status = "error";
+      session.error = err.message || String(err);
+      session.completedAt = Date.now();
+    }
+    console.error("[AuthProfiles] OpenAI Codex device login failed:", err);
+  }
 }
 
 function readAuthProfiles() {
@@ -14779,40 +14858,49 @@ app.get("/api/settings/auth-profiles/:key/reveal", (req, res) => {
   }
 });
 
-// POST /api/settings/auth-profiles/openai-codex/oauth/start — Start dashboard OAuth flow
+// POST /api/settings/auth-profiles/openai-codex/oauth/start — Start dashboard device-code OAuth flow
 app.post("/api/settings/auth-profiles/openai-codex/oauth/start", (req, res) => {
-  try {
+  (async () => {
     cleanupOpenAICodexAuthSessions();
-    const codeVerifier = generateCodeVerifier();
-    const codeChallenge = generateCodeChallenge(codeVerifier);
     const state = generateOAuthState();
-    const redirectUri = createOpenAICodexRedirectUri(req);
-    const authParams = new URLSearchParams({
-      response_type: "code",
-      client_id: OPENAI_CODEX_CLIENT_ID,
-      redirect_uri: redirectUri,
-      scope: OPENAI_CODEX_SCOPE,
-      audience: OPENAI_CODEX_AUDIENCE,
-      state,
-      code_challenge: codeChallenge,
-      code_challenge_method: "S256",
+    const deviceResp = await fetch(OPENAI_CODEX_DEVICE_USER_CODE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ client_id: OPENAI_CODEX_CLIENT_ID }),
     });
+    if (!deviceResp.ok) {
+      const detail = await deviceResp.text().catch(() => "");
+      throw new Error(
+        `Device code request failed (${deviceResp.status}): ${detail || "unknown error"}`,
+      );
+    }
+    const deviceData = await deviceResp.json();
+    const userCode = String(deviceData.user_code || "").trim();
+    const deviceAuthId = String(deviceData.device_auth_id || "").trim();
+    if (!userCode || !deviceAuthId) {
+      throw new Error("Device code response missing user_code or device_auth_id");
+    }
+    const pollIntervalSeconds = Math.max(3, Number.parseInt(String(deviceData.interval || 5), 10));
     openAICodexAuthSessions.set(state, {
-      codeVerifier,
-      redirectUri,
+      kind: "device",
+      userCode,
+      deviceAuthId,
+      pollIntervalSeconds: Number.isFinite(pollIntervalSeconds) ? pollIntervalSeconds : 5,
       createdAt: Date.now(),
       status: "pending",
     });
+    void pollOpenAICodexDeviceSession(state);
     res.json({
       ok: true,
       state,
-      authUrl: `${OPENAI_CODEX_AUTH_URL}?${authParams.toString()}`,
+      authUrl: OPENAI_CODEX_DEVICE_URL,
+      userCode,
       expiresInMs: OPENAI_CODEX_OAUTH_TTL_MS,
     });
-  } catch (err) {
+  })().catch((err) => {
     console.error("[AuthProfiles] Failed to start OpenAI Codex OAuth:", err);
     res.status(500).json({ error: "Failed to start OpenAI Codex OAuth" });
-  }
+  });
 });
 
 // GET /api/settings/auth-profiles/openai-codex/oauth/status — Poll dashboard OAuth flow status

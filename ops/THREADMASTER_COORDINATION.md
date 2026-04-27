@@ -46,6 +46,7 @@ Bus docs: `ops/threadmaster-bus/README.md`.
 | AOU Stub Finder                                       | AOU threadmaster                 | Stub discovery, connector/tool completeness, skeleton-vs-live implementation inventory                                    | Active in its own threadmaster lane                                                                                                                             | Report stub findings here before changing shared runtime or connector surfaces                              |
 | AOS connectors                                        | Codex AOS connector threadmaster | `tools/aos/**`, connector manifests, operator service-key resolution, connector command capability surfaces               | Branch `codex/aos-holace-loop` from `origin/dev` `4ad2a5a8`; current slice owns `tools/aos/aos-holace/**` to convert the stub into a truthful AOS CLI connector | Workflows/AppForge should consume connector metadata/capabilities, not private connector internals          |
 | OpenClaw 4.24 realtime/browser/marketplace comparison | Codex OpenClaw threadmaster      | Upstream 4.24 feature comparison, browser harness/realtime voice/Google Meet marketplace-plugin recommendations           | Active on `codex/openclaw-audio-process` at `43e297df`; release changelog packet and live Meet open-tab smoke runbook pushed                                    | Owns OpenClaw extension slices plus ops handoffs; no join/create/leave/audio Meet claims without approval   |
+| OpenAI Codex device OAuth                             | Codex auth slice                 | OpenAI Codex OAuth reconnect/login, dashboard auth start/status UX, auth profile refresh/import                           | Clean handoff branch `codex/openai-codex-device-flow`; see `ops/HANDOFF_OPENAI_CODEX_DEVICE_FLOW.md`                                                               | Coordinates with dashboard/settings and auth-profile owners before changing provider defaults               |
 
 ## Overlap Zones
 
@@ -321,6 +322,10 @@ Lane: OpenClaw 4.24 realtime/browser/marketplace comparison. Branch/commit: `cod
 ### 2026-04-26 — AppForge Browser Save Overlap
 
 Lane: AppForge 2.0. Branch: `codex/appforge-phase-3d-browser-save-fix` from `origin/dev`. Current AppForge-owned files: `dashboard/src/hooks/useForgeStructuredData.ts`, `src/infra/app-forge-structured-hook.test.ts`, and `src/infra/app-forge-structured-data.test.ts`. Narrow overlap: browser preview table edits timed out through the Vite `/api/apps/:id` write path from the in-app browser, even though shell calls to the same preview endpoint succeeded. AppForge is using an AppForge-specific metadata save API route plus direct loopback API call for preview/runtime reliability. Workflows reaction: none; this remains AppForge metadata persistence only and does not change the `workflows.emitAppForgeEvent` contract.
+
+### 2026-04-27 — OpenAI Codex Device OAuth Handoff
+
+Lane: OpenAI Codex device OAuth. Branch: `codex/openai-codex-device-flow` in clean worktree `/Users/sem/code/worktrees/argent-core-codex-device-flow`. This slice replaces the OpenAI Codex reconnect/login callback dependency with a device-code flow for CLI onboarding and dashboard reconnect while preserving existing auth profile storage. Handoff details, changed files, verification, and manual live-test ask are in `ops/HANDOFF_OPENAI_CODEX_DEVICE_FLOW.md`.
 
 ## Verification Snapshot
 

@@ -6602,6 +6602,12 @@ export function ConfigPanel({
       }
 
       window.open(String(startData.authUrl), "_blank", "noopener,noreferrer");
+      if (startData.userCode) {
+        setAuthMessage({
+          type: "success",
+          text: `OpenAI Codex code: ${String(startData.userCode)}`,
+        });
+      }
 
       const state = String(startData.state);
       const deadline = Date.now() + Math.max(Number(startData.expiresInMs || 0), 60_000);
