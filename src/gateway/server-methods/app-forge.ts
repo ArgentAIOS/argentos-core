@@ -4,11 +4,22 @@ import { getPgClient } from "../../data/pg-client.js";
 import { isPostgresEnabled } from "../../data/storage-config.js";
 import { resolveRuntimeStorageConfig } from "../../data/storage-resolver.js";
 import {
+  buildAppForgePermissionCheckAuditEvent,
+  canWriteAppForge,
+  coerceAppForgePermissionScope,
+  normalizeAppForgeActor,
+} from "../../infra/app-forge-permissions.js";
+import {
   type AppForgeAdapter,
   createInMemoryAppForgeStore,
   createPostgresAppForgeStore,
 } from "../../infra/app-forge-store.js";
+import {
+  buildAppForgeRecordMutationEvent,
+  buildAppForgeTableMutationEvent,
+} from "../../infra/appforge-workflow-events.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+import { workflowsHandlers } from "./workflows.js";
 
 let cachedAdapter: AppForgeAdapter | null = null;
 
@@ -89,6 +100,122 @@ function asAppForgeRecord(value: unknown): AppForgeRecord | null {
   return value as AppForgeRecord;
 }
 
+function appForgeWriteGuard(
+  params: Record<string, unknown>,
+  appId: string,
+):
+  | { ok: true }
+  | {
+      ok: false;
+      message: string;
+      details?: Record<string, unknown>;
+    } {
+  const hasActor = params.actor !== undefined;
+  const hasPermissions = params.permissions !== undefined;
+  if (!hasActor && !hasPermissions) {
+    return { ok: true };
+  }
+  if (!hasActor || !hasPermissions) {
+    return {
+      ok: false,
+      message: "actor and permissions are required together for AppForge multi-user writes",
+    };
+  }
+
+  let actor;
+  try {
+    actor = normalizeAppForgeActor(params.actor as Parameters<typeof normalizeAppForgeActor>[0]);
+  } catch {
+    return { ok: false, message: "valid AppForge actor is required" };
+  }
+
+  const permissions = coerceAppForgePermissionScope(params.permissions);
+  if (!permissions) {
+    return { ok: false, message: "valid AppForge permissions are required" };
+  }
+
+  if (canWriteAppForge(permissions, actor)) {
+    return { ok: true };
+  }
+
+  return {
+    ok: false,
+    message: "unauthorized appforge write",
+    details: {
+      audit: buildAppForgePermissionCheckAuditEvent({
+        appId,
+        actor,
+        permissions,
+        permission: "write",
+        allowed: false,
+        reason: "actor lacks owner/editor AppForge access",
+      }),
+    },
+  };
+}
+
+function booleanParam(params: Record<string, unknown>, name: string): boolean | undefined {
+  const value = params[name];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function isWebchatClient(client: { connect?: { client?: { id?: string } } } | null): boolean {
+  return client?.connect?.client?.id === "webchat";
+}
+
+function shouldEmitWorkflowEvent(
+  client: { connect?: { client?: { id?: string } } } | null,
+  params: Record<string, unknown>,
+): boolean {
+  const explicit = booleanParam(params, "emitWorkflowEvent");
+  if (explicit !== undefined) {
+    return explicit;
+  }
+  // The current dashboard AppForge path already emits through its workflow-event API after
+  // metadata/gateway persistence. Suppress automatic gateway-side emission for that client
+  // until structured storage becomes the single source of truth.
+  return !isWebchatClient(client);
+}
+
+async function emitWorkflowEventBestEffort(
+  eventParams: Record<string, unknown>,
+  opts: Parameters<NonNullable<(typeof workflowsHandlers)["workflows.emitAppForgeEvent"]>>[0],
+): Promise<void> {
+  const handler = workflowsHandlers["workflows.emitAppForgeEvent"];
+  if (!handler) {
+    return;
+  }
+
+  let emitError: unknown;
+  try {
+    await handler({
+      ...opts,
+      req: {
+        type: "req",
+        id: `${opts.req.id}:appforge-event`,
+        method: "workflows.emitAppForgeEvent",
+        params: eventParams,
+      },
+      params: eventParams,
+      respond: (ok, _payload, error) => {
+        if (!ok) {
+          emitError = error ?? new Error("failed to emit AppForge workflow event");
+        }
+      },
+    });
+  } catch (error) {
+    emitError = error;
+  }
+
+  if (emitError) {
+    console.warn("[AppForge] Failed to emit workflow event after gateway mutation.", {
+      method: opts.req.method,
+      eventType: eventParams.eventType,
+      error: emitError,
+    });
+  }
+}
+
 export function resetAppForgeAdapterForTests(seed: AppForgeBase[] = []) {
   cachedAdapter = createInMemoryAppForgeStore(seed);
 }
@@ -125,6 +252,16 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       return;
     }
 
+    const guard = appForgeWriteGuard(params, base.appId);
+    if (!guard.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+      );
+      return;
+    }
+
     const result = await adapter.putBase({
       base,
       expectedRevision: optionalNumberParam(params, "expectedRevision"),
@@ -147,6 +284,24 @@ export const appForgeHandlers: GatewayRequestHandlers = {
     if (!baseId) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "baseId is required"));
       return;
+    }
+
+    if (params.actor !== undefined || params.permissions !== undefined) {
+      const current = await adapter.getBase(baseId);
+      if (!current) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "base not found"));
+        return;
+      }
+
+      const guard = appForgeWriteGuard(params, current.appId);
+      if (!guard.ok) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details),
+        );
+        return;
+      }
     }
 
     const result = await adapter.deleteBase(baseId, {
@@ -196,7 +351,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
     respond(true, { table }, undefined);
   },
 
-  "appforge.tables.put": async ({ params, respond }) => {
+  "appforge.tables.put": async ({ req, params, client, context, isWebchatConnect, respond }) => {
     const adapter = getAppForgeAdapter();
     const baseId = stringParam(params, "baseId");
     const table = asAppForgeTable(params.table);
@@ -222,10 +377,25 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       );
       return;
     }
+    if (shouldEmitWorkflowEvent(client, params)) {
+      const event = buildAppForgeTableMutationEvent({
+        action: result.table.revision <= 1 ? "created" : "updated",
+        base: result.base,
+        table: result.table,
+      });
+      await emitWorkflowEventBestEffort(event as Record<string, unknown>, {
+        req,
+        params,
+        client,
+        context,
+        isWebchatConnect,
+        respond,
+      });
+    }
     respond(true, { base: result.base, table: result.table }, undefined);
   },
 
-  "appforge.tables.delete": async ({ params, respond }) => {
+  "appforge.tables.delete": async ({ req, params, client, context, isWebchatConnect, respond }) => {
     const adapter = getAppForgeAdapter();
     const baseId = stringParam(params, "baseId");
     const tableId = stringParam(params, "tableId");
@@ -249,6 +419,25 @@ export const appForgeHandlers: GatewayRequestHandlers = {
         errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
       );
       return;
+    }
+    if (shouldEmitWorkflowEvent(client, params)) {
+      const event = buildAppForgeTableMutationEvent({
+        action: "deleted",
+        base: result.base,
+        table: result.table,
+        nextActiveTableId:
+          result.base.activeTableId && result.base.activeTableId !== result.table.id
+            ? result.base.activeTableId
+            : undefined,
+      });
+      await emitWorkflowEventBestEffort(event as Record<string, unknown>, {
+        req,
+        params,
+        client,
+        context,
+        isWebchatConnect,
+        respond,
+      });
     }
     respond(true, { base: result.base, table: result.table }, undefined);
   },
@@ -293,7 +482,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
     respond(true, { record }, undefined);
   },
 
-  "appforge.records.put": async ({ params, respond }) => {
+  "appforge.records.put": async ({ req, params, client, context, isWebchatConnect, respond }) => {
     const adapter = getAppForgeAdapter();
     const baseId = stringParam(params, "baseId");
     const tableId = stringParam(params, "tableId");
@@ -321,10 +510,33 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       );
       return;
     }
+    if (shouldEmitWorkflowEvent(client, params)) {
+      const event = buildAppForgeRecordMutationEvent({
+        action: result.record.revision <= 1 ? "created" : "updated",
+        base: result.base,
+        table: result.table,
+        record: result.record,
+      });
+      await emitWorkflowEventBestEffort(event as Record<string, unknown>, {
+        req,
+        params,
+        client,
+        context,
+        isWebchatConnect,
+        respond,
+      });
+    }
     respond(true, { base: result.base, table: result.table, record: result.record }, undefined);
   },
 
-  "appforge.records.delete": async ({ params, respond }) => {
+  "appforge.records.delete": async ({
+    req,
+    params,
+    client,
+    context,
+    isWebchatConnect,
+    respond,
+  }) => {
     const adapter = getAppForgeAdapter();
     const baseId = stringParam(params, "baseId");
     const tableId = stringParam(params, "tableId");
@@ -350,6 +562,22 @@ export const appForgeHandlers: GatewayRequestHandlers = {
         errorShape(ErrorCodes.INVALID_REQUEST, result.message, { details: result }),
       );
       return;
+    }
+    if (shouldEmitWorkflowEvent(client, params)) {
+      const event = buildAppForgeRecordMutationEvent({
+        action: "deleted",
+        base: result.base,
+        table: result.table,
+        record: result.record,
+      });
+      await emitWorkflowEventBestEffort(event as Record<string, unknown>, {
+        req,
+        params,
+        client,
+        context,
+        isWebchatConnect,
+        respond,
+      });
     }
     respond(true, { base: result.base, table: result.table, record: result.record }, undefined);
   },

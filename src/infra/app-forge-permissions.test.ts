@@ -5,6 +5,7 @@ import {
   canAdminAppForge,
   canReadAppForge,
   canWriteAppForge,
+  coerceAppForgePermissionScope,
   createAppForgePermissions,
   createDefaultAppForgePermissions,
   normalizeAppForgeActor,
@@ -88,6 +89,23 @@ describe("AppForge permissions seam", () => {
     expect(canReadAppForge(permissions, "owner-1")).toBe(true);
     expect(canWriteAppForge(permissions, "owner-1")).toBe(true);
     expect(canAdminAppForge(permissions, "owner-1")).toBe(true);
+  });
+
+  it("coerces raw ACL claims into a normalized permission scope", () => {
+    const scope = coerceAppForgePermissionScope({
+      owners: [{ actorId: "owner-1", actorType: "operator", addedAt: "ignored" }],
+      editors: ["owner-1", { actorId: "editor-1", actorType: "system" }],
+      viewers: ["editor-1", "viewer-1", "viewer-1"],
+    });
+
+    expect(scope).toMatchObject({
+      owners: [{ actorId: "owner-1", actorType: "operator" }],
+      editors: [{ actorId: "editor-1", actorType: "system" }],
+      viewers: [{ actorId: "viewer-1" }],
+    });
+    expect(scope?.owners[0]?.addedAt).toEqual(expect.any(String));
+    expect(coerceAppForgePermissionScope({ owners: ["owner-1"], editors: "nope" })).toBeNull();
+    expect(coerceAppForgePermissionScope(null)).toBeNull();
   });
 
   it("builds permission audit events with computed role and ACL snapshot", () => {

@@ -1,8 +1,49 @@
 import { describe, expect, it } from "vitest";
+import type { AppForgeBase, AppForgeRecord, AppForgeTable } from "./app-forge-model.js";
 import {
   appForgeEventMatchesTriggerConfig,
+  buildAppForgeRecordMutationEvent,
+  buildAppForgeTableMutationEvent,
   normalizeAppForgeWorkflowEvent,
 } from "./appforge-workflow-events.js";
+
+function base(overrides: Partial<AppForgeBase> = {}): AppForgeBase {
+  return {
+    id: "base-1",
+    appId: "app-1",
+    name: "Campaign Review",
+    activeTableId: "table-1",
+    revision: 3,
+    updatedAt: "2026-04-26T12:00:00.000Z",
+    tables: [],
+    ...overrides,
+  };
+}
+
+function table(overrides: Partial<AppForgeTable> = {}): AppForgeTable {
+  return {
+    id: "table-1",
+    name: "Reviews",
+    revision: 4,
+    fields: [
+      { id: "status", name: "Status", type: "text" },
+      { id: "owner", name: "Owner", type: "text" },
+    ],
+    records: [],
+    ...overrides,
+  };
+}
+
+function record(overrides: Partial<AppForgeRecord> = {}): AppForgeRecord {
+  return {
+    id: "record-1",
+    revision: 2,
+    values: { status: "Ready", owner: "Avery" },
+    createdAt: "2026-04-26T11:00:00.000Z",
+    updatedAt: "2026-04-26T12:00:00.000Z",
+    ...overrides,
+  };
+}
 
 describe("AppForge workflow events", () => {
   it.each([
@@ -137,5 +178,65 @@ describe("AppForge workflow events", () => {
     expect(appForgeEventMatchesTriggerConfig(event, { eventFilter: { decision: "denied" } })).toBe(
       false,
     );
+  });
+
+  it("builds canonical table mutation payloads for producer bridges", () => {
+    const event = buildAppForgeTableMutationEvent({
+      action: "deleted",
+      base: base({ revision: 6, activeTableId: "table-2" }),
+      table: table({ records: [record()], revision: 5 }),
+      nextActiveTableId: "table-2",
+      payload: { reason: "cleanup" },
+    });
+
+    expect(event).toEqual({
+      eventType: "forge.table.deleted",
+      appId: "app-1",
+      baseId: "base-1",
+      tableId: "table-1",
+      payload: {
+        baseId: "base-1",
+        baseRevision: 6,
+        tableId: "table-1",
+        tableName: "Reviews",
+        tableRevision: 5,
+        fieldIds: ["status", "owner"],
+        recordCount: 1,
+        changeType: "table.deleted",
+        nextActiveTableId: "table-2",
+        reason: "cleanup",
+      },
+    });
+  });
+
+  it("builds canonical record mutation payloads for producer bridges", () => {
+    const event = buildAppForgeRecordMutationEvent({
+      action: "updated",
+      base: base({ revision: 7 }),
+      table: table({ revision: 6 }),
+      record: record({ revision: 3, values: { status: "Approved", owner: "Jordan" } }),
+      payload: { fieldId: "status", value: "Approved" },
+    });
+
+    expect(event).toEqual({
+      eventType: "forge.record.updated",
+      appId: "app-1",
+      baseId: "base-1",
+      tableId: "table-1",
+      recordId: "record-1",
+      payload: {
+        baseId: "base-1",
+        baseRevision: 7,
+        tableId: "table-1",
+        tableName: "Reviews",
+        tableRevision: 6,
+        recordId: "record-1",
+        recordRevision: 3,
+        values: { status: "Approved", owner: "Jordan" },
+        changeType: "record.updated",
+        fieldId: "status",
+        value: "Approved",
+      },
+    });
   });
 });

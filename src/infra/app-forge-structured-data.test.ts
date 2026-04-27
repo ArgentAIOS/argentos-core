@@ -43,7 +43,7 @@ describe("forge structured data metadata", () => {
       "capability",
     ]);
     expect(base.tables[0]?.records[0]?.values).toMatchObject({
-      name: "Campaign Review",
+      name: "Sample: Campaign Review",
       capability: "campaign_review",
     });
   });
@@ -366,5 +366,16 @@ describe("forge structured data metadata", () => {
 
     expect(message).toContain("Reload AppForge");
     expect(forgeStructuredDataTestUtils.isRevisionConflictError(message)).toBe(true);
+  });
+
+  it("formats timeout and abort save failures for operator recovery", () => {
+    expect(
+      forgeStructuredDataTestUtils.formatStructuredSaveError(
+        new Error("signal is aborted without reason"),
+      ),
+    ).toBe("Timed out while saving structured base changes. Try again.");
+    expect(
+      forgeStructuredDataTestUtils.formatStructuredSaveError(new Error("Request timeout")),
+    ).toBe("Timed out while saving structured base changes. Try again.");
   });
 });

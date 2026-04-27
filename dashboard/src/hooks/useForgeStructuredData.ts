@@ -2,7 +2,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppForgeWorkflowEventRequest, ForgeApp } from "./useApps";
 import { fetchLocalApi } from "../utils/localApiFetch";
 
-export type ForgeFieldType = "text" | "single_select" | "number" | "date" | "checkbox";
+export type ForgeFieldType =
+  | "text"
+  | "long_text"
+  | "single_select"
+  | "multi_select"
+  | "number"
+  | "date"
+  | "checkbox"
+  | "url"
+  | "email"
+  | "attachment"
+  | "linked_record";
 
 export type ForgeStructuredField = {
   id: string;
@@ -13,7 +24,7 @@ export type ForgeStructuredField = {
   options?: string[];
 };
 
-export type ForgeStructuredRecordValue = string | number | boolean | null;
+export type ForgeStructuredRecordValue = string | number | boolean | string[] | null;
 
 export type ForgeStructuredRecord = {
   id: string;
@@ -108,6 +119,8 @@ type UseForgeStructuredDataReturn = {
   completeCapability: (recordId: string) => Promise<void>;
 };
 
+const EMPTY_STRUCTURED_TABLES: ForgeStructuredTable[] = [];
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -133,7 +146,33 @@ function nowIso(): string {
 }
 
 function cloneValue(value: ForgeStructuredRecordValue): ForgeStructuredRecordValue {
-  return value;
+  return Array.isArray(value) ? [...value] : value;
+}
+
+function stringArrayValue(value: unknown): string[] | undefined {
+  if (typeof value === "string") {
+    return value
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function isArrayFieldType(
+  type: ForgeFieldType,
+): type is "multi_select" | "attachment" | "linked_record" {
+  return type === "multi_select" || type === "attachment" || type === "linked_record";
+}
+
+function fieldSupportsOptions(type: ForgeFieldType): boolean {
+  return type === "single_select" || type === "multi_select";
 }
 
 function defaultValueForField(field: ForgeStructuredField, label = ""): ForgeStructuredRecordValue {
@@ -145,6 +184,9 @@ function defaultValueForField(field: ForgeStructuredField, label = ""): ForgeStr
   }
   if (field.type === "single_select") {
     return field.options?.[0] ?? "";
+  }
+  if (isArrayFieldType(field.type)) {
+    return [];
   }
   return label;
 }
@@ -169,6 +211,13 @@ function coerceValueForField(
   if (field.type === "single_select") {
     const text = value === null || value === undefined ? "" : String(value);
     return field.options?.includes(text) ? text : (field.options?.[0] ?? "");
+  }
+  if (isArrayFieldType(field.type)) {
+    const parsed = stringArrayValue(value) ?? [];
+    if (field.type === "multi_select" && field.options?.length) {
+      return parsed.filter((option) => field.options?.includes(option));
+    }
+    return parsed;
   }
   return value === null || value === undefined ? "" : String(value);
 }
@@ -240,11 +289,11 @@ function defaultRecords(app: ForgeApp): ForgeStructuredRecord[] {
   const createdAt = app.createdAt || nowIso();
   const updatedAt = app.updatedAt || createdAt;
   const baseNames = [
-    app.name,
-    "Website Redesign",
-    "Review Queue",
-    "Asset Approval",
-    "Launch Checklist",
+    `Sample: ${app.name}`,
+    "Sample: Website Redesign",
+    "Sample: Review Queue",
+    "Sample: Asset Approval",
+    "Sample: Launch Checklist",
   ];
   const statuses = ["In Progress", "Planning", "Review", "On Track", "Blocked"];
   const owners = [app.creator || "ai", "Avery Vargas", "Jordan Kim", "Taylor Chen", "Morgan Lee"];
@@ -291,10 +340,16 @@ function normalizeField(value: unknown): ForgeStructuredField | null {
   }
   const rawType = stringValue(value.type);
   const type: ForgeFieldType =
+    rawType === "long_text" ||
     rawType === "single_select" ||
+    rawType === "multi_select" ||
     rawType === "number" ||
     rawType === "date" ||
-    rawType === "checkbox"
+    rawType === "checkbox" ||
+    rawType === "url" ||
+    rawType === "email" ||
+    rawType === "attachment" ||
+    rawType === "linked_record"
       ? rawType
       : "text";
   return {
@@ -309,7 +364,10 @@ function normalizeField(value: unknown): ForgeStructuredField | null {
   };
 }
 
-function normalizeRecord(value: unknown): ForgeStructuredRecord | null {
+function normalizeRecord(
+  value: unknown,
+  fields: ForgeStructuredField[] = [],
+): ForgeStructuredRecord | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -319,9 +377,22 @@ function normalizeRecord(value: unknown): ForgeStructuredRecord | null {
     return null;
   }
   const normalizedValues: Record<string, ForgeStructuredRecordValue> = {};
+  if (fields.length > 0) {
+    for (const field of fields) {
+      normalizedValues[field.id] = coerceValueForField(values[field.id], field);
+    }
+  }
   for (const [key, raw] of Object.entries(values)) {
+    if (key in normalizedValues) {
+      continue;
+    }
     if (raw === null || typeof raw === "string" || typeof raw === "boolean") {
       normalizedValues[key] = raw;
+      continue;
+    }
+    const arrayValue = stringArrayValue(raw);
+    if (arrayValue) {
+      normalizedValues[key] = arrayValue;
       continue;
     }
     const numeric = numberValue(raw);
@@ -352,7 +423,7 @@ function normalizeTable(value: unknown): ForgeStructuredTable | null {
     : [];
   const records = Array.isArray(value.records)
     ? value.records
-        .map(normalizeRecord)
+        .map((record) => normalizeRecord(record, fields))
         .filter((record): record is ForgeStructuredRecord => !!record)
     : [];
   return {
@@ -379,9 +450,6 @@ function normalizeBase(app: ForgeApp): ForgeStructuredBase {
   const tables = Array.isArray(payload.tables)
     ? payload.tables.map(normalizeTable).filter((table): table is ForgeStructuredTable => !!table)
     : [];
-  if (tables.length === 0) {
-    return fallback;
-  }
   const activeTableId = stringValue(payload.activeTableId);
   return {
     id: stringValue(payload.baseId) ?? fallback.id,
@@ -391,7 +459,7 @@ function normalizeBase(app: ForgeApp): ForgeStructuredBase {
     activeTableId:
       activeTableId && tables.some((table) => table.id === activeTableId)
         ? activeTableId
-        : tables[0].id,
+        : (tables[0]?.id ?? ""),
     tables,
     updatedAt: stringValue(payload.updatedAt) ?? app.updatedAt ?? fallback.updatedAt,
   };
@@ -409,7 +477,7 @@ function normalizeGatewayBase(value: unknown): ForgeStructuredBase | null {
   }
   const tables = Array.isArray(value.tables)
     ? value.tables.map(normalizeTable).filter((table): table is ForgeStructuredTable => !!table)
-    : [];
+    : EMPTY_STRUCTURED_TABLES;
   const activeTableId = stringValue(value.activeTableId);
   return {
     id,
@@ -655,7 +723,157 @@ function formatStructuredSaveError(err: unknown): string {
   if (isRevisionConflictError(err)) {
     return `This table changed elsewhere. Reload AppForge and try again. ${message}`;
   }
+  if (/aborted|aborterror|request timeout|timed out/i.test(message)) {
+    return "Timed out while saving structured base changes. Try again.";
+  }
   return message || "Failed to save structured base";
+}
+
+async function fetchSameOriginLocalApi(
+  path: string,
+  init: RequestInit,
+  timeoutMs = 10_000,
+): Promise<Response> {
+  if (typeof window !== "undefined" && typeof window.XMLHttpRequest === "function") {
+    return xhrSameOriginLocalApi(path, init, timeoutMs);
+  }
+  if (!timeoutMs || timeoutMs <= 0) {
+    return fetch(path, init);
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(path, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function xhrSameOriginLocalApi(
+  path: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const xhr = new window.XMLHttpRequest();
+    xhr.open(init.method ?? "GET", path, true);
+    xhr.timeout = timeoutMs;
+    const headers = new Headers(init.headers ?? undefined);
+    headers.forEach((value, key) => xhr.setRequestHeader(key, value));
+    xhr.addEventListener("load", () => {
+      resolve(
+        new Response(xhr.responseText, {
+          status: xhr.status,
+          statusText: xhr.statusText,
+          headers: parseXhrHeaders(xhr.getAllResponseHeaders()),
+        }),
+      );
+    });
+    xhr.addEventListener("error", () =>
+      reject(new Error("Failed to save structured base metadata")),
+    );
+    xhr.addEventListener("timeout", () => reject(new Error("Request timeout")));
+    xhr.addEventListener("abort", () => reject(new Error("signal is aborted without reason")));
+    const body = typeof init.body === "string" ? init.body : null;
+    xhr.send(body);
+  });
+}
+
+function parseXhrHeaders(rawHeaders: string): Headers {
+  const headers = new Headers();
+  for (const line of rawHeaders.trim().split(/[\r\n]+/)) {
+    if (!line) {
+      continue;
+    }
+    const separator = line.indexOf(":");
+    if (separator <= 0) {
+      continue;
+    }
+    headers.append(line.slice(0, separator).trim(), line.slice(separator + 1).trim());
+  }
+  return headers;
+}
+
+function dashboardApiTokenFromUrl(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const params = new URLSearchParams(window.location.search);
+  return (params.get("api_token") ?? params.get("token"))?.trim() || null;
+}
+
+function directDashboardApiUrl(path: string): string | null {
+  if (typeof window === "undefined" || !path.startsWith("/")) {
+    return null;
+  }
+  return `http://${window.location.hostname}:9242${path}`;
+}
+
+async function patchStructuredMetadata(
+  app: ForgeApp,
+  base: ForgeStructuredBase,
+): Promise<Response> {
+  const payload = JSON.stringify({ metadata: metadataWithBase(app, base) });
+  const token = dashboardApiTokenFromUrl();
+  const patchInit = {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: payload,
+  };
+  const actionInit = {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=UTF-8",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: payload,
+  };
+  const actionPath = `/api/apps/${app.id}/appforge-metadata`;
+  const directActionUrl = directDashboardApiUrl(actionPath);
+  try {
+    const response = await fetchSameOriginLocalApi(
+      directActionUrl ?? actionPath,
+      actionInit,
+      6_000,
+    );
+    if (response.ok || (response.status !== 404 && response.status !== 405)) {
+      return response;
+    }
+  } catch (primaryErr) {
+    try {
+      return await fetchLocalApi(`/api/apps/${app.id}`, patchInit, 6_000);
+    } catch {
+      throw primaryErr;
+    }
+  }
+  return fetchLocalApi(`/api/apps/${app.id}`, patchInit, 6_000);
+}
+
+async function emitWorkflowEventBestEffort(
+  emitWorkflowEvent: UseForgeStructuredDataOptions["emitWorkflowEvent"],
+  appId: string,
+  event: Omit<AppForgeWorkflowEventRequest, "payload"> & {
+    payload?: Record<string, unknown>;
+  },
+): Promise<void> {
+  if (!emitWorkflowEvent) {
+    return;
+  }
+  try {
+    const emitted = await emitWorkflowEvent(appId, event);
+    if (!emitted) {
+      console.warn("[AppForge] Workflow event emit failed after structured save.", {
+        appId,
+        eventType: event.eventType,
+      });
+    }
+  } catch (err) {
+    console.warn("[AppForge] Workflow event emit failed after structured save.", {
+      appId,
+      eventType: event.eventType,
+      error: err,
+    });
+  }
 }
 
 async function mirrorGatewayMutation(
@@ -854,11 +1072,7 @@ export function useForgeStructuredData({
         }
 
         try {
-          const response = await fetchLocalApi(`/api/apps/${app.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ metadata: metadataWithBase(app, nextBase) }),
-          });
+          const response = await patchStructuredMetadata(app, nextBase);
           if (!response.ok) {
             throw new Error(`Failed to save structured base metadata (${response.status})`);
           }
@@ -877,10 +1091,10 @@ export function useForgeStructuredData({
           throw gatewayError ?? metadataError ?? new Error("Failed to save structured base");
         }
 
-        if (event && emitWorkflowEvent) {
-          await emitWorkflowEvent(app.id, event);
-        }
         setSaveStatus({ kind: "saved", message: "Saved", updatedAt: nowIso() });
+        if (event) {
+          void emitWorkflowEventBestEffort(emitWorkflowEvent, app.id, event);
+        }
       } catch (err) {
         const message = formatStructuredSaveError(err);
         setError(message);
@@ -1155,7 +1369,7 @@ export function useForgeStructuredData({
             id: field.id,
             name: updates.name?.trim() || field.name,
             options:
-              updates.type && updates.type !== "single_select"
+              updates.type && !fieldSupportsOptions(updates.type)
                 ? undefined
                 : (updates.options ?? field.options),
           };

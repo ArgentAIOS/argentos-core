@@ -108,6 +108,12 @@ function booleanValue(value: unknown): boolean | undefined {
 }
 
 function stringArrayValue(value: unknown): string[] | undefined {
+  if (typeof value === "string") {
+    return value
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
   if (!Array.isArray(value)) {
     return undefined;
   }
@@ -115,6 +121,12 @@ function stringArrayValue(value: unknown): string[] | undefined {
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function isArrayFieldType(
+  type: AppForgeFieldType,
+): type is "multi_select" | "attachment" | "linked_record" {
+  return type === "multi_select" || type === "attachment" || type === "linked_record";
 }
 
 function nowIso(): string {
@@ -163,7 +175,7 @@ export function coerceAppForgeRecordValue(
     if (field.type === "checkbox") {
       return false;
     }
-    if (field.type === "multi_select" || field.type === "attachment") {
+    if (isArrayFieldType(field.type)) {
       return [];
     }
     return "";
@@ -184,7 +196,7 @@ export function coerceAppForgeRecordValue(
     return null;
   }
 
-  if (field.type === "multi_select" || field.type === "attachment") {
+  if (isArrayFieldType(field.type)) {
     return stringArrayValue(value) ?? null;
   }
 
@@ -239,10 +251,10 @@ export function validateAppForgeRecordValues(
       errors.push(validationError(field, "invalid_option", `${field.name} has an invalid option.`));
     }
 
-    if (field.type === "multi_select") {
+    if (isArrayFieldType(field.type)) {
       if (!Array.isArray(value)) {
         errors.push(validationError(field, "invalid_array", `${field.name} must be an array.`));
-      } else if (field.options?.length) {
+      } else if (field.type === "multi_select" && field.options?.length) {
         const invalid = value.find((option) => !field.options?.includes(option));
         if (invalid) {
           errors.push(

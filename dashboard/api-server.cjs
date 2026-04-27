@@ -177,8 +177,10 @@ try {
 // ============================================
 const ALLOWED_ORIGINS = [
   "http://localhost:8080",
+  "http://localhost:8092",
   "http://localhost:5173",
   "http://127.0.0.1:8080",
+  "http://127.0.0.1:8092",
   "http://127.0.0.1:5173",
   "http://localhost:18789", // Gateway (Swift wrapper loads dashboard here)
   "http://127.0.0.1:18789", // Gateway (alternate)
@@ -203,7 +205,7 @@ try {
     }
   }
   for (const host of extraHosts) {
-    for (const port of [8080, 5173, 18789]) {
+    for (const port of [8080, 8092, 5173, 18789]) {
       const origin = `http://${host}:${port}`;
       if (!ALLOWED_ORIGINS.includes(origin)) {
         ALLOWED_ORIGINS.push(origin);
@@ -7371,6 +7373,35 @@ app.patch("/api/apps/:id", async (req, res) => {
     res.status(500).json({ error: "Failed to update app" });
   }
 });
+
+function parseAppForgeMetadataRequest(req) {
+  return typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+}
+
+// POST /api/apps/:id/appforge-metadata - Browser-safe AppForge metadata update
+app.post(
+  "/api/apps/:id/appforge-metadata",
+  express.text({ type: "text/plain", limit: "50mb" }),
+  async (req, res) => {
+    try {
+      const body = parseAppForgeMetadataRequest(req);
+      const metadata = body && typeof body === "object" ? body.metadata : undefined;
+      if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+        return res.status(400).json({ error: "metadata object is required" });
+      }
+      const app = await appsDb.updateApp(req.params.id, { metadata });
+      if (!app) {
+        return res.status(404).json({ error: "App not found" });
+      }
+      broadcastAppsEvent({ type: "app_updated", app: { id: app.id, name: app.name } });
+      emitAppForgeWorkflowEvent(appForgeRecordPayload(app, "updated"));
+      res.json({ app });
+    } catch (err) {
+      console.error("Error updating AppForge metadata:", err);
+      res.status(500).json({ error: "Failed to update AppForge metadata" });
+    }
+  },
+);
 
 // DELETE /api/apps/:id - Soft delete
 app.delete("/api/apps/:id", async (req, res) => {
