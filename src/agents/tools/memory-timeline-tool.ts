@@ -94,8 +94,8 @@ function isStrongCanonicalEntityName(value: string): boolean {
   );
 }
 
-function extractTemporalEntitySubject(query: string): string | null {
-  const trimmed = query.trim().replace(/[?!.\s]+$/g, "");
+function extractTemporalEntitySubject(query: string | null | undefined): string | null {
+  const trimmed = query?.trim().replace(/[?!.\s]+$/g, "") ?? "";
   if (!trimmed) return null;
 
   const patterns = [
@@ -327,7 +327,7 @@ export function createMemoryTimelineTool(options: {
     execute: async (_toolCallId, params) => {
       const rawQuery = readStringParam(params, "query");
       const explicitEntityName = readStringParam(params, "entity");
-      const memoryType = readStringParam(params, "type");
+      const memoryType = readStringParam(params, "type") ?? null;
       const inferredEntityName = explicitEntityName ? null : extractTemporalEntitySubject(rawQuery);
       const effectiveEntityName = explicitEntityName ?? inferredEntityName;
       const normalizedQuery = normalizeTimelineSearchQuery(rawQuery, effectiveEntityName);

@@ -177,6 +177,36 @@ Optional plugin tools:
 
 ## Tool inventory
 
+### `specforge`
+
+Run the Core development-project intake workflow before implementation starts.
+See [SpecForge](/tools/specforge).
+
+Notes:
+
+- Project-build requests such as "I want to build a project" should route through `specforge` first.
+- Core owns strict guide-mode intake and approval. Business-only autoscaffold/workforce execution remains outside Core.
+
+### `argent_search`
+
+Search tasks, long-term memory observations, and session records from one tool.
+
+Notes:
+
+- In strict PostgreSQL mode, `argent_search` uses the active storage adapter for task and long-term memory search instead of falling back to legacy SQLite/DataAPI.
+- Strict PostgreSQL session search is not part of the fallback path yet. Use `sessions_search` when you need transcript/session-only lookup.
+- If no results are found, the tool returns a normal empty-result message rather than a storage-mode error.
+
+### `memory_timeline`
+
+Show chronological long-term memory entries, optionally scoped by query, entity,
+type, date window, and limit.
+
+Notes:
+
+- The `query` field is optional. A call with only a date window or limit returns the recent timeline instead of failing.
+- Use `entity` for precise subject filtering when the natural-language query could be ambiguous.
+
 ### `apply_patch`
 
 Apply structured patches across one or more files. Use for multi-hunk edits.

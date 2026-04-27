@@ -40,6 +40,7 @@ export const PUBLIC_CORE_DEFAULT_TOOL_NAMES = [
   "sessions_search",
   "sessions_send",
   "sessions_spawn",
+  "specforge",
   "tasks",
   "terminal",
   "tool_search",
@@ -97,7 +98,6 @@ export const PUBLIC_CORE_BUSINESS_BLOCKED_TOOL_NAMES = [
   "intent_tool",
   "jobs_tool",
   "onboarding_pack",
-  "specforge",
   "workforce_setup_tool",
 ] as const;
 
@@ -138,7 +138,7 @@ export function isPublicCorePluginAllowed(
   if (!gate) {
     return true;
   }
-  const normalized = normalizeToolName(pluginId);
+  const normalized = typeof pluginId === "string" ? normalizeToolName(pluginId) : "";
   if (!normalized) {
     return false;
   }
@@ -155,7 +155,7 @@ export function isPublicCorePluginToolAllowed(
   if (!gate) {
     return true;
   }
-  const normalized = normalizeToolName(toolName);
+  const normalized = typeof toolName === "string" ? normalizeToolName(toolName) : "";
   if (!normalized) {
     return false;
   }

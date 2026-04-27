@@ -4,7 +4,9 @@
  */
 const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert");
+const fs = require("node:fs");
 const http = require("node:http");
+const path = require("node:path");
 
 let baseUrl;
 let server;
@@ -52,6 +54,22 @@ describe("Health", () => {
     const res = await api("GET", "/api/health");
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.data.status, "ok");
+  });
+});
+
+describe("Gateway RPC client identity", () => {
+  it("uses a gateway protocol-compatible client id and mode", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../api-server.cjs"), "utf8");
+    const connectBlockMatch = source.match(
+      /client:\s*\{[\s\S]*?displayName:\s*"Dashboard API"[\s\S]*?\}/,
+    );
+    assert.ok(connectBlockMatch);
+    const connectBlock = connectBlockMatch[0];
+
+    assert.match(connectBlock, /id:\s*"gateway-client"/);
+    assert.match(connectBlock, /mode:\s*"backend"/);
+    assert.doesNotMatch(connectBlock, /id:\s*"dashboard-api"/);
+    assert.doesNotMatch(connectBlock, /mode:\s*"api"/);
   });
 });
 

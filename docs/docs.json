@@ -866,6 +866,7 @@
                 "pages": [
                   "tools/lobster",
                   "tools/llm-task",
+                  "tools/specforge",
                   "tools/exec",
                   "tools/web",
                   "tools/apply-patch",
