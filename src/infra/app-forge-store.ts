@@ -25,6 +25,83 @@ type SqlClient = postgres.Sql;
 
 type RevisionConflict = Exclude<AppForgeWriteResult, { ok: true }>;
 
+type SqlClientWithUnsafe = SqlClient & {
+  unsafe?: (query: string, params?: unknown[]) => Promise<unknown>;
+};
+
+export const APP_FORGE_STORAGE_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS appforge_bases (
+  id              TEXT PRIMARY KEY,
+  app_id          TEXT NOT NULL,
+  name            TEXT NOT NULL,
+  description     TEXT,
+  active_table_id TEXT,
+  revision        INTEGER NOT NULL DEFAULT 0,
+  metadata        JSONB DEFAULT '{}',
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_appforge_bases_app
+  ON appforge_bases(app_id);
+
+CREATE INDEX IF NOT EXISTS idx_appforge_bases_updated
+  ON appforge_bases(updated_at);
+
+CREATE TABLE IF NOT EXISTS appforge_tables (
+  id         TEXT PRIMARY KEY,
+  base_id    TEXT NOT NULL REFERENCES appforge_bases(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  fields     JSONB NOT NULL DEFAULT '[]',
+  revision   INTEGER NOT NULL DEFAULT 0,
+  position   INTEGER NOT NULL DEFAULT 0,
+  metadata   JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_appforge_tables_base
+  ON appforge_tables(base_id);
+
+CREATE INDEX IF NOT EXISTS idx_appforge_tables_base_position
+  ON appforge_tables(base_id, position);
+
+CREATE TABLE IF NOT EXISTS appforge_records (
+  id         TEXT PRIMARY KEY,
+  base_id    TEXT NOT NULL REFERENCES appforge_bases(id) ON DELETE CASCADE,
+  table_id   TEXT NOT NULL REFERENCES appforge_tables(id) ON DELETE CASCADE,
+  "values"   JSONB NOT NULL DEFAULT '{}',
+  revision   INTEGER NOT NULL DEFAULT 0,
+  position   INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_appforge_records_table
+  ON appforge_records(table_id);
+
+CREATE INDEX IF NOT EXISTS idx_appforge_records_base_table
+  ON appforge_records(base_id, table_id);
+
+CREATE INDEX IF NOT EXISTS idx_appforge_records_table_updated
+  ON appforge_records(table_id, updated_at);
+
+CREATE TABLE IF NOT EXISTS appforge_idempotency_keys (
+  idempotency_key TEXT PRIMARY KEY,
+  operation       TEXT NOT NULL,
+  resource_type   TEXT NOT NULL,
+  resource_id     TEXT NOT NULL,
+  response        JSONB NOT NULL DEFAULT '{}',
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_appforge_idempotency_resource
+  ON appforge_idempotency_keys(resource_type, resource_id);
+
+CREATE INDEX IF NOT EXISTS idx_appforge_idempotency_created
+  ON appforge_idempotency_keys(created_at);
+`;
+
 type AppForgeBaseRow = {
   id: string;
   appId?: string;
@@ -387,9 +464,27 @@ export function createInMemoryAppForgeStore(seed: AppForgeBase[] = []): AppForge
   return createInMemoryAppForgeAdapter(seed);
 }
 
+export async function ensurePostgresAppForgeSchema(sql: SqlClient): Promise<void> {
+  const unsafe = (sql as SqlClientWithUnsafe).unsafe;
+  if (typeof unsafe !== "function") {
+    throw new Error("Postgres client does not support raw schema execution.");
+  }
+  await unsafe.call(sql, APP_FORGE_STORAGE_SCHEMA_SQL);
+}
+
 export function createPostgresAppForgeStore(sql: SqlClient): AppForgeStore {
+  let schemaReady: Promise<void> | null = null;
+  async function ensureReady() {
+    schemaReady ??= ensurePostgresAppForgeSchema(sql).catch((error) => {
+      schemaReady = null;
+      throw error;
+    });
+    await schemaReady;
+  }
+
   return {
     async listBases(opts) {
+      await ensureReady();
       const rows = opts?.appId
         ? await sql<AppForgeBaseRow[]>`
             SELECT
@@ -420,11 +515,13 @@ export function createPostgresAppForgeStore(sql: SqlClient): AppForgeStore {
     },
 
     async getBase(baseId) {
+      await ensureReady();
       const row = await selectBaseRow(sql, baseId);
       return row ? hydrateBase(sql, row) : null;
     },
 
     async putBase(write: AppForgeBaseWrite): Promise<AppForgeWriteResult> {
+      await ensureReady();
       const replay = await readIdempotency<AppForgeWriteResult>(sql, write.idempotencyKey);
       if (replay) {
         return replay;
@@ -490,6 +587,7 @@ export function createPostgresAppForgeStore(sql: SqlClient): AppForgeStore {
     },
 
     async deleteBase(baseId, opts): Promise<AppForgeWriteResult> {
+      await ensureReady();
       return await sql.begin(async (transaction) => {
         const tx = transactionSql(transaction);
         const currentRow = await selectBaseRow(tx, baseId);
@@ -511,11 +609,13 @@ export function createPostgresAppForgeStore(sql: SqlClient): AppForgeStore {
     },
 
     async listTables(baseId) {
+      await ensureReady();
       const tableRows = await listTableRows(sql, baseId);
       return Promise.all(tableRows.map((row) => hydrateTable(sql, baseId, row)));
     },
 
     async getTable(baseId, tableId) {
+      await ensureReady();
       const tableRow = await selectTableRow(sql, baseId, tableId);
       return tableRow ? hydrateTable(sql, baseId, tableRow) : null;
     },
@@ -525,6 +625,7 @@ export function createPostgresAppForgeStore(sql: SqlClient): AppForgeStore {
       table: AppForgeTable,
       opts?: AppForgeTableWriteOptions,
     ): Promise<AppForgeTableWriteResult> {
+      await ensureReady();
       const replay = await readIdempotency<AppForgeTableWriteResult>(sql, opts?.idempotencyKey);
       if (replay) {
         return replay;
@@ -653,6 +754,7 @@ export function createPostgresAppForgeStore(sql: SqlClient): AppForgeStore {
     },
 
     async deleteTable(baseId, tableId, opts): Promise<AppForgeTableWriteResult> {
+      await ensureReady();
       return await sql.begin(async (transaction) => {
         const tx = transactionSql(transaction);
         const baseRow = await selectBaseRow(tx, baseId);
@@ -713,6 +815,7 @@ export function createPostgresAppForgeStore(sql: SqlClient): AppForgeStore {
     },
 
     async listRecords(baseId, tableId) {
+      await ensureReady();
       const rows = await listRecordRows(sql, baseId, tableId);
       return rows.map(recordRowToRecord);
     },
@@ -723,6 +826,7 @@ export function createPostgresAppForgeStore(sql: SqlClient): AppForgeStore {
       record: AppForgeRecord,
       opts?: AppForgeRecordWriteOptions,
     ): Promise<AppForgeRecordWriteResult> {
+      await ensureReady();
       const replay = await readIdempotency<AppForgeRecordWriteResult>(sql, opts?.idempotencyKey);
       if (replay) {
         return replay;
@@ -845,6 +949,7 @@ export function createPostgresAppForgeStore(sql: SqlClient): AppForgeStore {
     },
 
     async deleteRecord(baseId, tableId, recordId, opts): Promise<AppForgeRecordWriteResult> {
+      await ensureReady();
       return await sql.begin(async (transaction) => {
         const tx = transactionSql(transaction);
         const baseRow = await selectBaseRow(tx, baseId);
