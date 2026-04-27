@@ -17,5 +17,57 @@
         "note": "Smoke test completed."
       }
     ]
+  },
+  {
+    "id": "task-20260427222958-9b6jkb",
+    "createdAt": "2026-04-27T22:29:58.902Z",
+    "updatedAt": "2026-04-27T22:29:58.902Z",
+    "from": "master",
+    "owner": "workflows",
+    "title": "Wire operator.alert.requested into shared alert router",
+    "body": "Implement the A2 workflow-owned hook from existing operator.alert.requested broadcasts to routeOperatorAlertEvent. Must be best-effort/non-blocking, avoid importing voice-call internals, preserve approval creation, and prove with focused tests plus repo-lane/diff checks before merge request.",
+    "status": "todo",
+    "priority": "high",
+    "branch": "dev",
+    "notes": []
+  },
+  {
+    "id": "task-20260427222958-0hf9vr",
+    "createdAt": "2026-04-27T22:29:58.923Z",
+    "updatedAt": "2026-04-27T22:29:58.923Z",
+    "from": "master",
+    "owner": "openclaw",
+    "title": "Continue bounded OpenClaw voice smoke evidence",
+    "body": "Proceed only in extension-owned voice-call/ops surfaces: prove operator alert voice dry-run/process behavior, privacy/gate labels, and runbook evidence. Do not touch workflow hook/gateway/schema surfaces unless separately assigned. Post merge request/evidence to bus when ready.",
+    "status": "todo",
+    "priority": "high",
+    "branch": "dev",
+    "notes": []
+  },
+  {
+    "id": "task-20260427223359-6ytxc2",
+    "createdAt": "2026-04-27T22:33:59.329Z",
+    "updatedAt": "2026-04-27T22:33:59.329Z",
+    "from": "master",
+    "owner": "aos",
+    "title": "Harden channel startup failures so gateway health stays responsive",
+    "body": "Investigate and patch gateway channel startup failure isolation for Telegram getUpdates 409 conflicts and Discord bad/partial app identity failures. Sem local workaround disabled channels.telegram.enabled and channels.discord.enabled to restore health, but core should ensure one bad channel cannot spin CPU, block health handshakes, or crash/wedge the gateway after argent update/restart. Required proof: focused channel startup/error tests, health remains responsive with failing Telegram/Discord configs, oxlint/diff check, repo-lane, and dev containment after merge.",
+    "status": "todo",
+    "priority": "high",
+    "branch": "dev",
+    "notes": []
+  },
+  {
+    "id": "task-20260427223553-kbi5mf",
+    "createdAt": "2026-04-27T22:35:53.326Z",
+    "updatedAt": "2026-04-27T22:35:53.326Z",
+    "from": "master",
+    "owner": "appforge",
+    "title": "Phase 1E validation + field model hardening",
+    "body": "Start after Phase 1D is in origin/dev as 96aa2df3. Harden TableForge/AppForge field validation and the field model: required/default/options constraints, honest validation errors, stable persistence, and regression tests. Keep workflow, connector, permissions, and schema/migration overlap behind explicit bus tasks before touching those surfaces. Submit merge request with focused tests, dashboard build/type proof, docs/changelog update, repo-lane, diff check, and origin/dev containment proof after merge.",
+    "status": "todo",
+    "priority": "high",
+    "branch": "dev",
+    "notes": []
   }
 ]
