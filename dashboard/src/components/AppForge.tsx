@@ -367,6 +367,63 @@ function statusBadgeClass(status: ForgeSurfaceStatus): string {
   return "border-white/12 bg-white/[0.04] text-white/55";
 }
 
+function newForgeId(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function buildTableForgeBaseCode(name: string): string {
+  const safeName = name.replace(/[<>&]/g, "");
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${safeName}</title><style>body{margin:0;background:#05070a;color:#e5edf5;font:14px system-ui,sans-serif;display:grid;place-items:center;min-height:100vh}.card{border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:24px;max-width:520px;background:rgba(255,255,255,.04)}h1{margin:0 0 8px;font-size:22px}p{color:rgba(229,237,245,.68);line-height:1.5}</style></head><body><main class="card"><h1>${safeName}</h1><p>This is a TableForge base shell. Edit the base, tables, fields, and records from the AppForge desktop.</p></main></body></html>`;
+}
+
+function buildEmptyTableForgeMetadata(baseId: string): Record<string, unknown> {
+  return {
+    appForge: {
+      structured: {
+        version: 1,
+        baseId,
+        activeTableId: "",
+        updatedAt: new Date().toISOString(),
+        tables: [],
+      },
+    },
+  };
+}
+
+function createTableForgeBaseApp(app: {
+  name: string;
+  description: string;
+  code: string;
+  metadata: Record<string, unknown>;
+}): Promise<ForgeApp> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", "/api/apps", true);
+    request.timeout = 8_000;
+    request.setRequestHeader("Content-Type", "application/json");
+    request.addEventListener("load", () => {
+      if (request.status < 200 || request.status >= 300) {
+        reject(new Error(`Failed to create base (${request.status})`));
+        return;
+      }
+      try {
+        const data = JSON.parse(request.responseText) as { app?: ForgeApp };
+        if (!data.app) {
+          reject(new Error("Create base response did not include an app"));
+          return;
+        }
+        resolve(data.app);
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error("Failed to parse create base response"));
+      }
+    });
+    request.addEventListener("error", () => reject(new Error("Failed to create base")));
+    request.addEventListener("timeout", () => reject(new Error("Timed out while creating base")));
+    request.addEventListener("abort", () => reject(new Error("Create base request aborted")));
+    request.send(JSON.stringify(app));
+  });
+}
+
 function loadAppForgeUiState(): AppForgeUiState {
   if (typeof window === "undefined") {
     return {};
@@ -531,7 +588,6 @@ export function AppForge({
   onOpenApp,
   onPinApp,
   onDeleteApp,
-  onNewApp,
   onRestoreApp,
   onFocusApp,
   gatewayConnected = false,
@@ -551,6 +607,7 @@ export function AppForge({
   const [building, setBuilding] = useState(false);
   const [newAppName, setNewAppName] = useState("");
   const [newAppDescription, setNewAppDescription] = useState("");
+  const [newBaseError, setNewBaseError] = useState<string | null>(null);
   const [workflowEventStatus, setWorkflowEventStatus] = useState<WorkflowEventStatus | null>(null);
   const [activeFilter, setActiveFilter] = useState<AppFilter>("all");
   const [activeSection, setActiveSection] = useState<(typeof APP_FORGE_NAV)[number]["id"]>(
@@ -570,7 +627,6 @@ export function AppForge({
   const [formRecordId, setFormRecordId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
-  const appCountAtBuild = useRef(0);
   const skipNextViewSettingsPersist = useRef(false);
 
   // Focus search on open
@@ -588,6 +644,7 @@ export function AppForge({
         setShowNewAppInput(false);
         setNewAppName("");
         setNewAppDescription("");
+        setNewBaseError(null);
         setBuilding(false);
         setWorkflowEventStatus(null);
         setActiveFilter("all");
@@ -618,25 +675,35 @@ export function AppForge({
     }
   }, [showNewAppInput]);
 
-  // Detect when a new app arrives while building
-  useEffect(() => {
-    if (building && apps.length > appCountAtBuild.current) {
-      queueMicrotask(() => {
-        setBuilding(false);
-        setShowNewAppInput(false);
-      });
-    }
-  }, [building, apps.length]);
-
-  const handleNewAppSubmit = useCallback(() => {
+  const handleNewAppSubmit = useCallback(async () => {
+    const name = newAppName.trim() || "Untitled Base";
     const description = newAppDescription.trim();
-    if (!description) {
+    if (!name) {
       return;
     }
-    appCountAtBuild.current = apps.length;
     setBuilding(true);
-    onNewApp(newAppName.trim(), description);
-  }, [newAppName, newAppDescription, onNewApp, apps.length]);
+    setNewBaseError(null);
+    try {
+      const baseId = newForgeId("base");
+      const app = await createTableForgeBaseApp({
+        name,
+        description,
+        code: buildTableForgeBaseCode(name),
+        metadata: buildEmptyTableForgeMetadata(baseId),
+      });
+      if (app.id) {
+        setSelectedAppId(app.id);
+        setActiveSection("bases");
+      }
+      setNewAppName("");
+      setNewAppDescription("");
+      setShowNewAppInput(false);
+    } catch (err) {
+      setNewBaseError(err instanceof Error ? err.message : "Failed to create base");
+    } finally {
+      setBuilding(false);
+    }
+  }, [newAppDescription, newAppName]);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -751,6 +818,7 @@ export function AppForge({
   const sectionSubtitle = sectionTruth.subtitle;
   const showsLiveTableWorkspace =
     activeSection === "desktop" || activeSection === "bases" || activeSection === "tables";
+  const activeBaseHasTables = (structured.activeBase?.tables.length ?? 0) > 0;
 
   useEffect(() => {
     skipNextViewSettingsPersist.current = true;
@@ -1196,7 +1264,9 @@ export function AppForge({
                           </div>
                           <div className="text-center">
                             <div className="text-sm text-white/58">New Base</div>
-                            <div className="mt-0.5 text-[11px] text-white/30">Preview builder</div>
+                            <div className="mt-0.5 text-[11px] text-white/30">
+                              Empty TableForge base
+                            </div>
                           </div>
                         </button>
                       </div>
@@ -1279,8 +1349,8 @@ export function AppForge({
                     {showsLiveTableWorkspace && (
                       <div className="mb-3 rounded-xl border border-sky-300/18 bg-sky-400/8 px-4 py-3 text-xs leading-5 text-sky-100/70">
                         Live TableForge foundation: selecting a base changes the table workspace;
-                        hovering only previews the card. New generated bases may start with sample
-                        rows until you edit or delete them.
+                        hovering only previews the card. New bases start empty; legacy fallback rows
+                        are labeled Sample when metadata has not been saved yet.
                       </div>
                     )}
 
@@ -1445,7 +1515,30 @@ export function AppForge({
                           </div>
 
                           <div className="overflow-auto">
-                            {activeViewMode === "grid" && (
+                            {!activeBaseHasTables ? (
+                              <div
+                                className="flex min-h-[390px] flex-col items-center justify-center px-6 text-center"
+                                data-testid="appforge-empty-base-onboarding"
+                              >
+                                <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-sky-300/20 bg-sky-400/10">
+                                  <Table2 className="h-7 w-7 text-sky-200" />
+                                </div>
+                                <div className="text-lg font-semibold text-white/86">
+                                  Create your first table
+                                </div>
+                                <div className="mt-2 max-w-md text-sm leading-6 text-white/48">
+                                  This base is live and empty. Add a table, then add fields and
+                                  records from the grid.
+                                </div>
+                                <button
+                                  onClick={() => void structured.addTable()}
+                                  className="mt-5 inline-flex items-center gap-2 rounded-xl bg-sky-500/18 px-4 py-2 text-sm font-medium text-sky-100 transition-colors hover:bg-sky-500/28"
+                                >
+                                  <Plus className="h-4 w-4" />
+                                  Create table
+                                </button>
+                              </div>
+                            ) : activeViewMode === "grid" ? (
                               <>
                                 <table className="w-full min-w-[780px] border-collapse text-left text-sm">
                                   <thead className="sticky top-0 z-10 bg-[#11171a] text-xs font-medium uppercase tracking-[0.08em] text-white/38">
@@ -1678,9 +1771,9 @@ export function AppForge({
                                   </span>
                                 </div>
                               </>
-                            )}
+                            ) : null}
 
-                            {activeViewMode === "kanban" && (
+                            {activeBaseHasTables && activeViewMode === "kanban" && (
                               <div className="grid min-w-[760px] grid-cols-4 gap-3 p-4">
                                 {recordsByField(
                                   structured.activeTable,
@@ -1725,7 +1818,7 @@ export function AppForge({
                               </div>
                             )}
 
-                            {activeViewMode === "form" && (
+                            {activeBaseHasTables && activeViewMode === "form" && (
                               <div className="space-y-4 p-4">
                                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/18 px-3 py-2">
                                   <div>
@@ -1831,7 +1924,7 @@ export function AppForge({
                               </div>
                             )}
 
-                            {activeViewMode === "review" && (
+                            {activeBaseHasTables && activeViewMode === "review" && (
                               <div className="space-y-3 p-4">
                                 {(reviewRecords.length > 0 ? reviewRecords : viewRecords).map(
                                   (record) => (
@@ -1886,7 +1979,7 @@ export function AppForge({
                   </div>
                 </section>
 
-                {/* Legacy preview app builder */}
+                {/* Native TableForge base creator */}
                 <AnimatePresence>
                   {(showNewAppInput || building) && (
                     <motion.div
@@ -1900,28 +1993,32 @@ export function AppForge({
                           <div className="flex flex-col items-center gap-3 py-4">
                             <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
                             <span className="text-white/60 text-sm">
-                              Building preview app shell for {newAppName || "your base"}...
+                              Creating {newAppName || "your base"}...
                             </span>
                             <span className="text-white/30 text-xs">
-                              This still uses the legacy AppForge generation path.
+                              Saving an empty TableForge base you can edit immediately.
                             </span>
                           </div>
                         ) : (
                           <>
                             <div className="flex items-center gap-2 mb-5">
                               <Sparkles className="w-5 h-5 text-purple-400" />
-                              <span className="text-white/80 font-medium">Preview App Builder</span>
+                              <span className="text-white/80 font-medium">New TableForge Base</span>
                             </div>
-                            <div className="mb-4 rounded-xl border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-xs leading-5 text-amber-100/75">
-                              Declaration: this is not TableForge-native base creation yet. It
-                              creates a legacy AppForge app shell that can expose structured
-                              metadata; durable base creation is the next product slice.
+                            <div className="mb-4 rounded-xl border border-emerald-300/20 bg-emerald-400/10 px-3 py-2 text-xs leading-5 text-emerald-100/75">
+                              Live: this creates an empty structured base. After it appears, create
+                              the first table from the table workspace.
                             </div>
+                            {newBaseError && (
+                              <div className="mb-4 rounded-xl border border-red-300/20 bg-red-500/10 px-3 py-2 text-xs leading-5 text-red-100/80">
+                                {newBaseError}
+                              </div>
+                            )}
 
                             <div className="space-y-4">
                               <div>
                                 <label className="block text-xs text-white/40 mb-1.5">
-                                  App shell name
+                                  Base name
                                 </label>
                                 <input
                                   ref={nameInputRef}
@@ -1940,20 +2037,20 @@ export function AppForge({
 
                               <div>
                                 <label className="block text-xs text-white/40 mb-1.5">
-                                  Describe the preview app shell
+                                  Description
                                 </label>
                                 <textarea
                                   value={newAppDescription}
                                   onChange={(e) => setNewAppDescription(e.target.value)}
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter" && e.metaKey) {
-                                      handleNewAppSubmit();
+                                      void handleNewAppSubmit();
                                     }
                                     if (e.key === "Escape") {
                                       setShowNewAppInput(false);
                                     }
                                   }}
-                                  placeholder="e.g. Create a project tracker shell with a review table, workflow capability metadata, and starter records."
+                                  placeholder="e.g. Marketing operations tracker for campaign launches, assets, reviews, and owners."
                                   rows={4}
                                   className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 text-sm resize-none"
                                 />
@@ -1969,11 +2066,11 @@ export function AppForge({
                               </button>
                               <button
                                 onClick={handleNewAppSubmit}
-                                disabled={!newAppDescription.trim()}
+                                disabled={building || !newAppName.trim()}
                                 className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:bg-white/5 disabled:text-white/20 rounded-xl text-white text-sm font-medium transition-colors flex items-center gap-2"
                               >
                                 <Send className="w-4 h-4" />
-                                Build Preview App
+                                Create Base
                               </button>
                             </div>
                             <p className="text-[10px] text-white/20 mt-3 text-center">

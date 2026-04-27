@@ -119,6 +119,8 @@ type UseForgeStructuredDataReturn = {
   completeCapability: (recordId: string) => Promise<void>;
 };
 
+const EMPTY_STRUCTURED_TABLES: ForgeStructuredTable[] = [];
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -287,11 +289,11 @@ function defaultRecords(app: ForgeApp): ForgeStructuredRecord[] {
   const createdAt = app.createdAt || nowIso();
   const updatedAt = app.updatedAt || createdAt;
   const baseNames = [
-    app.name,
-    "Website Redesign",
-    "Review Queue",
-    "Asset Approval",
-    "Launch Checklist",
+    `Sample: ${app.name}`,
+    "Sample: Website Redesign",
+    "Sample: Review Queue",
+    "Sample: Asset Approval",
+    "Sample: Launch Checklist",
   ];
   const statuses = ["In Progress", "Planning", "Review", "On Track", "Blocked"];
   const owners = [app.creator || "ai", "Avery Vargas", "Jordan Kim", "Taylor Chen", "Morgan Lee"];
@@ -448,9 +450,6 @@ function normalizeBase(app: ForgeApp): ForgeStructuredBase {
   const tables = Array.isArray(payload.tables)
     ? payload.tables.map(normalizeTable).filter((table): table is ForgeStructuredTable => !!table)
     : [];
-  if (tables.length === 0) {
-    return fallback;
-  }
   const activeTableId = stringValue(payload.activeTableId);
   return {
     id: stringValue(payload.baseId) ?? fallback.id,
@@ -460,7 +459,7 @@ function normalizeBase(app: ForgeApp): ForgeStructuredBase {
     activeTableId:
       activeTableId && tables.some((table) => table.id === activeTableId)
         ? activeTableId
-        : tables[0].id,
+        : (tables[0]?.id ?? ""),
     tables,
     updatedAt: stringValue(payload.updatedAt) ?? app.updatedAt ?? fallback.updatedAt,
   };
@@ -478,7 +477,7 @@ function normalizeGatewayBase(value: unknown): ForgeStructuredBase | null {
   }
   const tables = Array.isArray(value.tables)
     ? value.tables.map(normalizeTable).filter((table): table is ForgeStructuredTable => !!table)
-    : [];
+    : EMPTY_STRUCTURED_TABLES;
   const activeTableId = stringValue(value.activeTableId);
   return {
     id,

@@ -43,7 +43,7 @@ describe("forge structured data metadata", () => {
       "capability",
     ]);
     expect(base.tables[0]?.records[0]?.values).toMatchObject({
-      name: "Campaign Review",
+      name: "Sample: Campaign Review",
       capability: "campaign_review",
     });
   });
