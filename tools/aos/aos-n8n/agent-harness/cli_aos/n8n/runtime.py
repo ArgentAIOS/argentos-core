@@ -38,6 +38,14 @@ def _probe_exit_code(code: str | None) -> int:
     return 5
 
 
+def _probe_exit_code(code: str | None) -> int:
+    if code in {"N8N_SETUP_REQUIRED", "N8N_WRITE_BRIDGE_REQUIRED", "N8N_INVALID_URL", "N8N_AUTH_FAILED"}:
+        return 4
+    if code in {"N8N_NOT_FOUND", "N8N_WORKFLOW_NOT_FOUND"}:
+        return 6
+    return 5
+
+
 def _clean_pairs(items: tuple[str, ...]) -> tuple[dict[str, str], list[str]]:
     options: dict[str, str] = {}
     terms: list[str] = []

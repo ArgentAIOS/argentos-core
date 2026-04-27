@@ -6,6 +6,13 @@ from .constants import BACKEND_NAME, CONNECTOR_CATEGORIES, CONNECTOR_CATEGORY, C
 from .service_keys import service_key_details
 
 
+def _env_source(*names: str, default_source: str = "missing") -> str:
+    for name in names:
+        if os.getenv(name, "").strip():
+            return "env"
+    return default_source
+
+
 def resolve_runtime_values(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
     ctx_obj = ctx_obj or {}
     access_token_details = service_key_details("HOOTSUITE_ACCESS_TOKEN", ctx_obj)

@@ -154,7 +154,7 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("- Read: Read file contents");
     expect(prompt).toContain("- Exec: Run shell commands");
     expect(prompt).toContain(
-      "- If exactly one skill clearly applies: read its SKILL.md at <location> with `Read`, then follow it.",
+      "- If exactly one skill matches, overlaps with, or is even partially relevant to the task: read its SKILL.md at <location> with `Read`, then follow it.",
     );
     expect(prompt).toContain("Argent docs: /tmp/argent/docs");
     expect(prompt).toContain(
@@ -294,7 +294,7 @@ describe("buildAgentSystemPrompt", () => {
       "that operator procedure outranks a generic workspace skill when both seem applicable.",
     );
     expect(prompt).toContain(
-      "- If exactly one skill clearly applies: read its SKILL.md at <location> with `read`, then follow it.",
+      "- If exactly one skill matches, overlaps with, or is even partially relevant to the task: read its SKILL.md at <location> with `read`, then follow it.",
     );
   });
 

@@ -254,6 +254,25 @@ Lane: AppForge 2.0. Branch: `codex/appforge-phase-3d-browser-save-fix` from `ori
 
 ## Verification Snapshot
 
+Latest AOS focused verification after threadmaster bus adoption:
+
+- `pnpm threadmaster:status`
+- `pnpm threadmaster:list --lane aos --unacked`
+- `pnpm threadmaster:task-list --lane aos`
+- Isolated harness sweep, one connector `agent-harness` at a time:
+  - `aos-airtable`: 24 passed
+  - `aos-monday`: 15 passed
+  - `aos-hubspot`: 24 passed
+  - `aos-dart`: 11 passed
+  - `aos-zapier`: 13 passed
+  - `aos-n8n`: 12 passed
+  - `aos-hootsuite`: 14 passed
+  - `aos-slack`: 16 passed
+  - `aos-teams`: 13 passed
+  - `aos-buffer`: 15 passed
+  - `aos-discord-workflow`: 13 passed
+- `python -m json.tool` passed for all connector manifests above.
+
 Latest AppForge focused verification after rebase onto `origin/dev`:
 
 - `pnpm check:repo-lane`
