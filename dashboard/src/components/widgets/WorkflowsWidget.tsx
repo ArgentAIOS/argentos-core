@@ -8525,7 +8525,7 @@ function WorkflowCanvasInner({
   const importedFixtureReady = activeWorkflow?.importReport?.okForPinnedTestRun === true;
   const livePromotionReady =
     Boolean(activeWorkflow?.importReport) &&
-    activeWorkflow.importReport?.okForImport !== false &&
+    activeWorkflow?.importReport?.okForImport !== false &&
     missingLiveBindings.length === 0;
 
   useEffect(() => {
