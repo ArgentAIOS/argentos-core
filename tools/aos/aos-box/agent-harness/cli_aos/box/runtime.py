@@ -31,16 +31,6 @@ def _require_arg(value: str | None, *, code: str, message: str, detail_key: str,
     raise CliError(code=code, message=message, exit_code=4, details={detail_key: detail_value})
 
 
-def _parse_metadata_json(payload: str) -> dict[str, Any]:
-    try:
-        parsed = json.loads(payload)
-    except json.JSONDecodeError as err:
-        raise CliError(code="BOX_METADATA_JSON_INVALID", message="metadata_json must be valid JSON", exit_code=4, details={"error": str(err)}) from err
-    if not isinstance(parsed, dict):
-        raise CliError(code="BOX_METADATA_JSON_INVALID", message="metadata_json must decode to an object", exit_code=4, details={})
-    return parsed
-
-
 def capabilities_snapshot() -> dict[str, Any]:
     manifest = _load_manifest()
     read_support: dict[str, bool] = {}
@@ -90,8 +80,17 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     return {
         "status": status,
         "summary": probe["message"],
-        "connector": {"backend": BACKEND_NAME, "live_backend_available": bool(probe.get("ok")), "live_read_available": bool(probe.get("ok")), "write_bridge_available": bool(probe.get("ok")), "scaffold_only": False},
-        "auth": {"access_token_env": runtime["access_token_env"], "access_token_present": runtime["access_token_present"], "client_id_present": bool(runtime["client_id"]), "client_secret_present": bool(runtime["client_secret"]), "jwt_config_present": bool(runtime["jwt_config"])},
+        "connector": {"backend": BACKEND_NAME, "live_backend_available": bool(probe.get("ok")), "live_read_available": bool(probe.get("ok")), "write_bridge_available": False, "scaffold_only": False},
+        "auth": {
+            "access_token_env": runtime["access_token_env"],
+            "access_token_present": runtime["access_token_present"],
+            "client_id_present": bool(runtime["client_id"]),
+            "client_secret_present": bool(runtime["client_secret"]),
+            "jwt_config_present": bool(runtime["jwt_config"]),
+            "service_keys": runtime["service_keys"],
+            "operator_service_keys": runtime["service_keys"],
+            "sources": runtime["sources"],
+        },
         "scope": {"folder_id": runtime["folder_id"], "file_id": runtime["file_id"] or None},
         "checks": [
             {"name": "required_env", "ok": runtime["access_token_present"], "details": {"missing_keys": [] if runtime["access_token_present"] else [runtime["access_token_env"]]}},
@@ -103,6 +102,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             f"Set {runtime['access_token_env']} in API Keys.",
             f"Optionally set {runtime['folder_id_env']} and {runtime['file_id_env']} for default scope.",
             "Use file.list or folder.get to confirm the live backend responds.",
+            "Do not advertise Box write actions until a write bridge and approval policy are verified.",
         ],
     }
 
@@ -115,24 +115,16 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "status": "ready" if ready else ("needs_setup" if probe.get("code") == "BOX_SETUP_REQUIRED" else "degraded"),
         "summary": "Box connector diagnostics.",
         "runtime": {
-            "implementation_mode": "live_read_write",
+            "implementation_mode": "live_read_only",
             "command_readiness": {
                 "file.list": ready,
                 "file.get": ready,
-                "file.upload": ready and bool(runtime["file_path"]),
                 "file.download": ready,
-                "file.copy": ready and bool(runtime["file_id"]),
-                "file.move": ready and bool(runtime["file_id"]),
                 "folder.list": ready,
-                "folder.create": ready,
                 "folder.get": ready,
-                "share.create": ready and bool(runtime["file_id"]),
-                "share.update": ready and bool(runtime["file_id"]),
                 "collaboration.list": ready,
-                "collaboration.create": ready and bool(runtime["collaboration_email"]),
                 "search.query": ready,
                 "metadata.get": ready and bool(runtime["file_id"]),
-                "metadata.set": ready and bool(runtime["file_id"]),
             },
         },
         "checks": [
@@ -140,7 +132,12 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             {"name": "live_backend", "ok": ready, "details": probe.get("details", {})},
         ],
         "supported_read_commands": ["file.list", "file.get", "file.download", "folder.list", "folder.get", "collaboration.list", "search.query", "metadata.get"],
-        "supported_write_commands": ["file.upload", "file.copy", "file.move", "folder.create", "share.create", "share.update", "collaboration.create", "metadata.set"],
+        "supported_write_commands": [],
+        "next_steps": [
+            f"Set {runtime['access_token_env']} in API Keys.",
+            f"Optionally set {runtime['folder_id_env']}, {runtime['file_id_env']}, and {runtime['query_env']} for default scope.",
+            "Do not advertise Box write actions until a write bridge and approval policy are verified.",
+        ],
     }
 
 
@@ -162,39 +159,12 @@ def file_get_result(ctx_obj: dict[str, Any], *, file_id: str | None) -> dict[str
     return {"status": "live_read", "backend": BACKEND_NAME, "summary": f"Fetched file {resolved_file_id}.", "file": file_item, "scope_preview": _scope_preview("file.get", "file", {"file_id": resolved_file_id})}
 
 
-def file_upload_result(ctx_obj: dict[str, Any], *, folder_id: str | None, file_path: str | None, name: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    resolved_folder = folder_id or runtime["folder_id"] or "0"
-    resolved_path = _require_arg(file_path or runtime["file_path"], code="BOX_FILE_PATH_REQUIRED", message="file_path is required", detail_key="env", detail_value=runtime["file_path_env"])
-    client = create_client(ctx_obj)
-    upload = client.upload_file(folder_id=resolved_folder, file_path=resolved_path, name=name or runtime["file_name"] or None)
-    return {"status": "live_write", "backend": BACKEND_NAME, "summary": f"Uploaded file to folder {resolved_folder}.", "upload": upload, "scope_preview": _scope_preview("file.upload", "file", {"folder_id": resolved_folder})}
-
-
 def file_download_result(ctx_obj: dict[str, Any], *, file_id: str | None) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
     resolved_file_id = _require_arg(file_id or runtime["file_id"], code="BOX_FILE_ID_REQUIRED", message="file_id is required", detail_key="env", detail_value=runtime["file_id_env"])
     client = create_client(ctx_obj)
     download = client.download_file(resolved_file_id)
     return {"status": "live_read", "backend": BACKEND_NAME, "summary": f"Downloaded file {resolved_file_id}.", "download": download, "scope_preview": _scope_preview("file.download", "file", {"file_id": resolved_file_id})}
-
-
-def file_copy_result(ctx_obj: dict[str, Any], *, file_id: str | None, parent_id: str | None, name: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    resolved_file_id = _require_arg(file_id or runtime["file_id"], code="BOX_FILE_ID_REQUIRED", message="file_id is required", detail_key="env", detail_value=runtime["file_id_env"])
-    resolved_parent_id = _require_arg(parent_id or runtime["parent_id"], code="BOX_PARENT_ID_REQUIRED", message="parent_id is required", detail_key="env", detail_value=runtime["parent_id_env"])
-    client = create_client(ctx_obj)
-    copied = client.copy_file(file_id=resolved_file_id, parent_id=resolved_parent_id, name=name or runtime["file_name"] or None)
-    return {"status": "live_write", "backend": BACKEND_NAME, "summary": f"Copied file {resolved_file_id} to folder {resolved_parent_id}.", "file": copied, "scope_preview": _scope_preview("file.copy", "file", {"file_id": resolved_file_id, "parent_id": resolved_parent_id})}
-
-
-def file_move_result(ctx_obj: dict[str, Any], *, file_id: str | None, parent_id: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    resolved_file_id = _require_arg(file_id or runtime["file_id"], code="BOX_FILE_ID_REQUIRED", message="file_id is required", detail_key="env", detail_value=runtime["file_id_env"])
-    resolved_parent_id = _require_arg(parent_id or runtime["parent_id"], code="BOX_PARENT_ID_REQUIRED", message="parent_id is required", detail_key="env", detail_value=runtime["parent_id_env"])
-    client = create_client(ctx_obj)
-    moved = client.move_file(file_id=resolved_file_id, parent_id=resolved_parent_id)
-    return {"status": "live_write", "backend": BACKEND_NAME, "summary": f"Moved file {resolved_file_id} to folder {resolved_parent_id}.", "file": moved, "scope_preview": _scope_preview("file.move", "file", {"file_id": resolved_file_id, "parent_id": resolved_parent_id})}
 
 
 def folder_list_result(ctx_obj: dict[str, Any], *, folder_id: str | None, limit: int) -> dict[str, Any]:
@@ -206,29 +176,12 @@ def folder_list_result(ctx_obj: dict[str, Any], *, folder_id: str | None, limit:
     return {"status": "live_read", "backend": BACKEND_NAME, "summary": f"Listed {len(listing['items'])} item(s) in folder {resolved_folder}.", "items": listing["items"], "picker": _picker(picker_items, kind="box_folder_item"), "scope_preview": _scope_preview("folder.list", "folder", {"folder_id": resolved_folder})}
 
 
-def folder_create_result(ctx_obj: dict[str, Any], *, name: str | None, parent_id: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    resolved_name = _require_arg(name or runtime["file_name"], code="BOX_FOLDER_NAME_REQUIRED", message="name is required", detail_key="env", detail_value=runtime["file_name_env"])
-    resolved_parent_id = parent_id or runtime["parent_id"] or "0"
-    client = create_client(ctx_obj)
-    folder = client.create_folder(name=resolved_name, parent_id=resolved_parent_id)
-    return {"status": "live_write", "backend": BACKEND_NAME, "summary": f"Created folder {resolved_name}.", "folder": folder, "scope_preview": _scope_preview("folder.create", "folder", {"parent_id": resolved_parent_id})}
-
-
 def folder_get_result(ctx_obj: dict[str, Any], *, folder_id: str | None) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
     resolved_folder = folder_id or runtime["folder_id"] or "0"
     client = create_client(ctx_obj)
     folder = client.get_folder(resolved_folder)
     return {"status": "live_read", "backend": BACKEND_NAME, "summary": f"Fetched folder {resolved_folder}.", "folder": folder, "scope_preview": _scope_preview("folder.get", "folder", {"folder_id": resolved_folder})}
-
-
-def share_update_result(ctx_obj: dict[str, Any], *, file_id: str | None, access: str | None, command_id: str) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    resolved_file_id = _require_arg(file_id or runtime["file_id"], code="BOX_FILE_ID_REQUIRED", message="file_id is required", detail_key="env", detail_value=runtime["file_id_env"])
-    client = create_client(ctx_obj)
-    file_item = client.update_shared_link(file_id=resolved_file_id, access=access or runtime["shared_link_access"] or None)
-    return {"status": "live_write", "backend": BACKEND_NAME, "summary": f"Updated shared link on file {resolved_file_id}.", "file": file_item, "scope_preview": _scope_preview(command_id, "file", {"file_id": resolved_file_id})}
 
 
 def collaboration_list_result(ctx_obj: dict[str, Any], *, folder_id: str | None) -> dict[str, Any]:
@@ -238,16 +191,6 @@ def collaboration_list_result(ctx_obj: dict[str, Any], *, folder_id: str | None)
     listing = client.list_collaborations(resolved_folder)
     picker_items = [{"value": item["id"], "label": item["role"], "subtitle": str(item.get("accessible_by", {}).get("login") or item.get("status")), "selected": False} for item in listing["entries"]]
     return {"status": "live_read", "backend": BACKEND_NAME, "summary": f"Listed {len(listing['entries'])} collaboration(s).", "collaborations": listing["entries"], "picker": _picker(picker_items, kind="box_collaboration"), "scope_preview": _scope_preview("collaboration.list", "collaboration", {"folder_id": resolved_folder})}
-
-
-def collaboration_create_result(ctx_obj: dict[str, Any], *, folder_id: str | None, email: str | None, role: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    resolved_folder = folder_id or runtime["folder_id"] or "0"
-    resolved_email = _require_arg(email or runtime["collaboration_email"], code="BOX_COLLABORATION_EMAIL_REQUIRED", message="collaboration email is required", detail_key="env", detail_value=runtime["collaboration_email_env"])
-    resolved_role = role or runtime["collaboration_role"] or "editor"
-    client = create_client(ctx_obj)
-    collaboration = client.create_collaboration(folder_id=resolved_folder, email=resolved_email, role=resolved_role)
-    return {"status": "live_write", "backend": BACKEND_NAME, "summary": f"Added collaborator {resolved_email}.", "collaboration": collaboration, "scope_preview": _scope_preview("collaboration.create", "collaboration", {"folder_id": resolved_folder})}
 
 
 def search_query_result(ctx_obj: dict[str, Any], *, query_text: str | None, limit: int) -> dict[str, Any]:
@@ -265,15 +208,6 @@ def metadata_get_result(ctx_obj: dict[str, Any], *, file_id: str | None) -> dict
     client = create_client(ctx_obj)
     metadata = client.get_metadata(file_id=resolved_file_id)
     return {"status": "live_read", "backend": BACKEND_NAME, "summary": f"Fetched metadata for file {resolved_file_id}.", "metadata": metadata, "scope_preview": _scope_preview("metadata.get", "file", {"file_id": resolved_file_id})}
-
-
-def metadata_set_result(ctx_obj: dict[str, Any], *, file_id: str | None, metadata_json: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    resolved_file_id = _require_arg(file_id or runtime["file_id"], code="BOX_FILE_ID_REQUIRED", message="file_id is required", detail_key="env", detail_value=runtime["file_id_env"])
-    values = _parse_metadata_json(metadata_json or runtime["metadata_json"])
-    client = create_client(ctx_obj)
-    metadata = client.set_metadata(file_id=resolved_file_id, scope=runtime["metadata_scope"], template=runtime["metadata_template"], values=values)
-    return {"status": "live_write", "backend": BACKEND_NAME, "summary": f"Updated metadata for file {resolved_file_id}.", "metadata": metadata, "scope_preview": _scope_preview("metadata.set", "file", {"file_id": resolved_file_id})}
 
 
 def config_show_result(ctx_obj: dict[str, Any]) -> dict[str, Any]:

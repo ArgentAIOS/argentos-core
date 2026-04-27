@@ -8,6 +8,7 @@ from click.testing import CliRunner
 
 from cli_aos.box.cli import cli
 import cli_aos.box.runtime as runtime
+import cli_aos.box.service_keys as service_keys
 
 
 AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
@@ -32,26 +33,8 @@ class FakeBoxClient:
     def download_file(self, file_id: str) -> dict[str, Any]:
         return {"content_type": "text/plain", "bytes_count": 4, "download_url": "https://example.com/dl", "content_base64": "ZGF0YQ=="}
 
-    def upload_file(self, *, folder_id: str, file_path: str, name: str | None = None) -> dict[str, Any]:
-        return {"entries": [{"id": "300", "type": "file", "name": name or "upload.txt", "raw": {"folder_id": folder_id, "file_path": file_path}}], "raw": {}}
-
-    def copy_file(self, *, file_id: str, parent_id: str, name: str | None = None) -> dict[str, Any]:
-        return {"id": "301", "type": "file", "name": name or "copy.txt", "raw": {"source": file_id, "parent_id": parent_id}}
-
-    def move_file(self, *, file_id: str, parent_id: str) -> dict[str, Any]:
-        return {"id": file_id, "type": "file", "name": "moved.txt", "raw": {"parent_id": parent_id}}
-
-    def create_folder(self, *, name: str, parent_id: str) -> dict[str, Any]:
-        return {"id": "400", "type": "folder", "name": name, "raw": {"parent_id": parent_id}}
-
-    def update_shared_link(self, *, file_id: str, access: str | None = None) -> dict[str, Any]:
-        return {"id": file_id, "type": "file", "name": "shared.txt", "shared_link": {"access": access or "open"}, "raw": {}}
-
     def list_collaborations(self, folder_id: str) -> dict[str, Any]:
         return {"entries": [{"id": "500", "role": "editor", "status": "accepted", "accessible_by": {"login": "person@example.com"}, "raw": {}}], "total_count": 1, "raw": {}}
-
-    def create_collaboration(self, *, folder_id: str, email: str, role: str = "editor") -> dict[str, Any]:
-        return {"id": "501", "role": role, "status": "pending", "accessible_by": {"login": email}, "raw": {"folder_id": folder_id}}
 
     def search(self, *, query_text: str, limit: int = 25) -> dict[str, Any]:
         return {"entries": [{"id": "600", "type": "file", "name": "match.txt", "raw": {"query": query_text}}], "total_count": 1, "raw": {}}
@@ -59,18 +42,9 @@ class FakeBoxClient:
     def get_metadata(self, *, file_id: str) -> dict[str, Any]:
         return {"global": {"properties": {"stage": "draft"}}}
 
-    def set_metadata(self, *, file_id: str, scope: str, template: str, values: dict[str, Any]) -> dict[str, Any]:
-        return {"scope": scope, "template": template, "values": values, "file_id": file_id}
-
 
 def invoke_json(args: list[str]) -> dict[str, Any]:
     result = CliRunner().invoke(cli, ["--json", *args])
-    assert result.exit_code == 0, result.output
-    return json.loads(result.output)
-
-
-def invoke_json_with_mode(mode: str, args: list[str]) -> dict[str, Any]:
-    result = CliRunner().invoke(cli, ["--json", "--mode", mode, *args])
     assert result.exit_code == 0, result.output
     return json.loads(result.output)
 
@@ -81,14 +55,36 @@ def test_manifest_and_permissions_are_in_sync():
     command_ids = [command["id"] for command in manifest["commands"]]
     assert set(command_ids) == set(permissions.keys())
     assert manifest["scope"]["kind"] == "document-storage"
+    assert manifest["scope"]["write_bridge_available"] is False
+    assert all(command["required_mode"] == "readonly" for command in manifest["commands"])
+    assert not any(command["action_class"] == "write" for command in manifest["commands"])
+
+
+def test_manifest_field_applicability_matches_commands():
+    manifest = json.loads(CONNECTOR_PATH.read_text())
+    command_ids = {command["id"] for command in manifest["commands"]}
+    assert set(manifest["scope"]["workerFields"]) == {"file_id", "folder_id", "query"}
+    for field in manifest["scope"]["fields"]:
+        assert set(field["applies_to"]).issubset(command_ids)
+    assert set(manifest["scope"]["commandDefaults"]).issubset(command_ids)
+
+
+def test_manifest_selection_surfaces_are_consistent():
+    manifest = json.loads(CONNECTOR_PATH.read_text())
+    picker_surfaces = set(manifest["scope"]["pickerHints"])
+    for command in manifest["commands"]:
+        surface = manifest["scope"]["commandDefaults"].get(command["id"], {}).get("selection_surface")
+        if surface:
+            assert surface in picker_surfaces
 
 
 def test_capabilities_exposes_manifest():
     payload = invoke_json(["capabilities"])
     assert payload["tool"] == "aos-box"
     assert payload["data"]["backend"] == "box-api"
-    assert "file.upload" in json.dumps(payload["data"])
-    assert "collaboration.create" in json.dumps(payload["data"])
+    assert "file.download" in json.dumps(payload["data"])
+    assert "collaboration.list" in json.dumps(payload["data"])
+    assert payload["data"]["write_support"] == {}
 
 
 def test_health_requires_credentials(monkeypatch):
@@ -118,6 +114,31 @@ def test_config_show_redacts_credentials(monkeypatch):
     assert "secret-token" not in encoded
     assert "secret-456" not in encoded
     assert data["auth"]["access_token_present"] is True
+    assert data["runtime"]["implementation_mode"] == "live_read_only"
+    assert "BOX_FOLDER_ID" in data["auth"]["operator_service_keys"]
+
+
+def test_service_keys_take_precedence_over_environment(monkeypatch):
+    service_key_values = {
+        "BOX_ACCESS_TOKEN": "operator-token",
+        "BOX_FOLDER_ID": "operator-folder",
+        "BOX_FILE_ID": "operator-file",
+        "BOX_QUERY": "operator report",
+    }
+    for variable in service_key_values:
+        monkeypatch.setenv(variable, f"env_{variable.lower()}")
+    monkeypatch.setattr(service_keys, "resolve_service_key", lambda variable: service_key_values.get(variable))
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeBoxClient())
+
+    payload = invoke_json(["config", "show"])
+    data = payload["data"]
+
+    assert data["scope"]["folder_id"] == "operator-folder"
+    assert data["scope"]["file_id"] == "operator-file"
+    assert data["scope"]["query"] == "operator report"
+    assert data["auth"]["sources"]["BOX_FOLDER_ID"] == "service-keys"
+    assert "env_box_access_token" not in json.dumps(data)
+    assert "operator-token" not in json.dumps(data)
 
 
 def test_file_list_returns_picker(monkeypatch):
@@ -128,21 +149,25 @@ def test_file_list_returns_picker(monkeypatch):
     assert payload["data"]["picker"]["kind"] == "box_file"
 
 
-def test_folder_create_requires_write_mode(monkeypatch):
+def test_removed_write_commands_are_not_exposed(monkeypatch):
     monkeypatch.setenv("BOX_ACCESS_TOKEN", "token-123")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeBoxClient())
-    result = CliRunner().invoke(cli, ["--json", "--mode", "readonly", "folder", "create", "--name", "New Folder"])
-    payload = json.loads(result.output)
-    assert payload["ok"] is False
-    assert payload["error"]["code"] == "PERMISSION_DENIED"
-
-
-def test_folder_create_succeeds_in_write_mode(monkeypatch):
-    monkeypatch.setenv("BOX_ACCESS_TOKEN", "token-123")
-    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeBoxClient())
-    payload = invoke_json_with_mode("write", ["folder", "create", "--name", "New Folder"])
-    assert payload["data"]["status"] == "live_write"
-    assert payload["data"]["folder"]["id"] == "400"
+    commands = [
+        ["file", "upload", "--folder-id", "0"],
+        ["file", "copy", "100", "--parent-id", "0"],
+        ["file", "move", "100", "--parent-id", "0"],
+        ["folder", "create", "--name", "New Folder"],
+        ["share", "create", "100"],
+        ["share", "update", "100"],
+        ["collaboration", "create", "--folder-id", "0", "--email", "person@example.com"],
+        ["metadata", "set", "100", "--metadata-json", "{\"stage\":\"approved\"}"],
+    ]
+    for command in commands:
+        result = CliRunner().invoke(cli, ["--json", "--mode", "write", *command])
+        payload = json.loads(result.output)
+        assert result.exit_code == 2
+        assert payload["ok"] is False
+        assert payload["error"]["code"] == "INVALID_USAGE"
 
 
 def test_search_query_returns_results(monkeypatch):
@@ -153,9 +178,9 @@ def test_search_query_returns_results(monkeypatch):
     assert payload["data"]["scope_preview"]["command_id"] == "search.query"
 
 
-def test_metadata_set_succeeds_in_write_mode(monkeypatch):
+def test_metadata_get_returns_metadata(monkeypatch):
     monkeypatch.setenv("BOX_ACCESS_TOKEN", "token-123")
     monkeypatch.setenv("BOX_FILE_ID", "100")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeBoxClient())
-    payload = invoke_json_with_mode("write", ["metadata", "set", "--metadata-json", "{\"stage\":\"approved\"}"])
-    assert payload["data"]["metadata"]["values"]["stage"] == "approved"
+    payload = invoke_json(["metadata", "get"])
+    assert payload["data"]["metadata"]["global"]["properties"]["stage"] == "draft"
