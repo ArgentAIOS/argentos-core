@@ -9,6 +9,15 @@
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": false,
+    "live_write_smoke_tested": false,
+    "required_one_of": [["BUFFER_API_KEY", "BUFFER_ACCESS_TOKEN"]],
+    "optional": [
+      "BUFFER_BASE_URL",
+      "BUFFER_ORGANIZATION_ID",
+      "BUFFER_CHANNEL_ID",
+      "BUFFER_PROFILE_ID",
+      "BUFFER_POST_ID"
+    ],
     "workerFields": [
       "account",
       "organization_id",
@@ -159,9 +168,9 @@
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": [
-      "BUFFER_API_KEY",
-      "BUFFER_ACCESS_TOKEN",
+    "service_keys": ["BUFFER_API_KEY", "BUFFER_ACCESS_TOKEN"],
+    "required_one_of": [["BUFFER_API_KEY", "BUFFER_ACCESS_TOKEN"]],
+    "optional_service_keys": [
       "BUFFER_BASE_URL",
       "BUFFER_ORGANIZATION_ID",
       "BUFFER_CHANNEL_ID",
@@ -174,6 +183,8 @@
       "Optional: set BUFFER_ORGANIZATION_ID, BUFFER_CHANNEL_ID, BUFFER_PROFILE_ID, and BUFFER_POST_ID in operator-controlled service keys to stabilize worker scope.",
       "Optional: set BUFFER_BASE_URL in operator-controlled service keys only if you need to point the harness at a non-default Buffer GraphQL host.",
       "Live reads use Buffer's GraphQL account, channel, and posts surfaces.",
+      "Scoped service-key entries must be injected by the operator runtime and are not bypassed with local env.",
+      "Keep live_write_smoke_tested=false unless a real operator Buffer tenant smoke test verifies writes.",
       "No draft or schedule write command is advertised until a live write bridge and approval policy are implemented."
     ]
   },

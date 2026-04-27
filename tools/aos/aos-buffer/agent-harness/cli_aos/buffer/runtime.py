@@ -137,6 +137,8 @@ def capabilities_snapshot() -> dict[str, Any]:
         "write_support": {
             "scaffold_only": False,
             "scaffolded_commands": [],
+            "live_writes_enabled": False,
+            "live_write_smoke_tested": False,
         },
     }
 
@@ -187,6 +189,7 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
             "live_backend_available": bool(probe.get("ok")),
             "live_read_available": bool(probe.get("ok")),
             "write_bridge_available": False,
+            "live_write_smoke_tested": False,
             "scaffold_only": False,
         },
         "auth": {
@@ -223,6 +226,8 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
         ],
         "probe": probe,
         "runtime_ready": bool(probe.get("ok")),
+        "write_bridge_available": False,
+        "live_write_smoke_tested": False,
         "next_steps": [
             "Set BUFFER_API_KEY or BUFFER_ACCESS_TOKEN in operator-controlled service keys first; only rely on local env for harness fallback.",
             "Optionally pin BUFFER_ORGANIZATION_ID and BUFFER_CHANNEL_ID to stabilize worker scope.",
