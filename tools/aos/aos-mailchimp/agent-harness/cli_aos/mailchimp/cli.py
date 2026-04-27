@@ -23,7 +23,6 @@ from .runtime import (
     member_read_result,
     report_list_result,
     report_read_result,
-    scaffold_write_result,
 )
 
 
@@ -206,20 +205,6 @@ def member_read(ctx: click.Context, audience_id: str | None, email: str | None) 
     _emit_success(ctx, "member.read", member_read_result(ctx.obj, audience_id, email))
 
 
-@member_group.command("upsert")
-@click.argument("audience_id", required=False)
-@click.argument("email", required=False)
-@click.pass_context
-def member_upsert(ctx: click.Context, audience_id: str | None, email: str | None) -> None:
-    _set_command(ctx, "member.upsert")
-    require_mode(ctx, "member.upsert")
-    _emit_success(
-        ctx,
-        "member.upsert",
-        scaffold_write_result(ctx.obj, command_id="member.upsert", inputs={"audience_id": audience_id, "email": email}),
-    )
-
-
 @cli.group("campaign")
 def campaign_group() -> None:
     pass
@@ -242,19 +227,6 @@ def campaign_read(ctx: click.Context, campaign_id: str | None) -> None:
     _set_command(ctx, "campaign.read")
     require_mode(ctx, "campaign.read")
     _emit_success(ctx, "campaign.read", campaign_read_result(ctx.obj, campaign_id))
-
-
-@campaign_group.command("create-draft")
-@click.argument("title")
-@click.pass_context
-def campaign_create_draft(ctx: click.Context, title: str) -> None:
-    _set_command(ctx, "campaign.create_draft")
-    require_mode(ctx, "campaign.create_draft")
-    _emit_success(
-        ctx,
-        "campaign.create_draft",
-        scaffold_write_result(ctx.obj, command_id="campaign.create_draft", inputs={"title": title}),
-    )
 
 
 @cli.group("report")

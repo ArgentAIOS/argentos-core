@@ -4,10 +4,18 @@ Python Click wrapper for the `aos-mailchimp` connector.
 
 ## Auth
 
-The harness resolves `MAILCHIMP_API_KEY` and `MAILCHIMP_SERVER_PREFIX` from
-ArgentOS operator service keys first, then falls back to process env only inside
-the service-key helper. `MAILCHIMP_SERVER_PREFIX` is optional when the API key
-already includes a Mailchimp data center suffix such as `us21` or `eu2`.
+The harness resolves Mailchimp service keys from ArgentOS operator service keys
+first, then falls back to process env only inside the service-key helper.
+`MAILCHIMP_SERVER_PREFIX` is optional when the API key already includes a
+Mailchimp data center suffix such as `us21` or `eu2`.
+
+Operator-controlled service keys:
+
+- `MAILCHIMP_API_KEY`
+- `MAILCHIMP_SERVER_PREFIX`
+- `MAILCHIMP_AUDIENCE_ID`
+- `MAILCHIMP_CAMPAIGN_ID`
+- `MAILCHIMP_MEMBER_EMAIL`
 
 ## Commands
 
@@ -24,7 +32,6 @@ already includes a Mailchimp data center suffix such as `us21` or `eu2`.
 - `campaign read [campaign_id]`
 - `report list`
 - `report read [campaign_id]`
-- `campaign create-draft <title>`: scaffold only, returns `scaffold_write_only`
-- `member upsert [audience_id] [email]`: scaffold only, returns `scaffold_write_only`
 
-Only the read commands call the live Mailchimp Marketing API today.
+The connector is live read-only today. Mailchimp write actions are not advertised
+until approval, compliance, and campaign safety rules are verified.

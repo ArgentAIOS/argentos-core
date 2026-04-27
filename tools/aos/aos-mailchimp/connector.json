@@ -149,13 +149,19 @@
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": ["MAILCHIMP_API_KEY", "MAILCHIMP_SERVER_PREFIX"],
+    "service_keys": [
+      "MAILCHIMP_API_KEY",
+      "MAILCHIMP_SERVER_PREFIX",
+      "MAILCHIMP_AUDIENCE_ID",
+      "MAILCHIMP_CAMPAIGN_ID",
+      "MAILCHIMP_MEMBER_EMAIL"
+    ],
     "interactive_setup": [
       "Create a Mailchimp Marketing API key for the target account.",
       "Preferred: add MAILCHIMP_API_KEY in API Keys; the connector resolves operator service keys first and falls back to process env only in its service-key helper.",
       "Optional: add MAILCHIMP_SERVER_PREFIX in API Keys only if you need to override the data center suffix embedded in the API key.",
       "Optional: add MAILCHIMP_AUDIENCE_ID, MAILCHIMP_CAMPAIGN_ID, and MAILCHIMP_MEMBER_EMAIL to pin worker scope.",
-      "campaign.create_draft and member.upsert are scaffolded placeholders that return scaffold_write_only until Mailchimp write workflows are reviewed for approval and compliance requirements."
+      "Do not advertise Mailchimp write actions until approval, compliance, and campaign safety rules are verified."
     ]
   },
   "commands": [
@@ -262,22 +268,6 @@
       "supports_json": true,
       "resource": "report",
       "action_class": "read"
-    },
-    {
-      "id": "campaign.create_draft",
-      "summary": "Scaffold placeholder for draft Mailchimp campaign creation",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "campaign",
-      "action_class": "write"
-    },
-    {
-      "id": "member.upsert",
-      "summary": "Scaffold placeholder for Mailchimp audience member upsert",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "member",
-      "action_class": "write"
     }
   ]
 }

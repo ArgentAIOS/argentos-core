@@ -2,7 +2,7 @@
 
 Agent-native Mailchimp Marketing API connector.
 
-This connector is live-read-first and uses operator-controlled service keys for auth
+This connector is live read-only and uses operator-controlled service keys for auth
 before falling back to process env in the harness service-key helper.
 
 Real today:
@@ -13,10 +13,5 @@ Real today:
 - campaign reads
 - report reads
 
-Still scaffolded:
-
-- `campaign.create_draft`
-- `member.upsert`
-
-Those write commands are intentionally present as scaffold placeholders and return
-`scaffold_write_only` instead of performing live Mailchimp mutations.
+Mailchimp write actions are not advertised until approval, compliance, and
+campaign safety rules are verified.

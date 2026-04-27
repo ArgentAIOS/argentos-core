@@ -24,20 +24,11 @@ def capabilities_snapshot() -> dict[str, Any]:
         "scope": manifest.get("scope", {}),
         "commands": manifest["commands"],
         "read_support": {
-            "account.read": True,
-            "audience.list": True,
-            "audience.read": True,
-            "member.list": True,
-            "member.read": True,
-            "campaign.list": True,
-            "campaign.read": True,
-            "report.list": True,
-            "report.read": True,
+            command["id"]: True
+            for command in manifest["commands"]
+            if command["required_mode"] == "readonly"
         },
-        "write_support": {
-            "campaign.create_draft": "scaffold_only",
-            "member.upsert": "scaffold_only",
-        },
+        "write_support": {},
     }
 
 
@@ -123,6 +114,9 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "server_prefix_source": "service_key_or_env"
             if runtime["configured_server_prefix"]
             else ("api_key_suffix" if runtime["server_prefix"] else None),
+            "service_keys": runtime["service_keys"],
+            "operator_service_keys": runtime["service_keys"],
+            "sources": runtime["sources"],
         },
         "scope": {
             "audience_id": runtime["audience_id"] or None,
@@ -156,7 +150,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             f"Set {runtime['api_key_env']} in API Keys.",
             f"Optional: set {runtime['server_prefix_env']} in API Keys only if you need to override the API key suffix.",
             "Optional: pin MAILCHIMP_AUDIENCE_ID, MAILCHIMP_CAMPAIGN_ID, and MAILCHIMP_MEMBER_EMAIL for worker scope defaults.",
-            "Keep Mailchimp write commands scaffolded until compliance and approval requirements are finalized.",
+            "Do not advertise Mailchimp write actions until approval, compliance, and campaign safety rules are verified.",
         ],
     }
 
@@ -168,7 +162,7 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "status": "ready" if probe.get("ok") else ("needs_setup" if probe.get("code") == "MAILCHIMP_SETUP_REQUIRED" else "degraded"),
         "summary": "Mailchimp connector diagnostics.",
         "runtime": {
-            "implementation_mode": "live_read_with_scaffolded_writes",
+            "implementation_mode": "live_read_only",
             "command_readiness": {
                 "account.read": bool(probe.get("ok")),
                 "audience.list": bool(probe.get("ok")),
@@ -179,8 +173,6 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
                 "campaign.read": bool(probe.get("ok")),
                 "report.list": bool(probe.get("ok")),
                 "report.read": bool(probe.get("ok")),
-                "campaign.create_draft": False,
-                "member.upsert": False,
             },
             "server_prefix_present": runtime["server_prefix_present"],
             "audience_id_present": runtime["audience_id_present"],
@@ -190,14 +182,15 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "checks": [
             {"name": "required_env", "ok": runtime["api_key_present"] and runtime["server_prefix_present"]},
             {"name": "live_backend", "ok": bool(probe.get("ok")), "details": probe.get("details", {})},
-            {"name": "write_commands", "ok": True, "details": {"mode": "scaffold_only"}},
+            {"name": "write_commands", "ok": True, "details": {"supported_write_commands": []}},
         ],
         "next_steps": [
             f"Set {runtime['api_key_env']} in API Keys.",
             f"Optional: set {runtime['server_prefix_env']} in API Keys only if you need to override the API key suffix.",
             "Use account.read to confirm the connected Mailchimp account before choosing audience, campaign, and member scope pickers.",
-            "Decide whether campaign draft creation and member upserts should require approvals before enabling live writes.",
+            "Do not advertise Mailchimp write actions until approval, compliance, and campaign safety rules are verified.",
         ],
+        "supported_write_commands": [],
     }
 
 
@@ -418,20 +411,4 @@ def report_read_result(ctx_obj: dict[str, Any], campaign_id: str | None) -> dict
             "command_id": "report.read",
             "campaign_id": resolved,
         },
-    }
-
-
-def scaffold_write_result(ctx_obj: dict[str, Any], *, command_id: str, inputs: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "status": "scaffold_write_only",
-        "backend": BACKEND_NAME,
-        "summary": f"{command_id} is scaffolded and does not perform live Mailchimp writes yet.",
-        "command": command_id,
-        "inputs": inputs,
-        "scope_preview": {
-            "audience_id": resolve_runtime_values(ctx_obj)["audience_id"] or None,
-            "campaign_id": resolve_runtime_values(ctx_obj)["campaign_id"] or None,
-            "member_email": resolve_runtime_values(ctx_obj)["member_email"] or None,
-        },
-        "next_step": "Keep Mailchimp write actions disabled until approval, compliance, and campaign safety rules are defined.",
     }
