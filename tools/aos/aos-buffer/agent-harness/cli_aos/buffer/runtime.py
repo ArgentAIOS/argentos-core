@@ -135,9 +135,8 @@ def capabilities_snapshot() -> dict[str, Any]:
             "post.read": "live_lookup",
         },
         "write_support": {
-            "scaffold_only": True,
-            "post.create_draft": "preview_only",
-            "post.schedule": "preview_only",
+            "scaffold_only": False,
+            "scaffolded_commands": [],
         },
     }
 
@@ -193,6 +192,8 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
         "auth": {
             "access_token_envs": ["BUFFER_API_KEY", "BUFFER_ACCESS_TOKEN"],
             "access_token_source": runtime["access_token_source"],
+            "base_url_env": runtime["base_url_env"],
+            "base_url_source": runtime["base_url_source"],
             "organization_id_env": runtime["organization_id_env"],
             "organization_id_source": runtime["organization_id_source"],
             "channel_id_env": runtime["channel_id_env"],
@@ -226,7 +227,7 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
             "Set BUFFER_API_KEY or BUFFER_ACCESS_TOKEN in operator-controlled service keys first; only rely on local env for harness fallback.",
             "Optionally pin BUFFER_ORGANIZATION_ID and BUFFER_CHANNEL_ID to stabilize worker scope.",
             "Use account.read and channel.list to discover live scope before relying on post.read lookups.",
-            "post.create_draft and post.schedule are write-mode previews only and do not execute publish mutations.",
+            "Do not advertise Buffer draft/schedule writes until a live write bridge and approval policy are implemented.",
         ],
     }
 
@@ -236,7 +237,7 @@ def doctor_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
         **health,
         "runtime": {
-            "implementation_mode": "live_graphql_read_with_scaffolded_writes",
+            "implementation_mode": "live_graphql_read_only",
             "service_key_precedence": resolve_runtime_values(ctx_obj)["service_key_precedence"],
             "command_readiness": {
                 "account.read": health["runtime_ready"],
@@ -246,12 +247,10 @@ def doctor_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
                 "profile.read": health["runtime_ready"],
                 "post.list": health["runtime_ready"],
                 "post.read": health["runtime_ready"],
-                "post.create_draft": False,
-                "post.schedule": False,
             },
         },
         "supported_write_commands": [],
-        "scaffolded_write_commands": ["post.create_draft", "post.schedule"],
+        "scaffolded_write_commands": [],
     }
 
 
@@ -450,60 +449,3 @@ def post_read_result(
             "pages_scanned": scanned_pages,
         },
     )
-
-
-def scaffold_write_result(
-    ctx_obj: dict[str, Any] | None = None,
-    *,
-    command_id: str,
-    channel_id: str | None = None,
-    profile_id: str | None = None,
-    text: str | None = None,
-    due_at: str | None = None,
-) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    resolved_channel_id = _resolve_channel_id(ctx_obj, channel_id=channel_id, profile_id=profile_id)
-    resolved_text = (text or runtime["post_text"]).strip()
-    if not resolved_text:
-        raise CliError(
-            code="BUFFER_POST_TEXT_REQUIRED",
-            message="Post text is required for this command.",
-            exit_code=4,
-            details={"env": runtime["post_text_env"]},
-        )
-    if command_id == "post.schedule" and not (due_at or "").strip():
-        raise CliError(
-            code="BUFFER_SCHEDULE_TIME_REQUIRED",
-            message="A due_at timestamp is required to preview post.schedule.",
-            exit_code=4,
-            details={"field": "due_at"},
-        )
-
-    mutation_input: dict[str, Any] = {
-        "channelId": resolved_channel_id,
-        "text": resolved_text,
-        "schedulingType": "automatic",
-        "mode": "addToQueue" if command_id == "post.create_draft" else "customScheduled",
-    }
-    if command_id == "post.create_draft":
-        mutation_input["saveToDraft"] = True
-    if command_id == "post.schedule":
-        mutation_input["dueAt"] = due_at
-
-    return {
-        "summary": "Previewed a Buffer write mutation without executing it.",
-        "status": "scaffold_write_preview",
-        "executed": False,
-        "consequential": False,
-        "reason": "This harness intentionally does not execute social publishing mutations.",
-        "mutation_preview": {
-            "operation": "createPost",
-            "input": mutation_input,
-        },
-        "scope_preview": _scope_preview(
-            command_id=command_id,
-            selection_surface="post",
-            channel_id=resolved_channel_id,
-            due_at=due_at,
-        ),
-    }
