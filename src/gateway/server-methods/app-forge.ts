@@ -216,6 +216,26 @@ async function emitWorkflowEventBestEffort(
   }
 }
 
+function workflowPickerBase(base: AppForgeBase): AppForgeBase & {
+  tableCount: number;
+} {
+  return {
+    ...base,
+    tableCount: base.tables.length,
+  };
+}
+
+function workflowPickerTable(table: AppForgeTable): AppForgeTable & {
+  fieldCount: number;
+  recordCount: number;
+} {
+  return {
+    ...table,
+    fieldCount: table.fields.length,
+    recordCount: table.records.length,
+  };
+}
+
 export function resetAppForgeAdapterForTests(seed: AppForgeBase[] = []) {
   cachedAdapter = createInMemoryAppForgeStore(seed);
 }
@@ -225,7 +245,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
     const adapter = getAppForgeAdapter();
     const appId = stringParam(params, "appId") ?? undefined;
     const bases = await adapter.listBases({ appId });
-    respond(true, { bases }, undefined);
+    respond(true, { bases: bases.map(workflowPickerBase) }, undefined);
   },
 
   "appforge.bases.get": async ({ params, respond }) => {
@@ -327,7 +347,7 @@ export const appForgeHandlers: GatewayRequestHandlers = {
     }
 
     const tables = await adapter.listTables(baseId);
-    respond(true, { tables }, undefined);
+    respond(true, { tables: tables.map(workflowPickerTable) }, undefined);
   },
 
   "appforge.tables.get": async ({ params, respond }) => {

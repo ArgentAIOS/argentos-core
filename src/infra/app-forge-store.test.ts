@@ -86,6 +86,33 @@ describe("AppForge store contract", () => {
     await expect(store.listRecords("base-1", "table-2")).resolves.toEqual([
       expect.objectContaining({ id: "record-1", values: { status: "Open" } }),
     ]);
+    await expect(store.listBases({ appId: "app-1" })).resolves.toEqual([
+      expect.objectContaining({
+        id: "base-1",
+        appId: "app-1",
+        name: "Campaign Review",
+        revision: 3,
+        tables: expect.arrayContaining([
+          expect.objectContaining({
+            id: "table-2",
+            fields: [
+              { id: "status", name: "Status", type: "single_select", options: ["Open", "Done"] },
+            ],
+            records: [expect.objectContaining({ id: "record-1" })],
+          }),
+        ]),
+      }),
+    ]);
+    await expect(store.listTables("base-1")).resolves.toEqual([
+      expect.objectContaining({ id: "table-1", name: "Reviews" }),
+      expect.objectContaining({
+        id: "table-2",
+        name: "Approvals",
+        fields: [
+          { id: "status", name: "Status", type: "single_select", options: ["Open", "Done"] },
+        ],
+      }),
+    ]);
   });
 
   it("keeps AppForge schema exports aligned with the durable migration", () => {
