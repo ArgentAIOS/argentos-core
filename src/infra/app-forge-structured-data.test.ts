@@ -113,6 +113,37 @@ describe("forge structured data metadata", () => {
     });
   });
 
+  it("seeds empty structured bases with the default TableForge table", () => {
+    const base = forgeStructuredDataTestUtils.normalizeBase(
+      app({
+        metadata: {
+          appForge: {
+            structured: {
+              baseId: "base-empty",
+              activeTableId: "",
+              updatedAt: "2026-04-26T22:00:00.000Z",
+              tables: [],
+            },
+          },
+        },
+      }),
+    );
+
+    expect(base).toMatchObject({
+      id: "base-app-1",
+      appId: "app-1",
+      activeTableId: "table-main",
+    });
+    expect(base.tables[0]?.name).toBe("Projects");
+    expect(base.tables[0]?.fields.map((field) => field.id)).toEqual([
+      "name",
+      "status",
+      "owner",
+      "dueDate",
+      "capability",
+    ]);
+  });
+
   it("normalizes gateway-backed bases and preserves revisions", () => {
     const base = forgeStructuredDataTestUtils.normalizeGatewayBase({
       id: "base-gateway",
