@@ -985,10 +985,7 @@ export async function runEmbeddedAttempt(
 
     markPhase("pre_session");
     let sessionManager: ReturnType<typeof guardSessionManager> | undefined;
-    let session:
-      | Awaited<ReturnType<typeof createAgentSession>>["session"]
-      | Awaited<ReturnType<typeof createArgentAgentSession>>["session"]
-      | undefined;
+    let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
     try {
       await repairSessionFileIfNeeded({
         sessionFile: params.sessionFile,

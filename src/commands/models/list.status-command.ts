@@ -618,7 +618,7 @@ export async function modelsStatusCommand(
       runtime.log(`- ${colorize(rich, theme.heading, provider)}${usageSuffix}`);
       for (const profile of profiles) {
         const labelText = profile.label || profile.profileId;
-        const label = colorize(rich, theme.accent, labelText);
+        const profileLabel = colorize(rich, theme.accent, labelText);
         const status = formatStatus(profile.status);
         const expiry =
           profile.status === "static"
@@ -626,7 +626,7 @@ export async function modelsStatusCommand(
             : profile.expiresAt
               ? ` expires in ${formatRemainingShort(profile.remainingMs)}`
               : " expires unknown";
-        runtime.log(`  - ${label} ${status}${expiry}`);
+        runtime.log(`  - ${profileLabel} ${status}${expiry}`);
       }
     }
   }
