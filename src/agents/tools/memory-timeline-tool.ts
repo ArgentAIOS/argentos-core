@@ -94,9 +94,11 @@ function isStrongCanonicalEntityName(value: string): boolean {
   );
 }
 
-function extractTemporalEntitySubject(query: string): string | null {
-  const trimmed = query.trim().replace(/[?!.\s]+$/g, "");
-  if (!trimmed) return null;
+function extractTemporalEntitySubject(query: string | null | undefined): string | null {
+  const trimmed = query?.trim().replace(/[?!.\s]+$/g, "") ?? "";
+  if (!trimmed) {
+    return null;
+  }
 
   const patterns = [
     /\b(?:show|give|list|pull|find)(?:\s+me)?\s+(?:all\s+)?(?:memories?|memory|timeline|events?)\s+about\s+(.+?)(?=\s+(?:from|over|during|within|for)\b|$)/i,
@@ -110,9 +112,15 @@ function extractTemporalEntitySubject(query: string): string | null {
       ?.trim()
       .replace(/^(?:the|my)\s+/i, "")
       .trim();
-    if (!candidate) continue;
-    if (candidate.length < 2 || candidate.length > 80) continue;
-    if (/\b(?:last|past|week|month|today|yesterday)\b/i.test(candidate)) continue;
+    if (!candidate) {
+      continue;
+    }
+    if (candidate.length < 2 || candidate.length > 80) {
+      continue;
+    }
+    if (/\b(?:last|past|week|month|today|yesterday)\b/i.test(candidate)) {
+      continue;
+    }
     return candidate;
   }
 
@@ -121,12 +129,24 @@ function extractTemporalEntitySubject(query: string): string | null {
 
 function inferTimelineDays(query: string | null | undefined): number | null {
   const normalized = query?.trim().toLowerCase() ?? "";
-  if (!normalized) return null;
-  if (/\btoday\b/.test(normalized)) return 1;
-  if (/\byesterday\b/.test(normalized)) return 2;
-  if (/\b(?:last|past)\s+week\b/.test(normalized)) return 7;
-  if (/\bthis week\b/.test(normalized)) return 7;
-  if (/\b(?:last|past)\s+(?:month|30\s+days?)\b/.test(normalized)) return 30;
+  if (!normalized) {
+    return null;
+  }
+  if (/\btoday\b/.test(normalized)) {
+    return 1;
+  }
+  if (/\byesterday\b/.test(normalized)) {
+    return 2;
+  }
+  if (/\b(?:last|past)\s+week\b/.test(normalized)) {
+    return 7;
+  }
+  if (/\bthis week\b/.test(normalized)) {
+    return 7;
+  }
+  if (/\b(?:last|past)\s+(?:month|30\s+days?)\b/.test(normalized)) {
+    return 30;
+  }
   return null;
 }
 
@@ -135,7 +155,9 @@ function normalizeTimelineSearchQuery(
   entityName: string | null,
 ): string | null {
   const raw = query?.trim() ?? "";
-  if (!raw) return null;
+  if (!raw) {
+    return null;
+  }
 
   let normalized = raw;
   if (entityName) {
@@ -193,7 +215,9 @@ function resolveTimelineEntities(
 
   if (parts.length === 1) {
     const canonicalMatches = allEntities.filter((candidate) => {
-      if (!isStrongCanonicalEntityName(candidate.name)) return false;
+      if (!isStrongCanonicalEntityName(candidate.name)) {
+        return false;
+      }
       const first = normalizeEntityName(candidate.name.split(/\s+/)[0] ?? "");
       return first === normalizedFilter;
     });
@@ -207,7 +231,9 @@ function resolveTimelineEntities(
 
 function getTimelineAnchorMs(item: Pick<MemoryItem, "createdAt" | "happenedAt">): number {
   const happenedMs = item.happenedAt ? Date.parse(item.happenedAt) : Number.NaN;
-  if (!Number.isNaN(happenedMs)) return happenedMs;
+  if (!Number.isNaN(happenedMs)) {
+    return happenedMs;
+  }
   const createdMs = Date.parse(item.createdAt);
   return Number.isNaN(createdMs) ? 0 : createdMs;
 }
@@ -219,14 +245,18 @@ function getTimelineAnchorIso(item: Pick<MemoryItem, "createdAt" | "happenedAt">
 }
 
 function scoreTimelineTopicMatch(summary: string, query: string | null): number {
-  if (!query) return 0;
+  if (!query) {
+    return 0;
+  }
   const lowered = summary.toLowerCase();
   const terms = query
     .toLowerCase()
     .split(/[^a-z0-9]+/i)
     .map((term) => term.trim())
     .filter((term) => term.length >= 3 && !TIMELINE_QUERY_STOPWORDS.has(term));
-  if (terms.length === 0) return 0;
+  if (terms.length === 0) {
+    return 0;
+  }
   return terms.filter((term) => lowered.includes(term)).length;
 }
 
@@ -235,13 +265,17 @@ function isStaticIdentitySummary(summary: string, entityTerms: string[]): boolea
   const mentionsEntity =
     entityTerms.length === 0 ||
     entityTerms.some((term) => containsAliasTerm(lowered, term.toLowerCase()));
-  if (!mentionsEntity) return false;
+  if (!mentionsEntity) {
+    return false;
+  }
 
   const dynamicCue =
     /\b(?:asked|requested|wanted|went live|built|prepared|reported|pushed|planned|planning|meeting|reminder|reporting|dashboard|ticket|alerts?|email|demo|investor|brain dump|visibility|blocked|flow|draft|review|launched|deployed|changed|updated|scheduled)\b/i.test(
       summary,
     );
-  if (dynamicCue) return false;
+  if (dynamicCue) {
+    return false;
+  }
 
   return /\b(?:is|are|was|were|has|have|co-founder|cofounder|co-runs|business partner|collaborator|former|background|credentials?|certifications?|cert footprint|deployment history|inner circle|trusted collaborator)\b/i.test(
     summary,
@@ -253,10 +287,15 @@ function scoreTimelineNarrativeValue(
   entityTerms: string[],
 ): number {
   let score = 0;
-  if (item.memoryType === "event") score += 3;
-  else if (item.memoryType === "episode") score += 2.5;
-  else if (item.memoryType === "knowledge") score += 1;
-  else if (item.memoryType === "profile") score -= 1;
+  if (item.memoryType === "event") {
+    score += 3;
+  } else if (item.memoryType === "episode") {
+    score += 2.5;
+  } else if (item.memoryType === "knowledge") {
+    score += 1;
+  } else if (item.memoryType === "profile") {
+    score -= 1;
+  }
 
   if (item.happenedAt && !Number.isNaN(Date.parse(item.happenedAt))) {
     score += 1;
@@ -313,7 +352,9 @@ export function createMemoryTimelineTool(options: {
   agentId?: string;
 }): AnyAgentTool | null {
   const cfg = options.config;
-  if (!cfg) return null;
+  if (!cfg) {
+    return null;
+  }
 
   return {
     label: "Memory Timeline",
@@ -327,7 +368,7 @@ export function createMemoryTimelineTool(options: {
     execute: async (_toolCallId, params) => {
       const rawQuery = readStringParam(params, "query");
       const explicitEntityName = readStringParam(params, "entity");
-      const memoryType = readStringParam(params, "type");
+      const memoryType = readStringParam(params, "type") ?? null;
       const inferredEntityName = explicitEntityName ? null : extractTemporalEntitySubject(rawQuery);
       const effectiveEntityName = explicitEntityName ?? inferredEntityName;
       const normalizedQuery = normalizeTimelineSearchQuery(rawQuery, effectiveEntityName);
@@ -427,7 +468,7 @@ export function createMemoryTimelineTool(options: {
 
         // Apply entity filter in-memory
         if (entityItemIds) {
-          items = items.filter((item) => entityItemIds!.has(item.id));
+          items = items.filter((item) => entityItemIds.has(item.id));
         }
 
         // Apply type + cutoff filters and sort by recency
@@ -444,19 +485,25 @@ export function createMemoryTimelineTool(options: {
             const ts = getTimelineAnchorMs(item);
             return Number.isNaN(ts) ? true : ts >= cutoffMs;
           })
-          .sort((a, b) => {
+          .toSorted((a, b) => {
             const directMentionDelta =
               Number(itemMatchesEntityTerms(b.summary, entityMatchTerms)) -
               Number(itemMatchesEntityTerms(a.summary, entityMatchTerms));
-            if (directMentionDelta !== 0) return directMentionDelta;
+            if (directMentionDelta !== 0) {
+              return directMentionDelta;
+            }
             const narrativeDelta =
               scoreTimelineNarrativeValue(b, entityMatchTerms) -
               scoreTimelineNarrativeValue(a, entityMatchTerms);
-            if (narrativeDelta !== 0) return narrativeDelta;
+            if (narrativeDelta !== 0) {
+              return narrativeDelta;
+            }
             const topicDelta =
               scoreTimelineTopicMatch(b.summary, normalizedQuery) -
               scoreTimelineTopicMatch(a.summary, normalizedQuery);
-            if (topicDelta !== 0) return topicDelta;
+            if (topicDelta !== 0) {
+              return topicDelta;
+            }
             return getTimelineAnchorMs(b) - getTimelineAnchorMs(a);
           })
           .slice(0, limit);
@@ -590,7 +637,9 @@ export function createMemoryTimelineTool(options: {
 function formatDateKey(isoDate: string, tz: string): string {
   try {
     const d = new Date(isoDate);
-    if (isNaN(d.getTime())) return isoDate.slice(0, 10);
+    if (isNaN(d.getTime())) {
+      return isoDate.slice(0, 10);
+    }
     return d.toLocaleDateString("en-US", {
       timeZone: tz,
       weekday: "short",
@@ -606,7 +655,9 @@ function formatDateKey(isoDate: string, tz: string): string {
 function formatTime(isoDate: string, tz: string): string {
   try {
     const d = new Date(isoDate);
-    if (isNaN(d.getTime())) return "??:??";
+    if (isNaN(d.getTime())) {
+      return "??:??";
+    }
     return d.toLocaleTimeString("en-US", {
       timeZone: tz,
       hour: "numeric",

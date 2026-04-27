@@ -2,11 +2,6 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ErrorCodes } from "../protocol/index.js";
 import { specforgeHandlers } from "./specforge.js";
 
-// Mock dependencies
-vi.mock("../../infra/specforge-conductor.js", () => ({
-  maybeKickoffSpecforgeFromMessage: vi.fn(),
-}));
-
 vi.mock("../../agent-core/ai.js", () => ({
   completeSimple: vi.fn(),
   getModel: vi.fn(),
@@ -101,29 +96,18 @@ describe("specforge gateway handlers", () => {
       const handler = specforgeHandlers["specforge.kickoff"];
       if (!handler) throw new Error("Handler not found");
 
-      const { maybeKickoffSpecforgeFromMessage } =
-        await import("../../infra/specforge-conductor.js");
-      vi.mocked(maybeKickoffSpecforgeFromMessage).mockResolvedValue({
-        triggered: true,
-        started: true,
-        reused: false,
-        summary: "Project kicked off.",
-      } as any);
-
       await handler({
         params: { data: { title: "New Project", problem: "Issue" }, sessionKey: "test-session" },
         respond,
       } as any);
 
-      expect(maybeKickoffSpecforgeFromMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sessionKey: "test-session",
-          agentId: "test-agent",
-        }),
-      );
       expect(respond).toHaveBeenCalledWith(
         true,
-        expect.objectContaining({ started: true }),
+        expect.objectContaining({
+          triggered: true,
+          started: true,
+          reason: "guide_mode_started_strict",
+        }),
         undefined,
       );
     });

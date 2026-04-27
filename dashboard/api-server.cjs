@@ -114,10 +114,11 @@ function sendGatewayRpcFireAndForget(method, params, options = {}) {
             minProtocol: 3,
             maxProtocol: 3,
             client: {
-              id: "dashboard-api",
+              id: "gateway-client",
+              displayName: "Dashboard API",
               version: "1.0.0",
               platform: "node",
-              mode: "api",
+              mode: "backend",
             },
             caps: [],
             auth: gwToken ? { token: gwToken } : undefined,
