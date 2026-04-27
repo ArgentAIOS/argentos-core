@@ -1,9 +1,117 @@
 export {
+  createFakeRealtimeVoiceProvider,
+  FakeRealtimeVoiceBridge,
+  FakeRealtimeVoiceProvider,
+  type FakeRealtimeVoiceBridgeState,
+  type FakeRealtimeVoiceProviderConfig,
+  type FakeRealtimeVoiceScriptEvent,
+} from "./fake-provider.js";
+export {
   canonicalizeRealtimeVoiceProviderId,
   getRealtimeVoiceProvider,
   listRealtimeVoiceProviders,
   normalizeRealtimeVoiceProviderId,
 } from "./provider-registry.js";
+export {
+  createOpenAiRealtimeVoiceProvider,
+  OpenAiRealtimeVoiceBridge,
+  OpenAiRealtimeVoiceProvider,
+  type OpenAiRealtimeAudioFormat,
+  type OpenAiRealtimeAudioFormatConfig,
+  type OpenAiRealtimeVoiceProviderConfig,
+  type OpenAiRealtimeVoiceProviderOptions,
+  type OpenAiRealtimeWebSocketFactory,
+  type OpenAiRealtimeWebSocketLike,
+} from "./openai-realtime-provider.js";
+export {
+  runOpenAiRealtimeLiveSmoke,
+  type OpenAiRealtimeLiveSmokeOptions,
+  type OpenAiRealtimeLiveSmokeResult,
+} from "./openai-realtime-live-smoke.js";
+export {
+  CaptureRealtimeOperatorAudioOutput,
+  createRealtimeOperatorAudioSession,
+  SyntheticRealtimeOperatorAudioInput,
+  type RealtimeOperatorAudioInput,
+  type RealtimeOperatorAudioOutput,
+  type RealtimeOperatorAudioSession,
+  type RealtimeOperatorAudioSessionParams,
+} from "./local-audio-io.js";
+export {
+  assertRealtimeLocalAudioProcessGate,
+  createFfmpegMacosPcm24kCaptureCommand,
+  createFfplayPcm24kPlaybackCommand,
+  FfmpegMacosRealtimeOperatorAudioInput,
+  FfplayRealtimeOperatorAudioOutput,
+  parseSystemProfilerAudioDevices,
+  probeRealtimeLocalAudioProcesses,
+  REALTIME_LOCAL_AUDIO_CAPTURE_PATH_ENV,
+  REALTIME_LOCAL_AUDIO_CONFIRM_LIVE_ENV,
+  REALTIME_LOCAL_AUDIO_PROCESS_ENABLE_ENV,
+  type FfmpegMacosPcm24kCaptureCommandOptions,
+  type FfplayPcm24kPlaybackCommandOptions,
+  type RealtimeLocalAudioCommand,
+  type RealtimeLocalAudioDevice,
+  type RealtimeLocalAudioProbe,
+  type RealtimeLocalAudioProbeOptions,
+  type RealtimeLocalAudioProcessEnv,
+  type RealtimeLocalAudioProcessOptions,
+  type RealtimeLocalAudioSpawn,
+  type RealtimeLocalAudioSpawnResult,
+  type RealtimeLocalAudioSyncRunner,
+  type RealtimeLocalAudioToolName,
+  type RealtimeLocalAudioToolProbe,
+} from "./local-audio-process.js";
+export {
+  createRealtimeLocalAudioOperatorSession,
+  type RealtimeLocalAudioOperatorInputConfig,
+  type RealtimeLocalAudioOperatorOutputConfig,
+  type RealtimeLocalAudioOperatorSessionParams,
+} from "./local-audio-process-session.js";
+export {
+  runRealtimeLocalAudioLiveSmoke,
+  type RealtimeLocalAudioLiveSmokeMode,
+  type RealtimeLocalAudioLiveSmokeOptions,
+  type RealtimeLocalAudioLiveSmokeResult,
+} from "./local-audio-live-smoke.js";
+export {
+  createRealtimeOperatorVoiceCliPreflight,
+  runRealtimeOperatorVoiceCli,
+  type RealtimeOperatorVoiceCliOptions,
+  type RealtimeOperatorVoiceCliPreflight,
+  type RealtimeOperatorVoiceCliPreflightIssue,
+  type RealtimeOperatorVoiceCliReport,
+  type RealtimeOperatorVoiceCliStatus,
+} from "./operator-voice-cli.js";
+export {
+  OPERATOR_ALERT_VOICE_ENABLE_ENV,
+  OPERATOR_ALERT_VOICE_MODE_ENV,
+  OPERATOR_ALERT_VOICE_PRIVACY_ENV,
+  OPERATOR_ALERT_VOICE_PROVIDER_ENV,
+  preflightOperatorAlertVoiceRoute,
+  renderOperatorAlertVoicePrompt,
+  runOperatorAlertVoiceRoute,
+  type OperatorAlertVoicePrivacyMode,
+  type OperatorAlertVoiceProviderId,
+  type OperatorAlertVoiceRouteIssue,
+  type OperatorAlertVoiceRouteOptions,
+  type OperatorAlertVoiceRoutePreflight,
+  type OperatorAlertVoiceRouteResult,
+} from "./operator-alert-voice-route.js";
+export {
+  createRealtimeVoiceOperatorSession,
+  type RealtimeVoiceOperatorSession,
+  type RealtimeVoiceOperatorSessionEvent,
+  type RealtimeVoiceOperatorSessionParams,
+} from "./operator-session.js";
+export {
+  createRealtimeVoiceOperatorCliHarness,
+  type RealtimeVoiceOperatorCliHarness,
+  type RealtimeVoiceOperatorCliHarnessParams,
+  type RealtimeVoiceOperatorHarnessCommand,
+  type RealtimeVoiceOperatorHarnessLogEntry,
+  type RealtimeVoiceOperatorHarnessSessionEvent,
+} from "./operator-cli-harness.js";
 export {
   resolveConfiguredRealtimeVoiceProvider,
   type ResolveConfiguredRealtimeVoiceProviderParams,
@@ -25,6 +133,7 @@ export type {
   RealtimeVoiceProviderConfig,
   RealtimeVoiceProviderConfiguredContext,
   RealtimeVoiceProviderId,
+  RealtimeVoiceProviderReadiness,
   RealtimeVoiceProviderResolveContext,
   RealtimeVoiceRole,
   RealtimeVoiceTool,

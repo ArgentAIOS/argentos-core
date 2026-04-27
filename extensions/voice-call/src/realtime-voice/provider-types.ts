@@ -2,9 +2,11 @@ export type RealtimeVoiceProviderId = string;
 
 export type RealtimeVoiceRole = "user" | "assistant";
 
-export type RealtimeVoiceCloseReason = "completed" | "error";
+export type RealtimeVoiceCloseReason = "completed" | "error" | "cancelled";
 
 export type RealtimeVoiceProviderConfig = Record<string, unknown>;
+
+export type RealtimeVoiceProviderReadiness = "live" | "test-only" | "preview";
 
 export type RealtimeVoiceTool = {
   type: "function";
@@ -29,7 +31,7 @@ export type RealtimeVoiceBridgeCallbacks = {
   onClearAudio: () => void;
   onMark?: (markName: string) => void;
   onTranscript?: (role: RealtimeVoiceRole, text: string, isFinal: boolean) => void;
-  onToolCall?: (event: RealtimeVoiceToolCallEvent) => void;
+  onToolCall?: (event: RealtimeVoiceToolCallEvent) => void | Promise<void>;
   onReady?: () => void;
   onError?: (error: Error) => void;
   onClose?: (reason: RealtimeVoiceCloseReason) => void;
@@ -49,7 +51,7 @@ export type RealtimeVoiceBridge = {
   triggerGreeting?(instructions?: string): void;
   submitToolResult(callId: string, result: unknown): void;
   acknowledgeMark(): void;
-  close(): void;
+  close(reason?: RealtimeVoiceCloseReason): void;
   isConnected(): boolean;
 };
 
@@ -65,6 +67,7 @@ export type RealtimeVoiceProvider = {
   id: RealtimeVoiceProviderId;
   aliases?: string[];
   label?: string;
+  readiness?: RealtimeVoiceProviderReadiness;
   resolveConfig?: (ctx: RealtimeVoiceProviderResolveContext) => RealtimeVoiceProviderConfig;
   isConfigured?: (ctx: RealtimeVoiceProviderConfiguredContext) => boolean;
   createBridge(request: RealtimeVoiceBridgeCreateRequest): RealtimeVoiceBridge;
