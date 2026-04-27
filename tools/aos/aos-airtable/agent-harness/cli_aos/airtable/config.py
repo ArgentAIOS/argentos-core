@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from . import __version__
@@ -22,29 +21,15 @@ from .constants import (
     LEGACY_WORKSPACE_ID_ENV,
     TOOL_NAME,
 )
-from .service_keys import resolve_service_key
+from .service_keys import resolve_named_value
 
 
-def _env(*names: str) -> str:
-    for name in names:
-        value = (resolve_service_key(name) or "").strip()
-        if value:
-            return value
-    for name in names:
-        value = os.getenv(name, "").strip()
-        if value:
-            return value
-    return ""
+def _resolved(*names: str, ctx_obj: dict[str, Any] | None = None, default: str | None = None) -> dict[str, Any]:
+    return resolve_named_value(*names, ctx_obj=ctx_obj, default=default)
 
 
-def _source(*names: str) -> str | None:
-    for name in names:
-        if (resolve_service_key(name) or "").strip():
-            return "service-keys"
-    for name in names:
-        if os.getenv(name, "").strip():
-            return "process.env"
-    return None
+def _env(*names: str, ctx_obj: dict[str, Any] | None = None, default: str | None = None) -> str:
+    return str(_resolved(*names, ctx_obj=ctx_obj, default=default)["value"] or "")
 
 
 def _scope_command_defaults_template() -> dict[str, dict[str, Any]]:
@@ -98,19 +83,24 @@ def _command_readiness(api_token: str, base_id: str, table_name: str) -> dict[st
     }
 
 
-def runtime_config() -> dict[str, Any]:
-    api_token = _env(DEFAULT_API_TOKEN_ENV, LEGACY_API_TOKEN_ENV)
-    base_id = _env(DEFAULT_BASE_ID_ENV, LEGACY_BASE_ID_ENV)
-    table_name = _env(DEFAULT_TABLE_NAME_ENV, LEGACY_TABLE_NAME_ENV)
-    workspace_id = _env(DEFAULT_WORKSPACE_ID_ENV, LEGACY_WORKSPACE_ID_ENV)
-    api_base_url = _env(DEFAULT_API_BASE_URL_ENV) or "https://api.airtable.com/v0"
+def runtime_config(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
+    api_token_detail = _resolved(DEFAULT_API_TOKEN_ENV, LEGACY_API_TOKEN_ENV, ctx_obj=ctx_obj)
+    base_id_detail = _resolved(DEFAULT_BASE_ID_ENV, LEGACY_BASE_ID_ENV, ctx_obj=ctx_obj)
+    table_name_detail = _resolved(DEFAULT_TABLE_NAME_ENV, LEGACY_TABLE_NAME_ENV, ctx_obj=ctx_obj)
+    workspace_id_detail = _resolved(DEFAULT_WORKSPACE_ID_ENV, LEGACY_WORKSPACE_ID_ENV, ctx_obj=ctx_obj)
+    api_base_url_detail = _resolved(DEFAULT_API_BASE_URL_ENV, ctx_obj=ctx_obj, default="https://api.airtable.com/v0")
+    api_token = str(api_token_detail["value"] or "")
+    base_id = str(base_id_detail["value"] or "")
+    table_name = str(table_name_detail["value"] or "")
+    workspace_id = str(workspace_id_detail["value"] or "")
+    api_base_url = str(api_base_url_detail["value"] or "https://api.airtable.com/v0")
 
     configured = {
         DEFAULT_API_TOKEN_ENV: bool(api_token),
         DEFAULT_BASE_ID_ENV: bool(base_id),
         DEFAULT_TABLE_NAME_ENV: bool(table_name),
         DEFAULT_WORKSPACE_ID_ENV: bool(workspace_id),
-        DEFAULT_API_BASE_URL_ENV: bool(os.getenv(DEFAULT_API_BASE_URL_ENV, "").strip()),
+        DEFAULT_API_BASE_URL_ENV: bool(api_base_url_detail["value"]),
     }
     missing_keys = [name for name in (DEFAULT_API_TOKEN_ENV, DEFAULT_BASE_ID_ENV) if not configured[name]]
     auth_ready = bool(api_token)
@@ -130,14 +120,15 @@ def runtime_config() -> dict[str, Any]:
             "kind": CONNECTOR_AUTH["kind"],
             "required": CONNECTOR_AUTH["required"],
             "service_keys": list(CONNECTOR_AUTH["service_keys"]),
+            "optional_service_keys": list(CONNECTOR_AUTH.get("optional_service_keys", [])),
             "configured": configured,
             "missing_keys": missing_keys,
             "sources": {
-                DEFAULT_API_TOKEN_ENV: _source(DEFAULT_API_TOKEN_ENV, LEGACY_API_TOKEN_ENV),
-                DEFAULT_BASE_ID_ENV: _source(DEFAULT_BASE_ID_ENV, LEGACY_BASE_ID_ENV),
-                DEFAULT_TABLE_NAME_ENV: _source(DEFAULT_TABLE_NAME_ENV, LEGACY_TABLE_NAME_ENV),
-                DEFAULT_WORKSPACE_ID_ENV: _source(DEFAULT_WORKSPACE_ID_ENV, LEGACY_WORKSPACE_ID_ENV),
-                DEFAULT_API_BASE_URL_ENV: _source(DEFAULT_API_BASE_URL_ENV),
+                DEFAULT_API_TOKEN_ENV: api_token_detail["source"],
+                DEFAULT_BASE_ID_ENV: base_id_detail["source"],
+                DEFAULT_TABLE_NAME_ENV: table_name_detail["source"],
+                DEFAULT_WORKSPACE_ID_ENV: workspace_id_detail["source"],
+                DEFAULT_API_BASE_URL_ENV: api_base_url_detail["source"],
             },
             "redacted": {
                 DEFAULT_API_TOKEN_ENV: _redact(api_token),
@@ -159,6 +150,7 @@ def runtime_config() -> dict[str, Any]:
             "base_scoped_read_ready": base_scoped_ready,
             "table_scoped_read_ready": bool(api_token and base_id and table_name),
             "live_write_ready": bool(api_token and base_id),
+            "live_write_smoke_tested": False,
             "implementation_mode": "live_read_with_live_writes" if auth_ready else "configuration_only",
             "auth_ready": auth_ready,
             "command_readiness": command_readiness,
@@ -168,6 +160,7 @@ def runtime_config() -> dict[str, Any]:
         "write_support": {
             "live_writes_enabled": bool(api_token and base_id),
             "scaffold_only": False,
+            "live_write_smoke_tested": False,
         },
         "context": {
             "base_id": base_id,
@@ -181,11 +174,14 @@ def runtime_config() -> dict[str, Any]:
             "commandDefaults": command_defaults,
             "commandDefaultsTemplate": _scope_command_defaults_template(),
         },
+        "_private": {
+            "api_token": api_token,
+        },
     }
 
 
-def redacted_config_snapshot() -> dict[str, Any]:
-    config = runtime_config()
+def redacted_config_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
+    config = runtime_config(ctx_obj)
     return {
         "tool": config["tool"],
         "version": config["version"],

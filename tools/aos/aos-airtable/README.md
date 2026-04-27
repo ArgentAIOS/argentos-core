@@ -29,7 +29,10 @@ you want a default table scope for record commands.
 - optional `AIRTABLE_API_BASE_URL`
 
 Local process environment variables remain a development fallback only. Runtime
-resolution checks ArgentOS service keys first.
+resolution checks operator-controlled service keys first. Scoped repo service
+keys are not bypassed with env fallback, including legacy `AOS_AIRTABLE_*`
+aliases. `live_write_smoke_tested` remains false until a real operator Airtable
+base write smoke is run.
 
 ## Write commands
 

@@ -25,12 +25,15 @@ CONNECTOR_AUTH = {
     "kind": "service-key",
     "required": True,
     "service_keys": [DEFAULT_API_TOKEN_ENV, DEFAULT_BASE_ID_ENV],
+    "optional_service_keys": [DEFAULT_WORKSPACE_ID_ENV, DEFAULT_TABLE_NAME_ENV, DEFAULT_API_BASE_URL_ENV],
     "interactive_setup": [
         "Create a dedicated Airtable personal access token for the target workspace.",
         "Grant the token access to the base this worker should operate on.",
-        "Add AIRTABLE_API_TOKEN and AIRTABLE_BASE_ID in API Keys.",
-        "Optionally set AIRTABLE_TABLE_NAME to pin a default table scope for worker commands.",
+        "Add AIRTABLE_API_TOKEN and AIRTABLE_BASE_ID in operator-controlled API Keys.",
+        "Optionally set AIRTABLE_TABLE_NAME, AIRTABLE_WORKSPACE_ID, and AIRTABLE_API_BASE_URL in operator-controlled API Keys.",
+        "Scoped service-key entries must be injected by the operator runtime and are not bypassed with local env.",
         "Keep table scope narrow before enabling write mode for record mutations.",
+        "Keep live_write_smoke_tested=false unless a real operator Airtable base smoke test verifies writes.",
     ],
 }
 

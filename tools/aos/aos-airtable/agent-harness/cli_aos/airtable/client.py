@@ -10,7 +10,7 @@ from urllib.request import Request, urlopen
 
 from .errors import CliError
 from .constants import DEFAULT_BASE_ID_ENV, DEFAULT_TABLE_NAME_ENV, LEGACY_BASE_ID_ENV, LEGACY_TABLE_NAME_ENV
-from .service_keys import resolve_service_key
+from .service_keys import resolve_named_value
 
 
 def _coerce_text(value: Any) -> str:
@@ -143,46 +143,25 @@ class AirtableClient:
     api_base_url: str
     api_token: str
     base_id: str | None = None
+    table_name: str | None = None
     timeout: float = 30.0
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "AirtableClient":
         runtime = config["runtime"]
-        api_token = (
-            (resolve_service_key("AIRTABLE_API_TOKEN") or "").strip()
-            or (resolve_service_key("AOS_AIRTABLE_API_TOKEN") or "").strip()
-            or os.getenv("AIRTABLE_API_TOKEN", "").strip()
-            or os.getenv("AOS_AIRTABLE_API_TOKEN", "").strip()
-        )
         return cls(
             api_base_url=str(runtime["api_base_url"]).rstrip("/"),
-            api_token=api_token,
+            api_token=str((config.get("_private") or {}).get("api_token") or ""),
             base_id=str(runtime["base_id"]).strip() or None,
+            table_name=str(runtime["table_name"]).strip() or None,
         )
 
-    @staticmethod
-    def _env_table_name() -> str:
-        for name in (DEFAULT_TABLE_NAME_ENV, LEGACY_TABLE_NAME_ENV):
-            value = (resolve_service_key(name) or "").strip()
-            if value:
-                return value
-        for name in (DEFAULT_TABLE_NAME_ENV, LEGACY_TABLE_NAME_ENV):
-            value = os.getenv(name, "").strip()
-            if value:
-                return value
-        return ""
+    def _env_table_name(self) -> str:
+        return self.table_name or str(resolve_named_value(DEFAULT_TABLE_NAME_ENV, LEGACY_TABLE_NAME_ENV)["value"] or "")
 
     @staticmethod
     def _env_base_id() -> str:
-        for name in (DEFAULT_BASE_ID_ENV, LEGACY_BASE_ID_ENV):
-            value = (resolve_service_key(name) or "").strip()
-            if value:
-                return value
-        for name in (DEFAULT_BASE_ID_ENV, LEGACY_BASE_ID_ENV):
-            value = os.getenv(name, "").strip()
-            if value:
-                return value
-        return ""
+        return str(resolve_named_value(DEFAULT_BASE_ID_ENV, LEGACY_BASE_ID_ENV)["value"] or "")
 
     def _request_json(
         self,

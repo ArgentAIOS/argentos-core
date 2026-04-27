@@ -10,18 +10,25 @@
     "kind": "service-key",
     "required": true,
     "service_keys": ["AIRTABLE_API_TOKEN", "AIRTABLE_BASE_ID"],
+    "optional_service_keys": ["AIRTABLE_WORKSPACE_ID", "AIRTABLE_TABLE_NAME", "AIRTABLE_API_BASE_URL"],
     "interactive_setup": [
       "Create a dedicated Airtable personal access token for the target workspace.",
       "Grant the token access to the base this worker should operate on.",
-      "Add AIRTABLE_API_TOKEN and AIRTABLE_BASE_ID in API Keys.",
-      "Optionally set AIRTABLE_TABLE_NAME to pin a default table scope for worker commands.",
-      "Keep table scope narrow before enabling write mode for record mutations."
+      "Add AIRTABLE_API_TOKEN and AIRTABLE_BASE_ID in operator-controlled API Keys.",
+      "Optionally set AIRTABLE_TABLE_NAME, AIRTABLE_WORKSPACE_ID, and AIRTABLE_API_BASE_URL in operator-controlled API Keys.",
+      "Scoped service-key entries must be injected by the operator runtime and are not bypassed with local env.",
+      "Keep table scope narrow before enabling write mode for record mutations.",
+      "Keep live_write_smoke_tested=false unless a real operator Airtable base smoke test verifies writes."
     ]
   },
   "scope": {
     "kind": "base-table-record",
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "live_write_smoke_tested": false,
     "required": ["AIRTABLE_API_TOKEN", "AIRTABLE_BASE_ID"],
-    "optional": ["AIRTABLE_WORKSPACE_ID", "AIRTABLE_TABLE_NAME"],
+    "optional": ["AIRTABLE_WORKSPACE_ID", "AIRTABLE_TABLE_NAME", "AIRTABLE_API_BASE_URL"],
     "workerFields": ["base_id", "table_name", "workspace_id"],
     "worker_visible_actions": [
       "base.list",
