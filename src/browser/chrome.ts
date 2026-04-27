@@ -7,6 +7,15 @@ import type { ResolvedBrowserConfig, ResolvedBrowserProfile } from "./config.js"
 import { ensurePortAvailable } from "../infra/ports.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { CONFIG_DIR } from "../utils.js";
+import {
+  CHROME_BOOTSTRAP_EXIT_TIMEOUT_MS,
+  CHROME_BOOTSTRAP_PREFS_TIMEOUT_MS,
+  CHROME_LAUNCH_READY_POLL_MS,
+  CHROME_LAUNCH_READY_WINDOW_MS,
+  CHROME_REACHABILITY_TIMEOUT_MS,
+  CHROME_STOP_PROBE_TIMEOUT_MS,
+  CHROME_STOP_TIMEOUT_MS,
+} from "./cdp-timeouts.js";
 import { appendCdpPath } from "./cdp.helpers.js";
 import { getHeadersWithAuth, normalizeCdpWsUrl } from "./cdp.js";
 import {
@@ -234,7 +243,8 @@ export async function launchArgentChrome(
   // Then decorate (if needed) before the "real" run.
   if (needsBootstrap) {
     const bootstrap = spawnOnce();
-    const deadline = Date.now() + 10_000;
+    const deadline =
+      Date.now() + (resolved.localLaunchTimeoutMs ?? CHROME_BOOTSTRAP_PREFS_TIMEOUT_MS);
     while (Date.now() < deadline) {
       if (exists(localStatePath) && exists(preferencesPath)) {
         break;
@@ -246,7 +256,7 @@ export async function launchArgentChrome(
     } catch {
       // ignore
     }
-    const exitDeadline = Date.now() + 5000;
+    const exitDeadline = Date.now() + CHROME_BOOTSTRAP_EXIT_TIMEOUT_MS;
     while (Date.now() < exitDeadline) {
       if (bootstrap.exitCode != null) {
         break;
@@ -275,15 +285,16 @@ export async function launchArgentChrome(
 
   const proc = spawnOnce();
   // Wait for CDP to come up.
-  const readyDeadline = Date.now() + 15_000;
+  const readyDeadline =
+    Date.now() + (resolved.localCdpReadyTimeoutMs ?? CHROME_LAUNCH_READY_WINDOW_MS);
   while (Date.now() < readyDeadline) {
-    if (await isChromeReachable(profile.cdpUrl, 500)) {
+    if (await isChromeReachable(profile.cdpUrl, CHROME_REACHABILITY_TIMEOUT_MS)) {
       break;
     }
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, CHROME_LAUNCH_READY_POLL_MS));
   }
 
-  if (!(await isChromeReachable(profile.cdpUrl, 500))) {
+  if (!(await isChromeReachable(profile.cdpUrl, CHROME_REACHABILITY_TIMEOUT_MS))) {
     try {
       proc.kill("SIGKILL");
     } catch {
@@ -309,7 +320,7 @@ export async function launchArgentChrome(
   };
 }
 
-export async function stopArgentChrome(running: RunningChrome, timeoutMs = 2500) {
+export async function stopArgentChrome(running: RunningChrome, timeoutMs = CHROME_STOP_TIMEOUT_MS) {
   const proc = running.proc;
   if (proc.killed) {
     return;
@@ -325,7 +336,7 @@ export async function stopArgentChrome(running: RunningChrome, timeoutMs = 2500)
     if (!proc.exitCode && proc.killed) {
       break;
     }
-    if (!(await isChromeReachable(cdpUrlForPort(running.cdpPort), 200))) {
+    if (!(await isChromeReachable(cdpUrlForPort(running.cdpPort), CHROME_STOP_PROBE_TIMEOUT_MS))) {
       return;
     }
     await new Promise((r) => setTimeout(r, 100));

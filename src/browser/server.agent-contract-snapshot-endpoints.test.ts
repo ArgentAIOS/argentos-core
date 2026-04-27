@@ -346,6 +346,7 @@ describe("browser control server", () => {
       doubleClick: false,
       button: "left",
       modifiers: ["Shift"],
+      timeoutMs: 60_000,
     });
 
     const clickSelector = await realFetch(`${base}/act`, {
@@ -371,6 +372,7 @@ describe("browser control server", () => {
       text: "",
       submit: false,
       slowly: false,
+      timeoutMs: 60_000,
     });
 
     const press = await postJson(`${base}/act`, {
@@ -393,6 +395,7 @@ describe("browser control server", () => {
       cdpUrl: cdpBaseUrl,
       targetId: "abcd1234",
       ref: "2",
+      timeoutMs: 60_000,
     });
 
     const scroll = await postJson(`${base}/act`, {
@@ -404,6 +407,7 @@ describe("browser control server", () => {
       cdpUrl: cdpBaseUrl,
       targetId: "abcd1234",
       ref: "2",
+      timeoutMs: 60_000,
     });
 
     const drag = await postJson(`${base}/act`, {
@@ -417,6 +421,7 @@ describe("browser control server", () => {
       targetId: "abcd1234",
       startRef: "3",
       endRef: "4",
+      timeoutMs: 60_000,
     });
   });
 });
