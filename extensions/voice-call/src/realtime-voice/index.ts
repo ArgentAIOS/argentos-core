@@ -1,4 +1,12 @@
 export {
+  convertPcmToMulaw8k,
+  mulawToPcm,
+  pcmToMulaw,
+  resamplePcm,
+  resamplePcmTo8k,
+  type PcmAudioFormat,
+} from "./audio-codec.js";
+export {
   createFakeRealtimeVoiceProvider,
   FakeRealtimeVoiceBridge,
   FakeRealtimeVoiceProvider,
@@ -132,9 +140,17 @@ export {
   type RealtimeVoiceMarkStrategy,
 } from "./session-runtime.js";
 export type {
+  RealtimeVoiceAudioFormat,
   RealtimeVoiceBridge,
   RealtimeVoiceBridgeCallbacks,
   RealtimeVoiceBridgeCreateRequest,
+  RealtimeVoiceBrowserAudioContract,
+  RealtimeVoiceBrowserGatewayRelaySession,
+  RealtimeVoiceBrowserJsonPcmWebSocketSession,
+  RealtimeVoiceBrowserManagedRoomSession,
+  RealtimeVoiceBrowserSession,
+  RealtimeVoiceBrowserSessionCreateRequest,
+  RealtimeVoiceBrowserWebRtcSdpSession,
   RealtimeVoiceCloseReason,
   RealtimeVoiceProvider,
   RealtimeVoiceProviderConfig,
@@ -145,4 +161,5 @@ export type {
   RealtimeVoiceRole,
   RealtimeVoiceTool,
   RealtimeVoiceToolCallEvent,
+  RealtimeVoiceToolResultOptions,
 } from "./provider-types.js";

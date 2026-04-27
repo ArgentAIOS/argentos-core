@@ -45,6 +45,7 @@
   "exports": {
     ".": "./dist/index.js",
     "./plugin-sdk": "./dist/plugin-sdk/index.js",
+    "./plugin-sdk/realtime-voice": "./dist/plugin-sdk/realtime-voice.js",
     "./cli-entry": "./argent.mjs"
   },
   "publishConfig": {

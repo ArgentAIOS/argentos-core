@@ -1,6 +1,6 @@
 import type {
-  RealtimeVoiceBridge,
   RealtimeVoiceAudioFormat,
+  RealtimeVoiceBridge,
   RealtimeVoiceCloseReason,
   RealtimeVoiceProvider,
   RealtimeVoiceProviderConfig,
@@ -12,7 +12,7 @@ import type {
 
 export type RealtimeVoiceAudioSink = {
   isOpen?: () => boolean;
-  sendAudio: (muLaw: Buffer) => void;
+  sendAudio: (audio: Buffer) => void;
   clearAudio?: () => void;
   sendMark?: (markName: string) => void;
 };
@@ -82,9 +82,9 @@ export function createRealtimeVoiceBridgeSession(
     audioFormat: params.audioFormat,
     instructions: params.instructions,
     tools: params.tools,
-    onAudio: (muLaw) => {
+    onAudio: (audio) => {
       if (canSendAudio()) {
-        params.audioSink.sendAudio(muLaw);
+        params.audioSink.sendAudio(audio);
       }
     },
     onClearAudio: () => {
