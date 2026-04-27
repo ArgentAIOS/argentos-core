@@ -9,6 +9,15 @@
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": false,
+    "live_write_smoke_tested": false,
+    "required": ["HOOTSUITE_ACCESS_TOKEN"],
+    "optional": [
+      "HOOTSUITE_BASE_URL",
+      "HOOTSUITE_ORGANIZATION_ID",
+      "HOOTSUITE_SOCIAL_PROFILE_ID",
+      "HOOTSUITE_TEAM_ID",
+      "HOOTSUITE_MESSAGE_ID"
+    ],
     "workerFields": ["member", "organization_id", "social_profile_id", "team_id", "message_id"],
     "worker_visible_actions": [
       "me.read",
@@ -168,8 +177,8 @@
   "auth": {
     "kind": "oauth-service-key",
     "required": true,
-    "service_keys": [
-      "HOOTSUITE_ACCESS_TOKEN",
+    "service_keys": ["HOOTSUITE_ACCESS_TOKEN"],
+    "optional_service_keys": [
       "HOOTSUITE_BASE_URL",
       "HOOTSUITE_ORGANIZATION_ID",
       "HOOTSUITE_SOCIAL_PROFILE_ID",
@@ -182,6 +191,8 @@
       "Optional: set HOOTSUITE_BASE_URL in operator-controlled service keys only if you need a non-default Hootsuite API host.",
       "Optional: pin HOOTSUITE_ORGANIZATION_ID, HOOTSUITE_SOCIAL_PROFILE_ID, HOOTSUITE_TEAM_ID, and HOOTSUITE_MESSAGE_ID in operator-controlled service keys for worker scope defaults.",
       "Live reads are enabled for member, organization, social profile, team, and outbound message discovery; local env is harness-only fallback.",
+      "Scoped service-key entries must be injected by the operator runtime and are not bypassed with local env.",
+      "Keep live_write_smoke_tested=false unless a real operator Hootsuite tenant smoke test verifies writes.",
       "No publish or schedule write command is advertised until a live write bridge and approval policy are implemented."
     ]
   },

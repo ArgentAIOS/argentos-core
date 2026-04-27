@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import threading
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,6 +19,63 @@ from cli_aos.hootsuite import service_keys as hootsuite_service_keys
 HARNESS_ROOT = Path(__file__).resolve().parents[1]
 CONNECTOR_PATH = HARNESS_ROOT.parent / "connector.json"
 PERMISSIONS_PATH = HARNESS_ROOT / "permissions.json"
+ALL_ENV_KEYS = (
+    "HOOTSUITE_ACCESS_TOKEN",
+    "HOOTSUITE_BASE_URL",
+    "HOOTSUITE_ORGANIZATION_ID",
+    "HOOTSUITE_SOCIAL_PROFILE_ID",
+    "HOOTSUITE_TEAM_ID",
+    "HOOTSUITE_MESSAGE_ID",
+)
+
+
+def write_service_keys(tmp_path: Path, values: dict[str, str], *, extra: dict[str, Any] | None = None) -> Path:
+    path = tmp_path / "service-keys.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "keys": [
+                    {
+                        "id": f"sk-{key}",
+                        "name": key,
+                        "variable": key,
+                        "value": value,
+                        "enabled": True,
+                        **(extra or {}),
+                    }
+                    for key, value in values.items()
+                ],
+            }
+        )
+    )
+    return path
+
+
+def encrypt_secret(tmp_path: Path, plaintext: str) -> str:
+    home = tmp_path / "home"
+    key_dir = home / ".argentos"
+    key_dir.mkdir(parents=True, exist_ok=True)
+    (key_dir / ".master-key").write_text("11" * 32)
+    script = r"""
+const { createCipheriv } = require("node:crypto");
+const plaintext = process.argv[1];
+const key = Buffer.from("11".repeat(32), "hex");
+const iv = Buffer.from("22".repeat(12), "hex");
+const cipher = createCipheriv("aes-256-gcm", key, iv);
+let encrypted = cipher.update(plaintext, "utf8", "hex");
+encrypted += cipher.final("hex");
+const tag = cipher.getAuthTag().toString("hex");
+process.stdout.write(`enc:v1:${iv.toString("hex")}:${tag}:${encrypted}`);
+"""
+    result = subprocess.run(
+        ["node", "-e", script, plaintext],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+    )
+    return result.stdout
 
 
 MEMBER = {"id": "member-1", "fullName": "Jane Social", "email": "jane@example.com"}
@@ -156,9 +214,10 @@ def invoke_json_with_obj(args: list[str], *, obj: dict[str, Any]) -> dict[str, A
 
 
 @pytest.fixture(autouse=True)
-def disable_repo_service_key_resolution(monkeypatch):
-    hootsuite_service_keys.resolve_service_key.cache_clear()
-    monkeypatch.setattr(hootsuite_service_keys, "resolve_service_key", lambda variable: None)
+def no_operator_service_keys_by_default(monkeypatch, tmp_path):
+    monkeypatch.setattr(hootsuite_service_keys, "SERVICE_KEYS_PATH", tmp_path / "missing-service-keys.json")
+    for key in ALL_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
 
 
 def test_help_advertises_required_global_flags_and_modes():
@@ -176,6 +235,10 @@ def test_manifest_and_permissions_are_in_sync():
     command_ids = [command["id"] for command in manifest["commands"]]
     assert set(command_ids) == set(permissions.keys())
     assert manifest["scope"]["kind"] == "social-scheduling"
+    assert manifest["scope"]["live_write_smoke_tested"] is False
+    assert manifest["scope"]["required"] == ["HOOTSUITE_ACCESS_TOKEN"]
+    assert manifest["auth"]["service_keys"] == ["HOOTSUITE_ACCESS_TOKEN"]
+    assert "HOOTSUITE_BASE_URL" in manifest["auth"]["optional_service_keys"]
     assert "message.schedule" not in command_ids
     assert {command["required_mode"] for command in manifest["commands"]} == {"readonly"}
     assert manifest["scope"]["commandDefaults"]["social_profile.list"]["args"] == ["HOOTSUITE_ORGANIZATION_ID"]
@@ -190,6 +253,7 @@ def test_capabilities_exposes_manifest():
     assert payload["data"]["modes"] == ["readonly", "write", "full", "admin"]
     assert payload["data"]["write_support"]["scaffold_only"] is False
     assert payload["data"]["write_support"]["scaffolded_commands"] == []
+    assert payload["data"]["write_support"]["live_write_smoke_tested"] is False
     assert "organization.read" in json.dumps(payload["data"])
     assert "message.schedule" not in json.dumps(payload["data"])
 
@@ -289,19 +353,59 @@ def test_operator_service_key_context_supplies_scope_defaults(monkeypatch):
         },
     )
     data = payload["data"]
-    assert data["auth"]["service_keys"] == [
-        "HOOTSUITE_ACCESS_TOKEN",
+    assert data["auth"]["service_keys"] == ["HOOTSUITE_ACCESS_TOKEN"]
+    assert data["auth"]["optional_service_keys"] == [
         "HOOTSUITE_BASE_URL",
         "HOOTSUITE_ORGANIZATION_ID",
         "HOOTSUITE_SOCIAL_PROFILE_ID",
         "HOOTSUITE_TEAM_ID",
         "HOOTSUITE_MESSAGE_ID",
     ]
+    assert data["runtime"]["live_write_smoke_tested"] is False
     assert data["runtime"]["picker_scopes"]["organization"]["selected"]["organization_id"] == "operator-org"
     assert data["runtime"]["picker_scopes"]["social_profile"]["selected"]["social_profile_id"] == "operator-profile"
     assert data["runtime"]["picker_scopes"]["team"]["selected"]["team_id"] == "operator-team"
     assert data["runtime"]["picker_scopes"]["message"]["selected"]["message_id"] == "operator-message"
     assert data["scope"]["organization_id_source"] == "operator:service_keys"
+
+
+def test_encrypted_repo_service_key_decrypts_with_master_key(monkeypatch, tmp_path):
+    encrypted = encrypt_secret(tmp_path, "hootsuite-token-encrypted")
+    path = write_service_keys(tmp_path, {"HOOTSUITE_ACCESS_TOKEN": encrypted})
+    monkeypatch.setattr(hootsuite_service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+    details = hootsuite_service_keys.service_key_details("HOOTSUITE_ACCESS_TOKEN")
+
+    assert details["value"] == "hootsuite-token-encrypted"
+    assert details["source"] == "repo-service-key"
+
+
+def test_unreadable_encrypted_repo_service_key_falls_back_to_env_like_core_resolver(monkeypatch, tmp_path):
+    path = write_service_keys(tmp_path, {"HOOTSUITE_ACCESS_TOKEN": "enc:v1:bad:bad:bad"})
+    monkeypatch.setattr(hootsuite_service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("HOOTSUITE_ACCESS_TOKEN", "env-token")
+
+    details = hootsuite_service_keys.service_key_details("HOOTSUITE_ACCESS_TOKEN")
+
+    assert details["value"] == "env-token"
+    assert details["source"] == "env_fallback"
+
+
+def test_scoped_repo_service_key_blocks_env_fallback(monkeypatch, tmp_path):
+    path = write_service_keys(
+        tmp_path,
+        {"HOOTSUITE_ACCESS_TOKEN": "scoped-token"},
+        extra={"allowedRoles": ["operator"]},
+    )
+    monkeypatch.setattr(hootsuite_service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("HOOTSUITE_ACCESS_TOKEN", "env-token")
+
+    details = hootsuite_service_keys.service_key_details("HOOTSUITE_ACCESS_TOKEN")
+
+    assert details["value"] == ""
+    assert details["source"] == "repo-service-key-scoped"
+    assert details["blocked"] is True
 
 
 def test_member_read_returns_scope_preview(monkeypatch):
