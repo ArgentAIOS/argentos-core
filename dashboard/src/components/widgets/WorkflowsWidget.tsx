@@ -3281,9 +3281,12 @@ function AgentForm({
     }
   };
 
+  const rawToolsAllow = (data as Record<string, unknown>).toolsAllow;
+  const rawToolsDeny = (data as Record<string, unknown>).toolsDeny;
+
   // Parse existing comma-separated tools into arrays
   const toolsAllow: string[] = useMemo(() => {
-    const raw = (data as Record<string, unknown>).toolsAllow;
+    const raw = rawToolsAllow;
     if (Array.isArray(raw)) return raw as string[];
     if (typeof raw === "string" && raw.trim())
       return raw
@@ -3291,10 +3294,10 @@ function AgentForm({
         .map((s) => s.trim())
         .filter(Boolean);
     return [];
-  }, [(data as Record<string, unknown>).toolsAllow]);
+  }, [rawToolsAllow]);
 
   const toolsDeny: string[] = useMemo(() => {
-    const raw = (data as Record<string, unknown>).toolsDeny;
+    const raw = rawToolsDeny;
     if (Array.isArray(raw)) return raw as string[];
     if (typeof raw === "string" && raw.trim())
       return raw
@@ -3302,7 +3305,7 @@ function AgentForm({
         .map((s) => s.trim())
         .filter(Boolean);
     return [];
-  }, [(data as Record<string, unknown>).toolsDeny]);
+  }, [rawToolsDeny]);
 
   return (
     <>

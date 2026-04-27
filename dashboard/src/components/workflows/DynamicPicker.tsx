@@ -358,13 +358,26 @@ export default function DynamicPicker({
 
   // Fetch on mount and when credentialId changes
   useEffect(() => {
-    // Invalidate cache when credential changes
-    const key = cacheKey(connectorId, credentialId, pickerHint);
-    if (!resultCache.has(key)) {
-      setFetchState({ status: "idle" });
+    let cancelled = false;
+    if (!hintDef || !credentialId) {
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setFetchState({ status: "idle" });
+        }
+      });
+      return () => {
+        cancelled = true;
+      };
     }
-    void fetchItems();
-  }, [credentialId, fetchItems, connectorId, pickerHint]);
+    queueMicrotask(() => {
+      if (!cancelled) {
+        void fetchItems();
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [credentialId, fetchItems, hintDef]);
 
   // ── Close on outside click ─────────────────────────────────────────
 
@@ -380,7 +393,10 @@ export default function DynamicPicker({
 
   // ── Filter items ───────────────────────────────────────────────────
 
-  const items = fetchState.status === "loaded" ? fetchState.items : [];
+  const items = useMemo(
+    () => (fetchState.status === "loaded" ? fetchState.items : []),
+    [fetchState],
+  );
   const filtered = useMemo(() => {
     if (!search) {
       return items;
@@ -428,11 +444,6 @@ export default function DynamicPicker({
     [open, filtered, focusedIdx, onChange],
   );
 
-  // Reset focused index when filter changes
-  useEffect(() => {
-    setFocusedIdx(-1);
-  }, [search]);
-
   // ── Selected item label ────────────────────────────────────────────
 
   const selectedLabel = useMemo(() => {
@@ -468,6 +479,7 @@ export default function DynamicPicker({
           value={open ? search : selectedLabel || search}
           onChange={(e) => {
             setSearch(e.target.value);
+            setFocusedIdx(-1);
             if (!open) {
               setOpen(true);
             }
@@ -546,16 +558,4 @@ export default function DynamicPicker({
       )}
     </div>
   );
-}
-
-/**
- * Invalidate cached results for a specific connector+credential pair.
- * Call this when the user changes credentials to force a re-fetch.
- */
-export function invalidatePickerCache(connectorId: string, credentialId: string): void {
-  for (const key of resultCache.keys()) {
-    if (key.startsWith(`${connectorId}::${credentialId}::`)) {
-      resultCache.delete(key);
-    }
-  }
 }

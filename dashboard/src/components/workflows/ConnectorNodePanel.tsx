@@ -141,8 +141,12 @@ export function ConnectorNodePanel({
       return;
     }
     let cancelled = false;
-    setLoading(true);
-    setError(null);
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setLoading(true);
+        setError(null);
+      }
+    });
 
     request("workflows.manifest", { connectorId })
       .then((result: unknown) => {
