@@ -14,6 +14,15 @@ from .constants import (
 )
 from .service_keys import service_key_value
 
+REQUIRED_ONE_OF_SERVICE_KEYS = ["BUFFER_API_KEY", "BUFFER_ACCESS_TOKEN"]
+OPTIONAL_SERVICE_KEYS = [
+    "BUFFER_BASE_URL",
+    "BUFFER_ORGANIZATION_ID",
+    "BUFFER_CHANNEL_ID",
+    "BUFFER_PROFILE_ID",
+    "BUFFER_POST_ID",
+]
+
 
 def _normalize(value: str | None) -> str:
     return (value or "").strip()
@@ -26,7 +35,7 @@ def _resolve_named_value(names: tuple[str, ...] | list[str], *, ctx_obj: dict[st
             return {"value": _normalize(value), "source": source, "env": name}
     for name in names:
         value, source = service_key_value(name, ctx_obj=ctx_obj)
-        if _normalize(value) and source == "service_key":
+        if _normalize(value) and source == "repo-service-key":
             return {"value": _normalize(value), "source": source, "env": name}
     for name in names:
         value, source = service_key_value(name, ctx_obj=ctx_obj)
@@ -76,6 +85,8 @@ def resolve_runtime_values(ctx_obj: dict[str, Any] | None = None) -> dict[str, A
         "profile_id_present": bool(profile_id["value"]),
         "post_id_present": bool(post_id["value"]),
         "service_key_precedence": "operator-service-keys-first-with-env-fallback",
+        "required_one_of_service_keys": list(REQUIRED_ONE_OF_SERVICE_KEYS),
+        "optional_service_keys": list(OPTIONAL_SERVICE_KEYS),
     }
 
 
@@ -140,23 +151,23 @@ def config_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
         "backend": BACKEND_NAME,
         "auth": {
             "api_key_envs": list(ENV_API_KEYS),
-            "service_keys": [
-                "BUFFER_API_KEY",
-                "BUFFER_ACCESS_TOKEN",
-                "BUFFER_BASE_URL",
-                "BUFFER_ORGANIZATION_ID",
-                "BUFFER_CHANNEL_ID",
-                "BUFFER_PROFILE_ID",
-                "BUFFER_POST_ID",
-            ],
+            "service_keys": list(runtime["required_one_of_service_keys"]),
+            "required_one_of_service_keys": [list(runtime["required_one_of_service_keys"])],
+            "optional_service_keys": list(runtime["optional_service_keys"]),
             "access_token_source": runtime["access_token_source"],
             "service_key_precedence": runtime["service_key_precedence"],
             "development_fallback": list(ENV_API_KEYS),
+            "resolution_order": [
+                "operator runtime service_keys/service_key_values/api_keys/secrets",
+                "unmanaged repo service-keys.json",
+                "local environment fallback",
+            ],
         },
         "runtime": {
             "implementation_mode": "live_graphql_read_only",
             "graphql_endpoint": runtime["base_url"],
             "service_key_precedence": runtime["service_key_precedence"],
+            "live_write_smoke_tested": False,
             "command_defaults": command_defaults,
             "picker_scopes": picker_scopes,
             "live_read_commands": [

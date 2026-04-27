@@ -244,6 +244,14 @@ Shared contract change: Dropbox public AOS surface is being narrowed to truthful
 Operator key contract: `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `DROPBOX_PATH`, `DROPBOX_FILE_ID`, `DROPBOX_QUERY`, `DROPBOX_CURSOR`, `DROPBOX_LIMIT`, `DROPBOX_BASE_URL`, and `DROPBOX_CONTENT_URL` resolve from operator service keys before local environment fallback.
 Workflows/AppForge/AOU reaction: consume Dropbox manifest/capabilities only; treat Dropbox as live read-only and do not present it as an output/write destination.
 
+### 2026-04-27 — AOS Buffer Service-Key Hardening
+
+Lane: `AOS Buffer service keys`
+Branch/status: `codex/aos-buffer-service-keys-loop` from `origin/dev` `51d981a5`.
+Owned files/directories: `tools/aos/aos-buffer/**`; this coordination note.
+Shared contract change in progress: Buffer remains truthful live read-only. Either `BUFFER_API_KEY` or `BUFFER_ACCESS_TOKEN` is required for live GraphQL reads; `BUFFER_BASE_URL`, `BUFFER_ORGANIZATION_ID`, `BUFFER_CHANNEL_ID`, `BUFFER_PROFILE_ID`, and `BUFFER_POST_ID` are optional operator-controlled defaults. Scoped repo service keys block env fallback for the same variable; valid `enc:v1` repo keys decrypt; unreadable encrypted repo keys fall back like the core resolver. `live_write_smoke_tested` stays false.
+Workflows/AppForge/AOU reaction: consume manifest/auth/scope/capability truth only. Do not present Buffer draft/schedule writes until a later live write bridge and approval policy are implemented and smoke-tested.
+
 ### 2026-04-26 — OpenClaw 4.24 Comparison Lane
 
 Lane: OpenClaw 4.24 realtime/browser/marketplace comparison. Branch/commit: `codex/aos-next-connector-wave` at `ad3fb0b9`. Owned files/directories for this lane: `ops/THREADMASTER_COORDINATION.md` for coordination updates; future comparison artifacts under `ops/**` only unless the board is updated first. Shared contract changes: none yet. Workflows/AppForge/AOU reaction: proposed direction is browser harness first, provider-neutral realtime voice substrate second, then Google Meet as a marketplace-distributed capability plugin; no implementation dependency is active until a follow-up plan claims specific files/contracts.

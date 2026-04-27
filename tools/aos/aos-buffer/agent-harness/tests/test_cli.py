@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import threading
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -17,6 +18,64 @@ from cli_aos.buffer import service_keys
 HARNESS_ROOT = Path(__file__).resolve().parents[1]
 CONNECTOR_PATH = HARNESS_ROOT.parent / "connector.json"
 PERMISSIONS_PATH = HARNESS_ROOT / "permissions.json"
+ALL_ENV_KEYS = (
+    "BUFFER_API_KEY",
+    "BUFFER_ACCESS_TOKEN",
+    "BUFFER_BASE_URL",
+    "BUFFER_ORGANIZATION_ID",
+    "BUFFER_CHANNEL_ID",
+    "BUFFER_PROFILE_ID",
+    "BUFFER_POST_ID",
+)
+
+
+def write_service_keys(tmp_path: Path, values: dict[str, str], *, extra: dict[str, Any] | None = None) -> Path:
+    path = tmp_path / "service-keys.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "keys": [
+                    {
+                        "id": f"sk-{key}",
+                        "name": key,
+                        "variable": key,
+                        "value": value,
+                        "enabled": True,
+                        **(extra or {}),
+                    }
+                    for key, value in values.items()
+                ],
+            }
+        )
+    )
+    return path
+
+
+def encrypt_secret(tmp_path: Path, plaintext: str) -> str:
+    home = tmp_path / "home"
+    key_dir = home / ".argentos"
+    key_dir.mkdir(parents=True, exist_ok=True)
+    (key_dir / ".master-key").write_text("11" * 32)
+    script = r"""
+const { createCipheriv } = require("node:crypto");
+const plaintext = process.argv[1];
+const key = Buffer.from("11".repeat(32), "hex");
+const iv = Buffer.from("22".repeat(12), "hex");
+const cipher = createCipheriv("aes-256-gcm", key, iv);
+let encrypted = cipher.update(plaintext, "utf8", "hex");
+encrypted += cipher.final("hex");
+const tag = cipher.getAuthTag().toString("hex");
+process.stdout.write(`enc:v1:${iv.toString("hex")}:${tag}:${encrypted}`);
+"""
+    result = subprocess.run(
+        ["node", "-e", script, plaintext],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+    )
+    return result.stdout
 
 ACCOUNT = {
     "id": "acct_1",
@@ -158,9 +217,10 @@ def invoke_json(args: list[str], *, obj: dict[str, Any] | None = None) -> dict[s
 
 
 @pytest.fixture(autouse=True)
-def disable_repo_service_key_resolution(monkeypatch):
-    service_keys.resolve_service_key.cache_clear()
-    monkeypatch.setattr(service_keys, "resolve_service_key", lambda variable: None)
+def no_operator_service_keys_by_default(monkeypatch, tmp_path):
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", tmp_path / "missing-service-keys.json")
+    for key in ALL_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
 
 
 def test_help_advertises_required_global_flags_and_modes():
@@ -180,6 +240,10 @@ def test_manifest_and_permissions_are_in_sync():
     assert manifest["backend"] == "buffer-graphql-api"
     assert manifest["scope"]["commandDefaults"]["post.list"]["args"] == ["BUFFER_ORGANIZATION_ID", "BUFFER_CHANNEL_ID"]
     assert manifest["scope"]["kind"] == "social-media"
+    assert manifest["scope"]["live_write_smoke_tested"] is False
+    assert manifest["scope"]["required_one_of"] == [["BUFFER_API_KEY", "BUFFER_ACCESS_TOKEN"]]
+    assert manifest["auth"]["service_keys"] == ["BUFFER_API_KEY", "BUFFER_ACCESS_TOKEN"]
+    assert "BUFFER_BASE_URL" in manifest["auth"]["optional_service_keys"]
     assert "post.create_draft" not in command_ids
     assert "post.schedule" not in command_ids
     assert {command["required_mode"] for command in manifest["commands"]} == {"readonly"}
@@ -193,6 +257,7 @@ def test_capabilities_exposes_graphql_manifest():
     assert payload["data"]["modes"] == ["readonly", "write", "full", "admin"]
     assert payload["data"]["write_support"]["scaffold_only"] is False
     assert payload["data"]["write_support"]["scaffolded_commands"] == []
+    assert payload["data"]["write_support"]["live_write_smoke_tested"] is False
     assert "profile.read" in json.dumps(payload["data"])
     assert "post.create_draft" not in json.dumps(payload["data"])
     assert "post.schedule" not in json.dumps(payload["data"])
@@ -238,6 +303,7 @@ def test_config_show_redacts_and_surfaces_scope(monkeypatch):
     assert "very-secret-token" not in json.dumps(data)
     assert data["auth"]["access_token_source"] == "env_fallback"
     assert data["runtime"]["service_key_precedence"] == "operator-service-keys-first-with-env-fallback"
+    assert data["runtime"]["live_write_smoke_tested"] is False
     assert data["runtime"]["command_defaults"]["post.read"]["args"][0] == "BUFFER_POST_ID"
     assert data["runtime"]["picker_scopes"]["channel"]["selected"]["channel_id"] == "chan_1"
     assert data["runtime"]["picker_scopes"]["profile"]["selected"]["profile_id"] == "chan_legacy"
@@ -289,9 +355,9 @@ def test_operator_service_keys_support_tool_scoped_aliases(monkeypatch):
         },
     )
     data = payload["data"]
-    assert data["auth"]["service_keys"] == [
-        "BUFFER_API_KEY",
-        "BUFFER_ACCESS_TOKEN",
+    assert data["auth"]["service_keys"] == ["BUFFER_API_KEY", "BUFFER_ACCESS_TOKEN"]
+    assert data["auth"]["required_one_of_service_keys"] == [["BUFFER_API_KEY", "BUFFER_ACCESS_TOKEN"]]
+    assert data["auth"]["optional_service_keys"] == [
         "BUFFER_BASE_URL",
         "BUFFER_ORGANIZATION_ID",
         "BUFFER_CHANNEL_ID",
@@ -303,6 +369,45 @@ def test_operator_service_keys_support_tool_scoped_aliases(monkeypatch):
     assert data["runtime"]["picker_scopes"]["channel"]["selected"]["channel_id"] == "operator-channel"
     assert data["runtime"]["picker_scopes"]["profile"]["selected"]["profile_id"] == "operator-profile"
     assert data["runtime"]["picker_scopes"]["post"]["selected"]["post_id"] == "operator-post"
+
+
+def test_encrypted_repo_service_key_decrypts_with_master_key(monkeypatch, tmp_path):
+    encrypted = encrypt_secret(tmp_path, "buffer-token-encrypted")
+    path = write_service_keys(tmp_path, {"BUFFER_API_KEY": encrypted})
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+    details = service_keys.service_key_details("BUFFER_API_KEY")
+
+    assert details["value"] == "buffer-token-encrypted"
+    assert details["source"] == "repo-service-key"
+
+
+def test_unreadable_encrypted_repo_service_key_falls_back_to_env_like_core_resolver(monkeypatch, tmp_path):
+    path = write_service_keys(tmp_path, {"BUFFER_API_KEY": "enc:v1:bad:bad:bad"})
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("BUFFER_API_KEY", "env-token")
+
+    details = service_keys.service_key_details("BUFFER_API_KEY")
+
+    assert details["value"] == "env-token"
+    assert details["source"] == "env_fallback"
+
+
+def test_scoped_repo_service_key_blocks_env_fallback(monkeypatch, tmp_path):
+    path = write_service_keys(
+        tmp_path,
+        {"BUFFER_API_KEY": "scoped-token"},
+        extra={"allowedRoles": ["operator"]},
+    )
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("BUFFER_API_KEY", "env-token")
+
+    details = service_keys.service_key_details("BUFFER_API_KEY")
+
+    assert details["value"] == ""
+    assert details["source"] == "repo-service-key-scoped"
+    assert details["blocked"] is True
 
 
 def test_account_read_returns_organizations(monkeypatch):
