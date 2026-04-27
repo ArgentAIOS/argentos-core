@@ -35,12 +35,12 @@ function buildSkillsSection(params: {
   }
   return [
     "## Skills (mandatory)",
-    "Before replying: scan <available_skills> <description> entries.",
+    "Before replying: scan <available_skills>, including category and <description> entries.",
     "- Treat workspace skills as general references. They are not the same as operator-specific Personal Skills / procedures learned from real work.",
     "- If the runtime injects an Active Personal Skills or Personal Skill Procedure Mode block, that operator procedure outranks a generic workspace skill when both seem applicable.",
-    `- If exactly one skill clearly applies: read its SKILL.md at <location> with \`${params.readToolName}\`, then follow it.`,
-    "- If multiple could apply: choose the most specific one, then read/follow it.",
-    "- If none clearly apply: do not read any SKILL.md.",
+    `- If exactly one skill matches, overlaps with, or is even partially relevant to the task: read its SKILL.md at <location> with \`${params.readToolName}\`, then follow it.`,
+    "- If multiple could apply: choose the most specific one, then read/follow it. Prefer one initial skill over none when a category clearly overlaps with the user's request.",
+    "- If none are even partially relevant: do not read any SKILL.md.",
     "Constraints: never read more than one skill up front; only read after selecting.",
     trimmed,
     "",
