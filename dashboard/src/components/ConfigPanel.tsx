@@ -10181,7 +10181,8 @@ export function ConfigPanel({
                               {
                                 category: "Chinese Providers",
                                 items: [
-                                  { id: "zai", label: "Z.AI (GLM)" },
+                                  { id: "zai", label: "Z.AI API Direct" },
+                                  { id: "zai-coding", label: "Z.AI Coding Plan" },
                                   { id: "moonshot", label: "Moonshot AI (Kimi)" },
                                   { id: "kimi-coding", label: "Kimi Coding" },
                                   { id: "qwen-portal", label: "Qwen (Alibaba)" },

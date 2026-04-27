@@ -35,6 +35,8 @@ import {
   applyVercelAiGatewayProviderConfig,
   applyXiaomiConfig,
   applyXiaomiProviderConfig,
+  applyZaiCodingConfig,
+  applyZaiCodingProviderConfig,
   applyZaiConfig,
   CLOUDFLARE_AI_GATEWAY_DEFAULT_MODEL_REF,
   KIMI_CODING_MODEL_REF,
@@ -56,7 +58,9 @@ import {
   setVeniceApiKey,
   setVercelAiGatewayApiKey,
   setXiaomiApiKey,
+  setZaiCodingApiKey,
   setZaiApiKey,
+  ZAI_CODING_DEFAULT_MODEL_REF,
   ZAI_DEFAULT_MODEL_REF,
 } from "./onboard-auth.js";
 import { OPENCODE_ZEN_DEFAULT_MODEL } from "./opencode-zen-model-default.js";
@@ -100,6 +104,11 @@ export async function applyAuthChoiceApiProviders(
       authChoice = "gemini-api-key";
     } else if (params.opts.tokenProvider === "zai") {
       authChoice = "zai-api-key";
+    } else if (
+      params.opts.tokenProvider === "zai-coding" ||
+      params.opts.tokenProvider === "zai-coder"
+    ) {
+      authChoice = "zai-coding-api-key";
     } else if (params.opts.tokenProvider === "xiaomi") {
       authChoice = "xiaomi-api-key";
     } else if (params.opts.tokenProvider === "mistral") {
@@ -598,6 +607,65 @@ export async function applyAuthChoiceApiProviders(
           },
         }),
         noteDefault: ZAI_DEFAULT_MODEL_REF,
+        noteAgentModel,
+        prompter: params.prompter,
+      });
+      nextConfig = applied.config;
+      agentModelOverride = applied.agentModelOverride ?? agentModelOverride;
+    }
+    return { config: nextConfig, agentModelOverride };
+  }
+
+  if (authChoice === "zai-coding-api-key") {
+    let hasCredential = false;
+
+    if (
+      !hasCredential &&
+      params.opts?.token &&
+      (params.opts.tokenProvider === "zai-coding" || params.opts.tokenProvider === "zai-coder")
+    ) {
+      await setZaiCodingApiKey(normalizeApiKeyInput(params.opts.token), params.agentDir);
+      hasCredential = true;
+    }
+
+    const envKey = resolveEnvApiKey("zai-coding");
+    if (envKey) {
+      const useExisting = await params.prompter.confirm({
+        message: `Use existing ZAI_CODING_API_KEY (${envKey.source}, ${formatApiKeyPreview(envKey.apiKey)})?`,
+        initialValue: true,
+      });
+      if (useExisting) {
+        await setZaiCodingApiKey(envKey.apiKey, params.agentDir);
+        hasCredential = true;
+      }
+    }
+    if (!hasCredential) {
+      await params.prompter.note(
+        [
+          "Z.AI Coding Plan uses the dedicated coding endpoint.",
+          "Use this for Coder/Coding Plan subscription keys, not direct API billing keys.",
+        ].join("\n"),
+        "Z.AI Coding Plan",
+      );
+      const key = await params.prompter.text({
+        message: "Enter Z.AI Coding Plan API key",
+        validate: validateApiKeyInput,
+      });
+      await setZaiCodingApiKey(normalizeApiKeyInput(String(key)), params.agentDir);
+    }
+    nextConfig = applyAuthProfileConfig(nextConfig, {
+      profileId: "zai-coding:default",
+      provider: "zai-coding",
+      mode: "api_key",
+    });
+    {
+      const applied = await applyDefaultModelChoice({
+        config: nextConfig,
+        setDefaultModel: params.setDefaultModel,
+        defaultModel: ZAI_CODING_DEFAULT_MODEL_REF,
+        applyDefaultConfig: applyZaiCodingConfig,
+        applyProviderConfig: applyZaiCodingProviderConfig,
+        noteDefault: ZAI_CODING_DEFAULT_MODEL_REF,
         noteAgentModel,
         prompter: params.prompter,
       });

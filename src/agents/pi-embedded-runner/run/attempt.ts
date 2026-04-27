@@ -386,6 +386,7 @@ async function resolveArgentProvider(providerName: string, baseURL?: string, api
     case "minimax":
       return createArgentMiniMax(opts);
     case "zai":
+    case "zai-coding":
       return createArgentZAI(opts);
     case "nvidia":
     case "ollama":

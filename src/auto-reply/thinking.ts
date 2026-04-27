@@ -11,6 +11,16 @@ function normalizeProviderId(provider?: string | null): string {
     return "";
   }
   const normalized = provider.trim().toLowerCase();
+  if (
+    normalized === "z.ai-coding" ||
+    normalized === "z-ai-coding" ||
+    normalized === "zai-coder" ||
+    normalized === "z.ai-coder" ||
+    normalized === "z-ai-coder" ||
+    normalized === "zai-coding-plan"
+  ) {
+    return "zai-coding";
+  }
   if (normalized === "z.ai" || normalized === "z-ai") {
     return "zai";
   }
@@ -18,7 +28,8 @@ function normalizeProviderId(provider?: string | null): string {
 }
 
 export function isBinaryThinkingProvider(provider?: string | null): boolean {
-  return normalizeProviderId(provider) === "zai";
+  const normalized = normalizeProviderId(provider);
+  return normalized === "zai" || normalized === "zai-coding";
 }
 
 // xhigh thinking is available for any model that supports reasoning.

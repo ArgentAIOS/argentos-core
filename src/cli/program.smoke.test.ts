@@ -188,6 +188,12 @@ describe("cli program (smoke)", () => {
         key: "sk-zai-test",
         field: "zaiApiKey",
       },
+      {
+        authChoice: "zai-coding-api-key",
+        flag: "--zai-coding-api-key",
+        key: "sk-zai-coding-test",
+        field: "zaiCodingApiKey",
+      },
     ] as const;
 
     for (const entry of cases) {

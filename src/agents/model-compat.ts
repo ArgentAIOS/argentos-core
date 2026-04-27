@@ -20,6 +20,10 @@ function defaultZaiChatCompletionsUrl(modelId: string): string {
 }
 
 function normalizeZaiBaseUrl(model: Model<"openai-completions">): string {
+  if (model.provider === "zai-coding") {
+    return ZAI_CODING_CHAT_COMPLETIONS_URL;
+  }
+
   const baseUrl = model.baseUrl?.trim() ?? "";
   if (!baseUrl || baseUrl.includes("open.bigmodel.cn")) {
     return defaultZaiChatCompletionsUrl(model.id);
@@ -51,7 +55,8 @@ export function normalizeModelCompat(model: Model<Api>): Model<Api> {
   }
 
   const baseUrl = model.baseUrl ?? "";
-  const isZai = model.provider === "zai" || baseUrl.includes("api.z.ai");
+  const isZai =
+    model.provider === "zai" || model.provider === "zai-coding" || baseUrl.includes("api.z.ai");
   const isMiniMax = model.provider === "minimax" || baseUrl.includes("api.minimax");
   if ((!isZai && !isMiniMax) || !isOpenAiCompletionsModel(model)) {
     return model;

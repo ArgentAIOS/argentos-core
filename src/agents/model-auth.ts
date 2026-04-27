@@ -114,6 +114,10 @@ function resolveProviderEnvVarCandidates(normalizedProvider: string): string[] |
     return ["ZAI_API_KEY", "Z_AI_API_KEY"];
   }
 
+  if (normalizedProvider === "zai-coding") {
+    return ["ZAI_CODING_API_KEY", "ZAI_CODER_API_KEY"];
+  }
+
   if (normalizedProvider === "opencode") {
     return ["OPENCODE_API_KEY", "OPENCODE_ZEN_API_KEY"];
   }

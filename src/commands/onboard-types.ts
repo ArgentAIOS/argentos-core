@@ -28,6 +28,7 @@ export type AuthChoice =
   | "google-gemini-cli"
   | "mistral-api-key"
   | "zai-api-key"
+  | "zai-coding-api-key"
   | "xiaomi-api-key"
   | "minimax-cloud"
   | "minimax"
@@ -84,6 +85,7 @@ export type OnboardOptions = {
   kimiCodeApiKey?: string;
   geminiApiKey?: string;
   zaiApiKey?: string;
+  zaiCodingApiKey?: string;
   xiaomiApiKey?: string;
   minimaxApiKey?: string;
   syntheticApiKey?: string;

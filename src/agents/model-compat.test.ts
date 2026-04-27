@@ -61,6 +61,21 @@ describe("normalizeModelCompat", () => {
     expect(normalized.baseUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
   });
 
+  it("routes z.ai coding plan providers to the coding endpoint for all GLM models", () => {
+    const model = {
+      ...baseModel(),
+      provider: "zai-coding",
+      id: "glm-5.1",
+      name: "GLM-5.1",
+      baseUrl: "https://api.z.ai/api/paas/v4",
+    };
+
+    const normalized = normalizeModelCompat(model);
+
+    expect(normalized.provider).toBe("zai-coding");
+    expect(normalized.baseUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
+  });
+
   it("moves stale GLM-5 catalog entries to the general endpoint", () => {
     const model = {
       ...baseModel(),

@@ -14181,7 +14181,8 @@ const AUTH_PROFILE_PROVIDER_META = {
   opencode: { label: "OpenCode Zen", category: "Gateways & Routers" },
   "amazon-bedrock": { label: "Amazon Bedrock", category: "Gateways & Routers" },
   bedrock: { label: "Amazon Bedrock", category: "Gateways & Routers" },
-  zai: { label: "Z.AI (GLM)", category: "Chinese Providers" },
+  zai: { label: "Z.AI API Direct", category: "Chinese Providers" },
+  "zai-coding": { label: "Z.AI Coding Plan", category: "Chinese Providers" },
   moonshot: { label: "Moonshot AI (Kimi)", category: "Chinese Providers" },
   "kimi-coding": { label: "Kimi Coding", category: "Chinese Providers" },
   "qwen-portal": { label: "Qwen (Alibaba)", category: "Chinese Providers" },
@@ -14586,12 +14587,13 @@ app.get("/api/settings/provider-models", async (req, res) => {
       }
     }
 
+    const catalogProvider = provider === "zai-coding" ? "zai" : provider;
     const piCatalog = await loadPiBackedModelCatalog();
     for (const entry of piCatalog) {
       if (
         String(entry.provider || "")
           .trim()
-          .toLowerCase() !== provider
+          .toLowerCase() !== catalogProvider
       )
         continue;
       pushRow(entry.id, entry.name && entry.name !== entry.id ? entry.name : null, {
@@ -14611,6 +14613,7 @@ app.get("/api/settings/provider-models", async (req, res) => {
       ],
       "kimi-coding": ["k2p5"],
       zai: ["glm-5", "glm-4.7", "glm-4.6"],
+      "zai-coding": ["glm-5", "glm-4.7", "glm-4.6"],
       qianfan: ["ernie-4.0-8k"],
     };
 
@@ -14736,6 +14739,7 @@ app.get("/api/settings/provider-models", async (req, res) => {
           "cerebras",
           "qianfan",
           "minimax",
+          "zai-coding",
           "opencode",
           "synthetic",
           "vercel-ai-gateway",
@@ -14747,9 +14751,11 @@ app.get("/api/settings/provider-models", async (req, res) => {
           (typeof providerConfig?.baseUrl === "string" && providerConfig.baseUrl.trim()) ||
           (provider === "openai" || provider === "openai-codex"
             ? "https://api.openai.com/v1"
-            : provider === "moonshot"
-              ? "https://api.moonshot.ai/v1"
-              : "");
+            : provider === "zai-coding"
+              ? "https://api.z.ai/api/coding/paas/v4"
+              : provider === "moonshot"
+                ? "https://api.moonshot.ai/v1"
+                : "");
         await fetchOpenAICompatModels(
           resolvedBaseUrl,
           resolveProviderCredential(provider) || resolveProviderCredential("openai"),

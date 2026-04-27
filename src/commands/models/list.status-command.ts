@@ -159,6 +159,7 @@ export async function modelsStatusCommand(
     "xai",
     "openrouter",
     "zai",
+    "zai-coding",
     "mistral",
     "synthetic",
     "inception",

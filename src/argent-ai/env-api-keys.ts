@@ -30,6 +30,7 @@ const PROVIDER_ENV_VARS: Record<string, string[]> = {
   openrouter: ["OPENROUTER_API_KEY"],
   "vercel-ai-gateway": ["VERCEL_API_KEY"],
   zai: ["ZAI_API_KEY"],
+  "zai-coding": ["ZAI_CODING_API_KEY", "ZAI_CODER_API_KEY"],
   huggingface: ["HUGGINGFACE_API_KEY", "HF_TOKEN"],
 };
 
