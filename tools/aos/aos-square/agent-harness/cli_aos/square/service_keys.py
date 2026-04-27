@@ -6,7 +6,15 @@ from functools import lru_cache
 from pathlib import Path
 
 ARGENTOS_ROOT = Path(__file__).resolve().parents[6]
-SERVICE_KEY_VARIABLES = {'SQUARE_ACCESS_TOKEN'}
+SERVICE_KEY_VARIABLES = {
+    "SQUARE_ACCESS_TOKEN",
+    "SQUARE_ENVIRONMENT",
+    "SQUARE_LOCATION_ID",
+    "SQUARE_CUSTOMER_ID",
+    "SQUARE_ORDER_ID",
+    "SQUARE_PAYMENT_ID",
+    "SQUARE_ITEM_ID",
+}
 
 
 @lru_cache(maxsize=64)

@@ -11,17 +11,13 @@ Live read surfaces are implemented against Square REST API v2 for:
 - invoices (`invoice.list`)
 - locations (`location.list`)
 
-Scaffold-only write surfaces remain explicit and non-live for:
+Write surfaces are intentionally not advertised until live Square write workflows
+and approval policy are implemented.
 
-- payments (`payment.create`)
-- customers (`customer.create`, `customer.update`)
-- orders (`order.create`)
-- catalog items (`item.create`)
-- invoices (`invoice.create`, `invoice.send`)
+Credential resolution uses ArgentOS operator-controlled service keys first for `SQUARE_ACCESS_TOKEN`
+and Square linking keys, with local `process.env` as a development fallback only.
 
-Credential resolution uses ArgentOS operator-controlled service keys first for `SQUARE_ACCESS_TOKEN`, with local `process.env` as a development fallback only.
-
-Docs used for this scaffold:
+Docs used for this connector:
 
 - https://developer.squareup.com/reference/square
 - https://developer.squareup.com/docs/payments-api/overview

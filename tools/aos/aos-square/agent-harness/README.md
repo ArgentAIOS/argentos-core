@@ -14,5 +14,5 @@ Live reads are implemented for:
 - invoices via Square Invoices API
 - locations via Square Locations API
 
-Write surfaces remain scaffolded and require `--mode write`, but they do not
-perform live Square mutations until those workflows are reviewed and approved.
+Write surfaces are intentionally absent until live Square write workflows and
+approval policy are implemented.

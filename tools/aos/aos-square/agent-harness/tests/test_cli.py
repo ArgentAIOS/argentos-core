@@ -87,6 +87,28 @@ def test_manifest_and_permissions_are_in_sync():
     command_ids = [command["id"] for command in manifest["commands"]]
     assert set(command_ids) == set(permissions.keys())
     assert manifest["scope"]["kind"] == "commerce"
+    assert {command["required_mode"] for command in manifest["commands"]} == {"readonly"}
+    assert "payment.create" not in command_ids
+    assert "invoice.send" not in command_ids
+
+
+def test_manifest_field_applicability_matches_command_defaults():
+    manifest = json.loads(CONNECTOR_PATH.read_text())
+    command_ids = {command["id"] for command in manifest["commands"]}
+    command_defaults = manifest["scope"]["commandDefaults"]
+    field_default_args = {
+        "location_id": "SQUARE_LOCATION_ID",
+        "customer_id": "SQUARE_CUSTOMER_ID",
+        "order_id": "SQUARE_ORDER_ID",
+        "payment_id": "SQUARE_PAYMENT_ID",
+        "item_id": "SQUARE_ITEM_ID",
+    }
+
+    for field in manifest["scope"]["fields"]:
+        expected_arg = field_default_args[field["id"]]
+        for command_id in field["applies_to"]:
+            assert command_id in command_ids
+            assert expected_arg in command_defaults[command_id].get("args", [])
 
 
 def test_capabilities_exposes_manifest():
@@ -95,6 +117,7 @@ def test_capabilities_exposes_manifest():
     assert payload["data"]["backend"] == "square-api"
     assert "payment.list" in json.dumps(payload["data"])
     assert "location.list" in json.dumps(payload["data"])
+    assert "payment.create" not in json.dumps(payload["data"])
 
 
 def test_health_requires_access_token(monkeypatch):
@@ -153,10 +176,11 @@ def test_customer_list_returns_picker(monkeypatch):
     assert data["customers"][0]["email_address"] == "jane@example.com"
 
 
-def test_payment_create_is_scaffolded(monkeypatch):
+def test_removed_write_command_returns_usage_error(monkeypatch):
     monkeypatch.setenv("SQUARE_ACCESS_TOKEN", "tok_test_abc")
-    payload = invoke_json(["--mode", "write", "payment", "create", "--amount", "1000"])
-    assert payload["data"]["status"] == "scaffold_write_only"
+    result = invoke_result(["--mode", "write", "payment", "create", "--amount", "1000"])
+    assert result.exit_code != 0
+    assert "No such command" in result.output
 
 
 def test_config_show_redacts_token(monkeypatch):
@@ -167,8 +191,9 @@ def test_config_show_redacts_token(monkeypatch):
     assert "secret-token" not in json.dumps(data)
     assert data["scope"]["location_id"] == "LOC_1"
     assert data["runtime"]["live_read_surfaces"] == ["payment", "customer", "order", "item", "invoice", "location"]
-    assert data["runtime"]["scaffolded_surfaces"] == ["payment", "customer", "order", "item", "invoice"]
-    assert data["auth"]["development_fallback"] == ["SQUARE_ACCESS_TOKEN"]
+    assert data["runtime"]["scaffolded_surfaces"] == []
+    assert data["runtime"]["scaffolded_commands"] == []
+    assert "SQUARE_LOCATION_ID" in data["auth"]["service_keys"]
 
 
 def test_config_show_prefers_operator_service_keys(monkeypatch):
@@ -181,10 +206,23 @@ def test_config_show_prefers_operator_service_keys(monkeypatch):
     assert data["auth"]["sources"]["SQUARE_ACCESS_TOKEN"] == "service-keys"
 
 
-def test_write_commands_require_write_mode(monkeypatch):
-    monkeypatch.setenv("SQUARE_ACCESS_TOKEN", "tok_test_abc")
-    result = invoke_result(["payment", "create", "--amount", "1000"])
-    assert result.exit_code == 3
-    payload = json.loads(result.output)
-    assert payload["error"]["code"] == "PERMISSION_DENIED"
-    assert payload["error"]["details"] == {"required_mode": "write", "actual_mode": "readonly"}
+def test_config_show_resolves_linking_keys_from_service_keys(monkeypatch):
+    values = {
+        "SQUARE_ACCESS_TOKEN": "svc-token",
+        "SQUARE_ENVIRONMENT": "sandbox",
+        "SQUARE_LOCATION_ID": "LOC_SERVICE",
+        "SQUARE_CUSTOMER_ID": "CUST_SERVICE",
+        "SQUARE_ORDER_ID": "ORDER_SERVICE",
+        "SQUARE_PAYMENT_ID": "PAY_SERVICE",
+        "SQUARE_ITEM_ID": "ITEM_SERVICE",
+    }
+    monkeypatch.setenv("SQUARE_LOCATION_ID", "LOC_ENV")
+    monkeypatch.setattr("cli_aos.square.service_keys.resolve_service_key", lambda variable: values.get(variable))
+    payload = invoke_json(["config", "show"])
+    data = payload["data"]
+    assert data["config"]["environment"] == "sandbox"
+    assert data["scope"]["location_id"] == "LOC_SERVICE"
+    assert data["scope"]["customer_id"] == "CUST_SERVICE"
+    assert data["scope"]["order_id"] == "ORDER_SERVICE"
+    assert data["scope"]["payment_id"] == "PAY_SERVICE"
+    assert data["scope"]["item_id"] == "ITEM_SERVICE"
