@@ -244,6 +244,14 @@ Shared contract change: Dropbox public AOS surface is being narrowed to truthful
 Operator key contract: `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `DROPBOX_PATH`, `DROPBOX_FILE_ID`, `DROPBOX_QUERY`, `DROPBOX_CURSOR`, `DROPBOX_LIMIT`, `DROPBOX_BASE_URL`, and `DROPBOX_CONTENT_URL` resolve from operator service keys before local environment fallback.
 Workflows/AppForge/AOU reaction: consume Dropbox manifest/capabilities only; treat Dropbox as live read-only and do not present it as an output/write destination.
 
+### 2026-04-27 — AOS Hootsuite Service-Key Hardening
+
+Lane: `AOS Hootsuite service keys`
+Branch/status: `codex/aos-hootsuite-service-keys-loop` from `origin/dev` `51d981a5`.
+Owned files/directories: `tools/aos/aos-hootsuite/**`; this coordination note.
+Shared contract change in progress: Hootsuite remains truthful live read-only. `HOOTSUITE_ACCESS_TOKEN` is the only required operator service key; `HOOTSUITE_BASE_URL`, `HOOTSUITE_ORGANIZATION_ID`, `HOOTSUITE_SOCIAL_PROFILE_ID`, `HOOTSUITE_TEAM_ID`, and `HOOTSUITE_MESSAGE_ID` are optional operator-controlled defaults. Scoped repo service keys block env fallback; valid `enc:v1` repo keys decrypt; unreadable encrypted repo keys fall back like the core resolver. `live_write_smoke_tested` stays false.
+Workflows/AppForge/AOU reaction: consume manifest/auth/scope/capability truth only. Do not present Hootsuite publish/schedule writes until a later live write bridge and approval policy are implemented and smoke-tested.
+
 ### 2026-04-26 — OpenClaw 4.24 Comparison Lane
 
 Lane: OpenClaw 4.24 realtime/browser/marketplace comparison. Branch/commit: `codex/aos-next-connector-wave` at `ad3fb0b9`. Owned files/directories for this lane: `ops/THREADMASTER_COORDINATION.md` for coordination updates; future comparison artifacts under `ops/**` only unless the board is updated first. Shared contract changes: none yet. Workflows/AppForge/AOU reaction: proposed direction is browser harness first, provider-neutral realtime voice substrate second, then Google Meet as a marketplace-distributed capability plugin; no implementation dependency is active until a follow-up plan claims specific files/contracts.

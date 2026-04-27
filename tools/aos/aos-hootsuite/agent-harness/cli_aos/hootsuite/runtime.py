@@ -128,6 +128,7 @@ def capabilities_snapshot() -> dict[str, Any]:
             "live_writes_enabled": False,
             "scaffold_only": False,
             "scaffolded_commands": [],
+            "live_write_smoke_tested": False,
         },
     }
 
@@ -203,6 +204,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "live_backend_available": live_ready,
             "live_read_available": live_ready,
             "write_bridge_available": False,
+            "live_write_smoke_tested": False,
             "scaffold_only": False,
         },
         "auth": {
@@ -242,6 +244,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "live_backend_available": live_ready,
         "live_read_available": live_ready,
         "write_bridge_available": False,
+        "live_write_smoke_tested": False,
         "scaffold_only": False,
         "next_steps": next_steps,
     }

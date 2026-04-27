@@ -5,12 +5,14 @@ from typing import Any
 from .constants import BACKEND_NAME, CONNECTOR_CATEGORIES, CONNECTOR_CATEGORY, CONNECTOR_LABEL, CONNECTOR_RESOURCES, DEFAULT_BASE_URL
 from .service_keys import service_key_details
 
-
-def _env_source(*names: str, default_source: str = "missing") -> str:
-    for name in names:
-        if os.getenv(name, "").strip():
-            return "env"
-    return default_source
+REQUIRED_SERVICE_KEYS = ["HOOTSUITE_ACCESS_TOKEN"]
+OPTIONAL_SERVICE_KEYS = [
+    "HOOTSUITE_BASE_URL",
+    "HOOTSUITE_ORGANIZATION_ID",
+    "HOOTSUITE_SOCIAL_PROFILE_ID",
+    "HOOTSUITE_TEAM_ID",
+    "HOOTSUITE_MESSAGE_ID",
+]
 
 
 def resolve_runtime_values(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -30,14 +32,8 @@ def resolve_runtime_values(ctx_obj: dict[str, Any] | None = None) -> dict[str, A
         "social_profile_id": social_profile_id_details["value"],
         "team_id": team_id_details["value"],
         "message_id": message_id_details["value"],
-        "service_keys": [
-            "HOOTSUITE_ACCESS_TOKEN",
-            "HOOTSUITE_BASE_URL",
-            "HOOTSUITE_ORGANIZATION_ID",
-            "HOOTSUITE_SOCIAL_PROFILE_ID",
-            "HOOTSUITE_TEAM_ID",
-            "HOOTSUITE_MESSAGE_ID",
-        ],
+        "service_keys": list(REQUIRED_SERVICE_KEYS),
+        "optional_service_keys": list(OPTIONAL_SERVICE_KEYS),
         "base_url_env": "HOOTSUITE_BASE_URL",
         "access_token_env": "HOOTSUITE_ACCESS_TOKEN",
         "organization_id_env": "HOOTSUITE_ORGANIZATION_ID",
@@ -51,11 +47,11 @@ def resolve_runtime_values(ctx_obj: dict[str, Any] | None = None) -> dict[str, A
         "team_id_source": team_id_details["source"],
         "message_id_source": message_id_details["source"],
         "base_url_present": bool(base_url),
-        "access_token_present": access_token_details["present"],
-        "organization_id_present": organization_id_details["present"],
-        "social_profile_id_present": social_profile_id_details["present"],
-        "team_id_present": team_id_details["present"],
-        "message_id_present": message_id_details["present"],
+        "access_token_present": bool(access_token_details["value"]),
+        "organization_id_present": bool(organization_id_details["value"]),
+        "social_profile_id_present": bool(social_profile_id_details["value"]),
+        "team_id_present": bool(team_id_details["value"]),
+        "message_id_present": bool(message_id_details["value"]),
     }
 
 
@@ -142,13 +138,20 @@ def config_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
         "auth": {
             "kind": "oauth-service-key",
             "service_keys": list(runtime["service_keys"]),
+            "optional_service_keys": list(runtime["optional_service_keys"]),
             "access_token_env": runtime["access_token_env"],
             "access_token_present": runtime["access_token_present"],
             "access_token_source": runtime["access_token_source"],
             "local_env_fallback": True,
+            "resolution_order": [
+                "operator runtime service_keys/service_key_values/api_keys/secrets",
+                "unmanaged repo service-keys.json",
+                "local environment fallback",
+            ],
         },
         "runtime": {
             "implementation_mode": "live_read_only",
+            "live_write_smoke_tested": False,
             "command_defaults": command_defaults,
             "picker_scopes": picker_scopes,
         },
