@@ -9,7 +9,7 @@ import click
 from . import __version__
 from .constants import COMMAND_SPECS, CONNECTOR_AUTH, CONNECTOR_CATEGORY, CONNECTOR_CATEGORIES, CONNECTOR_LABEL, CONNECTOR_RESOURCES, MANIFEST_SCHEMA_VERSION, MODE_ORDER, PERMISSIONS_PATH, TOOL_NAME
 from .errors import CliError
-from .runtime import config_snapshot, doctor_snapshot, health_snapshot, list_channels, list_people, list_reactions, mention_scan, reply_message, search_messages
+from .runtime import config_snapshot, doctor_snapshot, health_snapshot, list_channels, list_people, list_reactions, mention_scan, reply_message, runtime_config, search_messages
 
 
 def _mode_allows(actual: str, required: str) -> bool:
@@ -200,7 +200,7 @@ def message_group() -> None:
 @click.option("--limit", type=int, default=10, show_default=True)
 @click.pass_context
 def message_search(ctx: click.Context, query: str, limit: int) -> None:
-    _run(ctx, "message.search", search_messages, config=None, query=query, limit=limit)
+    _run(ctx, "message.search", search_messages, config=runtime_config(ctx.obj), query=query, limit=limit)
 
 
 @message_group.command("reply")
@@ -214,7 +214,7 @@ def message_reply(ctx: click.Context, channel: str | None, text: str, thread_ts:
         ctx,
         "message.reply",
         reply_message,
-        config=None,
+        config=runtime_config(ctx.obj),
         channel=channel,
         text=text,
         thread_ts=thread_ts,
@@ -232,7 +232,7 @@ def channel_group() -> None:
 @click.option("--include-private", is_flag=True, help="Include private channels if permitted")
 @click.pass_context
 def channel_list(ctx: click.Context, limit: int, include_private: bool) -> None:
-    _run(ctx, "channel.list", list_channels, config=None, limit=limit, include_private=include_private)
+    _run(ctx, "channel.list", list_channels, config=runtime_config(ctx.obj), limit=limit, include_private=include_private)
 
 
 @cli.group("people")
@@ -245,7 +245,7 @@ def people_group() -> None:
 @click.option("--user-id", default=None, help="Filter to one Slack user ID")
 @click.pass_context
 def people_list(ctx: click.Context, limit: int, user_id: str | None) -> None:
-    _run(ctx, "people.list", list_people, config=None, limit=limit, user_id=user_id)
+    _run(ctx, "people.list", list_people, config=runtime_config(ctx.obj), limit=limit, user_id=user_id)
 
 
 @cli.group("mention")
@@ -259,7 +259,7 @@ def mention_group() -> None:
 @click.option("--limit", type=int, default=10, show_default=True)
 @click.pass_context
 def mention_scan_command(ctx: click.Context, query: str | None, user_id: str | None, limit: int) -> None:
-    _run(ctx, "mention.scan", mention_scan, config=None, query=query, user_id=user_id, limit=limit)
+    _run(ctx, "mention.scan", mention_scan, config=runtime_config(ctx.obj), query=query, user_id=user_id, limit=limit)
 
 
 @cli.group("reaction")
@@ -271,7 +271,7 @@ def reaction_group() -> None:
 @click.option("--limit", type=int, default=25, show_default=True)
 @click.pass_context
 def reaction_list(ctx: click.Context, limit: int) -> None:
-    _run(ctx, "reaction.list", list_reactions, config=None, limit=limit)
+    _run(ctx, "reaction.list", list_reactions, config=runtime_config(ctx.obj), limit=limit)
 
 if __name__ == "__main__":
     cli()
