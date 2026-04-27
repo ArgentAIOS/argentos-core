@@ -2,6 +2,13 @@
 
 Click CLI harness for `aos-make`.
 
+The harness resolves `MAKE_API_URL`, `MAKE_API_KEY`, and optional `MAKE_*`
+scope defaults from operator-controlled service keys first, then falls back to
+local environment variables for harness development. Scoped service-key entries
+must be injected by the operator runtime and are not bypassed with local env.
+Production live-write smoke is not claimed until tested against an operator
+Make bridge.
+
 ## Commands
 
 - `capabilities`

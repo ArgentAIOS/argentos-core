@@ -215,6 +215,14 @@ Owned files/directories: `tools/aos/**`, with active connector ownership over Ai
 Shared contract changes: connector manifests, permissions, and command capability declarations remain the public contract; operator-controlled service keys are the key source for linked external systems. Klaviyo is now a truthful live read connector and does not advertise mutation/write actions until those are implemented.
 Workflows/AppForge/AOU reaction: consume manifests/capabilities only; do not infer private connector internals or assume scaffolded writes exist. AOU Stub Finder should treat Klaviyo at `ad3fb0b9` as a real read-only baseline and track future mutation work separately.
 
+### 2026-04-27 — AOS Make Connector
+
+Lane: `AOS Make connector`
+Branch/commit: `codex/aos-make-loop` in progress.
+Owned files/directories: `tools/aos/aos-make/**` plus this coordination note.
+Shared contract changes: Make is being verified as a true AOS CLI connector with live Make bridge reads and permission-gated live scenario/execution trigger writes. Required service keys are `MAKE_API_URL` and `MAKE_API_KEY`; optional scope keys include `MAKE_WEBHOOK_BASE_URL`, `MAKE_ORGANIZATION_*`, `MAKE_TEAM_*`, `MAKE_SCENARIO_*`, `MAKE_CONNECTION_*`, `MAKE_EXECUTION_ID`, and `MAKE_RUN_ID`. Scoped repo service keys block local env fallback and encrypted repo keys use the core-compatible `enc:v1` AES-GCM format.
+Workflows/AppForge/AOU reaction: consume manifest/capabilities only. Treat `scenario.trigger` and `execution.run` as consequential writes requiring write mode, operator service-key binding, and approval; `live_write_smoke_tested` remains `false` until a real operator Make bridge smoke test runs.
+
 ### 2026-04-26 — Master Threadmaster Roster
 
 Current active core threadmasters: AppForge 2.0, Work flow building master, AOU Stub Finder, and Compare OpenClaw 4.24 features. Treat the Workflows threadmaster as the master coordinator for cross-project lane awareness while it continues implementing the workflow canvas/runtime.
