@@ -117,13 +117,20 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "live_backend_available": bool(probe.get("ok")),
             "live_read_available": bool(probe.get("ok")),
             "write_bridge_available": bool(probe.get("ok")),
+            "live_write_smoke_tested": False,
             "scaffold_only": False,
         },
         "auth": {
             "bot_token_env": runtime["bot_token_env"],
             "bot_token_present": runtime["bot_token_present"],
+            "bot_token_usable": runtime["bot_token_usable"],
+            "bot_token_source": runtime["bot_token_source"],
             "app_token_env": runtime["app_token_env"],
             "app_token_present": runtime["app_token_present"],
+            "app_token_usable": runtime["app_token_usable"],
+            "app_token_source": runtime["app_token_source"],
+            "base_url_env": runtime["base_url_env"],
+            "base_url_source": runtime["base_url_source"],
         },
         "scope": {
             "base_url": runtime["base_url"],
@@ -144,11 +151,12 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "live_backend_available": bool(probe.get("ok")),
         "live_read_available": bool(probe.get("ok")),
         "write_bridge_available": bool(probe.get("ok")),
+        "live_write_smoke_tested": False,
         "scaffold_only": False,
         "probe": probe,
         "next_steps": [
-            f"Set {runtime['bot_token_env']} in API Keys.",
-            f"Set {runtime['channel_id_env']} and {runtime['thread_ts_env']} to stabilize worker flows.",
+            f"Bind {runtime['bot_token_env']} as an operator-controlled service key.",
+            f"Optionally bind {runtime['channel_id_env']} and {runtime['thread_ts_env']} as service-key scope defaults for worker flows.",
             "Add the bot to any private channels before posting, archiving, or uploading there.",
         ],
     }
@@ -163,6 +171,7 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "summary": "Slack connector diagnostics.",
         "runtime": {
             "implementation_mode": "live_read_write",
+            "live_write_smoke_tested": False,
             "command_readiness": {
                 "message.post": ready and runtime["channel_id_present"] and runtime["text_present"],
                 "message.update": ready and runtime["channel_id_present"] and runtime["thread_ts_present"] and runtime["text_present"],
@@ -198,8 +207,8 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "file.upload",
         ],
         "next_steps": [
-            f"Set {runtime['bot_token_env']} to enable live Slack calls.",
-            "Provide channel and thread defaults for worker flows where message mutations are expected.",
+            f"Bind {runtime['bot_token_env']} through operator service keys to enable live Slack calls.",
+            "Provide channel and thread defaults as service keys where message mutations are expected.",
             "Invite the bot to private channels before trying to create, archive, or upload there.",
         ],
     }
@@ -228,6 +237,7 @@ def channel_list_result(ctx_obj: dict[str, Any], *, limit: int, cursor: str | No
         "channels": response,
         "picker": _picker(picker_items, kind="channel"),
         "scope_preview": _scope_preview("channel.list", "channel", {"limit": limit}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -250,6 +260,7 @@ def user_list_result(ctx_obj: dict[str, Any], *, limit: int, cursor: str | None 
         "users": response,
         "picker": _picker(picker_items, kind="user"),
         "scope_preview": _scope_preview("user.list", "user", {"limit": limit}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -265,6 +276,7 @@ def message_post_result(ctx_obj: dict[str, Any], *, channel_id: str | None, text
         "summary": f"Posted message to {resolved_channel}.",
         "message": message,
         "scope_preview": _scope_preview("message.post", "channel", {"channel_id": resolved_channel}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -281,6 +293,7 @@ def message_update_result(ctx_obj: dict[str, Any], *, channel_id: str | None, th
         "summary": f"Updated message in {resolved_channel}.",
         "message": message,
         "scope_preview": _scope_preview("message.update", "channel", {"channel_id": resolved_channel, "thread_ts": resolved_ts}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -296,6 +309,7 @@ def message_delete_result(ctx_obj: dict[str, Any], *, channel_id: str | None, th
         "summary": f"Deleted message in {resolved_channel}.",
         "message": result,
         "scope_preview": _scope_preview("message.delete", "channel", {"channel_id": resolved_channel, "thread_ts": resolved_ts}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -312,6 +326,7 @@ def reaction_add_result(ctx_obj: dict[str, Any], *, channel_id: str | None, thre
         "summary": f"Added :{resolved_emoji}: reaction in {resolved_channel}.",
         "reaction": result,
         "scope_preview": _scope_preview("reaction.add", "message", {"channel_id": resolved_channel, "thread_ts": resolved_ts}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -326,6 +341,7 @@ def channel_create_result(ctx_obj: dict[str, Any], *, name: str | None, is_priva
         "summary": f"Created channel {resolved_name}.",
         "channel": result,
         "scope_preview": _scope_preview("channel.create", "channel", {"channel_name": resolved_name}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -340,6 +356,7 @@ def channel_archive_result(ctx_obj: dict[str, Any], *, channel_id: str | None) -
         "summary": f"Archived channel {resolved_channel}.",
         "channel": result,
         "scope_preview": _scope_preview("channel.archive", "channel", {"channel_id": resolved_channel}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -356,6 +373,7 @@ def thread_reply_result(ctx_obj: dict[str, Any], *, channel_id: str | None, thre
         "summary": f"Replied in thread {resolved_ts}.",
         "message": message,
         "scope_preview": _scope_preview("thread.reply", "thread", {"channel_id": resolved_channel, "thread_ts": resolved_ts}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -372,6 +390,7 @@ def canvas_create_result(ctx_obj: dict[str, Any], *, title: str | None, content:
         "summary": f"Created canvas {resolved_title}.",
         "canvas": result,
         "scope_preview": _scope_preview("canvas.create", "canvas", {"title": resolved_title, "channel_id": resolved_channel}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -386,6 +405,7 @@ def canvas_update_result(ctx_obj: dict[str, Any], *, canvas_id: str | None, cont
         "summary": f"Updated canvas {resolved_canvas_id}.",
         "canvas": result,
         "scope_preview": _scope_preview("canvas.update", "canvas", {"canvas_id": resolved_canvas_id}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -401,6 +421,7 @@ def reminder_create_result(ctx_obj: dict[str, Any], *, text: str | None, time_va
         "summary": f"Created reminder for {resolved_time}.",
         "reminder": result,
         "scope_preview": _scope_preview("reminder.create", "reminder", {"time": resolved_time}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -433,4 +454,5 @@ def file_upload_result(
         "summary": f"Uploaded file {resolved_file_path}.",
         "file": result,
         "scope_preview": _scope_preview("file.upload", "file", {"file_path": resolved_file_path, "channel_id": channel_id or runtime["channel_id"] or None}),
+        "live_write_smoke_tested": False,
     }

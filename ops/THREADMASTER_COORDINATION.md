@@ -231,6 +231,14 @@ Owned files/directories: `tools/aos/aos-holace/**`; this slice may also update t
 Shared contract changes: Holace changes from manifest-only stub to read-only AOS CLI connector. Public manifest/permissions now advertise read-only commands only, `write_bridge_available: false`, operator service keys `HOLACE_API_KEY` and `HOLACE_API_BASE_URL`, optional scope keys, and doctor/health metadata that distinguishes sampled API probe readiness from per-resource tenant smoke.
 Workflows/AppForge/AOU reaction: no runtime/UI changes required; continue consuming connector manifests, permissions, command capabilities, `action_class`, and readiness metadata only. Treat Holace writes as unavailable until a verified write bridge and smoke evidence are added.
 
+### 2026-04-27 — AOS Slack Workflow Connector
+
+Lane: `AOS Slack Workflow connector`
+Branch/commit: `codex/aos-slack-workflow-loop` in progress.
+Owned files/directories: `tools/aos/aos-slack-workflow/**` plus this coordination note.
+Shared contract changes: Slack Workflow remains a live Slack Web API read/write connector, but credentials and worker defaults now resolve from operator-controlled service keys first. Required service key is `SLACK_BOT_TOKEN`; optional scope/default keys include `SLACK_APP_TOKEN`, `SLACK_BASE_URL`, `SLACK_CHANNEL_ID`, `SLACK_THREAD_TS`, `SLACK_TEXT`, `SLACK_EMOJI`, `SLACK_USER_ID`, `SLACK_CHANNEL_NAME`, `SLACK_CANVAS_*`, `SLACK_FILE_*`, and `SLACK_REMINDER_*`. Scoped repo service keys block local env fallback and encrypted repo keys use the core-compatible `enc:v1` AES-GCM format.
+Workflows/AppForge/AOU reaction: consume manifest/capabilities only. Treat Slack write commands as consequential writes requiring write mode, operator service-key binding, and approval; `live_write_smoke_tested` remains `false` until a real operator Slack workspace smoke test runs.
+
 ### 2026-04-26 — Master Threadmaster Roster
 
 Current active core threadmasters: AppForge 2.0, Work flow building master, AOU Stub Finder, and Compare OpenClaw 4.24 features. Treat the Workflows threadmaster as the master coordinator for cross-project lane awareness while it continues implementing the workflow canvas/runtime.
