@@ -11,7 +11,7 @@ from .constants import (
     CONNECTOR_PATH,
     IMPLEMENTATION_MODE,
     LIVE_READ_SURFACES,
-    LIVE_WRITE_SURFACES,
+LIVE_WRITE_SURFACES,
     MODE_ORDER,
     TOOL_NAME,
 )
@@ -24,8 +24,15 @@ def resolve_runtime_binary() -> str | None:
 
 def create_client(config: DartConfig | None = None) -> DartClient:
     config = config or resolve_config()
-    if not config.api_key:
-        raise DartConfigurationError("DART_API_KEY is required")
+    if not config.api_key_usable:
+        raise DartConfigurationError(
+            "DART_API_KEY must be available through operator service-key injection or development env fallback",
+            details={
+                "missing_keys": [] if config.api_key_present else ["DART_API_KEY"],
+                "unusable_keys": ["DART_API_KEY"] if config.api_key_present and not config.api_key_usable else [],
+                "api_key_source": config.api_key_source,
+            },
+        )
     return DartClient(api_key=config.api_key, base_url=config.base_url)
 
 
@@ -35,6 +42,7 @@ def build_manifest_payload() -> dict[str, Any]:
 
 def build_capabilities_payload() -> dict[str, Any]:
     manifest = build_manifest_payload()
+    command_ids = [command["id"] for command in manifest["commands"]]
     return {
         "tool": manifest["tool"],
         "backend": manifest["backend"],
@@ -44,6 +52,13 @@ def build_capabilities_payload() -> dict[str, Any]:
         "connector": manifest["connector"],
         "auth": manifest["auth"],
         "scope": manifest.get("scope", {}),
+        "read_support": {command_id: True for command_id in command_ids if command_id not in LIVE_WRITE_SURFACES},
+        "write_support": {
+            "live_writes_enabled": bool(manifest["scope"].get("write_bridge_available")),
+            "write_commands": list(LIVE_WRITE_SURFACES),
+            "live_write_smoke_tested": bool(manifest["scope"].get("live_write_smoke_tested")),
+            "scaffolded_commands": [],
+        },
         "commands": manifest["commands"],
     }
 
@@ -55,10 +70,10 @@ def build_scope_preview(command_id: str, selection_surface: str, **extra: Any) -
 
 
 def _command_readiness(config: DartConfig) -> dict[str, bool]:
-    api_ready = bool(config.api_key)
-    dartboard_scoped = bool(config.api_key and config.dartboard_id)
-    task_scoped = bool(config.api_key and config.task_id)
-    doc_scoped = bool(config.api_key and config.doc_id)
+    api_ready = bool(config.api_key_usable)
+    dartboard_scoped = bool(config.api_key_usable and config.dartboard_id)
+    task_scoped = bool(config.api_key_usable and config.task_id)
+    doc_scoped = bool(config.api_key_usable and config.doc_id)
     return {
         "capabilities": True,
         "health": True,
@@ -92,8 +107,10 @@ def build_config_show_payload() -> dict[str, Any]:
                 "kind": manifest["auth"]["kind"],
                 "required": manifest["auth"]["required"],
                 "service_keys": list(manifest["auth"]["service_keys"]),
-                "configured": {"DART_API_KEY": bool(config.api_key)},
+                "configured": {"DART_API_KEY": bool(config.api_key_usable)},
                 "sources": {"DART_API_KEY": config.api_key_source},
+                "present": {"DART_API_KEY": config.api_key_present},
+                "usable": {"DART_API_KEY": config.api_key_usable},
                 "redacted": {"DART_API_KEY": "<redacted>" if config.api_key else None},
                 "interactive_setup": list(manifest["auth"]["interactive_setup"]),
             },
@@ -108,9 +125,10 @@ def build_config_show_payload() -> dict[str, Any]:
                 "implementation_mode": IMPLEMENTATION_MODE,
                 "live_read_surfaces": LIVE_READ_SURFACES,
                 "live_write_surfaces": LIVE_WRITE_SURFACES,
-                "service_key_precedence": "service-keys-first-with-env-fallback",
+                "service_key_precedence": "operator-service-keys-first-with-env-fallback-only-when-unmanaged",
                 "command_defaults": manifest["scope"].get("commandDefaults", {}),
                 "command_readiness": command_readiness,
+                "live_write_smoke_tested": bool(manifest["scope"].get("live_write_smoke_tested")),
             },
         },
     }
@@ -141,10 +159,15 @@ def build_health_payload(*, client_factory: Callable[[DartConfig], DartClient] |
         {
             "name": "api_key",
             "label": "Dart API key configured",
-            "ok": bool(config.api_key),
+            "ok": bool(config.api_key_usable),
             "optional": False,
-            "summary": "DART_API_KEY is configured" if config.api_key else "Add DART_API_KEY in operator service keys or use a local env fallback.",
-            "details": {"source": config.api_key_source, "required_service_key": "DART_API_KEY"},
+            "summary": "DART_API_KEY is usable" if config.api_key_usable else "Add DART_API_KEY in operator service keys, or inject/decrypt it through the operator runtime.",
+            "details": {
+                "source": config.api_key_source,
+                "required_service_key": "DART_API_KEY",
+                "present": config.api_key_present,
+                "usable": config.api_key_usable,
+            },
         },
         {
             "name": "dartboard_scope",
@@ -155,7 +178,7 @@ def build_health_payload(*, client_factory: Callable[[DartConfig], DartClient] |
         },
     ]
     probe = None
-    if config.api_key:
+    if config.api_key_usable:
         try:
             client = client_factory(config)
             probe = {"ok": True, "details": _probe_details(client, config)}
@@ -164,11 +187,13 @@ def build_health_payload(*, client_factory: Callable[[DartConfig], DartClient] |
             checks.append({"name": "api_probe", "label": "Dart API probe", "ok": False, "optional": False, "summary": str(exc)})
         else:
             checks.append({"name": "api_probe", "label": "Dart API probe", "ok": True, "optional": False, "summary": "Dart live reads succeeded."})
-    ok = bool(config.api_key) and bool(probe) and probe.get("ok") is True
-    status = "ready" if ok else ("needs_setup" if not config.api_key else "degraded")
+    ok = bool(config.api_key_usable) and bool(probe) and probe.get("ok") is True
+    status = "ready" if ok else ("needs_setup" if not config.api_key_usable else "degraded")
     next_steps = []
-    if not config.api_key:
-        next_steps.append("Add DART_API_KEY to operator-controlled service keys first; use DART_API_KEY in the local env only as a harness fallback.")
+    if not config.api_key_usable:
+        next_steps.append("Add DART_API_KEY to operator-controlled service keys first; use local DART_API_KEY only as a harness fallback when no operator-managed key is present.")
+        if config.api_key_present:
+            next_steps.append("Encrypted or scoped DART_API_KEY entries must be injected by the operator runtime; the standalone harness will not bypass them with env fallback.")
     if not config.dartboard_id:
         next_steps.append("Optional: pin DART_DARTBOARD_ID for dartboard-scoped reads.")
     if not runtime_binary:
@@ -185,10 +210,13 @@ def build_health_payload(*, client_factory: Callable[[DartConfig], DartClient] |
                 "live_read_available": bool(probe and probe.get("ok")),
                 "live_write_available": bool(probe and probe.get("ok")),
                 "write_bridge_available": True,
+                "write_bridge_runtime_ready": bool(probe and probe.get("ok")),
+                "live_write_smoke_tested": False,
                 "scaffold_only": False,
             },
             "auth": {
-                "api_key_present": bool(config.api_key),
+                "api_key_present": config.api_key_present,
+                "api_key_usable": config.api_key_usable,
                 "api_key_source": config.api_key_source,
                 "service_key_name": "DART_API_KEY",
             },
@@ -211,15 +239,19 @@ def build_doctor_payload() -> dict[str, Any]:
             "runtime": {
                 "implementation_mode": IMPLEMENTATION_MODE,
                 "binary_path": resolve_runtime_binary(),
-                "service_key_precedence": "service-keys-first-with-env-fallback",
+                "service_key_precedence": "operator-service-keys-first-with-env-fallback-only-when-unmanaged",
                 "command_readiness": _command_readiness(config),
                 "dartboard_id_present": bool(config.dartboard_id),
                 "task_id_present": bool(config.task_id),
                 "doc_id_present": bool(config.doc_id),
+                "tenant_smoke_tested": False,
+                "sampled_probe_commands": ["dartboard.list", "dartboard.get", "task.list", "task.get"],
+                "live_write_smoke_tested": False,
+                "write_bridge_runtime_ready": health["connector"]["write_bridge_runtime_ready"],
             },
             "checks": health["checks"],
             "probe": health["probe"],
-            "supported_read_commands": [command for command in LIVE_READ_SURFACES],
+            "supported_read_commands": [command["id"] for command in build_manifest_payload()["commands"] if command["action_class"] == "read"],
             "supported_write_commands": list(LIVE_WRITE_SURFACES),
             "next_steps": health["next_steps"],
         },
