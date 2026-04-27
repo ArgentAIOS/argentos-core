@@ -259,6 +259,10 @@ function resolveSkillCategoryParts(skill: Skill): string[] {
   if (hermesIndex !== -1) {
     return parts.slice(hermesIndex, Math.max(hermesIndex, parts.length - 2));
   }
+  const communityIndex = parts.indexOf("community");
+  if (communityIndex !== -1) {
+    return parts.slice(communityIndex, Math.max(communityIndex, parts.length - 2));
+  }
   return [];
 }
 
@@ -268,8 +272,11 @@ function resolveSkillCategoryDir(skill: Skill, categoryParts: string[]): string 
   }
   const skillPathParts = splitPathParts(skill.filePath);
   const skillsIndex = skillPathParts.lastIndexOf("skills");
-  const hermesIndex = skillPathParts.indexOf("hermes");
-  const categoryStart = skillsIndex !== -1 ? skillsIndex + 1 : hermesIndex;
+  const fallbackCategoryStart = ["hermes", "community"]
+    .map((part) => skillPathParts.indexOf(part))
+    .filter((index) => index !== -1)
+    .sort((left, right) => left - right)[0];
+  const categoryStart = skillsIndex !== -1 ? skillsIndex + 1 : (fallbackCategoryStart ?? -1);
   if (categoryStart === -1) {
     return undefined;
   }
