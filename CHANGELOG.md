@@ -13,16 +13,17 @@ Docs: https://docs.argentos.ai
   failure feedback.
 - Argent Tables/AppForge: advance the AppForge shell toward an Airtable-style
   workspace with truthful Live/Preview/Declaration labels, native base/table
-  onboarding, typed field editing, record add/edit/delete flows, and persistence
-  proof after reload. Non-live areas such as permissions, connectors,
-  interfaces, and automations are now labeled honestly instead of implying
-  finished behavior.
+  onboarding, typed field editing, saved table views, record add/edit/delete
+  flows, and persistence proof after reload. Non-live areas such as
+  permissions, connectors, interfaces, and automations are now labeled honestly
+  instead of implying finished behavior.
 - AOS connectors: expand the service-key-first connector wave for workflow
   usage. Current dev includes readiness metadata plus truth-labeled work across
   CallScrub, PayPunch, Monday, Dart, Zapier, WordPress, n8n, HubSpot, Make,
-  Slack Workflow, Teams, and Discord Workflow. Write-capable connectors remain
-  approval-sensitive and are marked `live_write_smoke_tested=false` unless a
-  real operator tenant/account smoke test has been run.
+  Slack Workflow, Teams, Discord Workflow, Airtable, Buffer, Hootsuite, and
+  Slack. Write-capable connectors remain approval-sensitive and are marked
+  `live_write_smoke_tested=false` unless a real operator tenant/account smoke
+  test has been run.
 - OpenClaw: add browser diagnostics, realtime voice foundations, OpenAI
   Realtime adapter support, local audio smoke tooling, optional operator
   voice-alert routing foundations, and Google Meet setup/status plus
@@ -53,8 +54,8 @@ Docs: https://docs.argentos.ai
 - Workflow browser smoke is still the main usability gate before calling the
   canvas broadly operator-ready.
 - AppForge/Argent Tables is not yet a full TableForge/Airtable replacement:
-  saved views, relational fields, permissions enforcement, connector-backed
-  tables, interface building, and deep automations are still planned/follow-up.
+  relational fields, permissions enforcement, connector-backed tables, interface
+  building, and deep automations are still planned/follow-up.
 - AOS connector claims are truth-labeled from manifests and harness tests; most
   live external-account smoke tests still need operator credentials.
 - OpenClaw Google Meet does not yet create, join, leave, control, or participate
