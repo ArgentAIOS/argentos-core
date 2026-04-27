@@ -155,13 +155,20 @@
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": ["KLAVIYO_API_KEY"],
+    "service_keys": [
+      "KLAVIYO_API_KEY",
+      "KLAVIYO_REVISION",
+      "KLAVIYO_LIST_ID",
+      "KLAVIYO_PROFILE_ID",
+      "KLAVIYO_PROFILE_EMAIL",
+      "KLAVIYO_CAMPAIGN_ID"
+    ],
     "interactive_setup": [
       "Create or choose a Klaviyo private API key for the target account.",
       "Add KLAVIYO_API_KEY to operator-controlled service keys before enabling live reads.",
       "Use the KLAVIYO_API_KEY environment variable only as a local harness fallback when operator keys are unavailable.",
       "Optionally set KLAVIYO_REVISION to pin the API revision header used by the connector.",
-      "Set KLAVIYO_LIST_ID, KLAVIYO_PROFILE_ID, KLAVIYO_PROFILE_EMAIL, and KLAVIYO_CAMPAIGN_ID to give worker flows stable list, profile, and campaign scope defaults.",
+      "Add KLAVIYO_LIST_ID, KLAVIYO_PROFILE_ID, KLAVIYO_PROFILE_EMAIL, and KLAVIYO_CAMPAIGN_ID to operator-controlled service keys to give worker flows stable list, profile, and campaign scope defaults.",
       "The connector exposes live reads only; Klaviyo mutation commands are not advertised until approval and compliance safeguards are explicitly shipped."
     ]
   },

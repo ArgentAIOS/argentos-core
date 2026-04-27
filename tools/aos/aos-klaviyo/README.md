@@ -12,15 +12,17 @@ This connector is currently live-read-only:
 
 ## Auth
 
-The connector expects the `KLAVIYO_API_KEY` service key from operator-controlled API Keys first.
-For local harness runs, the service-key helper can fall back to the `KLAVIYO_API_KEY` environment variable.
+The connector expects operator-controlled service keys first. For local harness
+runs, the service-key helper can fall back to matching environment variables.
 
-Optional scope hints:
+Operator service keys:
 
-- `KLAVIYO_REVISION` to pin the API revision header.
-- `KLAVIYO_LIST_ID` to preselect a list scope.
-- `KLAVIYO_PROFILE_ID` or `KLAVIYO_PROFILE_EMAIL` to preselect a profile scope.
-- `KLAVIYO_CAMPAIGN_ID` to preselect a campaign scope.
+- `KLAVIYO_API_KEY`
+- `KLAVIYO_REVISION`
+- `KLAVIYO_LIST_ID`
+- `KLAVIYO_PROFILE_ID`
+- `KLAVIYO_PROFILE_EMAIL`
+- `KLAVIYO_CAMPAIGN_ID`
 
 ## Live Reads
 

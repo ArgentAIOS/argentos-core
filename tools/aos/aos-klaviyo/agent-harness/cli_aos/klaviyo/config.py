@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -14,6 +15,7 @@ from .constants import (
     KLAVIYO_REVISION_ENV,
     KLAVIYO_SERVICE_KEY_NAME,
 )
+from .service_keys import SERVICE_KEY_VARIABLES, service_key_env, service_key_source
 
 
 def _mask(value: str | None) -> str | None:
@@ -89,6 +91,12 @@ def _scope_picker_preview(
     }
 
 
+def _load_manifest() -> dict[str, Any]:
+    from .constants import CONNECTOR_PATH
+
+    return json.loads(CONNECTOR_PATH.read_text())
+
+
 def _string_value(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
@@ -155,6 +163,19 @@ def _resolve_service_key(ctx_obj: dict[str, Any], *, service_key_name: str, env_
     }
 
 
+def _resolve_config_value(ctx_obj: dict[str, Any], env_name: str, default: str = "") -> tuple[str, str]:
+    operator_value, operator_source = _operator_service_key_value(ctx_obj, env_name)
+    if operator_value:
+        return operator_value, operator_source
+    value = (service_key_env(env_name, default) or "").strip()
+    source = service_key_source(env_name)
+    if source:
+        return value, source
+    if default:
+        return value, "default"
+    return value, "missing"
+
+
 def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     api_key_env = ctx_obj.get("api_key_env") or KLAVIYO_API_KEY_ENV
     service_key_name = ctx_obj.get("service_key_name") or KLAVIYO_SERVICE_KEY_NAME
@@ -166,11 +187,11 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
 
     service_key = _resolve_service_key(ctx_obj, service_key_name=service_key_name, env_name=api_key_env)
     api_key = service_key["value"]
-    revision = (os.getenv(revision_env) or DEFAULT_REVISION).strip() or DEFAULT_REVISION
-    list_id = (os.getenv(list_id_env) or "").strip()
-    profile_id = (os.getenv(profile_id_env) or "").strip()
-    profile_email = (os.getenv(profile_email_env) or "").strip()
-    campaign_id = (os.getenv(campaign_id_env) or "").strip()
+    revision, revision_source = _resolve_config_value(ctx_obj, revision_env, DEFAULT_REVISION)
+    list_id, list_id_source = _resolve_config_value(ctx_obj, list_id_env)
+    profile_id, profile_id_source = _resolve_config_value(ctx_obj, profile_id_env)
+    profile_email, profile_email_source = _resolve_config_value(ctx_obj, profile_email_env)
+    campaign_id, campaign_id_source = _resolve_config_value(ctx_obj, campaign_id_env)
 
     return {
         "backend": BACKEND_NAME,
@@ -194,12 +215,26 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "profile_id_present": bool(profile_id),
         "profile_email_present": bool(profile_email),
         "campaign_id_present": bool(campaign_id),
-        "revision_source": "env" if os.getenv(revision_env) else "default",
+        "list_id_source": list_id_source,
+        "profile_id_source": profile_id_source,
+        "profile_email_source": profile_email_source,
+        "campaign_id_source": campaign_id_source,
+        "revision_source": revision_source,
+        "service_keys": sorted(SERVICE_KEY_VARIABLES),
+        "sources": {
+            "KLAVIYO_API_KEY": service_key["source"],
+            "KLAVIYO_REVISION": revision_source,
+            "KLAVIYO_LIST_ID": list_id_source,
+            "KLAVIYO_PROFILE_ID": profile_id_source,
+            "KLAVIYO_PROFILE_EMAIL": profile_email_source,
+            "KLAVIYO_CAMPAIGN_ID": campaign_id_source,
+        },
     }
 
 
 def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
+    manifest = _load_manifest()
     live_ready = runtime["api_key_present"]
     command_defaults = {
         "account.read": {
@@ -385,6 +420,10 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "revision_env": runtime["revision_env"],
             "revision": runtime["revision"],
             "revision_source": runtime["revision_source"],
+            "service_keys": sorted(SERVICE_KEY_VARIABLES),
+            "operator_service_keys": sorted(SERVICE_KEY_VARIABLES),
+            "sources": runtime["sources"],
+            "development_fallback": sorted(SERVICE_KEY_VARIABLES),
         },
         "scope": {
             "workerFields": ["account", "list_id", "profile_id", "profile_email", "campaign_id"],
@@ -425,16 +464,9 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             },
         },
         "read_support": {
-            "account.read": True,
-            "list.list": True,
-            "list.read": True,
-            "profile.list": True,
-            "profile.read": True,
-            "campaign.list": True,
-            "campaign.read": True,
+            command["id"]: True
+            for command in manifest["commands"]
+            if command["required_mode"] == "readonly"
         },
-        "write_support": {
-            "live_writes_enabled": False,
-            "scaffold_only": False,
-        },
+        "write_support": {},
     }

@@ -24,19 +24,13 @@ def capabilities_snapshot() -> dict[str, Any]:
         "scope": manifest.get("scope", {}),
         "commands": manifest["commands"],
         "read_support": {
-            "account.read": True,
-            "list.list": True,
-            "list.read": True,
-            "profile.list": True,
-            "profile.read": True,
-            "campaign.list": True,
-            "campaign.read": True,
+            command["id"]: True
+            for command in manifest["commands"]
+            if command["required_mode"] == "readonly"
         },
-        "write_support": {
-            "live_writes_enabled": False,
-            "scaffold_only": False,
-        },
+        "write_support": {},
     }
+
 
 def create_client(ctx_obj: dict[str, Any]) -> KlaviyoClient:
     runtime = resolve_runtime_values(ctx_obj)
@@ -108,6 +102,9 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "revision_env": runtime["revision_env"],
             "revision_present": runtime["revision_present"],
             "revision_source": runtime["revision_source"],
+            "service_keys": runtime["service_keys"],
+            "operator_service_keys": runtime["service_keys"],
+            "sources": runtime["sources"],
         },
         "scope": {
             "list_id": runtime["list_id"] or None,
@@ -131,7 +128,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "probe": probe,
         "next_steps": [
             f"Set {runtime['api_key_env']} in API Keys.",
-            "Optionally pin KLAVIYO_LIST_ID, KLAVIYO_PROFILE_ID, KLAVIYO_PROFILE_EMAIL, and KLAVIYO_CAMPAIGN_ID to stabilize worker-flow scope pickers.",
+            "Optionally pin KLAVIYO_LIST_ID, KLAVIYO_PROFILE_ID, KLAVIYO_PROFILE_EMAIL, and KLAVIYO_CAMPAIGN_ID in API Keys to stabilize worker-flow scope pickers.",
             "Klaviyo mutation commands are not exposed until approval and compliance safeguards are defined.",
         ],
     }
@@ -139,6 +136,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
 
 def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
+    manifest = _load_manifest()
     probe = probe_runtime(ctx_obj)
     return {
         "status": "ready" if probe.get("ok") else ("needs_setup" if probe.get("code") == "KLAVIYO_SETUP_REQUIRED" else "degraded"),
@@ -167,13 +165,9 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             {"name": "write_commands", "ok": True, "details": {"mode": "not_exposed"}},
         ],
         "supported_read_commands": [
-            "account.read",
-            "list.list",
-            "list.read",
-            "profile.list",
-            "profile.read",
-            "campaign.list",
-            "campaign.read",
+            command["id"]
+            for command in manifest["commands"]
+            if command["required_mode"] == "readonly"
         ],
         "scaffolded_commands": [],
         "next_steps": [
