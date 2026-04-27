@@ -31,6 +31,35 @@ type BrowserProxyResult = {
   files?: BrowserProxyFile[];
 };
 
+function browserRequestDiagnostics(params: {
+  method: string;
+  path: string;
+  query?: Record<string, unknown>;
+  route: "target-resolution" | "node-proxy" | "local-control" | "dispatcher";
+  timeoutMs?: number;
+  node?: NodeSession | null;
+  nodeError?: unknown;
+}) {
+  const profile = typeof params.query?.profile === "string" ? params.query.profile : undefined;
+  return {
+    surface: "browser.request",
+    method: params.method,
+    path: params.path,
+    profile,
+    route: params.route,
+    timeoutMs: params.timeoutMs,
+    node: params.node
+      ? {
+          nodeId: params.node.nodeId,
+          displayName: params.node.displayName,
+          remoteIp: params.node.remoteIp,
+        }
+      : undefined,
+    nodeError: params.nodeError,
+    suggestion: "Run `argent browser status --json --timeout <ms>` and inspect this details block.",
+  };
+}
+
 function isBrowserNode(node: NodeSession) {
   const caps = Array.isArray(node.caps) ? node.caps : [];
   const commands = Array.isArray(node.commands) ? node.commands : [];
@@ -182,7 +211,19 @@ export const browserHandlers: GatewayRequestHandlers = {
         nodes: context.nodeRegistry.listConnected(),
       });
     } catch (err) {
-      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, String(err), {
+          details: browserRequestDiagnostics({
+            method: methodRaw,
+            path,
+            query,
+            route: "target-resolution",
+            timeoutMs,
+          }),
+        }),
+      );
       return;
     }
 
@@ -224,7 +265,15 @@ export const browserHandlers: GatewayRequestHandlers = {
           false,
           undefined,
           errorShape(ErrorCodes.UNAVAILABLE, res.error?.message ?? "node invoke failed", {
-            details: { nodeError: res.error ?? null },
+            details: browserRequestDiagnostics({
+              method: methodRaw,
+              path,
+              query,
+              route: "node-proxy",
+              timeoutMs,
+              node: nodeTarget,
+              nodeError: res.error ?? null,
+            }),
           }),
         );
         return;
@@ -243,7 +292,19 @@ export const browserHandlers: GatewayRequestHandlers = {
 
     const ready = await startBrowserControlServiceFromConfig();
     if (!ready) {
-      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "browser control is disabled"));
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, "browser control is disabled", {
+          details: browserRequestDiagnostics({
+            method: methodRaw,
+            path,
+            query,
+            route: "local-control",
+            timeoutMs,
+          }),
+        }),
+      );
       return;
     }
 
@@ -251,7 +312,19 @@ export const browserHandlers: GatewayRequestHandlers = {
     try {
       dispatcher = createBrowserRouteDispatcher(createBrowserControlContext());
     } catch (err) {
-      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, String(err), {
+          details: browserRequestDiagnostics({
+            method: methodRaw,
+            path,
+            query,
+            route: "dispatcher",
+            timeoutMs,
+          }),
+        }),
+      );
       return;
     }
 
@@ -268,7 +341,22 @@ export const browserHandlers: GatewayRequestHandlers = {
           ? String((result.body as { error?: unknown }).error)
           : `browser request failed (${result.status})`;
       const code = result.status >= 500 ? ErrorCodes.UNAVAILABLE : ErrorCodes.INVALID_REQUEST;
-      respond(false, undefined, errorShape(code, message, { details: result.body }));
+      respond(
+        false,
+        undefined,
+        errorShape(code, message, {
+          details: {
+            browser: browserRequestDiagnostics({
+              method: methodRaw,
+              path,
+              query,
+              route: "dispatcher",
+              timeoutMs,
+            }),
+            response: result.body,
+          },
+        }),
+      );
       return;
     }
 

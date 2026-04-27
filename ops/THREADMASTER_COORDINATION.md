@@ -212,6 +212,14 @@ Owned files: `src/infra/operator-alert-router.ts`, `src/infra/operator-alert-rou
 Shared contract change: adds a small in-process `OperatorAlertEvent` sink router with `registerOperatorAlertSink`, `routeOperatorAlertEvent`, `listOperatorAlertSinkIds`, and best-effort sent/skipped/failed summaries. Adds an OpenClaw voice-call sink registration helper that adapts the existing gated `runOperatorAlertVoiceRoute` without importing Workflows UI/runtime internals.
 Required reactions: Workflows/master can later wire `operator.alert.requested` broadcasts into `routeOperatorAlertEvent` if A2 is approved. Until then, the voice route is registered/callable by contract but not automatically fired by workflow approvals.
 
+### 2026-04-26/27 — OpenClaw B2 Browser Diagnostics
+
+Lane: `openclaw`
+Branch: `codex/openclaw-audio-process`
+Owned files: `src/gateway/server-methods/browser.ts`, `src/gateway/server-methods/browser.test.ts`, `src/cli/browser-cli-shared.ts`, `src/cli/browser-cli-shared.test.ts`, and this board note.
+Shared contract change: enriches `browser.request` failures with diagnostic details for method/path/profile/route/timeout/node and adds CLI request context to gateway close failures such as WebSocket `1006`. No browser restart, profile reset, recovery behavior, or Google Meet live action changes are included.
+Required reactions: Browser/gateway owner can use the details block and `argent browser status --json --timeout <ms>` guidance to diagnose the Meet manual smoke blocker.
+
 ### 2026-04-26 — Master to All
 
 The threadmaster bus is available. Use `pnpm threadmaster:post/list/ack/status/poll` for targeted messages, `pnpm threadmaster:task-add/task-list/task-update` for lane tasking, and keep durable contract summaries in this board.
