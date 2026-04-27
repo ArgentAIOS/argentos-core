@@ -215,6 +215,14 @@ Owned files/directories: `tools/aos/**`, with active connector ownership over Ai
 Shared contract changes: connector manifests, permissions, and command capability declarations remain the public contract; operator-controlled service keys are the key source for linked external systems. Klaviyo is now a truthful live read connector and does not advertise mutation/write actions until those are implemented.
 Workflows/AppForge/AOU reaction: consume manifests/capabilities only; do not infer private connector internals or assume scaffolded writes exist. AOU Stub Finder should treat Klaviyo at `ad3fb0b9` as a real read-only baseline and track future mutation work separately.
 
+### 2026-04-27 — AOS Teams Connector
+
+Lane: `AOS Teams connector`
+Branch/commit: `codex/aos-teams-loop` in progress.
+Owned files/directories: `tools/aos/aos-teams/**` plus this coordination note.
+Shared contract changes: Teams remains a live Microsoft Graph read/write connector for team/channel/meeting surfaces, but credentials and worker defaults now resolve from operator-controlled service keys first. Required service keys are `TEAMS_TENANT_ID`, `TEAMS_CLIENT_ID`, and `TEAMS_CLIENT_SECRET`; optional scope/default keys include `TEAMS_TEAM_ID`, `TEAMS_USER_ID`, `TEAMS_CHANNEL_ID`, `TEAMS_CHAT_ID`, `TEAMS_GRAPH_BASE_URL`, `TEAMS_TOKEN_URL`, `TEAMS_HTTP_TIMEOUT_SECONDS`, `TEAMS_MEETING_SUBJECT`, `TEAMS_START_TIME`, and `TEAMS_END_TIME`. Scoped repo service keys block local env fallback and encrypted repo keys use the core-compatible `enc:v1` AES-GCM format.
+Workflows/AppForge/AOU reaction: consume manifest/capabilities only. Treat `channel.create` and `meeting.create` as consequential writes requiring write mode, operator service-key binding, Graph permissions/application access policy, and approval; `live_write_smoke_tested` remains `false` until a real operator Microsoft Teams tenant smoke test runs.
+
 ### 2026-04-26 — Master Threadmaster Roster
 
 Current active core threadmasters: AppForge 2.0, Work flow building master, AOU Stub Finder, and Compare OpenClaw 4.24 features. Treat the Workflows threadmaster as the master coordinator for cross-project lane awareness while it continues implementing the workflow canvas/runtime.

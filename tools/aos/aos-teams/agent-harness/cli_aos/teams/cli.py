@@ -95,7 +95,7 @@ def cli(ctx: click.Context, as_json: bool, mode: str, verbose: bool) -> None:
 def capabilities(ctx: click.Context) -> None:
     _set_command(ctx, "capabilities")
     require_mode(ctx, "capabilities")
-    _emit_success(ctx, "capabilities", capabilities_snapshot())
+    _emit_success(ctx, "capabilities", capabilities_snapshot(ctx.obj))
 
 
 @cli.group("config")
@@ -108,7 +108,7 @@ def config_group() -> None:
 def config_show(ctx: click.Context) -> None:
     _set_command(ctx, "config.show")
     require_mode(ctx, "config.show")
-    _emit_success(ctx, "config.show", config_snapshot())
+    _emit_success(ctx, "config.show", config_snapshot(ctx.obj))
 
 
 @cli.command("health")

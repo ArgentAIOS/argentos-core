@@ -74,9 +74,9 @@ def _normalize_meeting_times(start_time: str, end_time: str | None) -> tuple[str
     )
 
 
-def capabilities_snapshot() -> dict[str, Any]:
+def capabilities_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
     manifest = _load_manifest()
-    config = runtime_config()
+    config = runtime_config(ctx_obj)
     return {
         "tool": manifest["tool"],
         "backend": manifest["backend"],
@@ -91,7 +91,7 @@ def capabilities_snapshot() -> dict[str, Any]:
 
 
 def create_client(ctx_obj: dict[str, Any] | None = None) -> TeamsClient:
-    config = runtime_config()
+    config = runtime_config(ctx_obj)
     auth = config["auth"]
     runtime = config["runtime"]
     if auth["missing_keys"]:
@@ -102,9 +102,9 @@ def create_client(ctx_obj: dict[str, Any] | None = None) -> TeamsClient:
             details={"missing_keys": auth["missing_keys"]},
         )
     return TeamsClient(
-        tenant_id=service_key_env("TEAMS_TENANT_ID", "") or "",
-        client_id=service_key_env("TEAMS_CLIENT_ID", "") or "",
-        client_secret=service_key_env("TEAMS_CLIENT_SECRET", "") or "",
+        tenant_id=service_key_env("TEAMS_TENANT_ID", "", ctx_obj) or "",
+        client_id=service_key_env("TEAMS_CLIENT_ID", "", ctx_obj) or "",
+        client_secret=service_key_env("TEAMS_CLIENT_SECRET", "", ctx_obj) or "",
         graph_base_url=runtime["graph_base_url"],
         token_url=runtime["token_url"] or None,
         timeout_seconds=runtime["timeout_seconds"],
@@ -112,7 +112,7 @@ def create_client(ctx_obj: dict[str, Any] | None = None) -> TeamsClient:
 
 
 def probe_runtime(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
-    config = runtime_config()
+    config = runtime_config(ctx_obj)
     auth = config["auth"]
     if auth["missing_keys"]:
         return {
@@ -143,7 +143,7 @@ def probe_runtime(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
-    config = runtime_config()
+    config = runtime_config(ctx_obj)
     probe = probe_runtime(ctx_obj)
     status = "ready" if probe["ok"] else ("needs_setup" if probe["code"] == "TEAMS_SETUP_REQUIRED" else "degraded")
     runtime = config["runtime"]
@@ -173,6 +173,7 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
             "live_backend_available": bool(probe.get("ok")),
             "live_read_available": bool(probe.get("ok")),
             "write_bridge_available": True,
+            "live_write_smoke_tested": False,
             "scaffold_only": False,
         },
         "auth": config["auth"],
@@ -204,7 +205,7 @@ def doctor_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
         "backend": BACKEND_NAME,
         "runtime_ready": snapshot["status"] == "ready",
         "recommendations": recommendations,
-        "config": config_snapshot(),
+        "config": config_snapshot(ctx_obj),
         "supported_read_commands": list(SUPPORTED_READ_COMMANDS),
         "supported_write_commands": list(SUPPORTED_WRITE_COMMANDS),
         "command_readiness": dict(snapshot["runtime"]["command_readiness"]),
@@ -227,7 +228,7 @@ def team_list_result(ctx_obj: dict[str, Any], *, limit: int) -> dict[str, Any]:
 
 
 def channel_list_result(ctx_obj: dict[str, Any], *, team_id: str | None, limit: int) -> dict[str, Any]:
-    runtime = runtime_config()
+    runtime = runtime_config(ctx_obj)
     resolved_team_id = team_id or runtime["runtime"]["team_id"]
     resolved_team_id = _require_arg(
         resolved_team_id,
@@ -251,7 +252,7 @@ def channel_list_result(ctx_obj: dict[str, Any], *, team_id: str | None, limit: 
 
 
 def meeting_list_result(ctx_obj: dict[str, Any], *, user_id: str | None, limit: int) -> dict[str, Any]:
-    runtime = runtime_config()
+    runtime = runtime_config(ctx_obj)
     resolved_user_id = user_id or runtime["runtime"]["user_id"]
     resolved_user_id = _require_arg(
         resolved_user_id,
@@ -267,7 +268,7 @@ def meeting_list_result(ctx_obj: dict[str, Any], *, user_id: str | None, limit: 
     return {
         "status": "live_read",
         "backend": BACKEND_NAME,
-        "summary": f"Listed {len(meetings)} meeting(s).",
+        "summary": f"Listed {len(meetings)} online calendar event(s).",
         "meetings": meetings,
         "picker_options": picker_items,
         "scope_preview": _scope_preview("meeting.list", "meeting", {"user_id": resolved_user_id, "candidate_count": len(meetings), "picker": _picker(picker_items, kind="meeting")}),
@@ -342,7 +343,7 @@ def _parse_meeting_create_items(items: tuple[str, ...], runtime: dict[str, Any])
 
 
 def channel_create_result(ctx_obj: dict[str, Any], *, items: tuple[str, ...]) -> dict[str, Any]:
-    runtime = runtime_config()
+    runtime = runtime_config(ctx_obj)
     parsed = _parse_channel_create_items(items, runtime)
     client = create_client(ctx_obj)
     channel = client.create_channel(
@@ -360,11 +361,12 @@ def channel_create_result(ctx_obj: dict[str, Any], *, items: tuple[str, ...]) ->
             "channel",
             {"team_id": parsed["team_id"], "display_name": parsed["display_name"]},
         ),
+        "live_write_smoke_tested": False,
     }
 
 
 def meeting_create_result(ctx_obj: dict[str, Any], *, items: tuple[str, ...]) -> dict[str, Any]:
-    runtime = runtime_config()
+    runtime = runtime_config(ctx_obj)
     parsed = _parse_meeting_create_items(items, runtime)
     client = create_client(ctx_obj)
     meeting = client.create_online_meeting(
@@ -388,6 +390,7 @@ def meeting_create_result(ctx_obj: dict[str, Any], *, items: tuple[str, ...]) ->
                 "end_time": parsed["end_time"],
             },
         ),
+        "live_write_smoke_tested": False,
     }
 
 

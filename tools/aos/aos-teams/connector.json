@@ -9,6 +9,20 @@
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": true,
+    "live_write_smoke_tested": false,
+    "required": ["TEAMS_TENANT_ID", "TEAMS_CLIENT_ID", "TEAMS_CLIENT_SECRET"],
+    "optional": [
+      "TEAMS_TEAM_ID",
+      "TEAMS_USER_ID",
+      "TEAMS_CHANNEL_ID",
+      "TEAMS_CHAT_ID",
+      "TEAMS_GRAPH_BASE_URL",
+      "TEAMS_TOKEN_URL",
+      "TEAMS_HTTP_TIMEOUT_SECONDS",
+      "TEAMS_MEETING_SUBJECT",
+      "TEAMS_START_TIME",
+      "TEAMS_END_TIME"
+    ],
     "workerFields": [
       "team_id",
       "channel_display_name",
@@ -169,13 +183,27 @@
     "kind": "oauth-service-key",
     "required": true,
     "service_keys": ["TEAMS_TENANT_ID", "TEAMS_CLIENT_ID", "TEAMS_CLIENT_SECRET"],
+    "optional_service_keys": [
+      "TEAMS_TEAM_ID",
+      "TEAMS_USER_ID",
+      "TEAMS_CHANNEL_ID",
+      "TEAMS_CHAT_ID",
+      "TEAMS_GRAPH_BASE_URL",
+      "TEAMS_TOKEN_URL",
+      "TEAMS_HTTP_TIMEOUT_SECONDS",
+      "TEAMS_MEETING_SUBJECT",
+      "TEAMS_START_TIME",
+      "TEAMS_END_TIME"
+    ],
     "interactive_setup": [
       "Register an application in Microsoft Entra ID (Azure AD).",
       "Grant only the Microsoft Graph application permissions needed for the surfaced commands: GroupMember.Read.All (team.list), ChannelSettings.Read.Group or Channel.ReadBasic.All (channel.list), Channel.Create.Group or Channel.Create (channel.create), Calendars.ReadBasic or Calendars.Read (meeting.list), and OnlineMeetings.ReadWrite.All plus an application access policy for the scoped user (meeting.create).",
       "Add TEAMS_TENANT_ID, TEAMS_CLIENT_ID, and TEAMS_CLIENT_SECRET in operator-controlled API Keys first.",
       "When TEAMS_TEAM_ID or TEAMS_USER_ID are used as worker-linking defaults, store them in operator-controlled service keys first and use local environment variables only as a harness fallback.",
       "Set TEAMS_TEAM_ID to give channel commands a stable default team scope.",
-      "Set TEAMS_USER_ID to the target user's Microsoft Entra object ID before running meeting.list or meeting.create."
+      "Set TEAMS_USER_ID to the target user's Microsoft Entra object ID before running meeting.list or meeting.create.",
+      "Scoped repo service keys cannot be bypassed with local environment variables.",
+      "Keep live_write_smoke_tested=false until a real operator Microsoft Teams tenant smoke test verifies channel.create or meeting.create."
     ]
   },
   "commands": [
@@ -237,7 +265,7 @@
     },
     {
       "id": "meeting.list",
-      "summary": "List upcoming Teams meetings",
+      "summary": "List online calendar events for a scoped user",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "meeting",
