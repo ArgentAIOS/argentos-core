@@ -84,6 +84,21 @@ export {
   type RealtimeOperatorVoiceCliStatus,
 } from "./operator-voice-cli.js";
 export {
+  OPERATOR_ALERT_VOICE_ENABLE_ENV,
+  OPERATOR_ALERT_VOICE_MODE_ENV,
+  OPERATOR_ALERT_VOICE_PRIVACY_ENV,
+  OPERATOR_ALERT_VOICE_PROVIDER_ENV,
+  preflightOperatorAlertVoiceRoute,
+  renderOperatorAlertVoicePrompt,
+  runOperatorAlertVoiceRoute,
+  type OperatorAlertVoicePrivacyMode,
+  type OperatorAlertVoiceProviderId,
+  type OperatorAlertVoiceRouteIssue,
+  type OperatorAlertVoiceRouteOptions,
+  type OperatorAlertVoiceRoutePreflight,
+  type OperatorAlertVoiceRouteResult,
+} from "./operator-alert-voice-route.js";
+export {
   createRealtimeVoiceOperatorSession,
   type RealtimeVoiceOperatorSession,
   type RealtimeVoiceOperatorSessionEvent,

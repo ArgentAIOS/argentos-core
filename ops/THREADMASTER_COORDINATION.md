@@ -279,6 +279,10 @@ Lane: `openclaw`. Branch: `codex/openclaw-audio-process` at `e7fdc111` before th
 
 Lane: `openclaw`. Branch: `codex/openclaw-audio-process` rebased onto `origin/dev` / `9308eb06`; readiness-plan commit replayed through `bd993002` before this implementation slice. Owned files for this slice: `extensions/google-meet/src/setup.ts`, `extensions/google-meet/src/tool.ts`, `extensions/google-meet/src/setup.test.ts`, `extensions/google-meet/src/tool.test.ts`, and this coordination note only. Shared contract change: Google Meet setup/status now truth-labels browser recovery readiness separately from full live readiness, and `recover_current_tab` can focus an already-open Meet tab through the browser runtime. Boundaries: `join`, `create`, and `leave` remain `not_implemented`; no OAuth create, audio bridge, realtime consult, Workflows/AppForge/AOS/schema, voice telephony default, or browser core edits.
 
+### 2026-04-26 — OpenClaw Operator Alert Voice Route
+
+Lane: `openclaw`. Branch: `codex/openclaw-audio-process` rebased onto `origin/dev` / `4a110c87`, where Workflows landed `src/infra/operator-alerts.ts`. Owned files for this slice: `extensions/voice-call/src/realtime-voice/operator-alert-voice-route.ts`, `extensions/voice-call/src/realtime-voice/operator-alert-voice-route.test.ts`, `extensions/voice-call/src/realtime-voice/index.ts`, and this coordination note only. Shared contract consumed: imports `OperatorAlertEvent` from `src/infra/operator-alerts.ts` and maps it to an optional, disabled-by-default voice alert route using local OpenClaw audio gates. Boundaries: no Workflows/AppForge/AOS/schema/Google Meet edits, no shared router subscription, no spoken approval resolution, no always-on listening, no raw previous-output/action payload speech, and no live-device claim unless process smoke evidence is separately produced.
+
 ## Verification Snapshot
 
 Latest AppForge focused verification after rebase onto `origin/dev`:
