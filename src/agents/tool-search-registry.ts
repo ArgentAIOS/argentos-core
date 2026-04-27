@@ -102,6 +102,7 @@ export const CORE_TOOL_NAMES = new Set([
   // Discovery
   "tool_search",
   "marketplace",
+  "specforge",
   // Self-awareness
   "session_status",
   "agents_list",

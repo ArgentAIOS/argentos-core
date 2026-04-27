@@ -81,6 +81,7 @@ import { createSessionsSendTool } from "./tools/sessions-send-tool.js";
 import { createSessionsSpawnTool } from "./tools/sessions-spawn-tool.js";
 import { createSkillsTool } from "./tools/skills-tool.js";
 import { createSlackSignalMonitorTool } from "./tools/slack-signal-monitor-tool.js";
+import { createSpecforgeTool } from "./tools/specforge-tool.js";
 import { createTasksTool } from "./tools/tasks-tools.js";
 import { createTeamSpawnTool } from "./tools/team-spawn-tool.js";
 import { createTeamStatusTool } from "./tools/team-status-tool.js";
@@ -160,9 +161,6 @@ export function createArgentTools(options?: {
     "./tools/copilot-system-tool.js",
     "createCopilotSystemTool",
   );
-  const createSpecforgeTool = loadOptionalToolFactory<
-    (params: { agentSessionKey?: string; agentId?: string }) => AnyAgentTool
-  >("./tools/specforge-tool.js", "createSpecforgeTool");
   const imageTool = options?.agentDir?.trim()
     ? createImageTool({
         config: options?.config,
@@ -309,17 +307,13 @@ export function createArgentTools(options?: {
     ...(createWorkforceSetupTool ? [createWorkforceSetupTool()] : []),
     ...(createIntentTool ? [createIntentTool()] : []),
     ...(createCopilotSystemTool ? [createCopilotSystemTool()] : []),
-    ...(createSpecforgeTool
-      ? [
-          createSpecforgeTool({
-            agentSessionKey: options?.agentSessionKey,
-            agentId: resolveSessionAgentId({
-              sessionKey: options?.agentSessionKey,
-              config: options?.config,
-            }),
-          }),
-        ]
-      : []),
+    createSpecforgeTool({
+      agentSessionKey: options?.agentSessionKey,
+      agentId: resolveSessionAgentId({
+        sessionKey: options?.agentSessionKey,
+        config: options?.config,
+      }),
+    }),
     createAccountabilityTool({
       config: options?.config,
       agentId: resolveSessionAgentId({
