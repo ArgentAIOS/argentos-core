@@ -187,6 +187,18 @@ Notes:
 - Project-build requests such as "I want to build a project" should route through `specforge` first.
 - Core owns strict guide-mode intake and approval. Business-only autoscaffold/workforce execution remains outside Core.
 
+### Room Reader
+
+Recognize when a natural-language conversation is becoming a known work pattern,
+then offer or activate the right skill or workflow without requiring the user to
+name it first. See [Room Reader](/tools/room-reader).
+
+Notes:
+
+- Initial patterns cover podcast, article, data collection, research, workflow automation, and project-build requests.
+- Project-build opportunities may recommend `specforge`; article, podcast, research, and data-collection opportunities must not trigger SpecForge.
+- Observe-mode decisions emit telemetry but add no prompt text.
+
 ### `argent_search`
 
 Search tasks, long-term memory observations, and session records from one tool.

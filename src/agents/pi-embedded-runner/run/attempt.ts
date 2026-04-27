@@ -104,6 +104,7 @@ import {
   applySkillEnvOverrides,
   applySkillEnvOverridesFromSnapshot,
   buildMatchedPersonalSkillsContextBlock,
+  buildRoomReaderOpportunityPromptBlock,
   evaluatePersonalSkillExecutionPlan,
   loadWorkspaceSkillEntries,
   matchSkillCandidatesForPrompt,
@@ -111,6 +112,7 @@ import {
   mergeMatchedSkills,
   recordPersonalSkillUsage,
   reviewPersonalSkillCandidates,
+  resolveRoomReaderOpportunity,
   resolveSkillsPromptForRun,
   selectExecutablePersonalSkill,
 } from "../../skills.js";
@@ -624,6 +626,24 @@ export async function runEmbeddedAttempt(
         },
       });
     }
+    const roomReaderOpportunity = resolveRoomReaderOpportunity({
+      prompt: params.prompt,
+      entries: shouldLoadSkillEntries ? skillEntries : undefined,
+      resolvedSkills: params.skillsSnapshot?.resolvedSkills,
+      matchedSkills: matchedSkillCandidates,
+    });
+    const roomReaderOpportunityBlock = buildRoomReaderOpportunityPromptBlock(roomReaderOpportunity);
+    params.onAgentEvent?.({
+      stream: "lifecycle",
+      data: {
+        phase: "room_reader_opportunity",
+        mode: roomReaderOpportunity.mode,
+        patterns: roomReaderOpportunity.patterns,
+        recommended: roomReaderOpportunity.recommended,
+        confidence: roomReaderOpportunity.confidence,
+        reasons: roomReaderOpportunity.reasons,
+      },
+    });
 
     // Load session store early — discovered tools needed for tool creation
     let sessionBootstrapSnapshot:
@@ -851,6 +871,7 @@ export async function runEmbeddedAttempt(
       { name: "cross-channel-context", value: crossChannelContextHint },
       { name: "matched-personal-skills", value: matchedPersonalSkillsContext },
       { name: "executable-personal-skill", value: executablePersonalSkillBlock },
+      { name: "room-reader-opportunity", value: roomReaderOpportunityBlock },
     ];
     const effectiveExtraSystemPrompt = extraSystemPromptParts
       .map((p) => p.value)

@@ -97,3 +97,28 @@ export type SkillMatchCandidate = {
   provenanceCount?: number;
   reasons: string[];
 };
+
+export type RoomReaderPatternId =
+  | "podcast"
+  | "article"
+  | "data_collection"
+  | "research"
+  | "workflow_automation"
+  | "project_build";
+
+export type RoomReaderActionMode = "observe" | "offer" | "activate";
+
+export type RoomReaderOpportunity = {
+  mode: RoomReaderActionMode;
+  patterns: Array<{
+    id: RoomReaderPatternId;
+    confidence: number;
+  }>;
+  confidence: number;
+  reasons: string[];
+  recommended?: {
+    kind: "skill" | "workflow";
+    name: string;
+    source?: string;
+  };
+};
