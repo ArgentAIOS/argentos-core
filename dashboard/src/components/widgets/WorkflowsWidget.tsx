@@ -583,6 +583,18 @@ function workflowFromImportPreview(response: WorkflowImportPreviewResponse): Wor
   const id = stringValue(workflow.id, `wf-import-${Date.now()}`);
   const nodes = importedCanvasNodes(workflow, response.canvasLayout);
   const edges = importedCanvasEdges(workflow, response.canvasLayout);
+  const readiness = response.readiness ?? {};
+  const existingStage = stringValue(workflow.deploymentStage);
+  const deploymentStage =
+    existingStage === "simulate" ||
+    existingStage === "shadow" ||
+    existingStage === "limited_live" ||
+    existingStage === "live"
+      ? existingStage
+      : readiness.okForPinnedTestRun !== false
+        ? "simulate"
+        : undefined;
+  const definition = deploymentStage ? { ...workflow, deploymentStage } : workflow;
   return {
     id,
     name: `${stringValue(workflow.name ?? pkg.name, "Imported workflow")} (imported)`,
@@ -590,7 +602,7 @@ function workflowFromImportPreview(response: WorkflowImportPreviewResponse): Wor
     edges,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    definition: workflow,
+    definition,
     canvasLayout: { ...(response.canvasLayout ?? {}), nodes, edges },
     validation: response.validation
       ? { ok: response.validation.ok !== false, issues: response.validation.issues }
@@ -784,11 +796,11 @@ function injectWorkflowStyles(): void {
     .wf-node-completed { border-color: #00ffcc !important; }
     .wf-node-failed    { border-color: #ff3d57 !important; }
     .workflow-canvas .react-flow__node-output {
-      background: transparent;
-      border: 0;
-      box-shadow: none;
-      padding: 0;
-      width: auto;
+      background: transparent !important;
+      border: 0 !important;
+      box-shadow: none !important;
+      padding: 0 !important;
+      width: auto !important;
     }
     /* Dark theme overrides for React Flow controls */
     .react-flow__controls button { background: hsl(var(--card)); color: hsl(var(--foreground)); border-color: hsl(var(--border)); fill: hsl(var(--foreground)); }
@@ -1503,7 +1515,22 @@ function NewWorkflowModal({
   const [importError, setImportError] = useState<string | null>(null);
   const [selectedPackageSlug, setSelectedPackageSlug] = useState<string | null>(null);
 
-  if (!open) return null;
+  useEffect(() => {
+    if (open) {
+      return;
+    }
+    setShowTemplates(false);
+    setShowImport(false);
+    setIntent("");
+    setImportText("");
+    setGenerationError(null);
+    setImportError(null);
+    setSelectedPackageSlug(null);
+  }, [open]);
+
+  if (!open) {
+    return null;
+  }
 
   const createFromIntent = async () => {
     if (!intent.trim() || generating) {
@@ -1515,6 +1542,7 @@ function NewWorkflowModal({
       await onCreateFromIntent(intent.trim(), workflowName.trim() || undefined);
       setShowTemplates(false);
       setIntent("");
+      onClose();
     } catch (err) {
       setGenerationError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1551,8 +1579,6 @@ function NewWorkflowModal({
           <button
             onClick={() => {
               onClose();
-              setShowTemplates(false);
-              setShowImport(false);
             }}
             className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
           >
@@ -1570,7 +1596,7 @@ function NewWorkflowModal({
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 onCreateBlank(workflowName);
-                setShowTemplates(false);
+                onClose();
               }
             }}
             placeholder="Daily research summary"
@@ -1622,7 +1648,7 @@ function NewWorkflowModal({
           <button
             onClick={() => {
               onCreateBlank(workflowName);
-              setShowTemplates(false);
+              onClose();
             }}
             className="p-6 rounded-xl border border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/50 transition-colors text-left"
           >
@@ -1716,6 +1742,7 @@ function NewWorkflowModal({
                           .then(() => {
                             setShowTemplates(false);
                             setIntent("");
+                            onClose();
                           })
                           .catch((err) => {
                             setGenerationError(err instanceof Error ? err.message : String(err));
@@ -1771,7 +1798,7 @@ function NewWorkflowModal({
                 key={t.id}
                 onClick={() => {
                   onSelectTemplate(t);
-                  setShowTemplates(false);
+                  onClose();
                 }}
                 className="w-full text-left p-3 rounded-lg border border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/30 transition-colors"
               >
@@ -7546,6 +7573,7 @@ function WorkflowCanvasInner({
   const [outputChannels, setOutputChannels] = useState<OutputChannelOption[]>([]);
   const [knowledgeCollections, setKnowledgeCollections] = useState<KnowledgeCollectionOption[]>([]);
   const [bindingWizardOpen, setBindingWizardOpen] = useState(false);
+  const lastAutoOpenedImportIdRef = useRef<string | null>(null);
 
   // ── Run State ─────────────────────────────────────────────────────
   const [saving, setSaving] = useState(false);
@@ -8306,6 +8334,22 @@ function WorkflowCanvasInner({
 
   const handleRun = useCallback(async () => {
     if (!activeWorkflowId || running) return;
+    const workflow = workflows.find((candidate) => candidate.id === activeWorkflowId) ?? null;
+    const stage = workflowDeploymentStage(workflow);
+    const report = workflow?.importReport;
+    const missingRequiredBindings =
+      report?.requirements.filter(
+        (requirement) => requirement.requiredForLive && !report.bindings?.[requirement.key]?.value,
+      ) ?? [];
+    if (stage === "live" && missingRequiredBindings.length > 0) {
+      setBindingWizardOpen(true);
+      setRunError(
+        `Complete ${missingRequiredBindings.length} required live binding${
+          missingRequiredBindings.length === 1 ? "" : "s"
+        } before running live.`,
+      );
+      return;
+    }
     try {
       setRunning(true);
       setPartialRunningNodeId(null);
@@ -8321,7 +8365,11 @@ function WorkflowCanvasInner({
         setRunning(false);
         return;
       }
-      const result = await gateway.request("workflows.run", { workflowId: activeWorkflowId });
+      const result = await gateway.request("workflows.run", {
+        workflowId: activeWorkflowId,
+        canvasData: { nodes: cleanWorkflowNodes(), edges },
+        deploymentStage: stage,
+      });
       console.log("[Workflows] Run started:", result);
       // Subscribe to live updates
       await gateway.request("workflows.subscribe", { workflowId: activeWorkflowId });
@@ -8335,8 +8383,11 @@ function WorkflowCanvasInner({
     running,
     gateway,
     clearExecState,
+    cleanWorkflowNodes,
+    edges,
     saveCurrentWorkflow,
     validateCurrentWorkflow,
+    workflows,
   ]);
 
   const handleTestToNode = useCallback(
@@ -8476,6 +8527,17 @@ function WorkflowCanvasInner({
     Boolean(activeWorkflow?.importReport) &&
     activeWorkflow.importReport?.okForImport !== false &&
     missingLiveBindings.length === 0;
+
+  useEffect(() => {
+    if (!activeWorkflow?.importReport || missingLiveBindings.length === 0) {
+      return;
+    }
+    if (lastAutoOpenedImportIdRef.current === activeWorkflow.id) {
+      return;
+    }
+    lastAutoOpenedImportIdRef.current = activeWorkflow.id;
+    setBindingWizardOpen(true);
+  }, [activeWorkflow?.id, activeWorkflow?.importReport, missingLiveBindings.length]);
 
   const applyWorkflowBindings = useCallback(
     (bindings: Record<string, WorkflowBindingValue>) => {
@@ -8876,9 +8938,15 @@ function WorkflowCanvasInner({
       ? "Workflow is already running."
       : saving
         ? "Wait for the save to finish before running."
-        : !gateway.connected
-          ? "Connect to the gateway before running workflows."
-          : "";
+        : validationStatus === "checking"
+          ? "Wait for validation to finish before running."
+          : !gateway.connected
+            ? "Connect to the gateway before running workflows."
+            : activeDeploymentStage === "live" && missingLiveBindings.length > 0
+              ? `Bind ${missingLiveBindings.length} required item${
+                  missingLiveBindings.length === 1 ? "" : "s"
+                } before running live.`
+              : "";
   const scheduleDisabledReason = !activeWorkflowId
     ? "Create a workflow before scheduling."
     : scheduling
@@ -8958,9 +9026,9 @@ function WorkflowCanvasInner({
               void validateCurrentWorkflow();
             }}
             className="px-3 py-1 rounded text-[11px] font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] disabled:opacity-40 transition-colors"
-            title={testDisabledReason || "Test workflow wiring"}
+            title={testDisabledReason || "Validate workflow wiring and runtime connectivity"}
           >
-            {validationStatus === "checking" ? "Testing..." : "Test"}
+            {validationStatus === "checking" ? "Validating..." : "Validate"}
           </button>
           <button
             disabled={!activeWorkflowId || saving}
@@ -9052,7 +9120,14 @@ function WorkflowCanvasInner({
             Export
           </button>
           <button
-            disabled={!activeWorkflowId || running || saving || !gateway.connected}
+            disabled={
+              !activeWorkflowId ||
+              running ||
+              saving ||
+              validationStatus === "checking" ||
+              !gateway.connected ||
+              (activeDeploymentStage === "live" && missingLiveBindings.length > 0)
+            }
             onClick={handleRun}
             className={`px-3 py-1 rounded text-[11px] font-medium transition-colors disabled:opacity-40 ${
               running

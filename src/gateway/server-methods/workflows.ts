@@ -273,6 +273,49 @@ export async function resolveRunnableWorkflowRow(
   };
 }
 
+export function workflowRowWithCanvasOverride(
+  row: WorkflowRow,
+  params: Record<string, unknown>,
+): WorkflowRow {
+  const canvasData = optionalObject(params, "canvasData");
+  const nodes =
+    optionalArray(params, "nodes") ??
+    (canvasData && Array.isArray(canvasData.nodes) ? (canvasData.nodes as unknown[]) : undefined);
+  const edges =
+    optionalArray(params, "edges") ??
+    (canvasData && Array.isArray(canvasData.edges) ? (canvasData.edges as unknown[]) : undefined);
+  const canvasLayout = optionalObject(params, "canvasLayout") ?? canvasData;
+  if (!nodes && !edges && !canvasLayout) {
+    return row;
+  }
+  const deploymentStage =
+    optionalDeploymentStage(params) ??
+    (typeof row.deployment_stage === "string" ? row.deployment_stage : undefined);
+  const normalized = normalizeWorkflow({
+    id: row.id,
+    name: row.name,
+    description: row.description ?? undefined,
+    nodes: nodes ?? (Array.isArray(row.nodes) ? row.nodes : []),
+    edges: edges ?? (Array.isArray(row.edges) ? row.edges : []),
+    canvasLayout: canvasLayout ?? row.canvas_layout,
+    defaultOnError: row.default_on_error ?? undefined,
+    maxRunDurationMs:
+      typeof row.max_run_duration_ms === "number" ? row.max_run_duration_ms : undefined,
+    maxRunCostUsd: typeof row.max_run_cost_usd === "number" ? row.max_run_cost_usd : undefined,
+    deploymentStage,
+  });
+  return {
+    ...row,
+    nodes: normalized.workflow.nodes,
+    edges: normalized.workflow.edges,
+    canvas_layout: normalized.canvasLayout,
+    default_on_error: normalized.workflow.defaultOnError,
+    max_run_duration_ms: normalized.workflow.maxRunDurationMs ?? row.max_run_duration_ms,
+    max_run_cost_usd: normalized.workflow.maxRunCostUsd ?? row.max_run_cost_usd,
+    deployment_stage: normalized.workflow.deploymentStage ?? row.deployment_stage,
+  };
+}
+
 function optionalNumber(params: Record<string, unknown>, key: string): number | undefined {
   const v = params[key];
   if (v === undefined || v === null) {
@@ -1951,7 +1994,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         return;
       }
       const workflowId = resolution.workflowId;
-      const wf = resolution.workflowRow;
+      const wf = workflowRowWithCanvasOverride(resolution.workflowRow, params);
       const triggerPayload = optionalObject(params, "triggerPayload") ?? {};
       const fromStepId = optionalString(params, "fromStepId");
       const sourceRunId = optionalString(params, "sourceRunId");
