@@ -11,6 +11,13 @@ vi.mock("chokidar", () => {
   };
 });
 
+describe("skills refresh version", () => {
+  it("starts non-zero so persisted session skill snapshots refresh after gateway restart", async () => {
+    const mod = await import("./refresh.js");
+    expect(mod.getSkillsSnapshotVersion()).toBeGreaterThan(0);
+  });
+});
+
 describe("ensureSkillsWatcher", () => {
   it("ignores node_modules, dist, and .git by default", async () => {
     const mod = await import("./refresh.js");

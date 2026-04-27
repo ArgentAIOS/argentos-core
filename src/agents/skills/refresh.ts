@@ -23,7 +23,10 @@ const log = createSubsystemLogger("gateway/skills");
 const listeners = new Set<(event: SkillsChangeEvent) => void>();
 const workspaceVersions = new Map<string, number>();
 const watchers = new Map<string, SkillsWatchState>();
-let globalVersion = 0;
+// Force persisted session skill snapshots to refresh once per gateway process.
+// Bundled skills can change during `argent update` while existing sessions keep
+// their previous snapshots, and filesystem watchers only observe user skill dirs.
+let globalVersion = Date.now();
 
 export const DEFAULT_SKILLS_WATCH_IGNORED: RegExp[] = [
   /(^|[\\/])\.git([\\/]|$)/,
