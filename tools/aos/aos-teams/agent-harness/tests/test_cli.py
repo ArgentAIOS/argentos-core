@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -14,11 +15,81 @@ from cli_aos.teams.cli import cli
 AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
 CONNECTOR_PATH = AGENT_HARNESS_ROOT.parent / "connector.json"
 PERMISSIONS_PATH = AGENT_HARNESS_ROOT / "permissions.json"
+ALL_ENV_KEYS = (
+    "TEAMS_TENANT_ID",
+    "TEAMS_CLIENT_ID",
+    "TEAMS_CLIENT_SECRET",
+    "TEAMS_TEAM_ID",
+    "TEAMS_CHANNEL_ID",
+    "TEAMS_CHAT_ID",
+    "TEAMS_USER_ID",
+    "TEAMS_GRAPH_BASE_URL",
+    "TEAMS_TOKEN_URL",
+    "TEAMS_HTTP_TIMEOUT_SECONDS",
+    "TEAMS_MEETING_SUBJECT",
+    "TEAMS_START_TIME",
+    "TEAMS_END_TIME",
+)
+
+
+def write_service_keys(tmp_path: Path, values: dict[str, str], *, extra: dict[str, Any] | None = None) -> Path:
+    path = tmp_path / "service-keys.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "keys": [
+                    {
+                        "id": f"sk-{key}",
+                        "name": key,
+                        "variable": key,
+                        "value": value,
+                        "enabled": True,
+                        **(extra or {}),
+                    }
+                    for key, value in values.items()
+                ],
+            }
+        )
+    )
+    return path
+
+
+def encrypt_secret(tmp_path: Path, plaintext: str) -> str:
+    home = tmp_path / "home"
+    key_dir = home / ".argentos"
+    key_dir.mkdir(parents=True, exist_ok=True)
+    (key_dir / ".master-key").write_text("11" * 32)
+    script = r"""
+const { createCipheriv } = require("node:crypto");
+const plaintext = process.argv[1];
+const key = Buffer.from("11".repeat(32), "hex");
+const iv = Buffer.from("22".repeat(12), "hex");
+const cipher = createCipheriv("aes-256-gcm", key, iv);
+let encrypted = cipher.update(plaintext, "utf8", "hex");
+encrypted += cipher.final("hex");
+const tag = cipher.getAuthTag().toString("hex");
+process.stdout.write(`enc:v1:${iv.toString("hex")}:${tag}:${encrypted}`);
+"""
+    result = subprocess.run(
+        ["node", "-e", script, plaintext],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+    )
+    return result.stdout
+
+
+def _clear_env(monkeypatch) -> None:
+    for key in ALL_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
 
 
 @pytest.fixture(autouse=True)
-def no_operator_service_keys_by_default(monkeypatch):
-    monkeypatch.setattr(service_keys, "resolve_service_key", lambda variable: None)
+def no_operator_service_keys_by_default(monkeypatch, tmp_path):
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", tmp_path / "missing-service-keys.json")
+    _clear_env(monkeypatch)
 
 
 class FakeTeamsClient:
@@ -61,17 +132,15 @@ class FakeTeamsClient:
 
 
 def invoke_json(args: list[str], monkeypatch=None, service_keys_map: dict[str, str] | None = None) -> dict[str, Any]:
-    if monkeypatch is not None:
-        monkeypatch.setattr(service_keys, "resolve_service_key", lambda name: (service_keys_map or {}).get(name))
-    result = CliRunner().invoke(cli, ["--json", *args])
+    obj = {"service_keys": {"aos-teams": service_keys_map}} if service_keys_map else None
+    result = CliRunner().invoke(cli, ["--json", *args], obj=obj)
     assert result.exit_code == 0, result.output
     return json.loads(result.output)
 
 
 def invoke_json_with_mode(mode: str, args: list[str], monkeypatch=None, service_keys_map: dict[str, str] | None = None):
-    if monkeypatch is not None:
-        monkeypatch.setattr(service_keys, "resolve_service_key", lambda name: (service_keys_map or {}).get(name))
-    result = CliRunner().invoke(cli, ["--json", "--mode", mode, *args])
+    obj = {"service_keys": {"aos-teams": service_keys_map}} if service_keys_map else None
+    result = CliRunner().invoke(cli, ["--json", "--mode", mode, *args], obj=obj)
     return result
 
 
@@ -81,8 +150,15 @@ def test_manifest_and_permissions_are_in_sync():
     command_ids = [command["id"] for command in manifest["commands"]]
     assert set(command_ids) == set(permissions.keys())
     assert manifest["scope"]["kind"] == "communication"
+    assert manifest["scope"]["live_read_available"] is True
+    assert manifest["scope"]["write_bridge_available"] is True
+    assert manifest["scope"]["live_write_smoke_tested"] is False
+    assert manifest["scope"]["required"] == ["TEAMS_TENANT_ID", "TEAMS_CLIENT_ID", "TEAMS_CLIENT_SECRET"]
     assert "message.send" not in command_ids
     assert manifest["scope"]["commandDefaults"]["meeting.create"]["args"] == ["TEAMS_USER_ID"]
+    meeting_list = next(command for command in manifest["commands"] if command["id"] == "meeting.list")
+    assert meeting_list["summary"] == "List online calendar events for a scoped user"
+    assert "upcoming Teams meetings" not in meeting_list["summary"]
 
 
 def test_capabilities_exposes_manifest():
@@ -147,11 +223,46 @@ def test_config_show_prefers_operator_service_keys_for_auth_and_scope(monkeypatc
     encoded = json.dumps(data)
     assert "operator-secret" not in encoded
     assert "env-secret" not in encoded
-    assert data["auth"]["sources"]["TEAMS_TENANT_ID"] == "service-keys"
+    assert data["auth"]["sources"]["TEAMS_TENANT_ID"] == "operator:service_keys:tool"
     assert data["scope"]["team_id"] == "operator-team"
     assert data["scope"]["user_id"] == "operator-user"
-    assert data["scope"]["sources"]["TEAMS_TEAM_ID"] == "service-keys"
+    assert data["scope"]["sources"]["TEAMS_TEAM_ID"] == "operator:service_keys:tool"
     assert data["scope"]["commandDefaults"]["channel.create"]["args"] == ["operator-team"]
+
+
+def test_encrypted_repo_service_key_decrypts_with_master_key(monkeypatch, tmp_path):
+    encrypted = encrypt_secret(tmp_path, "tenant-encrypted")
+    path = write_service_keys(tmp_path, {"TEAMS_TENANT_ID": encrypted})
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+    details = service_keys.service_key_details("TEAMS_TENANT_ID")
+
+    assert details["value"] == "tenant-encrypted"
+    assert details["source"] == "repo-service-key"
+
+
+def test_unreadable_encrypted_repo_service_key_falls_back_to_env_like_core_resolver(monkeypatch, tmp_path):
+    path = write_service_keys(tmp_path, {"TEAMS_TENANT_ID": "enc:v1:bad:bad:bad"})
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("TEAMS_TENANT_ID", "env-tenant")
+
+    details = service_keys.service_key_details("TEAMS_TENANT_ID")
+
+    assert details["value"] == "env-tenant"
+    assert details["source"] == "env_fallback"
+
+
+def test_scoped_repo_service_key_blocks_env_fallback(monkeypatch, tmp_path):
+    path = write_service_keys(tmp_path, {"TEAMS_TENANT_ID": "scoped-tenant"}, extra={"allowedRoles": ["admin"]})
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", path)
+    monkeypatch.setenv("TEAMS_TENANT_ID", "env-tenant")
+
+    details = service_keys.service_key_details("TEAMS_TENANT_ID")
+
+    assert details["value"] == ""
+    assert details["source"] == "repo-service-key-scoped"
+    assert details["blocked"] is True
 
 
 def test_team_list_returns_picker(monkeypatch):
