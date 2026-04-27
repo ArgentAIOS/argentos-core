@@ -39,6 +39,7 @@ import {
   type ForgeStructuredRecord,
   type ForgeStructuredRecordValue,
   type ForgeStructuredTable,
+  type ForgeStructuredViewType,
 } from "../hooks/useForgeStructuredData";
 import { fetchLocalApi } from "../utils/localApiFetch";
 import { AppDock } from "./AppDock";
@@ -225,30 +226,6 @@ function loadAppForgeUiState(): AppForgeUiState {
   }
 }
 
-function viewSettingsKey(appId: string, tableId: string, viewMode: ForgeViewMode): string {
-  return `argent.appForge.viewSettings.${appId}.${tableId}.${viewMode}`;
-}
-
-function loadViewSettings(key: string | null): ForgeViewSettings {
-  if (!key || typeof window === "undefined") {
-    return DEFAULT_VIEW_SETTINGS;
-  }
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(key) ?? "{}") as Record<
-      string,
-      unknown
-    > | null;
-    return {
-      filterText: typeof parsed?.filterText === "string" ? parsed.filterText : "",
-      sortFieldId: typeof parsed?.sortFieldId === "string" ? parsed.sortFieldId : "",
-      sortDirection: parsed?.sortDirection === "desc" ? "desc" : "asc",
-      groupFieldId: typeof parsed?.groupFieldId === "string" ? parsed.groupFieldId : "",
-    };
-  } catch {
-    return DEFAULT_VIEW_SETTINGS;
-  }
-}
-
 function fieldValue(value: ForgeStructuredRecordValue | undefined): string {
   if (Array.isArray(value)) {
     return value.join(", ");
@@ -387,6 +364,17 @@ function createEmptyStructuredBase(
           },
         ],
         records: [],
+        views: [
+          {
+            id: "view-grid",
+            name: "Grid",
+            type: "grid",
+            sortDirection: "asc",
+            createdAt: updatedAt,
+            updatedAt,
+          },
+        ],
+        activeViewId: "view-grid",
       },
     ],
     updatedAt,
@@ -515,7 +503,6 @@ export function AppForge({
   const [activeViewMode, setActiveViewMode] = useState<ForgeViewMode>(
     persistedUiState.activeViewMode ?? "grid",
   );
-  const [viewSettings, setViewSettings] = useState<ForgeViewSettings>(DEFAULT_VIEW_SETTINGS);
   const [inspectorMode, setInspectorMode] = useState<ForgeInspectorMode>(
     persistedUiState.inspectorMode ?? "field",
   );
@@ -527,12 +514,13 @@ export function AppForge({
   const [newTableName, setNewTableName] = useState("");
   const [newFieldName, setNewFieldName] = useState("");
   const [newFieldType, setNewFieldType] = useState<ForgeFieldType>("text");
+  const [newViewName, setNewViewName] = useState("");
+  const [newViewType, setNewViewType] = useState<ForgeStructuredViewType>("grid");
   const [formRecordId, setFormRecordId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const baseWorkspaceRef = useRef<HTMLDivElement>(null);
   const appCountAtBuild = useRef(0);
-  const skipNextViewSettingsPersist = useRef(false);
 
   // Focus search on open
   useEffect(() => {
@@ -557,6 +545,8 @@ export function AppForge({
         setNewTableName("");
         setNewFieldName("");
         setNewFieldType("text");
+        setNewViewName("");
+        setNewViewType("grid");
       });
     }
   }, [isOpen]);
@@ -795,10 +785,35 @@ export function AppForge({
     setInspectorMode("field");
     setActiveViewMode("grid");
   }, [newFieldName, newFieldType, structured]);
-  const activeViewSettingsKey =
-    selectedApp?.id && structured.activeTable?.id
-      ? viewSettingsKey(selectedApp.id, structured.activeTable.id, activeViewMode)
-      : null;
+  const viewSettings: ForgeViewSettings = useMemo(
+    () => ({
+      filterText: structured.activeView?.filterText ?? DEFAULT_VIEW_SETTINGS.filterText,
+      sortFieldId: structured.activeView?.sortFieldId ?? DEFAULT_VIEW_SETTINGS.sortFieldId,
+      sortDirection: structured.activeView?.sortDirection ?? DEFAULT_VIEW_SETTINGS.sortDirection,
+      groupFieldId: structured.activeView?.groupFieldId ?? DEFAULT_VIEW_SETTINGS.groupFieldId,
+    }),
+    [structured.activeView],
+  );
+  const handleSelectViewMode = useCallback(
+    async (mode: ForgeStructuredViewType) => {
+      const existingView = structured.activeTable?.views.find((view) => view.type === mode);
+      setActiveViewMode(mode);
+      if (existingView) {
+        await structured.selectView(existingView.id);
+        return;
+      }
+      await structured.addView({ type: mode });
+    },
+    [structured],
+  );
+  const handleCreateView = useCallback(async () => {
+    await structured.addView({
+      name: newViewName.trim() || undefined,
+      type: newViewType,
+    });
+    setNewViewName("");
+    setNewViewType("grid");
+  }, [newViewName, newViewType, structured]);
   const viewRecords = useMemo(() => {
     const table = structured.activeTable;
     if (!table) {
@@ -863,20 +878,11 @@ export function AppForge({
                     : "Base and runtime settings";
 
   useEffect(() => {
-    skipNextViewSettingsPersist.current = true;
-    queueMicrotask(() => setViewSettings(loadViewSettings(activeViewSettingsKey)));
-  }, [activeViewSettingsKey]);
-
-  useEffect(() => {
-    if (!activeViewSettingsKey || typeof window === "undefined") {
+    if (!structured.activeView || structured.activeView.type === activeViewMode) {
       return;
     }
-    if (skipNextViewSettingsPersist.current) {
-      skipNextViewSettingsPersist.current = false;
-      return;
-    }
-    window.localStorage.setItem(activeViewSettingsKey, JSON.stringify(viewSettings));
-  }, [activeViewSettingsKey, viewSettings]);
+    queueMicrotask(() => setActiveViewMode(structured.activeView?.type ?? "grid"));
+  }, [activeViewMode, structured.activeView]);
 
   useEffect(() => {
     const nextRecordId = tableRecords.some((record) => record.id === formRecordId)
@@ -1353,7 +1359,7 @@ export function AppForge({
                           FORGE_VIEW_MODES.map((view) => (
                             <button
                               key={view.id}
-                              onClick={() => setActiveViewMode(view.id)}
+                              onClick={() => void handleSelectViewMode(view.id)}
                               className={`rounded-xl border p-4 text-left transition-colors ${
                                 activeViewMode === view.id
                                   ? "border-sky-400/35 bg-sky-400/10"
@@ -1498,7 +1504,7 @@ export function AppForge({
                           {FORGE_VIEW_MODES.map((view) => (
                             <button
                               key={view.id}
-                              onClick={() => setActiveViewMode(view.id)}
+                              onClick={() => void handleSelectViewMode(view.id)}
                               className={`border-b-2 py-1 transition-colors ${
                                 activeViewMode === view.id
                                   ? "border-sky-400 text-sky-200"
@@ -1508,6 +1514,73 @@ export function AppForge({
                               {view.label}
                             </button>
                           ))}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-white/48">
+                          {(structured.activeTable?.views ?? []).map((view) => (
+                            <div
+                              key={view.id}
+                              className={`group inline-flex h-8 items-center gap-1 rounded-lg border px-2 transition-colors ${
+                                structured.activeView?.id === view.id
+                                  ? "border-sky-300/35 bg-sky-400/14 text-sky-100"
+                                  : "border-white/10 bg-black/22 hover:bg-white/10 hover:text-white/75"
+                              }`}
+                            >
+                              <button
+                                onClick={() => void structured.selectView(view.id)}
+                                className="max-w-32 truncate"
+                                title={`Open ${view.name}`}
+                              >
+                                {view.name}
+                              </button>
+                              <button
+                                onClick={() => void structured.duplicateView(view.id)}
+                                className="rounded p-0.5 text-white/25 opacity-0 transition group-hover:opacity-100 hover:text-white"
+                                title="Duplicate view"
+                              >
+                                <Copy className="h-3 w-3" />
+                              </button>
+                              <button
+                                onClick={() => void structured.deleteView(view.id)}
+                                disabled={(structured.activeTable?.views.length ?? 0) <= 1}
+                                className="rounded p-0.5 text-white/25 opacity-0 transition group-hover:opacity-100 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-20"
+                                title="Delete view"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                          <input
+                            value={newViewName}
+                            onChange={(event) => setNewViewName(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                void handleCreateView();
+                              }
+                            }}
+                            placeholder="New view"
+                            className="h-8 w-28 rounded-lg border border-white/10 bg-black/22 px-2 text-xs text-white/70 outline-none placeholder:text-white/30"
+                          />
+                          <select
+                            value={newViewType}
+                            onChange={(event) =>
+                              setNewViewType(event.target.value as ForgeStructuredViewType)
+                            }
+                            className="h-8 rounded-lg border border-white/10 bg-black/22 px-2 text-xs text-white/70 outline-none"
+                          >
+                            {FORGE_VIEW_MODES.map((view) => (
+                              <option key={view.id} value={view.id}>
+                                {view.label}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => void handleCreateView()}
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 px-2 text-xs text-white/55 transition-colors hover:bg-white/10 hover:text-white"
+                            title="Create saved view"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            View
+                          </button>
                         </div>
                         <div className="flex flex-wrap items-center gap-2 text-sm text-white/45">
                           {structured.saveStatus.kind === "saving" && (
@@ -1526,12 +1599,23 @@ export function AppForge({
                             <span className="text-amber-200">Reload needed</span>
                           )}
                           <input
+                            value={structured.activeView?.name ?? ""}
+                            onChange={(event) =>
+                              structured.activeView &&
+                              void structured.updateView(structured.activeView.id, {
+                                name: event.target.value,
+                              })
+                            }
+                            placeholder="View name"
+                            className="h-8 w-28 rounded-lg border border-white/10 bg-black/22 px-2 text-xs text-white/70 outline-none placeholder:text-white/30"
+                            title="Rename active saved view"
+                          />
+                          <input
                             value={viewSettings.filterText}
                             onChange={(event) =>
-                              setViewSettings((prev) => ({
-                                ...prev,
+                              void structured.updateActiveViewSettings({
                                 filterText: event.target.value,
-                              }))
+                              })
                             }
                             placeholder="Filter records"
                             className="h-8 w-32 rounded-lg border border-white/10 bg-black/22 px-2 text-xs text-white/70 outline-none placeholder:text-white/30"
@@ -1539,10 +1623,9 @@ export function AppForge({
                           <select
                             value={viewSettings.sortFieldId}
                             onChange={(event) =>
-                              setViewSettings((prev) => ({
-                                ...prev,
+                              void structured.updateActiveViewSettings({
                                 sortFieldId: event.target.value,
-                              }))
+                              })
                             }
                             className="h-8 rounded-lg border border-white/10 bg-black/22 px-2 text-xs text-white/70 outline-none"
                           >
@@ -1555,10 +1638,10 @@ export function AppForge({
                           </select>
                           <button
                             onClick={() =>
-                              setViewSettings((prev) => ({
-                                ...prev,
-                                sortDirection: prev.sortDirection === "asc" ? "desc" : "asc",
-                              }))
+                              void structured.updateActiveViewSettings({
+                                sortDirection:
+                                  viewSettings.sortDirection === "asc" ? "desc" : "asc",
+                              })
                             }
                             className="h-8 rounded-lg border border-white/10 px-2 text-xs transition-colors hover:bg-white/10 hover:text-white"
                             title="Toggle sort direction"
@@ -1568,10 +1651,9 @@ export function AppForge({
                           <select
                             value={viewSettings.groupFieldId}
                             onChange={(event) =>
-                              setViewSettings((prev) => ({
-                                ...prev,
+                              void structured.updateActiveViewSettings({
                                 groupFieldId: event.target.value,
-                              }))
+                              })
                             }
                             className="h-8 rounded-lg border border-white/10 bg-black/22 px-2 text-xs text-white/70 outline-none"
                           >

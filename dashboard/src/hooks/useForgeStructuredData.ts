@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppForgeWorkflowEventRequest, ForgeApp } from "./useApps";
 import { fetchLocalApi } from "../utils/localApiFetch";
 
@@ -34,11 +34,28 @@ export type ForgeStructuredRecord = {
   updatedAt: string;
 };
 
+export type ForgeStructuredViewType = "grid" | "kanban" | "form" | "review";
+
+export type ForgeStructuredView = {
+  id: string;
+  name: string;
+  type: ForgeStructuredViewType;
+  filterText?: string;
+  sortFieldId?: string;
+  sortDirection?: "asc" | "desc";
+  groupFieldId?: string;
+  visibleFieldIds?: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ForgeStructuredTable = {
   id: string;
   name: string;
   fields: ForgeStructuredField[];
   records: ForgeStructuredRecord[];
+  views: ForgeStructuredView[];
+  activeViewId: string;
   revision?: number;
 };
 
@@ -93,6 +110,7 @@ type UseForgeStructuredDataReturn = {
   bases: ForgeStructuredBase[];
   activeBase: ForgeStructuredBase | null;
   activeTable: ForgeStructuredTable | null;
+  activeView: ForgeStructuredView | null;
   selectedField: ForgeStructuredField | null;
   saving: boolean;
   error: string | null;
@@ -109,6 +127,19 @@ type UseForgeStructuredDataReturn = {
   ) => Promise<void>;
   duplicateTable: (tableId: string) => Promise<void>;
   deleteTable: (tableId: string) => Promise<void>;
+  selectView: (viewId: string) => Promise<void>;
+  addView: (input?: { name?: string; type?: ForgeStructuredViewType }) => Promise<void>;
+  updateView: (viewId: string, updates: Partial<ForgeStructuredView>) => Promise<void>;
+  duplicateView: (viewId: string) => Promise<void>;
+  deleteView: (viewId: string) => Promise<void>;
+  updateActiveViewSettings: (
+    updates: Partial<
+      Pick<
+        ForgeStructuredView,
+        "filterText" | "sortFieldId" | "sortDirection" | "groupFieldId" | "visibleFieldIds"
+      >
+    >,
+  ) => Promise<void>;
   addField: (input?: { name?: string; type?: ForgeFieldType }) => Promise<void>;
   updateField: (fieldId: string, updates: Partial<ForgeStructuredField>) => Promise<void>;
   duplicateField: (fieldId: string) => Promise<void>;
@@ -278,6 +309,61 @@ function defaultFields(): ForgeStructuredField[] {
   ];
 }
 
+function isViewType(value: unknown): value is ForgeStructuredViewType {
+  return value === "grid" || value === "kanban" || value === "form" || value === "review";
+}
+
+function defaultViews(type: ForgeStructuredViewType = "grid"): ForgeStructuredView[] {
+  const createdAt = nowIso();
+  return [
+    {
+      id: `view-${type}`,
+      name:
+        type === "kanban"
+          ? "Kanban"
+          : type === "form"
+            ? "Form"
+            : type === "review"
+              ? "Review"
+              : "Grid",
+      type,
+      sortDirection: "asc",
+      createdAt,
+      updatedAt: createdAt,
+    },
+  ];
+}
+
+function normalizeView(value: unknown, fields: ForgeStructuredField[]): ForgeStructuredView | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const id = stringValue(value.id);
+  const name = stringValue(value.name);
+  const type = isViewType(value.type) ? value.type : undefined;
+  if (!id || !name || !type) {
+    return null;
+  }
+  const fieldIds = new Set(fields.map((field) => field.id));
+  const sortFieldId = stringValue(value.sortFieldId);
+  const groupFieldId = stringValue(value.groupFieldId);
+  const visibleFieldIds = Array.isArray(value.visibleFieldIds)
+    ? value.visibleFieldIds.filter((entry): entry is string => typeof entry === "string")
+    : undefined;
+  return {
+    id,
+    name,
+    type,
+    filterText: stringValue(value.filterText) ?? "",
+    sortFieldId: sortFieldId && fieldIds.has(sortFieldId) ? sortFieldId : "",
+    sortDirection: value.sortDirection === "desc" ? "desc" : "asc",
+    groupFieldId: groupFieldId && fieldIds.has(groupFieldId) ? groupFieldId : "",
+    visibleFieldIds: visibleFieldIds?.filter((fieldId) => fieldIds.has(fieldId)),
+    createdAt: stringValue(value.createdAt) ?? nowIso(),
+    updatedAt: stringValue(value.updatedAt) ?? nowIso(),
+  };
+}
+
 function defaultRecords(app: ForgeApp): ForgeStructuredRecord[] {
   const createdAt = app.createdAt || nowIso();
   const updatedAt = app.updatedAt || createdAt;
@@ -310,6 +396,8 @@ function defaultBase(app: ForgeApp): ForgeStructuredBase {
     name: "Projects",
     fields: defaultFields(),
     records: defaultRecords(app),
+    views: defaultViews("grid"),
+    activeViewId: "view-grid",
   };
   return {
     id: `base-${app.id}`,
@@ -407,11 +495,24 @@ function normalizeTable(value: unknown): ForgeStructuredTable | null {
         .map(normalizeRecord)
         .filter((record): record is ForgeStructuredRecord => !!record)
     : [];
+  const normalizedFields = fields.length > 0 ? fields : defaultFields();
+  const views = Array.isArray(value.views)
+    ? value.views
+        .map((view) => normalizeView(view, normalizedFields))
+        .filter((view): view is ForgeStructuredView => !!view)
+    : [];
+  const normalizedViews = views.length > 0 ? views : defaultViews("grid");
+  const activeViewId = stringValue(value.activeViewId);
   return {
     id,
     name,
-    fields: fields.length > 0 ? fields : defaultFields(),
+    fields: normalizedFields,
     records,
+    views: normalizedViews,
+    activeViewId:
+      activeViewId && normalizedViews.some((view) => view.id === activeViewId)
+        ? activeViewId
+        : normalizedViews[0].id,
     revision: numberValue(value.revision),
   };
 }
@@ -785,6 +886,16 @@ export function useForgeStructuredData({
     activeBase?.tables.find((table) => table.id === activeBase.activeTableId) ??
     activeBase?.tables[0] ??
     null;
+  const activeView =
+    activeTable?.views.find((view) => view.id === activeTable.activeViewId) ??
+    activeTable?.views[0] ??
+    null;
+  const activeBaseRef = useRef<ForgeStructuredBase | null>(activeBase);
+  const activeTableRef = useRef<ForgeStructuredTable | null>(activeTable);
+  useEffect(() => {
+    activeBaseRef.current = activeBase;
+    activeTableRef.current = activeTable;
+  }, [activeBase, activeTable]);
   const activeSourceStatus = useMemo<ForgeStructuredSourceStatus>(() => {
     if (sourceStatus.kind === "loading" || sourceStatus.kind === "degraded") {
       return sourceStatus;
@@ -938,6 +1049,13 @@ export function useForgeStructuredData({
         return;
       }
       const nextBase = { ...base, updatedAt: nowIso() };
+      if (activeBaseRef.current?.appId === nextBase.appId) {
+        activeBaseRef.current = nextBase;
+        activeTableRef.current =
+          nextBase.tables.find((table) => table.id === nextBase.activeTableId) ??
+          nextBase.tables[0] ??
+          null;
+      }
       setOverrides((prev) => ({ ...prev, [base.appId]: nextBase }));
       setSaving(true);
       setError(null);
@@ -957,6 +1075,13 @@ export function useForgeStructuredData({
             );
             savedToGateway = true;
             const savedBase = gatewayBase ?? nextBase;
+            if (activeBaseRef.current?.appId === savedBase.appId) {
+              activeBaseRef.current = savedBase;
+              activeTableRef.current =
+                savedBase.tables.find((table) => table.id === savedBase.activeTableId) ??
+                savedBase.tables[0] ??
+                null;
+            }
             setGatewayBases((prev) => ({
               ...prev,
               [nextBase.appId]: savedBase,
@@ -1078,19 +1203,29 @@ export function useForgeStructuredData({
         nextTable: ForgeStructuredTable;
       }) => GatewayMirrorMutation,
     ) => {
-      if (!activeBase || !activeTable) {
+      const previousBase = activeBaseRef.current ?? activeBase;
+      const previousTable =
+        previousBase?.tables.find(
+          (table) => table.id === (activeTableRef.current?.id ?? previousBase.activeTableId),
+        ) ??
+        previousBase?.tables.find((table) => table.id === previousBase.activeTableId) ??
+        previousBase?.tables[0] ??
+        null;
+      if (!previousBase || !previousTable) {
         return;
       }
-      const nextTable = updater(activeTable);
+      const nextTable = updater(previousTable);
       const nextBase = {
-        ...activeBase,
-        tables: activeBase.tables.map((table) => (table.id === activeTable.id ? nextTable : table)),
+        ...previousBase,
+        tables: previousBase.tables.map((table) =>
+          table.id === previousTable.id ? nextTable : table,
+        ),
       };
       const workflowEvent =
         event ??
         ({
           eventType: "forge.table.updated",
-          tableId: activeTable.id,
+          tableId: previousTable.id,
           payload: tableEventPayload(nextTable, {
             changeType: "table.updated",
           }),
@@ -1101,14 +1236,14 @@ export function useForgeStructuredData({
         nextBase,
         workflowEvent,
         gatewayMutation?.({
-          previousBase: activeBase,
-          previousTable: activeTable,
+          previousBase,
+          previousTable,
           nextBase,
           nextTable,
         }) ?? { kind: "table.put", table: nextTable },
       );
     },
-    [activeBase, activeTable, persistBase],
+    [activeBase, persistBase],
   );
 
   const addTable = useCallback(
@@ -1122,6 +1257,8 @@ export function useForgeStructuredData({
         name,
         fields: defaultFields(),
         records: [],
+        views: defaultViews("grid"),
+        activeViewId: "view-grid",
       };
       const nextBase = {
         ...activeBase,
@@ -1186,6 +1323,8 @@ export function useForgeStructuredData({
         return;
       }
       const fieldIdMap = new Map(source.fields.map((field) => [field.id, newId("field")]));
+      const viewIdMap = new Map(source.views.map((view) => [view.id, newId("view")]));
+      const copiedFieldIds = new Set(fieldIdMap.values());
       const table: ForgeStructuredTable = {
         id: newId("table"),
         name: `${source.name} Copy`,
@@ -1208,6 +1347,22 @@ export function useForgeStructuredData({
             ),
           };
         }),
+        views: source.views.map((view) => ({
+          ...view,
+          id: viewIdMap.get(view.id) ?? newId("view"),
+          name: view.name,
+          createdAt: nowIso(),
+          updatedAt: nowIso(),
+          visibleFieldIds: view.visibleFieldIds
+            ?.map((fieldId) => fieldIdMap.get(fieldId) ?? fieldId)
+            .filter((fieldId) => copiedFieldIds.has(fieldId)),
+          sortFieldId: view.sortFieldId ? (fieldIdMap.get(view.sortFieldId) ?? "") : "",
+          groupFieldId: view.groupFieldId ? (fieldIdMap.get(view.groupFieldId) ?? "") : "",
+        })),
+        activeViewId:
+          viewIdMap.get(source.activeViewId) ??
+          viewIdMap.get(source.views[0]?.id ?? "") ??
+          "view-grid",
       };
       const nextBase = {
         ...activeBase,
@@ -1265,6 +1420,161 @@ export function useForgeStructuredData({
       );
     },
     [activeBase, persistBase],
+  );
+
+  const selectView = useCallback(
+    async (viewId: string) => {
+      if (
+        !activeTable ||
+        activeTable.activeViewId === viewId ||
+        !activeTable.views.some((view) => view.id === viewId)
+      ) {
+        return;
+      }
+      await updateActiveTable((table) => ({ ...table, activeViewId: viewId }));
+    },
+    [activeTable, updateActiveTable],
+  );
+
+  const addView = useCallback(
+    async (input?: { name?: string; type?: ForgeStructuredViewType }) => {
+      const type = isViewType(input?.type) ? input.type : "grid";
+      const createdAt = nowIso();
+      const view: ForgeStructuredView = {
+        id: newId("view"),
+        name:
+          input?.name?.trim() ||
+          (type === "kanban"
+            ? "Kanban"
+            : type === "form"
+              ? "Form"
+              : type === "review"
+                ? "Review"
+                : "New grid view"),
+        type,
+        sortDirection: "asc",
+        createdAt,
+        updatedAt: createdAt,
+      };
+      await updateActiveTable((table) => ({
+        ...table,
+        views: [...table.views, view],
+        activeViewId: view.id,
+      }));
+    },
+    [updateActiveTable],
+  );
+
+  const updateView = useCallback(
+    async (viewId: string, updates: Partial<ForgeStructuredView>) => {
+      await updateActiveTable((table) => {
+        const fieldIds = new Set(table.fields.map((field) => field.id));
+        return {
+          ...table,
+          views: table.views.map((view) => {
+            if (view.id !== viewId) {
+              return view;
+            }
+            const sortFieldId =
+              updates.sortFieldId !== undefined
+                ? fieldIds.has(updates.sortFieldId)
+                  ? updates.sortFieldId
+                  : ""
+                : view.sortFieldId;
+            const groupFieldId =
+              updates.groupFieldId !== undefined
+                ? fieldIds.has(updates.groupFieldId)
+                  ? updates.groupFieldId
+                  : ""
+                : view.groupFieldId;
+            return {
+              ...view,
+              ...updates,
+              id: view.id,
+              name: updates.name?.trim() || view.name,
+              type: updates.type && isViewType(updates.type) ? updates.type : view.type,
+              sortFieldId,
+              groupFieldId,
+              sortDirection:
+                updates.sortDirection !== undefined
+                  ? updates.sortDirection === "desc"
+                    ? "desc"
+                    : "asc"
+                  : view.sortDirection,
+              visibleFieldIds: updates.visibleFieldIds
+                ? updates.visibleFieldIds.filter((fieldId) => fieldIds.has(fieldId))
+                : view.visibleFieldIds,
+              updatedAt: nowIso(),
+            };
+          }),
+        };
+      });
+    },
+    [updateActiveTable],
+  );
+
+  const duplicateView = useCallback(
+    async (viewId: string) => {
+      if (!activeTable) {
+        return;
+      }
+      const source = activeTable.views.find((view) => view.id === viewId);
+      if (!source) {
+        return;
+      }
+      const createdAt = nowIso();
+      const view: ForgeStructuredView = {
+        ...source,
+        id: newId("view"),
+        name: `${source.name} Copy`,
+        createdAt,
+        updatedAt: createdAt,
+        visibleFieldIds: source.visibleFieldIds ? [...source.visibleFieldIds] : undefined,
+      };
+      await updateActiveTable((table) => ({
+        ...table,
+        views: [...table.views, view],
+        activeViewId: view.id,
+      }));
+    },
+    [activeTable, updateActiveTable],
+  );
+
+  const deleteView = useCallback(
+    async (viewId: string) => {
+      if (!activeTable || activeTable.views.length <= 1) {
+        return;
+      }
+      await updateActiveTable((table) => {
+        const views = table.views.filter((view) => view.id !== viewId);
+        return {
+          ...table,
+          views,
+          activeViewId:
+            table.activeViewId === viewId
+              ? (views[0]?.id ?? table.activeViewId)
+              : table.activeViewId,
+        };
+      });
+    },
+    [activeTable, updateActiveTable],
+  );
+
+  const updateActiveViewSettings = useCallback(
+    async (
+      updates: Partial<
+        Pick<
+          ForgeStructuredView,
+          "filterText" | "sortFieldId" | "sortDirection" | "groupFieldId" | "visibleFieldIds"
+        >
+      >,
+    ) => {
+      if (!activeView) {
+        return;
+      }
+      await updateView(activeView.id, updates);
+    },
+    [activeView, updateView],
   );
 
   const addField = useCallback(
@@ -1379,6 +1689,13 @@ export function useForgeStructuredData({
       await updateActiveTable((table) => ({
         ...table,
         fields: table.fields.filter((field) => field.id !== fieldId),
+        views: table.views.map((view) => ({
+          ...view,
+          sortFieldId: view.sortFieldId === fieldId ? "" : view.sortFieldId,
+          groupFieldId: view.groupFieldId === fieldId ? "" : view.groupFieldId,
+          visibleFieldIds: view.visibleFieldIds?.filter((candidate) => candidate !== fieldId),
+          updatedAt: nowIso(),
+        })),
         records: table.records.map((record) => {
           return {
             ...record,
@@ -1719,6 +2036,7 @@ export function useForgeStructuredData({
     bases,
     activeBase,
     activeTable,
+    activeView,
     selectedField,
     saving,
     error,
@@ -1732,6 +2050,12 @@ export function useForgeStructuredData({
     updateTable,
     duplicateTable,
     deleteTable,
+    selectView,
+    addView,
+    updateView,
+    duplicateView,
+    deleteView,
+    updateActiveViewSettings,
     addField,
     updateField,
     duplicateField,
