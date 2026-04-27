@@ -265,6 +265,56 @@ this release. Google Meet recovery is implemented for existing tabs, with live
 open-tab smoke still pending.
 ```
 
+## Root Changelog Ready Section
+
+```md
+### OpenClaw Browser, Voice, And Google Meet Foundations
+
+User-visible changes:
+
+- Added browser runtime diagnostics that make browser-control failures easier to
+  understand, including profile, timeout, route, and gateway context.
+- Added realtime voice foundations with OpenAI Realtime adapter support, local
+  operator audio smoke tooling, and explicit fake-vs-live evidence labels.
+- Added optional operator voice-alert foundations for future spoken approvals or
+  urgent operator alerts.
+- Added Google Meet setup/status support plus browser-only recovery for an
+  already-open Meet tab.
+- Added plugin/marketplace capability metadata so implemented, planned, and
+  deferred OpenClaw features can be described truthfully.
+
+Operator testing notes:
+
+- For voice, set `OPENAI_API_KEY` and use the gated realtime/local audio smoke
+  commands. Live provider and local process-mode evidence must stay labeled as
+  live; fake-provider tests remain test-only.
+- For Google Meet, use a dedicated Chrome profile signed into the Google
+  Workspace account `argent@argentos.ai`, open a Meet tab manually, then run the
+  live open-tab recovery smoke from
+  `ops/OPENCLAW_LIVE_MEET_OPEN_TAB_SMOKE_RUNBOOK.md`.
+- Browser status and tab checks should be captured before Meet recovery smoke so
+  failures include actionable diagnostics.
+
+Known gaps/deferred work:
+
+- Google Meet join/create/leave, in-meeting control, and Meet audio
+  participation are not included yet.
+- Live Google Meet open-tab recovery still needs operator smoke after the
+  recovery packet is merged into `dev`.
+- Phone-call voice access and a polished always-available desktop voice UX are
+  not included yet.
+- Workflow approval events do not automatically trigger voice output yet.
+
+Included OpenClaw branches/commits:
+
+- Branch `codex/openclaw-audio-process`.
+- `231e42de` Google Meet recover smoke runner and lazy browser imports.
+- `43e297df` release changelog packet and live Meet open-tab smoke runbook.
+- `64ec1738` coordination-board pointer for release/master handoff.
+- Earlier OpenClaw voice/browser slices already merged to `dev`, including
+  shared alert router and browser diagnostics at `5ec42d61`.
+```
+
 ## Verification Evidence To Keep With Release Notes
 
 - Google Meet setup/tool/recover smoke tests: `13/13`.
