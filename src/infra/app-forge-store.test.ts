@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { AppForgeBase, AppForgeRecord, AppForgeTable } from "./app-forge-model.js";
 import * as pgSchema from "../data/pg/schema.js";
-import { createInMemoryAppForgeStore } from "./app-forge-store.js";
+import {
+  APP_FORGE_STORAGE_SCHEMA_SQL,
+  createInMemoryAppForgeStore,
+  createPostgresAppForgeStore,
+} from "./app-forge-store.js";
 
 function base(overrides: Partial<AppForgeBase> = {}): AppForgeBase {
   return {
@@ -125,6 +129,10 @@ describe("AppForge store contract", () => {
       new URL("../data/pg/migrations/032_appforge_storage.sql", import.meta.url),
       "utf-8",
     );
+    const ensureScript = readFileSync(
+      new URL("../../scripts/ensure-pg-tables.sh", import.meta.url),
+      "utf-8",
+    );
     for (const tableName of [
       "appforge_bases",
       "appforge_tables",
@@ -132,6 +140,8 @@ describe("AppForge store contract", () => {
       "appforge_idempotency_keys",
     ]) {
       expect(migration).toContain(`CREATE TABLE IF NOT EXISTS ${tableName}`);
+      expect(APP_FORGE_STORAGE_SCHEMA_SQL).toContain(`CREATE TABLE IF NOT EXISTS ${tableName}`);
+      expect(ensureScript).toContain(`CREATE TABLE IF NOT EXISTS ${tableName}`);
     }
     for (const indexName of [
       "idx_appforge_bases_app",
@@ -140,6 +150,38 @@ describe("AppForge store contract", () => {
       "idx_appforge_idempotency_resource",
     ]) {
       expect(migration).toContain(indexName);
+      expect(APP_FORGE_STORAGE_SCHEMA_SQL).toContain(indexName);
+      expect(ensureScript).toContain(indexName);
     }
+  });
+
+  it("self-heals missing AppForge tables before the first Postgres query", async () => {
+    let schemaEnsured = false;
+    const calls: string[] = [];
+    const sql = (async (strings: TemplateStringsArray) => {
+      const query = strings.join("?");
+      calls.push(query);
+      if (!schemaEnsured && query.includes("appforge_bases")) {
+        throw Object.assign(new Error('relation "appforge_bases" does not exist'), {
+          code: "42P01",
+        });
+      }
+      return [];
+    }) as unknown as Parameters<typeof createPostgresAppForgeStore>[0] & {
+      unsafe: (query: string) => Promise<unknown>;
+    };
+    sql.unsafe = async (query: string) => {
+      calls.push(query);
+      expect(query).toContain("CREATE TABLE IF NOT EXISTS appforge_bases");
+      expect(query).toContain("CREATE TABLE IF NOT EXISTS appforge_idempotency_keys");
+      schemaEnsured = true;
+      return [];
+    };
+
+    const store = createPostgresAppForgeStore(sql);
+
+    await expect(store.listBases()).resolves.toEqual([]);
+    expect(schemaEnsured).toBe(true);
+    expect(calls.some((query) => query.includes("FROM appforge_bases"))).toBe(true);
   });
 });
