@@ -84,6 +84,13 @@ export {
   type RealtimeOperatorVoiceCliStatus,
 } from "./operator-voice-cli.js";
 export {
+  createOperatorAlertVoiceSink,
+  mapOperatorAlertVoiceRouteResult,
+  OPERATOR_ALERT_VOICE_SINK_ID,
+  registerOperatorAlertVoiceSink,
+  type OperatorAlertVoiceSinkOptions,
+} from "./operator-alert-router-registration.js";
+export {
   OPERATOR_ALERT_VOICE_ENABLE_ENV,
   OPERATOR_ALERT_VOICE_MODE_ENV,
   OPERATOR_ALERT_VOICE_PRIVACY_ENV,

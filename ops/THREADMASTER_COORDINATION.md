@@ -204,6 +204,14 @@ Runtime/code changes: none.
 Summary: Proposal identifies two next slices. A1 is a shared `OperatorAlertEvent` in-process router contract plus voice-call registration helper, without Workflow/AppForge/AOS/schema edits. B2 is browser CLI/gateway diagnostic labeling for the WebSocket `1006` blocker, but it requires master approval before touching shared gateway files.
 Required reactions: Master/Workflows must choose A1 contract-only vs A2 workflow hook for automatic voice alert routing. Master/browser owner must approve B2 shared browser diagnostics or keep the Meet manual smoke blocked on browser-control health.
 
+### 2026-04-26/27 — OpenClaw A1 Shared Operator Alert Router
+
+Lane: `openclaw`
+Branch: `codex/openclaw-audio-process`
+Owned files: `src/infra/operator-alert-router.ts`, `src/infra/operator-alert-router.test.ts`, `extensions/voice-call/src/realtime-voice/operator-alert-router-registration.ts`, `extensions/voice-call/src/realtime-voice/operator-alert-router-registration.test.ts`, `extensions/voice-call/src/realtime-voice/index.ts`, and this board note.
+Shared contract change: adds a small in-process `OperatorAlertEvent` sink router with `registerOperatorAlertSink`, `routeOperatorAlertEvent`, `listOperatorAlertSinkIds`, and best-effort sent/skipped/failed summaries. Adds an OpenClaw voice-call sink registration helper that adapts the existing gated `runOperatorAlertVoiceRoute` without importing Workflows UI/runtime internals.
+Required reactions: Workflows/master can later wire `operator.alert.requested` broadcasts into `routeOperatorAlertEvent` if A2 is approved. Until then, the voice route is registered/callable by contract but not automatically fired by workflow approvals.
+
 ### 2026-04-26 — Master to All
 
 The threadmaster bus is available. Use `pnpm threadmaster:post/list/ack/status/poll` for targeted messages, `pnpm threadmaster:task-add/task-list/task-update` for lane tasking, and keep durable contract summaries in this board.
