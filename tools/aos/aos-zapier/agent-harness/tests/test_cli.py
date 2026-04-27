@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from click.testing import CliRunner
 import pytest
@@ -14,11 +15,45 @@ from cli_aos.zapier import service_keys as service_keys_module
 AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
 CONNECTOR_PATH = AGENT_HARNESS_ROOT.parent / "connector.json"
 PERMISSIONS_PATH = AGENT_HARNESS_ROOT / "permissions.json"
+ZAPIER_ENV_KEYS = (
+    "ZAPIER_API_URL",
+    "ZAPIER_API_KEY",
+    "ZAPIER_WEBHOOK_BASE_URL",
+    "ZAPIER_WORKSPACE_NAME",
+    "ZAPIER_ZAP_ID",
+    "ZAPIER_ZAP_NAME",
+    "ZAPIER_ZAP_STATUS",
+)
 
 
 @pytest.fixture(autouse=True)
-def no_operator_service_key_by_default(monkeypatch):
-    monkeypatch.setattr(service_keys_module, "resolve_service_key", lambda variable: None)
+def no_operator_service_key_by_default(monkeypatch, tmp_path):
+    monkeypatch.setattr(service_keys_module, "SERVICE_KEYS_PATH", tmp_path / "missing-service-keys.json")
+    for key in ZAPIER_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
+
+def write_service_keys(tmp_path: Path, values: dict[str, str], *, extra: dict[str, Any] | None = None) -> Path:
+    path = tmp_path / "service-keys.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "keys": [
+                    {
+                        "id": f"sk-{key}",
+                        "name": key,
+                        "variable": key,
+                        "value": value,
+                        "enabled": True,
+                        **(extra or {}),
+                    }
+                    for key, value in values.items()
+                ],
+            }
+        )
+    )
+    return path
 
 
 class FakeZapierClient:
@@ -128,6 +163,7 @@ def test_capabilities_json_matches_manifest():
     assert payload["scope"] == manifest["scope"]
     assert payload["auth"] == manifest["auth"]
     assert payload["commands"] == manifest["commands"]
+    assert payload["scope"]["live_write_smoke_tested"] is False
 
 
 def test_health_reports_needs_setup_without_env(monkeypatch):
@@ -212,14 +248,14 @@ def test_config_show_redacts_tokens_and_reports_live_runtime(monkeypatch):
     assert '"zap_name": "Weekly Ops Sync"' in result.output
 
 
-def test_health_prefers_operator_service_keys_over_env_fallback(monkeypatch):
+def test_health_prefers_operator_service_keys_over_env_fallback(monkeypatch, tmp_path):
     fake_client = FakeZapierClient()
     operator_values = {
         "ZAPIER_API_URL": "https://operator.zapier.invalid",
         "ZAPIER_API_KEY": "operator-secret-key",
         "ZAPIER_WEBHOOK_BASE_URL": "https://hooks.operator.invalid",
     }
-    monkeypatch.setattr(service_keys_module, "resolve_service_key", lambda variable: operator_values.get(variable))
+    monkeypatch.setattr(service_keys_module, "SERVICE_KEYS_PATH", write_service_keys(tmp_path, operator_values))
     monkeypatch.setattr(runtime_module, "_client", lambda _ctx: fake_client)
     monkeypatch.setenv("ZAPIER_API_URL", "https://env.zapier.invalid")
     monkeypatch.setenv("ZAPIER_API_KEY", "env-secret-key")
@@ -230,10 +266,68 @@ def test_health_prefers_operator_service_keys_over_env_fallback(monkeypatch):
 
     payload = json.loads(result.output)["data"]
     assert payload["status"] == "ready"
-    assert payload["auth"]["api_url_source"] == "service-keys"
-    assert payload["auth"]["api_key_source"] == "service-keys"
-    assert payload["auth"]["webhook_base_url_source"] == "service-keys"
-    assert payload["auth"]["resolution_order"] == ["service-keys", "process.env"]
+    assert payload["auth"]["api_url_source"] == "repo-service-key"
+    assert payload["auth"]["api_key_source"] == "repo-service-key"
+    assert payload["auth"]["webhook_base_url_source"] == "repo-service-key"
+    assert payload["auth"]["resolution_order"] == ["operator-context", "service-keys", "process.env"]
+
+
+def test_encrypted_repo_service_key_falls_back_to_env_like_core_resolver(monkeypatch, tmp_path):
+    monkeypatch.setenv("ZAPIER_API_URL", "https://env.zapier.invalid")
+    monkeypatch.setenv("ZAPIER_API_KEY", "env-secret-key")
+    monkeypatch.setattr(
+        service_keys_module,
+        "SERVICE_KEYS_PATH",
+        write_service_keys(tmp_path, {"ZAPIER_API_KEY": "enc:v1:abc:def:ghi"}),
+    )
+
+    result = CliRunner().invoke(cli, ["--json", "config", "show"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.output)["data"]
+    assert payload["auth"]["api_key_source"] == "env_fallback"
+    assert payload["auth"]["api_key_present"] is True
+    assert payload["auth"]["api_key_usable"] is True
+    assert payload["auth"]["api_key_redacted"] == "env...key"
+
+
+def test_scoped_repo_service_key_blocks_env_fallback(monkeypatch, tmp_path):
+    monkeypatch.setenv("ZAPIER_API_URL", "https://env.zapier.invalid")
+    monkeypatch.setenv("ZAPIER_API_KEY", "env-secret-key")
+    monkeypatch.setattr(
+        service_keys_module,
+        "SERVICE_KEYS_PATH",
+        write_service_keys(tmp_path, {"ZAPIER_API_KEY": "repo-secret-key"}, extra={"allowedRoles": ["operator"]}),
+    )
+
+    result = CliRunner().invoke(cli, ["--json", "config", "show"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.output)["data"]
+    assert payload["auth"]["api_key_source"] == "repo-service-key-scoped"
+    assert payload["auth"]["api_key_present"] is False
+    assert payload["auth"]["api_key_usable"] is False
+    assert payload["auth"]["api_key_redacted"] is None
+
+
+def test_operator_context_can_supply_tool_scoped_keys():
+    runtime = runtime_module.resolve_runtime_values(
+        {
+            "service_keys": {
+                "aos-zapier": {
+                    "api_url": "https://operator-context.zapier.invalid",
+                    "api_key": "operator-context-key",
+                    "workspace_name": "Ops",
+                }
+            }
+        }
+    )
+
+    assert runtime["api_url"] == "https://operator-context.zapier.invalid"
+    assert runtime["api_key"] == "operator-context-key"
+    assert runtime["workspace_name"] == "Ops"
+    assert runtime["api_url_source"] == "operator:service_keys:tool"
+    assert runtime["workspace_name_source"] == "operator:service_keys:tool"
 
 
 def test_doctor_reports_live_runtime_status_and_permissions(monkeypatch):
