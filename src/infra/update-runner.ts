@@ -970,7 +970,11 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       steps.push(dashboardBuildStep);
     }
 
-    const bundledHarnessInstaller = path.join(gitRoot, "scripts", "install-bundled-aos-harnesses.mjs");
+    const bundledHarnessInstaller = path.join(
+      gitRoot,
+      "scripts",
+      "install-bundled-aos-harnesses.mjs",
+    );
     if (await pathExists(bundledHarnessInstaller)) {
       const bundledHarnessStep = await runStep(
         step("bundled AOS harness install", ["node", bundledHarnessInstaller], gitRoot),

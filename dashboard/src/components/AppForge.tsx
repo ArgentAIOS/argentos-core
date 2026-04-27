@@ -555,7 +555,9 @@ export function AppForge({
 
   useEffect(() => {
     const appIds = new Set(apps.map((app) => app.id));
-    setLocalCreatedApps((current) => current.filter((app) => !appIds.has(app.id)));
+    queueMicrotask(() =>
+      setLocalCreatedApps((current) => current.filter((app) => !appIds.has(app.id))),
+    );
   }, [apps]);
 
   const handleNewAppSubmit = useCallback(async () => {

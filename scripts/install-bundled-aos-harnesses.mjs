@@ -24,7 +24,7 @@ function warn(message) {
 function run(command, args, options = {}) {
   return spawnSync(command, args, {
     cwd: options.cwd ?? root,
-    env: { ...process.env, ...(options.env ?? {}) },
+    env: { ...process.env, ...options.env },
     encoding: "utf8",
     stdio: options.stdio ?? "pipe",
     timeout: options.timeoutMs ?? 300_000,
@@ -37,7 +37,9 @@ function resolvePython(minVersion) {
       "-c",
       "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')",
     ]);
-    if (result.status !== 0) continue;
+    if (result.status !== 0) {
+      continue;
+    }
     const [major, minor] = String(result.stdout || "")
       .trim()
       .split(".")

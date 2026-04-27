@@ -261,7 +261,7 @@ function defaultRecords(app: ForgeApp): ForgeStructuredRecord[] {
     createdAt,
     updatedAt,
     values: {
-      name,
+      name: index === 0 ? `Sample: ${name}` : name,
       status: statuses[index] ?? "Planning",
       owner: owners[index] ?? app.creator ?? "ai",
       dueDate: index === 0 ? "" : `2026-05-${String(12 + index).padStart(2, "0")}`,
@@ -663,6 +663,9 @@ function formatStructuredSaveError(err: unknown): string {
   if (isRevisionConflictError(err)) {
     return `This table changed elsewhere. Reload AppForge and try again. ${message}`;
   }
+  if (/\b(aborted|abort|timeout|timed out)\b/i.test(message)) {
+    return "Timed out while saving structured base changes. Try again.";
+  }
   return message || "Failed to save structured base";
 }
 
@@ -777,7 +780,7 @@ export function useForgeStructuredData({
     if (!selectedField || selectedField.id === selectedFieldId) {
       return;
     }
-    setSelectedFieldId(selectedField.id);
+    queueMicrotask(() => setSelectedFieldId(selectedField.id));
   }, [selectedField, selectedFieldId]);
 
   useEffect(() => {
@@ -788,17 +791,19 @@ export function useForgeStructuredData({
       storedFieldSelectionKey(selectedAppId, activeTable.id),
     );
     if (stored && activeTable.fields.some((field) => field.id === stored)) {
-      setSelectedFieldId(stored);
+      queueMicrotask(() => setSelectedFieldId(stored));
     }
   }, [activeTable, selectedAppId]);
 
   useEffect(() => {
     if (!gatewayRequest) {
-      setSourceStatus({
-        kind: "metadata",
-        message: "Gateway unavailable; using metadata fallback.",
-        updatedAt: nowIso(),
-      });
+      queueMicrotask(() =>
+        setSourceStatus({
+          kind: "metadata",
+          message: "Gateway unavailable; using metadata fallback.",
+          updatedAt: nowIso(),
+        }),
+      );
       return;
     }
     if (gatewayLoadAppIds.length === 0) {
