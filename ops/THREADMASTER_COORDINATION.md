@@ -184,6 +184,17 @@ AOU:
 
 ## Threadmaster Messages
 
+### 2026-04-26/27 — OpenClaw Current-Dev Voice/Meet Packet
+
+Lane: `openclaw`
+Branch: `codex/openclaw-audio-process`
+Current `origin/dev`: `38289381`
+Current local head after reconstructing from dev: `38289381`
+Owned files for this handoff: `ops/HANDOFF_OPENCLAW_VOICE_MEET_CURRENT_DEV_PACKET.md` and this board note only.
+Runtime/code diff over current `origin/dev`: none.
+Summary: OpenClaw realtime voice, local audio, operator voice CLI, optional OperatorAlertEvent voice route, and Google Meet browser status/recover slices are already contained in `origin/dev`. The new packet records exact commits, files, verification, truth labels, split boundaries, and blockers.
+Required reactions: Browser/gateway owner must resolve browser-control WebSocket `1006` before OpenClaw can provide Google Meet manual recovery smoke evidence. Workflows/master must assign shared operator-alert subscription wiring before the voice route can fire automatically from live approval/alert events.
+
 ### 2026-04-26 — Master to All
 
 The threadmaster bus is available. Use `pnpm threadmaster:post/list/ack/status/poll` for targeted messages, `pnpm threadmaster:task-add/task-list/task-update` for lane tasking, and keep durable contract summaries in this board.
