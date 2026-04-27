@@ -186,4 +186,56 @@ describe("useForgeStructuredData", () => {
     expect(FakeXMLHttpRequest.latest).toBeNull();
     expect(emitWorkflowEvent).toHaveBeenCalledOnce();
   });
+
+  it("blocks invalid required cell edits and clears the inline error after correction", async () => {
+    const host = installDom("?token=secret-token");
+    const fetch = vi.fn(async () => ({ ok: true }));
+    vi.stubGlobal("fetch", fetch);
+
+    let result: StructuredDataResult | null = null;
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(
+        createElement(HookHarness, {
+          onResult: (nextResult) => {
+            result = nextResult;
+          },
+          props: {
+            apps: [app()],
+            selectedAppId: "app-1",
+            onSelectApp: vi.fn(),
+          },
+        }),
+      );
+    });
+
+    if (!result) {
+      throw new Error("hook result did not render");
+    }
+    const rendered = result as StructuredDataResult;
+    const record = rendered.activeTable?.records[0];
+    if (!record) {
+      throw new Error("seed record missing");
+    }
+
+    await act(async () => {
+      await rendered.updateCell(record.id, "name", "");
+    });
+    await act(async () => {});
+
+    const invalidResult = result as StructuredDataResult;
+    expect(invalidResult.cellError(record.id, "name")).toBe("Name is required.");
+    expect(invalidResult.activeTable?.records[0]?.values.name).toBe("Sample: Campaign Review");
+    expect(fetch).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await invalidResult.updateCell(record.id, "name", "Valid campaign");
+    });
+    await act(async () => {});
+
+    const validResult = result as StructuredDataResult;
+    expect(validResult.cellError(record.id, "name")).toBeNull();
+    expect(validResult.activeTable?.records[0]?.values.name).toBe("Valid campaign");
+    expect(fetch).toHaveBeenCalledOnce();
+  });
 });

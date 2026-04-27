@@ -360,6 +360,62 @@ describe("forge structured data metadata", () => {
     expect(forgeStructuredDataTestUtils.coerceValueForField("Review", selectField)).toBe("Review");
   });
 
+  it("validates required fields and typed cell input before save", () => {
+    const requiredName: ForgeStructuredField = {
+      id: "name",
+      name: "Name",
+      type: "text",
+      required: true,
+    };
+    const score: ForgeStructuredField = {
+      id: "score",
+      name: "Score",
+      type: "number",
+    };
+    const email: ForgeStructuredField = {
+      id: "email",
+      name: "Email",
+      type: "email",
+    };
+    const status: ForgeStructuredField = {
+      id: "status",
+      name: "Status",
+      type: "single_select",
+      selectOptions: [
+        { id: "opt-plan", label: "Planning", color: "sky" },
+        { id: "opt-review", label: "Review", color: "amber" },
+      ],
+    };
+    const tags: ForgeStructuredField = {
+      id: "tags",
+      name: "Tags",
+      type: "multi_select",
+      selectOptions: [
+        { id: "opt-ops", label: "Ops", color: "sky" },
+        { id: "opt-product", label: "Product", color: "emerald" },
+      ],
+    };
+
+    expect(forgeStructuredDataTestUtils.validateCellInputValue(requiredName, "")).toBe(
+      "Name is required.",
+    );
+    expect(forgeStructuredDataTestUtils.validateCellInputValue(score, "twelve")).toBe(
+      "Score must be a valid number.",
+    );
+    expect(forgeStructuredDataTestUtils.validateCellInputValue(email, "not-email")).toBe(
+      "Email must be a valid email address.",
+    );
+    expect(forgeStructuredDataTestUtils.validateCellInputValue(status, "Blocked")).toBe(
+      "Status must match one of its options.",
+    );
+    expect(forgeStructuredDataTestUtils.validateCellInputValue(tags, "Ops,Finance")).toBe(
+      "Tags contains an unknown option: Finance.",
+    );
+    expect(forgeStructuredDataTestUtils.validateCellInputValue(score, "12")).toBeNull();
+    expect(forgeStructuredDataTestUtils.validateCellInputValue(status, "Review")).toBeNull();
+    expect(forgeStructuredDataTestUtils.validateCellInputValue(tags, "Ops,Product")).toBeNull();
+  });
+
   it("uses configured field defaults for new record values", () => {
     expect(
       forgeStructuredDataTestUtils.defaultValueForField({

@@ -25,10 +25,12 @@ Airtable-class field system.
   until all consumers move to `selectOptions`.
 - Field type changes require an explicit apply action when the selected type
   differs from the stored type.
+- Required fields and supported typed cell edits are enforced in the structured
+  table editor. Invalid edits remain unsaved and show inline cell errors until
+  corrected.
 
 ## Metadata-Only or Planned
 
-- `required` is live metadata only. Record validation enforcement is planned.
 - Attachment defaults are planned with the future asset storage slice.
 - Linked-record defaults are planned with the future relationship storage slice.
 - Type conversion is coercive once confirmed. This slice adds warning and

@@ -1213,10 +1213,29 @@ export function AppForge({
     const field = structured.activeTable?.fields.find(
       (candidate) => candidate.id === editingCell.fieldId,
     );
+    const validationMessage = field ? structured.validateCellInput(field, editingCell.value) : null;
+    if (validationMessage) {
+      structured.setCellError(editingCell.recordId, editingCell.fieldId, validationMessage);
+      return;
+    }
     const nextValue = field ? cellValueFromInput(field, editingCell.value) : editingCell.value;
+    structured.clearCellError(editingCell.recordId, editingCell.fieldId);
     setEditingCell(null);
     await structured.updateCell(editingCell.recordId, editingCell.fieldId, nextValue);
   }, [editingCell, structured]);
+
+  const updateStructuredCellFromInput = useCallback(
+    async (recordId: string, field: ForgeStructuredField, rawValue: string) => {
+      const validationMessage = structured.validateCellInput(field, rawValue);
+      if (validationMessage) {
+        structured.setCellError(recordId, field.id, validationMessage);
+        return;
+      }
+      structured.clearCellError(recordId, field.id);
+      await structured.updateCell(recordId, field.id, cellValueFromInput(field, rawValue));
+    },
+    [structured],
+  );
 
   async function handleReviewDecision(
     record: ForgeStructuredRecord,
@@ -2109,6 +2128,10 @@ export function AppForge({
                                       </td>
                                       {visibleFields.map((field) => {
                                         const value = fieldValue(record.values[field.id]);
+                                        const validationError = structured.cellError(
+                                          record.id,
+                                          field.id,
+                                        );
                                         const activeEditingCell =
                                           editingCell?.recordId === record.id &&
                                           editingCell.fieldId === field.id
@@ -2125,7 +2148,9 @@ export function AppForge({
                                                 value,
                                               })
                                             }
-                                            className="border-r border-white/[0.07] px-4 py-2 text-white/66"
+                                            className={`border-r border-white/[0.07] px-4 py-2 text-white/66 ${
+                                              validationError ? "bg-red-500/7" : ""
+                                            }`}
                                           >
                                             {activeEditingCell && field.type === "single_select" ? (
                                               <select
@@ -2146,7 +2171,11 @@ export function AppForge({
                                                     setEditingCell(null);
                                                   }
                                                 }}
-                                                className="w-full rounded-md border border-sky-400/40 bg-black/75 px-2 py-1 text-sm text-white outline-none"
+                                                className={`w-full rounded-md border bg-black/75 px-2 py-1 text-sm text-white outline-none ${
+                                                  validationError
+                                                    ? "border-red-400/70"
+                                                    : "border-sky-400/40"
+                                                }`}
                                               >
                                                 {(field.options ?? []).map((option) => (
                                                   <option key={option} value={option}>
@@ -2196,7 +2225,11 @@ export function AppForge({
                                                     setEditingCell(null);
                                                   }
                                                 }}
-                                                className="w-full rounded-md border border-sky-400/40 bg-black/45 px-2 py-1 text-sm text-white outline-none"
+                                                className={`w-full rounded-md border bg-black/45 px-2 py-1 text-sm text-white outline-none ${
+                                                  validationError
+                                                    ? "border-red-400/70"
+                                                    : "border-sky-400/40"
+                                                }`}
                                               />
                                             ) : field.type === "single_select" && value ? (
                                               <span className="inline-flex rounded-md bg-emerald-500/18 px-2 py-1 text-xs font-medium text-emerald-100">
@@ -2212,6 +2245,11 @@ export function AppForge({
                                             ) : (
                                               <span className="truncate">{value || " "}</span>
                                             )}
+                                            {validationError ? (
+                                              <div className="mt-1 text-[11px] leading-tight text-red-200">
+                                                {validationError}
+                                              </div>
+                                            ) : null}
                                           </td>
                                         );
                                       })}
@@ -2325,6 +2363,11 @@ export function AppForge({
                                     <span className="mb-2 block text-xs text-white/38">
                                       {field.name}
                                     </span>
+                                    {formRecord && structured.cellError(formRecord.id, field.id) ? (
+                                      <span className="mb-2 block text-xs text-red-200">
+                                        {structured.cellError(formRecord.id, field.id)}
+                                      </span>
+                                    ) : null}
                                     {field.type === "single_select" ? (
                                       <select
                                         value={
@@ -2334,10 +2377,10 @@ export function AppForge({
                                           if (!formRecord) {
                                             return;
                                           }
-                                          void structured.updateCell(
+                                          void updateStructuredCellFromInput(
                                             formRecord.id,
-                                            field.id,
-                                            cellValueFromInput(field, event.target.value),
+                                            field,
+                                            event.target.value,
                                           );
                                         }}
                                         className="w-full rounded-lg border border-white/10 bg-black/55 px-3 py-2 text-sm text-white/72 outline-none"
@@ -2360,13 +2403,10 @@ export function AppForge({
                                           if (!formRecord) {
                                             return;
                                           }
-                                          void structured.updateCell(
+                                          void updateStructuredCellFromInput(
                                             formRecord.id,
-                                            field.id,
-                                            cellValueFromInput(
-                                              field,
-                                              event.target.checked ? "true" : "false",
-                                            ),
+                                            field,
+                                            event.target.checked ? "true" : "false",
                                           );
                                         }}
                                         className="h-5 w-5 rounded border-white/20 bg-black/45 accent-sky-400"
@@ -2381,10 +2421,10 @@ export function AppForge({
                                           if (!formRecord) {
                                             return;
                                           }
-                                          void structured.updateCell(
+                                          void updateStructuredCellFromInput(
                                             formRecord.id,
-                                            field.id,
-                                            cellValueFromInput(field, event.target.value),
+                                            field,
+                                            event.target.value,
                                           );
                                         }}
                                         className="w-full rounded-lg border border-white/10 bg-black/22 px-3 py-2 text-sm text-white/72 outline-none"

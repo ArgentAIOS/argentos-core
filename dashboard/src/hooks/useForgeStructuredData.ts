@@ -86,6 +86,8 @@ export type ForgeStructuredSaveStatus = {
   updatedAt: string | null;
 };
 
+export type ForgeStructuredCellErrors = Record<string, string>;
+
 export type ForgeStructuredSourceStatus = {
   kind: "loading" | "gateway" | "metadata" | "degraded";
   message: string | null;
@@ -124,10 +126,18 @@ type UseForgeStructuredDataReturn = {
   error: string | null;
   saveStatus: ForgeStructuredSaveStatus;
   sourceStatus: ForgeStructuredSourceStatus;
+  cellErrors: ForgeStructuredCellErrors;
   reload: () => void;
   selectBase: (appId: string) => void;
   selectTable: (tableId: string) => Promise<void>;
   selectField: (fieldId: string) => void;
+  cellError: (recordId: string, fieldId: string) => string | null;
+  setCellError: (recordId: string, fieldId: string, message: string) => void;
+  clearCellError: (recordId: string, fieldId: string) => void;
+  validateCellInput: (
+    field: ForgeStructuredField,
+    value: ForgeStructuredRecordValue | undefined,
+  ) => string | null;
   addTable: (input?: { name?: string }) => Promise<void>;
   updateTable: (
     tableId: string,
@@ -204,6 +214,10 @@ function fieldSupportsDefaultValue(type: ForgeFieldType): boolean {
 
 function cloneValue(value: ForgeStructuredRecordValue): ForgeStructuredRecordValue {
   return Array.isArray(value) ? [...value] : value;
+}
+
+function cellErrorKey(recordId: string, fieldId: string): string {
+  return `${recordId}:${fieldId}`;
 }
 
 const SELECT_OPTION_COLORS = [
@@ -356,6 +370,118 @@ function coerceValueForField(
     return options.includes(text) ? text : (options[0] ?? "");
   }
   return value === null || value === undefined ? "" : String(value);
+}
+
+function splitListValue(value: string): string[] {
+  return value
+    .split(/[\n,]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function isBlankCellValue(value: ForgeStructuredRecordValue | undefined): boolean {
+  if (value === null || value === undefined) {
+    return true;
+  }
+  if (typeof value === "string") {
+    return value.trim() === "";
+  }
+  if (Array.isArray(value)) {
+    return value.length === 0;
+  }
+  return false;
+}
+
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function validateValueForField(
+  field: ForgeStructuredField,
+  value: ForgeStructuredRecordValue | undefined,
+): string | null {
+  if (field.required && isBlankCellValue(value)) {
+    return `${field.name} is required.`;
+  }
+  if (isBlankCellValue(value)) {
+    return null;
+  }
+  if (field.type === "number") {
+    return typeof value === "number" && Number.isFinite(value)
+      ? null
+      : `${field.name} must be a valid number.`;
+  }
+  if (field.type === "date") {
+    return typeof value === "string" && !Number.isNaN(Date.parse(value))
+      ? null
+      : `${field.name} must be a valid date.`;
+  }
+  if (field.type === "email") {
+    return typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+      ? null
+      : `${field.name} must be a valid email address.`;
+  }
+  if (field.type === "url") {
+    return typeof value === "string" && isValidHttpUrl(value)
+      ? null
+      : `${field.name} must be a valid http or https URL.`;
+  }
+  if (field.type === "single_select") {
+    const options = selectOptionLabels(field);
+    return typeof value === "string" && options.includes(value)
+      ? null
+      : `${field.name} must match one of its options.`;
+  }
+  if (field.type === "multi_select") {
+    const options = selectOptionLabels(field);
+    if (!Array.isArray(value)) {
+      return `${field.name} must be a list of options.`;
+    }
+    const invalid = options.length ? value.find((entry) => !options.includes(entry)) : undefined;
+    return invalid ? `${field.name} contains an unknown option: ${invalid}.` : null;
+  }
+  if (field.type === "attachment" || field.type === "linked_record") {
+    return Array.isArray(value) ? null : `${field.name} must be a list.`;
+  }
+  return null;
+}
+
+function validateCellInputValue(
+  field: ForgeStructuredField,
+  value: ForgeStructuredRecordValue | undefined,
+): string | null {
+  if (field.required && (value === undefined || isBlankCellValue(value))) {
+    return `${field.name} is required.`;
+  }
+  if (value === undefined || isBlankCellValue(value)) {
+    return null;
+  }
+  if (field.type === "number") {
+    const parsed = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(parsed) ? null : `${field.name} must be a valid number.`;
+  }
+  if (field.type === "checkbox") {
+    return typeof value === "boolean" || value === "true" || value === "false"
+      ? null
+      : `${field.name} must be checked or unchecked.`;
+  }
+  if (field.type === "multi_select") {
+    const entries = Array.isArray(value) ? value : splitListValue(String(value));
+    return validateValueForField(field, entries);
+  }
+  if (field.type === "single_select") {
+    return validateValueForField(field, String(value));
+  }
+  if (field.type === "attachment" || field.type === "linked_record") {
+    const entries = Array.isArray(value) ? value : splitListValue(String(value));
+    return validateValueForField(field, entries);
+  }
+  return validateValueForField(field, coerceValueForField(value, field));
 }
 
 function workflowCapabilityId(app: ForgeApp): string {
@@ -1066,6 +1192,8 @@ export const forgeStructuredDataTestUtils = {
   metadataWithBase,
   normalizeGatewayBase,
   normalizeBase,
+  validateCellInputValue,
+  validateValueForField,
 };
 
 export function useForgeStructuredData({
@@ -1085,6 +1213,7 @@ export function useForgeStructuredData({
     message: null,
     updatedAt: null,
   });
+  const [cellErrors, setCellErrors] = useState<ForgeStructuredCellErrors>({});
   const [sourceStatus, setSourceStatus] = useState<ForgeStructuredSourceStatus>({
     kind: gatewayRequest ? "loading" : "metadata",
     message: gatewayRequest ? "Loading AppForge gateway data..." : "Using metadata fallback",
@@ -1251,6 +1380,33 @@ export function useForgeStructuredData({
   const reload = useCallback(() => {
     setReloadVersion((version) => version + 1);
   }, []);
+
+  const cellError = useCallback(
+    (recordId: string, fieldId: string) => cellErrors[cellErrorKey(recordId, fieldId)] ?? null,
+    [cellErrors],
+  );
+
+  const setCellError = useCallback((recordId: string, fieldId: string, message: string) => {
+    setCellErrors((prev) => ({ ...prev, [cellErrorKey(recordId, fieldId)]: message }));
+  }, []);
+
+  const clearCellError = useCallback((recordId: string, fieldId: string) => {
+    setCellErrors((prev) => {
+      const key = cellErrorKey(recordId, fieldId);
+      if (!prev[key]) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }, []);
+
+  const validateCellInput = useCallback(
+    (field: ForgeStructuredField, value: ForgeStructuredRecordValue | undefined) =>
+      validateCellInputValue(field, value),
+    [],
+  );
 
   const persistBase = useCallback(
     async (
@@ -2102,6 +2258,13 @@ export function useForgeStructuredData({
       if (!activeTable) {
         return;
       }
+      const field = activeTable.fields.find((candidate) => candidate.id === fieldId);
+      const validationMessage = field ? validateValueForField(field, value) : null;
+      if (validationMessage) {
+        setCellError(recordId, fieldId, validationMessage);
+        return;
+      }
+      clearCellError(recordId, fieldId);
       await updateActiveTable(
         (table) => ({
           ...table,
@@ -2129,7 +2292,7 @@ export function useForgeStructuredData({
         },
       );
     },
-    [activeTable, updateActiveTable],
+    [activeTable, clearCellError, setCellError, updateActiveTable],
   );
 
   const deleteRecord = useCallback(
@@ -2310,10 +2473,15 @@ export function useForgeStructuredData({
     error,
     saveStatus,
     sourceStatus: activeSourceStatus,
+    cellErrors,
     reload,
     selectBase,
     selectTable,
     selectField,
+    cellError,
+    setCellError,
+    clearCellError,
+    validateCellInput,
     addTable,
     updateTable,
     duplicateTable,
