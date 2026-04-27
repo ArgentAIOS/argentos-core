@@ -37,6 +37,11 @@ import type {
   ChannelsStatusParamsSchema,
   ChannelsStatusResultSchema,
   TalkModeParamsSchema,
+  TalkRealtimeAudioParamsSchema,
+  TalkRealtimeMarkParamsSchema,
+  TalkRealtimeSessionParamsSchema,
+  TalkRealtimeStopParamsSchema,
+  TalkRealtimeToolResultParamsSchema,
   WebLoginStartParamsSchema,
   WebLoginWaitParamsSchema,
 } from "./channels.js";
@@ -179,6 +184,11 @@ export type WizardNextResult = Static<typeof WizardNextResultSchema>;
 export type WizardStartResult = Static<typeof WizardStartResultSchema>;
 export type WizardStatusResult = Static<typeof WizardStatusResultSchema>;
 export type TalkModeParams = Static<typeof TalkModeParamsSchema>;
+export type TalkRealtimeSessionParams = Static<typeof TalkRealtimeSessionParamsSchema>;
+export type TalkRealtimeAudioParams = Static<typeof TalkRealtimeAudioParamsSchema>;
+export type TalkRealtimeMarkParams = Static<typeof TalkRealtimeMarkParamsSchema>;
+export type TalkRealtimeToolResultParams = Static<typeof TalkRealtimeToolResultParamsSchema>;
+export type TalkRealtimeStopParams = Static<typeof TalkRealtimeStopParamsSchema>;
 export type ChannelsStatusParams = Static<typeof ChannelsStatusParamsSchema>;
 export type ChannelsStatusResult = Static<typeof ChannelsStatusResultSchema>;
 export type ChannelsLogoutParams = Static<typeof ChannelsLogoutParamsSchema>;

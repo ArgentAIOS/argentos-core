@@ -253,6 +253,9 @@ Truth label:
 
 - Added realtime voice foundations, including OpenAI Realtime adapter support,
   deterministic lifecycle tests, and local operator voice smoke tooling.
+- Added browser Talk realtime session methods so browser clients can request a
+  server-side realtime provider session, use OpenAI ephemeral WebRTC client
+  secrets, or use gateway PCM relay controls without exposing provider API keys.
 - Added browser runtime diagnostics for clearer browser-control failures.
 - Added Google Meet setup/status support and browser-only recovery for an
   already-open Meet tab.
@@ -260,7 +263,8 @@ Truth label:
 - Added optional operator-alert voice routing foundations.
 
 Known limitations: Google Meet join/create/leave, in-meeting audio participation,
-phone-call voice access, and a polished desktop voice-call UX are not included in
+phone-call voice access, Gemini/Google Live provider parity, remote OpenAI
+browser WebRTC smoke, and a polished desktop voice-call UX are not included in
 this release. Google Meet recovery is implemented for existing tabs, with live
 open-tab smoke still pending.
 ```
@@ -276,6 +280,8 @@ User-visible changes:
   understand, including profile, timeout, route, and gateway context.
 - Added realtime voice foundations with OpenAI Realtime adapter support, local
   operator audio smoke tooling, and explicit fake-vs-live evidence labels.
+- Added browser Talk realtime session methods for OpenAI ephemeral browser
+  sessions and provider-agnostic gateway relay controls.
 - Added optional operator voice-alert foundations for future spoken approvals or
   urgent operator alerts.
 - Added Google Meet setup/status support plus browser-only recovery for an

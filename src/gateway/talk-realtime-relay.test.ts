@@ -21,7 +21,7 @@ type TestBridge = RealtimeVoiceBridge & {
   sentAudio: Buffer[];
   toolResults: Array<{ callId: string; result: unknown }>;
   timestamps: number[];
-  acknowledgeMarkMock: ReturnType<typeof vi.fn>;
+  acknowledgeMarkMock: () => void;
 };
 
 function createProvider(bridges: TestBridge[]): RealtimeVoiceProvider {

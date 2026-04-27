@@ -27,7 +27,11 @@ Docs: https://docs.argentos.ai
 - OpenClaw: add browser diagnostics, realtime voice foundations, OpenAI
   Realtime adapter support, local audio smoke tooling, optional operator
   voice-alert routing foundations, and Google Meet setup/status plus
-  browser-only recovery for an already-open Meet tab.
+  browser-only recovery for an already-open Meet tab. The browser Talk
+  realtime path now exposes `talk.realtime.session` plus relay controls so a
+  browser client can request a server-side provider session, receive an OpenAI
+  ephemeral client secret, or fall back to gateway PCM relay events without
+  receiving provider API keys.
 - Coordination: add Threadmaster lane-lock and bus discipline around Core work
   so AppForge, Workflows, AOS, AOU, and OpenClaw handoffs stay in
   `ArgentAIOS/argentos-core` and preserve public changelog notes before dev is
@@ -47,7 +51,10 @@ Docs: https://docs.argentos.ai
   accounts were not broadly smoke-tested.
 - OpenClaw: set `OPENAI_API_KEY` before live realtime voice smoke. Google Meet
   recovery requires a dedicated Chrome profile signed into the operator account
-  and an already-open Meet tab; join/create/leave remain deferred.
+  and an already-open Meet tab; join/create/leave remain deferred. Browser Talk
+  realtime testing should call `talk.realtime.session` first, then use
+  `talk.realtime.audio`, `talk.realtime.mark`, `talk.realtime.toolResult`, and
+  `talk.realtime.stop` only when the returned transport is `gateway-relay`.
 
 ### Known Gaps
 
@@ -60,6 +67,9 @@ Docs: https://docs.argentos.ai
   live external-account smoke tests still need operator credentials.
 - OpenClaw Google Meet does not yet create, join, leave, control, or participate
   with audio in meetings.
+- OpenClaw browser Talk has a gateway/API substrate, not a polished dashboard
+  voice button yet. Remote OpenAI WebRTC browser smoke and Gemini/Google Live
+  provider parity remain follow-up work.
 
 ## 2026.4.25-dev.0
 

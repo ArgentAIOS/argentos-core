@@ -9,6 +9,53 @@ export const TalkModeParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const TalkRealtimeSessionParamsSchema = Type.Object(
+  {
+    provider: Type.Optional(NonEmptyString),
+    transport: Type.Optional(
+      Type.Union([Type.Literal("auto"), Type.Literal("webrtc-sdp"), Type.Literal("gateway-relay")]),
+    ),
+    model: Type.Optional(NonEmptyString),
+    voice: Type.Optional(NonEmptyString),
+    instructions: Type.Optional(Type.String()),
+    tools: Type.Optional(Type.Array(Type.Unknown())),
+  },
+  { additionalProperties: false },
+);
+
+export const TalkRealtimeAudioParamsSchema = Type.Object(
+  {
+    relaySessionId: NonEmptyString,
+    audioBase64: NonEmptyString,
+    timestamp: Type.Optional(Type.Number({ minimum: 0 })),
+  },
+  { additionalProperties: false },
+);
+
+export const TalkRealtimeMarkParamsSchema = Type.Object(
+  {
+    relaySessionId: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
+export const TalkRealtimeToolResultParamsSchema = Type.Object(
+  {
+    relaySessionId: NonEmptyString,
+    callId: NonEmptyString,
+    result: Type.Unknown(),
+    willContinue: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
+
+export const TalkRealtimeStopParamsSchema = Type.Object(
+  {
+    relaySessionId: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
 export const ChannelsStatusParamsSchema = Type.Object(
   {
     probe: Type.Optional(Type.Boolean()),

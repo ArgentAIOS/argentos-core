@@ -258,10 +258,12 @@ export function submitTalkRealtimeRelayToolResult(params: {
   connId: string;
   callId: string;
   result: unknown;
+  willContinue?: boolean;
 }): void {
   getRelaySession(params.relaySessionId, params.connId).bridge.submitToolResult(
     params.callId,
     params.result,
+    params.willContinue === undefined ? undefined : { willContinue: params.willContinue },
   );
 }
 

@@ -186,6 +186,16 @@ import {
   StateVersionSchema,
   type TalkModeParams,
   TalkModeParamsSchema,
+  type TalkRealtimeAudioParams,
+  TalkRealtimeAudioParamsSchema,
+  type TalkRealtimeMarkParams,
+  TalkRealtimeMarkParamsSchema,
+  type TalkRealtimeSessionParams,
+  TalkRealtimeSessionParamsSchema,
+  type TalkRealtimeStopParams,
+  TalkRealtimeStopParamsSchema,
+  type TalkRealtimeToolResultParams,
+  TalkRealtimeToolResultParamsSchema,
   type TickEvent,
   TickEventSchema,
   type UpdateRunParams,
@@ -292,6 +302,21 @@ export const validateWizardNextParams = ajv.compile<WizardNextParams>(WizardNext
 export const validateWizardCancelParams = ajv.compile<WizardCancelParams>(WizardCancelParamsSchema);
 export const validateWizardStatusParams = ajv.compile<WizardStatusParams>(WizardStatusParamsSchema);
 export const validateTalkModeParams = ajv.compile<TalkModeParams>(TalkModeParamsSchema);
+export const validateTalkRealtimeSessionParams = ajv.compile<TalkRealtimeSessionParams>(
+  TalkRealtimeSessionParamsSchema,
+);
+export const validateTalkRealtimeAudioParams = ajv.compile<TalkRealtimeAudioParams>(
+  TalkRealtimeAudioParamsSchema,
+);
+export const validateTalkRealtimeMarkParams = ajv.compile<TalkRealtimeMarkParams>(
+  TalkRealtimeMarkParamsSchema,
+);
+export const validateTalkRealtimeToolResultParams = ajv.compile<TalkRealtimeToolResultParams>(
+  TalkRealtimeToolResultParamsSchema,
+);
+export const validateTalkRealtimeStopParams = ajv.compile<TalkRealtimeStopParams>(
+  TalkRealtimeStopParamsSchema,
+);
 export const validateChannelsStatusParams = ajv.compile<ChannelsStatusParams>(
   ChannelsStatusParamsSchema,
 );
@@ -441,6 +466,11 @@ export {
   WizardNextResultSchema,
   WizardStartResultSchema,
   WizardStatusResultSchema,
+  TalkRealtimeAudioParamsSchema,
+  TalkRealtimeMarkParamsSchema,
+  TalkRealtimeSessionParamsSchema,
+  TalkRealtimeStopParamsSchema,
+  TalkRealtimeToolResultParamsSchema,
   ChannelsStatusParamsSchema,
   ChannelsStatusResultSchema,
   ChannelsLogoutParamsSchema,
@@ -526,6 +556,11 @@ export type {
   WizardStartResult,
   WizardStatusResult,
   TalkModeParams,
+  TalkRealtimeAudioParams,
+  TalkRealtimeMarkParams,
+  TalkRealtimeSessionParams,
+  TalkRealtimeStopParams,
+  TalkRealtimeToolResultParams,
   ChannelsStatusParams,
   ChannelsStatusResult,
   ChannelsLogoutParams,

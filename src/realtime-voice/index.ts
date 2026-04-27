@@ -7,6 +7,11 @@ export {
   type PcmAudioFormat,
 } from "./audio-codec.js";
 export {
+  createOpenAiRealtimeBrowserProvider,
+  OpenAiRealtimeBrowserProvider,
+  type OpenAiRealtimeBrowserProviderOptions,
+} from "./openai-browser-provider.js";
+export {
   buildRealtimeVoiceProviderMaps,
   canonicalizeRealtimeVoiceProviderId,
   getRealtimeVoiceProvider,
