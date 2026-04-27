@@ -21,10 +21,18 @@ export type ForgeStructuredField = {
   type: ForgeFieldType;
   description?: string;
   required?: boolean;
+  defaultValue?: ForgeStructuredRecordValue;
   options?: string[];
+  selectOptions?: ForgeStructuredSelectOption[];
 };
 
 export type ForgeStructuredRecordValue = string | number | boolean | string[] | null;
+
+export type ForgeStructuredSelectOption = {
+  id: string;
+  label: string;
+  color: string;
+};
 
 export type ForgeStructuredRecord = {
   id: string;
@@ -190,11 +198,114 @@ function fieldSupportsOptions(type: ForgeFieldType): boolean {
   return type === "single_select" || type === "multi_select";
 }
 
+function fieldSupportsDefaultValue(type: ForgeFieldType): boolean {
+  return type !== "attachment" && type !== "linked_record";
+}
+
 function cloneValue(value: ForgeStructuredRecordValue): ForgeStructuredRecordValue {
   return Array.isArray(value) ? [...value] : value;
 }
 
+const SELECT_OPTION_COLORS = [
+  "emerald",
+  "sky",
+  "violet",
+  "amber",
+  "rose",
+  "cyan",
+  "lime",
+  "orange",
+] as const;
+
+function selectOptionId(label: string, index: number): string {
+  const slug =
+    label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "option";
+  return `opt-${slug}-${index + 1}`;
+}
+
+function normalizeSelectOptions(
+  rawSelectOptions: unknown,
+  rawOptions: unknown,
+): ForgeStructuredSelectOption[] {
+  const usedIds = new Set<string>();
+  const options: ForgeStructuredSelectOption[] = [];
+  if (Array.isArray(rawSelectOptions)) {
+    rawSelectOptions.forEach((entry, index) => {
+      if (!isRecord(entry)) {
+        return;
+      }
+      const label = stringValue(entry.label);
+      if (!label) {
+        return;
+      }
+      const rawId = stringValue(entry.id) ?? selectOptionId(label, index);
+      const id = usedIds.has(rawId) ? `${rawId}-${index + 1}` : rawId;
+      usedIds.add(id);
+      options.push({
+        id,
+        label,
+        color:
+          stringValue(entry.color) ?? SELECT_OPTION_COLORS[index % SELECT_OPTION_COLORS.length],
+      });
+    });
+  }
+  if (!options.length && Array.isArray(rawOptions)) {
+    rawOptions.forEach((entry, index) => {
+      const label = stringValue(entry);
+      if (!label) {
+        return;
+      }
+      const id = selectOptionId(label, index);
+      options.push({
+        id,
+        label,
+        color: SELECT_OPTION_COLORS[index % SELECT_OPTION_COLORS.length],
+      });
+    });
+  }
+  return options;
+}
+
+function defaultSelectOptions(): ForgeStructuredSelectOption[] {
+  return normalizeSelectOptions(undefined, ["Option 1", "Option 2"]);
+}
+
+function selectOptionLabels(field: ForgeStructuredField): string[] {
+  if (field.selectOptions?.length) {
+    return field.selectOptions.map((option) => option.label);
+  }
+  return field.options ?? [];
+}
+
+function normalizeDefaultValue(
+  rawValue: unknown,
+  field: ForgeStructuredField,
+): ForgeStructuredRecordValue | undefined {
+  if (!fieldSupportsDefaultValue(field.type) || rawValue === undefined) {
+    return undefined;
+  }
+  if (
+    rawValue === null ||
+    typeof rawValue === "string" ||
+    typeof rawValue === "number" ||
+    typeof rawValue === "boolean" ||
+    Array.isArray(rawValue)
+  ) {
+    return coerceValueForField(rawValue as ForgeStructuredRecordValue, field);
+  }
+  return undefined;
+}
+
 function defaultValueForField(field: ForgeStructuredField, label = ""): ForgeStructuredRecordValue {
+  if (field.defaultValue !== undefined && fieldSupportsDefaultValue(field.type)) {
+    return cloneValue(
+      coerceValueForField(field.defaultValue, { ...field, defaultValue: undefined }),
+    );
+  }
   if (field.type === "number") {
     return 0;
   }
@@ -205,7 +316,7 @@ function defaultValueForField(field: ForgeStructuredField, label = ""): ForgeStr
     return [];
   }
   if (field.type === "single_select") {
-    return field.options?.[0] ?? "";
+    return selectOptionLabels(field)[0] ?? "";
   }
   return label;
 }
@@ -241,7 +352,8 @@ function coerceValueForField(
   }
   if (field.type === "single_select") {
     const text = value === null || value === undefined ? "" : String(value);
-    return field.options?.includes(text) ? text : (field.options?.[0] ?? "");
+    const options = selectOptionLabels(field);
+    return options.includes(text) ? text : (options[0] ?? "");
   }
   return value === null || value === undefined ? "" : String(value);
 }
@@ -276,6 +388,16 @@ function defaultFields(): ForgeStructuredField[] {
       id: "status",
       name: "Status",
       type: "single_select",
+      selectOptions: normalizeSelectOptions(undefined, [
+        "Planning",
+        "In Progress",
+        "On Track",
+        "Review",
+        "Blocked",
+        "Approved",
+        "Denied",
+        "Completed",
+      ]),
       options: [
         "Planning",
         "In Progress",
@@ -433,16 +555,24 @@ function normalizeField(value: unknown): ForgeStructuredField | null {
     rawType === "linked_record"
       ? rawType
       : "text";
-  return {
+  const field: ForgeStructuredField = {
     id,
     name,
     type,
     description: stringValue(value.description),
     required: booleanValue(value.required),
-    options: Array.isArray(value.options)
-      ? value.options.map(stringValue).filter((option): option is string => !!option)
-      : undefined,
   };
+  if (fieldSupportsOptions(type)) {
+    const selectOptions = normalizeSelectOptions(value.selectOptions, value.options);
+    const effectiveOptions = selectOptions.length ? selectOptions : defaultSelectOptions();
+    field.selectOptions = effectiveOptions;
+    field.options = effectiveOptions.map((option) => option.label);
+  }
+  const defaultValue = normalizeDefaultValue(value.defaultValue, field);
+  if (defaultValue !== undefined) {
+    field.defaultValue = defaultValue;
+  }
+  return field;
 }
 
 function normalizeRecord(value: unknown): ForgeStructuredRecord | null {
@@ -679,6 +809,10 @@ function toGatewayTable(table: ForgeStructuredTable): GatewayStructuredTable {
     fields: table.fields.map((field) => ({
       ...field,
       options: field.options ? [...field.options] : undefined,
+      selectOptions: field.selectOptions
+        ? field.selectOptions.map((option) => ({ ...option }))
+        : undefined,
+      defaultValue: field.defaultValue !== undefined ? cloneValue(field.defaultValue) : undefined,
     })),
     records: table.records.map(toGatewayRecord),
   };
@@ -706,10 +840,12 @@ function buildGatewayMirrorCalls(
     method: "appforge.bases.put",
     params: {
       base: toGatewayBase(seedBase),
-      expectedRevision: seedRevision,
       idempotencyKey: `dashboard-base-${seedBase.id}-${seedBase.updatedAt}`,
     },
   };
+  if (seedBase.revision !== undefined) {
+    seedBaseCall.params.expectedRevision = seedRevision;
+  }
 
   if (mutation.kind === "table.put") {
     if (baseRevision <= 0) {
@@ -814,6 +950,84 @@ function formatStructuredSaveError(err: unknown): string {
   return message || "Failed to save structured base";
 }
 
+function dashboardApiTokenFromUrl(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const token = new URLSearchParams(window.location.search).get("token")?.trim();
+  return token || null;
+}
+
+function directDashboardApiUrl(path: string): string | null {
+  if (typeof window === "undefined" || !path.startsWith("/")) {
+    return null;
+  }
+  return `http://${window.location.hostname}:9242${path}`;
+}
+
+function postAppForgeMetadataWithXhr(appId: string, metadata: Record<string, unknown>) {
+  return new Promise<void>((resolve, reject) => {
+    if (typeof window === "undefined" || typeof window.XMLHttpRequest !== "function") {
+      reject(new Error("XMLHttpRequest unavailable"));
+      return;
+    }
+    const url = directDashboardApiUrl(`/api/apps/${appId}/appforge-metadata`);
+    if (!url) {
+      reject(new Error("Dashboard API URL unavailable"));
+      return;
+    }
+    const xhr = new window.XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.timeout = 10_000;
+    xhr.setRequestHeader("content-type", "text/plain;charset=UTF-8");
+    const token = dashboardApiTokenFromUrl();
+    if (token) {
+      xhr.setRequestHeader("authorization", `Bearer ${token}`);
+    }
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+        return;
+      }
+      reject(new Error(`Failed to save structured base metadata (${xhr.status})`));
+    });
+    xhr.addEventListener("error", () => {
+      reject(new Error("Failed to save structured base metadata"));
+    });
+    xhr.addEventListener("timeout", () => {
+      reject(new Error("Timed out saving structured base metadata"));
+    });
+    xhr.send(JSON.stringify({ metadata }));
+  });
+}
+
+async function saveAppForgeMetadata(appId: string, metadata: Record<string, unknown>) {
+  let fetchError: unknown;
+  try {
+    const response = await fetchLocalApi(
+      `/api/apps/${appId}/appforge-metadata`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=UTF-8" },
+        body: JSON.stringify({ metadata }),
+      },
+      10_000,
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to save structured base metadata (${response.status})`);
+    }
+    return;
+  } catch (err) {
+    fetchError = err;
+  }
+
+  try {
+    await postAppForgeMetadataWithXhr(appId, metadata);
+  } catch {
+    throw fetchError;
+  }
+}
+
 async function mirrorGatewayMutation(
   gatewayRequest: GatewayRequestFn | undefined,
   base: ForgeStructuredBase,
@@ -845,6 +1059,8 @@ export const forgeStructuredDataTestUtils = {
   coerceValueForField,
   defaultBase,
   defaultValueForField,
+  fieldSupportsDefaultValue,
+  normalizeSelectOptions,
   formatStructuredSaveError,
   isRevisionConflictError,
   metadataWithBase,
@@ -1107,14 +1323,7 @@ export function useForgeStructuredData({
         }
 
         try {
-          const response = await fetchLocalApi(`/api/apps/${app.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ metadata: metadataWithBase(app, nextBase) }),
-          });
-          if (!response.ok) {
-            throw new Error(`Failed to save structured base metadata (${response.status})`);
-          }
+          await saveAppForgeMetadata(app.id, metadataWithBase(app, nextBase));
           savedToMetadata = true;
           if (!savedToGateway) {
             setSourceStatus({
@@ -1140,7 +1349,14 @@ export function useForgeStructuredData({
         }
 
         if (event && emitWorkflowEvent) {
-          await emitWorkflowEvent(app.id, event);
+          try {
+            await emitWorkflowEvent(app.id, event);
+          } catch (err) {
+            console.warn("[AppForge] Workflow event emit failed after structured save.", {
+              eventType: event.eventType,
+              error: err,
+            });
+          }
         }
         setSaveStatus({
           kind: savedToGateway || !gatewayRequest ? "saved" : "degraded",
@@ -1332,6 +1548,11 @@ export function useForgeStructuredData({
           ...field,
           id: fieldIdMap.get(field.id) ?? newId("field"),
           options: field.options ? [...field.options] : undefined,
+          selectOptions: field.selectOptions
+            ? field.selectOptions.map((option) => ({ ...option }))
+            : undefined,
+          defaultValue:
+            field.defaultValue !== undefined ? cloneValue(field.defaultValue) : undefined,
         })),
         records: source.records.map((record) => {
           const recordId = newId("record");
@@ -1584,6 +1805,7 @@ export function useForgeStructuredData({
         id: newId("field"),
         name: input?.name?.trim() || "New Field",
         type,
+        selectOptions: fieldSupportsOptions(type) ? defaultSelectOptions() : undefined,
         options: fieldSupportsOptions(type) ? ["Option 1", "Option 2"] : undefined,
         description: "New structured field",
       };
@@ -1609,18 +1831,40 @@ export function useForgeStructuredData({
           if (field.id !== fieldId) {
             return field;
           }
+          const requestedType = updates.type ?? field.type;
+          const incomingSelectOptions =
+            updates.selectOptions !== undefined
+              ? updates.selectOptions
+              : updates.options !== undefined
+                ? normalizeSelectOptions(undefined, updates.options)
+                : field.selectOptions;
+          const nextSelectOptions = fieldSupportsOptions(requestedType)
+            ? incomingSelectOptions && incomingSelectOptions.length
+              ? incomingSelectOptions.map((option) => ({ ...option }))
+              : defaultSelectOptions()
+            : undefined;
+          const hasDefaultValueUpdate = Object.prototype.hasOwnProperty.call(
+            updates,
+            "defaultValue",
+          );
           const nextField = {
             ...field,
             ...updates,
             id: field.id,
             name: updates.name?.trim() || field.name,
-            options:
-              updates.type && !fieldSupportsOptions(updates.type)
-                ? undefined
-                : updates.type && fieldSupportsOptions(updates.type)
-                  ? (updates.options ?? field.options ?? ["Option 1", "Option 2"])
-                  : (updates.options ?? field.options),
+            type: requestedType,
+            selectOptions: nextSelectOptions,
+            options: nextSelectOptions?.map((option) => option.label),
           };
+          const defaultValue = normalizeDefaultValue(
+            hasDefaultValueUpdate ? updates.defaultValue : field.defaultValue,
+            nextField,
+          );
+          if (defaultValue !== undefined) {
+            nextField.defaultValue = defaultValue;
+          } else {
+            delete nextField.defaultValue;
+          }
           return nextField;
         }),
         records: table.records.map((record) => {
@@ -1628,7 +1872,26 @@ export function useForgeStructuredData({
           if (!field) {
             return record;
           }
-          const nextField = { ...field, ...updates, id: field.id };
+          const requestedType = updates.type ?? field.type;
+          const incomingSelectOptions =
+            updates.selectOptions !== undefined
+              ? updates.selectOptions
+              : updates.options !== undefined
+                ? normalizeSelectOptions(undefined, updates.options)
+                : field.selectOptions;
+          const nextSelectOptions = fieldSupportsOptions(requestedType)
+            ? incomingSelectOptions && incomingSelectOptions.length
+              ? incomingSelectOptions.map((option) => ({ ...option }))
+              : defaultSelectOptions()
+            : undefined;
+          const nextField = {
+            ...field,
+            ...updates,
+            id: field.id,
+            type: requestedType,
+            selectOptions: nextSelectOptions,
+            options: nextSelectOptions?.map((option) => option.label),
+          };
           return {
             ...record,
             values: {
@@ -1658,6 +1921,11 @@ export function useForgeStructuredData({
         id: newId("field"),
         name: `${source.name} Copy`,
         options: source.options ? [...source.options] : undefined,
+        selectOptions: source.selectOptions
+          ? source.selectOptions.map((option) => ({ ...option }))
+          : undefined,
+        defaultValue:
+          source.defaultValue !== undefined ? cloneValue(source.defaultValue) : undefined,
       };
       await updateActiveTable((table) => ({
         ...table,

@@ -155,6 +155,70 @@ describe("forge structured data metadata", () => {
     });
   });
 
+  it("normalizes live field configuration metadata", () => {
+    const base = forgeStructuredDataTestUtils.normalizeBase(
+      app({
+        metadata: {
+          appForge: {
+            structured: {
+              baseId: "base-existing",
+              activeTableId: "table-review",
+              updatedAt: "2026-04-25T21:00:00.000Z",
+              tables: [
+                {
+                  id: "table-review",
+                  name: "Reviews",
+                  fields: [
+                    {
+                      id: "status",
+                      name: "Status",
+                      type: "single_select",
+                      description: "Review state",
+                      required: true,
+                      defaultValue: "Review",
+                      selectOptions: [
+                        { id: "opt-plan", label: "Planning", color: "sky" },
+                        { id: "opt-review", label: "Review", color: "amber" },
+                      ],
+                    },
+                    {
+                      id: "legacy",
+                      name: "Legacy",
+                      type: "multi_select",
+                      options: ["One", "Two"],
+                      defaultValue: "One,Two",
+                    },
+                  ],
+                  records: [],
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    expect(base.tables[0]?.fields[0]).toMatchObject({
+      id: "status",
+      description: "Review state",
+      required: true,
+      defaultValue: "Review",
+      options: ["Planning", "Review"],
+      selectOptions: [
+        { id: "opt-plan", label: "Planning", color: "sky" },
+        { id: "opt-review", label: "Review", color: "amber" },
+      ],
+    });
+    expect(base.tables[0]?.fields[1]).toMatchObject({
+      options: ["One", "Two"],
+      selectOptions: [
+        expect.objectContaining({ label: "One" }),
+        expect.objectContaining({ label: "Two" }),
+      ],
+      defaultValue: ["One", "Two"],
+    });
+  });
+
   it("seeds empty structured bases with the default TableForge table", () => {
     const base = forgeStructuredDataTestUtils.normalizeBase(
       app({
@@ -296,6 +360,37 @@ describe("forge structured data metadata", () => {
     expect(forgeStructuredDataTestUtils.coerceValueForField("Review", selectField)).toBe("Review");
   });
 
+  it("uses configured field defaults for new record values", () => {
+    expect(
+      forgeStructuredDataTestUtils.defaultValueForField({
+        id: "score",
+        name: "Score",
+        type: "number",
+        defaultValue: 7,
+      }),
+    ).toBe(7);
+    expect(
+      forgeStructuredDataTestUtils.defaultValueForField({
+        id: "done",
+        name: "Done",
+        type: "checkbox",
+        defaultValue: true,
+      }),
+    ).toBe(true);
+    expect(
+      forgeStructuredDataTestUtils.defaultValueForField({
+        id: "status",
+        name: "Status",
+        type: "single_select",
+        defaultValue: "Review",
+        selectOptions: [
+          { id: "opt-plan", label: "Planning", color: "sky" },
+          { id: "opt-review", label: "Review", color: "amber" },
+        ],
+      }),
+    ).toBe("Review");
+  });
+
   it("builds gateway mirror calls for table and record mutations", () => {
     const base = forgeStructuredDataTestUtils.normalizeBase(
       app({
@@ -338,7 +433,7 @@ describe("forge structured data metadata", () => {
       revision: 0,
       tables: [expect.objectContaining({ id: "table-review", revision: 0 })],
     });
-    expect(tableCalls[0]?.params.expectedRevision).toBe(0);
+    expect(tableCalls[0]?.params.expectedRevision).toBeUndefined();
 
     const recordCalls = forgeStructuredDataTestUtils.buildGatewayMirrorCalls(base, {
       kind: "record.put",
@@ -348,8 +443,8 @@ describe("forge structured data metadata", () => {
     expect(recordCalls.map((call) => call.method)).toEqual(["appforge.bases.put"]);
     expect(recordCalls[0]?.params).toMatchObject({
       base: expect.objectContaining({ id: "base-existing", revision: 0 }),
-      expectedRevision: 0,
     });
+    expect(recordCalls[0]?.params.expectedRevision).toBeUndefined();
   });
 
   it("preserves gateway revisions when building gateway write calls", () => {

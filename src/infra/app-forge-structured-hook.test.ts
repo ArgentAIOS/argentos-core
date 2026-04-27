@@ -125,7 +125,7 @@ describe("useForgeStructuredData", () => {
     vi.restoreAllMocks();
   });
 
-  it("saves metadata through the browser-safe route when gateway and workflow events fail", async () => {
+  it("saves metadata through the same-origin browser-safe route when gateway and workflow events fail", async () => {
     const host = installDom("?token=secret-token");
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const gatewayRequest: GatewayRequestFn = vi.fn(async () => {
@@ -134,9 +134,7 @@ describe("useForgeStructuredData", () => {
     const emitWorkflowEvent = vi.fn(async () => {
       throw new Error("signal is aborted without reason");
     });
-    const fetch = vi.fn(async () => {
-      throw new Error("fetch fallback should not be used");
-    });
+    const fetch = vi.fn(async () => ({ ok: true }));
     vi.stubGlobal("fetch", fetch);
 
     let result: StructuredDataResult | null = null;
@@ -167,17 +165,25 @@ describe("useForgeStructuredData", () => {
     });
     await act(async () => {});
     const saved = result as StructuredDataResult;
-    const xhr = FakeXMLHttpRequest.latest;
 
-    expect(saved.saveStatus).toMatchObject({ kind: "saved", message: "Saved" });
+    expect(saved.saveStatus).toMatchObject({
+      kind: "degraded",
+      message: "Saved to metadata fallback",
+    });
     expect(saved.error).toBeNull();
     expect(saved.activeTable?.records).toHaveLength(6);
-    expect(xhr?.method).toBe("POST");
-    expect(xhr?.url).toBe("http://127.0.0.1:9242/api/apps/app-1/appforge-metadata");
-    expect(xhr?.getRequestHeader("content-type")).toBe("text/plain;charset=UTF-8");
-    expect(xhr?.getRequestHeader("authorization")).toBe("Bearer secret-token");
-    expect(typeof xhr?.body === "string" ? xhr.body : "").toContain('"metadata"');
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/apps/app-1/appforge-metadata",
+      expect.objectContaining({
+        body: expect.stringContaining('"metadata"'),
+        method: "POST",
+      }),
+    );
+    const fetchInit = fetch.mock.calls[0]?.[1] as RequestInit | undefined;
+    const headers = new Headers(fetchInit?.headers);
+    expect(headers.get("authorization")).toBe("Bearer secret-token");
+    expect(headers.get("content-type")).toBe("text/plain;charset=UTF-8");
+    expect(FakeXMLHttpRequest.latest).toBeNull();
     expect(emitWorkflowEvent).toHaveBeenCalledOnce();
   });
 });
