@@ -28,6 +28,7 @@ Recommended environment variables:
 - `HUBSPOT_WEBHOOK_SECRET`
 
 The connector resolves `HUBSPOT_ACCESS_TOKEN` and `HUBSPOT_PORTAL_ID` from operator-controlled service keys first, with direct environment variables and legacy `AOS_HUBSPOT_*` names kept only as local harness fallbacks.
+Scoped service-key entries must be injected by the operator runtime and are not bypassed with local env. Optional service keys include `HUBSPOT_ACCOUNT_ALIAS`, `HUBSPOT_APP_ID`, `HUBSPOT_WEBHOOK_SECRET`, and `HUBSPOT_BASE_URL`.
 
 `health` now checks both local configuration and a lightweight HubSpot API probe.
 
@@ -68,3 +69,4 @@ python3 aos-hubspot/installer/preflight_hubspot.py --require-auth --json
 - `capabilities`, `health`, `config show`, and `doctor` are implemented.
 - `owner.list`, `pipeline.list`, `contact.*` read paths, `company.*` read paths, `deal.*` read paths, and `ticket.*` read paths are live.
 - `owner.assign`, `contact.create`, `contact.update`, `company.create`, `company.update`, `deal.create`, `deal.update_stage`, `ticket.create`, `ticket.update_status`, and `note.create` now execute live HubSpot API mutations behind the existing permission gates.
+- Production live-write smoke is not claimed until tested against an operator HubSpot portal.

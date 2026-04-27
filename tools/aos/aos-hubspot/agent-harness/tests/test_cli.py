@@ -1,11 +1,13 @@
 import json
 from pathlib import Path
+import subprocess
 
 from click.testing import CliRunner
 import pytest
 
 import cli_aos.hubspot.bridge as bridge
 import cli_aos.hubspot.commands as commands
+import cli_aos.hubspot.config as hubspot_config
 import cli_aos.hubspot.runtime as runtime
 import cli_aos.hubspot.service_keys as service_keys
 from cli_aos.hubspot.cli import cli
@@ -14,6 +16,20 @@ from cli_aos.hubspot.cli import cli
 AGENT_HARNESS_ROOT = Path(__file__).resolve().parents[1]
 CONNECTOR_PATH = AGENT_HARNESS_ROOT.parent / "connector.json"
 PERMISSIONS_PATH = AGENT_HARNESS_ROOT / "permissions.json"
+ALL_ENV_KEYS = (
+    "HUBSPOT_ACCESS_TOKEN",
+    "AOS_HUBSPOT_ACCESS_TOKEN",
+    "HUBSPOT_PORTAL_ID",
+    "AOS_HUBSPOT_PORTAL_ID",
+    "HUBSPOT_ACCOUNT_ALIAS",
+    "AOS_HUBSPOT_ACCOUNT_ALIAS",
+    "HUBSPOT_APP_ID",
+    "AOS_HUBSPOT_APP_ID",
+    "HUBSPOT_WEBHOOK_SECRET",
+    "AOS_HUBSPOT_WEBHOOK_SECRET",
+    "HUBSPOT_BASE_URL",
+    "AOS_HUBSPOT_BASE_URL",
+)
 
 
 def invoke_json(args: list[str]) -> dict:
@@ -22,13 +38,77 @@ def invoke_json(args: list[str]) -> dict:
     return json.loads(result.output)
 
 
-def _service_key_map(values: dict[str, str]):
-    return lambda variable: values.get(variable)
+def write_service_keys(tmp_path: Path, values: dict[str, str], *, extra: dict | None = None) -> Path:
+    path = tmp_path / "service-keys.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "keys": [
+                    {
+                        "id": f"sk-{key}",
+                        "name": key,
+                        "variable": key,
+                        "value": value,
+                        "enabled": True,
+                        **(extra or {}),
+                    }
+                    for key, value in values.items()
+                ],
+            }
+        )
+    )
+    return path
+
+
+def encrypt_secret(tmp_path: Path, plaintext: str) -> str:
+    home = tmp_path / "home"
+    key_dir = home / ".argentos"
+    key_dir.mkdir(parents=True, exist_ok=True)
+    (key_dir / ".master-key").write_text("11" * 32)
+    script = r"""
+const { createCipheriv } = require("node:crypto");
+const plaintext = process.argv[1];
+const key = Buffer.from("11".repeat(32), "hex");
+const iv = Buffer.from("22".repeat(12), "hex");
+const cipher = createCipheriv("aes-256-gcm", key, iv);
+let encrypted = cipher.update(plaintext, "utf8", "hex");
+encrypted += cipher.final("hex");
+const tag = cipher.getAuthTag().toString("hex");
+process.stdout.write(`enc:v1:${iv.toString("hex")}:${tag}:${encrypted}`);
+"""
+    result = subprocess.run(
+        ["node", "-e", script, plaintext],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+    )
+    return result.stdout
+
+
+def _service_key_details_map(values: dict[str, str]):
+    def fake_service_key_details(variable: str, ctx_obj=None, default=None):  # noqa: ANN001
+        value = values.get(variable)
+        if value:
+            return {"value": value, "present": True, "usable": True, "source": "service-keys", "variable": variable}
+        fallback = default or ""
+        if fallback:
+            return {"value": fallback, "present": False, "usable": True, "source": "default", "variable": variable}
+        return {"value": "", "present": False, "usable": False, "source": "missing", "variable": variable}
+
+    return fake_service_key_details
+
+
+def _clear_env(monkeypatch) -> None:
+    for key in ALL_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
 
 
 @pytest.fixture(autouse=True)
-def no_operator_service_keys_by_default(monkeypatch):
-    monkeypatch.setattr(service_keys, "resolve_service_key", lambda variable: None)
+def no_operator_service_keys_by_default(monkeypatch, tmp_path):
+    monkeypatch.setattr(service_keys, "SERVICE_KEYS_PATH", tmp_path / "missing-service-keys.json")
+    _clear_env(monkeypatch)
 
 
 def test_manifest_and_permissions_are_in_sync():
@@ -41,14 +121,25 @@ def test_manifest_and_permissions_are_in_sync():
     assert "config.show" in manifest_command_ids
     assert "doctor" in manifest_command_ids
     assert set(manifest_command_ids) == set(permissions.keys())
+    assert manifest["scope"]["live_read_available"] is True
+    assert manifest["scope"]["write_bridge_available"] is True
+    assert manifest["scope"]["live_write_smoke_tested"] is False
+    assert "HUBSPOT_ACCESS_TOKEN" in manifest["scope"]["required"]
 
 
 def test_capabilities_json():
     payload = invoke_json(["capabilities"])
     command_ids = {command["id"] for command in payload["data"]["commands"]}
+    manifest = json.loads(CONNECTOR_PATH.read_text())
 
     assert payload["tool"] == "aos-hubspot"
     assert payload["data"]["manifest_schema_version"] == "1.0.0"
+    assert payload["data"]["auth"] == manifest["auth"]
+    assert payload["data"]["scope"] == manifest["scope"]
+    assert payload["data"]["scope"]["live_read_available"] is True
+    assert payload["data"]["scope"]["write_bridge_available"] is True
+    assert payload["data"]["scope"]["live_write_smoke_tested"] is False
+    assert payload["data"]["scope"]["required"] == ["HUBSPOT_ACCESS_TOKEN", "HUBSPOT_PORTAL_ID"]
     assert "contact.list" in command_ids
     assert "capabilities" in command_ids
     assert "doctor" in command_ids
@@ -112,8 +203,8 @@ def test_config_show_uses_service_key_resolver_when_env_missing(monkeypatch):
     monkeypatch.delenv("HUBSPOT_ACCESS_TOKEN", raising=False)
     monkeypatch.setattr(
         service_keys,
-        "resolve_service_key",
-        _service_key_map({"HUBSPOT_PORTAL_ID": "123", "HUBSPOT_ACCESS_TOKEN": "service-token"}),
+        "service_key_details",
+        _service_key_details_map({"HUBSPOT_PORTAL_ID": "123", "HUBSPOT_ACCESS_TOKEN": "service-token"}),
     )
     monkeypatch.setattr(
         bridge,
@@ -134,8 +225,8 @@ def test_config_show_prefers_operator_service_keys_over_local_env(monkeypatch):
     monkeypatch.setenv("HUBSPOT_ACCESS_TOKEN", "env-token")
     monkeypatch.setattr(
         service_keys,
-        "resolve_service_key",
-        _service_key_map({"HUBSPOT_PORTAL_ID": "svc-portal", "HUBSPOT_ACCESS_TOKEN": "svc-token"}),
+        "service_key_details",
+        _service_key_details_map({"HUBSPOT_PORTAL_ID": "svc-portal", "HUBSPOT_ACCESS_TOKEN": "svc-token"}),
     )
     monkeypatch.setattr(
         bridge,
@@ -150,6 +241,169 @@ def test_config_show_prefers_operator_service_keys_over_local_env(monkeypatch):
     assert payload["data"]["portal_id"] == "svc-portal"
     assert payload["data"]["portal_id_source_kind"] == "service-keys"
     assert payload["data"]["access_token_source_kind"] == "service-keys"
+
+
+def test_encrypted_repo_service_key_decrypts_with_master_key(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    key_dir = home / ".argentos"
+    key_dir.mkdir(parents=True, exist_ok=True)
+    (key_dir / ".master-key").write_text("11" * 32)
+    monkeypatch.setenv("HOME", str(home))
+    encrypted = encrypt_secret(tmp_path, "operator-token")
+    monkeypatch.setattr(
+        service_keys,
+        "SERVICE_KEYS_PATH",
+        write_service_keys(tmp_path, {"HUBSPOT_ACCESS_TOKEN": encrypted}),
+    )
+
+    resolved = hubspot_config.resolve_runtime_values({})
+    assert resolved["access_token"] == "operator-token"
+    assert resolved["access_token_source_kind"] == "repo-service-key"
+    assert resolved["access_token_usable"] is True
+
+
+def test_unreadable_encrypted_repo_service_key_falls_back_to_env_like_core_resolver(monkeypatch, tmp_path):
+    monkeypatch.setenv("HUBSPOT_ACCESS_TOKEN", "env-token")
+    monkeypatch.setattr(
+        service_keys,
+        "SERVICE_KEYS_PATH",
+        write_service_keys(tmp_path, {"HUBSPOT_ACCESS_TOKEN": "enc:v1:abc:def:ghi"}),
+    )
+
+    resolved = hubspot_config.resolve_runtime_values({})
+    assert resolved["access_token"] == "env-token"
+    assert resolved["access_token_source_kind"] == "env_fallback"
+    assert resolved["access_token_usable"] is True
+
+
+def test_scoped_repo_service_key_blocks_env_fallback(monkeypatch, tmp_path):
+    monkeypatch.setenv("HUBSPOT_ACCESS_TOKEN", "env-token")
+    monkeypatch.setattr(
+        service_keys,
+        "SERVICE_KEYS_PATH",
+        write_service_keys(tmp_path, {"HUBSPOT_ACCESS_TOKEN": "repo-token"}, extra={"allowedRoles": ["operator"]}),
+    )
+
+    resolved = hubspot_config.resolve_runtime_values({})
+    assert resolved["access_token"] is None
+    assert resolved["access_token_source_kind"] == "repo-service-key-scoped"
+    assert resolved["access_token_usable"] is False
+
+
+def test_live_read_uses_operator_context_keys(monkeypatch):
+    calls: list[dict] = []
+
+    def fake_urlopen(req, timeout):  # noqa: ANN001
+        calls.append(
+            {
+                "url": req.full_url,
+                "auth": req.headers.get("Authorization"),
+                "method": req.get_method(),
+                "timeout": timeout,
+            }
+        )
+
+        class FakeResponse:
+            class Headers:
+                def get_content_charset(self, default):
+                    return default
+
+            headers = Headers()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def read(self):
+                return json.dumps({"results": [{"id": "1", "properties": {"email": "ada@example.com"}}]}).encode()
+
+        return FakeResponse()
+
+    monkeypatch.setattr(runtime.request, "urlopen", fake_urlopen)
+    payload = runtime.list_objects(
+        {
+            "service_keys": {
+                "aos-hubspot": {
+                    "access_token": "operator-context-token",
+                    "portal_id": "portal-123",
+                    "base_url": "https://operator.example.test",
+                }
+            }
+        },
+        resource="contact",
+        limit=1,
+        after=None,
+        properties=["email"],
+    )
+
+    assert payload["count"] == 1
+    assert calls[0]["method"] == "GET"
+    assert calls[0]["url"].startswith("https://operator.example.test/crm/v3/objects/contacts")
+    assert calls[0]["auth"] == "Bearer operator-context-token"
+
+
+def test_live_write_uses_operator_context_keys(monkeypatch):
+    calls: list[dict] = []
+
+    def fake_urlopen(req, timeout):  # noqa: ANN001
+        calls.append(
+            {
+                "url": req.full_url,
+                "auth": req.headers.get("Authorization"),
+                "method": req.get_method(),
+                "timeout": timeout,
+                "body": json.loads(req.data.decode()) if req.data else None,
+            }
+        )
+
+        class FakeResponse:
+            class Headers:
+                def get_content_charset(self, default):
+                    return default
+
+            headers = Headers()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def read(self):
+                return json.dumps(
+                    {
+                        "id": "contact-1",
+                        "createdAt": "2026-03-18T00:00:00Z",
+                        "updatedAt": "2026-03-18T00:00:00Z",
+                        "properties": {"email": "ada@example.com"},
+                    }
+                ).encode()
+
+        return FakeResponse()
+
+    monkeypatch.setattr(runtime.request, "urlopen", fake_urlopen)
+    payload = runtime.create_object(
+        {
+            "service_keys": {
+                "aos-hubspot": {
+                    "access_token": "operator-write-token",
+                    "portal_id": "portal-123",
+                    "base_url": "https://operator.example.test",
+                }
+            }
+        },
+        resource="contact",
+        properties={"email": "ada@example.com"},
+        command_id="contact.create",
+    )
+
+    assert payload["executed"] is True
+    assert calls[0]["method"] == "POST"
+    assert calls[0]["url"] == "https://operator.example.test/crm/v3/objects/contacts"
+    assert calls[0]["auth"] == "Bearer operator-write-token"
+    assert calls[0]["body"] == {"properties": {"email": "ada@example.com"}}
 
 
 def test_contact_list_uses_runtime(monkeypatch):
