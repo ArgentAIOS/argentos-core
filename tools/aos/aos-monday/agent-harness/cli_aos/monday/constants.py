@@ -14,6 +14,8 @@ MONDAY_API_VERSION_ENV = "MONDAY_API_VERSION"
 MONDAY_API_URL_ENV = "MONDAY_API_URL"
 MONDAY_WORKSPACE_ENV = "MONDAY_WORKSPACE_ID"
 MONDAY_BOARD_ENV = "MONDAY_BOARD_ID"
+MONDAY_ITEM_ENV = "MONDAY_ITEM_ID"
+MONDAY_COLUMN_ENV = "MONDAY_COLUMN_ID"
 
 HARNESS_ROOT = Path(__file__).resolve().parents[2]
 CONNECTOR_PATH = HARNESS_ROOT.parent / "connector.json"
@@ -30,12 +32,21 @@ AUTH_DESCRIPTOR = {
     "kind": "service-key",
     "required": True,
     "service_keys": [MONDAY_TOKEN_ENV],
+    "optional_scope_service_keys": [
+        MONDAY_API_URL_ENV,
+        MONDAY_API_VERSION_ENV,
+        MONDAY_WORKSPACE_ENV,
+        MONDAY_BOARD_ENV,
+        MONDAY_ITEM_ENV,
+        MONDAY_COLUMN_ENV,
+    ],
     "interactive_setup": [
         "Create or copy a monday.com personal API token from the Developer Center.",
-        f"Add {MONDAY_TOKEN_ENV} in API Keys before enabling any worker-visible commands.",
-        f"Optionally set {MONDAY_API_VERSION_ENV} to pin a stable monday API version; the connector defaults to the current stable release.",
+        f"Add {MONDAY_TOKEN_ENV} in operator-controlled service keys before enabling worker-visible commands.",
+        f"Optionally set {MONDAY_API_URL_ENV} and {MONDAY_API_VERSION_ENV} as operator-controlled service keys for endpoint/version pinning.",
+        f"Optionally set {MONDAY_WORKSPACE_ENV}, {MONDAY_BOARD_ENV}, {MONDAY_ITEM_ENV}, and {MONDAY_COLUMN_ENV} as operator-controlled scope defaults.",
         "Share the boards and workspaces you want this worker to read with the account that owns the token.",
-        "Live reads and writes are enabled for account, workspace, board, item, and update commands.",
+        "Read commands and consequential write commands are live GraphQL operations; writes require write mode or higher.",
     ],
 }
 
