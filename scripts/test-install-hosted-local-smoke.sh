@@ -32,6 +32,8 @@ echo "==> Run isolated hosted installer smoke"
 
 echo "==> Verify isolated install outputs"
 test -x "$BIN_DIR/argent"
+grep -F "export ARGENT_GIT_DIR=" "$BIN_DIR/argent" >/dev/null
+grep -F "export ARGENT_INSTALL_PACKAGE_DIR=" "$BIN_DIR/argent" >/dev/null
 test -f "$TEST_HOME/.argentos/vaults/ArgentOS Core Docs/Home.md"
 "$BIN_DIR/argent" --help >/dev/null
 

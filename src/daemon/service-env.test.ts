@@ -245,10 +245,25 @@ describe("buildServiceEnvironment", () => {
     expect(env.ARGENT_SERVICE_MARKER).toBe("argent");
     expect(env.ARGENT_SERVICE_KIND).toBe("gateway");
     expect(typeof env.ARGENT_SERVICE_VERSION).toBe("string");
+    expect(env.ARGENT_INSTALL_PACKAGE_DIR).toBe("/home/user/.argentos/lib/node_modules/argentos");
     expect(env.ARGENT_SYSTEMD_UNIT).toBe("argent-gateway.service");
     if (process.platform === "darwin") {
       expect(env.ARGENT_LAUNCHD_LABEL).toBe("ai.argent.gateway");
     }
+  });
+
+  it("passes hosted git and runtime snapshot paths to service environments", () => {
+    const env = buildServiceEnvironment({
+      env: {
+        HOME: "/home/user",
+        ARGENT_GIT_DIR: "/home/user/argentos",
+        ARGENT_INSTALL_PACKAGE_DIR: "/home/user/.argentos/lib/node_modules/argentos",
+      },
+      port: 18789,
+    });
+    expect(env.ARGENT_GIT_DIR).toBe("/home/user/argentos");
+    expect(env.ARGENTOS_GIT_DIR).toBe("/home/user/argentos");
+    expect(env.ARGENT_INSTALL_PACKAGE_DIR).toBe("/home/user/.argentos/lib/node_modules/argentos");
   });
 
   it("uses profile-specific unit and label", () => {

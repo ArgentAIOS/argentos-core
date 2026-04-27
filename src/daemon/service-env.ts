@@ -159,6 +159,13 @@ export function buildServiceEnvironment(params: {
 }): Record<string, string | undefined> {
   const { env, port, token, launchdLabel, dashboardApiToken } = params;
   const profile = env.ARGENT_PROFILE;
+  const installPackageDir =
+    env.ARGENT_INSTALL_PACKAGE_DIR ||
+    (env.ARGENT_STATE_DIR
+      ? path.join(env.ARGENT_STATE_DIR, "lib", "node_modules", "argentos")
+      : env.HOME
+        ? path.join(env.HOME, ".argentos", "lib", "node_modules", "argentos")
+        : undefined);
   const resolvedLaunchdLabel =
     launchdLabel ||
     (process.platform === "darwin" ? resolveGatewayLaunchAgentLabel(profile) : undefined);
@@ -171,6 +178,9 @@ export function buildServiceEnvironment(params: {
     ARGENT_PROFILE: profile,
     ARGENT_STATE_DIR: stateDir,
     ARGENT_CONFIG_PATH: configPath,
+    ARGENT_GIT_DIR: env.ARGENT_GIT_DIR || env.ARGENTOS_GIT_DIR,
+    ARGENTOS_GIT_DIR: env.ARGENTOS_GIT_DIR || env.ARGENT_GIT_DIR,
+    ARGENT_INSTALL_PACKAGE_DIR: installPackageDir,
     ARGENT_GATEWAY_PORT: String(port),
     ARGENT_GATEWAY_TOKEN: token,
     DASHBOARD_API_TOKEN: dashboardApiToken,

@@ -768,6 +768,7 @@ write_git_wrapper() {
 #!/usr/bin/env bash
 set -euo pipefail
 export ARGENT_GIT_DIR=${escaped_git_dir}
+export ARGENT_INSTALL_PACKAGE_DIR=${escaped_package_dir}
 ${PATH_LINE}
 cd ${escaped_package_dir}
 exec ${escaped_node_bin} ${escaped_entry} "\$@"
