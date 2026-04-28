@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import postgres from "postgres";
 import type { ArgentConfig } from "../../config/config.js";
-import type { WorkflowDefinition } from "../../infra/workflow-types.js";
+import type { WorkflowDefinition, WorkflowNode } from "../../infra/workflow-types.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { createOutboundSendDeps } from "../../cli/deps.js";
 import {
@@ -277,27 +277,25 @@ export function workflowRowWithCanvasOverride(
   row: WorkflowRow,
   params: Record<string, unknown>,
 ): WorkflowRow {
-  const canvasData = optionalObject(params, "canvasData");
-  const nodes =
-    optionalArray(params, "nodes") ??
-    (canvasData && Array.isArray(canvasData.nodes) ? (canvasData.nodes as unknown[]) : undefined);
-  const edges =
-    optionalArray(params, "edges") ??
-    (canvasData && Array.isArray(canvasData.edges) ? (canvasData.edges as unknown[]) : undefined);
-  const canvasLayout = optionalObject(params, "canvasLayout") ?? canvasData;
-  if (!nodes && !edges && !canvasLayout) {
+  const payload = workflowGraphPayload(params, {
+    nodes: Array.isArray(row.nodes) ? row.nodes : [],
+    edges: Array.isArray(row.edges) ? row.edges : [],
+    canvasLayout: row.canvas_layout,
+  });
+  if (!payload.changed) {
     return row;
   }
   const deploymentStage =
     optionalDeploymentStage(params) ??
+    workflowDeploymentStageFromDefinition(payload.definition) ??
     (typeof row.deployment_stage === "string" ? row.deployment_stage : undefined);
   const normalized = normalizeWorkflow({
     id: row.id,
     name: row.name,
     description: row.description ?? undefined,
-    nodes: nodes ?? (Array.isArray(row.nodes) ? row.nodes : []),
-    edges: edges ?? (Array.isArray(row.edges) ? row.edges : []),
-    canvasLayout: canvasLayout ?? row.canvas_layout,
+    nodes: payload.nodes,
+    edges: payload.edges,
+    canvasLayout: payload.canvasLayout,
     defaultOnError: row.default_on_error ?? undefined,
     maxRunDurationMs:
       typeof row.max_run_duration_ms === "number" ? row.max_run_duration_ms : undefined,
@@ -342,14 +340,17 @@ function optionalObject(
   params: Record<string, unknown>,
   key: string,
 ): Record<string, unknown> | undefined {
-  const v = params[key];
-  if (v === undefined || v === null) {
+  return recordValue(params[key], key);
+}
+
+function recordValue(value: unknown, label: string): Record<string, unknown> | undefined {
+  if (value === undefined || value === null) {
     return undefined;
   }
-  if (typeof v !== "object" || Array.isArray(v)) {
-    throw new Error(`${key} must be an object`);
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
   }
-  return v as Record<string, unknown>;
+  return value as Record<string, unknown>;
 }
 
 function optionalArray(params: Record<string, unknown>, key: string): unknown[] | undefined {
@@ -361,6 +362,102 @@ function optionalArray(params: Record<string, unknown>, key: string): unknown[] 
     throw new Error(`${key} must be an array`);
   }
   return v;
+}
+
+function arrayValue(value: unknown, label: string): unknown[] | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} must be an array`);
+  }
+  return value;
+}
+
+function numberValue(value: unknown, label: string): number | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${label} must be a number`);
+  }
+  return value;
+}
+
+function optionalStringValue(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+function workflowDefinitionParam(params: Record<string, unknown>) {
+  return optionalObject(params, "definition") ?? optionalObject(params, "workflowDefinition");
+}
+
+function workflowDeploymentStageFromDefinition(
+  definition: Record<string, unknown> | undefined,
+): WorkflowDefinition["deploymentStage"] | undefined {
+  const stage = optionalStringValue(definition?.deploymentStage);
+  if (!stage) {
+    return undefined;
+  }
+  if (stage === "simulate" || stage === "shadow" || stage === "limited_live" || stage === "live") {
+    return stage;
+  }
+  throw new Error("definition.deploymentStage must be simulate, shadow, limited_live, or live");
+}
+
+function workflowGraphPayload(
+  params: Record<string, unknown>,
+  fallback?: { nodes?: unknown[]; edges?: unknown[]; canvasLayout?: unknown },
+) {
+  const canvasData = optionalObject(params, "canvasData");
+  const explicitCanvasLayout = optionalObject(params, "canvasLayout");
+  const definition = workflowDefinitionParam(params);
+  const definitionCanvasLayout = recordValue(definition?.canvasLayout, "definition.canvasLayout");
+  const nodes =
+    optionalArray(params, "nodes") ??
+    arrayValue(canvasData?.nodes, "canvasData.nodes") ??
+    arrayValue(definition?.nodes, "definition.nodes") ??
+    fallback?.nodes ??
+    [];
+  const edges =
+    optionalArray(params, "edges") ??
+    arrayValue(canvasData?.edges, "canvasData.edges") ??
+    arrayValue(definition?.edges, "definition.edges") ??
+    fallback?.edges ??
+    [];
+  const canvasLayout =
+    explicitCanvasLayout ?? canvasData ?? definitionCanvasLayout ?? fallback?.canvasLayout ?? {};
+  return {
+    nodes,
+    edges,
+    canvasLayout,
+    definition,
+    changed:
+      Boolean(explicitCanvasLayout) ||
+      Boolean(canvasData) ||
+      Boolean(definition) ||
+      params.nodes !== undefined ||
+      params.edges !== undefined,
+  };
+}
+
+export function derivedWorkflowTrigger(workflow: WorkflowDefinition) {
+  const trigger = workflow.nodes.find(
+    (node): node is Extract<WorkflowNode, { kind: "trigger" }> => {
+      return node.kind === "trigger";
+    },
+  );
+  if (!trigger) {
+    return { triggerType: undefined, triggerConfig: undefined };
+  }
+  return {
+    triggerType: trigger.triggerType,
+    triggerConfig: trigger.config,
+  };
 }
 
 function optionalWorkflowPackageFormat(
@@ -1435,36 +1532,42 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       const name = requireString(params, "name");
       const description = optionalString(params, "description") ?? null;
       const ownerAgentId = optionalString(params, "ownerAgentId") ?? "argent";
-      const canvasData = optionalObject(params, "canvasData");
-      const nodes =
-        optionalArray(params, "nodes") ??
-        (canvasData && Array.isArray(canvasData.nodes) ? (canvasData.nodes as unknown[]) : []);
-      const edges =
-        optionalArray(params, "edges") ??
-        (canvasData && Array.isArray(canvasData.edges) ? (canvasData.edges as unknown[]) : []);
-      const canvasLayout = optionalObject(params, "canvasLayout") ?? canvasData ?? {};
-      const triggerType = optionalString(params, "triggerType") ?? null;
-      const triggerConfig = optionalObject(params, "triggerConfig") ?? null;
-      const defaultOnError = optionalObject(params, "defaultOnError") ?? {
-        strategy: "fail",
-        notifyOnError: true,
-      };
-      const maxRunDurationMs = optionalNumber(params, "maxRunDurationMs") ?? 3600000;
-      const maxRunCostUsd = optionalNumber(params, "maxRunCostUsd") ?? null;
-      const deploymentStage = optionalDeploymentStage(params) ?? "live";
+      const graph = workflowGraphPayload(params);
+      const defaultOnError = optionalObject(params, "defaultOnError") ??
+        recordValue(graph.definition?.defaultOnError, "definition.defaultOnError") ?? {
+          strategy: "fail",
+          notifyOnError: true,
+        };
+      const maxRunDurationMs =
+        optionalNumber(params, "maxRunDurationMs") ??
+        numberValue(graph.definition?.maxRunDurationMs, "definition.maxRunDurationMs") ??
+        3600000;
+      const maxRunCostUsd =
+        optionalNumber(params, "maxRunCostUsd") ??
+        numberValue(graph.definition?.maxRunCostUsd, "definition.maxRunCostUsd") ??
+        null;
+      const deploymentStage =
+        optionalDeploymentStage(params) ??
+        workflowDeploymentStageFromDefinition(graph.definition) ??
+        "live";
       const normalized = normalizeWorkflow({
         id,
         name,
         description: description ?? undefined,
-        nodes,
-        edges,
-        canvasLayout,
+        nodes: graph.nodes,
+        edges: graph.edges,
+        canvasLayout: graph.canvasLayout,
         defaultOnError:
           defaultOnError as unknown as import("../../infra/workflow-types.js").ErrorConfig,
         maxRunDurationMs,
         maxRunCostUsd: maxRunCostUsd ?? undefined,
         deploymentStage,
       });
+      const derivedTrigger = derivedWorkflowTrigger(normalized.workflow);
+      const triggerType =
+        optionalString(params, "triggerType") ?? derivedTrigger.triggerType ?? null;
+      const triggerConfig =
+        optionalObject(params, "triggerConfig") ?? derivedTrigger.triggerConfig ?? null;
 
       const [row] = await sql`
         INSERT INTO workflows (
@@ -1477,7 +1580,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           ${JSON.stringify(normalized.workflow.nodes)}::jsonb,
           ${JSON.stringify(normalized.workflow.edges)}::jsonb,
           ${JSON.stringify(normalized.canvasLayout)}::jsonb,
-          ${JSON.stringify(defaultOnError)}::jsonb, ${maxRunDurationMs},
+          ${JSON.stringify(normalized.workflow.defaultOnError)}::jsonb, ${maxRunDurationMs},
           ${maxRunCostUsd}, ${triggerType}, ${triggerConfig ? JSON.stringify(triggerConfig) : null}::jsonb,
           ${deploymentStage}
         )
@@ -1525,56 +1628,60 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       `;
 
       // Build SET clause dynamically
-      // Dashboard may send { canvasData: { nodes, edges } } instead of flat nodes/edges
-      const canvasData = optionalObject(params, "canvasData");
+      // Dashboard may send { canvasData: { nodes, edges } } and agent tools may send
+      // canonical { definition: { nodes, edges } }; both are valid persistence sources.
+      const graph = workflowGraphPayload(params, {
+        nodes: existing.nodes as unknown[],
+        edges: existing.edges as unknown[],
+        canvasLayout: existing.canvas_layout,
+      });
 
       const name = optionalString(params, "name");
       const description = optionalString(params, "description");
-      const nodes =
-        optionalArray(params, "nodes") ??
-        (canvasData && Array.isArray(canvasData.nodes)
-          ? (canvasData.nodes as unknown[])
-          : undefined);
-      const edges =
-        optionalArray(params, "edges") ??
-        (canvasData && Array.isArray(canvasData.edges)
-          ? (canvasData.edges as unknown[])
-          : undefined);
-      const canvasLayout = optionalObject(params, "canvasLayout") ?? canvasData;
       const triggerType = optionalString(params, "triggerType");
       const triggerConfig = optionalObject(params, "triggerConfig");
-      const defaultOnError = optionalObject(params, "defaultOnError");
-      const maxRunDurationMs = optionalNumber(params, "maxRunDurationMs");
-      const maxRunCostUsd = optionalNumber(params, "maxRunCostUsd");
-      const deploymentStage = optionalDeploymentStage(params);
+      const defaultOnError =
+        optionalObject(params, "defaultOnError") ??
+        recordValue(graph.definition?.defaultOnError, "definition.defaultOnError");
+      const maxRunDurationMs =
+        optionalNumber(params, "maxRunDurationMs") ??
+        numberValue(graph.definition?.maxRunDurationMs, "definition.maxRunDurationMs");
+      const maxRunCostUsd =
+        optionalNumber(params, "maxRunCostUsd") ??
+        numberValue(graph.definition?.maxRunCostUsd, "definition.maxRunCostUsd");
+      const deploymentStage =
+        optionalDeploymentStage(params) ?? workflowDeploymentStageFromDefinition(graph.definition);
       const isActive = optionalBoolean(params, "isActive");
       const nextFireAt = optionalString(params, "nextFireAt");
 
-      const normalized =
-        nodes || edges || canvasLayout
-          ? normalizeWorkflow({
-              id,
-              name: name ?? (existing.name as string),
-              description: description ?? (existing.description as string | undefined),
-              nodes: nodes ?? (existing.nodes as unknown[]),
-              edges: edges ?? (existing.edges as unknown[]),
-              canvasLayout: canvasLayout ?? existing.canvas_layout,
-              defaultOnError:
-                (defaultOnError as unknown as import("../../infra/workflow-types.js").ErrorConfig) ??
-                (existing.default_on_error as unknown as import("../../infra/workflow-types.js").ErrorConfig),
-              maxRunDurationMs: maxRunDurationMs ?? (existing.max_run_duration_ms as number),
-              maxRunCostUsd:
-                maxRunCostUsd ??
-                (typeof existing.max_run_cost_usd === "number"
-                  ? existing.max_run_cost_usd
-                  : undefined),
-              deploymentStage:
-                deploymentStage ??
-                (typeof existing.deployment_stage === "string"
-                  ? existing.deployment_stage
-                  : "live"),
-            })
-          : null;
+      const normalized = graph.changed
+        ? normalizeWorkflow({
+            id,
+            name: name ?? (existing.name as string),
+            description: description ?? (existing.description as string | undefined),
+            nodes: graph.nodes,
+            edges: graph.edges,
+            canvasLayout: graph.canvasLayout,
+            defaultOnError:
+              (defaultOnError as unknown as import("../../infra/workflow-types.js").ErrorConfig) ??
+              (existing.default_on_error as unknown as import("../../infra/workflow-types.js").ErrorConfig),
+            maxRunDurationMs: maxRunDurationMs ?? (existing.max_run_duration_ms as number),
+            maxRunCostUsd:
+              maxRunCostUsd ??
+              (typeof existing.max_run_cost_usd === "number"
+                ? existing.max_run_cost_usd
+                : undefined),
+            deploymentStage:
+              deploymentStage ??
+              workflowDeploymentStageFromDefinition({
+                deploymentStage: existing.deployment_stage,
+              }) ??
+              "live",
+          })
+        : null;
+      const derivedTrigger = normalized ? derivedWorkflowTrigger(normalized.workflow) : null;
+      const nextTriggerType = triggerType ?? derivedTrigger?.triggerType;
+      const nextTriggerConfig = triggerConfig ?? derivedTrigger?.triggerConfig;
 
       const [updated] = await sql`
         UPDATE workflows SET
@@ -1584,9 +1691,9 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           nodes = COALESCE(${normalized ? JSON.stringify(normalized.workflow.nodes) : null}::jsonb, nodes),
           edges = COALESCE(${normalized ? JSON.stringify(normalized.workflow.edges) : null}::jsonb, edges),
           canvas_layout = COALESCE(${normalized ? JSON.stringify(normalized.canvasLayout) : null}::jsonb, canvas_layout),
-          trigger_type = COALESCE(${triggerType ?? null}, trigger_type),
-          trigger_config = COALESCE(${triggerConfig ? JSON.stringify(triggerConfig) : null}::jsonb, trigger_config),
-          default_on_error = COALESCE(${defaultOnError ? JSON.stringify(defaultOnError) : null}::jsonb, default_on_error),
+          trigger_type = COALESCE(${nextTriggerType ?? null}, trigger_type),
+          trigger_config = COALESCE(${nextTriggerConfig ? JSON.stringify(nextTriggerConfig) : null}::jsonb, trigger_config),
+          default_on_error = COALESCE(${normalized ? JSON.stringify(normalized.workflow.defaultOnError) : defaultOnError ? JSON.stringify(defaultOnError) : null}::jsonb, default_on_error),
           max_run_duration_ms = COALESCE(${maxRunDurationMs ?? null}, max_run_duration_ms),
           max_run_cost_usd = COALESCE(${maxRunCostUsd ?? null}, max_run_cost_usd),
           deployment_stage = COALESCE(${deploymentStage ?? null}, deployment_stage),
@@ -1778,22 +1885,27 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       }
 
       const name = optionalString(params, "name") ?? "Untitled workflow";
-      const canvasData = optionalObject(params, "canvasData");
-      const nodes =
-        optionalArray(params, "nodes") ??
-        (canvasData && Array.isArray(canvasData.nodes) ? (canvasData.nodes as unknown[]) : []);
-      const edges =
-        optionalArray(params, "edges") ??
-        (canvasData && Array.isArray(canvasData.edges) ? (canvasData.edges as unknown[]) : []);
-      const canvasLayout = optionalObject(params, "canvasLayout") ?? canvasData ?? {};
+      const graph = workflowGraphPayload(params);
       const normalized = normalizeWorkflow({
         id: optionalString(params, "workflowId") ?? "draft",
         name,
         description: optionalString(params, "description"),
-        nodes,
-        edges,
-        canvasLayout,
-        deploymentStage: optionalDeploymentStage(params) ?? "live",
+        nodes: graph.nodes,
+        edges: graph.edges,
+        canvasLayout: graph.canvasLayout,
+        defaultOnError: (recordValue(
+          graph.definition?.defaultOnError,
+          "definition.defaultOnError",
+        ) ?? undefined) as unknown as import("../../infra/workflow-types.js").ErrorConfig,
+        maxRunDurationMs: numberValue(
+          graph.definition?.maxRunDurationMs,
+          "definition.maxRunDurationMs",
+        ),
+        maxRunCostUsd: numberValue(graph.definition?.maxRunCostUsd, "definition.maxRunCostUsd"),
+        deploymentStage:
+          optionalDeploymentStage(params) ??
+          workflowDeploymentStageFromDefinition(graph.definition) ??
+          "live",
       });
       const runtimeIssues = await validateWorkflowRuntimeCapabilities(normalized.workflow);
       const issues = [...normalized.issues, ...runtimeIssues];

@@ -7291,6 +7291,8 @@ export function WorkflowsWidget() {
             workflowId: newWf.id,
             canvasData: { nodes: newWf.nodes, edges: newWf.edges },
             canvasLayout: newWf.canvasLayout,
+            definition: newWf.definition,
+            deploymentStage: workflowDeploymentStage(newWf),
           });
         } catch {
           /* localStorage fallback already saved */

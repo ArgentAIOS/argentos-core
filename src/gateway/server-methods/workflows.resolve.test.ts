@@ -1,6 +1,10 @@
 import postgres from "postgres";
 import { describe, expect, it, vi } from "vitest";
-import { resolveRunnableWorkflowRow, workflowRowWithCanvasOverride } from "./workflows.js";
+import {
+  derivedWorkflowTrigger,
+  resolveRunnableWorkflowRow,
+  workflowRowWithCanvasOverride,
+} from "./workflows.js";
 
 type WorkflowSql = ReturnType<typeof postgres>;
 
@@ -109,6 +113,104 @@ describe("workflowRowWithCanvasOverride", () => {
         { id: "trigger", type: "trigger" },
         { id: "out", type: "output" },
       ],
+    });
+  });
+
+  it("uses a canonical definition payload when save params do not include flat nodes", () => {
+    const row = {
+      id: "wf-empty",
+      name: "Empty Saved Workflow",
+      nodes: [],
+      edges: [],
+      canvas_layout: { nodes: [], edges: [] },
+      deployment_stage: "live" as const,
+    };
+
+    const next = workflowRowWithCanvasOverride(row, {
+      definition: {
+        nodes: [
+          { id: "trigger", kind: "trigger", triggerType: "manual", config: {} },
+          {
+            id: "agent",
+            kind: "agent",
+            label: "Research",
+            config: {
+              agentId: "argent",
+              rolePrompt: "Research businesses in the 712 area code.",
+              timeoutMs: 300000,
+              evidenceRequired: true,
+            },
+          },
+          {
+            id: "out",
+            kind: "output",
+            label: "Results",
+            config: { outputType: "docpanel", title: "Results" },
+          },
+        ],
+        edges: [
+          { id: "e-trigger-agent", source: "trigger", target: "agent" },
+          { id: "e-agent-out", source: "agent", target: "out" },
+        ],
+        deploymentStage: "live",
+      },
+      canvasLayout: {
+        nodes: [
+          { id: "trigger", type: "trigger", data: { triggerType: "manual" } },
+          { id: "agent", type: "agentStep", data: { prompt: "Research businesses." } },
+          { id: "out", type: "output", data: { target: "doc_panel", title: "Results" } },
+        ],
+        edges: [
+          { id: "e-trigger-agent", source: "trigger", target: "agent" },
+          { id: "e-agent-out", source: "agent", target: "out" },
+        ],
+      },
+    });
+
+    expect(next.nodes?.map((node) => (node as { kind?: string }).kind)).toEqual([
+      "trigger",
+      "agent",
+      "output",
+    ]);
+    expect(next.edges).toHaveLength(2);
+    expect(next.canvas_layout).toMatchObject({
+      nodes: [
+        { id: "trigger", type: "trigger" },
+        { id: "agent", type: "agentStep" },
+        { id: "out", type: "output" },
+      ],
+      edges: [
+        { id: "e-trigger-agent", source: "trigger", target: "agent" },
+        { id: "e-agent-out", source: "agent", target: "out" },
+      ],
+    });
+  });
+
+  it("derives trigger persistence metadata from the normalized workflow", () => {
+    expect(
+      derivedWorkflowTrigger({
+        id: "wf-scheduled",
+        name: "Scheduled",
+        defaultOnError: { strategy: "fail", notifyOnError: true },
+        nodes: [
+          {
+            id: "trigger",
+            kind: "trigger",
+            triggerType: "schedule",
+            config: { cronExpr: "0 8 * * *", timezone: "America/Chicago" },
+          },
+          {
+            id: "out",
+            kind: "output",
+            label: "Results",
+            config: { outputType: "docpanel", title: "Results" },
+          },
+        ],
+        edges: [{ id: "e1", source: "trigger", target: "out" }],
+      }),
+    ).toEqual({
+      triggerType: "schedule",
+      triggerConfig: { cronExpr: "0 8 * * *", timezone: "America/Chicago" },
     });
   });
 });

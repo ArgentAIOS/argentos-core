@@ -76,11 +76,7 @@ export function createWorkflowBuilderTool(options?: { agentSessionKey?: string }
         preferredTools: readStringArrayParam(params, "preferredTools"),
         sessionKey: options?.agentSessionKey,
       };
-      const draft = await callGatewayTool<Record<string, unknown>>(
-        "workflows.draft",
-        gatewayOpts,
-        draftParams,
-      );
+      const draft = await callGatewayTool("workflows.draft", gatewayOpts, draftParams);
 
       if (action === "draft") {
         return jsonResult({
@@ -92,18 +88,20 @@ export function createWorkflowBuilderTool(options?: { agentSessionKey?: string }
         });
       }
 
-      const saved = await callGatewayTool<Record<string, unknown>>(
-        "workflows.create",
-        gatewayOpts,
-        {
-          name: draft.name,
-          description: draft.description,
-          ownerAgentId: draftParams.ownerAgentId,
-          nodes: draft.nodes,
-          edges: draft.edges,
-          canvasLayout: draft.canvasLayout,
-        },
-      );
+      const saved = await callGatewayTool("workflows.create", gatewayOpts, {
+        name: draft.name,
+        description: draft.description,
+        ownerAgentId: draftParams.ownerAgentId,
+        nodes: draft.nodes,
+        edges: draft.edges,
+        canvasLayout: draft.canvasLayout,
+        definition: draft.workflow,
+        deploymentStage:
+          typeof (draft.workflow as { deploymentStage?: unknown } | undefined)?.deploymentStage ===
+          "string"
+            ? (draft.workflow as { deploymentStage: string }).deploymentStage
+            : undefined,
+      });
       return jsonResult({
         ok: true,
         action,
