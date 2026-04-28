@@ -10,6 +10,7 @@ import type {
 } from "./workflow-types.js";
 import { getAgentFamily } from "../data/agent-family.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { routeOperatorAlertEvent } from "./operator-alert-router.js";
 import {
   buildWorkflowApprovalOperatorAlertEvent,
   notifyWorkflowApprovalRequest,
@@ -505,10 +506,15 @@ export async function executeWorkflowRunFromRow(opts: {
             timeoutAction: request.timeoutAction,
             requestedAt: request.requestedAt,
           };
-          opts.broadcast?.(
-            "operator.alert.requested",
-            buildWorkflowApprovalOperatorAlertEvent(approvalNotificationRequest),
+          const operatorAlertEvent = buildWorkflowApprovalOperatorAlertEvent(
+            approvalNotificationRequest,
           );
+          opts.broadcast?.("operator.alert.requested", operatorAlertEvent);
+          void routeOperatorAlertEvent(operatorAlertEvent, {
+            source: "workflow.approval",
+          }).catch((err: unknown) => {
+            log.warn(`failed to route workflow operator alert: ${String(err)}`);
+          });
 
           const notification = await notifyWorkflowApprovalRequest({
             request: approvalNotificationRequest,
