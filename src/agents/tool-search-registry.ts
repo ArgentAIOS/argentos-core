@@ -176,6 +176,7 @@ const DEFERRED_TOOL_KEYWORDS: Record<string, string[]> = {
   github_issue: ["github", "issue", "bug", "pr"],
   gateway: ["gateway", "server", "restart", "status"],
   argent_config: ["config", "settings", "configuration"],
+  channel_config: ["channel", "channels", "telegram", "slack", "discord", "signal", "whatsapp"],
   service_keys: ["keys", "secrets", "credentials", "api"],
   // Knowledge
   knowledge_search: ["knowledge", "library", "rag", "search"],

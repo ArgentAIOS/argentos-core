@@ -7,6 +7,7 @@ export const PUBLIC_CORE_DEFAULT_TOOL_NAMES = [
   "argent_search",
   "browser",
   "canvas",
+  "channel_config",
   "cron",
   "doc_panel",
   "doc_panel_delete",

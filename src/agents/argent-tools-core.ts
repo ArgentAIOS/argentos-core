@@ -18,6 +18,7 @@ import { createAudioAlertTool } from "./tools/audio-alert-tool.js";
 import { createAudioGenerationTool } from "./tools/audio-generation-tool.js";
 import { createBrowserTool } from "./tools/browser-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
+import { createChannelConfigTool } from "./tools/channel-config-tool.js";
 import { createContemplationTool } from "./tools/contemplation-tool.js";
 import { createCoolifyDeployTool } from "./tools/coolify-deploy-tool.js";
 import { createCronTool } from "./tools/cron-tool.js";
@@ -382,6 +383,7 @@ export function createArgentTools(options?: {
     }),
     // Utility tools
     createArgentConfigTool({ config: options?.config }),
+    createChannelConfigTool(),
     createServiceKeysTool(),
     createSkillsTool({ config: options?.config }),
     createMarketplaceTool(),
