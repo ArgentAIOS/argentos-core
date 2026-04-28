@@ -55,6 +55,10 @@ Known lane ids:
 - `aou`
 - `aos`
 - `openclaw`
+- `hermes`
+- `roomreader`
+- `business`
+- `agent-persona`
 - `all`
 
 ## Files

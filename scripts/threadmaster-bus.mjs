@@ -21,6 +21,7 @@ const knownLanes = [
   "hermes",
   "roomreader",
   "business",
+  "agent-persona",
   "all",
 ];
 const taskStatuses = ["todo", "doing", "blocked", "done", "cancelled"];

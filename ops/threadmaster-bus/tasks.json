@@ -150,5 +150,18 @@
     "priority": "high",
     "branch": "codex/aos-google-gws-invocation-repair",
     "notes": []
+  },
+  {
+    "id": "task-20260428182901-juxrg1",
+    "createdAt": "2026-04-28T18:29:01.616Z",
+    "updatedAt": "2026-04-28T18:29:01.616Z",
+    "from": "master",
+    "owner": "agent-persona",
+    "title": "Agent Profile first-class foundation slice",
+    "body": "LANE LOCK:\nRepo: ArgentAIOS/argentos-core\nLocal path: /Users/sem/code/argent-core\nTarget branch: dev\nForbidden repo for this task: ArgentAIOS/argentos\nReason: pure core Agent Persona / Agent Profile foundation work\n\nCanonical plan: .omx/plans/agent-profile-first-class-plan-2026-04-28.md\nOnboarding prompt: ops/AGENT_PERSONA_ONBOARDING_PROMPT.md\n\nTask: Start the Agent Persona/Profile first-class implementation lane with the smallest safe foundation slice.\n\nScope for first slice:\n- Read the canonical plan and current Argent/OpenClaw references.\n- Identify exact Argent files for AgentConfig, TTS config, dashboard agent/profile APIs, auth-profile summaries, and Agents UI.\n- Implement or propose the first narrow code slice only if contained: AgentConfig.tts typing, generic-compatible TTS config additions, and an effective per-agent TTS/profile helper with tests.\n- Post STARTED before code edits and MERGE REQUEST when ready.\n\nDo not touch:\n- Workflows canvas/runtime\n- AppForge/TableForge\n- AOS connector implementations\n- OpenClaw Voice/Meet/runtime surfaces\n- Business/licensing/private overlay code\n- unrelated agent runtime\n\nRequired proof:\n- focused unit tests for schema/effective merge/redaction if code changes\n- pnpm check:repo-lane\n- formatting/diff checks\n- origin/dev containment proof after merge",
+    "status": "todo",
+    "priority": "high",
+    "branch": "codex/aos-google-gws-invocation-repair",
+    "notes": []
   }
 ]
