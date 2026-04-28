@@ -75,9 +75,9 @@ describe("dashboard surface profile", () => {
     ]);
   });
 
-  it("disables raw config editing and workforce surfaces in public-core", () => {
+  it("disables raw config editing in public-core and keeps workforce gated from Core", () => {
     expect(isRawConfigEditorAllowed("public-core")).toBe(false);
     expect(isWorkforceSurfaceAllowed("public-core")).toBe(false);
-    expect(isWorkforceSurfaceAllowed("full")).toBe(true);
+    expect(isWorkforceSurfaceAllowed("full")).toBe(false);
   });
 });
