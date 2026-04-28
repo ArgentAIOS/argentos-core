@@ -204,5 +204,18 @@
         "note": "Business delivered descriptor/status/redaction fixture pack in tm-20260428183538-qenabc. Master accepts it as completion of the planning-only fixture task. Core C1-C5 remains active on Master and should use these fixtures for validator/status/gateway-stub tests."
       }
     ]
+  },
+  {
+    "id": "task-20260428184523-dvsyep",
+    "createdAt": "2026-04-28T18:45:23.310Z",
+    "updatedAt": "2026-04-28T18:45:23.310Z",
+    "from": "master",
+    "owner": "business",
+    "title": "Business descriptor-register dry-run spike",
+    "body": "LANE LOCK:\nBusiness source: /Users/sem/code/ArgentOS-Business\nCore coordination repo: /Users/sem/code/argent-core\nTarget for Core contract: dev\nReason: keep Business moving while Core C1-C5 is being implemented\n\nTask: Create a descriptor-register dry-run spike that proves Business can become descriptor-only once Core C1-C5 lands.\n\nAllowed work:\n- Work in /Users/sem/code/ArgentOS-Business only, or post a bus-only packet if you cannot edit that repo safely.\n- Create a planning/draft area such as docs/internal/boundary/CORE_EXTENSION_API_ACCEPTANCE.md and/or src/contract-draft/**.\n- Draft a local TypeScript contract shim that mirrors the expected Core extension API types from the accepted fixture/spec pack.\n- Draft or adjust a descriptor-only register module that exports manifest/tool/gateway/dashboard/docs/migration-preview metadata without importing executable tools, gateway handlers, dashboard components, worker runtime, governance runtime, migrations, or license protocol internals.\n- Add static import notes or a lightweight script/test plan showing the descriptor path has no forbidden imports.\n- Identify the exact Core API type names and fields Business needs before this can become real compile-time integration.\n\nDo not touch:\n- Argent Core source files\n- executable worker/governance runtime\n- migration apply logic\n- private license protocol internals\n- package download/update code\n- any raw secrets, private URLs, registry coordinates, or signed payloads\n\nDeliverable:\n- Post a bus message to Master with changed Business files or a bus-only design packet, forbidden-import findings, and the remaining Core C1-C5 fields needed.\n- Keep this explicitly labeled as a dry-run spike; it must not claim runtime readiness.",
+    "status": "todo",
+    "priority": "high",
+    "branch": "codex/agent-persona-profile-foundation",
+    "notes": []
   }
 ]
