@@ -25,6 +25,28 @@ Expected lane:
 - Install channel: `dev`
 - Forbidden repo for core foundation work: `ArgentAIOS/argentos`
 
+## Dev Version Contract
+
+Every successful push to `origin/dev` must carry a unique dev version in the root `package.json`.
+
+Version format:
+
+```text
+YYYY.M.D-dev.N
+```
+
+Display/tag form may be prefixed with `v`, for example `v2026.4.28-dev.0`; the `package.json` field stores it without `v`.
+
+Rules:
+
+- Use the current America/Chicago calendar date for `YYYY.M.D`.
+- Start each new day at `YYYY.M.D-dev.0`.
+- Increment `N` by one for every subsequent push to `origin/dev` on that same date: `dev.0`, `dev.1`, `dev.2`, and so on.
+- Before pushing to `origin/dev`, inspect the current root `package.json` version on latest `origin/dev`, choose the next daily version, and include that bump in the same commit or merge packet being pushed.
+- If the date changed since the last dev version, reset the suffix to `dev.0` for the new date.
+- Threadmaster merge/coordination-only pushes are not exempt. They still need a fresh dev version so `argent update` and operator reports have a known build id.
+- If a push is rejected because another lane landed first, fetch/rebase/merge, recompute the next dev version, and update it before retrying.
+
 Every AppForge/Workflow handoff must start with:
 
 ```text

@@ -19,7 +19,7 @@ The Workflows threadmaster is also acting as the master threadmaster for core co
 2. Mark owned files or directories before editing shared surfaces.
 3. Use the threadmaster bus for targeted lane-to-lane messages.
 4. Add durable contract summaries under `Threadmaster Messages` when another lane should react.
-5. Before pushing, verify the overlap table and note the commit hash.
+5. Before pushing to `origin/dev`, bump the root `package.json` dev version using the daily sequence contract in `AGENTS.md`.
 6. Keep entries short. Link to detailed handoff files instead of pasting full plans here.
 
 Suggested poll cadence for active autonomous lanes: every few minutes while editing shared files, and always immediately before rebase, commit, push, or handoff.
@@ -68,6 +68,7 @@ Bus docs: `ops/threadmaster-bus/README.md`.
 
 ## Current Cross-Lane Contracts
 
+- Dev version contract: every successful `origin/dev` push must include a unique root `package.json` version using `YYYY.M.D-dev.N` in America/Chicago time. Start each new date at `dev.0`, increment `N` for every later push that day, and recompute after fetch/rebase if another lane landed first. Display/tag form may use `vYYYY.M.D-dev.N`; `package.json` stores no `v`.
 - AppForge -> Workflows: canonical local events through `workflows.emitAppForgeEvent`.
 - Workflows -> AppForge: metadata/capability discovery only. Do not couple to AppForge UI internals.
 - AOS connectors -> Workflows/AppForge: connector manifests, permissions, and capabilities are the source of truth.
