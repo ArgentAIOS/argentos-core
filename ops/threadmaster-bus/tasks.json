@@ -17,5 +17,29 @@
         "note": "Smoke test completed."
       }
     ]
+  },
+  {
+    "id": "task-20260427013802-n469ph",
+    "createdAt": "2026-04-27T01:38:02.780Z",
+    "updatedAt": "2026-04-27T01:48:47.626Z",
+    "from": "aos",
+    "owner": "aos",
+    "title": "Harden AOS Hootsuite service keys",
+    "body": "Patch tools/aos/aos-hootsuite so operator service keys are first-class, scoped repo keys block env fallback, enc:v1 repo keys decrypt/fallback like core, manifest separates required auth from optional scope keys, and readiness remains truthfully read-only.",
+    "status": "done",
+    "priority": "high",
+    "branch": "unknown",
+    "notes": [
+      {
+        "at": "2026-04-27T01:38:10.446Z",
+        "lane": "aos",
+        "note": "Started branch codex/aos-hootsuite-service-keys-loop from origin/dev 51d981a5. Scope: tools/aos/aos-hootsuite/** plus ops/THREADMASTER_COORDINATION.md only; no Workflows/AppForge/OpenClaw/dashboard/gateway runtime touch."
+      },
+      {
+        "at": "2026-04-27T01:48:47.626Z",
+        "lane": "aos",
+        "note": "Completed Hootsuite service-key hardening in pushed branch codex/aos-hootsuite-service-keys-loop at a000a0b9. Hootsuite remains truthful live read-only; HOOTSUITE_ACCESS_TOKEN is required; HOOTSUITE_BASE_URL, HOOTSUITE_ORGANIZATION_ID, HOOTSUITE_SOCIAL_PROFILE_ID, HOOTSUITE_TEAM_ID, HOOTSUITE_MESSAGE_ID are optional operator defaults. Scoped repo keys block env fallback; valid enc:v1 repo keys decrypt; unreadable encrypted keys fall back like core resolver; live_write_smoke_tested=false and write_bridge_available=false. Verification: json.tool manifest+permissions, compileall, Hootsuite pytest 18 passed, git diff --check HEAD~1 HEAD, pnpm check:repo-lane, architect approved. Known gaps: no real operator Hootsuite tenant read smoke; no write bridge/smoke; oxfmt missing in clean worktree hook but explicit checks passed."
+      }
+    ]
   }
 ]
