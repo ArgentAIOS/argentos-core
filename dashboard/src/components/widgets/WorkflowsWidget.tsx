@@ -7709,6 +7709,8 @@ function createDefaultGateData(): GateNodeData {
 
 export function WorkflowsWidget() {
   const gateway = useGateway();
+  const gatewayConnected = gateway.connected;
+  const gatewayRequest = gateway.request;
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>(loadWorkflowsLocal);
   const [activeWorkflowId, setActiveWorkflowId] = useState<string | null>(() => {
     const wfs = loadWorkflowsLocal();
@@ -7728,12 +7730,12 @@ export function WorkflowsWidget() {
   // ── Gateway CRUD with localStorage fallback ───────────────────────
 
   const loadWorkflowsFromGateway = useCallback(async (): Promise<WorkflowDefinition[]> => {
-    if (!gateway.connected) {
+    if (!gatewayConnected) {
       return loadWorkflowsLocal();
     }
     setWorkflowsLoading(true);
     try {
-      const res = await gateway.request<{ workflows?: WorkflowDefinition[] }>("workflows.list", {});
+      const res = await gatewayRequest<{ workflows?: WorkflowDefinition[] }>("workflows.list", {});
       const loaded = (res?.workflows ?? [])
         .map((workflow) => normalizeWorkflowDefinition(workflow))
         .filter((workflow): workflow is WorkflowDefinition => Boolean(workflow));
@@ -7750,11 +7752,11 @@ export function WorkflowsWidget() {
     } finally {
       setWorkflowsLoading(false);
     }
-  }, [gateway]);
+  }, [gatewayConnected, gatewayRequest]);
 
   // Load workflows from gateway on connect
   useEffect(() => {
-    if (!gateway.connected) {
+    if (!gatewayConnected) {
       return;
     }
     let cancelled = false;
@@ -7769,7 +7771,7 @@ export function WorkflowsWidget() {
     return () => {
       cancelled = true;
     };
-  }, [gateway.connected, loadWorkflowsFromGateway]);
+  }, [gatewayConnected, loadWorkflowsFromGateway]);
 
   // Load connector catalog
   useEffect(() => {

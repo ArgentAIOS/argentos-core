@@ -43,6 +43,7 @@ import {
 import { executePollAction, executeSendAction } from "./outbound-send-service.js";
 import { ensureOutboundSessionEntry, resolveOutboundSessionRoute } from "./outbound-session.js";
 import { resolveChannelTarget, type ResolvedMessagingTarget } from "./target-resolver.js";
+import { resolveOutboundTarget } from "./targets.js";
 
 export type MessageActionRunnerGateway = {
   url?: string;
@@ -1013,19 +1014,31 @@ export async function runMessageAction(
     }
   }
 
-  applyTargetToParams({ action, args: params });
-  if (actionRequiresTarget(action)) {
-    if (!actionHasTarget(action, params)) {
-      throw new Error(`Action ${action} requires a target.`);
-    }
-  }
-
   const channel = await resolveChannel(cfg, params);
   const accountId = readStringParam(params, "accountId") ?? input.defaultAccountId;
   if (accountId) {
     params.accountId = accountId;
   }
   const dryRun = Boolean(input.dryRun ?? readBooleanParam(params, "dryRun"));
+
+  if (actionRequiresTarget(action) && !actionHasTarget(action, params)) {
+    const resolvedImplicitTarget = resolveOutboundTarget({
+      channel,
+      cfg,
+      accountId,
+      mode: "implicit",
+    });
+    if (resolvedImplicitTarget.ok) {
+      params.target = resolvedImplicitTarget.to;
+    }
+  }
+
+  applyTargetToParams({ action, args: params });
+  if (actionRequiresTarget(action)) {
+    if (!actionHasTarget(action, params)) {
+      throw new Error(`Action ${action} requires a target.`);
+    }
+  }
 
   await normalizeSandboxMediaParams({
     args: params,
