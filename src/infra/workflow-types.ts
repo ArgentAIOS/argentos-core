@@ -211,6 +211,25 @@ export type ActionType =
   // Media generation
   | { type: "generate_image"; prompt: string; model?: string; size?: string }
   | { type: "generate_audio"; text: string; voice?: string; mood?: string }
+  | {
+      type: "podcast_plan";
+      title: string;
+      script?: string;
+      dialogue?: Array<Record<string, unknown>>;
+      personas?: Array<Record<string, unknown>>;
+      defaultVoiceId?: string;
+      timezone?: string;
+      publishTimeLocal?: string;
+      music?: Record<string, unknown>;
+      publish?: Record<string, unknown>;
+    }
+  | {
+      type: "podcast_generate";
+      title: string;
+      payload?: Record<string, unknown>;
+      payloadTemplate?: string;
+      outputDir?: string;
+    }
   // Document panel
   | { type: "save_to_docpanel"; title: string; content?: string; format?: string }
   // Connector-driven action (AOS Canvas Node)
@@ -229,6 +248,8 @@ export interface ActionConfig {
   pinnedOutput?: unknown;
 
   actionType: ActionType;
+  operatorApprovedLive?: boolean;
+  operatorApprovedAt?: string;
   onError?: ErrorConfig;
   timeoutMs?: number;
 }

@@ -10,6 +10,10 @@ import type {
   WorkflowEdge,
   WorkflowNode,
 } from "./workflow-types.js";
+import {
+  getWorkflowActionCapability,
+  workflowActionRequiresApproval,
+} from "./workflow-action-capabilities.js";
 
 export interface CanvasWorkflowNode {
   id: string;
@@ -43,6 +47,10 @@ export interface WorkflowIssue {
   message: string;
   nodeId?: string;
   edgeId?: string;
+  category?: "approval" | "validation" | "runtime";
+  requiresOperatorApproval?: boolean;
+  operatorAction?: string;
+  capabilityId?: string;
 }
 
 export interface WorkflowNormalizationInput {
@@ -65,8 +73,6 @@ export interface WorkflowNormalizationResult {
 }
 
 const DEFAULT_ERROR: ErrorConfig = { strategy: "fail", notifyOnError: true };
-const READ_ONLY_ACTIONS = new Set<ActionType["type"]>(["store_memory", "store_knowledge"]);
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -206,13 +212,23 @@ function normalizeActionType(
   nodeId: string,
 ): ActionType {
   const config = asRecord(data.config);
-  const rawActionType = asString(data.actionType ?? config.actionType, "api_call");
+  const actionObject = isRecord(data.actionType)
+    ? data.actionType
+    : isRecord(config.actionType)
+      ? config.actionType
+      : undefined;
+  const actionConfig = actionObject ? { ...config, ...actionObject } : config;
+  const rawActionType = asString(
+    (actionObject ? actionObject.type : undefined) ?? data.actionType ?? config.actionType,
+    "api_call",
+  );
 
-  if (asString(config.connectorId)) {
+  if (asString(actionConfig.connectorId)) {
     const parameters: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(config)) {
+    for (const [key, value] of Object.entries(actionConfig)) {
       if (
         ![
+          "type",
           "connectorId",
           "connectorName",
           "connectorCategory",
@@ -229,13 +245,13 @@ function normalizeActionType(
     }
     return {
       type: "connector_action",
-      connectorId: asString(config.connectorId),
-      credentialId: asString(config.credentialId),
-      resource: asString(config.resource),
-      operation: asString(config.operation),
+      connectorId: asString(actionConfig.connectorId),
+      credentialId: asString(actionConfig.credentialId),
+      resource: asString(actionConfig.resource),
+      operation: asString(actionConfig.operation),
       parameters,
       outputMapping:
-        parseStringRecord(config.outputMapping, issues, nodeId, "Connector output mapping") ??
+        parseStringRecord(actionConfig.outputMapping, issues, nodeId, "Connector output mapping") ??
         undefined,
     };
   }
@@ -244,76 +260,111 @@ function normalizeActionType(
     case "send_message":
       return {
         type: "send_message",
-        channelType: asString(config.channelType, "telegram"),
-        channelId: asString(config.channelId, asString(config.to)),
-        template: asString(config.template ?? config.message, "{{previous.text}}"),
+        channelType: asString(actionConfig.channelType, "telegram"),
+        channelId: asString(actionConfig.channelId, asString(actionConfig.to)),
+        template: asString(actionConfig.template ?? actionConfig.message, "{{previous.text}}"),
       };
     case "send_email":
       return {
         type: "send_email",
-        to: asString(config.to),
-        subject: asString(config.subject, "Workflow update"),
-        bodyTemplate: asString(config.bodyTemplate ?? config.body, "{{previous.text}}"),
+        to: asString(actionConfig.to),
+        subject: asString(actionConfig.subject, "Workflow update"),
+        bodyTemplate: asString(actionConfig.bodyTemplate ?? actionConfig.body, "{{previous.text}}"),
       };
     case "create_task":
       return {
         type: "create_task",
-        title: asString(config.title, "Workflow task"),
-        assignee: asString(config.assignee) || undefined,
-        priority: typeof config.priority === "number" ? config.priority : undefined,
-        project: asString(config.project) || undefined,
+        title: asString(actionConfig.title, "Workflow task"),
+        assignee: asString(actionConfig.assignee) || undefined,
+        priority: typeof actionConfig.priority === "number" ? actionConfig.priority : undefined,
+        project: asString(actionConfig.project) || undefined,
       };
     case "store_memory":
       return {
         type: "store_memory",
-        content: asString(config.content, "{{previous.text}}"),
-        memoryType: asString(config.memoryType) || undefined,
-        significance: typeof config.significance === "number" ? config.significance : undefined,
+        content: asString(actionConfig.content, "{{previous.text}}"),
+        memoryType: asString(actionConfig.memoryType) || undefined,
+        significance:
+          typeof actionConfig.significance === "number" ? actionConfig.significance : undefined,
       };
     case "store_knowledge":
       return {
         type: "store_knowledge",
-        collectionId: asString(config.collectionId),
-        content: asString(config.content, "{{previous.text}}"),
-        metadata: isRecord(config.metadata) ? config.metadata : undefined,
+        collectionId: asString(actionConfig.collectionId),
+        content: asString(actionConfig.content, "{{previous.text}}"),
+        metadata: isRecord(actionConfig.metadata) ? actionConfig.metadata : undefined,
       };
     case "webhook_call":
       return {
         type: "webhook_call",
-        url: asString(config.url),
-        method: asString(config.method, "POST").toUpperCase(),
-        headers: parseStringRecord(config.headers, issues, nodeId, "Headers"),
-        bodyTemplate: asString(config.bodyTemplate ?? config.body, "{{previous.json}}"),
-        outputMapping: isRecord(config.outputMapping)
-          ? (config.outputMapping as Record<string, string>)
+        url: asString(actionConfig.url),
+        method: asString(actionConfig.method, "POST").toUpperCase(),
+        headers: parseStringRecord(actionConfig.headers, issues, nodeId, "Headers"),
+        bodyTemplate: asString(actionConfig.bodyTemplate ?? actionConfig.body, "{{previous.json}}"),
+        outputMapping: isRecord(actionConfig.outputMapping)
+          ? (actionConfig.outputMapping as Record<string, string>)
           : undefined,
       };
     case "run_script":
       return {
         type: "run_script",
-        command: asString(config.command),
-        sandboxed: asBoolean(config.sandboxed, true),
+        command: asString(actionConfig.command),
+        sandboxed: asBoolean(actionConfig.sandboxed, true),
       };
     case "generate_image":
       return {
         type: "generate_image",
-        prompt: asString(config.prompt, "{{previous.text}}"),
-        model: asString(config.model) || undefined,
-        size: asString(config.size) || undefined,
+        prompt: asString(actionConfig.prompt, "{{previous.text}}"),
+        model: asString(actionConfig.model) || undefined,
+        size: asString(actionConfig.size) || undefined,
       };
     case "generate_audio":
       return {
         type: "generate_audio",
-        text: asString(config.text, "{{previous.text}}"),
-        voice: asString(config.voice) || undefined,
-        mood: asString(config.mood) || undefined,
+        text: asString(actionConfig.text, "{{previous.text}}"),
+        voice: asString(actionConfig.voice) || undefined,
+        mood: asString(actionConfig.mood) || undefined,
+      };
+    case "podcast_plan":
+      return {
+        type: "podcast_plan",
+        title: asString(actionConfig.title, "Workflow podcast"),
+        script: asString(actionConfig.script, "{{previous.text}}"),
+        dialogue: Array.isArray(actionConfig.dialogue)
+          ? actionConfig.dialogue.filter(isRecord)
+          : undefined,
+        personas: Array.isArray(actionConfig.personas)
+          ? actionConfig.personas.filter(isRecord)
+          : undefined,
+        defaultVoiceId:
+          asString(actionConfig.defaultVoiceId ?? actionConfig.default_voice_id) || undefined,
+        timezone: asString(actionConfig.timezone) || undefined,
+        publishTimeLocal:
+          asString(actionConfig.publishTimeLocal ?? actionConfig.publish_time_local) || undefined,
+        music: isRecord(actionConfig.music) ? actionConfig.music : undefined,
+        publish: isRecord(actionConfig.publish) ? actionConfig.publish : undefined,
+      };
+    case "podcast_generate":
+      return {
+        type: "podcast_generate",
+        title: asString(actionConfig.title, "Workflow podcast"),
+        payload: isRecord(actionConfig.payload)
+          ? actionConfig.payload
+          : isRecord(actionConfig.podcast_generate)
+            ? actionConfig.podcast_generate
+            : undefined,
+        payloadTemplate: asString(
+          actionConfig.payloadTemplate ?? actionConfig.payload_template,
+          "{{previous.json.podcast_generate}}",
+        ),
+        outputDir: asString(actionConfig.outputDir ?? actionConfig.output_dir) || undefined,
       };
     case "save_to_docpanel":
       return {
         type: "save_to_docpanel",
-        title: asString(config.title, "Workflow output"),
-        content: asString(config.content, "{{previous.text}}"),
-        format: asString(config.format) || undefined,
+        title: asString(actionConfig.title, "Workflow output"),
+        content: asString(actionConfig.content, "{{previous.text}}"),
+        format: asString(actionConfig.format) || undefined,
       };
     case "api_call":
     default:
@@ -327,14 +378,14 @@ function normalizeActionType(
       }
       return {
         type: "api_call",
-        provider: asString(config.provider, "custom"),
-        endpoint: asString(config.endpoint ?? config.url),
-        method: asString(config.method, "POST").toUpperCase(),
+        provider: asString(actionConfig.provider, "custom"),
+        endpoint: asString(actionConfig.endpoint ?? actionConfig.url),
+        method: asString(actionConfig.method, "POST").toUpperCase(),
         params:
-          parseJsonObject(config.params, issues, nodeId, "Parameters") ??
-          parseJsonObject(config.body, issues, nodeId, "Body") ??
-          config,
-        authType: asString(config.authType, "none"),
+          parseJsonObject(actionConfig.params, issues, nodeId, "Parameters") ??
+          parseJsonObject(actionConfig.body, issues, nodeId, "Body") ??
+          actionConfig,
+        authType: asString(actionConfig.authType, "none"),
       };
   }
 }
@@ -722,6 +773,13 @@ function normalizeCanvasNode(
         config: {
           pinnedOutput: data.pinnedOutput,
           actionType: normalizeActionType(data, issues, node.id),
+          operatorApprovedLive: asBoolean(
+            data.operatorApprovedLive ?? asRecord(data.config).operatorApprovedLive,
+            false,
+          ),
+          operatorApprovedAt:
+            asString(data.operatorApprovedAt ?? asRecord(data.config).operatorApprovedAt) ||
+            undefined,
           timeoutMs: typeof data.timeoutMs === "number" ? data.timeoutMs : undefined,
         },
       };
@@ -867,11 +925,28 @@ function isUnsafeNode(node: WorkflowNode): boolean {
   if (node.kind !== "action") {
     return false;
   }
-  const type = node.config.actionType.type;
-  if (type === "connector_action") {
-    return true;
+  if (node.config.operatorApprovedLive === true) {
+    return false;
   }
-  return !READ_ONLY_ACTIONS.has(type);
+  return workflowActionRequiresApproval(node.config.actionType.type);
+}
+
+function approvalIssueForNode(node: WorkflowNode): WorkflowIssue {
+  const actionType = node.kind === "action" ? node.config.actionType.type : undefined;
+  const capability = actionType ? getWorkflowActionCapability(actionType) : undefined;
+  return {
+    severity: "error",
+    code: "unsafe_side_effect_without_approval",
+    nodeId: node.id,
+    category: "approval",
+    requiresOperatorApproval: true,
+    operatorAction:
+      "Add an approval gate upstream or enable explicit operator sign-off for this node before running live.",
+    capabilityId: capability?.id,
+    message: capability
+      ? `${capability.label} requires operator approval before live execution. Add an approval gate upstream or enable explicit operator sign-off for this node.`
+      : "External writes, outbound delivery, scripts, and connector actions require an approval gate before live execution.",
+  };
 }
 
 export function validateWorkflow(
@@ -1075,13 +1150,7 @@ export function validateWorkflow(
     }
     for (const node of workflow.nodes.filter(isUnsafeNode)) {
       if (reachable.has(node.id) && !approvalSafe.has(node.id)) {
-        issues.push({
-          severity: "error",
-          code: "unsafe_side_effect_without_approval",
-          nodeId: node.id,
-          message:
-            "External writes, outbound delivery, scripts, and connector actions require an approval gate before live execution.",
-        });
+        issues.push(approvalIssueForNode(node));
       }
     }
   }

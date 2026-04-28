@@ -68,6 +68,7 @@ describe("draftWorkflowFromIntent", () => {
       "Frontier AI Scout",
       "Thought Leader / Infrastructure Scout",
       "Synthesis Agent",
+      "Podcast Script Agent",
     ]);
     expect(draft.nodes.map((node) => node.id)).toEqual([
       "trigger",
@@ -76,9 +77,12 @@ describe("draftWorkflowFromIntent", () => {
       "scout-thought-leader-infrastructure",
       "research-join",
       "synthesis-agent",
+      "brief-output",
+      "podcast-script-agent",
+      "podcast-plan",
       "podcast-generate",
       "delivery-status",
-      "output",
+      "run-ledger",
     ]);
     expect(draft.workflow.nodes.map((node) => node.kind)).toEqual([
       "trigger",
@@ -87,6 +91,9 @@ describe("draftWorkflowFromIntent", () => {
       "agent",
       "gate",
       "agent",
+      "output",
+      "agent",
+      "action",
       "action",
       "action",
       "output",
@@ -101,9 +108,12 @@ describe("draftWorkflowFromIntent", () => {
           target: "scout-thought-leader-infrastructure",
         }),
         expect.objectContaining({ source: "research-join", target: "synthesis-agent" }),
-        expect.objectContaining({ source: "synthesis-agent", target: "podcast-generate" }),
+        expect.objectContaining({ source: "synthesis-agent", target: "brief-output" }),
+        expect.objectContaining({ source: "brief-output", target: "podcast-script-agent" }),
+        expect.objectContaining({ source: "podcast-script-agent", target: "podcast-plan" }),
+        expect.objectContaining({ source: "podcast-plan", target: "podcast-generate" }),
         expect.objectContaining({ source: "podcast-generate", target: "delivery-status" }),
-        expect.objectContaining({ source: "delivery-status", target: "output" }),
+        expect.objectContaining({ source: "delivery-status", target: "run-ledger" }),
       ]),
     );
     expect(draft.assumptions).toContain(

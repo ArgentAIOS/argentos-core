@@ -43,6 +43,8 @@ import type {
   MemoryContextConfig,
   ToolGrantEntry,
 } from "./workflow-types.js";
+import { createPodcastGenerateTool } from "../agents/tools/podcast-generate-tool.js";
+import { createPodcastPlanTool } from "../agents/tools/podcast-plan-tool.js";
 // Real system integrations — these are the actual delivery systems, not stubs
 import { refreshPresence } from "../data/redis-client.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -1241,6 +1243,93 @@ function stringifyWorkflowValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function assertRenderableWorkflowContent(value: string, label: string): void {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "[object Object]") {
+    throw new Error(
+      `${label} is not renderable text. Upstream step returned an object without a text field.`,
+    );
+  }
+}
+
+function extractToolResultText(result: unknown): string {
+  const record = asRecord(result);
+  const content = Array.isArray(record.content) ? record.content : [];
+  const text = content
+    .map((entry) => {
+      const contentEntry = asRecord(entry);
+      return typeof contentEntry.text === "string" ? contentEntry.text : "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  if (text) {
+    return text;
+  }
+  const details = record.details;
+  return details === undefined ? "" : stringifyWorkflowValue(details);
+}
+
+function toolResultToItemSet(
+  result: unknown,
+  meta: { nodeId: string; label: string; actionType: string },
+): ItemSet {
+  const record = asRecord(result);
+  const details = asRecord(record.details);
+  const text = extractToolResultText(result);
+  return {
+    items: [
+      {
+        json: {
+          actionType: meta.actionType,
+          label: meta.label,
+          ...(Object.keys(details).length ? details : record),
+        },
+        text,
+        artifacts:
+          typeof details.path === "string"
+            ? [{ type: "audio" as const, id: details.path, title: meta.label }]
+            : undefined,
+      },
+    ],
+  };
+}
+
+function resolveWorkflowTemplateObject(
+  template: string | undefined,
+  context: PipelineContext,
+): Record<string, unknown> | undefined {
+  if (!template?.trim()) {
+    return undefined;
+  }
+  const singleExpression = /^\{\{\s*([^}]+)\s*\}\}$/.exec(template.trim());
+  if (singleExpression) {
+    const path = singleExpression.at(1)?.trim() ?? "";
+    if (path.startsWith("previous.")) {
+      const value = resolveFieldPath(getLastOutput(context), path.slice("previous.".length));
+      return isRecordValue(value) ? value : undefined;
+    }
+    if (path.startsWith("steps.")) {
+      const parts = path.split(".");
+      const stepKey = parts[1];
+      const step = context.history.find((s) => s.nodeId === stepKey || s.nodeLabel === stepKey);
+      if (!step?.output.items.length) {
+        return undefined;
+      }
+      const field = parts.slice(parts[2] === "output" ? 3 : 2).join(".");
+      const jsonField = field.startsWith("json.") ? field.slice(5) : field;
+      const value = resolveFieldPath(step.output.items[0].json, jsonField);
+      return isRecordValue(value) ? value : undefined;
+    }
+  }
+  try {
+    const parsed = JSON.parse(resolveTemplate(template, context)) as unknown;
+    return isRecordValue(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function sendWorkflowMessage(
   channel: string,
   to: string,
@@ -1751,12 +1840,87 @@ async function executeAction(
       }
     }
 
+    case "podcast_plan": {
+      const {
+        title,
+        script,
+        dialogue,
+        personas,
+        defaultVoiceId,
+        timezone,
+        publishTimeLocal,
+        music,
+        publish,
+      } = actionType;
+      const resolvedScript = script ? resolveTemplate(script, context) : undefined;
+      const args: Record<string, unknown> = {
+        title: resolveTemplate(title, context),
+        personas:
+          personas && personas.length > 0
+            ? personas
+            : [
+                {
+                  id: "argent",
+                  aliases: ["ARGENT", "HOST"],
+                  voice_id:
+                    defaultVoiceId || process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM",
+                },
+              ],
+        default_voice_id:
+          defaultVoiceId || process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM",
+        timezone: timezone || "America/Chicago",
+        publish_time_local: publishTimeLocal || "08:00",
+        publish: publish ?? { spotify: false, youtube: false, heygen: false },
+      };
+      if (dialogue && dialogue.length > 0) {
+        args.dialogue = dialogue;
+      } else {
+        args.script = resolvedScript || "{{previous.text}}";
+      }
+      if (music) {
+        args.music = music;
+      }
+
+      const tool = createPodcastPlanTool();
+      const result = await tool.execute(`workflow-${context.runId}-${node.id}`, args);
+      return toolResultToItemSet(result, {
+        nodeId: node.id,
+        label: node.label,
+        actionType: "podcast_plan",
+      });
+    }
+
+    case "podcast_generate": {
+      const payload =
+        actionType.payload ??
+        resolveWorkflowTemplateObject(actionType.payloadTemplate, context) ??
+        resolveFieldPath(getLastOutput(context), "json.podcast_generate");
+      if (!isRecordValue(payload)) {
+        throw new Error("podcast_generate requires a podcast_plan payload object.");
+      }
+      const args: Record<string, unknown> = {
+        ...payload,
+        title: resolveTemplate(actionType.title, context),
+      };
+      if (actionType.outputDir) {
+        args.output_dir = resolveTemplate(actionType.outputDir, context);
+      }
+      const tool = createPodcastGenerateTool();
+      const result = await tool.execute(`workflow-${context.runId}-${node.id}`, args);
+      return toolResultToItemSet(result, {
+        nodeId: node.id,
+        label: node.label,
+        actionType: "podcast_generate",
+      });
+    }
+
     case "save_to_docpanel": {
       const { title, content, format } = actionType;
       const renderedTitle = resolveTemplate(title, context);
       const fallbackContent =
         context.history[context.history.length - 1]?.output?.items[0]?.text ?? "";
       const renderedContent = resolveTemplate(content ?? fallbackContent, context);
+      assertRenderableWorkflowContent(renderedContent, "DocPanel action content");
       try {
         const { dashboardApiHeaders } = await import("../utils/dashboard-api.js");
         const dashboardApi = process.env.ARGENT_DASHBOARD_API || "http://localhost:9242";
@@ -2376,6 +2540,7 @@ async function executeOutput(
   switch (outputType) {
     case "docpanel": {
       const content = resolveOutputPayload(config, context);
+      assertRenderableWorkflowContent(content, "DocPanel output content");
       const title = resolveTemplate(config.title, context);
       const format = config.format ?? "markdown";
       const saved = actions?.saveToDocPanel
@@ -2895,9 +3060,12 @@ export class CoreAgentDispatcher implements AgentDispatcher {
       // delivery result whose shape varies.
       const responseText =
         typeof result === "object" && result !== null
-          ? String(
+          ? stringifyWorkflowValue(
               (result as Record<string, unknown>).text ??
                 (result as Record<string, unknown>).summary ??
+                (result as Record<string, unknown>).message ??
+                (result as Record<string, unknown>).content ??
+                (result as Record<string, unknown>).details ??
                 result,
             )
           : String(result ?? "");
@@ -3602,7 +3770,7 @@ function resolveTemplate(template: string, context: PipelineContext): string {
     if (path.startsWith("variables.")) {
       const subPath = path.slice("variables.".length);
       const val = resolveFieldPath(context.variables as Record<string, unknown>, subPath);
-      return val !== undefined ? String(val) : "";
+      return val !== undefined ? stringifyWorkflowValue(val) : "";
     }
 
     // {{steps.nodeId.text}}, {{steps.nodeLabel.output.text}}, or
@@ -3619,7 +3787,7 @@ function resolveTemplate(template: string, context: PipelineContext): string {
         // Allow steps.X.output.json.field — strip leading "json." prefix
         const jsonField = field.startsWith("json.") ? field.slice(5) : field;
         const val = resolveFieldPath(step.output.items[0].json, jsonField);
-        return val !== undefined ? String(val) : "";
+        return val !== undefined ? stringifyWorkflowValue(val) : "";
       }
       return "";
     }
@@ -3628,26 +3796,26 @@ function resolveTemplate(template: string, context: PipelineContext): string {
     if (path.startsWith("previous.")) {
       const subPath = path.slice("previous.".length);
       const val = resolveFieldPath(getLastOutput(context), subPath);
-      return val !== undefined ? String(val) : "";
+      return val !== undefined ? stringifyWorkflowValue(val) : "";
     }
 
     // {{trigger.payload.field}} — trigger data
     if (path.startsWith("trigger.")) {
       const subPath = path.slice("trigger.".length);
       const val = resolveFieldPath(context.trigger as unknown as Record<string, unknown>, subPath);
-      return val !== undefined ? String(val) : "";
+      return val !== undefined ? stringifyWorkflowValue(val) : "";
     }
 
     // {{context.runId}}, {{context.workflowId}}, etc. — run metadata
     if (path.startsWith("context.")) {
       const subPath = path.slice("context.".length);
       const val = resolveFieldPath(context as unknown as Record<string, unknown>, subPath);
-      return val !== undefined ? String(val) : "";
+      return val !== undefined ? stringifyWorkflowValue(val) : "";
     }
 
     // Fallback: check bare variables (backward compat with Sprint 2 usage)
     const fromVars = resolveFieldPath(context.variables as Record<string, unknown>, path);
-    if (fromVars !== undefined) return String(fromVars);
+    if (fromVars !== undefined) return stringifyWorkflowValue(fromVars);
 
     return "";
   });

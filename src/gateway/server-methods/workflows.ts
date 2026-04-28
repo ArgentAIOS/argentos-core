@@ -37,6 +37,10 @@ import {
   pgDeleteServiceKey,
   pgGetServiceKeyByVariable,
 } from "../../infra/pg-secret-store.js";
+import {
+  getWorkflowActionCapability,
+  WORKFLOW_ACTION_CAPABILITIES,
+} from "../../infra/workflow-action-capabilities.js";
 import { resolveDurableWorkflowApproval } from "../../infra/workflow-approvals.js";
 import { draftWorkflowFromIntent } from "../../infra/workflow-builder.js";
 import {
@@ -1640,6 +1644,25 @@ export async function buildWorkflowDryRunTrace(workflow: WorkflowDefinition): Pr
         continue;
       }
 
+      if (node.kind === "action") {
+        const capability = getWorkflowActionCapability(node.config.actionType.type);
+        steps.push({
+          nodeId: node.id,
+          nodeKind: node.kind,
+          label,
+          status: "passed",
+          message: capability
+            ? `Action "${capability.label}" dry-runs as ${capability.sideEffect}; live run approval=${capability.requiresOperatorApproval ? "required" : "not required"}.`
+            : `Action "${node.config.actionType.type}" is structurally reachable.`,
+          details: {
+            actionType: node.config.actionType.type,
+            capability,
+            dryRunOnly: true,
+          },
+        });
+        continue;
+      }
+
       steps.push({
         nodeId: node.id,
         nodeKind: node.kind,
@@ -2938,6 +2961,8 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       }
       respond(true, {
         primitives: WORKFLOW_PRIMITIVES,
+        actions: WORKFLOW_ACTION_CAPABILITIES,
+        actionCapabilities: WORKFLOW_ACTION_CAPABILITIES,
         tools: Array.from(toolsByName.values()),
         personalSkills: skillCapabilities.personalSkills,
         promotedTools: skillCapabilities.promotedTools,
