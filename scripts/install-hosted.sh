@@ -816,6 +816,36 @@ snapshot_git_runtime() {
   rm -rf "$backup_dir"
 }
 
+verify_git_runtime_snapshot() {
+  local target_dir="$1"
+
+  if [[ ! -f "$target_dir/dist/index.js" ]]; then
+    err "Installed runtime snapshot is missing dist/index.js: $target_dir"
+    exit 1
+  fi
+  if [[ ! -f "$target_dir/dist/control-ui/index.html" ]]; then
+    err "Installed runtime snapshot is missing Control UI assets: $target_dir/dist/control-ui/index.html"
+    err "Run: cd $GIT_DIR && pnpm ui:build"
+    exit 1
+  fi
+  if [[ ! -d "$target_dir/tools/aos/aos-cognee" ]]; then
+    err "Installed runtime snapshot is missing bundled Cognee connector files: $target_dir/tools/aos/aos-cognee"
+    exit 1
+  fi
+}
+
+install_bundled_aos_harnesses() {
+  local target_dir="$1"
+  local installer="$target_dir/scripts/install-bundled-aos-harnesses.mjs"
+  if [[ ! -f "$installer" ]]; then
+    warn "Bundled AOS harness installer missing at $installer"
+    return 0
+  fi
+  info "Installing bundled AOS connector harnesses..."
+  PATH="$(dirname "$NODE_BIN"):$PATH" "$NODE_BIN" "$installer" --only=aos-cognee \
+    || warn "Bundled AOS harness install failed — Cognee connector files are present, but its local binary may not be callable until the harness is installed."
+}
+
 install_npm() {
   local package_spec="${PACKAGE_SPEC_OVERRIDE:-argentos@${VERSION}}"
   local target_bin="argent"
@@ -1373,8 +1403,11 @@ install_git() {
   # Restore lockfile if pnpm mutated it (keeps git checkout clean for argent update)
   run_git_nohooks -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
   run_pnpm "$GIT_DIR" build
+  run_pnpm "$GIT_DIR" ui:build
   run_pnpm "$GIT_DIR" rebuild better-sqlite3
   snapshot_git_runtime "$GIT_DIR" "$PACKAGE_DIR_OVERRIDE"
+  verify_git_runtime_snapshot "$PACKAGE_DIR_OVERRIDE"
+  install_bundled_aos_harnesses "$PACKAGE_DIR_OVERRIDE"
   ok "Installed stable runtime snapshot: $PACKAGE_DIR_OVERRIDE"
   write_git_wrapper "$BIN_DIR_OVERRIDE"
   persist_bin_dir_on_path "$BIN_DIR_OVERRIDE"

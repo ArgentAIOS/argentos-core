@@ -33,6 +33,12 @@ echo "==> Run isolated hosted installer smoke"
 echo "==> Verify isolated install outputs"
 test -x "$BIN_DIR/argent"
 test -f "$TEST_HOME/.argentos/vaults/ArgentOS Core Docs/Home.md"
+test -f "$PKG_DIR/dist/control-ui/index.html"
+test -d "$PKG_DIR/tools/aos/aos-cognee"
 "$BIN_DIR/argent" --help >/dev/null
+
+if [[ "${ARGENT_INSTALL_SMOKE_REQUIRE_AOS_HARNESS:-0}" == "1" ]]; then
+  test -x "$PKG_DIR/tools/aos/aos-cognee/agent-harness/.venv/bin/aos-cognee"
+fi
 
 echo "OK"

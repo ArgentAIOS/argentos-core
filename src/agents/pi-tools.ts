@@ -615,7 +615,7 @@ export function createArgentCodingTools(options?: {
             return `- ${m.tool.name}${desc ? ` — ${desc}` : ""}`;
           }),
           "",
-          "These tools will be available on your next response turn in this session.",
+          "Core matches are already callable; deferred matches will be available on your next response turn in this session.",
         ];
 
         return {

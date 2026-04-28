@@ -21,4 +21,14 @@ describe("tool-search-registry", () => {
     expect(registry.getCoreTools().map((entry) => entry.name)).toContain("marketplace");
     expect(registry.getDeferredTools().map((entry) => entry.name)).not.toContain("marketplace");
   });
+
+  it("returns matching core tools from search so they are discoverable", () => {
+    const registry = new ToolSearchRegistry();
+    registry.registerAll([tool("tool_search"), tool("doc_panel"), tool("doc_panel_update")]);
+
+    const matches = registry.search("document panel", 5).map((entry) => entry.tool.name);
+
+    expect(matches).toContain("doc_panel");
+    expect(matches).toContain("doc_panel_update");
+  });
 });

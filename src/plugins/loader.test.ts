@@ -248,6 +248,53 @@ describe("loadArgentPlugins", () => {
     expect(Object.keys(registry.gatewayHandlers)).toContain("allowed.ping");
   });
 
+  it("surfaces manifest marketplace metadata on plugin records", () => {
+    process.env.ARGENT_BUNDLED_PLUGINS_DIR = "/nonexistent/bundled/plugins";
+    const plugin = writePlugin({
+      id: "metadata-plugin",
+      body: `export default { id: "metadata-plugin", register() {} };`,
+    });
+    fs.writeFileSync(
+      path.join(plugin.dir, "argent.plugin.json"),
+      JSON.stringify(
+        {
+          id: "metadata-plugin",
+          configSchema: EMPTY_PLUGIN_SCHEMA,
+          capabilities: [{ id: "meet.status", status: "implemented" }],
+          permissions: [{ id: "browser", level: "control" }],
+          runtimeSurfaces: ["plugin-tool", "browser"],
+          nativeDependencies: [{ id: "audio-bridge", required: false }],
+          setupChecks: [{ id: "oauth-token" }],
+          oauthProviders: [{ id: "google" }],
+          installNotes: ["Configure OAuth before live actions."],
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+
+    const registry = loadArgentPlugins({
+      cache: false,
+      workspaceDir: plugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["metadata-plugin"],
+        },
+      },
+    });
+
+    const loaded = registry.plugins.find((entry) => entry.id === "metadata-plugin");
+    expect(loaded?.capabilities).toEqual([{ id: "meet.status", status: "implemented" }]);
+    expect(loaded?.permissions).toEqual([{ id: "browser", level: "control" }]);
+    expect(loaded?.runtimeSurfaces).toEqual(["plugin-tool", "browser"]);
+    expect(loaded?.nativeDependencies).toEqual([{ id: "audio-bridge", required: false }]);
+    expect(loaded?.setupChecks).toEqual([{ id: "oauth-token" }]);
+    expect(loaded?.oauthProviders).toEqual([{ id: "google" }]);
+    expect(loaded?.installNotes).toEqual(["Configure OAuth before live actions."]);
+  });
+
   it("denylist disables plugins even if allowed", () => {
     process.env.ARGENT_BUNDLED_PLUGINS_DIR = "/nonexistent/bundled/plugins";
     const plugin = writePlugin({

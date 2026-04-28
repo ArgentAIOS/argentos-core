@@ -55,6 +55,8 @@ Known lane ids:
 - `aou`
 - `aos`
 - `openclaw`
+- `hermes`
+- `roomreader`
 - `all`
 
 ## Files

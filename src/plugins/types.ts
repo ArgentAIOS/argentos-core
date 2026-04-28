@@ -33,6 +33,24 @@ export type PluginConfigUiHint = {
   placeholder?: string;
 };
 
+export type PluginManifestMetadataRecord = Record<string, unknown>;
+
+export type PluginManifestMetadataEntry = string | PluginManifestMetadataRecord;
+
+export type PluginManifestCapability = PluginManifestMetadataEntry;
+
+export type PluginManifestPermission = PluginManifestMetadataEntry;
+
+export type PluginManifestRuntimeSurface = PluginManifestMetadataEntry;
+
+export type PluginManifestNativeDependency = PluginManifestMetadataEntry;
+
+export type PluginManifestSetupCheck = PluginManifestMetadataEntry;
+
+export type PluginManifestOAuthProvider = PluginManifestMetadataEntry;
+
+export type PluginManifestInstallNote = PluginManifestMetadataEntry;
+
 export type PluginKind = "memory";
 
 export type PluginConfigValidation =

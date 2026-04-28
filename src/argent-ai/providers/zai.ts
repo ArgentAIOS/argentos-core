@@ -104,6 +104,8 @@ interface ZAINonStreamResponse {
 // ============================================================================
 
 const DEFAULT_BASE_URL = "https://api.z.ai/v1/chat/completions";
+const ZAI_GENERAL_CHAT_COMPLETIONS_URL = "https://api.z.ai/api/paas/v4/chat/completions";
+const ZAI_CODING_CHAT_COMPLETIONS_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions";
 const DEFAULT_MAX_TOKENS = 8192;
 
 // ============================================================================
@@ -145,7 +147,7 @@ export class ZAIProvider implements Provider {
     modelConfig: ModelConfig,
   ): Promise<ZAINonStreamResponse> {
     const body = this.buildRequestBody(request, modelConfig, false);
-    const response = await fetch(this.getBaseURL(), {
+    const response = await this.fetchWithEndpointFallback({
       method: "POST",
       headers: this.getHeaders(),
       body: JSON.stringify(body),
@@ -186,7 +188,7 @@ export class ZAIProvider implements Provider {
     let thinkingStarted = false;
 
     try {
-      const response = await fetch(this.getBaseURL(), {
+      const response = await this.fetchWithEndpointFallback({
         method: "POST",
         headers: this.getHeaders(),
         body: JSON.stringify(body),
@@ -378,6 +380,32 @@ export class ZAIProvider implements Provider {
 
   private getBaseURL(): string {
     return this.config.baseURL || DEFAULT_BASE_URL;
+  }
+
+  private getFallbackBaseURL(): string | undefined {
+    const baseURL = this.getBaseURL().replace(/\/+$/, "");
+    if (baseURL === ZAI_GENERAL_CHAT_COMPLETIONS_URL) {
+      return ZAI_CODING_CHAT_COMPLETIONS_URL;
+    }
+    if (baseURL === ZAI_CODING_CHAT_COMPLETIONS_URL) {
+      return ZAI_GENERAL_CHAT_COMPLETIONS_URL;
+    }
+    return undefined;
+  }
+
+  private async fetchWithEndpointFallback(init: RequestInit): Promise<Response> {
+    const primary = this.getBaseURL();
+    const response = await fetch(primary, init);
+    if (response.status !== 404) {
+      return response;
+    }
+
+    const fallback = this.getFallbackBaseURL();
+    if (!fallback) {
+      return response;
+    }
+
+    return fetch(fallback, init);
   }
 
   private getHeaders(): Record<string, string> {

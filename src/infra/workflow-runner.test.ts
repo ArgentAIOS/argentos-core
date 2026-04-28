@@ -6,7 +6,7 @@
  * and merge strategies (via parallel segments).
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import type {
   TriggerNode,
   AgentNode,
@@ -23,6 +23,10 @@ const storageMocks = vi.hoisted(() => ({
     id: "mem-workflow-output",
     ...item,
   })),
+}));
+
+const fetchMocks = vi.hoisted(() => ({
+  fetch: vi.fn(),
 }));
 
 // Mock redis-client to avoid real Redis connections in tests
@@ -52,6 +56,17 @@ vi.mock("../logging/subsystem.js", () => ({
 }));
 
 import { topologicalSort, executeWorkflow } from "./workflow-runner.js";
+
+beforeEach(() => {
+  fetchMocks.fetch.mockReset();
+  fetchMocks.fetch.mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => ({ id: "doc-workflow-output" }),
+    text: async () => "ok",
+  });
+  vi.stubGlobal("fetch", fetchMocks.fetch);
+});
 
 // ── Test Fixtures ─────────────────────────────────────────────────
 
@@ -259,12 +274,73 @@ describe("executeWorkflow", () => {
     });
 
     expect(result.status).toBe("completed");
+    expect(fetchMocks.fetch).toHaveBeenCalledTimes(1);
+    expect(fetchMocks.fetch.mock.calls[0]?.[0]).toBe("http://localhost:9242/api/canvas/save");
+    expect(JSON.parse(String(fetchMocks.fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      doc: {
+        title: "Brief",
+        content: "Rendered: mock output",
+        type: "markdown",
+        autoRouted: true,
+      },
+    });
     expect(result.steps[2].output.items[0]).toMatchObject({
       text: "Rendered: mock output",
       json: {
         outputType: "docpanel",
+        saved: true,
+        docId: "doc-workflow-output",
         title: "Brief",
         content: "Rendered: mock output",
+        format: "markdown",
+      },
+    });
+  });
+
+  it("fails DocPanel output with an explicit diagnostic when persistence fails", async () => {
+    fetchMocks.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      json: async () => ({}),
+      text: async () => "dashboard unavailable",
+    });
+
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output: OutputNode = {
+      ...makeOutput(),
+      config: {
+        outputType: "docpanel",
+        title: "Brief",
+        sourceMode: "previous",
+        contentTemplate: "Rendered: {{previous.result}}",
+      },
+    };
+
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-output-template-failure",
+      dispatcher: mockDispatcher,
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.steps[2]).toMatchObject({
+      status: "failed",
+      output: {
+        items: [
+          {
+            json: {
+              error: true,
+              message: "DocPanel save failed: HTTP 503 — dashboard unavailable",
+            },
+            text: "DocPanel save failed: HTTP 503 — dashboard unavailable",
+          },
+        ],
       },
     });
   });

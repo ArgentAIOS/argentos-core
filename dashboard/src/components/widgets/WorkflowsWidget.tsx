@@ -3512,254 +3512,511 @@ function OutputForm({
     }
     onUpdate(nodeId, { ...data, target: value });
   };
+  const targetLabels: Record<OutputNodeData["target"], string> = {
+    doc_panel: "DocPanel",
+    channel: "Channel",
+    discord: "Discord",
+    telegram: "Telegram",
+    email: "Email",
+    webhook: "Webhook",
+    variable: "Variable",
+    knowledge: "Knowledge",
+  };
+  const formatLabels: Record<string, string> = {
+    markdown: "Markdown",
+    text: "Plain text",
+    json: "JSON",
+  };
+  const sectionClassName =
+    "space-y-3 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-3";
+  const helpTextClassName = "text-[11px] leading-5 text-[hsl(var(--muted-foreground))]";
+  const sourceNodeLabel = selectedSourceNodeId
+    ? sourceNodeOptions.find((option) => option.id === selectedSourceNodeId)?.label ??
+      selectedSourceNodeId
+    : "";
+  const sourceSummary =
+    sourceMode === "summary"
+      ? "Uses the workflow summary object instead of the immediate previous step."
+      : sourceMode === "node"
+        ? sourceNodeLabel
+          ? `Uses the saved result from ${sourceNodeLabel}.`
+          : "Pick a node result to render into this output."
+        : sourceMode === "custom"
+          ? "Only the template below defines the output payload."
+          : "Uses the immediate previous node result by default.";
+  const payloadTokens = [
+    payloadValue.includes("{{previous.text}}") ? "previous text" : null,
+    payloadValue.includes("{{previous.json}}") ? "previous JSON" : null,
+    payloadValue.includes("{{summary") ? "workflow summary" : null,
+    payloadValue.includes("{{node.") ? "specific node fields" : null,
+  ].filter((token): token is string => Boolean(token));
+  const payloadPreview = payloadValue.replace(/\s+/g, " ").trim();
+  const payloadPreviewText = payloadPreview
+    ? payloadPreview.length > 160
+      ? `${payloadPreview.slice(0, 157)}...`
+      : payloadPreview
+    : "Payload template is empty.";
+  const isChannelTarget =
+    data.target === "channel" || data.target === "discord" || data.target === "telegram";
+  const isManualEndpoint = data.target === "email" || data.target === "webhook";
+  const isInternalDestination = data.target === "doc_panel" || data.target === "knowledge";
+  const channelTargetId = typeof record.channelId === "string" ? record.channelId.trim() : "";
+  const selectedChannelTarget = channelTargetId
+    ? selectedChannelTargets.find((target) => target.id === channelTargetId)
+    : undefined;
+  const destinationSummary = (() => {
+    if (isChannelTarget) {
+      const channelLabel =
+        selectedChannel?.label ??
+        selectedChannelId ??
+        targetLabels[data.target] ??
+        "Channel";
+      if (channelTargetId) {
+        return `${channelLabel} -> ${selectedChannelTarget?.label ?? channelTargetId}`;
+      }
+      return `${channelLabel} target not set`;
+    }
+    if (data.target === "email") {
+      const recipient =
+        typeof record.recipient === "string" && record.recipient.trim()
+          ? record.recipient.trim()
+          : typeof record.to === "string" && record.to.trim()
+            ? record.to.trim()
+            : "";
+      return recipient ? `Email -> ${recipient}` : "Email recipient not set";
+    }
+    if (data.target === "webhook") {
+      const url =
+        typeof record.webhookUrl === "string" && record.webhookUrl.trim()
+          ? record.webhookUrl.trim()
+          : typeof record.url === "string" && record.url.trim()
+            ? record.url.trim()
+            : "";
+      const method = typeof record.method === "string" && record.method.trim() ? record.method : "POST";
+      return url ? `${method} ${url}` : "Webhook URL not set";
+    }
+    if (data.target === "knowledge") {
+      const collection =
+        typeof record.collectionId === "string" && record.collectionId.trim()
+          ? record.collectionId.trim()
+          : "";
+      return collection ? `Knowledge -> ${collection}` : "Knowledge collection not named";
+    }
+    if (data.target === "doc_panel") {
+      const title = typeof record.title === "string" && record.title.trim() ? record.title.trim() : "";
+      return title ? `DocPanel -> ${title}` : "DocPanel document";
+    }
+    return targetLabels[data.target] || data.target;
+  })();
+  const formatSummary = (() => {
+    if (isInternalDestination) {
+      return `${formatLabels[data.format] || data.format || "Markdown"} document output`;
+    }
+    if (data.target === "email") {
+      return "Rendered as the email body";
+    }
+    if (data.target === "webhook") {
+      return "Rendered as the request body";
+    }
+    if (isChannelTarget) {
+      return "Rendered as a chat message";
+    }
+    return "Rendered from the template below";
+  })();
+  const approvalGateLabels = nodes
+    .filter((node) => node.type === "gate")
+    .map((node) => {
+      const nodeData = node.data as Record<string, unknown>;
+      if (nodeData.gateType !== "approval") {
+        return null;
+      }
+      return typeof nodeData.label === "string" && nodeData.label.trim() ? nodeData.label.trim() : node.id;
+    })
+    .filter((label): label is string => Boolean(label));
+  const safetySummary =
+    approvalGateLabels.length > 0
+      ? `Approval gate${approvalGateLabels.length === 1 ? "" : "s"} exist in this workflow (${approvalGateLabels
+          .slice(0, 2)
+          .join(", ")}${approvalGateLabels.length > 2 ? ", ..." : ""}). Keep this Output downstream of the right gate if delivery needs review.`
+      : isInternalDestination
+        ? "No Approval gate detected. This writes internally, but Output nodes themselves do not pause for review."
+        : "No Approval gate detected. Output nodes deliver immediately unless an upstream Approval gate blocks the path.";
+  const readinessChecks: Array<{ label: string; ok: boolean; detail: string }> = [
+    {
+      label: "Source",
+      ok: sourceMode !== "node" || Boolean(selectedSourceNodeId),
+      detail:
+        sourceMode === "node"
+          ? selectedSourceNodeId
+            ? `Using ${sourceNodeLabel}.`
+            : "Choose which node result should feed this output."
+          : sourceSummary,
+    },
+    {
+      label: "Template",
+      ok: payloadValue.trim().length > 0,
+      detail:
+        payloadValue.trim().length > 0
+          ? `Ready to render as ${formatSummary.toLowerCase()}.`
+          : "Add a payload template so the output has content to deliver.",
+    },
+  ];
+  if (isChannelTarget) {
+    readinessChecks.push({
+      label: "Channel setup",
+      ok: !legacyChannelSelected && !selectedChannelNeedsSetup,
+      detail:
+        !legacyChannelSelected && !selectedChannelNeedsSetup
+          ? `${selectedChannel?.label ?? selectedChannelId ?? "Channel"} is configured for workflows.`
+          : selectedChannel?.statusLabel ||
+            `${selectedChannelId || "Selected channel"} is not currently configured as a workflow output channel.`,
+    });
+    readinessChecks.push({
+      label: "Destination target",
+      ok: Boolean(channelTargetId),
+      detail: channelTargetId
+        ? `Messages go to ${selectedChannelTarget?.label ?? channelTargetId}.`
+        : "Choose or enter the exact chat/channel destination.",
+    });
+  }
+  if (data.target === "email") {
+    const recipient =
+      typeof record.recipient === "string" && record.recipient.trim()
+        ? record.recipient.trim()
+        : typeof record.to === "string" && record.to.trim()
+          ? record.to.trim()
+          : "";
+    readinessChecks.push({
+      label: "Recipient",
+      ok: Boolean(recipient),
+      detail: recipient ? `Sends to ${recipient}.` : "Add an email recipient before running this node.",
+    });
+  }
+  if (data.target === "webhook") {
+    const webhookUrl =
+      typeof record.webhookUrl === "string" && record.webhookUrl.trim()
+        ? record.webhookUrl.trim()
+        : typeof record.url === "string" && record.url.trim()
+          ? record.url.trim()
+          : "";
+    readinessChecks.push({
+      label: "Webhook URL",
+      ok: Boolean(webhookUrl),
+      detail: webhookUrl
+        ? `Requests are sent to ${webhookUrl}.`
+        : "Add the webhook URL before this output can deliver.",
+    });
+  }
   return (
     <>
-      <div className="space-y-1.5">
-        <label className={DOCK_LABEL + " flex items-center gap-1"}>
-          Source
-          <HelpTip text="Which upstream data should become this output payload." />
-        </label>
-        <select
-          className={DOCK_INPUT}
-          value={sourceMode}
-          onChange={(e) => update("sourceMode", e.target.value)}
-        >
-          <option value="previous">Previous node result</option>
-          <option value="summary">Full workflow summary</option>
-          <option value="node">Specific node result</option>
-          <option value="custom">Custom template only</option>
-        </select>
-      </div>
-
-      {sourceMode === "node" && (
+      <section className={sectionClassName}>
+        <div className="space-y-1">
+          <label className={DOCK_LABEL + " flex items-center gap-1"}>
+            Source
+            <HelpTip text="Which upstream data should become this output payload." />
+          </label>
+          <p className={helpTextClassName}>{sourceSummary}</p>
+        </div>
         <div className="space-y-1.5">
-          <label className={DOCK_LABEL}>Source node</label>
           <select
             className={DOCK_INPUT}
-            value={selectedSourceNodeId}
-            onChange={(e) => update("sourceNodeId", e.target.value)}
+            value={sourceMode}
+            onChange={(e) => update("sourceMode", e.target.value)}
           >
-            <option value="">Select a node...</option>
-            {sourceNodeOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label} ({option.type})
-              </option>
-            ))}
-            {selectedSourceNodeId &&
-              !sourceNodeOptions.some((option) => option.id === selectedSourceNodeId) && (
-                <option value={selectedSourceNodeId}>{selectedSourceNodeId} (missing)</option>
-              )}
+            <option value="previous">Previous node result</option>
+            <option value="summary">Full workflow summary</option>
+            <option value="node">Specific node result</option>
+            <option value="custom">Custom template only</option>
           </select>
         </div>
-      )}
-
-      <div className="space-y-1.5">
-        <label className={DOCK_LABEL + " flex items-center gap-1"}>
-          Destination
-          <HelpTip text="Where the rendered output payload should be delivered or stored." />
-        </label>
-        <select
-          className={DOCK_INPUT}
-          value={selectValue}
-          onChange={(e) => updateTarget(e.target.value)}
-        >
-          <optgroup label="Local">
-            <option value="doc_panel">DocPanel</option>
-            <option value="knowledge">Knowledge</option>
-          </optgroup>
-          {legacyVariableSelected && (
-            <option value="variable" disabled>
-              Variable (not executable yet)
-            </option>
-          )}
-          {outputChannels.length > 0 ? (
-            <optgroup label="Configured channels">
-              {outputChannels.map((channel) => (
-                <option key={channel.id} value={`channel:${channel.id}`}>
-                  {channel.label}
-                  {channel.configured === false ? " (needs setup)" : ""}
-                </option>
-              ))}
-            </optgroup>
-          ) : (
-            <option value="__no_channels" disabled>
-              No configured chat channels
-            </option>
-          )}
-          {legacyChannelSelected && (
-            <option value={`channel:${selectedChannelId}`} disabled>
-              {selectedChannelId} (not configured)
-            </option>
-          )}
-          <optgroup label="Manual endpoints">
-            <option value="email">Email</option>
-            <option value="webhook">Webhook</option>
-          </optgroup>
-        </select>
-      </div>
-
-      {(legacyChannelSelected || selectedChannelNeedsSetup) && (
-        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-          {selectedChannel?.statusLabel ||
-            `${selectedChannelId} is not currently configured as a workflow output channel.`}
-        </div>
-      )}
-
-      {data.target === "email" && (
-        <>
+        {sourceMode === "node" && (
           <div className="space-y-1.5">
-            <label className={DOCK_LABEL}>Recipient</label>
-            <input
-              className={DOCK_INPUT}
-              value={(record.recipient as string) || (record.to as string) || ""}
-              onChange={(e) => {
-                update("recipient", e.target.value);
-              }}
-              placeholder="user@example.com"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className={DOCK_LABEL}>Subject</label>
-            <input
-              className={DOCK_INPUT}
-              value={(record.subject as string) || ""}
-              onChange={(e) => update("subject", e.target.value)}
-              placeholder="Workflow output"
-            />
-          </div>
-        </>
-      )}
-      {data.target === "webhook" && (
-        <>
-          <div className="space-y-1.5">
-            <label className={DOCK_LABEL}>Webhook URL</label>
-            <input
-              className={DOCK_INPUT}
-              value={(record.webhookUrl as string) || (record.url as string) || ""}
-              onChange={(e) => update("webhookUrl", e.target.value)}
-              placeholder="https://..."
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className={DOCK_LABEL}>Method</label>
+            <label className={DOCK_LABEL}>Source node</label>
             <select
               className={DOCK_INPUT}
-              value={(record.method as string) || "POST"}
-              onChange={(e) => update("method", e.target.value)}
+              value={selectedSourceNodeId}
+              onChange={(e) => update("sourceNodeId", e.target.value)}
             >
-              <option value="POST">POST</option>
-              <option value="PUT">PUT</option>
-              <option value="PATCH">PATCH</option>
-              <option value="GET">GET</option>
+              <option value="">Select a node...</option>
+              {sourceNodeOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label} ({option.type})
+                </option>
+              ))}
+              {selectedSourceNodeId &&
+                !sourceNodeOptions.some((option) => option.id === selectedSourceNodeId) && (
+                  <option value={selectedSourceNodeId}>{selectedSourceNodeId} (missing)</option>
+                )}
             </select>
           </div>
-        </>
-      )}
-      {(data.target === "channel" || data.target === "discord" || data.target === "telegram") && (
-        <>
-          {selectedChannelTargets.length > 0 && (
-            <div className="space-y-1.5">
-              <label className={DOCK_LABEL}>
-                {(selectedChannel?.label ?? selectedChannelId) || "Channel"} destination
-              </label>
-              <select
-                className={DOCK_INPUT}
-                value={selectedChannelTargetValue}
-                onChange={(e) => {
-                  if (e.target.value !== "__custom") {
-                    update("channelId", e.target.value);
-                  }
-                }}
-              >
-                {selectedChannelTargets.map((target) => (
-                  <option key={`${target.kind ?? "target"}:${target.id}`} value={target.id}>
-                    {target.label}
-                  </option>
-                ))}
-                <option value="__custom">Custom target...</option>
-              </select>
-            </div>
-          )}
-          {(selectedChannelTargets.length === 0 || selectedChannelTargetValue === "__custom") && (
-            <div className="space-y-1.5">
-              <label className={DOCK_LABEL}>
-                {(selectedChannel?.label ?? selectedChannelId) || "Channel"} target
-              </label>
-              <input
-                className={DOCK_INPUT}
-                value={(record.channelId as string) || ""}
-                onChange={(e) => update("channelId", e.target.value)}
-                placeholder="chat id, channel id, @handle, or configured alias"
-              />
-            </div>
-          )}
-        </>
-      )}
+        )}
+      </section>
 
-      {data.target === "knowledge" && (
+      <section className={sectionClassName}>
+        <div className="space-y-1">
+          <label className={DOCK_LABEL + " flex items-center gap-1"}>
+            Format / template
+            <HelpTip text="How the chosen source is rendered before delivery." />
+          </label>
+          <p className={helpTextClassName}>
+            {formatSummary}. {payloadTokens.length > 0 ? `Template references ${payloadTokens.join(", ")}.` : "Template is custom text only."}
+          </p>
+        </div>
+
+        {(data.target === "doc_panel" || data.target === "knowledge") && (
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Format</label>
+            <select
+              className={DOCK_INPUT}
+              value={data.format || "markdown"}
+              onChange={(e) => update("format", e.target.value)}
+            >
+              <option value="markdown">Markdown</option>
+              <option value="text">Plain text</option>
+              <option value="json">JSON</option>
+            </select>
+          </div>
+        )}
+
         <div className="space-y-1.5">
-          <label className={DOCK_LABEL}>Collection</label>
-          <input
-            className={DOCK_INPUT}
-            value={(record.collectionId as string) || ""}
-            onChange={(e) => update("collectionId", e.target.value)}
-            placeholder="workflow-results"
+          <label className={DOCK_LABEL + " flex items-center gap-1"}>
+            Payload template
+            <HelpTip text="This is the actual content delivered by the output node. Use {{previous.text}} for the prior step or choose a source above." />
+          </label>
+          <textarea
+            className={DOCK_INPUT + " resize-y"}
+            rows={4}
+            value={payloadValue}
+            onChange={(e) => updatePayload(e.target.value)}
+            placeholder="{{previous.text}}"
           />
         </div>
-      )}
 
-      <div className="space-y-1.5">
-        <label className={DOCK_LABEL + " flex items-center gap-1"}>
-          Payload template
-          <HelpTip text="This is the actual content delivered by the output node. Use {{previous.text}} for the prior step or choose a source above." />
-        </label>
-        <textarea
-          className={DOCK_INPUT + " resize-y"}
-          rows={4}
-          value={payloadValue}
-          onChange={(e) => updatePayload(e.target.value)}
-          placeholder="{{previous.text}}"
-        />
-      </div>
+        <div className="rounded-md border border-dashed border-[hsl(var(--border))] px-3 py-2">
+          <div className="flex items-center justify-between gap-3">
+            <span className={DOCK_LABEL}>Preview</span>
+            <span className="text-[11px] text-[hsl(var(--muted-foreground))]">{formatSummary}</span>
+          </div>
+          <div
+            className="mt-1 text-xs text-[hsl(var(--foreground))]"
+            title={payloadPreview || "Payload template is empty."}
+          >
+            {payloadPreviewText}
+          </div>
+        </div>
+      </section>
 
-      {(data.target === "doc_panel" || data.target === "knowledge") && (
+      <section className={sectionClassName}>
+        <div className="space-y-1">
+          <label className={DOCK_LABEL + " flex items-center gap-1"}>
+            Destination
+            <HelpTip text="Where the rendered output payload should be delivered or stored." />
+          </label>
+          <p className={helpTextClassName}>{destinationSummary}</p>
+        </div>
+
         <div className="space-y-1.5">
-          <label className={DOCK_LABEL}>Format</label>
           <select
             className={DOCK_INPUT}
-            value={data.format || "markdown"}
-            onChange={(e) => update("format", e.target.value)}
+            value={selectValue}
+            onChange={(e) => updateTarget(e.target.value)}
           >
-            <option value="markdown">Markdown</option>
-            <option value="text">Plain text</option>
-            <option value="json">JSON</option>
+            <optgroup label="Local">
+              <option value="doc_panel">DocPanel</option>
+              <option value="knowledge">Knowledge</option>
+            </optgroup>
+            {legacyVariableSelected && (
+              <option value="variable" disabled>
+                Variable (not executable yet)
+              </option>
+            )}
+            {outputChannels.length > 0 ? (
+              <optgroup label="Configured channels">
+                {outputChannels.map((channel) => (
+                  <option key={channel.id} value={`channel:${channel.id}`}>
+                    {channel.label}
+                    {channel.configured === false ? " (needs setup)" : ""}
+                  </option>
+                ))}
+              </optgroup>
+            ) : (
+              <option value="__no_channels" disabled>
+                No configured chat channels
+              </option>
+            )}
+            {legacyChannelSelected && (
+              <option value={`channel:${selectedChannelId}`} disabled>
+                {selectedChannelId} (not configured)
+              </option>
+            )}
+            <optgroup label="Manual endpoints">
+              <option value="email">Email</option>
+              <option value="webhook">Webhook</option>
+            </optgroup>
           </select>
         </div>
-      )}
 
-      {data.target === "doc_panel" && (
-        <div className="space-y-1.5">
-          <label className={DOCK_LABEL}>Document title</label>
-          <input
-            className={DOCK_INPUT}
-            value={(record.title as string) || ""}
-            onChange={(e) => update("title", e.target.value)}
-            placeholder="Workflow output"
-          />
-        </div>
-      )}
+        {(legacyChannelSelected || selectedChannelNeedsSetup) && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            {selectedChannel?.statusLabel ||
+              `${selectedChannelId} is not currently configured as a workflow output channel.`}
+          </div>
+        )}
 
-      {data.target !== "doc_panel" && (
-        <div className="space-y-1.5">
-          <label className={DOCK_LABEL}>Node label</label>
-          <input
-            className={DOCK_INPUT}
-            value={(record.title as string) || ""}
-            onChange={(e) => update("title", e.target.value)}
-            placeholder="Output"
-          />
+        {data.target === "email" && (
+          <>
+            <div className="space-y-1.5">
+              <label className={DOCK_LABEL}>Recipient</label>
+              <input
+                className={DOCK_INPUT}
+                value={(record.recipient as string) || (record.to as string) || ""}
+                onChange={(e) => {
+                  update("recipient", e.target.value);
+                }}
+                placeholder="user@example.com"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className={DOCK_LABEL}>Subject</label>
+              <input
+                className={DOCK_INPUT}
+                value={(record.subject as string) || ""}
+                onChange={(e) => update("subject", e.target.value)}
+                placeholder="Workflow output"
+              />
+            </div>
+          </>
+        )}
+        {data.target === "webhook" && (
+          <>
+            <div className="space-y-1.5">
+              <label className={DOCK_LABEL}>Webhook URL</label>
+              <input
+                className={DOCK_INPUT}
+                value={(record.webhookUrl as string) || (record.url as string) || ""}
+                onChange={(e) => update("webhookUrl", e.target.value)}
+                placeholder="https://..."
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className={DOCK_LABEL}>Method</label>
+              <select
+                className={DOCK_INPUT}
+                value={(record.method as string) || "POST"}
+                onChange={(e) => update("method", e.target.value)}
+              >
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+                <option value="PATCH">PATCH</option>
+                <option value="GET">GET</option>
+              </select>
+            </div>
+          </>
+        )}
+        {isChannelTarget && (
+          <>
+            {selectedChannelTargets.length > 0 && (
+              <div className="space-y-1.5">
+                <label className={DOCK_LABEL}>
+                  {(selectedChannel?.label ?? selectedChannelId) || "Channel"} destination
+                </label>
+                <select
+                  className={DOCK_INPUT}
+                  value={selectedChannelTargetValue}
+                  onChange={(e) => {
+                    if (e.target.value !== "__custom") {
+                      update("channelId", e.target.value);
+                    }
+                  }}
+                >
+                  {selectedChannelTargets.map((target) => (
+                    <option key={`${target.kind ?? "target"}:${target.id}`} value={target.id}>
+                      {target.label}
+                    </option>
+                  ))}
+                  <option value="__custom">Custom target...</option>
+                </select>
+              </div>
+            )}
+            {(selectedChannelTargets.length === 0 || selectedChannelTargetValue === "__custom") && (
+              <div className="space-y-1.5">
+                <label className={DOCK_LABEL}>
+                  {(selectedChannel?.label ?? selectedChannelId) || "Channel"} target
+                </label>
+                <input
+                  className={DOCK_INPUT}
+                  value={(record.channelId as string) || ""}
+                  onChange={(e) => update("channelId", e.target.value)}
+                  placeholder="chat id, channel id, @handle, or configured alias"
+                />
+              </div>
+            )}
+          </>
+        )}
+
+        {data.target === "knowledge" && (
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Collection</label>
+            <input
+              className={DOCK_INPUT}
+              value={(record.collectionId as string) || ""}
+              onChange={(e) => update("collectionId", e.target.value)}
+              placeholder="workflow-results"
+            />
+          </div>
+        )}
+      </section>
+
+      <section className={sectionClassName}>
+        <div className="space-y-1">
+          <label className={DOCK_LABEL}>Safety / approval / readiness</label>
+          <p className={helpTextClassName}>
+            {isInternalDestination ? "Internal destination." : isManualEndpoint ? "External endpoint." : "External chat delivery."} {safetySummary}
+          </p>
         </div>
-      )}
+        <div className="space-y-2">
+          {readinessChecks.map((check) => (
+            <div
+              key={check.label}
+              className={`rounded-md border px-3 py-2 ${
+                check.ok
+                  ? "border-emerald-500/30 bg-emerald-500/10"
+                  : "border-amber-500/40 bg-amber-500/10"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs font-medium text-[hsl(var(--foreground))]">{check.label}</span>
+                <span
+                  className={`text-[11px] uppercase tracking-wide ${
+                    check.ok ? "text-emerald-200" : "text-amber-200"
+                  }`}
+                >
+                  {check.ok ? "Ready" : "Needs attention"}
+                </span>
+              </div>
+              <div className={`mt-1 ${helpTextClassName}`}>{check.detail}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div className="space-y-1.5">
+        <label className={DOCK_LABEL}>{data.target === "doc_panel" ? "Document title" : "Node label"}</label>
+        <input
+          className={DOCK_INPUT}
+          value={
+            data.target === "doc_panel"
+              ? ((record.title as string) || "")
+              : ((data.label as string) || "")
+          }
+          onChange={(e) =>
+            data.target === "doc_panel"
+              ? update("title", e.target.value)
+              : update("label", e.target.value)
+          }
+          placeholder={data.target === "doc_panel" ? "Workflow output" : "Output"}
+        />
+      </div>
     </>
   );
 }

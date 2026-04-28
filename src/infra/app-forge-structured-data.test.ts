@@ -14,7 +14,8 @@ function app(overrides: Partial<ForgeApp> = {}): ForgeApp {
     version: 1,
     createdAt: "2026-04-25T20:00:00.000Z",
     updatedAt: "2026-04-25T20:00:00.000Z",
-    isPinned: false,
+    openCount: 0,
+    pinned: false,
     metadata: {},
     ...overrides,
   };
@@ -63,12 +64,23 @@ describe("forge structured data metadata", () => {
                 name: "Reviews",
                 fields: [
                   { id: "title", name: "Title", type: "text", required: true },
+                  { id: "notes", name: "Notes", type: "long_text" },
                   {
                     id: "approved",
                     name: "Approved",
                     type: "checkbox",
                     required: false,
                   },
+                  {
+                    id: "tags",
+                    name: "Tags",
+                    type: "multi_select",
+                    options: ["Design", "Launch"],
+                  },
+                  { id: "files", name: "Files", type: "attachment" },
+                  { id: "related", name: "Related", type: "linked_record" },
+                  { id: "contact", name: "Contact", type: "email" },
+                  { id: "site", name: "Site", type: "url" },
                   { id: "bad-field" },
                 ],
                 records: [
@@ -76,7 +88,13 @@ describe("forge structured data metadata", () => {
                     id: "record-1",
                     values: {
                       title: "Asset A",
+                      notes: "Needs compliance review",
                       approved: true,
+                      tags: ["Design", "Launch"],
+                      files: ["brief.pdf"],
+                      related: "record-2",
+                      contact: "owner@example.com",
+                      site: "https://example.com/review",
                       ignored: { nested: true },
                     },
                     createdAt: "2026-04-25T21:00:00.000Z",
@@ -97,11 +115,26 @@ describe("forge structured data metadata", () => {
     expect(base.id).toBe("base-existing");
     expect(base.activeTableId).toBe("table-review");
     expect(base.tables).toHaveLength(1);
-    expect(base.tables[0]?.fields.map((field) => field.id)).toEqual(["title", "approved"]);
+    expect(base.tables[0]?.fields.map((field) => field.id)).toEqual([
+      "title",
+      "notes",
+      "approved",
+      "tags",
+      "files",
+      "related",
+      "contact",
+      "site",
+    ]);
     expect(base.tables[0]?.records).toHaveLength(1);
     expect(base.tables[0]?.records[0]?.values).toEqual({
       title: "Asset A",
+      notes: "Needs compliance review",
       approved: true,
+      tags: ["Design", "Launch"],
+      files: ["brief.pdf"],
+      related: ["record-2"],
+      contact: "owner@example.com",
+      site: "https://example.com/review",
     });
     expect(metadata.workflowCapabilities).toEqual([{ id: "review", label: "Review" }]);
     expect(metadata.appForge).toMatchObject({
@@ -135,6 +168,36 @@ describe("forge structured data metadata", () => {
         type: "checkbox",
       }),
     ).toBe(true);
+    expect(
+      forgeStructuredDataTestUtils.coerceValueForField("Design, Launch", {
+        id: "tags",
+        name: "Tags",
+        type: "multi_select",
+        options: ["Design", "Launch"],
+      }),
+    ).toEqual(["Design", "Launch"]);
+    expect(
+      forgeStructuredDataTestUtils.coerceValueForField("Design, Invalid", {
+        id: "tags",
+        name: "Tags",
+        type: "multi_select",
+        options: ["Design", "Launch"],
+      }),
+    ).toEqual(["Design"]);
+    expect(
+      forgeStructuredDataTestUtils.coerceValueForField("brief.pdf, mock.png", {
+        id: "files",
+        name: "Files",
+        type: "attachment",
+      }),
+    ).toEqual(["brief.pdf", "mock.png"]);
+    expect(
+      forgeStructuredDataTestUtils.coerceValueForField("record-1, record-2", {
+        id: "related",
+        name: "Related",
+        type: "linked_record",
+      }),
+    ).toEqual(["record-1", "record-2"]);
     expect(forgeStructuredDataTestUtils.coerceValueForField("Blocked", selectField)).toBe(
       "Planning",
     );

@@ -19,6 +19,8 @@ The prompt is intentionally compact and uses fixed sections:
 - **Tooling**: current tool list + short descriptions.
 - **Safety**: short guardrail reminder to avoid power-seeking behavior or bypassing oversight.
 - **Skills** (when available): tells the model how to load skill instructions on demand.
+- **Opportunity Router** (when a conversation trajectory is detected): a compact hint
+  that names the likely task pattern and recommended skill or workflow.
 - **ArgentOS Self-Update**: how to run `config.apply` and `update.run`.
 - **Workspace**: working directory (`agents.defaults.workspace`).
 - **Documentation**: local path to ArgentOS docs (repo or npm package) and when to read them.
@@ -104,6 +106,26 @@ Skills section is omitted.
 ```
 
 This keeps the base prompt small while still enabling targeted skill usage.
+
+## Opportunity Router
+
+Before the final system prompt is assembled, ArgentOS runs a lightweight Room
+Reader / Opportunity Router over the current user message and the already
+available skill candidates. It recognizes broad task trajectories such as
+podcast production, article drafting, data collection, research, workflow
+automation, and software-project kickoff.
+
+The router has three action modes:
+
+- `observe` — no prompt text is added.
+- `offer` — the prompt may suggest briefly offering a relevant skill or workflow.
+- `activate` — the prompt may treat the recommended skill or workflow as the
+  primary path when it fits the request.
+
+The router is intentionally conservative. SpecForge is only recommended for
+software-project build/spec/app/tool/platform requests; article, podcast,
+research, data-collection, and automation opportunities do not route to
+SpecForge.
 
 ## Documentation
 

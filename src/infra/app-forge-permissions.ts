@@ -45,6 +45,8 @@ export type AppForgePermissionSnapshot = {
   viewers: string[];
 };
 
+export type AppForgePermissionScope = Pick<AppForgePermissions, "owners" | "editors" | "viewers">;
+
 export type AppForgePermissionCheckAuditEvent = {
   eventType: "forge.permissions.checked";
   source: "appforge";
@@ -213,6 +215,50 @@ export function snapshotAppForgePermissions(
     owners: permissions.owners.map((entry) => entry.actorId),
     editors: permissions.editors.map((entry) => entry.actorId),
     viewers: permissions.viewers.map((entry) => entry.actorId),
+  };
+}
+
+function normalizeAclEntries(value: unknown, addedAt: string): AppForgeAclEntry[] | null {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const entries = new Map<string, AppForgeAclEntry>();
+  for (const item of value) {
+    const actor = maybeNormalizeAppForgeActor(item);
+    if (!actor) {
+      return null;
+    }
+    const key = actorKey(actor);
+    if (entries.has(key)) {
+      continue;
+    }
+    entries.set(key, { ...actor, addedAt });
+  }
+  return [...entries.values()];
+}
+
+export function coerceAppForgePermissionScope(value: unknown): AppForgePermissionScope | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const addedAt = nowIso();
+  const owners = normalizeAclEntries(record.owners, addedAt);
+  const editors = normalizeAclEntries(record.editors, addedAt);
+  const viewers = normalizeAclEntries(record.viewers, addedAt);
+  if (!owners || !editors || !viewers) {
+    return null;
+  }
+
+  return {
+    owners,
+    editors: removeCoveredActors(editors, owners),
+    viewers: removeCoveredActors(viewers, [...owners, ...editors]),
   };
 }
 

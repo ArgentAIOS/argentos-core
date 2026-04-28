@@ -243,6 +243,27 @@ ArgentOS snapshots the eligible skills **when a session starts** and reuses that
 
 Skills can also refresh mid-session when the skills watcher is enabled or when a new eligible remote node appears (see below). Think of this as a **hot reload**: the refreshed list is picked up on the next agent turn.
 
+## Room Reader / Opportunity Router
+
+ArgentOS also runs a lightweight Room Reader before each agent prompt. It does
+not read skill files or execute tools. Instead, it looks at the current user
+message, the eligible skill summaries, and existing skill candidates to detect
+whether the conversation is becoming a known task shape:
+
+- podcast production
+- article/newsletter drafting
+- data collection or spreadsheet enrichment
+- research/comparison work
+- workflow automation
+- software project build/spec kickoff
+
+When confidence is low, the router stays in `observe` mode and adds nothing to
+the system prompt. When confidence is higher, it injects a short Opportunity
+Router hint that recommends the best matching skill or workflow. Direct
+software-project kickoff requests may recommend the Core SpecForge workflow;
+non-project opportunities such as articles, podcasts, research, or data
+collection do not route to SpecForge.
+
 ## Remote macOS nodes (Linux gateway)
 
 If the Gateway is running on Linux but a **macOS node** is connected **with `system.run` allowed** (Exec approvals security not set to `deny`), ArgentOS can treat macOS-only skills as eligible when the required binaries are present on that node. The agent should execute those skills via the `nodes` tool (typically `nodes.run`).

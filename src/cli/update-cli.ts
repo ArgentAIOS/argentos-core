@@ -117,11 +117,11 @@ const UPDATE_QUIPS = [
 ];
 
 const MAX_LOG_CHARS = 8000;
-const DEFAULT_PACKAGE_NAME = "argent";
+const DEFAULT_PACKAGE_NAME = "argentos";
 const MACOS_DASHBOARD_SERVICE_LABELS = ["ai.argent.dashboard-api", "ai.argent.dashboard-ui"];
-const CORE_PACKAGE_NAMES = new Set([DEFAULT_PACKAGE_NAME]);
+const CORE_PACKAGE_NAMES = new Set([DEFAULT_PACKAGE_NAME, "argent"]);
 const CLI_NAME = resolveCliName();
-const ARGENT_REPO_URL = "https://github.com/ArgentAIOS/argentos.git";
+const ARGENT_REPO_URL = "https://github.com/ArgentAIOS/argentos-core.git";
 const DEFAULT_GIT_DIR = path.join(os.homedir(), "argentos");
 
 function normalizeTag(value?: string | null): string | null {

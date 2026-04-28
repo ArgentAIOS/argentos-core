@@ -11,7 +11,18 @@ const messagesPath = path.join(busDir, "messages.jsonl");
 const acksPath = path.join(busDir, "acks.json");
 const tasksPath = path.join(busDir, "tasks.json");
 
-const knownLanes = ["master", "workflows", "appforge", "aou", "aos", "openclaw", "all"];
+const knownLanes = [
+  "master",
+  "workflows",
+  "appforge",
+  "aou",
+  "aos",
+  "openclaw",
+  "hermes",
+  "roomreader",
+  "business",
+  "all",
+];
 const taskStatuses = ["todo", "doing", "blocked", "done", "cancelled"];
 const taskPriorities = ["low", "normal", "high", "urgent"];
 

@@ -1,6 +1,18 @@
 import fs from "node:fs";
 import type { ArgentConfig } from "../config/config.js";
-import type { PluginConfigUiHint, PluginDiagnostic, PluginKind, PluginOrigin } from "./types.js";
+import type {
+  PluginConfigUiHint,
+  PluginDiagnostic,
+  PluginKind,
+  PluginManifestCapability,
+  PluginManifestInstallNote,
+  PluginManifestNativeDependency,
+  PluginManifestOAuthProvider,
+  PluginManifestPermission,
+  PluginManifestRuntimeSurface,
+  PluginManifestSetupCheck,
+  PluginOrigin,
+} from "./types.js";
 import { resolveUserPath } from "../utils.js";
 import { normalizePluginsConfig, type NormalizedPluginsConfig } from "./config-state.js";
 import { discoverArgentPlugins, type PluginCandidate } from "./discovery.js";
@@ -23,6 +35,13 @@ export type PluginManifestRecord = {
   schemaCacheKey?: string;
   configSchema?: Record<string, unknown>;
   configUiHints?: Record<string, PluginConfigUiHint>;
+  capabilities?: PluginManifestCapability[];
+  permissions?: PluginManifestPermission[];
+  runtimeSurfaces?: PluginManifestRuntimeSurface[];
+  nativeDependencies?: PluginManifestNativeDependency[];
+  setupChecks?: PluginManifestSetupCheck[];
+  oauthProviders?: PluginManifestOAuthProvider[];
+  installNotes?: PluginManifestInstallNote[];
 };
 
 export type PluginManifestRegistry = {
@@ -103,6 +122,13 @@ function buildRecord(params: {
     schemaCacheKey: params.schemaCacheKey,
     configSchema: params.configSchema,
     configUiHints: params.manifest.uiHints,
+    capabilities: params.manifest.capabilities,
+    permissions: params.manifest.permissions,
+    runtimeSurfaces: params.manifest.runtimeSurfaces,
+    nativeDependencies: params.manifest.nativeDependencies,
+    setupChecks: params.manifest.setupChecks,
+    oauthProviders: params.manifest.oauthProviders,
+    installNotes: params.manifest.installNotes,
   };
 }
 

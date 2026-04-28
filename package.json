@@ -38,6 +38,7 @@
     "README.md",
     "rust/",
     "skills/",
+    "scripts/install-bundled-aos-harnesses.mjs",
     "tools/aos/"
   ],
   "type": "module",

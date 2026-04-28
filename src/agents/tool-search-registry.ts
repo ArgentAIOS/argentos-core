@@ -7,8 +7,9 @@
  *   - **Core** (~12 tools, ~3K tokens): always sent
  *   - **Deferred** (~70+ tools): only sent after the agent discovers them via `tool_search`
  *
- * The registry indexes deferred tools by name, description, and keywords for
- * fast keyword-based search. Discovered tool names are tracked per session.
+ * The registry indexes tools by name, description, and keywords for fast
+ * keyword-based search. Deferred matches are tracked per session; core matches
+ * are returned too so always-visible capabilities are discoverable by name.
  */
 
 import type { AnyAgentTool } from "./tools/common.js";
@@ -266,7 +267,11 @@ export class ToolSearchRegistry {
   }
 
   /**
-   * Search deferred tools by keyword query. Returns matches ranked by relevance.
+   * Search all tools by keyword query. Returns matches ranked by relevance.
+   *
+   * Core tools are already callable, but including them in search prevents
+   * always-visible tools (for example doc_panel) from becoming effectively
+   * hidden when the model uses tool_search as its capability index.
    */
   search(query: string, limit = 5): Array<{ tool: AnyAgentTool; score: number }> {
     const terms = query
@@ -278,7 +283,6 @@ export class ToolSearchRegistry {
     }
 
     const scored = this.entries
-      .filter((e) => e.group === "deferred")
       .map((entry) => ({
         tool: entry.tool,
         score: this.scoreMatch(entry, terms),

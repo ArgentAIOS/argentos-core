@@ -22,6 +22,9 @@ export type {
   SkillMatchCandidate,
   SkillInstallSpec,
   SkillSnapshot,
+  RoomReaderActionMode,
+  RoomReaderOpportunity,
+  RoomReaderPatternId,
   SkillsInstallPreferences,
 } from "./skills/types.js";
 export {
@@ -35,6 +38,10 @@ export {
   resolveSkillsPromptForRun,
   syncSkillsToWorkspace,
 } from "./skills/workspace.js";
+export {
+  buildRoomReaderOpportunityPromptBlock,
+  resolveRoomReaderOpportunity,
+} from "./skills/room-reader.js";
 export {
   buildPersonalSkillExecutionPlan,
   buildExecutablePersonalSkillContextBlock,

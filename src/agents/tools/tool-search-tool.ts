@@ -21,7 +21,7 @@ type ToolStatusEntry = {
   name: string;
   label?: string;
   description?: string;
-  source: "core" | "plugin";
+  source: "core" | "plugin" | "connector";
   pluginId?: string;
   optional?: boolean;
 };

@@ -1196,6 +1196,39 @@ function resolveOutputPayload(
   return lastOutput.text ? stringifyWorkflowValue(lastOutput.text) : JSON.stringify(lastOutput);
 }
 
+async function saveDocPanelDocument(
+  title: string,
+  content: string,
+  format?: string,
+): Promise<{ docId: string; format: string }> {
+  const { dashboardApiHeaders } = await import("../utils/dashboard-api.js");
+  const dashboardApi = process.env.ARGENT_DASHBOARD_API || "http://localhost:9242";
+  const docId = `wfdoc-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const resolvedFormat = format || "markdown";
+  const res = await fetch(`${dashboardApi}/api/canvas/save`, {
+    method: "POST",
+    headers: dashboardApiHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      doc: {
+        id: docId,
+        title,
+        content,
+        type: resolvedFormat,
+        autoRouted: true,
+      },
+    }),
+  });
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => "unknown error");
+    throw new Error(`DocPanel save failed: HTTP ${res.status} — ${errBody}`);
+  }
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  return {
+    docId: (data.id as string) || docId,
+    format: resolvedFormat,
+  };
+}
+
 function stringifyWorkflowValue(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -1731,28 +1764,11 @@ async function executeAction(
         context.history[context.history.length - 1]?.output?.items[0]?.text ?? "";
       const renderedContent = resolveTemplate(content ?? fallbackContent, context);
       try {
-        const { dashboardApiHeaders } = await import("../utils/dashboard-api.js");
-        const dashboardApi = process.env.ARGENT_DASHBOARD_API || "http://localhost:9242";
-        const docId = `wfdoc-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-        const res = await fetch(`${dashboardApi}/api/canvas/save`, {
-          method: "POST",
-          headers: dashboardApiHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({
-            doc: {
-              id: docId,
-              title: renderedTitle,
-              content: renderedContent,
-              type: format || "markdown",
-              autoRouted: true,
-            },
-          }),
-        });
-        if (!res.ok) {
-          const errBody = await res.text().catch(() => "unknown error");
-          throw new Error(`DocPanel save failed: HTTP ${res.status} — ${errBody}`);
-        }
-        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-        const savedId = (data.id as string) || docId;
+        const { docId: savedId, format: savedFormat } = await saveDocPanelDocument(
+          renderedTitle,
+          renderedContent,
+          format,
+        );
         log.info("save_to_docpanel: SAVED", { docId: savedId, title: renderedTitle });
         return {
           items: [
@@ -1761,7 +1777,7 @@ async function executeAction(
                 saved: true,
                 docId: savedId,
                 title: renderedTitle,
-                format: format || "markdown",
+                format: savedFormat,
               },
               text: renderedContent,
               artifacts: [
@@ -2335,7 +2351,6 @@ function executeGate(node: GateNode, context: PipelineContext, _edges: WorkflowE
 
 /**
  * Execute an output node — delivers the pipeline result.
- * Sprint 2: stubs that log delivery and return confirmation.
  */
 async function executeOutput(node: OutputNode, context: PipelineContext): Promise<ItemSet> {
   const config = node.config;
@@ -2347,20 +2362,26 @@ async function executeOutput(node: OutputNode, context: PipelineContext): Promis
   switch (outputType) {
     case "docpanel": {
       const content = resolveOutputPayload(config, context);
-      log.warn("docpanel output not yet wired — returning mock", {
-        nodeId: node.id,
-        title: config.title,
-      });
+      const renderedTitle = resolveTemplate(config.title, context);
+      const { docId, format } = await saveDocPanelDocument(renderedTitle, content, config.format);
+      log.info("docpanel output saved", { nodeId: node.id, docId, title: renderedTitle });
       return {
         items: [
           {
-            json: { outputType: "docpanel", title: config.title, content },
+            json: {
+              outputType: "docpanel",
+              saved: true,
+              docId,
+              title: renderedTitle,
+              content,
+              format,
+            },
             text: content,
             artifacts: [
               {
                 type: "docpanel",
-                id: `doc:${context.runId}-${node.id}`,
-                title: config.title,
+                id: `doc:${docId}`,
+                title: renderedTitle,
               },
             ],
           },
@@ -2459,7 +2480,7 @@ async function executeOutput(node: OutputNode, context: PipelineContext): Promis
       const item = await adapter.memory.createItem({
         memoryType: "knowledge",
         summary: content,
-        significance: 0.6,
+        significance: "noteworthy",
         extra: {
           ...config.metadata,
           collection: collectionId,

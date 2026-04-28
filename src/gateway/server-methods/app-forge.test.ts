@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppForgeBase } from "../../infra/app-forge-model.js";
+import { createAppForgePermissions } from "../../infra/app-forge-permissions.js";
 import type { ConnectParams, RequestFrame } from "../protocol/index.js";
 import type { GatewayRequestContext, GatewayRequestHandlerOptions } from "./types.js";
 import { listGatewayMethods } from "../server-methods-list.js";
@@ -30,6 +31,10 @@ function base(overrides: Partial<AppForgeBase> = {}): AppForgeBase {
 
 function createResponder() {
   return vi.fn<(ok: boolean, payload?: unknown, error?: unknown) => void>();
+}
+
+function permissions(overrides: Parameters<typeof createAppForgePermissions>[0] = { creator: "owner-1" }) {
+  return createAppForgePermissions(overrides);
 }
 
 async function invokeAppForgeHandler(method: string, params: Record<string, unknown>) {
@@ -139,6 +144,64 @@ describe("AppForge gateway handlers", () => {
     );
   });
 
+  it("enforces AppForge ACL claims on base writes when multi-user params are provided", async () => {
+    const deniedRespond = await invokeAppForgeHandler("appforge.bases.put", {
+      base: base({ name: "Denied" }),
+      expectedRevision: 1,
+      actor: { actorId: "viewer-1", actorType: "operator", sessionKey: "agent:viewer-1:main" },
+      permissions: permissions({
+        creator: { actorId: "owner-1", actorType: "operator" },
+        viewers: ["viewer-1"],
+      }),
+    });
+    expect(deniedRespond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "unauthorized appforge write",
+        audit: expect.objectContaining({
+          eventType: "forge.permissions.checked",
+          appId: "app-1",
+          allowed: false,
+          aclRole: "viewer",
+        }),
+      }),
+    );
+
+    const allowedRespond = await invokeAppForgeHandler("appforge.bases.put", {
+      base: base({ name: "Allowed" }),
+      expectedRevision: 1,
+      actor: { actorId: "editor-1", actorType: "operator" },
+      permissions: permissions({
+        creator: { actorId: "owner-1", actorType: "operator" },
+        editors: ["editor-1"],
+        viewers: ["viewer-1"],
+      }),
+    });
+    expect(allowedRespond).toHaveBeenCalledWith(
+      true,
+      { base: expect.objectContaining({ revision: 2, name: "Allowed" }) },
+      undefined,
+    );
+  });
+
+  it("rejects partial AppForge multi-user claims on writes", async () => {
+    const respond = await invokeAppForgeHandler("appforge.bases.put", {
+      base: base({ name: "Updated" }),
+      expectedRevision: 1,
+      permissions: permissions(),
+    });
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "actor and permissions are required together for AppForge multi-user writes",
+      }),
+    );
+  });
+
   it("deletes bases with revision checks", async () => {
     const respond = await invokeAppForgeHandler("appforge.bases.delete", {
       baseId: "base-1",
@@ -155,6 +218,38 @@ describe("AppForge gateway handlers", () => {
       false,
       undefined,
       expect.objectContaining({ code: "INVALID_REQUEST", message: "base not found" }),
+    );
+  });
+
+  it("enforces AppForge ACL claims on deletes when multi-user params are provided", async () => {
+    const deniedRespond = await invokeAppForgeHandler("appforge.bases.delete", {
+      baseId: "base-1",
+      expectedRevision: 1,
+      actor: "viewer-1",
+      permissions: permissions({
+        creator: "owner-1",
+        viewers: ["viewer-1"],
+      }),
+    });
+    expect(deniedRespond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "unauthorized appforge write",
+      }),
+    );
+
+    const allowedRespond = await invokeAppForgeHandler("appforge.bases.delete", {
+      baseId: "base-1",
+      expectedRevision: 1,
+      actor: "owner-1",
+      permissions: permissions(),
+    });
+    expect(allowedRespond).toHaveBeenCalledWith(
+      true,
+      { base: expect.objectContaining({ id: "base-1", revision: 2 }) },
+      undefined,
     );
   });
 

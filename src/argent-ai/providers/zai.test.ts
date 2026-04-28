@@ -112,6 +112,48 @@ describe("ZAIProvider", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("retries the sibling Z.AI endpoint when a package/category mismatch returns 404", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (fetchMock.mock.calls.length === 1) {
+        expect(url).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
+        return new Response("not found", { status: 404 });
+      }
+
+      expect(url).toBe("https://api.z.ai/api/paas/v4/chat/completions");
+      return new Response(
+        JSON.stringify({
+          id: "chatcmpl-fallback",
+          object: "chat.completion",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: "Recovered on the general endpoint.",
+              },
+              finish_reason: "stop",
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = createZAIProvider({
+      apiKey: "zai-test",
+      baseURL: "https://api.z.ai/api/coding/paas/v4/chat/completions",
+    });
+
+    const response = await provider.execute(
+      { messages: [{ role: "user", content: "Hello." }] },
+      { id: "glm-4.7", thinking: true, maxTokens: 1024 },
+    );
+
+    expect(response.text).toBe("Recovered on the general endpoint.");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("retries reasoning-only streaming responses with thinking disabled", async () => {
     const encoder = new TextEncoder();
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
@@ -199,6 +241,69 @@ describe("ZAIProvider", () => {
     if (done?.type === "done") {
       expect(done.response.text).toBe("Recovered streamed answer.");
     }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries streaming calls on the sibling Z.AI endpoint after a 404", async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async (url: string) => {
+      if (fetchMock.mock.calls.length === 1) {
+        expect(url).toBe("https://api.z.ai/api/paas/v4/chat/completions");
+        return new Response("not found", { status: 404 });
+      }
+
+      expect(url).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  id: "chatcmpl-stream-fallback",
+                  object: "chat.completion.chunk",
+                  choices: [
+                    {
+                      index: 0,
+                      delta: { content: "Recovered stream." },
+                    },
+                  ],
+                })}\n\n`,
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  id: "chatcmpl-stream-fallback",
+                  object: "chat.completion.chunk",
+                  choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+                })}\n\n`,
+              ),
+            );
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          },
+        }),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = createZAIProvider({
+      apiKey: "zai-test",
+      baseURL: "https://api.z.ai/api/paas/v4/chat/completions",
+    });
+
+    const events = [];
+    for await (const event of provider.stream(
+      { messages: [{ role: "user", content: "Hello." }] },
+      { id: "glm-5.1", thinking: true, maxTokens: 1024 },
+    )) {
+      events.push(event);
+    }
+
+    expect(
+      events.some((event) => event.type === "text_delta" && event.delta === "Recovered stream."),
+    ).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

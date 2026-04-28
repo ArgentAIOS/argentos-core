@@ -4,6 +4,12 @@ import {
   createInMemoryAppForgeAdapter,
   type AppForgeAdapter,
 } from "../../infra/app-forge-adapter.js";
+import {
+  buildAppForgePermissionCheckAuditEvent,
+  canWriteAppForge,
+  coerceAppForgePermissionScope,
+  normalizeAppForgeActor,
+} from "../../infra/app-forge-permissions.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 
 let adapter: AppForgeAdapter = createInMemoryAppForgeAdapter();
@@ -40,6 +46,60 @@ function asAppForgeBase(value: unknown): AppForgeBase | null {
   return value as AppForgeBase;
 }
 
+function appForgeWriteGuard(
+  params: Record<string, unknown>,
+  appId: string,
+):
+  | { ok: true }
+  | {
+      ok: false;
+      message: string;
+      details?: Record<string, unknown>;
+    } {
+  const hasActor = params.actor !== undefined;
+  const hasPermissions = params.permissions !== undefined;
+  if (!hasActor && !hasPermissions) {
+    return { ok: true };
+  }
+  if (!hasActor || !hasPermissions) {
+    return {
+      ok: false,
+      message: "actor and permissions are required together for AppForge multi-user writes",
+    };
+  }
+
+  let actor;
+  try {
+    actor = normalizeAppForgeActor(params.actor as Parameters<typeof normalizeAppForgeActor>[0]);
+  } catch {
+    return { ok: false, message: "valid AppForge actor is required" };
+  }
+
+  const permissions = coerceAppForgePermissionScope(params.permissions);
+  if (!permissions) {
+    return { ok: false, message: "valid AppForge permissions are required" };
+  }
+
+  if (canWriteAppForge(permissions, actor)) {
+    return { ok: true };
+  }
+
+  return {
+    ok: false,
+    message: "unauthorized appforge write",
+    details: {
+      audit: buildAppForgePermissionCheckAuditEvent({
+        appId,
+        actor,
+        permissions,
+        permission: "write",
+        allowed: false,
+        reason: "actor lacks owner/editor AppForge access",
+      }),
+    },
+  };
+}
+
 export function resetAppForgeAdapterForTests(seed: AppForgeBase[] = []) {
   adapter = createInMemoryAppForgeAdapter(seed);
 }
@@ -73,6 +133,12 @@ export const appForgeHandlers: GatewayRequestHandlers = {
       return;
     }
 
+    const guard = appForgeWriteGuard(params, base.appId);
+    if (!guard.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details));
+      return;
+    }
+
     const result = await adapter.putBase({
       base,
       expectedRevision: optionalNumberParam(params, "expectedRevision"),
@@ -93,6 +159,18 @@ export const appForgeHandlers: GatewayRequestHandlers = {
     const baseId = stringParam(params, "baseId");
     if (!baseId) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "baseId is required"));
+      return;
+    }
+
+    const current = await adapter.getBase(baseId);
+    if (!current) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "base not found"));
+      return;
+    }
+
+    const guard = appForgeWriteGuard(params, current.appId);
+    if (!guard.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, guard.message, guard.details));
       return;
     }
 
