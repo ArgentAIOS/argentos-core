@@ -40,6 +40,26 @@ describe("connector_setup tool", () => {
     );
   });
 
+  it("resolves the Google preflight from the package root when runtime cwd is not the repo", async () => {
+    const originalCwd = process.cwd();
+    const runCommand = vi.fn().mockResolvedValue({
+      stdout: JSON.stringify(preflightPayload()),
+      stderr: "",
+    });
+
+    try {
+      process.chdir("/");
+      const tool = createConnectorSetupTool({ runCommand });
+      await tool.execute("call-1", { action: "status", connector: "aos-google" });
+    } finally {
+      process.chdir(originalCwd);
+    }
+
+    const args = runCommand.mock.calls[0]?.[1] as string[];
+    expect(args[0]).toMatch(/tools\/aos\/aos-google\/installer\/preflight_gws\.py$/);
+    expect(args[0]).not.toBe("/tools/aos/aos-google/installer/preflight_gws.py");
+  });
+
   it("requires explicit confirmation before opening Google login", async () => {
     const runCommand = vi.fn();
     const tool = createConnectorSetupTool({ runCommand });

@@ -7,8 +7,10 @@
 
 import { Type } from "@sinclair/typebox";
 import { execFile } from "node:child_process";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { type AnyAgentTool, jsonResult, readStringParam } from "./common.js";
 
@@ -16,15 +18,15 @@ const execFileAsync = promisify(execFile);
 
 const GOOGLE_TOOL_ID = "aos-google";
 const GOOGLE_REQUIRED_SERVICES = "drive,gmail,calendar,sheets,docs";
-const GOOGLE_PREFLIGHT_PATH = path.resolve(
-  process.cwd(),
+const GOOGLE_CONFIG_DIR = path.join(os.homedir(), ".config", "gws");
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const GOOGLE_PREFLIGHT_RELATIVE_PATH = path.join(
   "tools",
   "aos",
   GOOGLE_TOOL_ID,
   "installer",
   "preflight_gws.py",
 );
-const GOOGLE_CONFIG_DIR = path.join(os.homedir(), ".config", "gws");
 
 type ConnectorSetupAction = "status" | "check" | "start_google_login";
 
@@ -181,9 +183,29 @@ function summarizePreflight(payload: PreflightPayload) {
   };
 }
 
+function resolveGooglePreflightPath(): string {
+  const candidateRoots = [
+    process.env.ARGENT_CORE_ROOT,
+    process.env.ARGENTOS_CORE_ROOT,
+    process.env.INIT_CWD,
+    process.cwd(),
+    path.resolve(MODULE_DIR, "..", "..", ".."),
+    path.resolve(MODULE_DIR, "..", "..", "..", ".."),
+  ].filter((root): root is string => Boolean(root));
+
+  for (const root of candidateRoots) {
+    const candidate = path.resolve(root, GOOGLE_PREFLIGHT_RELATIVE_PATH);
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return path.resolve(candidateRoots[0] ?? process.cwd(), GOOGLE_PREFLIGHT_RELATIVE_PATH);
+}
+
 async function runPreflight(options: ConnectorSetupToolOptions, installMissing: boolean) {
   const runCommand = options.runCommand ?? defaultRunCommand;
-  const preflightPath = options.preflightPath ?? GOOGLE_PREFLIGHT_PATH;
+  const preflightPath = options.preflightPath ?? resolveGooglePreflightPath();
   const args = [preflightPath, "--require-auth", "--json"];
   if (installMissing) {
     args.splice(1, 0, "--install-missing");
