@@ -17,5 +17,29 @@
         "note": "Smoke test completed."
       }
     ]
+  },
+  {
+    "id": "task-20260427015931-wtz2j4",
+    "createdAt": "2026-04-27T01:59:31.689Z",
+    "updatedAt": "2026-04-27T02:12:16.636Z",
+    "from": "aos",
+    "owner": "aos",
+    "title": "Harden AOS Slack service keys",
+    "body": "Patch tools/aos/aos-slack so basic Slack connector uses operator service keys first, scoped repo keys block env fallback, enc:v1 repo keys decrypt/fallback like core, manifest separates required bot token from optional scope keys, and readiness truth includes live_write_smoke_tested=false.",
+    "status": "done",
+    "priority": "high",
+    "branch": "unknown",
+    "notes": [
+      {
+        "at": "2026-04-27T01:59:40.311Z",
+        "lane": "aos",
+        "note": "Started branch codex/aos-slack-service-keys-loop from origin/dev 63da5f8a. Scope: tools/aos/aos-slack/** plus ops/THREADMASTER_COORDINATION.md only; no Workflows/AppForge/OpenClaw/dashboard/gateway runtime touch."
+      },
+      {
+        "at": "2026-04-27T02:12:16.635Z",
+        "lane": "aos",
+        "note": "Completed basic Slack service-key hardening in pushed branch codex/aos-slack-service-keys-loop at 117ab231. Slack keeps live reads plus permission-gated message.reply; SLACK_BOT_TOKEN required; SLACK_APP_TOKEN, SLACK_WORKSPACE, SLACK_TEAM_ID, SLACK_CHANNEL_ID, SLACK_THREAD_TS, SLACK_USER_ID optional operator defaults. Command paths now build runtime_config(ctx.obj). Scoped repo keys block env fallback including legacy AOS_SLACK_* aliases; valid enc:v1 repo keys decrypt; unreadable encrypted keys fall back like core resolver; live_write_smoke_tested=false. Verification: json.tool manifest+permissions, compileall, Slack pytest 20 passed, git diff --check HEAD~1 HEAD, pnpm check:repo-lane, architect approved after legacy-alias scoped-block fix. Known gaps: no real operator Slack workspace read/write smoke; no Socket Mode/event ingestion; oxfmt missing in clean worktree hook but explicit checks passed."
+      }
+    ]
   }
 ]
