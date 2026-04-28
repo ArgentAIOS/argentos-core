@@ -93,16 +93,19 @@ describe("workflowRowWithCanvasOverride", () => {
       deployment_stage: "simulate" as const,
     };
 
-    const next = workflowRowWithCanvasOverride(row, {
-      canvasData: {
-        nodes: [
-          { id: "trigger", type: "trigger", data: { triggerType: "manual" } },
-          { id: "out", type: "output", data: { target: "doc_panel", title: "Result" } },
-        ],
-        edges: [{ id: "e1", source: "trigger", target: "out" }],
+    const next = workflowRowWithCanvasOverride(
+      row as unknown as Parameters<typeof workflowRowWithCanvasOverride>[0],
+      {
+        canvasData: {
+          nodes: [
+            { id: "trigger", type: "trigger", data: { triggerType: "manual" } },
+            { id: "out", type: "output", data: { target: "doc_panel", title: "Result" } },
+          ],
+          edges: [{ id: "e1", source: "trigger", target: "out" }],
+        },
+        deploymentStage: "simulate",
       },
-      deploymentStage: "simulate",
-    });
+    );
 
     expect(next.nodes?.map((node) => (node as { kind?: string }).kind)).toEqual([
       "trigger",
@@ -184,6 +187,47 @@ describe("workflowRowWithCanvasOverride", () => {
         { id: "e-agent-out", source: "agent", target: "out" },
       ],
     });
+  });
+
+  it("uses legacy JSON-string graph columns as fallback data for same-click overrides", () => {
+    const row = {
+      id: "wf-string-graph",
+      name: "String Graph Workflow",
+      nodes: JSON.stringify([
+        { id: "trigger", kind: "trigger", triggerType: "manual", config: {} },
+        {
+          id: "out",
+          kind: "output",
+          label: "Results",
+          config: { outputType: "docpanel", title: "Results" },
+        },
+      ]),
+      edges: JSON.stringify([{ id: "e1", source: "trigger", target: "out" }]),
+      canvas_layout: JSON.stringify({
+        nodes: [
+          { id: "trigger", type: "trigger", data: { triggerType: "manual" } },
+          { id: "out", type: "output", data: { target: "doc_panel", title: "Results" } },
+        ],
+        edges: [{ id: "e1", source: "trigger", target: "out" }],
+      }),
+      deployment_stage: "live" as const,
+    };
+
+    const next = workflowRowWithCanvasOverride(row, {
+      canvasLayout: {
+        nodes: [
+          { id: "trigger", type: "trigger", data: { triggerType: "manual" } },
+          { id: "out", type: "output", data: { target: "doc_panel", title: "Results" } },
+        ],
+        edges: [{ id: "e1", source: "trigger", target: "out" }],
+      },
+    });
+
+    expect(next.nodes?.map((node) => (node as { kind?: string }).kind)).toEqual([
+      "trigger",
+      "output",
+    ]);
+    expect(next.edges).toHaveLength(1);
   });
 
   it("derives trigger persistence metadata from the normalized workflow", () => {

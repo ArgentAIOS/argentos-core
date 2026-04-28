@@ -51,6 +51,7 @@ import {
   resumeWorkflowRunAfterWait,
   type WorkflowRow,
   workflowFromRow,
+  workflowJsonFieldsFromRow,
 } from "../../infra/workflow-execution-service.js";
 import {
   hasBlockingWorkflowIssues,
@@ -139,6 +140,10 @@ function isWorkflowOutputConnectorCommand(command: {
 
 let _sql: ReturnType<typeof postgres> | null = null;
 let _initPromise: Promise<ReturnType<typeof postgres> | null> | null = null;
+
+function jsonParam(sql: ReturnType<typeof postgres>, value: unknown) {
+  return sql.json(value as postgres.JSONValue);
+}
 
 function isPgBacked(): boolean {
   const cfg = resolveRuntimeStorageConfig(process.env);
@@ -277,10 +282,11 @@ export function workflowRowWithCanvasOverride(
   row: WorkflowRow,
   params: Record<string, unknown>,
 ): WorkflowRow {
+  const jsonFields = workflowJsonFieldsFromRow(row);
   const payload = workflowGraphPayload(params, {
-    nodes: Array.isArray(row.nodes) ? row.nodes : [],
-    edges: Array.isArray(row.edges) ? row.edges : [],
-    canvasLayout: row.canvas_layout,
+    nodes: jsonFields.nodes,
+    edges: jsonFields.edges,
+    canvasLayout: jsonFields.canvasLayout,
   });
   if (!payload.changed) {
     return row;
@@ -296,7 +302,7 @@ export function workflowRowWithCanvasOverride(
     nodes: payload.nodes,
     edges: payload.edges,
     canvasLayout: payload.canvasLayout,
-    defaultOnError: row.default_on_error ?? undefined,
+    defaultOnError: jsonFields.defaultOnError,
     maxRunDurationMs:
       typeof row.max_run_duration_ms === "number" ? row.max_run_duration_ms : undefined,
     maxRunCostUsd: typeof row.max_run_cost_usd === "number" ? row.max_run_cost_usd : undefined,
@@ -1577,11 +1583,11 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           trigger_type, trigger_config, deployment_stage
         ) VALUES (
           ${id}, ${name}, ${description}, ${ownerAgentId}, 1, true,
-          ${JSON.stringify(normalized.workflow.nodes)}::jsonb,
-          ${JSON.stringify(normalized.workflow.edges)}::jsonb,
-          ${JSON.stringify(normalized.canvasLayout)}::jsonb,
-          ${JSON.stringify(normalized.workflow.defaultOnError)}::jsonb, ${maxRunDurationMs},
-          ${maxRunCostUsd}, ${triggerType}, ${triggerConfig ? JSON.stringify(triggerConfig) : null}::jsonb,
+          ${jsonParam(sql, normalized.workflow.nodes)}::jsonb,
+          ${jsonParam(sql, normalized.workflow.edges)}::jsonb,
+          ${jsonParam(sql, normalized.canvasLayout)}::jsonb,
+          ${jsonParam(sql, normalized.workflow.defaultOnError)}::jsonb, ${maxRunDurationMs},
+          ${maxRunCostUsd}, ${triggerType}, ${triggerConfig ? jsonParam(sql, triggerConfig) : null}::jsonb,
           ${deploymentStage}
         )
         RETURNING *
@@ -1612,6 +1618,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       }
 
       const newVersion = (existing.version as number) + 1;
+      const existingJson = workflowJsonFieldsFromRow(existing as unknown as WorkflowRow);
 
       // Save current state to version history
       const versionId = randomUUID();
@@ -1619,9 +1626,9 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         INSERT INTO workflow_versions (id, workflow_id, version, nodes, edges, canvas_layout, changed_by, change_summary)
         VALUES (
           ${versionId}, ${id}, ${existing.version},
-          ${JSON.stringify(existing.nodes)}::jsonb,
-          ${JSON.stringify(existing.edges)}::jsonb,
-          ${JSON.stringify(existing.canvas_layout)}::jsonb,
+          ${jsonParam(sql, existingJson.nodes)}::jsonb,
+          ${jsonParam(sql, existingJson.edges)}::jsonb,
+          ${jsonParam(sql, existingJson.canvasLayout)}::jsonb,
           ${optionalString(params, "changedBy") ?? "operator"},
           ${optionalString(params, "changeSummary") ?? null}
         )
@@ -1631,9 +1638,9 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       // Dashboard may send { canvasData: { nodes, edges } } and agent tools may send
       // canonical { definition: { nodes, edges } }; both are valid persistence sources.
       const graph = workflowGraphPayload(params, {
-        nodes: existing.nodes as unknown[],
-        edges: existing.edges as unknown[],
-        canvasLayout: existing.canvas_layout,
+        nodes: existingJson.nodes,
+        edges: existingJson.edges,
+        canvasLayout: existingJson.canvasLayout,
       });
 
       const name = optionalString(params, "name");
@@ -1688,12 +1695,12 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           version = ${newVersion},
           name = COALESCE(${name ?? null}, name),
           description = COALESCE(${description ?? null}, description),
-          nodes = COALESCE(${normalized ? JSON.stringify(normalized.workflow.nodes) : null}::jsonb, nodes),
-          edges = COALESCE(${normalized ? JSON.stringify(normalized.workflow.edges) : null}::jsonb, edges),
-          canvas_layout = COALESCE(${normalized ? JSON.stringify(normalized.canvasLayout) : null}::jsonb, canvas_layout),
+          nodes = COALESCE(${normalized ? jsonParam(sql, normalized.workflow.nodes) : null}::jsonb, nodes),
+          edges = COALESCE(${normalized ? jsonParam(sql, normalized.workflow.edges) : null}::jsonb, edges),
+          canvas_layout = COALESCE(${normalized ? jsonParam(sql, normalized.canvasLayout) : null}::jsonb, canvas_layout),
           trigger_type = COALESCE(${nextTriggerType ?? null}, trigger_type),
-          trigger_config = COALESCE(${nextTriggerConfig ? JSON.stringify(nextTriggerConfig) : null}::jsonb, trigger_config),
-          default_on_error = COALESCE(${normalized ? JSON.stringify(normalized.workflow.defaultOnError) : defaultOnError ? JSON.stringify(defaultOnError) : null}::jsonb, default_on_error),
+          trigger_config = COALESCE(${nextTriggerConfig ? jsonParam(sql, nextTriggerConfig) : null}::jsonb, trigger_config),
+          default_on_error = COALESCE(${normalized ? jsonParam(sql, normalized.workflow.defaultOnError) : defaultOnError ? jsonParam(sql, defaultOnError) : null}::jsonb, default_on_error),
           max_run_duration_ms = COALESCE(${maxRunDurationMs ?? null}, max_run_duration_ms),
           max_run_cost_usd = COALESCE(${maxRunCostUsd ?? null}, max_run_cost_usd),
           deployment_stage = COALESCE(${deploymentStage ?? null}, deployment_stage),
@@ -1831,6 +1838,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
 
       const newId = randomUUID();
       const name = newName ?? `${source.name} (copy)`;
+      const sourceJson = workflowJsonFieldsFromRow(source as unknown as WorkflowRow);
 
       const [row] = await sql`
         INSERT INTO workflows (
@@ -1841,14 +1849,14 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         ) VALUES (
           ${newId}, ${name}, ${source.description},
           ${source.owner_agent_id}, 1, true,
-          ${JSON.stringify(source.nodes)}::jsonb,
-          ${JSON.stringify(source.edges)}::jsonb,
-          ${JSON.stringify(source.canvas_layout)}::jsonb,
-          ${JSON.stringify(source.default_on_error)}::jsonb,
+          ${jsonParam(sql, sourceJson.nodes)}::jsonb,
+          ${jsonParam(sql, sourceJson.edges)}::jsonb,
+          ${jsonParam(sql, sourceJson.canvasLayout)}::jsonb,
+          ${jsonParam(sql, sourceJson.defaultOnError ?? {})}::jsonb,
           ${source.max_run_duration_ms},
           ${source.max_run_cost_usd},
           ${source.trigger_type},
-          ${source.trigger_config ? JSON.stringify(source.trigger_config) : null}::jsonb,
+          ${source.trigger_config ? jsonParam(sql, source.trigger_config) : null}::jsonb,
           'live'
         )
         RETURNING *

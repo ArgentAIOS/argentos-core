@@ -57,6 +57,48 @@ export interface NormalizedWorkflowRow {
 
 export type WorkflowBroadcast = (event: string, payload: unknown) => void;
 
+export function parseWorkflowJsonColumn(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return value;
+  }
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return value;
+  }
+}
+
+function workflowJsonArrayColumn(value: unknown): unknown[] {
+  const parsed = parseWorkflowJsonColumn(value);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+function workflowJsonObjectColumn<T>(value: unknown): T | undefined {
+  const parsed = parseWorkflowJsonColumn(value);
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    return parsed as T;
+  }
+  return undefined;
+}
+
+export function workflowJsonFieldsFromRow(row: WorkflowRow): {
+  nodes: unknown[];
+  edges: unknown[];
+  canvasLayout: unknown;
+  defaultOnError?: ErrorConfig;
+} {
+  return {
+    nodes: workflowJsonArrayColumn(row.nodes),
+    edges: workflowJsonArrayColumn(row.edges),
+    canvasLayout: parseWorkflowJsonColumn(row.canvas_layout),
+    defaultOnError: workflowJsonObjectColumn<ErrorConfig>(row.default_on_error),
+  };
+}
+
 function numberOrUndefined(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -91,14 +133,15 @@ function timestampMsOrNow(value: unknown, fallback = Date.now()): number {
 }
 
 export function workflowFromRow(row: WorkflowRow): NormalizedWorkflowRow {
+  const jsonFields = workflowJsonFieldsFromRow(row);
   return normalizeWorkflow({
     id: row.id,
     name: row.name,
     description: row.description ?? undefined,
-    nodes: Array.isArray(row.nodes) ? row.nodes : [],
-    edges: Array.isArray(row.edges) ? row.edges : [],
-    canvasLayout: row.canvas_layout,
-    defaultOnError: row.default_on_error ?? undefined,
+    nodes: jsonFields.nodes,
+    edges: jsonFields.edges,
+    canvasLayout: jsonFields.canvasLayout,
+    defaultOnError: jsonFields.defaultOnError,
     maxRunDurationMs: numberOrUndefined(row.max_run_duration_ms),
     maxRunCostUsd: numberOrUndefined(row.max_run_cost_usd),
     deploymentStage: row.deployment_stage ?? undefined,
