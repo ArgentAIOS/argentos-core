@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import postgres from "postgres";
 import type { ArgentConfig } from "../../config/config.js";
+import type { CronService } from "../../cron/service.js";
+import type { CronJob, CronJobCreate, CronJobPatch } from "../../cron/types.js";
 import type { WorkflowDefinition, WorkflowNode } from "../../infra/workflow-types.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { createOutboundSendDeps } from "../../cli/deps.js";
@@ -74,6 +76,7 @@ import { buildWorkflowPersonalSkillCapabilities } from "./skills.js";
 import { buildToolsStatusPayload } from "./tools.js";
 
 const log = createSubsystemLogger("gateway/workflows");
+const WORKFLOW_SCHEDULE_CRON_MARKER = "[workflow_schedule]";
 
 const WORKFLOW_PRIMITIVES = [
   { id: "trigger", label: "Trigger", description: "Start condition" },
@@ -490,6 +493,162 @@ export function derivedWorkflowTrigger(workflow: WorkflowDefinition) {
     triggerType: trigger.triggerType,
     triggerConfig: trigger.config,
   };
+}
+
+function stringField(source: unknown, keys: string[]): string | undefined {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return undefined;
+  }
+  const record = source as Record<string, unknown>;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function workflowRunCronJobs(jobs: CronJob[], workflowId: string): CronJob[] {
+  return jobs.filter(
+    (job) => job.payload.kind === "workflowRun" && job.payload.workflowId === workflowId,
+  );
+}
+
+function resolveWorkflowSchedule(row: WorkflowRow): { expr: string; timezone?: string } | null {
+  const triggerType = typeof row.trigger_type === "string" ? row.trigger_type : undefined;
+  if (triggerType !== "schedule" && triggerType !== "cron") {
+    return null;
+  }
+  const triggerConfig = row.trigger_config;
+  const expr = stringField(triggerConfig, [
+    "cronExpression",
+    "cronExpr",
+    "scheduleCron",
+    "expr",
+    "cron",
+  ]);
+  if (!expr) {
+    return null;
+  }
+  const timezone = stringField(triggerConfig, ["timezone", "timeZone", "tz"]);
+  return { expr, timezone };
+}
+
+function workflowScheduleCronDescription(row: WorkflowRow): string {
+  const description =
+    typeof row.description === "string" && row.description.trim()
+      ? row.description.trim()
+      : "Workflow schedule trigger";
+  return `${WORKFLOW_SCHEDULE_CRON_MARKER}\nworkflowId=${row.id}\n${description}`;
+}
+
+function workflowScheduleCronSpec(row: WorkflowRow, schedule: { expr: string; timezone?: string }) {
+  return {
+    name: `Workflow: ${row.name}`,
+    description: workflowScheduleCronDescription(row),
+    enabled: row.is_active === true,
+    schedule: {
+      kind: "cron" as const,
+      expr: schedule.expr,
+      ...(schedule.timezone ? { tz: schedule.timezone } : {}),
+    },
+    sessionTarget: "isolated" as const,
+    wakeMode: "next-heartbeat" as const,
+    payload: {
+      kind: "workflowRun" as const,
+      workflowId: row.id,
+      triggerPayload: {
+        source: "workflow_schedule",
+        workflowId: row.id,
+        triggerType: row.trigger_type ?? "schedule",
+      },
+    },
+    delivery: { mode: "none" as const },
+  };
+}
+
+async function setWorkflowNextFireAt(
+  sql: ReturnType<typeof postgres>,
+  workflowId: string,
+  nextRunAtMs: number | undefined,
+) {
+  const nextFireAt = typeof nextRunAtMs === "number" ? new Date(nextRunAtMs).toISOString() : null;
+  await sql`
+    UPDATE workflows
+    SET next_fire_at = ${nextFireAt}::timestamptz
+    WHERE id = ${workflowId}
+  `;
+}
+
+export async function syncWorkflowScheduleCronJob(params: {
+  sql: ReturnType<typeof postgres>;
+  cron: CronService;
+  workflow: WorkflowRow;
+}) {
+  const { sql, cron, workflow } = params;
+  const existing = workflowRunCronJobs(await cron.list({ includeDisabled: true }), workflow.id);
+  const schedule = resolveWorkflowSchedule(workflow);
+
+  if (!schedule || workflow.is_active !== true) {
+    for (const job of existing) {
+      await cron.remove(job.id);
+    }
+    await setWorkflowNextFireAt(sql, workflow.id, undefined);
+    return { action: existing.length > 0 ? "removed" : "none", jobId: null, nextRunAtMs: null };
+  }
+
+  const spec = workflowScheduleCronSpec(workflow, schedule);
+  const [primary, ...duplicates] = existing;
+  for (const duplicate of duplicates) {
+    await cron.remove(duplicate.id);
+  }
+
+  const job = primary
+    ? await cron.update(primary.id, spec as CronJobPatch)
+    : await cron.add(spec as CronJobCreate);
+  await setWorkflowNextFireAt(sql, workflow.id, job.state.nextRunAtMs);
+  return {
+    action: primary ? "updated" : "added",
+    jobId: job.id,
+    nextRunAtMs: job.state.nextRunAtMs ?? null,
+  };
+}
+
+export async function reconcileWorkflowScheduleCronJobs(cron: CronService) {
+  const sql = await getSql();
+  const rows = await sql`SELECT * FROM workflows`;
+  const scheduledWorkflowIds = new Set<string>();
+  const results: Array<{ workflowId: string; action: string; jobId: string | null }> = [];
+
+  for (const row of rows) {
+    const workflow = row as unknown as WorkflowRow;
+    const schedule = resolveWorkflowSchedule(workflow);
+    if (schedule && workflow.is_active === true) {
+      scheduledWorkflowIds.add(workflow.id);
+    }
+    const result = await syncWorkflowScheduleCronJob({ sql, cron, workflow });
+    if (result.action !== "none") {
+      results.push({ workflowId: workflow.id, action: result.action, jobId: result.jobId });
+    }
+  }
+
+  const jobs = await cron.list({ includeDisabled: true });
+  for (const job of jobs) {
+    if (job.payload.kind !== "workflowRun") {
+      continue;
+    }
+    const workflowId = job.payload.workflowId;
+    if (!scheduledWorkflowIds.has(workflowId)) {
+      await cron.remove(job.id);
+      results.push({ workflowId, action: "removed-stale", jobId: job.id });
+    }
+  }
+
+  if (results.length > 0) {
+    log.info(`workflow schedule cron reconciliation: ${JSON.stringify(results)}`);
+  }
+  return { reconciled: results };
 }
 
 function optionalWorkflowPackageFormat(
@@ -1556,7 +1715,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
 
-  "workflows.create": async ({ params, respond }) => {
+  "workflows.create": async ({ params, respond, context }) => {
     try {
       const sql = await getSql();
       const id =
@@ -1619,6 +1778,11 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         RETURNING *
       `;
 
+      await syncWorkflowScheduleCronJob({
+        sql,
+        cron: context.cron,
+        workflow: row as unknown as WorkflowRow,
+      });
       log.info(`workflow created: ${id} "${name}"`);
       respond(true, publicWorkflowRow(row as unknown as WorkflowRow));
     } catch (err) {
@@ -1627,7 +1791,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "workflows.update": async ({ params, respond }) => {
+  "workflows.update": async ({ params, respond, context }) => {
     try {
       const sql = await getSql();
       // Accept both "id" and "workflowId" (dashboard sends workflowId)
@@ -1737,6 +1901,11 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         RETURNING *
       `;
 
+      await syncWorkflowScheduleCronJob({
+        sql,
+        cron: context.cron,
+        workflow: updated as unknown as WorkflowRow,
+      });
       log.info(`workflow updated: ${id} → v${newVersion}`);
       respond(true, publicWorkflowRow(updated as unknown as WorkflowRow));
     } catch (err) {
@@ -1965,7 +2134,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "workflows.delete": async ({ params, respond }) => {
+  "workflows.delete": async ({ params, respond, context }) => {
     try {
       const sql = await getSql();
       const id =
@@ -1983,6 +2152,10 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         return;
       }
 
+      const jobs = workflowRunCronJobs(await context.cron.list({ includeDisabled: true }), id);
+      for (const job of jobs) {
+        await context.cron.remove(job.id);
+      }
       log.info(`workflow deleted: ${id} "${deleted.name}"`);
       respond(true, { deleted: true, id });
     } catch (err) {
@@ -1991,7 +2164,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "workflows.duplicate": async ({ params, respond }) => {
+  "workflows.duplicate": async ({ params, respond, context }) => {
     try {
       const sql = await getSql();
       const sourceId = requireString(params, "id");
@@ -2033,6 +2206,11 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         RETURNING *
       `;
 
+      await syncWorkflowScheduleCronJob({
+        sql,
+        cron: context.cron,
+        workflow: row as unknown as WorkflowRow,
+      });
       log.info(`workflow duplicated: ${sourceId} → ${newId} "${name}"`);
       respond(true, publicWorkflowRow(row as unknown as WorkflowRow));
     } catch (err) {

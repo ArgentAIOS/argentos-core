@@ -9286,7 +9286,7 @@ function WorkflowCanvasInner({
         name: `Workflow: ${workflow?.name ?? activeWorkflowId}`,
         enabled: true,
         schedule: { kind: "cron", expr: cronExpression, ...(timezone ? { tz: timezone } : {}) },
-        sessionTarget: "main",
+        sessionTarget: "isolated",
         wakeMode: "next-heartbeat",
         payload: { kind: "workflowRun", workflowId: activeWorkflowId },
         delivery: { mode: "none" },

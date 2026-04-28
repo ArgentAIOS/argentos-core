@@ -79,6 +79,7 @@ import { GATEWAY_EVENTS, listGatewayMethods } from "./server-methods-list.js";
 import { coreGatewayHandlers } from "./server-methods.js";
 import { createExecApprovalHandlers } from "./server-methods/exec-approval.js";
 import { safeParseJson } from "./server-methods/nodes.helpers.js";
+import { reconcileWorkflowScheduleCronJobs } from "./server-methods/workflows.js";
 import { hasConnectedMobileNode } from "./server-mobile-nodes.js";
 import { loadGatewayModelCatalog } from "./server-model-catalog.js";
 import { createNodeSubscriptionManager } from "./server-node-subscriptions.js";
@@ -764,7 +765,12 @@ export async function startGatewayServer(
     broadcast("aevp_episode", event, { dropIfSlow: true });
   });
 
-  void cron.start().catch((err) => logCron.error(`failed to start: ${String(err)}`));
+  void cron
+    .start()
+    .then(() => reconcileWorkflowScheduleCronJobs(cron))
+    .catch((err) =>
+      logCron.error(`failed to start or reconcile workflow schedules: ${String(err)}`),
+    );
 
   const execApprovalManager = new ExecApprovalManager();
   const execApprovalForwarder = createExecApprovalForwarderOptional
