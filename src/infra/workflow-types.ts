@@ -432,6 +432,7 @@ export interface StepRecord {
   status: "completed" | "failed" | "skipped";
   durationMs: number;
   output: ItemSet;
+  error?: string;
   tokensUsed?: number;
   costUsd?: number;
   startedAt: number;

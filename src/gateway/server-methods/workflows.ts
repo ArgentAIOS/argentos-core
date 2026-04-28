@@ -69,6 +69,11 @@ import {
   type WorkflowPackage,
   type WorkflowPackageFormat,
 } from "../../infra/workflow-package.js";
+import {
+  buildWorkflowAgentSessionKey,
+  topologicalSort,
+  validateWorkflowAgentSessionIdentity,
+} from "../../infra/workflow-runner.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { dashboardApiHeaders } from "../../utils/dashboard-api.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
@@ -147,6 +152,24 @@ let _initPromise: Promise<ReturnType<typeof postgres> | null> | null = null;
 
 function jsonParam(sql: ReturnType<typeof postgres>, value: unknown) {
   return sql.json(value as postgres.JSONValue);
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function jsonEqual(left: unknown, right: unknown): boolean {
+  return stableJson(left ?? null) === stableJson(right ?? null);
 }
 
 function isPgBacked(): boolean {
@@ -1563,6 +1586,99 @@ export async function validateWorkflowRuntimeCapabilities(
   return issues;
 }
 
+type WorkflowDryRunTraceStep = {
+  nodeId: string;
+  nodeKind: string;
+  label: string;
+  status: "passed" | "warning" | "failed";
+  message: string;
+  details?: Record<string, unknown>;
+};
+
+export async function buildWorkflowDryRunTrace(workflow: WorkflowDefinition): Promise<{
+  ok: boolean;
+  steps: WorkflowDryRunTraceStep[];
+  issues: WorkflowIssue[];
+}> {
+  const issues = await validateWorkflowRuntimeCapabilities(workflow);
+  const steps: WorkflowDryRunTraceStep[] = [];
+
+  try {
+    const order = topologicalSort(workflow.nodes, workflow.edges);
+    steps.push({
+      nodeId: "__graph__",
+      nodeKind: "graph",
+      label: "Execution order",
+      status: "passed",
+      message: `Graph sorts into ${order.length} executable node${order.length === 1 ? "" : "s"}.`,
+      details: { order: order.map((node) => node.id) },
+    });
+
+    for (const node of order) {
+      const label = "label" in node && typeof node.label === "string" ? node.label : node.id;
+      if (node.kind === "agent") {
+        const sessionKey = buildWorkflowAgentSessionKey(node.config.agentId, 1);
+        const identity = validateWorkflowAgentSessionIdentity(node.config.agentId, sessionKey);
+        const missingPrompt = !node.config.rolePrompt.trim();
+        steps.push({
+          nodeId: node.id,
+          nodeKind: node.kind,
+          label,
+          status: !identity.ok ? "failed" : missingPrompt ? "warning" : "passed",
+          message: !identity.ok
+            ? identity.message
+            : missingPrompt
+              ? `Agent "${node.config.agentId}" can dispatch, but its prompt is empty.`
+              : `Agent "${node.config.agentId}" can dispatch with an isolated workflow session.`,
+          details: {
+            agentId: node.config.agentId,
+            sessionKey,
+            sessionAgentId: identity.sessionAgentId,
+            timeoutMs: node.config.timeoutMs,
+          },
+        });
+        continue;
+      }
+
+      steps.push({
+        nodeId: node.id,
+        nodeKind: node.kind,
+        label,
+        status: "passed",
+        message:
+          node.kind === "trigger"
+            ? `Trigger "${node.triggerType}" is configured for dry run.`
+            : `${node.kind} node is structurally reachable.`,
+      });
+    }
+  } catch (err) {
+    steps.push({
+      nodeId: "__graph__",
+      nodeKind: "graph",
+      label: "Execution order",
+      status: "failed",
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  for (const issue of issues) {
+    steps.push({
+      nodeId: issue.nodeId ?? "__workflow__",
+      nodeKind: "validation",
+      label: issue.nodeId ?? "Workflow validation",
+      status: issue.severity === "error" ? "failed" : "warning",
+      message: issue.message,
+      details: { code: issue.code },
+    });
+  }
+
+  return {
+    ok: !steps.some((step) => step.status === "failed"),
+    steps,
+    issues,
+  };
+}
+
 export async function startAppForgeEventTriggeredWorkflows(opts: {
   sql: ReturnType<typeof postgres>;
   event: NormalizedAppForgeWorkflowEvent;
@@ -1807,22 +1923,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         return;
       }
 
-      const newVersion = (existing.version as number) + 1;
       const existingJson = workflowJsonFieldsFromRow(existing as unknown as WorkflowRow);
-
-      // Save current state to version history
-      const versionId = randomUUID();
-      await sql`
-        INSERT INTO workflow_versions (id, workflow_id, version, nodes, edges, canvas_layout, changed_by, change_summary)
-        VALUES (
-          ${versionId}, ${id}, ${existing.version},
-          ${jsonParam(sql, existingJson.nodes)}::jsonb,
-          ${jsonParam(sql, existingJson.edges)}::jsonb,
-          ${jsonParam(sql, existingJson.canvasLayout)}::jsonb,
-          ${optionalString(params, "changedBy") ?? "operator"},
-          ${optionalString(params, "changeSummary") ?? null}
-        )
-      `;
 
       // Build SET clause dynamically
       // Dashboard may send { canvasData: { nodes, edges } } and agent tools may send
@@ -1879,6 +1980,51 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       const derivedTrigger = normalized ? derivedWorkflowTrigger(normalized.workflow) : null;
       const nextTriggerType = triggerType ?? derivedTrigger?.triggerType;
       const nextTriggerConfig = triggerConfig ?? derivedTrigger?.triggerConfig;
+      const graphChanged = Boolean(
+        normalized &&
+        (!jsonEqual(normalized.workflow.nodes, existingJson.nodes) ||
+          !jsonEqual(normalized.workflow.edges, existingJson.edges) ||
+          !jsonEqual(normalized.canvasLayout, existingJson.canvasLayout)),
+      );
+      const defaultOnErrorChanged =
+        defaultOnError !== undefined && !jsonEqual(defaultOnError, existing.default_on_error);
+      const changed =
+        graphChanged ||
+        (name !== undefined && name !== existing.name) ||
+        (description !== undefined && description !== existing.description) ||
+        (nextTriggerType !== undefined && nextTriggerType !== existing.trigger_type) ||
+        (nextTriggerConfig !== undefined &&
+          !jsonEqual(nextTriggerConfig, existing.trigger_config)) ||
+        defaultOnErrorChanged ||
+        (maxRunDurationMs !== undefined && maxRunDurationMs !== existing.max_run_duration_ms) ||
+        (maxRunCostUsd !== undefined && maxRunCostUsd !== existing.max_run_cost_usd) ||
+        (deploymentStage !== undefined && deploymentStage !== existing.deployment_stage) ||
+        (isActive !== undefined && isActive !== existing.is_active) ||
+        (nextFireAt !== undefined &&
+          new Date(nextFireAt).toISOString() !==
+            (existing.next_fire_at
+              ? new Date(existing.next_fire_at as string | number | Date).toISOString()
+              : null));
+
+      if (!changed) {
+        log.info(`workflow update ignored as no-op: ${id}`);
+        respond(true, publicWorkflowRow(existing as unknown as WorkflowRow));
+        return;
+      }
+
+      const newVersion = (existing.version as number) + 1;
+      const versionId = randomUUID();
+      await sql`
+        INSERT INTO workflow_versions (id, workflow_id, version, nodes, edges, canvas_layout, changed_by, change_summary)
+        VALUES (
+          ${versionId}, ${id}, ${existing.version},
+          ${jsonParam(sql, existingJson.nodes)}::jsonb,
+          ${jsonParam(sql, existingJson.edges)}::jsonb,
+          ${jsonParam(sql, existingJson.canvasLayout)}::jsonb,
+          ${optionalString(params, "changedBy") ?? "operator"},
+          ${optionalString(params, "changeSummary") ?? null}
+        )
+      `;
 
       const [updated] = await sql`
         UPDATE workflows SET
@@ -2274,6 +2420,50 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       });
     } catch (err) {
       log.warn(`workflows.validate failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "workflows.dryRun": async ({ params, respond }) => {
+    try {
+      const id = optionalString(params, "id") ?? optionalString(params, "workflowId");
+      let normalized;
+      if (id) {
+        const sql = await getSql();
+        const [row] = await sql`SELECT * FROM workflows WHERE id = ${id}`;
+        if (!row) {
+          respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Workflow not found"));
+          return;
+        }
+        normalized = workflowFromRow(
+          workflowRowWithCanvasOverride(row as unknown as WorkflowRow, params),
+        );
+      } else {
+        const graph = workflowGraphPayload(params);
+        normalized = normalizeWorkflow({
+          id: "dry-run",
+          name: optionalString(params, "name") ?? "Untitled workflow",
+          description: optionalString(params, "description"),
+          nodes: graph.nodes,
+          edges: graph.edges,
+          canvasLayout: graph.canvasLayout,
+          deploymentStage:
+            optionalDeploymentStage(params) ??
+            workflowDeploymentStageFromDefinition(graph.definition) ??
+            "live",
+        });
+      }
+
+      const trace = await buildWorkflowDryRunTrace(normalized.workflow);
+      respond(true, {
+        ok: trace.ok && !hasBlockingWorkflowIssues([...normalized.issues, ...trace.issues]),
+        steps: trace.steps,
+        issues: [...normalized.issues, ...trace.issues],
+        definition: normalized.workflow,
+        canvasLayout: normalized.canvasLayout,
+      });
+    } catch (err) {
+      log.warn(`workflows.dryRun failed: ${String(err)}`);
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }
   },

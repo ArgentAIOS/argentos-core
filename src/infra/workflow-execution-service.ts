@@ -194,12 +194,13 @@ export async function persistWorkflowStepRun(sql: Sql, runId: string, record: St
   await sql`
     INSERT INTO workflow_step_runs (
       id, run_id, node_id, node_kind, agent_id, idempotency_key,
-      status, duration_ms, output_items, tokens_used, cost_usd, started_at, ended_at
+      status, duration_ms, output_items, error, tokens_used, cost_usd, started_at, ended_at
     ) VALUES (
       ${randomUUID()}, ${runId}, ${record.nodeId}, ${record.nodeKind},
       ${record.agentId ?? null}, ${`${runId}:${record.nodeId}:${record.stepIndex}`},
       ${record.status}, ${record.durationMs},
       ${JSON.stringify(record.output)}::jsonb,
+      ${record.error ?? null},
       ${record.tokensUsed ?? 0}, ${record.costUsd ?? 0},
       ${new Date(record.startedAt).toISOString()}::timestamptz,
       ${new Date(record.endedAt).toISOString()}::timestamptz
@@ -208,11 +209,11 @@ export async function persistWorkflowStepRun(sql: Sql, runId: string, record: St
       status = EXCLUDED.status,
       duration_ms = EXCLUDED.duration_ms,
       output_items = EXCLUDED.output_items,
+      error = EXCLUDED.error,
       tokens_used = EXCLUDED.tokens_used,
       cost_usd = EXCLUDED.cost_usd,
       started_at = EXCLUDED.started_at,
-      ended_at = EXCLUDED.ended_at,
-      error = EXCLUDED.error
+      ended_at = EXCLUDED.ended_at
   `;
 }
 
@@ -222,9 +223,13 @@ export async function finishWorkflowRun(
   status: string,
   steps: StepRecord[],
 ) {
+  const failedStep = steps.find((step) => step.status === "failed");
+  const runError =
+    status === "failed" ? (failedStep?.error ?? failedStep?.output.items[0]?.text ?? null) : null;
   await sql`
     UPDATE workflow_runs SET
       status = ${status},
+      error = COALESCE(${runError}, error),
       total_tokens_used = ${steps.reduce((sum, step) => sum + (step.tokensUsed ?? 0), 0)},
       total_cost_usd = ${steps.reduce((sum, step) => sum + (step.costUsd ?? 0), 0)},
       ended_at = CASE
@@ -604,6 +609,7 @@ export async function executeWorkflowRunFromRow(opts: {
         workflowId: workflow.id,
         nodeId,
         status: record.status,
+        error: record.error,
         durationMs: record.durationMs,
         tokensUsed: record.tokensUsed,
       });
@@ -616,6 +622,10 @@ export async function executeWorkflowRunFromRow(opts: {
         runId: opts.runId,
         workflowId: workflow.id,
         status,
+        error:
+          status === "failed"
+            ? (steps.find((step) => step.status === "failed")?.error ?? undefined)
+            : undefined,
         stepCount: steps.length,
       });
     },

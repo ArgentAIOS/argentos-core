@@ -211,6 +211,14 @@ interface WorkflowValidationIssue {
   edgeId?: string;
 }
 
+interface WorkflowDryRunStep {
+  nodeId: string;
+  nodeKind: string;
+  label: string;
+  status: "passed" | "warning" | "failed";
+  message: string;
+}
+
 interface WorkflowImportReport {
   packageName: string;
   packageSlug?: string;
@@ -8411,6 +8419,8 @@ function WorkflowCanvasInner({
   const [validationIssues, setValidationIssues] = useState<WorkflowValidationIssue[]>([]);
   const [validationCheckedAt, setValidationCheckedAt] = useState<string | null>(null);
   const [validationStatus, setValidationStatus] = useState<"idle" | "checking" | "error">("idle");
+  const [dryRunStatus, setDryRunStatus] = useState<"idle" | "checking" | "error">("idle");
+  const [dryRunSteps, setDryRunSteps] = useState<WorkflowDryRunStep[]>([]);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [versions, setVersions] = useState<WorkflowVersionRecord[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
@@ -9140,6 +9150,41 @@ function WorkflowCanvasInner({
     workflows,
   ]);
 
+  const dryRunCurrentWorkflow = useCallback(async (): Promise<boolean> => {
+    if (!activeWorkflowId || !gateway.connected) {
+      setDryRunSteps([]);
+      return true;
+    }
+    setDryRunStatus("checking");
+    try {
+      const workflow = workflows.find((candidate) => candidate.id === activeWorkflowId);
+      const res = await gateway.request<{ ok?: boolean; steps?: WorkflowDryRunStep[] }>(
+        "workflows.dryRun",
+        {
+          workflowId: activeWorkflowId,
+          name: workflow?.name ?? "Untitled workflow",
+          canvasData: { nodes: cleanWorkflowNodes(), edges },
+          deploymentStage: workflowDeploymentStage(workflow ?? null),
+        },
+      );
+      const steps = Array.isArray(res?.steps) ? res.steps : [];
+      setDryRunSteps(steps);
+      setDryRunStatus("idle");
+      const failed = steps.find((step) => step.status === "failed");
+      if (failed) {
+        setRunError(`Dry run failed at ${failed.label}: ${failed.message}`);
+      } else {
+        setRunError(null);
+      }
+      return res?.ok !== false && !failed;
+    } catch (err) {
+      console.error("[Workflows] Dry run failed:", err);
+      setDryRunStatus("error");
+      setRunError(err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  }, [activeWorkflowId, gateway, workflows, cleanWorkflowNodes, edges]);
+
   // ── Run Handler ───────────────────────────────────────────────────
 
   const handleRun = useCallback(async () => {
@@ -9175,6 +9220,11 @@ function WorkflowCanvasInner({
         setRunning(false);
         return;
       }
+      const dryRunOk = await dryRunCurrentWorkflow();
+      if (!dryRunOk) {
+        setRunning(false);
+        return;
+      }
       const result = await gateway.request("workflows.run", {
         workflowId: activeWorkflowId,
         canvasData: { nodes: cleanWorkflowNodes(), edges },
@@ -9197,6 +9247,7 @@ function WorkflowCanvasInner({
     edges,
     saveCurrentWorkflow,
     validateCurrentWorkflow,
+    dryRunCurrentWorkflow,
     workflows,
   ]);
 
@@ -9526,31 +9577,14 @@ function WorkflowCanvasInner({
     setValidationIssues([]);
     setValidationCheckedAt(null);
     setValidationStatus("idle");
+    setDryRunStatus("idle");
+    setDryRunSteps([]);
     setRunError(null);
     setBindingWizardOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkflowId]);
 
-  // Auto-save local drafts while editing. Explicit Save is the durable PG write.
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (!activeWorkflowId) return;
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(() => {
-      setWorkflows((prev) => {
-        const next = prev.map((w) =>
-          w.id === activeWorkflowId
-            ? { ...w, nodes, edges, updatedAt: new Date().toISOString() }
-            : w,
-        );
-        saveWorkflowsLocal(next);
-        return next;
-      });
-    }, 500);
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    };
-  }, [nodes, edges, activeWorkflowId, setWorkflows]);
+  // Canvas movement stays local to React Flow. Durable writes happen only through explicit actions.
 
   // Connect edges
   const onConnect: OnConnect = useCallback(
@@ -9899,6 +9933,16 @@ function WorkflowCanvasInner({
             {validationStatus === "checking" ? "Validating..." : "Validate"}
           </button>
           <button
+            disabled={!activeWorkflowId || !gateway.connected || dryRunStatus === "checking"}
+            onClick={() => {
+              void dryRunCurrentWorkflow();
+            }}
+            className="px-3 py-1 rounded text-[11px] font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] disabled:opacity-40 transition-colors"
+            title="Preflight the workflow step by step without live model or tool side effects"
+          >
+            {dryRunStatus === "checking" ? "Dry running..." : "Dry Run"}
+          </button>
+          <button
             disabled={!activeWorkflowId || saving}
             onClick={() => {
               void saveCurrentWorkflow().then((saved) => {
@@ -10173,6 +10217,43 @@ function WorkflowCanvasInner({
             >
               Dismiss
             </button>
+          </div>
+        </div>
+      )}
+
+      {dryRunSteps.length > 0 && (
+        <div className="flex-shrink-0 border-b border-[hsl(var(--border))] bg-[hsl(var(--card))] px-4 py-2">
+          <div className="mb-1 text-xs font-semibold text-[hsl(var(--foreground))]">
+            Dry run trace
+          </div>
+          <div className="max-h-28 space-y-1 overflow-y-auto">
+            {dryRunSteps.slice(0, 8).map((step) => (
+              <div
+                key={`${step.nodeId}:${step.message}`}
+                className="flex items-start gap-2 text-[11px] text-[hsl(var(--muted-foreground))]"
+              >
+                <span
+                  className={
+                    step.status === "failed"
+                      ? "text-red-300"
+                      : step.status === "warning"
+                        ? "text-amber-300"
+                        : "text-emerald-300"
+                  }
+                >
+                  {step.status}
+                </span>
+                <span className="min-w-0 break-words">
+                  <span className="font-medium text-[hsl(var(--foreground))]">{step.label}:</span>{" "}
+                  {step.message}
+                </span>
+              </div>
+            ))}
+            {dryRunSteps.length > 8 && (
+              <div className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                {dryRunSteps.length - 8} more dry-run step{dryRunSteps.length - 8 === 1 ? "" : "s"}
+              </div>
+            )}
           </div>
         </div>
       )}

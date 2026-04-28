@@ -46,6 +46,7 @@ import type {
 // Real system integrations — these are the actual delivery systems, not stubs
 import { refreshPresence } from "../data/redis-client.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { buildAgentMainSessionKey, resolveAgentIdFromSessionKey } from "../routing/session-key.js";
 import {
   connectorCommandExtraArgToCliArg,
   connectorCommandToCliArgs,
@@ -293,6 +294,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
 
     let stepResult: ItemSet;
     let stepStatus: StepRecord["status"] = "completed";
+    let stepError: string | undefined;
 
     try {
       const pinnedOutput = getPinnedOutputForManualRun(params, node, context);
@@ -355,6 +357,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
+      stepError = errorMsg;
       log.error("step execution failed", {
         nodeId: node.id,
         nodeKind: node.kind,
@@ -840,6 +843,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
       status: stepStatus,
       durationMs: stepEnd - stepStart,
       output: stepResult,
+      error: stepError,
       tokensUsed: stepTokens || undefined,
       costUsd: stepCost || undefined,
       startedAt: stepStart,
@@ -2863,8 +2867,8 @@ export class CoreAgentDispatcher implements AgentDispatcher {
         ? { provider: config.modelOverride.provider, model: config.modelOverride.model }
         : resolved;
 
-      // Each workflow step gets an isolated session key.
-      const sessionKey = `workflow:${agentId}:${Date.now()}`;
+      // Each workflow step gets an isolated key under the selected agent's session namespace.
+      const sessionKey = buildWorkflowAgentSessionKey(agentId);
       const timeoutSeconds = Math.ceil(config.timeoutMs / 1000);
 
       const result = await agentCommand(
@@ -2957,6 +2961,27 @@ export class CoreAgentDispatcher implements AgentDispatcher {
       throw err;
     }
   }
+}
+
+export function buildWorkflowAgentSessionKey(agentId: string, nowMs = Date.now()): string {
+  return buildAgentMainSessionKey({
+    agentId,
+    mainKey: `workflow:${nowMs}`,
+  });
+}
+
+export function validateWorkflowAgentSessionIdentity(agentId: string, sessionKey: string) {
+  const sessionAgentId = resolveAgentIdFromSessionKey(sessionKey);
+  const ok = sessionAgentId === agentId.trim().toLowerCase();
+  return {
+    ok,
+    agentId,
+    sessionKey,
+    sessionAgentId,
+    message: ok
+      ? `Agent "${agentId}" matches workflow session key.`
+      : `Agent id "${agentId}" does not match session key agent "${sessionAgentId}".`,
+  };
 }
 
 function formatWorkflowAgentDispatchContext(config: {
