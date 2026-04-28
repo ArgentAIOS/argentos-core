@@ -10,9 +10,14 @@ Don't start from scratch. Import a template and customize it for your business.
 ## How to Import a Template
 
 1. Go to **Operations > Workflows**
-2. Click **Import** in the sidebar
-3. Select a `.argent-workflow.json` file
-4. The workflow appears on your canvas -- customize and save
+2. Click **New workflow**
+3. Choose **Template gallery** for built-in owner-operator packages, or choose **Import JSON/YAML**
+4. For files, use **Import** in the sidebar or drag a `.argent-workflow.json`, `.json`, `.yaml`, or `.yml` file onto the canvas
+5. The workflow appears on your canvas in fixture mode -- bind anything missing, customize, save, then promote it live when ready
+
+Imported packages are executable workflow definitions first and canvas layout second. The browser previews the package, renders the canvas, shows required credentials/connectors/channels/AppForge bases/knowledge collections/agents, and opens the binding wizard when live dependencies are missing.
+
+Fixture-ready packages include pinned test data. **Run fixture** executes against that sample data so connector writes and outbound delivery do not fire while you are still reviewing the workflow. **Promote live** stays disabled until required live bindings are complete.
 
 ## Available Templates
 
@@ -70,3 +75,5 @@ Built a workflow you love? Export it and share it:
 2. Click **Export** in the toolbar
 3. Save the `.argent-workflow.json` file
 4. Share it with your team or upload to the [ArgentOS Marketplace](https://argentos.ai/marketplace)
+
+Exports use the canonical `argent.workflow.package` shape with workflow nodes/edges, canvas layout, scenario metadata, and deployment stage.

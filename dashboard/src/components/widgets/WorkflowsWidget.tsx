@@ -1514,6 +1514,7 @@ function NewWorkflowModal({
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [selectedPackageSlug, setSelectedPackageSlug] = useState<string | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -1566,6 +1567,28 @@ function NewWorkflowModal({
       setImportError(err instanceof Error ? err.message : String(err));
     } finally {
       setImporting(false);
+    }
+  };
+
+  const importSelectedWorkflowFile = async (file: File | null | undefined) => {
+    if (!file || importing) {
+      return;
+    }
+    setImporting(true);
+    setImportError(null);
+    try {
+      await onImportWorkflowText(await file.text(), workflowName.trim() || undefined);
+      setImportText("");
+      setShowImport(false);
+      setShowTemplates(false);
+      onClose();
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImporting(false);
+      if (importFileInputRef.current) {
+        importFileInputRef.current.value = "";
+      }
     }
   };
 
@@ -1705,16 +1728,35 @@ function NewWorkflowModal({
                   {importError}
                 </div>
               )}
-              <button
-                type="button"
-                disabled={!importText.trim() || importing}
-                onClick={() => {
-                  void importPastedWorkflow();
+              <input
+                ref={importFileInputRef}
+                type="file"
+                accept=".json,.yaml,.yml,.argent-workflow.json,.argent-workflow.yaml,.argent-workflow.yml,application/json,text/yaml,text/x-yaml"
+                className="hidden"
+                onChange={(event) => {
+                  void importSelectedWorkflowFile(event.currentTarget.files?.[0]);
                 }}
-                className="w-full rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-400/20 disabled:opacity-40"
-              >
-                {importing ? "Importing..." : "Import pasted workflow"}
-              </button>
+              />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  disabled={!importText.trim() || importing}
+                  onClick={() => {
+                    void importPastedWorkflow();
+                  }}
+                  className="rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-400/20 disabled:opacity-40"
+                >
+                  {importing ? "Importing..." : "Import pasted workflow"}
+                </button>
+                <button
+                  type="button"
+                  disabled={importing}
+                  onClick={() => importFileInputRef.current?.click()}
+                  className="rounded-lg border border-[hsl(var(--border))] px-4 py-2 text-xs font-semibold text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] disabled:opacity-40"
+                >
+                  Choose workflow file
+                </button>
+              </div>
             </div>
           )}
         </div>
