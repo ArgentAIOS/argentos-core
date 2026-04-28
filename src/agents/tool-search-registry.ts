@@ -177,6 +177,7 @@ const DEFERRED_TOOL_KEYWORDS: Record<string, string[]> = {
   gateway: ["gateway", "server", "restart", "status"],
   argent_config: ["config", "settings", "configuration"],
   channel_config: ["channel", "channels", "telegram", "slack", "discord", "signal", "whatsapp"],
+  connector_setup: ["connector", "connect", "setup", "google", "gmail", "drive", "calendar"],
   service_keys: ["keys", "secrets", "credentials", "api"],
   // Knowledge
   knowledge_search: ["knowledge", "library", "rag", "search"],

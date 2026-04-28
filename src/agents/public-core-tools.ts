@@ -8,6 +8,7 @@ export const PUBLIC_CORE_DEFAULT_TOOL_NAMES = [
   "browser",
   "canvas",
   "channel_config",
+  "connector_setup",
   "cron",
   "doc_panel",
   "doc_panel_delete",

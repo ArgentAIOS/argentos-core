@@ -20,6 +20,7 @@ import { createAudioGenerationTool } from "./tools/audio-generation-tool.js";
 import { createBrowserTool } from "./tools/browser-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
 import { createChannelConfigTool } from "./tools/channel-config-tool.js";
+import { createConnectorSetupTool } from "./tools/connector-setup-tool.js";
 import { createContemplationTool } from "./tools/contemplation-tool.js";
 import { createCoolifyDeployTool } from "./tools/coolify-deploy-tool.js";
 import { createCronTool } from "./tools/cron-tool.js";
@@ -423,6 +424,7 @@ export function createArgentTools(options?: {
     // Utility tools
     createArgentConfigTool({ config: options?.config }),
     createChannelConfigTool(),
+    createConnectorSetupTool(),
     createServiceKeysTool(),
     createSkillsTool({ config: options?.config }),
     createTerminalTool(),
