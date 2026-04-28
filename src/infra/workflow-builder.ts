@@ -377,23 +377,86 @@ function draftVisibleScoutWorkflow(input: {
   edges.push(makeEdge("research-join", "synthesis-agent"));
 
   let previousId = "synthesis-agent";
+  nodes.push({
+    id: "brief-output",
+    type: "output",
+    position: { x: 460, y: 800 },
+    data: {
+      label: "DocPanel Brief",
+      target: "docpanel",
+      title: input.name,
+      format: "markdown",
+      sourceMode: "previous",
+    },
+  });
+  edges.push(makeEdge(previousId, "brief-output"));
+  previousId = "brief-output";
+
   if (requestedPodcast) {
-    nodes.push({
-      id: "podcast-generate",
-      type: "action",
-      position: { x: 460, y: 800 },
-      data: {
-        label: "Podcast Generate",
-        actionType: "generate_audio",
-        timeoutMs: 300000,
-        config: {
-          text: "{{previous.text}}",
-          voice: "ElevenLabs v3",
-          mood: "podcast-host",
+    nodes.push(
+      {
+        id: "podcast-script-agent",
+        type: "agentStep",
+        position: { x: 460, y: 980 },
+        data: {
+          label: "Podcast Script Agent",
+          agentId: input.ownerAgentId,
+          agentName: `${input.ownerAgentName} Podcast Script`,
+          agentColor: "hsl(var(--primary))",
+          rolePrompt: [
+            "Turn the cited AI Morning Brief into a concise podcast script.",
+            "Use SPEAKER: text lines so podcast_plan can parse it.",
+            "Speaker should be ARGENT unless the operator adds more personas.",
+            "Use ElevenLabs v3 performance tags such as [warm], [curious], [beat], [thoughtful], and [dramatic pause].",
+            "Preserve links and source titles in the written notes, but keep spoken lines natural.",
+          ].join("\n"),
+          timeout: 180,
+          evidenceRequired: true,
+          toolsAllow: [],
         },
       },
-    });
-    edges.push(makeEdge(previousId, "podcast-generate"));
+      {
+        id: "podcast-plan",
+        type: "action",
+        position: { x: 460, y: 1160 },
+        data: {
+          label: "Podcast Plan",
+          actionType: "podcast_plan",
+          timeoutMs: 120000,
+          config: {
+            title: input.name,
+            script: "{{previous.text}}",
+            personas: [
+              {
+                id: "argent",
+                aliases: ["ARGENT", "HOST"],
+                voice_id: "21m00Tcm4TlvDq8ikWAM",
+              },
+            ],
+            timezone: input.timezone ?? "America/Chicago",
+            publish_time_local: "08:00",
+            publish: { spotify: false, youtube: false, heygen: false },
+          },
+        },
+      },
+      {
+        id: "podcast-generate",
+        type: "action",
+        position: { x: 460, y: 1340 },
+        data: {
+          label: "Podcast Generate",
+          actionType: "podcast_generate",
+          timeoutMs: 300000,
+          config: {
+            title: input.name,
+            payloadTemplate: "{{previous.json.podcast_generate}}",
+          },
+        },
+      },
+    );
+    edges.push(makeEdge(previousId, "podcast-script-agent"));
+    edges.push(makeEdge("podcast-script-agent", "podcast-plan"));
+    edges.push(makeEdge("podcast-plan", "podcast-generate"));
     previousId = "podcast-generate";
   }
 
@@ -401,7 +464,7 @@ function draftVisibleScoutWorkflow(input: {
     nodes.push({
       id: "delivery-status",
       type: "action",
-      position: { x: 460, y: requestedPodcast ? 980 : 800 },
+      position: { x: 460, y: requestedPodcast ? 1520 : 980 },
       data: {
         label: "Delivery Status",
         actionType: "send_message",
@@ -418,17 +481,18 @@ function draftVisibleScoutWorkflow(input: {
   }
 
   nodes.push({
-    id: "output",
+    id: "run-ledger",
     type: "output",
-    position: { x: 460, y: requestedPodcast && requestedDelivery ? 1160 : 980 },
+    position: { x: 460, y: requestedPodcast && requestedDelivery ? 1700 : 1160 },
     data: {
-      label: "DocPanel Brief",
+      label: "Run Ledger",
       target: "docpanel",
-      title: input.name,
+      title: `${input.name} — Run Ledger`,
       format: "markdown",
+      sourceMode: "summary",
     },
   });
-  edges.push(makeEdge(previousId, "output"));
+  edges.push(makeEdge(previousId, "run-ledger"));
 
   const normalized = normalizeWorkflow({
     id: input.workflowId,

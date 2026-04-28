@@ -38,9 +38,9 @@ const dispatchMock = vi.fn(async () => ({
 const dispatcher: AgentDispatcher = { dispatch: dispatchMock };
 
 describe("owner-operator workflow packages", () => {
-  it("covers 20 concrete owner-operator workflow scenarios plus five highlighted variations", () => {
-    expect(OWNER_OPERATOR_WORKFLOW_PACKAGES).toHaveLength(20);
-    expect(new Set(OWNER_OPERATOR_WORKFLOW_PACKAGES.map((pkg) => pkg.slug)).size).toBe(20);
+  it("covers 21 concrete owner-operator workflow scenarios plus five highlighted variations", () => {
+    expect(OWNER_OPERATOR_WORKFLOW_PACKAGES).toHaveLength(21);
+    expect(new Set(OWNER_OPERATOR_WORKFLOW_PACKAGES.map((pkg) => pkg.slug)).size).toBe(21);
     expect(OWNER_OPERATOR_WORKFLOW_VARIATION_SLUGS).toHaveLength(5);
     for (const slug of OWNER_OPERATOR_WORKFLOW_VARIATION_SLUGS) {
       expect(OWNER_OPERATOR_WORKFLOW_PACKAGES.some((pkg) => pkg.slug === slug)).toBe(true);
@@ -75,7 +75,7 @@ describe("owner-operator workflow packages", () => {
     ]);
     const showcase = OWNER_OPERATOR_WORKFLOW_PACKAGES.filter((pkg) => showcaseSlugs.has(pkg.slug));
 
-    expect(showcase.map((pkg) => pkg.slug).sort()).toEqual([...showcaseSlugs].sort());
+    expect(showcase.map((pkg) => pkg.slug).toSorted()).toEqual([...showcaseSlugs].toSorted());
     for (const workflowPackage of showcase) {
       const nodeKinds = new Set(workflowPackage.workflow.nodes.map((node) => node.kind));
       expect(workflowPackage.workflow.nodes.length, workflowPackage.slug).toBeGreaterThanOrEqual(6);

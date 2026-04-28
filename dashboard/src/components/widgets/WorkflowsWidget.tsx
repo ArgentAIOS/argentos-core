@@ -127,7 +127,9 @@ type ActionTypeValue =
   | "store_memory"
   | "store_knowledge"
   | "generate_image"
-  | "generate_audio";
+  | "generate_audio"
+  | "podcast_plan"
+  | "podcast_generate";
 
 interface ActionNodeData {
   label: string;
@@ -209,6 +211,10 @@ interface WorkflowValidationIssue {
   message: string;
   nodeId?: string;
   edgeId?: string;
+  category?: "approval" | "validation" | "runtime";
+  requiresOperatorApproval?: boolean;
+  operatorAction?: string;
+  capabilityId?: string;
 }
 
 interface WorkflowDryRunStep {
@@ -1291,6 +1297,17 @@ function NodeIssueBadge({ issues }: { issues?: WorkflowValidationIssue[] }) {
     >
       {count}
     </div>
+  );
+}
+
+function hasOperatorApprovalIssue(issues?: WorkflowValidationIssue[]): boolean {
+  return Boolean(
+    issues?.some(
+      (issue) =>
+        issue.requiresOperatorApproval ||
+        issue.category === "approval" ||
+        issue.code === "unsafe_side_effect_without_approval",
+    ),
   );
 }
 
@@ -2440,6 +2457,8 @@ const ACTION_ICONS: Record<ActionTypeValue, string> = {
   store_knowledge: "\uD83D\uDCDA",
   generate_image: "\uD83D\uDDBC\uFE0F",
   generate_audio: "\uD83C\uDFA7",
+  podcast_plan: "\uD83C\uDF99\uFE0F",
+  podcast_generate: "\uD83C\uDFA7",
 };
 
 const ACTION_LABELS: Record<ActionTypeValue, string> = {
@@ -2455,6 +2474,8 @@ const ACTION_LABELS: Record<ActionTypeValue, string> = {
   store_knowledge: "Store Knowledge",
   generate_image: "Generate Image",
   generate_audio: "Generate Audio",
+  podcast_plan: "Podcast Plan",
+  podcast_generate: "Podcast Generate",
 };
 
 function ActionNode({ data, selected }: NodeProps<Node<ActionNodeData>>) {
@@ -2464,6 +2485,9 @@ function ActionNode({ data, selected }: NodeProps<Node<ActionNodeData>>) {
   const connectorCategory =
     typeof cfg.connectorCategory === "string" ? cfg.connectorCategory : "general";
   const connectorOperation = typeof cfg.operation === "string" ? cfg.operation : "";
+  const approvalRequired = hasOperatorApprovalIssue(
+    data.validationIssues as WorkflowValidationIssue[] | undefined,
+  );
   const isConnectorAction = Boolean(connectorId) || data.actionType === "connector_action";
   const icon = isConnectorAction
     ? connectorIcon(connectorCategory)
@@ -2477,11 +2501,21 @@ function ActionNode({ data, selected }: NodeProps<Node<ActionNodeData>>) {
   return (
     <div
       className={`relative px-4 py-3 rounded-lg border min-w-[170px] transition-shadow ${execStateClass(data.execState)} ${
-        selected ? "shadow-[0_0_12px_rgba(255,171,0,0.4)]" : ""
+        approvalRequired
+          ? "shadow-[0_0_16px_rgba(239,68,68,0.65)]"
+          : selected
+            ? "shadow-[0_0_12px_rgba(255,171,0,0.4)]"
+            : ""
       }`}
       style={{
         background: "hsl(var(--card))",
-        borderColor: data.execState ? undefined : selected ? "#ffab00" : "hsl(var(--border))",
+        borderColor: data.execState
+          ? undefined
+          : approvalRequired
+            ? "#ef4444"
+            : selected
+              ? "#ffab00"
+              : "hsl(var(--border))",
         borderWidth: 1,
       }}
     >
@@ -2503,6 +2537,9 @@ function ActionNode({ data, selected }: NodeProps<Node<ActionNodeData>>) {
       </div>
       <div className="text-[11px] text-[#ffab00] font-medium truncate">{label}</div>
       <div className="text-[9px] text-[hsl(var(--muted-foreground))] truncate">{detail}</div>
+      {approvalRequired && (
+        <div className="mt-1 text-[10px] font-semibold text-red-300">Operator sign-off needed</div>
+      )}
       <Handle
         type="source"
         position={Position.Bottom}
@@ -3771,7 +3808,21 @@ function ActionForm({
     "store_knowledge",
     "generate_image",
     "generate_audio",
+    "podcast_plan",
+    "podcast_generate",
   ];
+  const liveApprovalActionTypes = new Set<ActionTypeValue>([
+    "connector_action",
+    "send_message",
+    "send_email",
+    "webhook_call",
+    "api_call",
+    "run_script",
+    "create_task",
+    "generate_image",
+    "generate_audio",
+    "podcast_generate",
+  ]);
   const runnableConnectors = connectors.filter((connector) => !connector.scaffoldOnly);
   const selectedActionChannelType = String(cfgValue("channelType", "internal_chat"));
   const selectedActionChannel = outputChannels.find(
@@ -3835,6 +3886,30 @@ function ActionForm({
           ))}
         </select>
       </div>
+
+      {liveApprovalActionTypes.has(data.actionType) && (
+        <label className="flex items-start gap-2 rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-100">
+          <input
+            type="checkbox"
+            checked={cfg.operatorApprovedLive === true}
+            onChange={(e) => {
+              const checked = e.target.checked;
+              update("config", {
+                ...cfg,
+                operatorApprovedLive: checked,
+                operatorApprovedAt: checked ? new Date().toISOString() : "",
+              });
+            }}
+            className="mt-0.5"
+          />
+          <span>
+            Operator sign-off for live side effects
+            <span className="block text-[10px] text-red-100/70">
+              Validate again after enabling. Dry Run stays safe and does not need this.
+            </span>
+          </span>
+        </label>
+      )}
 
       {data.actionType === "connector_action" && !cfg.connectorId && (
         <div className="space-y-2 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-3 py-2">
@@ -4219,6 +4294,53 @@ function ActionForm({
               <option value="wav">WAV</option>
               <option value="ogg">OGG</option>
             </select>
+          </div>
+        </>
+      )}
+
+      {data.actionType === "podcast_plan" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Title</label>
+            <input
+              className={DOCK_INPUT}
+              value={cfgValue("title")}
+              onChange={(e) => cfgUpdate("title", e.target.value)}
+              placeholder="Episode title"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Script</label>
+            <textarea
+              className={DOCK_INPUT + " resize-y"}
+              rows={4}
+              value={cfgValue("script", "{{previous.text}}")}
+              onChange={(e) => cfgUpdate("script", e.target.value)}
+              placeholder="ARGENT: [warm] Good morning..."
+            />
+          </div>
+        </>
+      )}
+
+      {data.actionType === "podcast_generate" && (
+        <>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Title</label>
+            <input
+              className={DOCK_INPUT}
+              value={cfgValue("title")}
+              onChange={(e) => cfgUpdate("title", e.target.value)}
+              placeholder="Episode title"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Payload</label>
+            <input
+              className={DOCK_INPUT}
+              value={cfgValue("payloadTemplate", "{{previous.json.podcast_generate}}")}
+              onChange={(e) => cfgUpdate("payloadTemplate", e.target.value)}
+              placeholder="{{previous.json.podcast_generate}}"
+            />
           </div>
         </>
       )}

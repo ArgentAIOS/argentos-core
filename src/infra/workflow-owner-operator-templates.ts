@@ -95,6 +95,19 @@ function connectorAction(
   };
 }
 
+function action(
+  id: string,
+  label: string,
+  actionType: ActionNode["config"]["actionType"],
+): ActionNode {
+  return {
+    kind: "action",
+    id,
+    label,
+    config: { actionType },
+  };
+}
+
 function docOutput(id: string, title: string, contentTemplate = "{{previous.text}}"): OutputNode {
   return {
     kind: "output",
@@ -255,6 +268,107 @@ function scenario(
 }
 
 export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
+  makePackage({
+    slug: "ai-morning-brief-podcast",
+    name: "AI Morning Brief Podcast",
+    description:
+      "Daily AI web research brief with scout lanes, cited DocPanel brief, podcast planning, audio generation, and delivery status.",
+    scenario: scenario(
+      "operations",
+      "schedule",
+      "AI trend research, cited brief, and podcast production template",
+    ),
+    trigger: trigger("trigger", "schedule", {
+      cronExpr: "30 6 * * *",
+      timezone: "America/Chicago",
+    }),
+    credentialIds: [
+      {
+        id: "elevenlabs.primary",
+        label: "ElevenLabs API Key",
+        provider: "elevenlabs",
+        purpose: "Render the Morning Brief podcast with podcast_generate.",
+      },
+      {
+        id: "telegram.workflow",
+        label: "Telegram Delivery Target",
+        provider: "telegram",
+        purpose: "Deliver the Morning Brief podcast status to the operator.",
+      },
+    ],
+    nodes: [
+      agent(
+        "github-scout",
+        "GitHub / Open Source Scout",
+        "research",
+        "Research trending GitHub and open-source AI projects. Return candidates with URLs, recent activity, confidence, and why Jason should care.",
+      ),
+      agent(
+        "frontier-scout",
+        "Frontier AI Scout",
+        "research",
+        "Research frontier AI movers from official sources first. Return only items that affect agent infrastructure, model choice, workflow reliability, or ArgentOS direction.",
+      ),
+      agent(
+        "thought-scout",
+        "Thought Leader / Infrastructure Scout",
+        "research",
+        "Research high-signal thought leaders, agent infrastructure, memory, workflow, eval, and model economics updates. Include source links and include/skip recommendations.",
+      ),
+      agent(
+        "synthesize-brief",
+        "Synthesis Agent",
+        "write",
+        "Synthesize scout outputs into a cited AI Morning Brief with clickable links, top stories, one deep dive, one project to inspect, and an ArgentOS implication section.",
+      ),
+      docOutput("brief-doc", "AI Morning Brief — {{context.runId}}"),
+      agent(
+        "podcast-script",
+        "Podcast Script Agent",
+        "write",
+        "Convert the written brief into SPEAKER: text podcast lines for ARGENT, using ElevenLabs v3 performance tags such as [warm], [curious], [beat], and [dramatic pause].",
+      ),
+      action("podcast-plan", "Podcast Plan", {
+        type: "podcast_plan",
+        title: "AI Morning Brief — {{context.runId}}",
+        script: "{{previous.text}}",
+        personas: [
+          {
+            id: "argent",
+            aliases: ["ARGENT", "HOST"],
+            voice_id: "21m00Tcm4TlvDq8ikWAM",
+          },
+        ],
+        timezone: "America/Chicago",
+        publishTimeLocal: "08:00",
+        publish: { spotify: false, youtube: false, heygen: false },
+      }),
+      approval(
+        "approve-podcast-render",
+        "Approve live podcast generation and delivery for today's AI Morning Brief.",
+      ),
+      action("podcast-generate", "Podcast Generate", {
+        type: "podcast_generate",
+        title: "AI Morning Brief — {{context.runId}}",
+        payloadTemplate: "{{steps.podcast-plan.output.json.podcast_generate}}",
+      }),
+      action("delivery-status", "Delivery Status", {
+        type: "send_message",
+        channelType: "telegram",
+        channelId: "{{operator.phone.telegramChatId}}",
+        template: "AI Morning Brief podcast finished: {{previous.text}}",
+      }),
+      docOutput(
+        "run-ledger",
+        "AI Morning Brief Run Ledger — {{context.runId}}",
+        "{{previous.text}}",
+      ),
+    ],
+    notes: [
+      "Use Validate and Dry Run before live execution. podcast_generate and delivery require operator approval.",
+      "The template is intentionally capability-backed: podcast_plan normalizes the script before podcast_generate renders audio.",
+    ],
+  }),
   makePackage({
     slug: "daily-marketing-brief",
     name: "Daily Marketing Brief",

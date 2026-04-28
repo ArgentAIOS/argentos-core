@@ -16,6 +16,7 @@ import type {
   WorkflowEdge,
   WorkflowDefinition,
   AgentDispatcher,
+  ActionNode,
 } from "./workflow-types.js";
 
 const storageMocks = vi.hoisted(() => ({
@@ -475,6 +476,82 @@ describe("executeWorkflow", () => {
       },
       artifacts: [{ type: "docpanel", id: "doc:doc-real-1", title: "Brief mock output" }],
     });
+  });
+
+  it("refuses to save a DocPanel output when the upstream text is object-string sludge", async () => {
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output = makeOutput();
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-output-object-object",
+      dispatcher: makeMockDispatcher(async () => ({
+        items: [{ json: { nested: true }, text: "[object Object]" }],
+      })),
+      actions: { saveToDocPanel: vi.fn(async () => ({ ok: true, docId: "bad-doc" })) },
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.steps.at(-1)?.error).toContain("not renderable text");
+  });
+
+  it("runs podcast_plan before podcast_generate through first-class action nodes", async () => {
+    const trigger = makeTrigger();
+    const script: ActionNode = {
+      kind: "action",
+      id: "podcast-plan",
+      label: "Podcast Plan",
+      config: {
+        actionType: {
+          type: "podcast_plan",
+          title: "Morning Brief",
+          script: "ARGENT: [warm] Good morning from the workflow.",
+          personas: [{ id: "argent", aliases: ["ARGENT"], voice_id: "voice-1" }],
+        },
+      },
+    };
+    const render: ActionNode = {
+      kind: "action",
+      id: "podcast-generate",
+      label: "Podcast Generate",
+      config: {
+        pinnedOutput: {
+          items: [
+            {
+              json: { generated: true, path: "/tmp/morning-brief.mp3" },
+              text: "MEDIA:/tmp/morning-brief.mp3",
+            },
+          ],
+        },
+        actionType: {
+          type: "podcast_generate",
+          title: "Morning Brief",
+          payloadTemplate: "{{previous.json.podcast_generate}}",
+        },
+      },
+    };
+    const workflow = makeWorkflow(
+      [trigger, script, render],
+      [edge(trigger.id, script.id), edge(script.id, render.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-podcast-actions",
+      dispatcher: mockDispatcher,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.steps[1].output.items[0].json.podcast_generate).toMatchObject({
+      title: "Morning Brief",
+      dialogue: [expect.objectContaining({ text: "[warm] Good morning from the workflow." })],
+    });
+    expect(result.steps[2].output.items[0].text).toBe("MEDIA:/tmp/morning-brief.mp3");
   });
 
   it("delivers output through a connector action destination", async () => {
