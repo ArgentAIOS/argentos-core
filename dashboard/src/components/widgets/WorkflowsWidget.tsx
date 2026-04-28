@@ -953,8 +953,76 @@ function formatShortDate(value?: string): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function formatWorkflowDetailDate(value?: string): string {
+  if (!value) {
+    return "Not saved yet";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Not saved yet";
+  }
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function getStringField(source: unknown, keys: string[]): string | undefined {
+  if (!isRecord(source)) {
+    return undefined;
+  }
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function workflowDescription(workflow: WorkflowDefinition): string {
+  return (
+    getStringField(workflow.definition, ["description", "summary", "intent"]) ??
+    getStringField(workflow.canvasLayout, ["description", "summary", "intent"]) ??
+    "No description stored yet."
+  );
+}
+
+function workflowCategory(workflow: WorkflowDefinition): string {
+  return (
+    getStringField(workflow.definition, ["category", "lane", "domain"]) ??
+    getStringField(workflow.importReport, ["packageSlug", "packageName"]) ??
+    "Uncategorized"
+  );
+}
+
+function workflowClass(workflow: WorkflowDefinition): string {
+  return (
+    getStringField(workflow.definition, ["class", "workflowClass", "kind", "type"]) ??
+    getStringField(workflow.triggerConfig, ["class", "workflowClass"]) ??
+    "Not set"
+  );
+}
+
+function workflowState(
+  workflow: WorkflowDefinition,
+  runs: RunRecord[],
+): "running" | "active" | "paused" {
+  const running = runs.some(
+    (run) =>
+      run.workflowId === workflow.id &&
+      ["running", "waiting_approval", "waiting_event", "waiting_duration"].includes(run.status),
+  );
+  if (running) {
+    return "running";
+  }
+  return workflow.isActive === false ? "paused" : "active";
 }
 
 function normalizeRunStepRecord(raw: unknown): RunStepRecord | null {
@@ -7276,6 +7344,300 @@ function Sidebar({
   );
 }
 
+interface WorkflowManagerModalProps {
+  open: boolean;
+  workflows: WorkflowDefinition[];
+  activeWorkflowId: string | null;
+  runs: RunRecord[];
+  onClose: () => void;
+  onNewWorkflow: () => void;
+  onSelectWorkflow: (id: string) => void | Promise<void>;
+  onDuplicateWorkflow: (id: string) => void | Promise<void>;
+  onToggleWorkflowActive: (id: string, isActive: boolean) => void | Promise<void>;
+  onDeleteWorkflow: (id: string) => void;
+  onExportWorkflow: (workflow: WorkflowDefinition) => void;
+}
+
+function WorkflowManagerModal({
+  open,
+  workflows,
+  activeWorkflowId,
+  runs,
+  onClose,
+  onNewWorkflow,
+  onSelectWorkflow,
+  onDuplicateWorkflow,
+  onToggleWorkflowActive,
+  onDeleteWorkflow,
+  onExportWorkflow,
+}: WorkflowManagerModalProps) {
+  const [query, setQuery] = useState("");
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(
+    activeWorkflowId ?? workflows[0]?.id ?? null,
+  );
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    setSelectedWorkflowId((current) =>
+      current && workflows.some((workflow) => workflow.id === current)
+        ? current
+        : (activeWorkflowId ?? workflows[0]?.id ?? null),
+    );
+  }, [activeWorkflowId, open, workflows]);
+
+  const filteredWorkflows = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return workflows;
+    }
+    return workflows.filter((workflow) => {
+      const haystack = [
+        workflow.name,
+        workflowDescription(workflow),
+        workflowCategory(workflow),
+        workflowClass(workflow),
+        workflow.triggerType ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
+  }, [query, workflows]);
+
+  const selectedWorkflow =
+    workflows.find((workflow) => workflow.id === selectedWorkflowId) ??
+    filteredWorkflows[0] ??
+    workflows[0] ??
+    null;
+  const selectedState = selectedWorkflow ? workflowState(selectedWorkflow, runs) : null;
+  const selectedIsOpen = Boolean(selectedWorkflow && selectedWorkflow.id === activeWorkflowId);
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[88vh] w-[min(1100px,96vw)] flex-col overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl">
+        <div className="flex items-center justify-between gap-4 border-b border-[hsl(var(--border))] px-5 py-4">
+          <div>
+            <div className="text-lg font-semibold text-[hsl(var(--foreground))]">
+              Manage Workflows
+            </div>
+            <div className="text-xs text-[hsl(var(--muted-foreground))]">
+              {workflows.length} saved {workflows.length === 1 ? "workflow" : "workflows"}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                onNewWorkflow();
+                onClose();
+              }}
+              className="rounded-lg border border-[hsl(var(--primary))]/40 bg-[hsl(var(--primary))]/10 px-3 py-1.5 text-xs font-semibold text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/20"
+            >
+              New workflow
+            </button>
+            <button
+              onClick={onClose}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)]">
+          <div className="flex min-h-0 flex-col border-b border-[hsl(var(--border))] lg:border-b-0 lg:border-r">
+            <div className="border-b border-[hsl(var(--border))] p-3">
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className="w-full rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2 text-sm text-[hsl(var(--foreground))] outline-none placeholder:text-[hsl(var(--muted-foreground))] focus:border-[hsl(var(--primary))]/70"
+                placeholder="Search workflows..."
+              />
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              {filteredWorkflows.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-[hsl(var(--border))] p-4 text-sm text-[hsl(var(--muted-foreground))]">
+                  No workflows match this search.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredWorkflows.map((workflow) => {
+                    const state = workflowState(workflow, runs);
+                    const isSelected = selectedWorkflow?.id === workflow.id;
+                    const isOpen = workflow.id === activeWorkflowId;
+                    return (
+                      <button
+                        key={workflow.id}
+                        onClick={() => setSelectedWorkflowId(workflow.id)}
+                        className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                          isSelected
+                            ? "border-[hsl(var(--primary))]/70 bg-[hsl(var(--primary))]/10"
+                            : "border-[hsl(var(--border))] bg-[hsl(var(--background))]/55 hover:border-[hsl(var(--primary))]/40"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-[hsl(var(--foreground))]">
+                              {workflow.name}
+                            </div>
+                            <div className="mt-1 line-clamp-2 text-[11px] text-[hsl(var(--muted-foreground))]">
+                              {workflowDescription(workflow)}
+                            </div>
+                          </div>
+                          <span
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${
+                              state === "running"
+                                ? "bg-cyan-500/15 text-cyan-300"
+                                : state === "paused"
+                                  ? "bg-amber-500/15 text-amber-300"
+                                  : "bg-emerald-500/15 text-emerald-300"
+                            }`}
+                          >
+                            {state}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-[hsl(var(--muted-foreground))]">
+                          <span className="rounded bg-[hsl(var(--muted))]/40 px-1.5 py-0.5">
+                            {workflowCategory(workflow)}
+                          </span>
+                          <span className="rounded bg-[hsl(var(--muted))]/40 px-1.5 py-0.5">
+                            v{workflow.version ?? 1}
+                          </span>
+                          <span className="rounded bg-[hsl(var(--muted))]/40 px-1.5 py-0.5">
+                            {workflow.runCount ?? 0} runs
+                          </span>
+                          {isOpen && (
+                            <span className="rounded bg-[hsl(var(--primary))]/15 px-1.5 py-0.5 text-[hsl(var(--primary))]">
+                              open
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="min-h-0 overflow-y-auto p-5">
+            {!selectedWorkflow ? (
+              <div className="rounded-xl border border-dashed border-[hsl(var(--border))] p-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
+                No workflow selected.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xl font-semibold text-[hsl(var(--foreground))]">
+                      {selectedWorkflow.name}
+                    </div>
+                    <div className="mt-1 text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
+                      {workflowDescription(selectedWorkflow)}
+                    </div>
+                  </div>
+                  <span
+                    className={`rounded px-2 py-1 text-[10px] font-semibold uppercase ${
+                      selectedState === "running"
+                        ? "bg-cyan-500/15 text-cyan-300"
+                        : selectedState === "paused"
+                          ? "bg-amber-500/15 text-amber-300"
+                          : "bg-emerald-500/15 text-emerald-300"
+                    }`}
+                  >
+                    {selectedState}
+                  </span>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  {[
+                    ["Category", workflowCategory(selectedWorkflow)],
+                    ["Class", workflowClass(selectedWorkflow)],
+                    ["Open in canvas", selectedIsOpen ? "Yes" : "No"],
+                    ["Trigger", selectedWorkflow.triggerType ?? "Not set"],
+                    ["Version", `v${selectedWorkflow.version ?? 1}`],
+                    ["Run count", String(selectedWorkflow.runCount ?? 0)],
+                    ["Nodes", String(selectedWorkflow.nodes.length)],
+                    ["Edges", String(selectedWorkflow.edges.length)],
+                    ["Updated", formatWorkflowDetailDate(selectedWorkflow.updatedAt)],
+                    ["Created", formatWorkflowDetailDate(selectedWorkflow.createdAt)],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))]/50 p-3"
+                    >
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                        {label}
+                      </div>
+                      <div className="mt-1 break-words text-sm text-[hsl(var(--foreground))]">
+                        {value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap gap-2 border-t border-[hsl(var(--border))] pt-4">
+                  <button
+                    onClick={() => {
+                      void onSelectWorkflow(selectedWorkflow.id);
+                      onClose();
+                    }}
+                    className="rounded-lg bg-[hsl(var(--primary))]/15 px-3 py-2 text-xs font-semibold text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/25"
+                  >
+                    Open in canvas
+                  </button>
+                  <button
+                    onClick={() =>
+                      void onToggleWorkflowActive(
+                        selectedWorkflow.id,
+                        selectedWorkflow.isActive === false,
+                      )
+                    }
+                    className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+                      selectedWorkflow.isActive === false
+                        ? "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
+                        : "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+                    }`}
+                  >
+                    {selectedWorkflow.isActive === false ? "Activate" : "Pause"}
+                  </button>
+                  <button
+                    onClick={() => void onDuplicateWorkflow(selectedWorkflow.id)}
+                    className="rounded-lg bg-[hsl(var(--muted))]/45 px-3 py-2 text-xs font-medium text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/75"
+                  >
+                    Duplicate
+                  </button>
+                  <button
+                    onClick={() => onExportWorkflow(selectedWorkflow)}
+                    className="rounded-lg bg-[hsl(var(--muted))]/45 px-3 py-2 text-xs font-medium text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/75"
+                  >
+                    Export
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm(`Delete workflow "${selectedWorkflow.name}"?`)) {
+                        onDeleteWorkflow(selectedWorkflow.id);
+                      }
+                    }}
+                    className="rounded-lg bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 hover:bg-red-500/20"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Default Node Data Factories ─────────────────────────────────────
 
 function createDefaultTriggerData(): TriggerNodeData {
@@ -7504,6 +7866,7 @@ export function WorkflowsWidget() {
   );
 
   const [newWorkflowModalOpen, setNewWorkflowModalOpen] = useState(false);
+  const [workflowManagerOpen, setWorkflowManagerOpen] = useState(false);
 
   const createWorkflow = useCallback(
     async (
@@ -7908,6 +8271,19 @@ export function WorkflowsWidget() {
         packageTemplatesLoading={packageTemplatesLoading}
         onSelectPackageTemplate={handleSelectPackageTemplate}
       />
+      <WorkflowManagerModal
+        open={workflowManagerOpen}
+        workflows={workflows}
+        activeWorkflowId={activeWorkflowId}
+        runs={runs}
+        onClose={() => setWorkflowManagerOpen(false)}
+        onNewWorkflow={handleNew}
+        onSelectWorkflow={handleSelectWorkflow}
+        onDuplicateWorkflow={handleDuplicateWorkflow}
+        onToggleWorkflowActive={handleToggleWorkflowActive}
+        onDeleteWorkflow={handleDelete}
+        onExportWorkflow={handleExportWorkflow}
+      />
       <ReactFlowProvider>
         <Sidebar
           workflows={workflows}
@@ -7929,6 +8305,7 @@ export function WorkflowsWidget() {
           workflows={workflows}
           setWorkflows={setWorkflows}
           onNewWorkflow={handleNew}
+          onManageWorkflows={() => setWorkflowManagerOpen(true)}
           connectors={connectors}
           setConnectors={setConnectors}
           replayRun={replayRun}
@@ -7947,6 +8324,7 @@ function WorkflowCanvasInner({
   workflows,
   setWorkflows,
   onNewWorkflow,
+  onManageWorkflows,
   connectors,
   setConnectors,
   replayRun,
@@ -7957,6 +8335,7 @@ function WorkflowCanvasInner({
   workflows: WorkflowDefinition[];
   setWorkflows: React.Dispatch<React.SetStateAction<WorkflowDefinition[]>>;
   onNewWorkflow: () => void;
+  onManageWorkflows: () => void;
   connectors: ConnectorEntry[];
   setConnectors: React.Dispatch<React.SetStateAction<ConnectorEntry[]>>;
   replayRun: RunRecord | null;
@@ -9473,6 +9852,13 @@ function WorkflowCanvasInner({
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={onManageWorkflows}
+            className="px-3 py-1 rounded text-[11px] font-semibold bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25 transition-colors"
+            title="Browse and manage saved workflows"
+          >
+            Manage Workflows
+          </button>
           {bindingRequirementCount > 0 && (
             <button
               disabled={!activeWorkflowId}
