@@ -17,5 +17,29 @@
         "note": "Smoke test completed."
       }
     ]
+  },
+  {
+    "id": "task-20260427013101-xhv0t0",
+    "createdAt": "2026-04-27T01:31:01.865Z",
+    "updatedAt": "2026-04-27T01:34:58.781Z",
+    "from": "aos",
+    "owner": "aos",
+    "title": "Complete AOS Discord Workflow connector slice",
+    "body": "Finish service-key truth patch, verify, architect review, commit, push, and post merge packet for Discord Workflow connector.",
+    "status": "done",
+    "priority": "high",
+    "branch": "unknown",
+    "notes": [
+      {
+        "at": "2026-04-27T01:31:08.963Z",
+        "lane": "aos",
+        "note": "Working in branch codex/aos-discord-workflow-loop on Discord Workflow service-key truth patch; no Workflows/AppForge/OpenClaw/dashboard/gateway runtime touch. Verification and architect re-review next."
+      },
+      {
+        "at": "2026-04-27T01:34:58.781Z",
+        "lane": "aos",
+        "note": "Completed Discord Workflow slice in pushed branch codex/aos-discord-workflow-loop at 6c12fed4. Truthful live Discord bot/webhook connector; required operator service key DISCORD_BOT_TOKEN for bot-backed commands plus optional DISCORD_WEBHOOK_URL and Discord scope/default keys; webhook.send can run with DISCORD_WEBHOOK_URL alone; scoped repo keys block env fallback; valid enc:v1 repo keys decrypt; unreadable encrypted keys fall back like core resolver; live_write_smoke_tested=false. Verification: json.tool manifest+permissions, compileall, Discord Workflow pytest 16 passed, git diff --check HEAD~1 HEAD, pnpm check:repo-lane, architect approved after optional default fixes. Known gaps: no real operator Discord guild/webhook read/write smoke; oxfmt missing in clean worktree hook but explicit checks passed."
+      }
+    ]
   }
 ]
