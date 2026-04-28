@@ -80,14 +80,26 @@ const PATTERNS: PatternDefinition[] = [
   {
     id: "project_build",
     label: "project build",
-    keywords: ["build", "app", "software", "api", "saas", "platform", "agent", "project"],
+    keywords: [
+      "build",
+      "app",
+      "application",
+      "coding app",
+      "coding application",
+      "software",
+      "api",
+      "saas",
+      "platform",
+      "agent",
+      "project",
+    ],
     phrases: [
-      /\b(build|create|make|scaffold|architect|spec|plan).*\b(app|software|api|saas|platform|agent|project|feature|tool)\b/i,
-      /\b(i want|we need|help me).*\b(build|ship|launch).*\b(app|software|product|platform|tool)\b/i,
+      /\b(build|create|make|scaffold|architect|spec|plan).*\b(app|application|coding app|coding application|software|api|saas|platform|agent|project|feature|tool)\b/i,
+      /\b(i want|we need|help me).*\b(build|ship|launch).*\b(app|application|coding app|coding application|software|product|platform|tool)\b/i,
     ],
     activate: [
-      /\b(build|create|make|scaffold).*\b(app|software|api|saas|platform|agent|project|feature|tool)\b/i,
-      /\b(i want|we need|help me).*\b(build|ship|launch).*\b(app|software|product|platform|tool)\b/i,
+      /\b(build|create|make|scaffold).*\b(app|application|coding app|coding application|software|api|saas|platform|agent|project|feature|tool)\b/i,
+      /\b(i want|we need|help me).*\b(build|ship|launch).*\b(app|application|coding app|coding application|software|product|platform|tool)\b/i,
     ],
   },
 ];

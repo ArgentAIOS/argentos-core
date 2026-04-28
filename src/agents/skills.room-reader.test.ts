@@ -73,6 +73,33 @@ describe("Room Reader opportunity router", () => {
     });
   });
 
+  it("routes coding application prompts to the SpecForge project workflow", () => {
+    const result = resolveRoomReaderOpportunity({
+      prompt: "I want to build a coding application",
+      entries,
+    });
+    const block = buildRoomReaderOpportunityPromptBlock(result);
+
+    expect(result.mode).toBe("activate");
+    expect(result.patterns[0]?.id).toBe("project_build");
+    expect(result.recommended).toEqual({
+      kind: "workflow",
+      name: "specforge",
+      source: "core",
+    });
+    expect(block).toContain("Recommended workflow: specforge.");
+  });
+
+  it("observes read-only coding application discussion without injecting SpecForge", () => {
+    const result = resolveRoomReaderOpportunity({
+      prompt: "What is a coding application?",
+      entries,
+    });
+
+    expect(result.mode).toBe("observe");
+    expect(buildRoomReaderOpportunityPromptBlock(result)).toBeUndefined();
+  });
+
   it("detects research as a non-SpecForge opportunity", () => {
     const result = resolveRoomReaderOpportunity({
       prompt: "Research the best options and compare them with sources.",
