@@ -5,6 +5,7 @@ import type {
 } from "../../realtime-voice/provider-types.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { loadConfig, type ArgentConfig } from "../../config/config.js";
+import { createGeminiLiveProvider } from "../../realtime-voice/gemini-live-provider.js";
 import { createOpenAiRealtimeBrowserProvider } from "../../realtime-voice/openai-browser-provider.js";
 import { resolveConfiguredRealtimeVoiceProvider } from "../../realtime-voice/provider-resolver.js";
 import {
@@ -39,7 +40,7 @@ export type CreateTalkHandlersOptions = {
 };
 
 function defaultProviders(): RealtimeVoiceProvider[] {
-  return [createOpenAiRealtimeBrowserProvider()];
+  return [createOpenAiRealtimeBrowserProvider(), createGeminiLiveProvider()];
 }
 
 function asObject(value: unknown): Record<string, unknown> {

@@ -7,6 +7,13 @@ export {
   type PcmAudioFormat,
 } from "./audio-codec.js";
 export {
+  createGeminiLiveProvider,
+  GeminiLiveProvider,
+  type GeminiLiveProviderOptions,
+  type GeminiLiveWebSocketFactory,
+  type GeminiLiveWebSocketLike,
+} from "./gemini-live-provider.js";
+export {
   createOpenAiRealtimeBrowserProvider,
   OpenAiRealtimeBrowserProvider,
   type OpenAiRealtimeBrowserProviderOptions,
