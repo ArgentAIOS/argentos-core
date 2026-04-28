@@ -160,12 +160,12 @@
   {
     "id": "task-20260428182901-juxrg1",
     "createdAt": "2026-04-28T18:29:01.616Z",
-    "updatedAt": "2026-04-28T18:31:58.240Z",
+    "updatedAt": "2026-04-28T18:41:05.097Z",
     "from": "master",
     "owner": "agent-persona",
     "title": "Agent Profile first-class foundation slice",
     "body": "LANE LOCK:\nRepo: ArgentAIOS/argentos-core\nLocal path: /Users/sem/code/argent-core\nTarget branch: dev\nForbidden repo for this task: ArgentAIOS/argentos\nReason: pure core Agent Persona / Agent Profile foundation work\n\nCanonical plan: .omx/plans/agent-profile-first-class-plan-2026-04-28.md\nOnboarding prompt: ops/AGENT_PERSONA_ONBOARDING_PROMPT.md\n\nTask: Start the Agent Persona/Profile first-class implementation lane with the smallest safe foundation slice.\n\nScope for first slice:\n- Read the canonical plan and current Argent/OpenClaw references.\n- Identify exact Argent files for AgentConfig, TTS config, dashboard agent/profile APIs, auth-profile summaries, and Agents UI.\n- Implement or propose the first narrow code slice only if contained: AgentConfig.tts typing, generic-compatible TTS config additions, and an effective per-agent TTS/profile helper with tests.\n- Post STARTED before code edits and MERGE REQUEST when ready.\n\nDo not touch:\n- Workflows canvas/runtime\n- AppForge/TableForge\n- AOS connector implementations\n- OpenClaw Voice/Meet/runtime surfaces\n- Business/licensing/private overlay code\n- unrelated agent runtime\n\nRequired proof:\n- focused unit tests for schema/effective merge/redaction if code changes\n- pnpm check:repo-lane\n- formatting/diff checks\n- origin/dev containment proof after merge",
-    "status": "doing",
+    "status": "done",
     "priority": "high",
     "branch": "codex/aos-google-gws-invocation-repair",
     "notes": [
@@ -173,20 +173,36 @@
         "at": "2026-04-28T18:31:58.239Z",
         "lane": "agent-persona",
         "note": "Started agent-persona foundation slice on codex/agent-persona-profile-foundation. Boundaries: config AgentConfig/TTS types, effective profile/TTS helper, redacted auth summary helper, focused tests only."
+      },
+      {
+        "at": "2026-04-28T18:38:13.586Z",
+        "lane": "agent-persona",
+        "note": "Completed on branch codex/agent-persona-profile-foundation at f4fecaaa. Focused tests, targeted oxfmt/oxlint, repo lane check passed. origin/dev 3466953f is ancestor of HEAD. MERGE REQUEST posted to Master. Known residuals: full tsgo/format have unrelated pre-existing failures; local acks.json modified from bus ack only."
+      },
+      {
+        "at": "2026-04-28T18:41:05.097Z",
+        "lane": "agent-persona",
+        "note": "Master merged Agent Persona foundation slice to origin/dev. Feature commit f4fecaaa plus dev-version stamp commit 3716776b are contained in origin/dev. Version: 2026.4.28-dev.1. Verification rerun by Master: pnpm vitest run src/agents/agent-profile.test.ts src/config/config.agent-tts-profile.test.ts passed 4 tests; oxfmt --check touched files passed; oxlint --type-aware touched files passed; pnpm check:repo-lane passed."
       }
     ]
   },
   {
     "id": "task-20260428183253-mc9yj2",
     "createdAt": "2026-04-28T18:32:53.819Z",
-    "updatedAt": "2026-04-28T18:32:53.819Z",
+    "updatedAt": "2026-04-28T18:41:11.762Z",
     "from": "master",
     "owner": "business",
     "title": "Business overlay Core contract fixture pack",
     "body": "LANE LOCK:\nRepo: ArgentAIOS/argentos-core coordination, Business source at /Users/sem/code/ArgentOS-Business\nTarget branch: dev for Core coordination; do not edit Core unless explicitly authorized\nForbidden repo for core runtime changes: ArgentAIOS/argentos\nReason: keep Business overlay lane moving while Core C1-C5 is pending\n\nTask: Prepare a descriptor-only fixture/spec pack that Master can use to implement Core task task-20260428181411-5ddacs.\n\nScope:\n- Draft example business-overlay.json manifests for valid, expired, revoked, incompatible-core, missing-entitlement, unsafe-private-url, and malformed-descriptor cases.\n- Draft expected public business.status outputs for none, active, grace, expired, revoked, invalid, disabled, and error states.\n- Draft descriptor examples for tools, gateway handlers, dashboard panels/widgets, docs roots, and migration previews using only public-safe metadata.\n- Draft redaction expectations: raw license keys, private package URLs, registry coordinates, private protocol payloads must never appear in public status/logs/bus.\n- Identify minimal fields Business needs Core C1-C5 to expose before Business can compile descriptor-only register.ts.\n\nDo not touch:\n- executable worker/governance runtime\n- migrations apply logic\n- license protocol internals\n- private package download code\n- Core source files unless Master separately authorizes\n\nDeliverable:\n- Post a bus message to Master with the fixture/spec pack, or write a planning doc under the Business repo and post the path plus summary. Keep it descriptor-only and secret-free.",
-    "status": "todo",
+    "status": "done",
     "priority": "high",
     "branch": "codex/agent-persona-profile-foundation",
-    "notes": []
+    "notes": [
+      {
+        "at": "2026-04-28T18:41:11.762Z",
+        "lane": "business",
+        "note": "Business delivered descriptor/status/redaction fixture pack in tm-20260428183538-qenabc. Master accepts it as completion of the planning-only fixture task. Core C1-C5 remains active on Master and should use these fixtures for validator/status/gateway-stub tests."
+      }
+    ]
   }
 ]
