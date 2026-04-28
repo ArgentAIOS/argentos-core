@@ -7349,6 +7349,7 @@ interface WorkflowManagerModalProps {
   workflows: WorkflowDefinition[];
   activeWorkflowId: string | null;
   runs: RunRecord[];
+  loading?: boolean;
   onClose: () => void;
   onNewWorkflow: () => void;
   onSelectWorkflow: (id: string) => void | Promise<void>;
@@ -7363,6 +7364,7 @@ function WorkflowManagerModal({
   workflows,
   activeWorkflowId,
   runs,
+  loading = false,
   onClose,
   onNewWorkflow,
   onSelectWorkflow,
@@ -7427,7 +7429,9 @@ function WorkflowManagerModal({
               Manage Workflows
             </div>
             <div className="text-xs text-[hsl(var(--muted-foreground))]">
-              {workflows.length} saved {workflows.length === 1 ? "workflow" : "workflows"}
+              {loading
+                ? "Refreshing saved workflows..."
+                : `${workflows.length} saved ${workflows.length === 1 ? "workflow" : "workflows"}`}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -7462,7 +7466,7 @@ function WorkflowManagerModal({
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               {filteredWorkflows.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-[hsl(var(--border))] p-4 text-sm text-[hsl(var(--muted-foreground))]">
-                  No workflows match this search.
+                  {loading ? "Loading saved workflows..." : "No workflows match this search."}
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -7706,6 +7710,7 @@ export function WorkflowsWidget() {
   const [connectors, setConnectors] = useState<ConnectorEntry[]>([]);
   const [packageTemplates, setPackageTemplates] = useState<WorkflowPackageTemplateSummary[]>([]);
   const [packageTemplatesLoading, setPackageTemplatesLoading] = useState(false);
+  const [workflowsLoading, setWorkflowsLoading] = useState(false);
 
   // Inject CSS keyframes once
   useEffect(() => {
@@ -7714,35 +7719,49 @@ export function WorkflowsWidget() {
 
   // ── Gateway CRUD with localStorage fallback ───────────────────────
 
+  const loadWorkflowsFromGateway = useCallback(async (): Promise<WorkflowDefinition[]> => {
+    if (!gateway.connected) {
+      return loadWorkflowsLocal();
+    }
+    setWorkflowsLoading(true);
+    try {
+      const res = await gateway.request<{ workflows?: WorkflowDefinition[] }>("workflows.list", {});
+      const loaded = (res?.workflows ?? [])
+        .map((workflow) => normalizeWorkflowDefinition(workflow))
+        .filter((workflow): workflow is WorkflowDefinition => Boolean(workflow));
+      setWorkflows(loaded);
+      saveWorkflowsLocal(loaded);
+      setActiveWorkflowId((current) =>
+        current && loaded.some((workflow) => workflow.id === current)
+          ? current
+          : (loaded[0]?.id ?? null),
+      );
+      return loaded;
+    } catch {
+      return loadWorkflowsLocal();
+    } finally {
+      setWorkflowsLoading(false);
+    }
+  }, [gateway]);
+
   // Load workflows from gateway on connect
   useEffect(() => {
-    if (!gateway.connected) return;
+    if (!gateway.connected) {
+      return;
+    }
     let cancelled = false;
-    void (async () => {
-      try {
-        const res = await gateway.request<{ workflows?: WorkflowDefinition[] }>(
-          "workflows.list",
-          {},
-        );
-        if (!cancelled && res?.workflows) {
-          const loaded = res.workflows
-            .map((workflow) => normalizeWorkflowDefinition(workflow))
-            .filter((workflow): workflow is WorkflowDefinition => Boolean(workflow));
-          setWorkflows(loaded);
-          saveWorkflowsLocal(loaded);
-          if (!activeWorkflowId || !loaded.find((w) => w.id === activeWorkflowId)) {
-            setActiveWorkflowId(loaded[0]?.id ?? null);
-          }
-        }
-      } catch {
-        // Gateway unavailable — use localStorage data (already loaded)
+    void loadWorkflowsFromGateway().then((loaded) => {
+      if (cancelled) {
+        return;
       }
-    })();
+      if (loaded.length === 0) {
+        setActiveWorkflowId(null);
+      }
+    });
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gateway.connected]);
+  }, [gateway.connected, loadWorkflowsFromGateway]);
 
   // Load connector catalog
   useEffect(() => {
@@ -7867,6 +7886,11 @@ export function WorkflowsWidget() {
 
   const [newWorkflowModalOpen, setNewWorkflowModalOpen] = useState(false);
   const [workflowManagerOpen, setWorkflowManagerOpen] = useState(false);
+
+  const handleManageWorkflows = useCallback(() => {
+    setWorkflowManagerOpen(true);
+    void loadWorkflowsFromGateway();
+  }, [loadWorkflowsFromGateway]);
 
   const createWorkflow = useCallback(
     async (
@@ -8276,6 +8300,7 @@ export function WorkflowsWidget() {
         workflows={workflows}
         activeWorkflowId={activeWorkflowId}
         runs={runs}
+        loading={workflowsLoading}
         onClose={() => setWorkflowManagerOpen(false)}
         onNewWorkflow={handleNew}
         onSelectWorkflow={handleSelectWorkflow}
@@ -8305,7 +8330,7 @@ export function WorkflowsWidget() {
           workflows={workflows}
           setWorkflows={setWorkflows}
           onNewWorkflow={handleNew}
-          onManageWorkflows={() => setWorkflowManagerOpen(true)}
+          onManageWorkflows={handleManageWorkflows}
           connectors={connectors}
           setConnectors={setConnectors}
           replayRun={replayRun}
@@ -9506,7 +9531,7 @@ function WorkflowCanvasInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkflowId]);
 
-  // Auto-save: localStorage immediately + PG debounced
+  // Auto-save local drafts while editing. Explicit Save is the durable PG write.
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!activeWorkflowId) return;
@@ -9521,24 +9546,11 @@ function WorkflowCanvasInner({
         saveWorkflowsLocal(next);
         return next;
       });
-      // PG sync (fire and forget)
-      if (gateway.connected) {
-        // Strip execState from nodes before persisting
-        const cleanNodes = cleanWorkflowNodes();
-        gateway
-          .request("workflows.update", {
-            workflowId: activeWorkflowId,
-            canvasData: { nodes: cleanNodes, edges },
-          })
-          .catch(() => {
-            /* localStorage is already saved */
-          });
-      }
     }, 500);
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [nodes, edges, activeWorkflowId, setWorkflows, gateway, cleanWorkflowNodes]);
+  }, [nodes, edges, activeWorkflowId, setWorkflows]);
 
   // Connect edges
   const onConnect: OnConnect = useCallback(
