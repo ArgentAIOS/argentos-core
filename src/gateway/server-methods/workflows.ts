@@ -45,6 +45,7 @@ import {
   buildWorkflowRetryFromStepResumeOptions,
   createWorkflowRunRecord,
   executeWorkflowRunFromRow,
+  parseWorkflowJsonColumn,
   publicWorkflowRow,
   resumeWorkflowRunsForEvent,
   resumeWorkflowRunAfterApproval,
@@ -342,11 +343,36 @@ function optionalBoolean(params: Record<string, unknown>, key: string): boolean 
   return v;
 }
 
+function timestampIso(value: unknown): string | undefined {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+  return undefined;
+}
+
 function optionalObject(
   params: Record<string, unknown>,
   key: string,
 ): Record<string, unknown> | undefined {
   return recordValue(params[key], key);
+}
+
+function publicWorkflowVersionRow(row: Record<string, unknown>) {
+  const nodes = parseWorkflowJsonColumn(row.nodes);
+  const edges = parseWorkflowJsonColumn(row.edges);
+  return {
+    id: row.id,
+    workflowId: row.workflow_id,
+    version: typeof row.version === "number" ? row.version : Number(row.version ?? 0),
+    changedBy: typeof row.changed_by === "string" ? row.changed_by : undefined,
+    changeSummary: typeof row.change_summary === "string" ? row.change_summary : undefined,
+    createdAt: timestampIso(row.created_at),
+    nodeCount: Array.isArray(nodes) ? nodes.length : 0,
+    edgeCount: Array.isArray(edges) ? edges.length : 0,
+  };
 }
 
 function recordValue(value: unknown, label: string): Record<string, unknown> | undefined {
@@ -1737,6 +1763,127 @@ export const workflowsHandlers: GatewayRequestHandlers = {
     }
   },
 
+  "workflows.versions.list": async ({ params, respond }) => {
+    try {
+      const sql = await getSql();
+      const workflowId = optionalString(params, "workflowId") ?? requireString(params, "id");
+      const limit = optionalNumber(params, "limit") ?? 25;
+      const offset = optionalNumber(params, "offset") ?? 0;
+
+      const rows = await sql`
+        SELECT *
+        FROM workflow_versions
+        WHERE workflow_id = ${workflowId}
+        ORDER BY version DESC, created_at DESC
+        LIMIT ${limit} OFFSET ${offset}
+      `;
+      const [countRow] = await sql`
+        SELECT COUNT(*)::int AS total
+        FROM workflow_versions
+        WHERE workflow_id = ${workflowId}
+      `;
+      respond(true, {
+        versions: rows.map((row: Record<string, unknown>) => publicWorkflowVersionRow(row)),
+        total: countRow?.total ?? 0,
+        limit,
+        offset,
+      });
+    } catch (err) {
+      log.warn(`workflows.versions.list failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "workflows.versions.restore": async ({ params, respond }) => {
+    try {
+      const sql = await getSql();
+      const workflowId = optionalString(params, "workflowId") ?? requireString(params, "id");
+      const version = optionalNumber(params, "version");
+      if (version == null) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "version is required"));
+        return;
+      }
+
+      const [existing] = await sql`SELECT * FROM workflows WHERE id = ${workflowId}`;
+      if (!existing) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Workflow not found"));
+        return;
+      }
+
+      const [snapshot] = await sql`
+        SELECT *
+        FROM workflow_versions
+        WHERE workflow_id = ${workflowId} AND version = ${version}
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      if (!snapshot) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Version not found"));
+        return;
+      }
+
+      const newVersion = (existing.version as number) + 1;
+      const currentJson = workflowJsonFieldsFromRow(existing as unknown as WorkflowRow);
+      await sql`
+        INSERT INTO workflow_versions (id, workflow_id, version, nodes, edges, canvas_layout, changed_by, change_summary)
+        VALUES (
+          ${randomUUID()}, ${workflowId}, ${existing.version},
+          ${jsonParam(sql, currentJson.nodes)}::jsonb,
+          ${jsonParam(sql, currentJson.edges)}::jsonb,
+          ${jsonParam(sql, currentJson.canvasLayout)}::jsonb,
+          ${optionalString(params, "changedBy") ?? "operator"},
+          ${optionalString(params, "changeSummary") ?? `Before restoring v${version}`}
+        )
+        ON CONFLICT (workflow_id, version) DO NOTHING
+      `;
+
+      const snapshotJson = workflowJsonFieldsFromRow(snapshot as unknown as WorkflowRow);
+      const normalized = normalizeWorkflow({
+        id: workflowId,
+        name: existing.name as string,
+        description: existing.description as string | undefined,
+        nodes: snapshotJson.nodes,
+        edges: snapshotJson.edges,
+        canvasLayout: snapshotJson.canvasLayout,
+        defaultOnError:
+          currentJson.defaultOnError ??
+          (existing.default_on_error as unknown as import("../../infra/workflow-types.js").ErrorConfig),
+        maxRunDurationMs:
+          optionalNumber(params, "maxRunDurationMs") ?? (existing.max_run_duration_ms as number),
+        maxRunCostUsd:
+          typeof existing.max_run_cost_usd === "number" ? existing.max_run_cost_usd : undefined,
+        deploymentStage:
+          workflowDeploymentStageFromDefinition({ deploymentStage: existing.deployment_stage }) ??
+          "live",
+      });
+      const derivedTrigger = derivedWorkflowTrigger(normalized.workflow);
+      const restoredTriggerType = derivedTrigger.triggerType ?? "manual";
+
+      const [updated] = await sql`
+        UPDATE workflows SET
+          version = ${newVersion},
+          nodes = ${jsonParam(sql, normalized.workflow.nodes)}::jsonb,
+          edges = ${jsonParam(sql, normalized.workflow.edges)}::jsonb,
+          canvas_layout = ${jsonParam(sql, normalized.canvasLayout)}::jsonb,
+          trigger_type = ${restoredTriggerType},
+          trigger_config = ${derivedTrigger.triggerConfig ? jsonParam(sql, derivedTrigger.triggerConfig) : null}::jsonb,
+          updated_at = NOW()
+        WHERE id = ${workflowId}
+        RETURNING *
+      `;
+
+      log.info(`workflow restored: ${workflowId} v${version} → v${newVersion}`);
+      respond(true, {
+        restored: true,
+        restoredFromVersion: version,
+        workflow: publicWorkflowRow(updated as unknown as WorkflowRow),
+      });
+    } catch (err) {
+      log.warn(`workflows.versions.restore failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
   "workflows.list": async ({ params, respond }) => {
     try {
       const sql = await getSql();
@@ -1748,29 +1895,53 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       let rows;
       if (activeOnly && ownerAgentId) {
         rows = await sql`
-          SELECT * FROM workflows
-          WHERE is_active = true AND owner_agent_id = ${ownerAgentId}
-          ORDER BY updated_at DESC
+          SELECT w.*, COALESCE(rc.run_count, 0)::int AS run_count
+          FROM workflows w
+          LEFT JOIN (
+            SELECT workflow_id, COUNT(*)::int AS run_count
+            FROM workflow_runs
+            GROUP BY workflow_id
+          ) rc ON rc.workflow_id = w.id
+          WHERE w.is_active = true AND w.owner_agent_id = ${ownerAgentId}
+          ORDER BY w.updated_at DESC
           LIMIT ${limit} OFFSET ${offset}
         `;
       } else if (activeOnly) {
         rows = await sql`
-          SELECT * FROM workflows
-          WHERE is_active = true
-          ORDER BY updated_at DESC
+          SELECT w.*, COALESCE(rc.run_count, 0)::int AS run_count
+          FROM workflows w
+          LEFT JOIN (
+            SELECT workflow_id, COUNT(*)::int AS run_count
+            FROM workflow_runs
+            GROUP BY workflow_id
+          ) rc ON rc.workflow_id = w.id
+          WHERE w.is_active = true
+          ORDER BY w.updated_at DESC
           LIMIT ${limit} OFFSET ${offset}
         `;
       } else if (ownerAgentId) {
         rows = await sql`
-          SELECT * FROM workflows
-          WHERE owner_agent_id = ${ownerAgentId}
-          ORDER BY updated_at DESC
+          SELECT w.*, COALESCE(rc.run_count, 0)::int AS run_count
+          FROM workflows w
+          LEFT JOIN (
+            SELECT workflow_id, COUNT(*)::int AS run_count
+            FROM workflow_runs
+            GROUP BY workflow_id
+          ) rc ON rc.workflow_id = w.id
+          WHERE w.owner_agent_id = ${ownerAgentId}
+          ORDER BY w.updated_at DESC
           LIMIT ${limit} OFFSET ${offset}
         `;
       } else {
         rows = await sql`
-          SELECT * FROM workflows
-          ORDER BY updated_at DESC
+          SELECT w.*, COALESCE(rc.run_count, 0)::int AS run_count
+          FROM workflows w
+          LEFT JOIN (
+            SELECT workflow_id, COUNT(*)::int AS run_count
+            FROM workflow_runs
+            GROUP BY workflow_id
+          ) rc ON rc.workflow_id = w.id
+          ORDER BY w.updated_at DESC
           LIMIT ${limit} OFFSET ${offset}
         `;
       }

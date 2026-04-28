@@ -181,10 +181,26 @@ interface WorkflowDefinition {
   edges: Edge[];
   createdAt: string;
   updatedAt: string;
+  version?: number;
+  isActive?: boolean;
+  runCount?: number;
+  triggerType?: string;
+  triggerConfig?: Record<string, unknown>;
   definition?: unknown;
   canvasLayout?: { nodes?: Node[]; edges?: Edge[]; [key: string]: unknown };
   validation?: { ok: boolean; issues?: unknown[] };
   importReport?: WorkflowImportReport;
+}
+
+interface WorkflowVersionRecord {
+  id: string;
+  workflowId: string;
+  version: number;
+  changedBy?: string;
+  changeSummary?: string;
+  createdAt?: string;
+  nodeCount: number;
+  edgeCount: number;
 }
 
 interface WorkflowValidationIssue {
@@ -752,7 +768,12 @@ const STORAGE_KEY = "argent-workflows";
 
 function loadWorkflowsLocal(): WorkflowDefinition[] {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]") as unknown;
+    return Array.isArray(raw)
+      ? raw
+          .map((workflow) => normalizeWorkflowDefinition(workflow))
+          .filter((workflow): workflow is WorkflowDefinition => Boolean(workflow))
+      : [];
   } catch {
     return [];
   }
@@ -771,6 +792,106 @@ function saveWorkflowsLocal(workflows: WorkflowDefinition[]): void {
       console.warn("[Workflows] localStorage quota exceeded, using PG only");
     }
   }
+}
+
+function timestampString(value: unknown, fallback = new Date().toISOString()): string {
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+  return fallback;
+}
+
+function normalizeWorkflowDefinition(raw: unknown): WorkflowDefinition | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const row = raw as Record<string, unknown>;
+  const id = typeof row.id === "string" ? row.id : "";
+  const name = typeof row.name === "string" && row.name.trim() ? row.name : "Untitled workflow";
+  if (!id) {
+    return null;
+  }
+  const canvasLayout = isRecord(row.canvasLayout)
+    ? row.canvasLayout
+    : isRecord(row.canvas_layout)
+      ? row.canvas_layout
+      : undefined;
+  const nodes = Array.isArray(row.nodes)
+    ? (row.nodes as Node[])
+    : Array.isArray(canvasLayout?.nodes)
+      ? (canvasLayout.nodes as Node[])
+      : [];
+  const edges = Array.isArray(row.edges)
+    ? (row.edges as Edge[])
+    : Array.isArray(canvasLayout?.edges)
+      ? (canvasLayout.edges as Edge[])
+      : [];
+  const runCount =
+    typeof row.runCount === "number"
+      ? row.runCount
+      : typeof row.run_count === "number"
+        ? row.run_count
+        : Number(row.run_count ?? 0);
+  const version =
+    typeof row.version === "number"
+      ? row.version
+      : Number.isFinite(Number(row.version))
+        ? Number(row.version)
+        : 1;
+  return {
+    ...(row as Partial<WorkflowDefinition>),
+    id,
+    name,
+    nodes,
+    edges,
+    createdAt: timestampString(row.createdAt ?? row.created_at),
+    updatedAt: timestampString(row.updatedAt ?? row.updated_at),
+    version,
+    isActive: typeof row.isActive === "boolean" ? row.isActive : row.is_active !== false,
+    runCount: Number.isFinite(runCount) ? runCount : 0,
+    triggerType:
+      typeof row.triggerType === "string"
+        ? row.triggerType
+        : typeof row.trigger_type === "string"
+          ? row.trigger_type
+          : undefined,
+    triggerConfig: isRecord(row.triggerConfig)
+      ? row.triggerConfig
+      : isRecord(row.trigger_config)
+        ? row.trigger_config
+        : undefined,
+    canvasLayout: canvasLayout as WorkflowDefinition["canvasLayout"],
+  };
+}
+
+function normalizeWorkflowVersions(raw: unknown): WorkflowVersionRecord[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+      const row = entry as Record<string, unknown>;
+      const id = typeof row.id === "string" ? row.id : "";
+      const workflowId = typeof row.workflowId === "string" ? row.workflowId : "";
+      const version = typeof row.version === "number" ? row.version : Number(row.version ?? 0);
+      if (!id || !workflowId || !Number.isFinite(version)) {
+        return null;
+      }
+      return {
+        id,
+        workflowId,
+        version,
+        changedBy: typeof row.changedBy === "string" ? row.changedBy : undefined,
+        changeSummary: typeof row.changeSummary === "string" ? row.changeSummary : undefined,
+        createdAt: typeof row.createdAt === "string" ? row.createdAt : undefined,
+        nodeCount: typeof row.nodeCount === "number" ? row.nodeCount : 0,
+        edgeCount: typeof row.edgeCount === "number" ? row.edgeCount : 0,
+      };
+    })
+    .filter((entry): entry is WorkflowVersionRecord => Boolean(entry));
 }
 
 // ── CSS Keyframes (injected once) ───────────────────────────────────
@@ -819,6 +940,17 @@ function formatDuration(ms: number): string {
   const m = Math.floor(s / 60);
   const rem = s % 60;
   return rem > 0 ? `${m}m ${rem}s` : `${m}m`;
+}
+
+function formatShortDate(value?: string): string {
+  if (!value) {
+    return "unsaved";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "unsaved";
+  }
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -6625,7 +6757,10 @@ interface SidebarProps {
   activeWorkflowId: string | null;
   onSelectWorkflow: (id: string) => void;
   onNewWorkflow: () => void;
+  onDuplicateWorkflow: (id: string) => void | Promise<void>;
+  onToggleWorkflowActive: (id: string, isActive: boolean) => void | Promise<void>;
   onDeleteWorkflow: (id: string) => void;
+  onExportWorkflow: (workflow: WorkflowDefinition) => void;
   onImportWorkflowFile: (file: File) => void | Promise<void>;
   runs: RunRecord[];
   onSelectRun: (run: RunRecord) => void;
@@ -6638,7 +6773,10 @@ function Sidebar({
   activeWorkflowId,
   onSelectWorkflow,
   onNewWorkflow,
+  onDuplicateWorkflow,
+  onToggleWorkflowActive,
   onDeleteWorkflow,
+  onExportWorkflow,
   onImportWorkflowFile,
   runs,
   onSelectRun,
@@ -6646,6 +6784,7 @@ function Sidebar({
   connectors,
 }: SidebarProps) {
   const [runHistoryOpen, setRunHistoryOpen] = useState(true);
+  const [workflowQuery, setWorkflowQuery] = useState("");
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const onDragStart = (event: DragEvent, nodeType: string) => {
     event.dataTransfer.setData("application/reactflow", nodeType);
@@ -6673,6 +6812,9 @@ function Sidebar({
     { type: "output", icon: "\uD83D\uDCE4", label: "Output", desc: "Deliver results" },
   ];
   const activeWorkflow = workflows.find((workflow) => workflow.id === activeWorkflowId);
+  const filteredWorkflows = workflows.filter((workflow) =>
+    workflow.name.toLowerCase().includes(workflowQuery.trim().toLowerCase()),
+  );
 
   const subPortPaletteItems = [
     { type: "modelProvider", icon: "\uD83E\uDDE0", label: "Model", desc: "Override LLM model" },
@@ -6832,34 +6974,111 @@ function Sidebar({
             </button>
           </div>
         </div>
+        <input
+          className="mb-2 w-full rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1 text-[11px] text-[hsl(var(--foreground))] outline-none placeholder:text-[hsl(var(--muted-foreground))] focus:border-[hsl(var(--primary))]/70"
+          value={workflowQuery}
+          onChange={(e) => setWorkflowQuery(e.target.value)}
+          placeholder="Search workflows..."
+        />
         {workflows.length === 0 ? (
           <div className="text-[10px] text-[hsl(var(--muted-foreground))] italic">
             No workflows yet
           </div>
+        ) : filteredWorkflows.length === 0 ? (
+          <div className="text-[10px] text-[hsl(var(--muted-foreground))] italic">
+            No matching workflows
+          </div>
         ) : (
           <div className="flex flex-col gap-1">
-            {workflows.map((wf) => (
+            {filteredWorkflows.map((wf) => (
               <div
                 key={wf.id}
-                className={`group flex items-center justify-between px-2 py-1.5 rounded-md text-[11px] cursor-pointer transition-colors ${
+                className={`group rounded-md px-2 py-1.5 text-[11px] cursor-pointer transition-colors ${
                   activeWorkflowId === wf.id
                     ? "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]"
                     : "text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/30"
                 }`}
                 onClick={() => onSelectWorkflow(wf.id)}
               >
-                <span className="truncate">{wf.name}</span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteWorkflow(wf.id);
-                  }}
-                  className="opacity-0 group-hover:opacity-100 text-[hsl(var(--muted-foreground))] hover:text-red-400 transition-opacity text-[10px]"
-                >
-                  &#x2715;
-                </button>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate font-medium">{wf.name}</span>
+                  <span
+                    className={`rounded px-1 py-0.5 text-[8px] font-semibold uppercase leading-none ${
+                      wf.isActive === false
+                        ? "bg-amber-500/15 text-amber-300"
+                        : "bg-emerald-500/15 text-emerald-300"
+                    }`}
+                  >
+                    {wf.isActive === false ? "Paused" : "Active"}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-2 text-[9px] text-[hsl(var(--muted-foreground))]">
+                  <span>v{wf.version ?? 1}</span>
+                  <span>{wf.runCount ?? 0} runs</span>
+                  <span title={wf.updatedAt}>{formatShortDate(wf.updatedAt)}</span>
+                </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {activeWorkflow && (
+          <div className="mt-3 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/60 p-2">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-[11px] font-semibold text-[hsl(var(--foreground))]">
+                  {activeWorkflow.name}
+                </div>
+                <div className="text-[9px] text-[hsl(var(--muted-foreground))]">
+                  v{activeWorkflow.version ?? 1} / {activeWorkflow.runCount ?? 0} runs
+                </div>
+              </div>
+              <button
+                onClick={() =>
+                  void onToggleWorkflowActive(activeWorkflow.id, activeWorkflow.isActive === false)
+                }
+                className={`rounded px-2 py-1 text-[10px] font-semibold ${
+                  activeWorkflow.isActive === false
+                    ? "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
+                    : "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+                }`}
+                title={
+                  activeWorkflow.isActive === false ? "Make workflow active" : "Pause workflow"
+                }
+              >
+                {activeWorkflow.isActive === false ? "Activate" : "Pause"}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              <button
+                onClick={() => void onDuplicateWorkflow(activeWorkflow.id)}
+                className="rounded bg-[hsl(var(--muted))]/40 px-2 py-1 text-[10px] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/70"
+              >
+                Duplicate
+              </button>
+              <button
+                onClick={() => onExportWorkflow(activeWorkflow)}
+                className="rounded bg-[hsl(var(--muted))]/40 px-2 py-1 text-[10px] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/70"
+              >
+                Export
+              </button>
+              <button
+                onClick={() => onSelectWorkflow(activeWorkflow.id)}
+                className="rounded bg-[hsl(var(--muted))]/40 px-2 py-1 text-[10px] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/70"
+              >
+                Reload
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm(`Delete workflow "${activeWorkflow.name}"?`)) {
+                    onDeleteWorkflow(activeWorkflow.id);
+                  }
+                }}
+                className="rounded bg-red-500/10 px-2 py-1 text-[10px] text-red-300 hover:bg-red-500/20"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         )}
 
@@ -7143,11 +7362,14 @@ export function WorkflowsWidget() {
           "workflows.list",
           {},
         );
-        if (!cancelled && res?.workflows && res.workflows.length > 0) {
-          setWorkflows(res.workflows);
-          saveWorkflowsLocal(res.workflows);
-          if (!activeWorkflowId || !res.workflows.find((w) => w.id === activeWorkflowId)) {
-            setActiveWorkflowId(res.workflows[0].id);
+        if (!cancelled && res?.workflows) {
+          const loaded = res.workflows
+            .map((workflow) => normalizeWorkflowDefinition(workflow))
+            .filter((workflow): workflow is WorkflowDefinition => Boolean(workflow));
+          setWorkflows(loaded);
+          saveWorkflowsLocal(loaded);
+          if (!activeWorkflowId || !loaded.find((w) => w.id === activeWorkflowId)) {
+            setActiveWorkflowId(loaded[0]?.id ?? null);
           }
         }
       } catch {
@@ -7248,6 +7470,39 @@ export function WorkflowsWidget() {
     // Fire-and-forget PG sync (individual workflow updates happen in canvas inner)
   }, []);
 
+  const upsertWorkflow = useCallback(
+    (workflow: WorkflowDefinition) => {
+      setWorkflows((prev) => {
+        const exists = prev.some((candidate) => candidate.id === workflow.id);
+        const next = exists
+          ? prev.map((candidate) => (candidate.id === workflow.id ? workflow : candidate))
+          : [...prev, workflow];
+        saveWorkflowsLocal(next);
+        return next;
+      });
+    },
+    [setWorkflows],
+  );
+
+  const handleSelectWorkflow = useCallback(
+    async (id: string) => {
+      setActiveWorkflowId(id);
+      if (!gateway.connected) {
+        return;
+      }
+      try {
+        const res = await gateway.request("workflows.get", { id });
+        const workflow = normalizeWorkflowDefinition(res);
+        if (workflow) {
+          upsertWorkflow(workflow);
+        }
+      } catch (err) {
+        console.warn("[Workflows] Authoritative workflow load failed:", err);
+      }
+    },
+    [gateway, upsertWorkflow],
+  );
+
   const [newWorkflowModalOpen, setNewWorkflowModalOpen] = useState(false);
 
   const createWorkflow = useCallback(
@@ -7286,7 +7541,7 @@ export function WorkflowsWidget() {
       // Persist to PG
       if (gateway.connected) {
         try {
-          await gateway.request("workflows.create", {
+          const created = await gateway.request("workflows.create", {
             name: newWf.name,
             workflowId: newWf.id,
             canvasData: { nodes: newWf.nodes, edges: newWf.edges },
@@ -7294,12 +7549,16 @@ export function WorkflowsWidget() {
             definition: newWf.definition,
             deploymentStage: workflowDeploymentStage(newWf),
           });
+          const normalized = normalizeWorkflowDefinition(created);
+          if (normalized) {
+            upsertWorkflow(normalized);
+          }
         } catch {
           /* localStorage fallback already saved */
         }
       }
     },
-    [workflows, persistWorkflows, gateway],
+    [workflows, persistWorkflows, gateway, upsertWorkflow],
   );
 
   const handleNew = useCallback(() => {
@@ -7309,7 +7568,7 @@ export function WorkflowsWidget() {
   const handleCreateBlank = useCallback(
     (name?: string) => {
       const trimmed = name?.trim();
-      createWorkflow(trimmed || `Workflow ${workflows.length + 1}`);
+      void createWorkflow(trimmed || `Workflow ${workflows.length + 1}`);
     },
     [createWorkflow, workflows.length],
   );
@@ -7318,7 +7577,7 @@ export function WorkflowsWidget() {
     (template: WorkflowTemplate) => {
       // Create a workflow with the template name; nodes are empty since templates
       // are structural starting points that users customize via drag-and-drop
-      createWorkflow(template.name);
+      void createWorkflow(template.name);
     },
     [createWorkflow],
   );
@@ -7369,6 +7628,102 @@ export function WorkflowsWidget() {
     },
     [workflows, activeWorkflowId, persistWorkflows, gateway],
   );
+
+  const handleDuplicateWorkflow = useCallback(
+    async (id: string) => {
+      const source = workflows.find((workflow) => workflow.id === id);
+      if (!source) {
+        return;
+      }
+      if (gateway.connected) {
+        try {
+          const duplicated = await gateway.request("workflows.duplicate", {
+            id,
+            name: `${source.name} (copy)`,
+          });
+          const normalized = normalizeWorkflowDefinition(duplicated);
+          if (normalized) {
+            upsertWorkflow(normalized);
+            setActiveWorkflowId(normalized.id);
+            return;
+          }
+        } catch (err) {
+          console.warn("[Workflows] Gateway duplicate failed, using local copy:", err);
+        }
+      }
+      const now = new Date().toISOString();
+      const localCopy: WorkflowDefinition = {
+        ...source,
+        id: `wf-${Date.now()}`,
+        name: `${source.name} (copy)`,
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+        runCount: 0,
+      };
+      const next = [...workflows, localCopy];
+      setWorkflows(next);
+      persistWorkflows(next);
+      setActiveWorkflowId(localCopy.id);
+    },
+    [gateway, persistWorkflows, upsertWorkflow, workflows],
+  );
+
+  const handleToggleWorkflowActive = useCallback(
+    async (id: string, isActive: boolean) => {
+      setWorkflows((prev) => {
+        const next = prev.map((workflow) =>
+          workflow.id === id
+            ? { ...workflow, isActive, updatedAt: new Date().toISOString() }
+            : workflow,
+        );
+        saveWorkflowsLocal(next);
+        return next;
+      });
+      if (!gateway.connected) {
+        return;
+      }
+      try {
+        const updated = await gateway.request("workflows.update", {
+          workflowId: id,
+          isActive,
+          changeSummary: isActive ? "Activated by operator" : "Paused by operator",
+        });
+        const normalized = normalizeWorkflowDefinition(updated);
+        if (normalized) {
+          upsertWorkflow(normalized);
+        }
+      } catch (err) {
+        console.warn("[Workflows] Active state update failed:", err);
+      }
+    },
+    [gateway, upsertWorkflow],
+  );
+
+  const handleExportWorkflow = useCallback((workflow: WorkflowDefinition) => {
+    const exportData = {
+      format: "argent-workflow" as const,
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      workflow: {
+        name: workflow.name,
+        description: "",
+        definition: workflow.definition,
+        canvasLayout: workflow.canvasLayout ?? { nodes: workflow.nodes, edges: workflow.edges },
+        nodes: workflow.nodes,
+        edges: workflow.edges,
+      },
+    };
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${workflow.name.replace(/[^a-zA-Z0-9-_]/g, "-")}.argent-workflow.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
 
   // Replay run highlighting on canvas when a historical run is clicked
   const [replayRun, setReplayRun] = useState<RunRecord | null>(null);
@@ -7557,9 +7912,12 @@ export function WorkflowsWidget() {
         <Sidebar
           workflows={workflows}
           activeWorkflowId={activeWorkflowId}
-          onSelectWorkflow={setActiveWorkflowId}
+          onSelectWorkflow={(id) => void handleSelectWorkflow(id)}
           onNewWorkflow={handleNew}
+          onDuplicateWorkflow={handleDuplicateWorkflow}
+          onToggleWorkflowActive={handleToggleWorkflowActive}
           onDeleteWorkflow={handleDelete}
+          onExportWorkflow={handleExportWorkflow}
           onImportWorkflowFile={handleImportWorkflowFile}
           runs={runs}
           onSelectRun={handleSelectRun}
@@ -7649,6 +8007,10 @@ function WorkflowCanvasInner({
   const [validationIssues, setValidationIssues] = useState<WorkflowValidationIssue[]>([]);
   const [validationCheckedAt, setValidationCheckedAt] = useState<string | null>(null);
   const [validationStatus, setValidationStatus] = useState<"idle" | "checking" | "error">("idle");
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+  const [versions, setVersions] = useState<WorkflowVersionRecord[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [versionActionBusy, setVersionActionBusy] = useState<number | null>(null);
 
   const normalizePendingApproval = useCallback(
     (raw: Record<string, unknown>): PendingApproval | null => {
@@ -8572,6 +8934,68 @@ function WorkflowCanvasInner({
     activeWorkflow?.importReport?.okForImport !== false &&
     missingLiveBindings.length === 0;
 
+  const loadVersionHistory = useCallback(async () => {
+    if (!activeWorkflowId || !gateway.connected) {
+      setVersions([]);
+      return;
+    }
+    setVersionsLoading(true);
+    try {
+      const res = await gateway.request<{ versions?: unknown[] }>("workflows.versions.list", {
+        workflowId: activeWorkflowId,
+      });
+      setVersions(normalizeWorkflowVersions(res?.versions));
+    } catch (err) {
+      console.warn("[Workflows] Version history unavailable:", err);
+      setVersions([]);
+    } finally {
+      setVersionsLoading(false);
+    }
+  }, [activeWorkflowId, gateway]);
+
+  useEffect(() => {
+    if (versionHistoryOpen) {
+      void loadVersionHistory();
+    }
+  }, [loadVersionHistory, versionHistoryOpen]);
+
+  const handleRestoreVersion = useCallback(
+    async (version: number) => {
+      if (!activeWorkflowId || !gateway.connected) return;
+      if (
+        !confirm(`Restore workflow to version ${version}? The current version will be saved first.`)
+      ) {
+        return;
+      }
+      setVersionActionBusy(version);
+      try {
+        const res = await gateway.request<{ workflow?: unknown }>("workflows.versions.restore", {
+          workflowId: activeWorkflowId,
+          version,
+          changeSummary: `Restored from version ${version}`,
+        });
+        const restored = normalizeWorkflowDefinition(res?.workflow);
+        if (restored) {
+          setWorkflows((prev) => {
+            const next = prev.map((workflow) =>
+              workflow.id === restored.id ? restored : workflow,
+            );
+            saveWorkflowsLocal(next);
+            return next;
+          });
+          setNodes(restored.nodes);
+          setEdges(restored.edges);
+        }
+        await loadVersionHistory();
+      } catch (err) {
+        alert(`Could not restore version: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setVersionActionBusy(null);
+      }
+    },
+    [activeWorkflowId, gateway, loadVersionHistory, setEdges, setNodes, setWorkflows],
+  );
+
   useEffect(() => {
     if (!activeWorkflow?.importReport || missingLiveBindings.length === 0) {
       return;
@@ -8978,19 +9402,21 @@ function WorkflowCanvasInner({
       : "";
   const runDisabledReason = !activeWorkflowId
     ? "Create a workflow before running."
-    : running
-      ? "Workflow is already running."
-      : saving
-        ? "Wait for the save to finish before running."
-        : validationStatus === "checking"
-          ? "Wait for validation to finish before running."
-          : !gateway.connected
-            ? "Connect to the gateway before running workflows."
-            : activeDeploymentStage === "live" && missingLiveBindings.length > 0
-              ? `Bind ${missingLiveBindings.length} required item${
-                  missingLiveBindings.length === 1 ? "" : "s"
-                } before running live.`
-              : "";
+    : activeWorkflow?.isActive === false
+      ? "Activate this workflow before running it."
+      : running
+        ? "Workflow is already running."
+        : saving
+          ? "Wait for the save to finish before running."
+          : validationStatus === "checking"
+            ? "Wait for validation to finish before running."
+            : !gateway.connected
+              ? "Connect to the gateway before running workflows."
+              : activeDeploymentStage === "live" && missingLiveBindings.length > 0
+                ? `Bind ${missingLiveBindings.length} required item${
+                    missingLiveBindings.length === 1 ? "" : "s"
+                  } before running live.`
+                : "";
   const scheduleDisabledReason = !activeWorkflowId
     ? "Create a workflow before scheduling."
     : scheduling
@@ -9164,8 +9590,17 @@ function WorkflowCanvasInner({
             Export
           </button>
           <button
+            disabled={!activeWorkflowId || !gateway.connected}
+            onClick={() => setVersionHistoryOpen((open) => !open)}
+            className="px-3 py-1 rounded text-[11px] font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] disabled:opacity-40 transition-colors"
+            title="Show workflow version history"
+          >
+            Versions
+          </button>
+          <button
             disabled={
               !activeWorkflowId ||
+              activeWorkflow?.isActive === false ||
               running ||
               saving ||
               validationStatus === "checking" ||
@@ -9194,6 +9629,64 @@ function WorkflowCanvasInner({
           </button>
         </div>
       </div>
+
+      {versionHistoryOpen && activeWorkflowId && (
+        <div className="flex-shrink-0 border-b border-[hsl(var(--border))] bg-[hsl(var(--card))] px-4 py-2">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold text-[hsl(var(--foreground))]">
+                Version History
+              </div>
+              <div className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                Current v{activeWorkflow?.version ?? 1}. Restores save the current graph first.
+              </div>
+            </div>
+            <button
+              onClick={() => void loadVersionHistory()}
+              disabled={versionsLoading}
+              className="rounded px-2 py-1 text-[10px] font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] disabled:opacity-40"
+            >
+              {versionsLoading ? "Loading..." : "Refresh"}
+            </button>
+          </div>
+          {versions.length === 0 ? (
+            <div className="text-[11px] text-[hsl(var(--muted-foreground))]">
+              {versionsLoading ? "Loading saved versions..." : "No prior versions yet."}
+            </div>
+          ) : (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {versions.map((version) => (
+                <div
+                  key={version.id}
+                  className="min-w-[180px] rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-[hsl(var(--foreground))]">
+                      v{version.version}
+                    </span>
+                    <span className="text-[9px] text-[hsl(var(--muted-foreground))]">
+                      {formatShortDate(version.createdAt)}
+                    </span>
+                  </div>
+                  <div className="mt-1 line-clamp-2 text-[10px] text-[hsl(var(--muted-foreground))]">
+                    {version.changeSummary || "Saved version"}
+                  </div>
+                  <div className="mt-1 text-[9px] text-[hsl(var(--muted-foreground))]">
+                    {version.nodeCount} nodes / {version.edgeCount} edges
+                  </div>
+                  <button
+                    onClick={() => void handleRestoreVersion(version.version)}
+                    disabled={versionActionBusy != null}
+                    className="mt-2 w-full rounded bg-[hsl(var(--primary))]/15 px-2 py-1 text-[10px] font-semibold text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/25 disabled:opacity-40"
+                  >
+                    {versionActionBusy === version.version ? "Restoring..." : "Restore"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {activeWorkflow?.importReport && (
         <div className="flex-shrink-0 border-b border-cyan-400/20 bg-cyan-400/5 px-4 py-2">
