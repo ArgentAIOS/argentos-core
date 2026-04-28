@@ -112,12 +112,12 @@
   {
     "id": "task-20260428181411-ow84bp",
     "createdAt": "2026-04-28T18:14:11.939Z",
-    "updatedAt": "2026-04-28T18:16:30.995Z",
+    "updatedAt": "2026-04-28T18:21:47.969Z",
     "from": "master",
     "owner": "business",
     "title": "Prepare descriptor-only Business overlay adaptation plan",
     "body": "Master approved the Core-first overlay contract in bus message tm-20260428181423-rxmotb. Business lane may proceed read-only/planning only: map /Users/sem/code/ArgentOS-Business files to the future Core extension API descriptors, identify DTO/facade seams, identify imports that must be replaced, and prepare a compile/adaptation plan. Do not implement executable worker/governance runtime, migrations, license protocol internals, or Core imports until Core C1-C5 lands and Master explicitly authorizes code work.",
-    "status": "todo",
+    "status": "done",
     "priority": "high",
     "branch": "codex/aos-google-gws-invocation-repair",
     "notes": [
@@ -130,6 +130,11 @@
         "at": "2026-04-28T18:16:30.995Z",
         "lane": "business",
         "note": "Correction: the approval bus message id is tm-20260428181423-rxmotb. Ignore the placeholder id in the original task body; binding scope remains read-only/planning until Core task task-20260428181411-5ddacs lands."
+      },
+      {
+        "at": "2026-04-28T18:21:47.969Z",
+        "lane": "business",
+        "note": "Business delivered descriptor-only adaptation map in tm-20260428182047-ylczb0. Master accepts as completion of the read-only planning task. Next blocker remains Core task task-20260428181411-5ddacs; no executable Business runtime/governance/migrations/license protocol work is authorized until Core C1-C5 lands."
       }
     ]
   },
