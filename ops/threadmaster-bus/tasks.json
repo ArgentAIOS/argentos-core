@@ -69,5 +69,81 @@
     "priority": "high",
     "branch": "dev",
     "notes": []
+  },
+  {
+    "id": "task-20260428173443-hzlksv",
+    "createdAt": "2026-04-28T17:34:43.341Z",
+    "updatedAt": "2026-04-28T18:13:45.502Z",
+    "from": "master",
+    "owner": "workflows",
+    "title": "Morning Brief workflow readiness and template hardening",
+    "body": "LANE LOCK:\nRepo: ArgentAIOS/argentos-core\nLocal path: /Users/sem/code/argent-core\nTarget branch: dev\nForbidden repo for this task: ArgentAIOS/argentos\nReason: pure core Workflows readiness/template hardening work\n\nOwner lane: Workflows\nTask: Morning Brief workflow readiness and template hardening\nScope: workflow validation UX, dry-run/run split, live side-effect approval, podcast tool wiring, output safety, morning brief template\nDo not touch: AppForge, AOS, OpenClaw Voice, unrelated agent runtime\nRequired proof: tests, dry-run evidence, saved workflow inspection, origin/dev containment after merge\n\nOperator note: workflow agent is already aware of the Morning Brief goal and has a plan; this task exists to route the work through the bus and keep ownership/proof explicit.",
+    "status": "done",
+    "priority": "normal",
+    "branch": "codex/workflow-modal-telegram-target-repair",
+    "notes": [
+      {
+        "at": "2026-04-28T17:35:06.827Z",
+        "lane": "workflows",
+        "note": "Master clarification: bus auto-stamped this task with the posting branch codex/workflow-modal-telegram-target-repair. Ignore that as task ownership metadata; implementation target remains dev per lane lock/body."
+      },
+      {
+        "at": "2026-04-28T17:40:20.518Z",
+        "lane": "workflows",
+        "note": "Operator scope update: Task is now Capability-backed workflow actions and Morning Brief template hardening. Scope: action capability catalog; action picker categories; podcast_plan / podcast_generate as first-class actions; live side-effect approval UX; validate / dry-run / run-now split; action config normalization; DocPanel output safety; update Morning Brief Podcast 2.0; create reusable AI Morning Brief template. Do not touch: AppForge, AOS, OpenClaw Voice, unrelated agent runtime, business/licensing surfaces. Required proof: focused unit tests; workflow validation test; dry-run evidence; saved workflow inspection; one approved live-run test when safe; origin/dev containment proof after merge."
+      },
+      {
+        "at": "2026-04-28T17:56:59.567Z",
+        "lane": "workflows",
+        "note": "Progress: implemented capability-backed workflow actions and Morning Brief hardening on branch codex/workflow-capability-actions. Added action capability catalog exposed via workflows.capabilities; added first-class podcast_plan and podcast_generate action types; fixed action config normalization so canonical action objects do not collapse to api_call; added approval metadata to unsafe live-side-effect validation issues; dry-run trace now reports action capability/approval requirements; runner now executes podcast_plan/podcast_generate through existing podcast tools and blocks DocPanel [object Object] saves; builder now emits visible Morning Brief scout -> brief -> script -> podcast_plan -> podcast_generate -> delivery -> ledger graph; added AI Morning Brief Podcast owner-operator template; dashboard action picker now includes Podcast Plan/Generate controls. Verification so far: focused vitest suite passed 63 tests; git diff --check passed; repo-lane passed. pnpm tsgo remains blocked by existing unrelated repo-wide type failures, not clean for this branch."
+      },
+      {
+        "at": "2026-04-28T18:01:23.457Z",
+        "lane": "workflows",
+        "note": "Merge request submitted to Master as bus message tm-20260428180114-mm19t9. Branch pushed: codex/workflow-capability-actions. Commit: 6aa4e62b2c0da18c44a521983af5fd8ff95cd2ab. Blocked only on Master review/merge and origin/dev containment proof; origin/dev does not contain the commit yet."
+      },
+      {
+        "at": "2026-04-28T18:13:45.502Z",
+        "lane": "workflows",
+        "note": "Master merged codex/workflow-capability-actions into origin/dev as merge commit bcd9f30a. Containment proof: git branch -r --contains 6aa4e62b2c0da18c44a521983af5fd8ff95cd2ab includes origin/dev; git branch -r --contains bcd9f30a includes origin/dev. Verification rerun: 64 focused workflow tests passed; oxfmt check passed; git diff --check passed; pnpm check:repo-lane passed."
+      }
+    ]
+  },
+  {
+    "id": "task-20260428181411-ow84bp",
+    "createdAt": "2026-04-28T18:14:11.939Z",
+    "updatedAt": "2026-04-28T18:16:30.995Z",
+    "from": "master",
+    "owner": "business",
+    "title": "Prepare descriptor-only Business overlay adaptation plan",
+    "body": "Master approved the Core-first overlay contract in bus message tm-20260428181423-rxmotb. Business lane may proceed read-only/planning only: map /Users/sem/code/ArgentOS-Business files to the future Core extension API descriptors, identify DTO/facade seams, identify imports that must be replaced, and prepare a compile/adaptation plan. Do not implement executable worker/governance runtime, migrations, license protocol internals, or Core imports until Core C1-C5 lands and Master explicitly authorizes code work.",
+    "status": "todo",
+    "priority": "high",
+    "branch": "codex/aos-google-gws-invocation-repair",
+    "notes": [
+      {
+        "at": "2026-04-28T18:14:32.132Z",
+        "lane": "business",
+        "note": "Approval bus message posted as tm-20260428181423-rxmotb. Scope remains read-only/planning until Core task task-20260428181411-5ddacs lands."
+      },
+      {
+        "at": "2026-04-28T18:16:30.995Z",
+        "lane": "business",
+        "note": "Correction: the approval bus message id is tm-20260428181423-rxmotb. Ignore the placeholder id in the original task body; binding scope remains read-only/planning until Core task task-20260428181411-5ddacs lands."
+      }
+    ]
+  },
+  {
+    "id": "task-20260428181411-5ddacs",
+    "createdAt": "2026-04-28T18:14:11.954Z",
+    "updatedAt": "2026-04-28T18:14:11.954Z",
+    "from": "master",
+    "owner": "master",
+    "title": "Core Business overlay contract C1-C5",
+    "body": "Implement the Core-owned first slice for the private Business overlay: type-only core extension API; manifest validator that never imports Business code; redacted entitlement/status store; gateway stubs business.status/business.activate/business.sync/business.disable; descriptor registry placeholders gated by entitlement, manifest, signature/checksum, and Core-version checks. Preserve Core startup/update behavior with no Business installed. Required proof: unit tests for validator/status redaction/expiration policy, gateway stub tests, no private URL/license leakage, repo-lane, formatting/diff checks, and origin/dev containment.",
+    "status": "todo",
+    "priority": "high",
+    "branch": "codex/aos-google-gws-invocation-repair",
+    "notes": []
   }
 ]
