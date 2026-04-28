@@ -2968,6 +2968,17 @@ const TRIGGER_PROVIDER_CONNECTOR_MAP: Record<string, string> = {
   telegram: "aos-telegram",
 };
 
+const CHANNEL_CONFIG_LABELS: Record<string, string> = {
+  discord: "Discord channel config",
+  slack: "Slack channel config",
+  telegram: "Telegram channel config",
+  whatsapp: "WhatsApp channel config",
+};
+
+function channelConfigLabel(channelType: string): string {
+  return CHANNEL_CONFIG_LABELS[channelType] ?? "channel config";
+}
+
 function TriggerForm({
   data,
   onUpdate,
@@ -3963,24 +3974,16 @@ function ActionForm({
           </div>
           {outputChannels.length === 0 && selectedActionChannelType !== "internal_chat" && (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-              No configured chat channels were discovered. Pick Internal Chat or configure a channel
-              before sending externally.
+              {selectedActionChannelType === "telegram"
+                ? "Telegram delivery uses the bot token and allowlist from channel settings, not workflow credentials. Refresh after configuring Telegram, then pick an allowed DM/group or enter a chat id."
+                : "No configured chat channels were discovered. Pick Internal Chat or configure a channel before sending externally."}
             </div>
           )}
-          {/* Credential for external channels */}
           {selectedActionChannelType !== "internal_chat" && (
-            <CredentialSelector
-              connectorId={
-                TRIGGER_PROVIDER_CONNECTOR_MAP[selectedActionChannelType] ||
-                `aos-${selectedActionChannelType}`
-              }
-              authKind="service-key"
-              requiredSecrets={[]}
-              selectedCredentialId={(cfg.credentialId as string) || undefined}
-              onChange={(id) => cfgUpdate("credentialId", id ?? "")}
-              gatewayRequest={gateway.request}
-              gatewayConnected={gateway.connected}
-            />
+            <div className="rounded-md border border-cyan-400/25 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-100">
+              Uses {selectedActionChannel?.label ?? channelConfigLabel(selectedActionChannelType)}.
+              Configure bot tokens, allowlists, and account routing in channel settings.
+            </div>
           )}
           {selectedActionChannelTargets.length > 0 && (
             <div className="space-y-1.5">
