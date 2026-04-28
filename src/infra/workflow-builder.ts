@@ -42,6 +42,13 @@ export interface WorkflowDraftResult extends WorkflowNormalizationResult {
   assumptions: string[];
 }
 
+type ScoutLane = {
+  id: string;
+  label: string;
+  focus: string;
+  toolsAllow: string[];
+};
+
 function cleanId(value: string): string {
   const cleaned = value
     .toLowerCase()
@@ -189,6 +196,268 @@ function appendValidationNotes(issues: WorkflowIssue[], notes: string[]) {
   }
 }
 
+function wantsVisibleScoutLanes(intent: string): boolean {
+  const text = intent.toLowerCase();
+  return (
+    /\b(scout|scouts|lane|lanes|sub-agent|sub-agents|subagent|subagents|research agent|research agents)\b/.test(
+      text,
+    ) &&
+    /\b(github|open[- ]source|frontier|thought[- ]leader|infrastructure|papers|models|ai)\b/.test(
+      text,
+    )
+  );
+}
+
+function defaultScoutLanes(intent: string, toolNames: string[]): ScoutLane[] {
+  const text = intent.toLowerCase();
+  const webTools = toolNames.filter((tool) => /web|search|fetch|github|hugging|paper/i.test(tool));
+  const sharedTools = webTools.length ? webTools : toolNames;
+  const lanes: ScoutLane[] = [];
+
+  if (/\b(github|repo|repos|open[- ]source|oss|project|projects)\b/.test(text)) {
+    lanes.push({
+      id: "scout-github-open-source",
+      label: "GitHub / Open Source Scout",
+      focus:
+        "Find trending GitHub and open-source AI projects. Return source URLs, recent activity, why it matters, and include/skip recommendation.",
+      toolsAllow: sharedTools,
+    });
+  }
+  if (
+    /\b(frontier|openai|anthropic|deepmind|meta|mistral|xai|model|models|lab|labs)\b/.test(text)
+  ) {
+    lanes.push({
+      id: "scout-frontier-ai",
+      label: "Frontier AI Scout",
+      focus:
+        "Find important frontier AI lab, model, infrastructure, and platform moves. Prefer official sources and clearly label rumors.",
+      toolsAllow: sharedTools,
+    });
+  }
+  if (
+    /\b(thought[- ]leader|thinker|infrastructure|agent|memory|workflow|eval|benchmark|economics)\b/.test(
+      text,
+    )
+  ) {
+    lanes.push({
+      id: "scout-thought-leader-infrastructure",
+      label: "Thought Leader / Infrastructure Scout",
+      focus:
+        "Find forward-thinker, agent infrastructure, memory, workflow reliability, eval, and model economics signals relevant to ArgentOS.",
+      toolsAllow: sharedTools,
+    });
+  }
+
+  if (lanes.length >= 2) {
+    return lanes;
+  }
+
+  return [
+    {
+      id: "scout-github-open-source",
+      label: "GitHub / Open Source Scout",
+      focus:
+        "Find trending GitHub and open-source AI projects. Return source URLs, recent activity, why it matters, and include/skip recommendation.",
+      toolsAllow: sharedTools,
+    },
+    {
+      id: "scout-frontier-ai",
+      label: "Frontier AI Scout",
+      focus:
+        "Find important frontier AI lab, model, infrastructure, and platform moves. Prefer official sources and clearly label rumors.",
+      toolsAllow: sharedTools,
+    },
+    {
+      id: "scout-thought-leader-infrastructure",
+      label: "Thought Leader / Infrastructure Scout",
+      focus:
+        "Find forward-thinker, agent infrastructure, memory, workflow reliability, eval, and model economics signals relevant to ArgentOS.",
+      toolsAllow: sharedTools,
+    },
+  ];
+}
+
+function draftVisibleScoutWorkflow(input: {
+  intent: string;
+  name: string;
+  description: string;
+  workflowId: string;
+  ownerAgentId: string;
+  ownerAgentName: string;
+  triggerType: string;
+  scheduleCron?: string;
+  timezone?: string;
+  tools: WorkflowBuilderCapability[];
+  assumptions: string[];
+  reviewNotes: string[];
+}): WorkflowDraftResult {
+  const toolNames = input.tools.map((tool) => tool.name);
+  const lanes = defaultScoutLanes(input.intent, toolNames);
+  const requestedPodcast = /\b(podcast|audio|elevenlabs|voice)\b/i.test(input.intent);
+  const requestedDelivery = /\b(deliver|send|phone|commute|telegram|status)\b/i.test(input.intent);
+  const nodes: CanvasWorkflowNode[] = [
+    {
+      id: "trigger",
+      type: "trigger",
+      position: { x: 460, y: 80 },
+      data: {
+        label: "Trigger",
+        triggerType: input.triggerType,
+        cronExpression:
+          input.triggerType === "schedule" ? cronFromIntent(input.intent, input.scheduleCron) : "",
+        timezone: input.timezone ?? "America/Chicago",
+      },
+    },
+  ];
+  const edges: CanvasWorkflowEdge[] = [];
+  const laneStartX = 80;
+  const laneGapX = 380;
+
+  lanes.forEach((lane, index) => {
+    nodes.push({
+      id: lane.id,
+      type: "agentStep",
+      position: { x: laneStartX + index * laneGapX, y: 260 },
+      data: {
+        label: lane.label,
+        agentId: input.ownerAgentId,
+        agentName: lane.label,
+        agentColor: "hsl(var(--primary))",
+        rolePrompt: [
+          `Lane: ${lane.label}`,
+          `Focus: ${lane.focus}`,
+          "Return 3-5 candidates with clickable URLs, source timestamps, confidence, why Jason should care, and include/skip recommendation.",
+          `Overall workflow intent: ${input.intent}`,
+        ].join("\n"),
+        timeout: 180,
+        evidenceRequired: true,
+        toolsAllow: lane.toolsAllow,
+      },
+    });
+    edges.push(makeEdge("trigger", lane.id));
+    edges.push(makeEdge(lane.id, "research-join"));
+  });
+
+  nodes.push(
+    {
+      id: "research-join",
+      type: "gate",
+      position: { x: 460, y: 460 },
+      data: {
+        label: "Research Join",
+        gateType: "join",
+        conditionField: "",
+        conditionOperator: "equals",
+        conditionValue: "",
+        branchCount: lanes.length,
+        maxIterations: 1,
+        durationMs: 0,
+      },
+    },
+    {
+      id: "synthesis-agent",
+      type: "agentStep",
+      position: { x: 460, y: 620 },
+      data: {
+        label: "Synthesis Agent",
+        agentId: input.ownerAgentId,
+        agentName: `${input.ownerAgentName} Synthesis`,
+        agentColor: "hsl(var(--primary))",
+        rolePrompt: [
+          "Synthesize the scout outputs into a cited AI Morning Brief.",
+          "Select 5-7 total stories, one deep dive, one project Jason should inspect, and one ArgentOS implication section.",
+          "Keep source links clickable and preserve why-it-matters notes.",
+        ].join("\n"),
+        timeout: 180,
+        evidenceRequired: true,
+        toolsAllow: toolNames.filter((tool) => /doc|panel|memory|web|fetch|search/i.test(tool)),
+      },
+    },
+  );
+  edges.push(makeEdge("research-join", "synthesis-agent"));
+
+  let previousId = "synthesis-agent";
+  if (requestedPodcast) {
+    nodes.push({
+      id: "podcast-generate",
+      type: "action",
+      position: { x: 460, y: 800 },
+      data: {
+        label: "Podcast Generate",
+        actionType: "generate_audio",
+        timeoutMs: 300000,
+        config: {
+          text: "{{previous.text}}",
+          voice: "ElevenLabs v3",
+          mood: "podcast-host",
+        },
+      },
+    });
+    edges.push(makeEdge(previousId, "podcast-generate"));
+    previousId = "podcast-generate";
+  }
+
+  if (requestedDelivery) {
+    nodes.push({
+      id: "delivery-status",
+      type: "action",
+      position: { x: 460, y: requestedPodcast ? 980 : 800 },
+      data: {
+        label: "Delivery Status",
+        actionType: "send_message",
+        timeoutMs: 120000,
+        config: {
+          channelType: "telegram",
+          channelId: "",
+          template: "{{previous.text}}",
+        },
+      },
+    });
+    edges.push(makeEdge(previousId, "delivery-status"));
+    previousId = "delivery-status";
+  }
+
+  nodes.push({
+    id: "output",
+    type: "output",
+    position: { x: 460, y: requestedPodcast && requestedDelivery ? 1160 : 980 },
+    data: {
+      label: "DocPanel Brief",
+      target: "docpanel",
+      title: input.name,
+      format: "markdown",
+    },
+  });
+  edges.push(makeEdge(previousId, "output"));
+
+  const normalized = normalizeWorkflow({
+    id: input.workflowId,
+    name: input.name,
+    description: input.description,
+    nodes,
+    edges,
+    canvasLayout: { nodes, edges },
+    deploymentStage: "simulate",
+  });
+  appendValidationNotes(normalized.issues, input.reviewNotes);
+  input.assumptions.push(
+    "Explicit scout/lane language expanded into visible workflow agent nodes.",
+  );
+  input.assumptions.push(
+    "Scout nodes use the selected owner agent identity with lane-specific role prompts.",
+  );
+
+  return {
+    ...normalized,
+    name: input.name,
+    description: input.description,
+    nodes,
+    edges,
+    reviewNotes: input.reviewNotes,
+    assumptions: input.assumptions,
+  };
+}
+
 export function draftWorkflowFromIntent(input: WorkflowDraftRequest): WorkflowDraftResult {
   const intent = input.intent.trim();
   if (!intent) {
@@ -220,6 +489,24 @@ export function draftWorkflowFromIntent(input: WorkflowDraftRequest): WorkflowDr
     assumptions.push(
       "AppForge events start this workflow through the local workflow event bridge.",
     );
+  }
+
+  if (wantsVisibleScoutLanes(intent)) {
+    return draftVisibleScoutWorkflow({
+      intent,
+      name,
+      description,
+      workflowId,
+      ownerAgentId: input.preferredAgentId ?? input.ownerAgentId ?? "argent",
+      ownerAgentName:
+        input.preferredAgentName ?? input.preferredAgentId ?? input.ownerAgentId ?? "Argent",
+      triggerType,
+      scheduleCron: input.scheduleCron,
+      timezone: input.timezone,
+      tools,
+      assumptions,
+      reviewNotes,
+    });
   }
 
   const triggerId = "trigger";

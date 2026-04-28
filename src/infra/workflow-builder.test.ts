@@ -50,6 +50,68 @@ describe("draftWorkflowFromIntent", () => {
     expect(draft.assumptions).toContain("Trigger inferred as manual.");
   });
 
+  it("expands explicit scout lanes into visible workflow agent nodes", () => {
+    const draft = draftWorkflowFromIntent({
+      name: "AI Morning Brief — Three-Scout Research Pipeline",
+      intent:
+        "Run daily at 9 AM Central. Create three separate scout research agent lanes: GitHub/open-source projects, frontier AI movers, and thought-leader/infrastructure signals. Then synthesize the findings, generate a podcast audio artifact, deliver the status, and save the cited brief to DocPanel.",
+      triggerType: "schedule",
+      scheduleCron: "0 9 * * *",
+      timezone: "America/Chicago",
+      ownerAgentId: "argent",
+      preferredTools: ["web_search", "web_fetch", "doc_panel", "podcast_generate", "send_payload"],
+    });
+
+    const agentNodes = draft.nodes.filter((node) => node.type === "agentStep");
+    expect(agentNodes.map((node) => node.data?.label)).toEqual([
+      "GitHub / Open Source Scout",
+      "Frontier AI Scout",
+      "Thought Leader / Infrastructure Scout",
+      "Synthesis Agent",
+    ]);
+    expect(draft.nodes.map((node) => node.id)).toEqual([
+      "trigger",
+      "scout-github-open-source",
+      "scout-frontier-ai",
+      "scout-thought-leader-infrastructure",
+      "research-join",
+      "synthesis-agent",
+      "podcast-generate",
+      "delivery-status",
+      "output",
+    ]);
+    expect(draft.workflow.nodes.map((node) => node.kind)).toEqual([
+      "trigger",
+      "agent",
+      "agent",
+      "agent",
+      "gate",
+      "agent",
+      "action",
+      "action",
+      "output",
+    ]);
+    expect(draft.workflow.nodes.filter((node) => node.kind === "trigger")).toHaveLength(1);
+    expect(draft.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: "trigger", target: "scout-github-open-source" }),
+        expect.objectContaining({ source: "trigger", target: "scout-frontier-ai" }),
+        expect.objectContaining({
+          source: "trigger",
+          target: "scout-thought-leader-infrastructure",
+        }),
+        expect.objectContaining({ source: "research-join", target: "synthesis-agent" }),
+        expect.objectContaining({ source: "synthesis-agent", target: "podcast-generate" }),
+        expect.objectContaining({ source: "podcast-generate", target: "delivery-status" }),
+        expect.objectContaining({ source: "delivery-status", target: "output" }),
+      ]),
+    );
+    expect(draft.assumptions).toContain(
+      "Explicit scout/lane language expanded into visible workflow agent nodes.",
+    );
+    expect(draft.reviewNotes.every((note) => !note.startsWith("Fix before running"))).toBe(true);
+  });
+
   it("drafts AppForge review surfaces as workflow capability grants", () => {
     const draft = draftWorkflowFromIntent({
       intent:
