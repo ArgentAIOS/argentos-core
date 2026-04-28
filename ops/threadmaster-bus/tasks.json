@@ -17,5 +17,29 @@
         "note": "Smoke test completed."
       }
     ]
+  },
+  {
+    "id": "task-20260427021320-06wsnt",
+    "createdAt": "2026-04-27T02:13:20.732Z",
+    "updatedAt": "2026-04-27T02:27:46.002Z",
+    "from": "aos",
+    "owner": "aos",
+    "title": "Harden AOS Airtable service keys",
+    "body": "Patch tools/aos/aos-airtable so operator service keys are first-class, scoped repo keys block env fallback, enc:v1 repo keys decrypt/fallback like core, manifest separates required auth from optional scope keys, and readiness truth is explicit.",
+    "status": "done",
+    "priority": "high",
+    "branch": "unknown",
+    "notes": [
+      {
+        "at": "2026-04-27T02:13:30.351Z",
+        "lane": "aos",
+        "note": "Started branch codex/aos-airtable-service-keys-loop from origin/dev 38289381. Scope: tools/aos/aos-airtable/** plus ops/THREADMASTER_COORDINATION.md only; no Workflows/AppForge/OpenClaw/dashboard/gateway runtime touch."
+      },
+      {
+        "at": "2026-04-27T02:27:46.001Z",
+        "lane": "aos",
+        "note": "Completed Airtable service-key hardening in pushed branch codex/aos-airtable-service-keys-loop at 90a01c69. Airtable keeps live reads plus permission-gated record.create/record.update; AIRTABLE_API_TOKEN and AIRTABLE_BASE_ID required; AIRTABLE_WORKSPACE_ID, AIRTABLE_TABLE_NAME, AIRTABLE_API_BASE_URL optional operator defaults. Runtime/client now carry operator-resolved table defaults into live commands. Scoped repo keys block env fallback including legacy AOS_AIRTABLE_* aliases; valid enc:v1 repo keys decrypt; unreadable encrypted keys fall back like core resolver; live_write_smoke_tested=false. Verification: json.tool manifest+permissions, compileall, Airtable pytest 28 passed, git diff --check HEAD~1 HEAD, pnpm check:repo-lane, architect approved after operator table-default fix. Known gaps: no real operator Airtable base read/write smoke; oxfmt missing in clean worktree hook but explicit checks passed."
+      }
+    ]
   }
 ]
