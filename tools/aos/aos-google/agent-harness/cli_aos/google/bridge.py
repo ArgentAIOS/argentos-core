@@ -19,7 +19,7 @@ def ensure_gws_exists(gws_bin: str) -> None:
 
 def run_gws(gws_bin: str, args: list[str], env: dict[str, str] | None = None) -> dict:
     ensure_gws_exists(gws_bin)
-    cmd = [gws_bin, "--json", *args]
+    cmd = [gws_bin, *args]
 
     try:
         proc = subprocess.run(
