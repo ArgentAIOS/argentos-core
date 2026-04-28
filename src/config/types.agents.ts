@@ -7,6 +7,7 @@ import type {
   SandboxPruneSettings,
 } from "./types.sandbox.js";
 import type { AgentToolsConfig, MemorySearchConfig } from "./types.tools.js";
+import type { TtsConfig } from "./types.tts.js";
 
 export type AgentModelConfig =
   | string
@@ -29,6 +30,8 @@ export type AgentConfig = {
   memorySearch?: MemorySearchConfig;
   /** Human-like delay between block replies for this agent. */
   humanDelay?: HumanDelayConfig;
+  /** Optional per-agent TTS overrides, deep-merged over messages.tts. */
+  tts?: TtsConfig;
   /** Optional per-agent heartbeat overrides. */
   heartbeat?: AgentDefaultsConfig["heartbeat"];
   /** Optional per-agent contemplation overrides. */

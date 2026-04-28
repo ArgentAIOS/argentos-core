@@ -155,9 +155,33 @@ export const MarkdownConfigSchema = z
   .strict()
   .optional();
 
-export const TtsProviderSchema = z.enum(["elevenlabs", "openai", "edge", "minimax"]);
+export const TtsProviderSchema = z.string().min(1);
 export const TtsModeSchema = z.enum(["final", "all"]);
 export const TtsAutoSchema = z.enum(["off", "always", "inbound", "tagged"]);
+export const TtsProviderConfigMapSchema = z.record(z.string(), z.record(z.string(), z.unknown()));
+export const TtsPersonaConfigSchema = z
+  .object({
+    label: z.string().optional(),
+    description: z.string().optional(),
+    provider: TtsProviderSchema.optional(),
+    fallbackPolicy: z
+      .union([z.literal("preserve-persona"), z.literal("provider-defaults"), z.literal("fail")])
+      .optional(),
+    prompt: z
+      .object({
+        profile: z.string().optional(),
+        scene: z.string().optional(),
+        sampleContext: z.string().optional(),
+        style: z.string().optional(),
+        accent: z.string().optional(),
+        pacing: z.string().optional(),
+        constraints: z.array(z.string()).optional(),
+      })
+      .strict()
+      .optional(),
+    providers: TtsProviderConfigMapSchema.optional(),
+  })
+  .strict();
 export const TtsConfigSchema = z
   .object({
     auto: TtsAutoSchema.optional(),
@@ -165,6 +189,8 @@ export const TtsConfigSchema = z
     mode: TtsModeSchema.optional(),
     provider: TtsProviderSchema.optional(),
     fallbackOrder: z.array(TtsProviderSchema).nullable().optional(),
+    persona: z.string().optional(),
+    personas: z.record(z.string(), TtsPersonaConfigSchema).optional(),
     summaryModel: z.string().optional(),
     modelOverrides: z
       .object({
@@ -179,6 +205,7 @@ export const TtsConfigSchema = z
       })
       .strict()
       .optional(),
+    providers: TtsProviderConfigMapSchema.optional(),
     elevenlabs: z
       .object({
         apiKey: z.string().optional(),

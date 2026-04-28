@@ -260,9 +260,7 @@ export function resolveTtsConfig(cfg: ArgentConfig): ResolvedTtsConfig {
     provider: raw.provider ?? "edge",
     providerSource,
     fallbackOrder: Array.isArray(raw.fallbackOrder)
-      ? (raw.fallbackOrder.filter((p: string) =>
-          TTS_PROVIDERS.includes(p as TtsProvider),
-        ) as TtsProvider[])
+      ? raw.fallbackOrder.filter((p: string) => TTS_PROVIDERS.includes(p))
       : undefined,
     summaryModel: raw.summaryModel?.trim() || undefined,
     modelOverrides: resolveModelOverridePolicy(raw.modelOverrides),
@@ -677,7 +675,7 @@ export async function resolveTtsApiKeyAsync(
   return resolveTtsApiKey(config, provider, opts);
 }
 
-export const TTS_PROVIDERS = ["elevenlabs", "openai", "minimax", "edge"] as const;
+export const TTS_PROVIDERS: readonly string[] = ["elevenlabs", "openai", "minimax", "edge"];
 
 export function resolveTtsProviderOrder(
   primary: TtsProvider,
@@ -694,7 +692,9 @@ export function resolveTtsProviderOrder(
     }
     // Append any providers not in the custom order
     for (const p of TTS_PROVIDERS) {
-      if (!seen.has(p)) result.push(p);
+      if (!seen.has(p)) {
+        result.push(p);
+      }
     }
     return result;
   }
@@ -1266,7 +1266,9 @@ async function elevenLabsTTS(params: {
         }),
         signal: controller.signal,
       });
-      if (!response.ok) throw new Error(`TTS proxy error (${response.status})`);
+      if (!response.ok) {
+        throw new Error(`TTS proxy error (${response.status})`);
+      }
       return Buffer.from(await response.arrayBuffer());
     }
 
@@ -1340,7 +1342,9 @@ async function openaiTTS(params: {
         body: JSON.stringify({ model, input: text, voice, response_format: responseFormat }),
         signal: controller.signal,
       });
-      if (!response.ok) throw new Error(`TTS proxy error (${response.status})`);
+      if (!response.ok) {
+        throw new Error(`TTS proxy error (${response.status})`);
+      }
       return Buffer.from(await response.arrayBuffer());
     }
 
@@ -1464,7 +1468,9 @@ async function minimaxTTS(params: {
     }
 
     const hexAudio = json.data?.audio;
-    if (!hexAudio) throw new Error("MiniMax TTS returned no audio data");
+    if (!hexAudio) {
+      throw new Error("MiniMax TTS returned no audio data");
+    }
 
     return Buffer.from(hexAudio, "hex");
   } finally {
@@ -1498,8 +1504,8 @@ export async function textToSpeech(params: {
     source: "tts:textToSpeech",
   });
   const overrideProvider = params.overrides?.provider;
-  const provider = overrideProvider ?? userProvider;
-  const providers = resolveTtsProviderOrder(provider, config.fallbackOrder);
+  const selectedProvider = overrideProvider ?? userProvider;
+  const providers = resolveTtsProviderOrder(selectedProvider, config.fallbackOrder);
 
   let lastError: string | undefined;
 

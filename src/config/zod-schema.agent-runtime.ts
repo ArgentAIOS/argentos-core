@@ -6,6 +6,7 @@ import {
   IdentitySchema,
   ToolsLinksSchema,
   ToolsMediaSchema,
+  TtsConfigSchema,
 } from "./zod-schema.core.js";
 
 function enforceMinimumInterval(
@@ -599,6 +600,7 @@ export const AgentEntrySchema = z
     skills: z.array(z.string()).optional(),
     memorySearch: MemorySearchSchema,
     humanDelay: HumanDelaySchema.optional(),
+    tts: TtsConfigSchema,
     heartbeat: HeartbeatSchema,
     contemplation: ContemplationIntervalSchema,
     sis: SisSchema,

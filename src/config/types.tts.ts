@@ -1,4 +1,4 @@
-export type TtsProvider = "elevenlabs" | "openai" | "edge" | "minimax";
+export type TtsProvider = string;
 
 export type TtsMode = "final" | "all";
 
@@ -23,6 +23,31 @@ export type TtsModelOverrideConfig = {
   allowSeed?: boolean;
 };
 
+export type TtsProviderConfigMap = Record<string, Record<string, unknown>>;
+
+export type TtsPersonaFallbackPolicy = "preserve-persona" | "provider-defaults" | "fail";
+
+export type TtsPersonaPromptConfig = {
+  profile?: string;
+  scene?: string;
+  sampleContext?: string;
+  style?: string;
+  accent?: string;
+  pacing?: string;
+  constraints?: string[];
+};
+
+export type TtsPersonaConfig = {
+  label?: string;
+  description?: string;
+  /** Preferred provider for this persona. Explicit provider prefs still win. */
+  provider?: TtsProvider;
+  fallbackPolicy?: TtsPersonaFallbackPolicy;
+  prompt?: TtsPersonaPromptConfig;
+  /** Provider-specific persona bindings keyed by speech provider id. */
+  providers?: TtsProviderConfigMap;
+};
+
 export type TtsConfig = {
   /** Auto-TTS mode (preferred). */
   auto?: TtsAutoMode;
@@ -34,10 +59,16 @@ export type TtsConfig = {
   provider?: TtsProvider;
   /** Custom fallback order. Primary provider is always first; remaining providers follow this order. */
   fallbackOrder?: TtsProvider[];
+  /** Active TTS persona id. */
+  persona?: string;
+  /** Named TTS personas. */
+  personas?: Record<string, TtsPersonaConfig>;
   /** Optional model override for TTS auto-summary (provider/model or alias). */
   summaryModel?: string;
   /** Allow the model to override TTS parameters. */
   modelOverrides?: TtsModelOverrideConfig;
+  /** Provider-specific TTS settings keyed by speech provider id. */
+  providers?: TtsProviderConfigMap;
   /** ElevenLabs configuration. */
   elevenlabs?: {
     apiKey?: string;
