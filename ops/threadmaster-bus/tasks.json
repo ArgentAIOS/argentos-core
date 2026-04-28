@@ -17,5 +17,76 @@
         "note": "Smoke test completed."
       }
     ]
+  },
+  {
+    "id": "task-20260427124736-fz86ip",
+    "createdAt": "2026-04-27T12:47:36.339Z",
+    "updatedAt": "2026-04-27T12:47:36.339Z",
+    "from": "master",
+    "owner": "appforge",
+    "title": "Phase 3B: gateway-backed AppForge source of truth",
+    "body": "LANE LOCK: ArgentAIOS/argentos-core /Users/sem/code/argent-core target dev. Next AppForge task: wire the AppForge desktop fully to gateway-backed base/table/record read-write source of truth. Do not rely on metadata/local fallback except as explicit migration fallback. Allowed scope: AppForge dashboard components/hooks plus AppForge gateway/store/schema files only if needed and declared in coordination board. Required output: merge packet with exact file list, truth labels for real vs preview panels, tests for create/read/update/delete round trip, and note any workflow event implications. Do not touch Workflow UI internals.",
+    "status": "todo",
+    "priority": "normal",
+    "branch": "unknown",
+    "notes": []
+  },
+  {
+    "id": "task-20260427124736-gqhi0b",
+    "createdAt": "2026-04-27T12:47:36.473Z",
+    "updatedAt": "2026-04-27T12:47:36.473Z",
+    "from": "master",
+    "owner": "aos",
+    "title": "Production-smoke workflow destination connectors",
+    "body": "Use the AOS readiness index to choose a small workflow-critical smoke subset: Telegram/Discord/Slack/Resend or email, n8n/Zapier webhook bridge, and one CRM/project connector if keys exist. Goal: prove which connector output destinations can be safely shown in Workflows as live-ready. If operator keys are missing, post exact service-key variable names and commands needed. Do not add new connector features until the smoke truth table is posted.",
+    "status": "todo",
+    "priority": "normal",
+    "branch": "unknown",
+    "notes": []
+  },
+  {
+    "id": "task-20260427124736-hohw74",
+    "createdAt": "2026-04-27T12:47:36.607Z",
+    "updatedAt": "2026-04-27T12:47:36.607Z",
+    "from": "master",
+    "owner": "aou",
+    "title": "Workflow blocker sweep from stub/readiness data",
+    "body": "Run a focused AOU sweep for anything that affects end-to-end Workflows usability: output destinations, connector manifests, channel surfacing, skill/tool discovery, install packaging, and fake/scaffold claims. Deliver a top-10 blocker list with owner lane, resolution options, and recommended owner. Do not edit shared runtime; this is discovery/report unless a trivial docs/status fix is isolated.",
+    "status": "todo",
+    "priority": "normal",
+    "branch": "unknown",
+    "notes": []
+  },
+  {
+    "id": "task-20260427124736-1bjzdc",
+    "createdAt": "2026-04-27T12:47:36.744Z",
+    "updatedAt": "2026-04-27T12:47:36.744Z",
+    "from": "master",
+    "owner": "openclaw",
+    "title": "OpenClaw current-dev smoke and voice next-step proof",
+    "body": "Rerun the browser/OpenClaw smoke from current dev after the latest status/tabs JSON fixes. If browser smoke passes, proceed to the next additive realtime voice slice under the existing voice-call/OpenClaw scope with fake-provider tests first. If it fails, post exact command, output, and minimum file list. Do not touch Workflows or shared gateway/browser files until the smoke result is posted and ownership is explicit.",
+    "status": "todo",
+    "priority": "normal",
+    "branch": "unknown",
+    "notes": []
+  },
+  {
+    "id": "task-20260427124736-8uf33c",
+    "createdAt": "2026-04-27T12:47:36.891Z",
+    "updatedAt": "2026-04-27T12:47:47.172Z",
+    "from": "master",
+    "owner": "workflows",
+    "title": "Workflow operator slice 2: output polish and browser smoke",
+    "body": "Build on codex/workflows-usability-day. Finish OutputForm section polish while preserving connector-action destinations, then browser-smoke 5 owner-operator templates: Daily Marketing Brief, VIP Email Alert, Client Onboarding, Operations Cleanup, Newsletter Builder. Acceptance: import, binding nudge, validate, run fixture, run history visible. Post blockers with owner + resolution options.",
+    "status": "doing",
+    "priority": "normal",
+    "branch": "unknown",
+    "notes": [
+      {
+        "at": "2026-04-27T12:47:47.171Z",
+        "lane": "workflows",
+        "note": "Workflows lead has branch codex/workflows-usability-day pushed and will continue with OutputForm polish plus browser smoke as next local slice."
+      }
+    ]
   }
 ]
