@@ -17,5 +17,29 @@
         "note": "Smoke test completed."
       }
     ]
+  },
+  {
+    "id": "task-20260427015012-o2j6me",
+    "createdAt": "2026-04-27T01:50:12.410Z",
+    "updatedAt": "2026-04-27T01:58:04.066Z",
+    "from": "aos",
+    "owner": "aos",
+    "title": "Harden AOS Buffer service keys",
+    "body": "Patch tools/aos/aos-buffer so operator service keys are first-class, scoped repo keys block env fallback, enc:v1 repo keys decrypt/fallback like core, manifest separates required auth from optional scope keys, and readiness remains truthfully read-only.",
+    "status": "done",
+    "priority": "high",
+    "branch": "unknown",
+    "notes": [
+      {
+        "at": "2026-04-27T01:50:20.531Z",
+        "lane": "aos",
+        "note": "Started branch codex/aos-buffer-service-keys-loop from origin/dev 51d981a5. Scope: tools/aos/aos-buffer/** plus ops/THREADMASTER_COORDINATION.md only; no Workflows/AppForge/OpenClaw/dashboard/gateway runtime touch."
+      },
+      {
+        "at": "2026-04-27T01:58:04.065Z",
+        "lane": "aos",
+        "note": "Completed Buffer service-key hardening in pushed branch codex/aos-buffer-service-keys-loop at 406c2d54. Buffer remains truthful live read-only; BUFFER_API_KEY or BUFFER_ACCESS_TOKEN is required; BUFFER_BASE_URL, BUFFER_ORGANIZATION_ID, BUFFER_CHANNEL_ID, BUFFER_PROFILE_ID, BUFFER_POST_ID are optional operator defaults. Scoped repo keys block env fallback for the same variable; valid enc:v1 repo keys decrypt; unreadable encrypted keys fall back like core resolver; live_write_smoke_tested=false and write_bridge_available=false. Verification: json.tool manifest+permissions, compileall, Buffer pytest 17 passed, git diff --check HEAD~1 HEAD, pnpm check:repo-lane, architect approved. Known gaps: no real operator Buffer tenant read smoke; no write bridge/smoke; oxfmt missing in clean worktree hook but explicit checks passed."
+      }
+    ]
   }
 ]
