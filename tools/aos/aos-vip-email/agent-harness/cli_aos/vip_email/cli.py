@@ -311,6 +311,7 @@ def scan_now(
         subject = _message_field(message, "subject") or "(no subject)"
         snippet = str(message.get("snippet") or message.get("summary") or "").strip()
         url = f"https://mail.google.com/mail/u/{resolved_account}/#all/{msg_id}" if msg_id else ""
+        title = f"VIP email: {subject}"
         candidates.append(
             {
                 "event_type": "operator.alert.candidate",
@@ -322,6 +323,7 @@ def scan_now(
                 "severity": "high",
                 "reasons": ["vip_sender"],
                 "candidate_text": f"VIP email from {sender}: {subject}",
+                "title": title,
                 "url": url,
                 "dedupe_key": dedupe_key,
                 "quiet_hours_suppressed": False,

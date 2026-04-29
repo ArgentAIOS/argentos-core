@@ -115,6 +115,7 @@ def test_scan_now_emits_alert_candidates(monkeypatch, tmp_path):
     candidate = payload["candidates"][0]
     assert candidate["event_type"] == "operator.alert.candidate"
     assert candidate["source_provider"] == "google-workspace-gmail"
+    assert candidate["title"] == "VIP email: Need approval"
     assert candidate["dedupe_key"].startswith("gmail:ops@example.com:msg-1")
 
 

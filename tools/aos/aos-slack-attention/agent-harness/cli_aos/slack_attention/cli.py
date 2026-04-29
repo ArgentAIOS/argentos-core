@@ -311,6 +311,7 @@ def scan_now(
                 suppressed += 1
                 continue
             url = f"slack://channel?team=&id={channel}&message={ts}" if ts else ""
+            title = "Slack attention: " + (", ".join(reasons).replace("_", " ") or "message")
             candidates.append(
                 {
                     "event_type": "operator.alert.candidate",
@@ -322,6 +323,7 @@ def scan_now(
                     "severity": severity,
                     "reasons": reasons,
                     "candidate_text": text[:500],
+                    "title": title,
                     "url": url,
                     "dedupe_key": dedupe_key,
                     "quiet_hours_suppressed": False,

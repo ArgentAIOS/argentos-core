@@ -120,6 +120,7 @@ def test_scan_now_emits_alert_candidates(monkeypatch, tmp_path):
     assert candidate["event_type"] == "operator.alert.candidate"
     assert candidate["source_provider"] == "slack"
     assert candidate["severity"] == "high"
+    assert candidate["title"] == "Slack attention: operator name, keyword high signal"
     assert candidate["dedupe_key"] == "slack:C123:1714400000.000100"
 
 

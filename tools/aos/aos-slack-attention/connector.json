@@ -135,6 +135,7 @@
         "severity",
         "reasons",
         "candidate_text",
+        "title",
         "url",
         "dedupe_key"
       ],
