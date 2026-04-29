@@ -15,6 +15,7 @@ interface UseTasksReturn {
     schedule?: Task["schedule"],
     details?: string,
     assignee?: string,
+    metadata?: Record<string, unknown>,
   ) => Promise<Task | null>;
   addProjectTask: (
     projectId: string,
@@ -160,8 +161,13 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
         if (
           data.type === "task_created" ||
           data.type === "task_updated" ||
-          data.type === "task_deleted"
+          data.type === "task_deleted" ||
+          data.type === "task_execute" ||
+          data.type === "reminder_due"
         ) {
+          if (data.type === "reminder_due") {
+            window.dispatchEvent(new CustomEvent("argent:reminder_due", { detail: data }));
+          }
           refreshTasks();
         }
       } catch {
@@ -191,12 +197,13 @@ export function useTasks(options: UseTasksOptions = {}): UseTasksReturn {
       schedule?: Task["schedule"],
       details?: string,
       assignee?: string,
+      metadata?: Record<string, unknown>,
     ): Promise<Task | null> => {
       try {
         const res = await fetchLocalApi(`${API_BASE}/tasks`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, type, schedule, details, assignee }),
+          body: JSON.stringify({ title, type, schedule, details, assignee, metadata }),
         });
         if (!res.ok) throw new Error("Failed to create task");
         const data = await res.json();

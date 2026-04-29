@@ -2548,6 +2548,11 @@ function computeNextScheduledRunEpoch(schedule, fromTime) {
     return now + minutes * 60_000;
   }
 
+  if (schedule.frequency === "once" && schedule.at) {
+    const at = new Date(schedule.at).getTime();
+    return Number.isFinite(at) ? at : null;
+  }
+
   if (schedule.frequency === "weekly" && Array.isArray(schedule.days) && schedule.days.length > 0) {
     const [hoursRaw, minutesRaw] = String(schedule.time || "09:00")
       .split(":")
@@ -2581,6 +2586,15 @@ function computeNextScheduledRunEpoch(schedule, fromTime) {
   }
 
   return null;
+}
+
+function enrichTaskScheduleForType(type, schedule, fromTime) {
+  if (!schedule || typeof schedule !== "object") return schedule;
+  if (!["scheduled", "interval", "reminder"].includes(String(type || ""))) return schedule;
+  return {
+    ...schedule,
+    nextRun: computeNextScheduledRunEpoch(schedule, fromTime),
+  };
 }
 
 function createPgTasksCompatDb() {
@@ -2969,7 +2983,7 @@ function createPgTasksCompatDb() {
         FROM tasks
         WHERE
           status NOT IN ('completed', 'in_progress')
-          AND COALESCE(metadata->>'type', '') IN ('scheduled', 'interval')
+          AND COALESCE(metadata->>'type', '') IN ('scheduled', 'interval', 'reminder')
           AND COALESCE(metadata->'schedule'->>'nextRun', '') ~ '^[0-9]+$'
           AND (metadata->'schedule'->>'nextRun')::bigint <= ${now}
         ORDER BY (metadata->'schedule'->>'nextRun')::bigint ASC
@@ -2994,6 +3008,8 @@ function createPgTasksCompatDb() {
         lastRun: now,
         nextRun: computeNextScheduledRunEpoch(task.schedule, now),
       };
+      const terminal =
+        task.type === "reminder" || task.schedule.frequency === "once" || !nextSchedule.nextRun;
       const metadata = {
         ...normalizeMetadata(task.metadata),
         type: task.type || extractTaskType(normalizeMetadata(task.metadata), task.parentTaskId),
@@ -3003,7 +3019,8 @@ function createPgTasksCompatDb() {
         UPDATE tasks
         SET
           metadata = ${metadata},
-          status = 'pending',
+          status = ${terminal ? "completed" : "pending"},
+          completed_at = ${terminal ? new Date(now) : null},
           updated_at = ${new Date(now)}
         WHERE id = ${id}
       `;
@@ -3192,10 +3209,9 @@ async function createTaskCompat(input) {
   const adapter = await getTaskStorageAdapter();
   if (!adapter) return getLegacyTasksDbOrThrow().createTask(input);
 
-  const metadata = mergeTaskMetadata(
-    {},
-    { type: input.type || "one-time", schedule: input.schedule, metadata: input.metadata },
-  );
+  const type = input.type || "one-time";
+  const schedule = enrichTaskScheduleForType(type, input.schedule, Date.now());
+  const metadata = mergeTaskMetadata({}, { type, schedule, metadata: input.metadata });
   const task = await adapter.tasks.create({
     title: input.title,
     description: input.details,
@@ -3217,7 +3233,13 @@ async function updateTaskCompat(id, updates) {
 
   const existing = await adapter.tasks.get(id);
   if (!existing) return null;
-  const metadata = mergeTaskMetadata(existing.metadata, updates);
+  const existingMeta = normalizeMetadata(existing.metadata);
+  const nextType = updates.type || extractTaskType(existingMeta, existing.parentTaskId);
+  const nextSchedule =
+    updates.schedule !== undefined
+      ? enrichTaskScheduleForType(nextType, updates.schedule, Date.now())
+      : undefined;
+  const metadata = mergeTaskMetadata(existing.metadata, { ...updates, schedule: nextSchedule });
   const updated = await adapter.tasks.update(id, {
     title: updates.title,
     description: updates.details,
@@ -3407,6 +3429,13 @@ async function runSchedulerTick() {
   }
   for (const task of queue) {
     console.log(`[Scheduler] Executing task: ${task.title} (${task.id})`);
+    if (task.type === "reminder") {
+      broadcastTasksEvent({
+        type: "reminder_due",
+        task,
+        reminder: normalizeMetadata(task.metadata).reminder || null,
+      });
+    }
     broadcastTasksEvent({ type: "task_execute", task });
     if (typeof tasksDb.markScheduledTaskExecuted === "function") {
       await Promise.resolve(tasksDb.markScheduledTaskExecuted(task.id));
@@ -3446,7 +3475,16 @@ app.get("/api/tasks", async (req, res) => {
 // POST /api/tasks - Create a new task
 app.post("/api/tasks", async (req, res) => {
   console.log("Tasks create endpoint hit:", req.body);
-  const { title, details, type = "one-time", schedule, priority = "normal", assignee } = req.body;
+  const {
+    title,
+    details,
+    type = "one-time",
+    schedule,
+    priority = "normal",
+    assignee,
+    dueAt,
+    metadata,
+  } = req.body;
 
   if (!title || !title.trim()) {
     return res.status(400).json({ error: "Title is required" });
@@ -3460,6 +3498,8 @@ app.post("/api/tasks", async (req, res) => {
       schedule,
       priority,
       assignee: assignee || undefined,
+      dueAt,
+      metadata,
       source: "user",
     });
     broadcastTasksEvent({ type: "task_created", task: { id: task.id, title: task.title } });
