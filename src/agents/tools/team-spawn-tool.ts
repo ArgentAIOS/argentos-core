@@ -204,6 +204,8 @@ EXAMPLE:
         label: string;
         sessionKey: string;
         runId: string;
+        warning?: string;
+        modelDiagnostic?: unknown;
         error?: string;
       }> = [];
 
@@ -243,6 +245,8 @@ EXAMPLE:
             label: member.label,
             sessionKey: result.childSessionKey,
             runId: result.runId,
+            warning: result.warning,
+            modelDiagnostic: result.modelDiagnostic,
           });
 
           // Register as team member

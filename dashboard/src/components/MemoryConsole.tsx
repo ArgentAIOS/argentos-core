@@ -215,6 +215,17 @@ const TYPE_BAR_COLORS: Record<string, string> = {
   episode: "bg-yellow-500",
 };
 
+const MEMORY_TYPE_ORDER = [
+  "profile",
+  "event",
+  "knowledge",
+  "behavior",
+  "skill",
+  "tool",
+  "self",
+  "episode",
+];
+
 const SIG_BAR_COLORS: Record<string, string> = {
   routine: "bg-zinc-500",
   noteworthy: "bg-yellow-500",
@@ -1391,9 +1402,59 @@ function ReflectionsView({ onError }: { onError: (e: string | null) => void }) {
 
 // ── Timeline View ──
 
+function sortedTimelineTypes(byType: Record<string, number>) {
+  const ordered: Array<[string, number]> = [];
+  for (const entry of Object.entries(byType)) {
+    if (entry[1] <= 0) {
+      continue;
+    }
+    const insertAt = ordered.findIndex((candidate) => compareTimelineTypes(entry, candidate) < 0);
+    if (insertAt === -1) {
+      ordered.push(entry);
+    } else {
+      ordered.splice(insertAt, 0, entry);
+    }
+  }
+  return ordered;
+}
+
+function compareTimelineTypes(
+  [aType, aCount]: [string, number],
+  [bType, bCount]: [string, number],
+) {
+  const aIndex = MEMORY_TYPE_ORDER.indexOf(aType);
+  const bIndex = MEMORY_TYPE_ORDER.indexOf(bType);
+  if (aIndex !== -1 || bIndex !== -1) {
+    return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+  }
+  return bCount - aCount;
+}
+
+function dominantTimelineType(byType: Record<string, number>) {
+  return Object.entries(byType).reduce<[string, number] | null>((best, entry) => {
+    if (entry[1] <= 0) {
+      return best;
+    }
+    if (!best || entry[1] > best[1]) {
+      return entry;
+    }
+    return best;
+  }, null);
+}
+
+function timelineScalePct(count: number, maxCount: number, scale: "compressed" | "linear") {
+  if (count <= 0 || maxCount <= 0) {
+    return 0;
+  }
+  const normalized = count / maxCount;
+  const scaled = scale === "compressed" ? Math.sqrt(normalized) : normalized;
+  return Math.max(4, Math.min(100, scaled * 100));
+}
+
 function TimelineView({ onError }: { onError: (e: string | null) => void }) {
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scale, setScale] = useState<"compressed" | "linear">("compressed");
 
   const load = useCallback(async () => {
     try {
@@ -1401,15 +1462,15 @@ function TimelineView({ onError }: { onError: (e: string | null) => void }) {
       const data = await fetchApi<TimelineEntry[]>("/api/memory/timeline?days=30");
       setTimeline(data);
       onError(null);
-    } catch (err: any) {
-      onError(err.message);
+    } catch (err: unknown) {
+      onError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
   }, [onError]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   if (loading) {
@@ -1423,83 +1484,216 @@ function TimelineView({ onError }: { onError: (e: string | null) => void }) {
   }
 
   const maxCount = Math.max(...timeline.map((t) => t.count), 1);
+  const totalMemories = timeline.reduce((sum, t) => sum + t.count, 0);
+  const typeTotals = timeline.reduce<Record<string, number>>((acc, entry) => {
+    for (const [type, count] of Object.entries(entry.byType)) {
+      acc[type] = (acc[type] ?? 0) + count;
+    }
+    return acc;
+  }, {});
+  const sortedTypeTotals = sortedTimelineTypes(typeTotals).reduce<Array<[string, number]>>(
+    (ordered, entry) => {
+      const insertAt = ordered.findIndex((candidate) => entry[1] > candidate[1]);
+      if (insertAt === -1) {
+        ordered.push(entry);
+      } else {
+        ordered.splice(insertAt, 0, entry);
+      }
+      return ordered;
+    },
+    [],
+  );
+  const topDay = timeline.reduce<TimelineEntry | null>((best, entry) => {
+    if (!best || entry.count > best.count) {
+      return entry;
+    }
+    return best;
+  }, null);
+  const newestFirstTimeline = timeline.reduce<TimelineEntry[]>((items, entry) => {
+    items.unshift(entry);
+    return items;
+  }, []);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-[11px] text-blue-200">
         Timeline counts raw <code className="font-mono">memory_items</code> by created day and
         memory type only. Categories, entities, reflections, and resources are not included in these
         bars.
       </div>
-      <div className="text-zinc-500 text-xs">
-        Last 30 days — {timeline.reduce((sum, t) => sum + t.count, 0)} memories
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-zinc-400 text-xs">
+          <span className="text-zinc-200 font-medium">Last 30 days</span>
+          <span className="text-zinc-500"> — </span>
+          <span className="font-mono">{totalMemories.toLocaleString()}</span> memories
+          {topDay && (
+            <span className="text-zinc-500">
+              {" "}
+              · peak <span className="font-mono text-zinc-300">{topDay.count}</span> on{" "}
+              <span className="font-mono text-zinc-300">{topDay.date}</span>
+            </span>
+          )}
+        </div>
+        <div className="flex items-center rounded-md border border-zinc-700 bg-zinc-900/70 p-0.5">
+          {(["compressed", "linear"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setScale(mode)}
+              className={`px-2.5 py-1 text-[10px] font-medium transition-colors ${
+                scale === mode
+                  ? "rounded bg-blue-500/20 text-blue-200"
+                  : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              {mode === "compressed" ? "Readable" : "Exact"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {sortedTypeTotals.slice(0, 4).map(([type, count]) => (
+          <div key={type} className="rounded-md border border-zinc-800 bg-zinc-900/50 p-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span
+                  className={`h-2.5 w-2.5 shrink-0 rounded-sm ${TYPE_BAR_COLORS[type] || "bg-zinc-600"}`}
+                />
+                <span className="truncate text-[11px] text-zinc-300">{type}</span>
+              </div>
+              <span className="font-mono text-[11px] text-zinc-500">
+                {totalMemories > 0 ? Math.round((count / totalMemories) * 100) : 0}%
+              </span>
+            </div>
+            <div className="mt-1 font-mono text-sm text-zinc-100">{count.toLocaleString()}</div>
+          </div>
+        ))}
       </div>
 
       {/* Bar chart */}
-      <div className="flex items-end gap-0.5 h-32 bg-zinc-800/30 rounded-lg p-2">
-        {timeline.map((entry) => {
-          const pct = (entry.count / maxCount) * 100;
-          const typeEntries = Object.entries(entry.byType);
+      <div className="rounded-lg bg-zinc-900/50 p-3">
+        <div className="mb-2 flex items-center justify-between text-[10px] text-zinc-500">
+          <span>
+            {scale === "compressed"
+              ? "Readable scale reduces outlier flattening"
+              : "Exact linear scale"}
+          </span>
+          <span className="font-mono">max {maxCount}</span>
+        </div>
+        <div className="flex h-40 items-end gap-1">
+          {timeline.map((entry) => {
+            const pct = timelineScalePct(entry.count, maxCount, scale);
+            const typeEntries = sortedTimelineTypes(entry.byType);
 
-          return (
-            <div
-              key={entry.date}
-              className="flex-1 flex flex-col justify-end group relative"
-              style={{ minWidth: 4 }}
-            >
-              {/* Stacked bar segments */}
+            return (
               <div
-                className="w-full rounded-t overflow-hidden flex flex-col-reverse"
-                style={{ height: `${Math.max(pct, 2)}%` }}
+                key={entry.date}
+                className="group relative flex min-w-[6px] flex-1 flex-col justify-end"
               >
-                {typeEntries.map(([type, count]) => {
-                  const segPct = (count / entry.count) * 100;
-                  return (
-                    <div
-                      key={type}
-                      className={`w-full ${TYPE_BAR_COLORS[type] || "bg-zinc-600"} opacity-80`}
-                      style={{ height: `${segPct}%`, minHeight: 1 }}
-                    />
-                  );
-                })}
-              </div>
+                <div
+                  className="flex w-full flex-col-reverse overflow-hidden rounded-t border border-white/5"
+                  style={{ height: `${pct}%` }}
+                >
+                  {typeEntries.map(([type, count]) => {
+                    const segPct = entry.count > 0 ? (count / entry.count) * 100 : 0;
+                    return (
+                      <div
+                        key={type}
+                        className={`w-full ${TYPE_BAR_COLORS[type] || "bg-zinc-600"}`}
+                        style={{ height: `${segPct}%`, minHeight: 2 }}
+                      />
+                    );
+                  })}
+                </div>
 
-              {/* Tooltip */}
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10">
-                <div className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-[10px] text-zinc-300 whitespace-nowrap shadow-lg">
-                  <div className="font-medium">{entry.date}</div>
-                  <div className="text-zinc-400">{entry.count} memories</div>
+                {/* Tooltip */}
+                <div className="absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 group-hover:block">
+                  <div className="min-w-40 rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-[10px] text-zinc-300 shadow-lg">
+                    <div className="font-mono font-medium text-zinc-100">{entry.date}</div>
+                    <div className="mb-1 text-zinc-400">{entry.count} memories</div>
+                    <div className="space-y-0.5">
+                      {typeEntries.slice(0, 5).map(([type, count]) => (
+                        <div key={type} className="flex items-center justify-between gap-3">
+                          <span className="flex items-center gap-1.5">
+                            <span
+                              className={`h-2 w-2 rounded-sm ${TYPE_BAR_COLORS[type] || "bg-zinc-600"}`}
+                            />
+                            {type}
+                          </span>
+                          <span className="font-mono">{count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-2">
-        {Object.entries(TYPE_BAR_COLORS).map(([type, color]) => (
-          <div key={type} className="flex items-center gap-1">
-            <div className={`w-2.5 h-2.5 rounded-sm ${color}`} />
-            <span className="text-zinc-500 text-[10px]">{type}</span>
+      <div className="flex flex-wrap gap-2 rounded-md bg-zinc-900/30 p-2">
+        {sortedTypeTotals.map(([type, count]) => (
+          <div key={type} className="flex items-center gap-1.5">
+            <div className={`h-2.5 w-2.5 rounded-sm ${TYPE_BAR_COLORS[type] || "bg-zinc-600"}`} />
+            <span className="text-[10px] text-zinc-400">{type}</span>
+            <span className="font-mono text-[10px] text-zinc-600">{count}</span>
           </div>
         ))}
       </div>
 
       {/* Daily breakdown table */}
-      <div className="space-y-0.5">
-        {[...timeline].reverse().map((entry) => (
-          <div key={entry.date} className="flex items-center gap-2 text-xs text-zinc-400 py-0.5">
-            <span className="font-mono text-zinc-500 w-20">{entry.date}</span>
-            <div className="flex-1 h-3 bg-zinc-900 rounded overflow-hidden">
-              <div
-                className="h-full rounded bg-purple-500/60"
-                style={{ width: `${(entry.count / maxCount) * 100}%` }}
-              />
+      <div className="space-y-1">
+        {newestFirstTimeline.map((entry) => {
+          const typeEntries = sortedTimelineTypes(entry.byType);
+          const dominant = dominantTimelineType(entry.byType);
+          const countPct = timelineScalePct(entry.count, maxCount, scale);
+
+          return (
+            <div
+              key={entry.date}
+              className="grid grid-cols-[5.5rem_4.5rem_1fr_3rem] items-center gap-2 py-0.5 text-xs text-zinc-400"
+            >
+              <span className="font-mono text-zinc-500">{entry.date}</span>
+              <span className="truncate text-[10px] text-zinc-500">
+                {dominant ? (
+                  <>
+                    <span
+                      className={`mr-1 inline-block h-2 w-2 rounded-sm ${TYPE_BAR_COLORS[dominant[0]] || "bg-zinc-600"}`}
+                    />
+                    {dominant[0]}{" "}
+                    {entry.count > 0 ? Math.round((dominant[1] / entry.count) * 100) : 0}%
+                  </>
+                ) : (
+                  "none"
+                )}
+              </span>
+              <div className="relative h-4 overflow-hidden rounded bg-zinc-950">
+                <div
+                  className="absolute inset-y-0 left-0 rounded bg-zinc-800"
+                  style={{ width: `${countPct}%` }}
+                />
+                <div className="absolute inset-0 flex">
+                  {typeEntries.map(([type, count]) => {
+                    const segPct = entry.count > 0 ? (count / entry.count) * 100 : 0;
+                    return (
+                      <div
+                        key={type}
+                        title={`${type}: ${count}`}
+                        className={`${TYPE_BAR_COLORS[type] || "bg-zinc-600"} opacity-85`}
+                        style={{ width: `${segPct}%` }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+              <span className="w-12 text-right font-mono">{entry.count}</span>
             </div>
-            <span className="font-mono w-8 text-right">{entry.count}</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <button

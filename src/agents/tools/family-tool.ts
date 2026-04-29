@@ -1332,6 +1332,8 @@ async function handleDispatch(
       mode: "subagent",
       runId: result.runId,
       sessionKey: result.childSessionKey,
+      warning: result.ok ? result.warning : undefined,
+      modelDiagnostic: result.ok ? result.modelDiagnostic : undefined,
       error: result.ok ? undefined : (result as { error?: string }).error,
       message: result.ok
         ? "Spawned strict sub-agent worker with per-run tool grants."
@@ -1651,6 +1653,8 @@ async function spawnFamilyAgent(
       ok: result.ok,
       childSessionKey: result.childSessionKey,
       runId: result.runId,
+      warning: result.ok ? result.warning : undefined,
+      modelDiagnostic: result.ok ? result.modelDiagnostic : undefined,
       error: result.ok ? undefined : (result as { error?: string }).error,
     };
   } catch (err) {

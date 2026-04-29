@@ -23,6 +23,10 @@ import {
   resolveInternalSessionKey,
   resolveMainSessionAlias,
 } from "./sessions-helpers.js";
+import {
+  buildSpawnModelSelectionDiagnostic,
+  type SpawnModelSelectionDiagnostic,
+} from "./sessions-spawn-helpers.js";
 
 const SessionsSpawnToolSchema = Type.Object({
   task: Type.String(),
@@ -75,7 +79,9 @@ function normalizeToolGrantList(value: unknown): string[] | undefined {
   const deduped = new Set<string>();
   for (const item of value) {
     const normalized = typeof item === "string" ? item.trim().toLowerCase() : "";
-    if (!normalized) continue;
+    if (!normalized) {
+      continue;
+    }
     deduped.add(normalized);
   }
   return deduped.size > 0 ? Array.from(deduped) : [];
@@ -132,6 +138,7 @@ export function createSessionsSpawnTool(opts?: {
         return legacy ?? 0;
       })();
       let modelWarning: string | undefined;
+      let modelDiagnostic: SpawnModelSelectionDiagnostic | undefined;
       let modelApplied = false;
 
       const cfg = loadConfig();
@@ -222,9 +229,15 @@ export function createSessionsSpawnTool(opts?: {
       }
       if (resolvedModel || toolsAllow !== undefined || toolsDeny !== undefined) {
         const patchParams: Record<string, unknown> = { key: childSessionKey };
-        if (resolvedModel) patchParams.model = resolvedModel;
-        if (toolsAllow !== undefined) patchParams.toolsAllow = toolsAllow;
-        if (toolsDeny !== undefined) patchParams.toolsDeny = toolsDeny;
+        if (resolvedModel) {
+          patchParams.model = resolvedModel;
+        }
+        if (toolsAllow !== undefined) {
+          patchParams.toolsAllow = toolsAllow;
+        }
+        if (toolsDeny !== undefined) {
+          patchParams.toolsDeny = toolsDeny;
+        }
         try {
           await callGateway({
             method: "sessions.patch",
@@ -240,14 +253,27 @@ export function createSessionsSpawnTool(opts?: {
             (messageText.includes("invalid model") || messageText.includes("model not allowed")) &&
             toolsAllow === undefined &&
             toolsDeny === undefined;
+          if (
+            resolvedModel &&
+            (messageText.includes("invalid model") || messageText.includes("model not allowed"))
+          ) {
+            modelDiagnostic = buildSpawnModelSelectionDiagnostic({
+              cfg,
+              targetAgentId,
+              requestedModel: resolvedModel,
+              rawError: messageText,
+            });
+          }
           if (!recoverable) {
             return jsonResult({
               status: "error",
-              error: messageText,
+              error: modelDiagnostic?.warning ?? messageText,
               childSessionKey,
+              modelRequested: resolvedModel || undefined,
+              modelDiagnostic,
             });
           }
-          modelWarning = messageText;
+          modelWarning = modelDiagnostic?.warning ?? messageText;
         }
       }
       const childSystemPrompt = buildSubagentSystemPrompt({
@@ -312,6 +338,8 @@ export function createSessionsSpawnTool(opts?: {
         childSessionKey,
         runId: childRunId,
         modelApplied: resolvedModel ? modelApplied : undefined,
+        modelRequested: resolvedModel || undefined,
+        modelDiagnostic,
         warning: modelWarning,
       });
     },
