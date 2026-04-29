@@ -3418,22 +3418,296 @@ function broadcastTasksEvent(event) {
   }
 }
 
+const REMINDER_DELIVERY_TARGETS = new Set([
+  "in_app",
+  "telegram",
+  "slack",
+  "email",
+  "voice",
+  "doc_panel",
+]);
+
+let reminderDeliveryHooks = {};
+
+function setReminderDeliveryHooksForTests(hooks = {}) {
+  reminderDeliveryHooks = hooks && typeof hooks === "object" ? hooks : {};
+}
+
+function normalizeReminderTarget(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, "_");
+  if (normalized === "docpanel") return "doc_panel";
+  if (normalized === "tts" || normalized === "audio" || normalized === "audio_alert")
+    return "voice";
+  if (normalized === "inapp" || normalized === "app") return "in_app";
+  return normalized;
+}
+
+function normalizeReminderTargets(reminder) {
+  const rawTargets = normalizeStringList(reminder?.deliveryTargets);
+  const normalized = rawTargets
+    .map(normalizeReminderTarget)
+    .filter((target) => REMINDER_DELIVERY_TARGETS.has(target));
+  return normalized.length > 0 ? Array.from(new Set(normalized)) : ["in_app"];
+}
+
+function getReminderConfig(config) {
+  const direct = config?.reminders;
+  if (direct && typeof direct === "object") return direct;
+  const nested = config?.tasks?.reminders;
+  if (nested && typeof nested === "object") return nested;
+  return {};
+}
+
+function resolveReminderRoute({ task, target, config }) {
+  const reminder = normalizeMetadata(task.metadata).reminder;
+  const routes = reminder && typeof reminder === "object" ? reminder.routes : undefined;
+  const route =
+    (routes && typeof routes === "object" ? routes[target] : undefined) ||
+    getReminderConfig(config)?.delivery?.[target] ||
+    getReminderConfig(config)?.[target];
+  return route && typeof route === "object" ? route : {};
+}
+
+function buildReminderMessage(task) {
+  const title = String(task.title || "Reminder").trim() || "Reminder";
+  const details = String(task.details || task.description || "").trim();
+  return details ? `Reminder: ${title}\n\n${details}` : `Reminder: ${title}`;
+}
+
+function reminderDeliveryResult(target, status, extra = {}) {
+  return {
+    target,
+    status,
+    ...extra,
+    deliveredAt: new Date().toISOString(),
+  };
+}
+
+async function deliverReminderChannel({ task, target, message, route }) {
+  const channel = String(route.channel || target)
+    .trim()
+    .toLowerCase();
+  const to = String(route.to || route.target || "").trim();
+  if (!to) {
+    return reminderDeliveryResult(target, "skipped", { reason: "missing-route", channel });
+  }
+  const sendGatewayRpc = reminderDeliveryHooks.sendGatewayRpc || sendGatewayRpcFireAndForget;
+  await Promise.resolve(
+    sendGatewayRpc(
+      "send",
+      {
+        channel,
+        to,
+        accountId: typeof route.accountId === "string" ? route.accountId.trim() : undefined,
+        message,
+        sessionKey: "agent:argent:reminders",
+        idempotencyKey: `reminder:${task.id}:${target}:${task.schedule?.lastRun || Date.now()}`,
+      },
+      { logErrors: true, timeoutMs: Number(route.timeoutMs) || 5000 },
+    ),
+  );
+  return reminderDeliveryResult(target, "queued", { channel, to });
+}
+
+async function sendReminderResendEmail({ route, message, subject }) {
+  const apiKey = await resolveServiceKeyForProxy("RESEND_API_KEY");
+  if (!apiKey) return { ok: false, reason: "missing-resend-key" };
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      from: route.from,
+      to: normalizeStringList(route.to),
+      subject,
+      text: message,
+    }),
+  });
+  const body = await res.text();
+  return { ok: res.ok, status: res.status, body };
+}
+
+async function deliverReminderEmail({ task, message, route }) {
+  const to = normalizeStringList(route.to);
+  const from = typeof route.from === "string" ? route.from.trim() : "";
+  if (to.length === 0 || !from) {
+    return reminderDeliveryResult("email", "skipped", { reason: "missing-email-route" });
+  }
+  const provider = String(route.provider || "resend")
+    .trim()
+    .toLowerCase();
+  if (provider !== "resend") {
+    return reminderDeliveryResult("email", "skipped", {
+      reason: "unsupported-provider",
+      provider,
+    });
+  }
+  const subjectPrefix =
+    typeof route.subjectPrefix === "string" && route.subjectPrefix.trim()
+      ? route.subjectPrefix.trim()
+      : "Argent reminder";
+  const subject = `${subjectPrefix}: ${String(task.title || "Reminder").trim() || "Reminder"}`;
+  const sendEmail = reminderDeliveryHooks.sendEmail || sendReminderResendEmail;
+  const result = await Promise.resolve(sendEmail({ route, message, subject, task }));
+  if (!result?.ok) {
+    return reminderDeliveryResult("email", "failed", {
+      reason: result?.reason || `email-send-failed-${result?.status || "unknown"}`,
+      provider,
+    });
+  }
+  return reminderDeliveryResult("email", "sent", { provider, to });
+}
+
+async function saveReminderDocPanelDocument({ task, message, route }) {
+  const docId = sanitizeTagValue(`reminder-${task.id}`, `reminder-${Date.now()}`);
+  const title = `Reminder - ${String(task.title || "Reminder").trim() || "Reminder"}`;
+  const content = [
+    `# ${title}`,
+    "",
+    message,
+    "",
+    `- Reminder ID: ${task.id}`,
+    `- Fired: ${new Date().toISOString()}`,
+  ].join("\n");
+  const collection = normalizeCanvasCollection(route.collection);
+  const sourceFile = canvasSourceFileForId(docId);
+  const sessionKey =
+    typeof route.sessionKey === "string" && route.sessionKey.trim()
+      ? route.sessionKey.trim()
+      : undefined;
+  await invokeKnowledgeGatewayMethod("knowledge.library.delete", {
+    options: {
+      scope: "global",
+      collection,
+      sourceFile,
+      limit: 100,
+      ingestedOnly: true,
+    },
+    sessionKey,
+  });
+  const saved = await invokeKnowledgeGatewayMethod("knowledge.ingest", {
+    files: [{ fileName: sourceFile, mimeType: "text/markdown", content }],
+    options: {
+      scope: "global",
+      collection,
+      chunkSize: 12000,
+      overlap: 300,
+      itemExtra: {
+        docId,
+        docTitle: title,
+        docType: "markdown",
+        docTags: ["reminder"],
+        docCreatedAt: new Date().toISOString(),
+        docUpdatedAt: new Date().toISOString(),
+        docAutoRouted: true,
+      },
+    },
+    sessionKey,
+  });
+  if (!saved.success) {
+    return { ok: false, reason: saved.error?.message || "doc-panel-save-failed" };
+  }
+  broadcastCanvasEvent({
+    type: "document_saved",
+    action: "push",
+    document: {
+      id: docId,
+      title,
+      content,
+      type: "markdown",
+      language: undefined,
+      tags: ["reminder"],
+      autoRouted: true,
+    },
+  });
+  return { ok: true, docId, collection };
+}
+
+async function deliverReminderDocPanel({ task, message, route }) {
+  const saveDoc = reminderDeliveryHooks.saveDocPanelDocument || saveReminderDocPanelDocument;
+  const result = await Promise.resolve(saveDoc({ task, message, route }));
+  if (!result?.ok) {
+    return reminderDeliveryResult("doc_panel", "failed", {
+      reason: result?.reason || "doc-panel-save-failed",
+    });
+  }
+  return reminderDeliveryResult("doc_panel", "saved", {
+    docId: result.docId,
+    collection: result.collection,
+  });
+}
+
+async function deliverReminder(task) {
+  const metadata = normalizeMetadata(task.metadata);
+  const reminder =
+    metadata.reminder && typeof metadata.reminder === "object" ? metadata.reminder : {};
+  const deliveryTargets = normalizeReminderTargets(reminder);
+  const message = buildReminderMessage(task);
+  const config = readArgentConfig();
+  const deliveries = [];
+
+  for (const target of deliveryTargets) {
+    try {
+      if (target === "in_app" || target === "voice") {
+        deliveries.push(reminderDeliveryResult(target, "queued"));
+        continue;
+      }
+      const route = resolveReminderRoute({ task, target, config });
+      if (target === "telegram" || target === "slack") {
+        deliveries.push(await deliverReminderChannel({ task, target, message, route }));
+        continue;
+      }
+      if (target === "email") {
+        deliveries.push(await deliverReminderEmail({ task, message, route }));
+        continue;
+      }
+      if (target === "doc_panel") {
+        deliveries.push(await deliverReminderDocPanel({ task, message, route }));
+      }
+    } catch (err) {
+      deliveries.push(
+        reminderDeliveryResult(target, "failed", {
+          reason: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+  }
+
+  return {
+    message,
+    deliveryTargets,
+    deliveries,
+  };
+}
+
 async function runSchedulerTick() {
   if (!tasksDb || typeof tasksDb.getScheduledTasksDue !== "function") {
     return { dueCount: 0 };
   }
   const dueTasks = await Promise.resolve(tasksDb.getScheduledTasksDue());
   const queue = Array.isArray(dueTasks) ? dueTasks : [];
+  const deliveryResults = [];
   if (queue.length > 0) {
     console.log(`[Scheduler] Found ${queue.length} due task(s)`);
   }
   for (const task of queue) {
     console.log(`[Scheduler] Executing task: ${task.title} (${task.id})`);
     if (task.type === "reminder") {
+      const delivery = await deliverReminder(task);
+      deliveryResults.push({ taskId: task.id, ...delivery });
       broadcastTasksEvent({
         type: "reminder_due",
         task,
         reminder: normalizeMetadata(task.metadata).reminder || null,
+        message: delivery.message,
+        deliveryTargets: delivery.deliveryTargets,
+        deliveries: delivery.deliveries,
       });
     }
     broadcastTasksEvent({ type: "task_execute", task });
@@ -3441,7 +3715,7 @@ async function runSchedulerTick() {
       await Promise.resolve(tasksDb.markScheduledTaskExecuted(task.id));
     }
   }
-  return { dueCount: queue.length };
+  return { dueCount: queue.length, deliveries: deliveryResults };
 }
 
 // GET /api/tasks - List all tasks
@@ -17936,6 +18210,7 @@ if (require.main === module) {
     app,
     __test: {
       setPgSqlClientForTests,
+      setReminderDeliveryHooksForTests,
       runSchedulerTick,
       getStorageInfo() {
         return {

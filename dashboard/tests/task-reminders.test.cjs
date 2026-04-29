@@ -48,10 +48,63 @@ describe("Task reminders", () => {
 
     const tick = await apiHooks.runSchedulerTick();
     assert.ok(tick.dueCount >= 1);
+    assert.deepStrictEqual(tick.deliveries[0].deliveryTargets, ["in_app"]);
+    assert.strictEqual(tick.deliveries[0].deliveries[0].target, "in_app");
+    assert.strictEqual(tick.deliveries[0].deliveries[0].status, "queued");
 
     const list = await api("GET", "/api/tasks");
     const reminder = list.data.tasks.find((task) => task.id === create.data.task.id);
     assert.strictEqual(reminder.status, "completed");
     assert.deepStrictEqual(reminder.metadata.reminder.deliveryTargets, ["in_app"]);
+  });
+
+  it("queues configured channel deliveries without blocking reminder completion", async () => {
+    const sent = [];
+    apiHooks.setReminderDeliveryHooksForTests({
+      sendGatewayRpc(method, params) {
+        sent.push({ method, params });
+      },
+    });
+
+    const dueAt = new Date(Date.now() - 60_000).toISOString();
+    const create = await api("POST", "/api/tasks", {
+      title: "Telegram reminder smoke",
+      type: "reminder",
+      schedule: { frequency: "once", at: dueAt },
+      metadata: {
+        reminder: {
+          deliveryTargets: ["telegram", "voice"],
+          action: "notify",
+          routes: {
+            telegram: { to: "telegram:123456" },
+          },
+        },
+      },
+    });
+
+    assert.strictEqual(create.status, 201);
+
+    const tick = await apiHooks.runSchedulerTick();
+    const delivery = tick.deliveries.find((entry) => entry.taskId === create.data.task.id);
+    assert.ok(delivery);
+    assert.deepStrictEqual(delivery.deliveryTargets, ["telegram", "voice"]);
+    assert.deepStrictEqual(
+      delivery.deliveries.map((entry) => [entry.target, entry.status]),
+      [
+        ["telegram", "queued"],
+        ["voice", "queued"],
+      ],
+    );
+    assert.strictEqual(sent.length, 1);
+    assert.strictEqual(sent[0].method, "send");
+    assert.strictEqual(sent[0].params.channel, "telegram");
+    assert.strictEqual(sent[0].params.to, "telegram:123456");
+    assert.match(sent[0].params.message, /Reminder: Telegram reminder smoke/);
+
+    const list = await api("GET", "/api/tasks");
+    const reminder = list.data.tasks.find((task) => task.id === create.data.task.id);
+    assert.strictEqual(reminder.status, "completed");
+
+    apiHooks.setReminderDeliveryHooksForTests({});
   });
 });

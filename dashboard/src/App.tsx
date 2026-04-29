@@ -2202,6 +2202,7 @@ function App() {
   const { alerts, unreadCount, addAlert, markRead, markAllRead, deleteAlert, clearAll } =
     useAlerts();
   const criticalAlertSeenRef = useRef<Set<string>>(new Set());
+  const reminderAlertSeenRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const onHeartbeatStale = (event: Event) => {
@@ -2816,6 +2817,60 @@ function App() {
       }
     },
   });
+
+  useEffect(() => {
+    const onReminderDue = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          task?: Task;
+          message?: string;
+          deliveryTargets?: string[];
+          deliveries?: Array<{ target?: string; status?: string; reason?: string }>;
+        }>
+      ).detail;
+      const task = detail?.task;
+      if (!task?.id) return;
+      if (reminderAlertSeenRef.current.has(task.id)) return;
+      reminderAlertSeenRef.current.add(task.id);
+
+      const targets = Array.isArray(detail?.deliveryTargets)
+        ? detail.deliveryTargets.filter((target): target is string => typeof target === "string")
+        : [];
+      const message =
+        typeof detail?.message === "string" && detail.message.trim()
+          ? detail.message.trim()
+          : `Reminder: ${task.title || "Reminder"}`;
+
+      if (targets.length === 0 || targets.includes("in_app")) {
+        const failed = (detail?.deliveries || [])
+          .filter((delivery) => delivery.status === "failed" || delivery.status === "skipped")
+          .map((delivery) =>
+            delivery.reason ? `${delivery.target}: ${delivery.reason}` : String(delivery.target),
+          )
+          .filter(Boolean);
+        addAlert(
+          failed.length > 0 ? `${message}\n\nDelivery notes: ${failed.join("; ")}` : message,
+          "warning",
+          `reminder:${task.id}`,
+          {
+            label: "Open Schedule",
+            onClick: () => {
+              setActiveTab("home");
+            },
+          },
+        );
+      }
+
+      if (targets.includes("voice") && !isNativeVoiceActive()) {
+        void tts.speak(message, avatarMood ?? undefined);
+      }
+    };
+
+    window.addEventListener("argent:reminder_due", onReminderDue as EventListener);
+    return () => {
+      window.removeEventListener("argent:reminder_due", onReminderDue as EventListener);
+    };
+  }, [addAlert, avatarMood, tts]);
 
   const stopActiveSpeech = useCallback(() => {
     if (isNativeVoiceActive()) {
