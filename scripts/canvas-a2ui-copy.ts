@@ -30,10 +30,13 @@ export async function copyA2uiAssets({ srcDir, outDir }: { srcDir: string; outDi
     await fs.stat(path.join(srcDir, "a2ui.bundle.js"));
   } catch (err) {
     const message = 'Missing A2UI bundle assets. Run "pnpm canvas:a2ui:bundle" and retry.';
-    if (skipMissing || !canBuild) {
-      const reason = skipMissing ? "ARGENT_A2UI_SKIP_MISSING=1" : "A2UI sources unavailable";
+    if (skipMissing) {
+      const reason = "ARGENT_A2UI_SKIP_MISSING=1";
       console.warn(`${message} Skipping copy (${reason}).`);
       return;
+    }
+    if (!canBuild) {
+      console.warn("A2UI sources unavailable; using checked-in fallback bundle if present.");
     }
     throw new Error(message, { cause: err });
   }
