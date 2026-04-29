@@ -18,6 +18,7 @@ export type MinimalServicePathOptions = {
   extraDirs?: string[];
   home?: string;
   env?: Record<string, string | undefined>;
+  runtimeExecutablePath?: string;
 };
 
 type BuildServicePathOptions = MinimalServicePathOptions & {
@@ -108,11 +109,11 @@ export function getMinimalServicePathParts(options: MinimalServicePathOptions = 
     }
   };
 
-  // Prepend the directory of the currently running node binary so the
-  // LaunchAgent/service uses the same Node.js version that ran the install.
-  // This prevents ABI mismatches with native modules (e.g. better-sqlite3)
-  // when multiple node versions exist (nvm, Homebrew, system).
-  const execDir = path.dirname(process.execPath);
+  // Prepend the runtime binary directory that the service will actually use.
+  // If no service runtime was selected, fall back to the current process so
+  // existing install paths continue to avoid native-module ABI mismatches.
+  const runtimePath = options.runtimeExecutablePath?.trim() || process.execPath;
+  const execDir = path.dirname(runtimePath);
   if (execDir && execDir !== "." && execDir !== "/") {
     add(execDir);
   }
@@ -156,6 +157,7 @@ export function buildServiceEnvironment(params: {
   token?: string;
   launchdLabel?: string;
   dashboardApiToken?: string;
+  runtimeExecutablePath?: string;
 }): Record<string, string | undefined> {
   const { env, port, token, launchdLabel, dashboardApiToken } = params;
   const profile = env.ARGENT_PROFILE;
@@ -174,7 +176,7 @@ export function buildServiceEnvironment(params: {
   const configPath = env.ARGENT_CONFIG_PATH;
   return {
     HOME: env.HOME,
-    PATH: buildMinimalServicePath({ env }),
+    PATH: buildMinimalServicePath({ env, runtimeExecutablePath: params.runtimeExecutablePath }),
     ARGENT_PROFILE: profile,
     ARGENT_STATE_DIR: stateDir,
     ARGENT_CONFIG_PATH: configPath,

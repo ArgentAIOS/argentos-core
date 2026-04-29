@@ -147,6 +147,18 @@ describe("buildMinimalServicePath", () => {
     expect(parts).toContain("/bin");
   });
 
+  it("uses the selected service runtime dir instead of the installer runtime dir", () => {
+    const result = buildMinimalServicePath({
+      platform: "darwin",
+      env: { HOME: "/Users/alice" },
+      runtimeExecutablePath: "/opt/homebrew/bin/node",
+    });
+    const parts = splitPath(result, "darwin");
+
+    expect(parts[0]).toBe("/opt/homebrew/bin");
+    expect(parts).not.toContain(path.dirname(process.execPath));
+  });
+
   it("returns PATH as-is on Windows", () => {
     const result = buildMinimalServicePath({
       env: { PATH: "C:\\\\Windows\\\\System32" },
@@ -250,6 +262,18 @@ describe("buildServiceEnvironment", () => {
     if (process.platform === "darwin") {
       expect(env.ARGENT_LAUNCHD_LABEL).toBe("ai.argent.gateway");
     }
+  });
+
+  it("anchors gateway PATH to the selected runtime executable", () => {
+    const env = buildServiceEnvironment({
+      env: { HOME: "/Users/alice" },
+      port: 18789,
+      runtimeExecutablePath: "/opt/homebrew/bin/node",
+    });
+    const parts = String(env.PATH ?? "").split(path.posix.delimiter);
+
+    expect(parts[0]).toBe("/opt/homebrew/bin");
+    expect(parts).not.toContain(path.dirname(process.execPath));
   });
 
   it("passes hosted git and runtime snapshot paths to service environments", () => {

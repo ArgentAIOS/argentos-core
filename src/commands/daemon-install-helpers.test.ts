@@ -66,6 +66,9 @@ describe("buildGatewayInstallPlan", () => {
     expect(plan.workingDirectory).toBe("/Users/me");
     expect(plan.environment).toEqual({ ARGENT_PORT: "3000" });
     expect(mocks.resolvePreferredNodePath).not.toHaveBeenCalled();
+    expect(mocks.buildServiceEnvironment).toHaveBeenCalledWith(
+      expect.objectContaining({ runtimeExecutablePath: "/custom/node" }),
+    );
   });
 
   it("emits warnings when renderSystemNodeWarning returns one", async () => {

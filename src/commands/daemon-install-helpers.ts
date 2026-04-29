@@ -139,6 +139,7 @@ export async function buildGatewayInstallPlan(params: {
     port: params.port,
     token: params.token,
     dashboardApiToken,
+    runtimeExecutablePath: nodePath,
     launchdLabel:
       process.platform === "darwin"
         ? resolveGatewayLaunchAgentLabel(params.env.ARGENT_PROFILE)
