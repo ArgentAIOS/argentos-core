@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildMemoryHealthSummaryFromSignals, classifyMemoryLaneStatus } from "./health.js";
+import {
+  buildMemoryHealthSummaryFromSignals,
+  buildMemoryRecallReadinessHealthFromTelemetry,
+  classifyMemoryLaneStatus,
+} from "./health.js";
 
 describe("classifyMemoryLaneStatus", () => {
   const nowMs = Date.parse("2026-03-05T12:00:00.000Z");
@@ -92,5 +96,58 @@ describe("buildMemoryHealthSummaryFromSignals", () => {
       provider: "ollama",
       model: "nomic-embed-text",
     });
+    expect(summary.recallReadiness.status).toBe("green");
+  });
+});
+
+describe("buildMemoryRecallReadinessHealthFromTelemetry", () => {
+  const nowMs = Date.parse("2026-03-05T12:00:00.000Z");
+
+  it("surfaces technically successful but thin recall as yellow", () => {
+    const summary = buildMemoryRecallReadinessHealthFromTelemetry(
+      [
+        {
+          version: 1,
+          ts: Date.parse("2026-03-05T11:55:00.000Z"),
+          iso: "2026-03-05T11:55:00.000Z",
+          status: "ok",
+          tool: "memory_recall",
+          resultCount: 2,
+          readiness: {
+            status: "yellow",
+            reasons: ["low_type_coverage"],
+            resultCount: 2,
+            coverageScore: 0.33,
+            notice: "Memory recall succeeded but coverage is thin.",
+          },
+        },
+      ],
+      nowMs,
+    );
+
+    expect(summary.status).toBe("yellow");
+    expect(summary.thin24h).toBe(1);
+    expect(summary.lowCoverage24h).toBe(1);
+    expect(summary.latestNotice).toMatch(/thin/i);
+  });
+
+  it("surfaces latest failed recall as red", () => {
+    const summary = buildMemoryRecallReadinessHealthFromTelemetry(
+      [
+        {
+          version: 1,
+          ts: Date.parse("2026-03-05T11:58:00.000Z"),
+          iso: "2026-03-05T11:58:00.000Z",
+          status: "error",
+          tool: "memory_recall",
+          resultCount: 0,
+        },
+      ],
+      nowMs,
+    );
+
+    expect(summary.status).toBe("red");
+    expect(summary.error24h).toBe(1);
+    expect(summary.empty24h).toBe(1);
   });
 });
