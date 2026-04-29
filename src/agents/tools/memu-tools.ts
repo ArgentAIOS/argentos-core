@@ -25,6 +25,7 @@ import {
 import { getMemuEmbedder } from "../../memory/memu-embed.js";
 import { contentHash } from "../../memory/memu-store.js";
 import { MEMORY_TYPES } from "../../memory/memu-types.js";
+import { classifyMemoryRecallReadiness } from "../../memory/recall-readiness.js";
 import { buildCogneeSupplement, runCogneeSearch } from "../../memory/retrieve/cognee.js";
 import { encodeForPrompt } from "../../utils/toon-encoding.js";
 import { resolveUserTimezone } from "../date-time.js";
@@ -4042,6 +4043,32 @@ export function createMemoryRecallTool(options: {
           query,
           sufficiencyFailed,
         });
+        let coverageSnapshot:
+          | {
+              typesReturned: Record<string, number>;
+              typesMissing: string[];
+              coverageScore: number;
+            }
+          | undefined;
+        try {
+          const stats = await memory.getStats();
+          const typesReturned: Record<string, number> = {};
+          for (const r of finalResults) {
+            const t = String(r.item.memoryType ?? "unknown");
+            typesReturned[t] = (typesReturned[t] ?? 0) + 1;
+          }
+          const typesWithItems = Object.keys(stats.itemsByType).filter(
+            (t) => stats.itemsByType[t] > 0,
+          );
+          const typesMissing = typesWithItems.filter((t) => !typesReturned[t]);
+          const coverageScore =
+            typesWithItems.length > 0
+              ? Math.round((Object.keys(typesReturned).length / typesWithItems.length) * 100) / 100
+              : 1;
+          coverageSnapshot = { typesReturned, typesMissing, coverageScore };
+        } catch {
+          coverageSnapshot = undefined;
+        }
         const formatted = await Promise.all(
           finalResults.map(async (r) => {
             const base = formatResult(r, tz) as Record<string, unknown>;
@@ -4056,6 +4083,16 @@ export function createMemoryRecallTool(options: {
             return base;
           }),
         );
+        const recallReadiness = classifyMemoryRecallReadiness({
+          resultCount: formatted.length,
+          coverageScore: coverageSnapshot?.coverageScore,
+          answerConfidence: answerCandidate?.confidence,
+          fallbackUsed:
+            vectorFallbackUsed ||
+            observationFallbackUsed ||
+            knowledgeFallbackUsed ||
+            cogneeRetrieval.used,
+        });
 
         const response: Record<string, unknown> = {
           results: formatted,
@@ -4067,6 +4104,9 @@ export function createMemoryRecallTool(options: {
         };
         if (answerCandidate) {
           response.answer = answerCandidate;
+        }
+        if (includeCoverage || recallReadiness.status !== "green") {
+          response.memoryReadiness = recallReadiness;
         }
         if (observationResults && observationResults.length > 0) {
           response.currentBeliefs = observationResults;
@@ -4181,24 +4221,7 @@ export function createMemoryRecallTool(options: {
         if (emotionalFilter) response.emotionalFilter = emotionalFilter;
 
         // Coverage metadata
-        if (includeCoverage) {
-          const stats = await memory.getStats();
-
-          const typesReturned: Record<string, number> = {};
-          for (const r of finalResults) {
-            const t = r.item.memoryType as string;
-            typesReturned[t] = (typesReturned[t] ?? 0) + 1;
-          }
-
-          const typesWithItems = Object.keys(stats.itemsByType).filter(
-            (t) => stats.itemsByType[t] > 0,
-          );
-          const typesMissing = typesWithItems.filter((t) => !typesReturned[t]);
-          const coverageScore =
-            typesWithItems.length > 0
-              ? Math.round((Object.keys(typesReturned).length / typesWithItems.length) * 100) / 100
-              : 1;
-
+        if (includeCoverage && coverageSnapshot) {
           // Collect entities from results
           const entitiesMatched = new Set<string>();
           for (const r of finalResults) {
@@ -4213,10 +4236,10 @@ export function createMemoryRecallTool(options: {
           }
 
           response.coverage = {
-            typesReturned,
-            typesMissing,
+            typesReturned: coverageSnapshot.typesReturned,
+            typesMissing: coverageSnapshot.typesMissing,
             entitiesMatched: [...entitiesMatched],
-            coverageScore,
+            coverageScore: coverageSnapshot.coverageScore,
             twoPassUsed,
             twoPassAttempted,
             ...(twoPassAttempted && {
@@ -4263,8 +4286,10 @@ export function createMemoryRecallTool(options: {
                   added: vectorFallbackAdded,
                 }
               : undefined,
+          readiness: recallReadiness,
           coverage: includeCoverage
             ? {
+                ...(coverageSnapshot ?? {}),
                 ...((response.coverage as Record<string, unknown> | undefined) ?? {}),
               }
             : undefined,

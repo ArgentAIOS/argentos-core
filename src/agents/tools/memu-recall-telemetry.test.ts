@@ -58,6 +58,14 @@ describe("memu-recall-telemetry", () => {
           reason: "keyword_sparse",
           added: 5,
         },
+        readiness: {
+          status: "yellow",
+          reasons: ["fallback_used"],
+          resultCount: 3,
+          coverageScore: 0.4,
+          answerConfidence: 0.96,
+          notice: "Memory recall succeeded but coverage is thin.",
+        },
         recallTelemetry: {
           queryVariants: ["Jason favorite color", "Jason's favorite color"],
           manualPropertyCandidates: 2,
@@ -120,6 +128,9 @@ describe("memu-recall-telemetry", () => {
     expect(summary.error).toBe(1);
     expect(summary.answered).toBe(1);
     expect(summary.empty).toBe(1);
+    expect(summary.thin).toBe(1);
+    expect(summary.notReady).toBe(0);
+    expect(summary.lowCoverage).toBe(1);
     expect(summary.vectorFallbacks).toBe(1);
     expect(summary.queryClasses.identity_property).toBe(1);
     expect(summary.queryClasses.timeline_episodic).toBe(1);
