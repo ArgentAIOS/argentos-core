@@ -30,7 +30,13 @@ import { encodeForPrompt } from "../../utils/toon-encoding.js";
 import { resolveUserTimezone } from "../date-time.js";
 import { resolveEffectiveIntentForAgent } from "../intent.js";
 import { inferDepartmentKnowledgeCollections } from "../support-rag-routing.js";
-import { jsonResult, readStringParam, readStringArrayParam, readNumberParam } from "./common.js";
+import {
+  jsonResult,
+  normalizeToolParams,
+  readStringParam,
+  readStringArrayParam,
+  readNumberParam,
+} from "./common.js";
 import { appendMemoryRecallTelemetry } from "./memu-recall-telemetry.js";
 
 // ── Mode Presets ──
@@ -3098,8 +3104,32 @@ export function createMemoryRecallTool(options: {
       "Set mode='identity' for people/relationship queries (auto-uses higher limits + type diversity). " +
       "Set include_coverage=true to see type distribution and coverage metadata.",
     parameters: MemoryRecallSchema,
-    execute: async (_toolCallId, params) => {
-      const query = readStringParam(params, "query", { required: true });
+    execute: async (_toolCallId, rawParams) => {
+      const params = normalizeToolParams(rawParams);
+      let query: string;
+      try {
+        query = readStringParam(params, "query", { required: true });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        await appendMemoryRecallTelemetry({
+          version: 1,
+          ts: Date.now(),
+          iso: new Date().toISOString(),
+          status: "error",
+          tool: "memory_recall",
+          toolCallId: _toolCallId,
+          agentId: options.agentId,
+          query: "",
+          requestedMode: "general",
+          resolvedMode: "general",
+          queryClass: "general",
+          deep: false,
+          collectionFilters: [],
+          includeCoverage: false,
+          error: message,
+        }).catch(() => undefined);
+        return jsonResult({ results: [], error: message });
+      }
       const skipDecomposition =
         Boolean(params) &&
         typeof params === "object" &&
@@ -4504,7 +4534,8 @@ export function createMemoryCategoriesTool(options: {
       "Categories are auto-organized topics that group related facts. " +
       "Optionally filter by keyword.",
     parameters: MemoryCategoriesSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, rawParams) => {
+      const params = normalizeToolParams(rawParams);
       const query = readStringParam(params, "query");
       const pattern = readStringParam(params, "pattern");
       const minItems = readNumberParam(params, "minItems", { integer: true });
@@ -4810,8 +4841,15 @@ export function createMemoryEntityTool(options: {
       "Use 'list' to see all known entities sorted by bond strength. " +
       "Use 'create' to register a new entity. Use 'update' to modify an existing entity.",
     parameters: MemoryEntitySchema,
-    execute: async (_toolCallId, params) => {
-      const action = readStringParam(params, "action", { required: true });
+    execute: async (_toolCallId, rawParams) => {
+      const params = normalizeToolParams(rawParams);
+      let action: string;
+      try {
+        action = readStringParam(params, "action", { required: true });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return jsonResult({ error: message });
+      }
       const name = readStringParam(params, "name");
 
       try {

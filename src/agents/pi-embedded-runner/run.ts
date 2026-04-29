@@ -278,11 +278,13 @@ type MemoryRecallRequirement = {
   satisfied: boolean;
   reason?: string;
   executedMemoryTools: string[];
+  failedMemoryTools?: string[];
 };
 
 function validateMemoryRecallRequirement(params: {
   prompt: string;
   executedToolNames: string[];
+  lastToolError?: { toolName: string; error?: string };
   disabled?: boolean;
   hasConfig?: boolean;
 }): MemoryRecallRequirement {
@@ -300,11 +302,20 @@ function validateMemoryRecallRequirement(params: {
   const executedMemoryTools = params.executedToolNames
     .map((name) => name.trim().toLowerCase())
     .filter((name) => MEMORY_RECALL_TOOL_NAMES.has(name));
+  const lastFailedMemoryTool = params.lastToolError?.toolName?.trim().toLowerCase();
+  const failedMemoryTools =
+    lastFailedMemoryTool && MEMORY_RECALL_TOOL_NAMES.has(lastFailedMemoryTool)
+      ? [lastFailedMemoryTool]
+      : [];
   return {
     required: true,
-    satisfied: executedMemoryTools.length > 0,
-    reason: "memory/prior-work/rules prompt",
+    satisfied: executedMemoryTools.length > 0 && failedMemoryTools.length === 0,
+    reason:
+      failedMemoryTools.length > 0
+        ? `memory tool failed: ${params.lastToolError?.error ?? lastFailedMemoryTool}`
+        : "memory/prior-work/rules prompt",
     executedMemoryTools,
+    failedMemoryTools,
   };
 }
 
@@ -326,6 +337,8 @@ function buildMemoryRecallGuardrailText(params: {
   text += "2. A plain `read` call is not enough for this class of question.\n";
   text +=
     "3. After recall, answer only from retrieved evidence; if evidence is weak, say that explicitly.\n";
+  text +=
+    "4. If a memory tool errors or reports degraded coverage, say the trust layer is degraded.\n";
   text += "[/MEMORY_RECALL_GUARDRAIL]";
   return text;
 }
@@ -1272,6 +1285,7 @@ export async function runEmbeddedPiAgent(
           const memoryRecallValidation = validateMemoryRecallRequirement({
             prompt: basePromptText,
             executedToolNames: attempt.toolMetas.map((entry) => entry.toolName),
+            lastToolError: attempt.lastToolError,
             disabled: params.disableTools,
             hasConfig: Boolean(params.config),
           });

@@ -938,6 +938,14 @@ describe("MRQL Gold-Set Regression", () => {
   });
 
   describe("Mode presets", () => {
+    it("returns a structured error instead of throwing when query is missing", async () => {
+      const result = await tool.execute("call_missing_query", undefined as never);
+      const data = result.details as any;
+
+      expect(data.results).toEqual([]);
+      expect(data.error).toContain("query required");
+    });
+
     it("general mode returns default limit 10 with salience scoring", async () => {
       const result = await tool.execute("call_1", { query: "Jason" });
       const data = result.details as any;

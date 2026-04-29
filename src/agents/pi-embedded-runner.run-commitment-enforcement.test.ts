@@ -354,4 +354,51 @@ describe("runEmbeddedPiAgent commitment enforcement", () => {
     expect(result.meta.toolValidation?.missingClaimLabels).toContain("memory recall");
     expect(result.payloads?.[0]?.text).toContain("without first running memory recall");
   });
+
+  it("does not count a failed memory tool as satisfying recall evidence", async () => {
+    const failedText = "I checked memory, but here are the rules.";
+    const repairedText = "The memory layer is healthy enough now; our rules require evidence.";
+
+    runEmbeddedAttemptMock
+      .mockResolvedValueOnce(
+        makeAttempt({
+          assistantTexts: [failedText],
+          toolMetas: [{ toolName: "memory_recall" }],
+          lastToolError: {
+            toolName: "memory_recall",
+            error: "Storage initialization failed in postgres mode",
+          },
+          lastAssistant: buildAssistant(failedText),
+        }),
+      )
+      .mockResolvedValueOnce(
+        makeAttempt({
+          assistantTexts: [repairedText],
+          toolMetas: [{ toolName: "memory_timeline" }],
+          lastAssistant: buildAssistant(repairedText),
+        }),
+      );
+
+    const result = await runEmbeddedPiAgent({
+      sessionId: "session:test",
+      sessionKey: "agent:test:memory-recall-error-repair",
+      sessionFile: nextSessionFile(),
+      workspaceDir,
+      agentDir,
+      config: makeConfig(),
+      prompt: "What do you remember about our rules?",
+      provider: "openai",
+      model: "mock-1",
+      timeoutMs: 5_000,
+      runId: "run:memory-recall-error-repair",
+    });
+
+    expect(runEmbeddedAttemptMock).toHaveBeenCalledTimes(2);
+    expect(
+      String((runEmbeddedAttemptMock.mock.calls[1]?.[0] as { prompt?: string }).prompt),
+    ).toContain("memory tool failed: Storage initialization failed in postgres mode");
+    expect(result.meta.toolValidation?.valid).toBe(true);
+    expect(result.meta.toolValidation?.commitmentDisposition).toBe("repaired");
+    expect(result.meta.toolValidation?.evidenceTools).toContain("memory_timeline");
+  });
 });

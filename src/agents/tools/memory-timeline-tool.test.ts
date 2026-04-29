@@ -140,6 +140,20 @@ describe("memory timeline tool", () => {
     mockMemory.searchKnowledgeObservations.mockResolvedValue([]);
   });
 
+  it("handles missing params without throwing", async () => {
+    const tool = createMemoryTimelineTool({
+      config: defaultConfig,
+    });
+    if (!tool) {
+      throw new Error("tool missing");
+    }
+
+    const result = await tool.execute("call_timeline_missing_params", undefined as never);
+    const data = result.details as TimelineToolDetails;
+
+    expect(typeof data.count).toBe("number");
+  });
+
   it("infers entity and date range from a natural-language Richard query and suppresses linked-only contamination", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-15T14:30:00Z"));

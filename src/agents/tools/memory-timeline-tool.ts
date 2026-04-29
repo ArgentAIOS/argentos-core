@@ -12,7 +12,7 @@ import type { AnyAgentTool } from "./common.js";
 import { getStorageAdapter } from "../../data/storage-factory.js";
 import { retrieveMemory } from "../../memory/retrieve/search.js";
 import { resolveUserTimezone } from "../date-time.js";
-import { jsonResult, readStringParam, readNumberParam } from "./common.js";
+import { jsonResult, normalizeToolParams, readStringParam, readNumberParam } from "./common.js";
 
 const MemoryTimelineSchema = Type.Object({
   query: Type.Optional(
@@ -365,7 +365,8 @@ export function createMemoryTimelineTool(options: {
       "tracking how a topic evolved, or seeing all interactions with an entity over time. " +
       "Prefer this over external tools when the user asks what memory says happened last week or recently.",
     parameters: MemoryTimelineSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, rawParams) => {
+      const params = normalizeToolParams(rawParams);
       const rawQuery = readStringParam(params, "query");
       const explicitEntityName = readStringParam(params, "entity");
       const memoryType = readStringParam(params, "type") ?? null;
