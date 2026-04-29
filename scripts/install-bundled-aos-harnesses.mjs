@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const bundledHarnesses = ["aos-cognee"];
+const bundledHarnesses = ["aos-cognee", "aos-google"];
 const strict = process.argv.includes("--strict");
 const requestedOnly = process.argv
   .filter((arg) => arg.startsWith("--only="))
@@ -32,7 +32,14 @@ function run(command, args, options = {}) {
 }
 
 function resolvePython(minVersion) {
-  for (const candidate of ["python3", "python"]) {
+  for (const candidate of [
+    "python3.13",
+    "python3.12",
+    "python3.11",
+    "python3.10",
+    "python3",
+    "python",
+  ]) {
     const result = run(candidate, [
       "-c",
       "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')",

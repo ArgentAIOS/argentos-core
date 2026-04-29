@@ -20,6 +20,7 @@ afterEach(() => {
 });
 
 describe("resolvePreferredNodePath", () => {
+  const darwinNode22 = "/opt/homebrew/opt/node@22/bin/node";
   const darwinNode = "/opt/homebrew/bin/node";
 
   it("uses system node when it meets the minimum version", async () => {
@@ -43,6 +44,30 @@ describe("resolvePreferredNodePath", () => {
     expect(execFile).toHaveBeenCalledTimes(1);
   });
 
+  it("prefers Homebrew node@22 over unversioned Homebrew node", async () => {
+    fsMocks.access.mockImplementation(async (target: string) => {
+      if (target === darwinNode22 || target === darwinNode) {
+        return;
+      }
+      throw new Error("missing");
+    });
+
+    const execFile = vi.fn(async (target: string) => ({
+      stdout: target === darwinNode22 ? "22.22.2\n" : "25.9.0\n",
+      stderr: "",
+    }));
+
+    const result = await resolvePreferredNodePath({
+      env: {},
+      runtime: "node",
+      platform: "darwin",
+      execFile,
+    });
+
+    expect(result).toBe(darwinNode22);
+    expect(execFile).toHaveBeenCalledTimes(1);
+  });
+
   it("skips system node when it is too old", async () => {
     fsMocks.access.mockImplementation(async (target: string) => {
       if (target === darwinNode) {
@@ -61,7 +86,7 @@ describe("resolvePreferredNodePath", () => {
     });
 
     expect(result).toBeUndefined();
-    expect(execFile).toHaveBeenCalledTimes(1);
+    expect(execFile).toHaveBeenCalledTimes(2);
   });
 
   it("returns undefined when no system node is found", async () => {
@@ -77,16 +102,17 @@ describe("resolvePreferredNodePath", () => {
     });
 
     expect(result).toBeUndefined();
-    expect(execFile).not.toHaveBeenCalled();
+    expect(execFile).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("resolveSystemNodeInfo", () => {
+  const darwinNode22 = "/opt/homebrew/opt/node@22/bin/node";
   const darwinNode = "/opt/homebrew/bin/node";
 
   it("returns supported info when version is new enough", async () => {
     fsMocks.access.mockImplementation(async (target: string) => {
-      if (target === darwinNode) {
+      if (target === darwinNode22) {
         return;
       }
       throw new Error("missing");
@@ -101,7 +127,7 @@ describe("resolveSystemNodeInfo", () => {
     });
 
     expect(result).toEqual({
-      path: darwinNode,
+      path: darwinNode22,
       version: "22.0.0",
       supported: true,
     });

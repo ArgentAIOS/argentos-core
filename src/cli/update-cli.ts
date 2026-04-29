@@ -310,7 +310,7 @@ async function runPostUpdateGatewayRestart(params: {
 
   const result = spawnSync(
     resolveNodeRunner(),
-    [cliPath, "gateway", "restart", ...(params.jsonMode ? ["--json"] : [])],
+    [cliPath, "daemon", "install", "--force", ...(params.jsonMode ? ["--json"] : [])],
     {
       cwd: params.root,
       env: process.env,
@@ -324,7 +324,7 @@ async function runPostUpdateGatewayRestart(params: {
   if (typeof result.status === "number" && result.status !== 0) {
     const stderr =
       typeof result.stderr === "string" && result.stderr.trim() ? `: ${result.stderr.trim()}` : "";
-    throw new Error(`gateway restart exited with status ${result.status}${stderr}`);
+    throw new Error(`daemon install --force exited with status ${result.status}${stderr}`);
   }
   return true;
 }

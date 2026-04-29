@@ -604,7 +604,7 @@ describe("update-cli", () => {
     expect(lines.some((line) => line.includes("Already up to date"))).toBe(true);
   });
 
-  it("updateCommand restarts daemon through a fresh CLI process by default", async () => {
+  it("updateCommand refreshes the daemon service through a fresh CLI process by default", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-root-"));
     try {
       await fs.writeFile(path.join(tempRoot, "argent.mjs"), "#!/usr/bin/env node\n");
@@ -625,7 +625,7 @@ describe("update-cli", () => {
 
       expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
         expect.any(String),
-        [path.join(tempRoot, "argent.mjs"), "gateway", "restart"],
+        [path.join(tempRoot, "argent.mjs"), "daemon", "install", "--force"],
         expect.objectContaining({
           cwd: tempRoot,
           stdio: "inherit",
@@ -745,7 +745,7 @@ describe("update-cli", () => {
     const calls = vi
       .mocked(spawnSync)
       .mock.calls.map(([, args]) => (Array.isArray(args) ? args.join(" ") : ""));
-    expect(calls.some((args) => args.includes("gateway restart"))).toBe(false);
+    expect(calls.some((args) => args.includes("daemon install --force"))).toBe(false);
   });
 
   it("updateCommand skips success message when restart does not run", async () => {

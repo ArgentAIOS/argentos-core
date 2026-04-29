@@ -63,6 +63,28 @@ describe("auditGatewayServiceConfig", () => {
     ).toBe(false);
   });
 
+  it("accepts Homebrew node@22 LaunchAgent paths", async () => {
+    const audit = await auditGatewayServiceConfig({
+      env: { HOME: "/Users/test" },
+      platform: "darwin",
+      command: {
+        programArguments: ["/opt/homebrew/opt/node@22/bin/node", "gateway"],
+        environment: {
+          PATH: "/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+        },
+      },
+    });
+
+    expect(
+      audit.issues.some(
+        (issue) => issue.code === SERVICE_AUDIT_CODES.gatewayRuntimeNodeVersionManager,
+      ),
+    ).toBe(false);
+    expect(
+      audit.issues.some((issue) => issue.code === SERVICE_AUDIT_CODES.gatewayPathMissingDirs),
+    ).toBe(false);
+  });
+
   it("accepts Linux minimal PATH with user directories", async () => {
     const env = { HOME: "/home/testuser", PNPM_HOME: "/opt/pnpm" };
     const minimalPath = buildMinimalServicePath({
