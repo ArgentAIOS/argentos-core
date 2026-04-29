@@ -185,6 +185,13 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
         if (opts.abortSignal?.aborted) {
           throw err;
         }
+        try {
+          await runner.stop();
+        } catch (stopErr) {
+          (opts.runtime?.error ?? console.error)(
+            `Telegram polling runner stop failed after error: ${formatErrorMessage(stopErr)}.`,
+          );
+        }
         const isConflict = isGetUpdatesConflict(err);
         const isRecoverable = isRecoverableTelegramNetworkError(err, { context: "polling" });
         if (!isConflict && !isRecoverable) {

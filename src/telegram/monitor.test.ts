@@ -162,10 +162,11 @@ describe("monitorTelegramProvider (grammY)", () => {
 
   it("retries on recoverable network errors", async () => {
     const networkError = Object.assign(new Error("timeout"), { code: "ETIMEDOUT" });
+    const failedRunnerStop = vi.fn();
     runSpy
       .mockImplementationOnce(() => ({
         task: () => Promise.reject(networkError),
-        stop: vi.fn(),
+        stop: failedRunnerStop,
       }))
       .mockImplementationOnce(() => ({
         task: () => Promise.resolve(),
@@ -176,6 +177,7 @@ describe("monitorTelegramProvider (grammY)", () => {
 
     expect(computeBackoff).toHaveBeenCalled();
     expect(sleepWithAbort).toHaveBeenCalled();
+    expect(failedRunnerStop).toHaveBeenCalled();
     expect(runSpy).toHaveBeenCalledTimes(2);
   });
 
