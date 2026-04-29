@@ -12120,6 +12120,14 @@ app.get("/api/settings/agent", (req, res) => {
         target.agentId && Array.isArray(selectedAgent?.skills)
           ? selectedAgent.skills.filter((entry) => typeof entry === "string")
           : [],
+      skillSource:
+        target.agentId && typeof selectedAgent?.skillSource === "string"
+          ? selectedAgent.skillSource
+          : "",
+      skillDefaultKey:
+        target.agentId && typeof selectedAgent?.skillDefaultKey === "string"
+          ? selectedAgent.skillDefaultKey
+          : "",
       imageAnalysis: normalizeImageAnalysisConfig(config),
       backgroundModels: {
         kernel: kernelBackgroundSelection,
@@ -12321,11 +12329,22 @@ app.patch("/api/settings/agent", (req, res) => {
       }
       if (req.body.skills !== undefined) {
         if (Array.isArray(req.body.skills)) {
-          agentEntry.skills = req.body.skills
+          const skills = req.body.skills
             .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
             .map((entry) => entry.trim());
+          if (skills.length > 0) {
+            agentEntry.skills = skills;
+            agentEntry.skillSource = "explicit";
+            delete agentEntry.skillDefaultKey;
+          } else {
+            delete agentEntry.skills;
+            delete agentEntry.skillSource;
+            delete agentEntry.skillDefaultKey;
+          }
         } else {
           delete agentEntry.skills;
+          delete agentEntry.skillSource;
+          delete agentEntry.skillDefaultKey;
         }
       }
 

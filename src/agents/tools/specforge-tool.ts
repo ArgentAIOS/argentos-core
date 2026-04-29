@@ -38,7 +38,8 @@ Actions:
 After SpecForge approval, route code/project execution through family.dispatch by
 default so technical/code work reaches the dev-team family specialists. Prefer
 family.dispatch_contracted for auditable work that needs heartbeat/timeout
-tracking. Use team_spawn when the approved plan needs coordinated multi-agent
+tracking and include skillsRequired so the expected coding playbooks are visible
+in contract history. Use team_spawn when the approved plan needs coordinated multi-agent
 dependencies, then monitor team_status and family.contract_history while
 coordinating live over Redis-backed family.message/family.inbox and mirroring
 durable proof to the Threadmaster bus. Use Browser Use for Chrome-backed UI

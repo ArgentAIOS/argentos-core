@@ -239,6 +239,7 @@ function buildGuidePrompt(session: SpecforgeGuideSession): string {
   const executionHandoff = [
     "After approval, route code/project execution to the coding family team by default:",
     "- Use family.dispatch_contracted for auditable development work with explicit toolsAllow, timeout, and heartbeat_interval_ms.",
+    "- Include skillsRequired on each contracted task so the worker and contract history show the expected coding playbooks.",
     "- Use family.dispatch for lighter development work; technical/code tasks auto-prefer the dev-team family specialists.",
     '- Use family.spawn with mode="family" only when a specific named coding family member is required.',
     "- Use team_spawn when the approved plan needs multiple coordinated agents with shared dependencies.",
@@ -249,6 +250,7 @@ function buildGuidePrompt(session: SpecforgeGuideSession): string {
     "- Implementer/debugger: argentos-test-driven-development and argentos-systematic-debugging.",
     "- Reviewer/integrator: argentos-code-verification.",
     "- Multi-agent execution: argentos-family-team-development.",
+    "- Example skillsRequired: [argentos-family-team-development, argentos-test-driven-development, argentos-code-verification].",
     "- Browser/UI proof: use Browser Use with Chrome-backed inspection instead of standalone Playwright.",
     "Orchestrator loop after handoff:",
     "- Check family.contract_history for active contracts and heartbeat/timeouts.",

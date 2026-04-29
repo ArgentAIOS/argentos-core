@@ -1,8 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ArgentConfig } from "../config/config.js";
+import type { FamilySkillSource } from "./family-skill-defaults.js";
 import { loadConfig, writeConfigFile } from "../config/config.js";
 import { getAgentFamily } from "../data/agent-family.js";
+import { resolveFamilySkillMapping } from "./family-skill-defaults.js";
 
 const ARGENTOS_HOME = path.join(process.env.HOME ?? "", ".argentos");
 const ARGENT_WORKSPACE = path.join(process.env.HOME ?? "", "argent");
@@ -37,6 +39,8 @@ export interface FamilyWorkerProvisionResult {
   model: string;
   provider: string | null;
   skills: string[];
+  skillSource: FamilySkillSource;
+  skillDefaultKey?: string;
   identityDir: string;
   rootDir: string;
   redis: boolean;
@@ -49,6 +53,8 @@ interface IdentityParams {
   persona?: string;
   tools?: string[];
   skills?: string[];
+  skillSource?: FamilySkillSource;
+  skillDefaultKey?: string;
   model?: string;
   team?: string;
   provider?: string;
@@ -140,6 +146,8 @@ function bootstrapIdentity(params: IdentityParams): { agentDir: string; rootDir:
     ...(params.provider ? { provider: params.provider } : {}),
     ...(params.tools?.length ? { tools: params.tools } : {}),
     ...(params.skills ? { skills: params.skills } : {}),
+    ...(params.skillSource ? { skillSource: params.skillSource } : {}),
+    ...(params.skillDefaultKey ? { skillDefaultKey: params.skillDefaultKey } : {}),
   };
   fs.writeFileSync(identityJsonPath, JSON.stringify(identityPayload, null, 2), "utf-8");
 
@@ -164,6 +172,8 @@ function upsertAgentConfigEntry(
     model?: string;
     tools?: string[];
     skills?: string[];
+    skillSource?: FamilySkillSource;
+    skillDefaultKey?: string;
   },
 ): boolean {
   if (!cfg.agents) cfg.agents = {};
@@ -181,6 +191,12 @@ function upsertAgentConfigEntry(
     entry![key] = value;
     changed = true;
   };
+  const assignExtra = (key: string, value: unknown) => {
+    const record = entry as Record<string, unknown>;
+    if (JSON.stringify(record[key]) === JSON.stringify(value)) return;
+    record[key] = value;
+    changed = true;
+  };
 
   assign("name", params.name);
   assign("agentDir", params.agentDir);
@@ -190,6 +206,12 @@ function upsertAgentConfigEntry(
   }
   if (params.skills !== undefined) {
     assign("skills", params.skills);
+  }
+  if (params.skillSource) {
+    assignExtra("skillSource", params.skillSource);
+  }
+  if (params.skillDefaultKey) {
+    assignExtra("skillDefaultKey", params.skillDefaultKey);
   }
   if (params.tools !== undefined) {
     const existingTools = entry.tools && typeof entry.tools === "object" ? entry.tools : {};
@@ -204,10 +226,21 @@ export async function provisionFamilyWorker(
 ): Promise<FamilyWorkerProvisionResult> {
   const config: Record<string, unknown> = {};
   const tools = normalizeStringList(params.tools);
-  const skills = normalizeStringList(params.skills);
+  const explicitSkills = normalizeStringList(params.skills);
+  const skillMapping = resolveFamilySkillMapping({
+    team: params.team,
+    role: params.role,
+    skills: explicitSkills,
+    hasExplicitSkills: params.skills !== undefined,
+  });
+  const skills = skillMapping.skills;
+  const persistedSkills =
+    skillMapping.source === "unmapped" && skills.length === 0 ? undefined : skills;
   if (params.persona) config.persona = params.persona;
   if (tools?.length) config.tools = tools;
-  if (skills) config.skills = skills;
+  if (persistedSkills && persistedSkills.length > 0) config.skills = persistedSkills;
+  config.skillSource = skillMapping.source;
+  if (skillMapping.defaultKey) config.skillDefaultKey = skillMapping.defaultKey;
   if (params.model) config.model = params.model;
   if (params.team) config.team = params.team;
   const provider = params.provider ?? inferProvider(params.model);
@@ -222,7 +255,9 @@ export async function provisionFamilyWorker(
     role: params.role,
     persona: params.persona,
     tools,
-    skills,
+    skills: persistedSkills,
+    skillSource: skillMapping.source,
+    skillDefaultKey: skillMapping.defaultKey,
     model: params.model,
     team: params.team,
     provider,
@@ -237,7 +272,9 @@ export async function provisionFamilyWorker(
       workspace: path.join(ARGENTOS_HOME, `workspace-${params.id}`),
       model: params.model,
       tools,
-      skills,
+      skills: persistedSkills,
+      skillSource: skillMapping.source,
+      skillDefaultKey: skillMapping.defaultKey,
     });
     if (changed) {
       await writeConfigFile(cfg);
@@ -281,7 +318,9 @@ export async function provisionFamilyWorker(
     team: params.team ?? "unassigned",
     model: params.model ?? "default",
     provider: provider ?? null,
-    skills: skills ?? [],
+    skills,
+    skillSource: skillMapping.source,
+    skillDefaultKey: skillMapping.defaultKey,
     identityDir: agentDir,
     rootDir,
     redis: redisOk,

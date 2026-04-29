@@ -98,6 +98,7 @@ describe("specforge conductor strict guide mode", () => {
     expect(approved.reason).toBe("guide_mode_approved");
     expect(approved.guidance).toContain("Approval received.");
     expect(approved.guidance).toContain("family.dispatch_contracted");
+    expect(approved.guidance).toContain("skillsRequired");
     expect(approved.guidance).toContain("family.dispatch");
     expect(approved.guidance).toContain("dev-team family specialists");
     expect(approved.guidance).toContain("argentos-test-driven-development");
@@ -144,6 +145,7 @@ describe("specforge conductor strict guide mode", () => {
 
     expect(followUp.reason).toBe("guide_mode_execution_active");
     expect(followUp.guidance).toContain("family.dispatch_contracted");
+    expect(followUp.guidance).toContain("skillsRequired");
     expect(followUp.guidance).toContain("family.dispatch");
     expect(followUp.guidance).toContain("coding family team");
     expect(followUp.guidance).toContain("argentos-family-team-development");

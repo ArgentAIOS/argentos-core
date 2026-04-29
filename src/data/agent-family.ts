@@ -44,6 +44,8 @@ export interface FamilyAgent {
   role: string;
   team?: string;
   skills?: string[];
+  skillSource?: string;
+  skillDefaultKey?: string;
   status: "active" | "inactive";
   alive: boolean; // Redis presence — true if heartbeat within 30s
 }
@@ -133,6 +135,9 @@ export class AgentFamily {
         const config = normalizeConfig(row.config);
         const team = typeof config.team === "string" ? config.team.trim() : "";
         const skills = normalizeStringList(config.skills);
+        const skillSource = typeof config.skillSource === "string" ? config.skillSource.trim() : "";
+        const skillDefaultKey =
+          typeof config.skillDefaultKey === "string" ? config.skillDefaultKey.trim() : "";
         let alive = false;
         if (this.redis) {
           try {
@@ -147,6 +152,8 @@ export class AgentFamily {
           role: row.role,
           team: team || undefined,
           skills,
+          skillSource: skillSource || undefined,
+          skillDefaultKey: skillDefaultKey || undefined,
           status: row.status as "active" | "inactive",
           alive,
         });
@@ -488,12 +495,18 @@ async function readLocalFamilyAgentsFromDisk(): Promise<LocalFamilyAgent[]> {
       const provider = typeof parsed.provider === "string" ? parsed.provider.trim() : undefined;
       const tools = normalizeStringList(parsed.tools);
       const skills = normalizeStringList(parsed.skills);
+      const skillSource =
+        typeof parsed.skillSource === "string" ? parsed.skillSource.trim() : undefined;
+      const skillDefaultKey =
+        typeof parsed.skillDefaultKey === "string" ? parsed.skillDefaultKey.trim() : undefined;
       config = {
         ...(team ? { team } : {}),
         ...(model ? { model } : {}),
         ...(provider ? { provider } : {}),
         ...(tools ? { tools } : {}),
         ...(skills ? { skills } : {}),
+        ...(skillSource ? { skillSource } : {}),
+        ...(skillDefaultKey ? { skillDefaultKey } : {}),
       };
     } catch {
       // Fall through to markdown fallback below.

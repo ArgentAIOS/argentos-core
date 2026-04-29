@@ -63,6 +63,12 @@ const FamilyToolSchema = Type.Object({
       description: "Skill allowlist for this family agent (e.g. argentos-code-verification)",
     }),
   ),
+  skillsRequired: Type.Optional(
+    Type.Array(Type.String(), {
+      description:
+        "Skills this contracted task expects the target worker to apply (e.g. argentos-code-verification)",
+    }),
+  ),
   model: Type.Optional(Type.String({ description: "Model ID (e.g. claude-sonnet-4-20250514)" })),
   team: Type.Optional(Type.String({ description: "Team name (e.g. dev-team, marketing-team)" })),
 
@@ -320,6 +326,16 @@ function readToolResultRunId(result: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function readToolResultAgent(result: unknown): Record<string, unknown> | undefined {
+  if (!result || typeof result !== "object") return undefined;
+  const details = (result as { details?: unknown }).details;
+  if (!details || typeof details !== "object") return undefined;
+  const agent = (details as { agent?: unknown }).agent;
+  return agent && typeof agent === "object" && !Array.isArray(agent)
+    ? (agent as Record<string, unknown>)
+    : undefined;
+}
+
 export function createFamilyTool(
   opts?: { agentId?: string } & FamilyToolSpawnContext,
 ): AnyAgentTool {
@@ -556,6 +572,8 @@ async function handleRegister(params: Record<string, unknown>, callerAgentId?: s
       model: provisioned.model,
       provider: provisioned.provider,
       skills: provisioned.skills,
+      skillSource: provisioned.skillSource,
+      skillDefaultKey: provisioned.skillDefaultKey,
       identityDir: provisioned.identityDir,
     },
     redis: provisioned.redis,
@@ -576,6 +594,8 @@ async function handleList() {
     role: m.role,
     team: m.team ?? "unassigned",
     skills: m.skills ?? [],
+    skillSource: m.skillSource ?? "unmapped",
+    skillDefaultKey: m.skillDefaultKey,
     status: m.status,
     alive: m.alive,
   }));
@@ -1022,7 +1042,16 @@ async function handleSpawn(
 
   return jsonResult({
     ok: result.ok,
-    agent: { id, name: agent.name, role: agent.role },
+    agent: {
+      id,
+      name: agent.name,
+      role: agent.role,
+      skills: Array.isArray(agent.config.skills) ? agent.config.skills : [],
+      skillSource:
+        typeof agent.config.skillSource === "string" ? agent.config.skillSource : undefined,
+      skillDefaultKey:
+        typeof agent.config.skillDefaultKey === "string" ? agent.config.skillDefaultKey : undefined,
+    },
     sessionKey: result.childSessionKey,
     runId: result.runId,
     error: result.ok ? undefined : result.error,
@@ -1325,6 +1354,7 @@ async function handleDispatchContracted(
   const heartbeatIntervalMs =
     readNumberParam(params, "heartbeat_interval_ms", { integer: true }) ?? 5_000;
   const contractToolGrant = normalizeToolGrantList(params.toolsAllow);
+  const skillsRequired = readStringArrayParam(params, "skillsRequired") ?? [];
 
   if (!contractToolGrant || contractToolGrant.length === 0) {
     return jsonResult({
@@ -1345,6 +1375,13 @@ async function handleDispatchContracted(
   const dispatchedBy = spawnCtx?.agentId ?? spawnCtx?.requesterAgentIdOverride ?? "argent";
   const targetAgentId = readStringParam(params, "id") ?? "auto";
   let effectiveContractGrant = [...contractToolGrant];
+  let targetForContract: {
+    id: string;
+    name: string;
+    role: string;
+    status: string;
+    config: Record<string, unknown>;
+  } | null = null;
 
   if (mode === "subagent") {
     const safeSet = new Set(SUBAGENT_STRICT_DEFAULT_TOOLS.map((tool) => tool.toLowerCase()));
@@ -1359,8 +1396,8 @@ async function handleDispatchContracted(
 
   if (mode === "family" && targetAgentId !== "auto") {
     const family = await getAgentFamily();
-    const target = await family.getAgent(targetAgentId);
-    if (target && isThinkTankAgent(target)) {
+    targetForContract = await family.getAgent(targetAgentId);
+    if (targetForContract && isThinkTankAgent(targetForContract)) {
       const safeSet = new Set(THINK_TANK_SAFE_TOOLS.map((tool) => tool.toLowerCase()));
       const disallowed = effectiveContractGrant.filter((tool) => !safeSet.has(tool.toLowerCase()));
       if (disallowed.length > 0) {
@@ -1392,7 +1429,21 @@ async function handleDispatchContracted(
       heartbeatIntervalMs,
       createdAt,
       expiresAt,
-      metadata: { mode },
+      metadata: {
+        mode,
+        skillsRequired,
+        targetSkillsSnapshot: Array.isArray(targetForContract?.config.skills)
+          ? targetForContract.config.skills
+          : [],
+        targetSkillSource:
+          typeof targetForContract?.config.skillSource === "string"
+            ? targetForContract.config.skillSource
+            : undefined,
+        targetSkillDefaultKey:
+          typeof targetForContract?.config.skillDefaultKey === "string"
+            ? targetForContract.config.skillDefaultKey
+            : undefined,
+      },
     });
     contractId = created.contractId;
   } catch (err: unknown) {
@@ -1418,6 +1469,7 @@ async function handleDispatchContracted(
     const ok = readToolResultOk(routed) === true;
     const runId = readToolResultRunId(routed);
     const sessionKey = readToolResultSessionKey(routed);
+    const targetAgent = readToolResultAgent(routed);
     const dispatchError = readToolResultError(routed) ?? "dispatch failed";
     const { appendDispatchContractEvent } = await import("../../infra/dispatch-contracts.js");
 
@@ -1425,12 +1477,18 @@ async function handleDispatchContracted(
       await appendDispatchContractEvent({
         contractId,
         status: "accepted",
-        payload: { mode },
+        payload: { mode, skillsRequired },
       });
       await appendDispatchContractEvent({
         contractId,
         status: "started",
-        payload: { mode, runId: runId ?? null, sessionKey: sessionKey ?? null },
+        payload: {
+          mode,
+          runId: runId ?? null,
+          sessionKey: sessionKey ?? null,
+          targetAgent: targetAgent ?? null,
+          skillsRequired,
+        },
       });
       return jsonResult({
         ok: true,

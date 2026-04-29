@@ -3067,6 +3067,8 @@ export function ConfigPanel({
       deny?: string[];
     };
     skills?: string[];
+    skillSource?: string;
+    skillDefaultKey?: string;
     imageAnalysis?: {
       primary?: string;
       fallbacks?: string[];
@@ -3465,6 +3467,8 @@ export function ConfigPanel({
   const [capabilitiesAskDraft, setCapabilitiesAskDraft] = useState("");
   const [capabilitiesDenyDraft, setCapabilitiesDenyDraft] = useState("");
   const [capabilitiesSkillDraft, setCapabilitiesSkillDraft] = useState("");
+  const [capabilitiesSkillSource, setCapabilitiesSkillSource] = useState("");
+  const [capabilitiesSkillDefaultKey, setCapabilitiesSkillDefaultKey] = useState("");
   const [capabilitiesSaving, setCapabilitiesSaving] = useState(false);
 
   // Gateway tab state
@@ -4054,6 +4058,8 @@ export function ConfigPanel({
         setCapabilitiesAskDraft(formatMultilineList(toolsSettings?.ask));
         setCapabilitiesDenyDraft(formatMultilineList(toolsSettings?.deny));
         setCapabilitiesSkillDraft(formatMultilineList(agentSettingsPayload?.skills));
+        setCapabilitiesSkillSource(agentSettingsPayload?.skillSource ?? "");
+        setCapabilitiesSkillDefaultKey(agentSettingsPayload?.skillDefaultKey ?? "");
         setCapabilitiesUpdatedAt(Date.now());
       } catch (err) {
         console.error("[Capabilities] Failed to load capabilities:", err);
@@ -11632,8 +11638,16 @@ export function ConfigPanel({
                         <div className="space-y-1">
                           <h3 className="text-white/90 font-medium">Skill Mapping</h3>
                           <div className="text-white/45 text-xs max-w-3xl">
-                            This sets the selected agent&apos;s skill allowlist. Leave it empty to
-                            expose all eligible workspace and shared skills.
+                            This sets the selected agent&apos;s explicit skill allowlist. Empty
+                            clears the override so generated family-team defaults or all eligible
+                            skills can apply.
+                          </div>
+                          <div className="text-white/35 text-[11px]">
+                            Source:{" "}
+                            <span className="text-white/60">
+                              {capabilitiesSkillSource || "global/eligible"}
+                            </span>
+                            {capabilitiesSkillDefaultKey ? ` · ${capabilitiesSkillDefaultKey}` : ""}
                           </div>
                         </div>
                         <div className="text-[11px] text-white/40 rounded-lg border border-white/10 px-3 py-1.5 bg-gray-900/30">
