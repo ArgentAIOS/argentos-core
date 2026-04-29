@@ -77,6 +77,7 @@ describe("agentsHandlers family.members", () => {
       team: "Support Team",
       model: "default",
       provider: null,
+      skills: ["argentos-code-verification"],
       identityDir: "/tmp/relay/agent",
       rootDir: "/tmp/relay",
       redis: true,
@@ -89,6 +90,7 @@ describe("agentsHandlers family.members", () => {
         name: "Relay",
         role: "tier_1_support_specialist",
         team: "Support Team",
+        skills: ["argentos-code-verification"],
       },
       respond,
       req: { type: "req", id: "family-2", method: "family.register" },
@@ -98,6 +100,12 @@ describe("agentsHandlers family.members", () => {
     });
 
     expect(mocks.provisionFamilyWorker).toHaveBeenCalledTimes(1);
+    expect(mocks.provisionFamilyWorker).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "relay",
+        skills: ["argentos-code-verification"],
+      }),
+    );
     expect(respond).toHaveBeenCalledWith(
       true,
       {
@@ -105,6 +113,7 @@ describe("agentsHandlers family.members", () => {
           id: "relay",
           name: "Relay",
           team: "Support Team",
+          skills: ["argentos-code-verification"],
         }),
       },
       undefined,

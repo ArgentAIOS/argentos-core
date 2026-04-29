@@ -3,6 +3,7 @@ import type { PersonalSkillCandidate } from "../../memory/memu-types.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import {
   listAgentIds,
+  resolveAgentSkillsFilter,
   resolveAgentWorkspaceDir,
   resolveDefaultAgentId,
 } from "../../agents/agent-scope.js";
@@ -281,21 +282,11 @@ export const skillsHandlers: GatewayRequestHandlers = {
     const cfg = loadConfig();
     const agentIdRaw = typeof params?.agentId === "string" ? params.agentId.trim() : "";
     const agentId = agentIdRaw ? normalizeAgentId(agentIdRaw) : resolveDefaultAgentId(cfg);
-    if (agentIdRaw) {
-      const knownAgents = listAgentIds(cfg);
-      if (!knownAgents.includes(agentId)) {
-        respond(
-          false,
-          undefined,
-          errorShape(ErrorCodes.INVALID_REQUEST, `unknown agent id "${agentIdRaw}"`),
-        );
-        return;
-      }
-    }
     const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
     const report = buildWorkspaceSkillStatus(workspaceDir, {
       config: cfg,
       eligibility: { remote: getRemoteSkillEligibility() },
+      skillFilter: resolveAgentSkillsFilter(cfg, agentId),
     });
     respond(true, report, undefined);
   },

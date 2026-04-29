@@ -51,11 +51,8 @@ export function buildToolsStatusPayload(params: Record<string, unknown> = {}) {
   const knownAgentIds = new Set(listAgentIds(cfg));
   const defaultAgentId = resolveDefaultAgentId(cfg);
   const resolvedAgentId = normalizeAgentId(requestedAgentIdRaw || defaultAgentId);
-  if (requestedAgentIdRaw && !knownAgentIds.has(resolvedAgentId)) {
-    throw new Error(`unknown agent id "${requestedAgentIdRaw}"`);
-  }
-
-  const agentId = knownAgentIds.has(resolvedAgentId) ? resolvedAgentId : defaultAgentId;
+  const agentId =
+    requestedAgentIdRaw || knownAgentIds.has(resolvedAgentId) ? resolvedAgentId : defaultAgentId;
   const sessionKey = buildAgentMainSessionKey({ agentId });
   const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
   const agentDir = resolveAgentDir(cfg, agentId);

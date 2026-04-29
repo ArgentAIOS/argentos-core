@@ -3066,6 +3066,7 @@ export function ConfigPanel({
       alsoAllow?: string[];
       deny?: string[];
     };
+    skills?: string[];
     imageAnalysis?: {
       primary?: string;
       fallbacks?: string[];
@@ -3251,6 +3252,8 @@ export function ConfigPanel({
     eligible?: boolean;
     disabled?: boolean;
     blockedByAllowlist?: boolean;
+    blockedByAgentSkillAllowlist?: boolean;
+    selectedForAgent?: boolean;
     missing?: {
       bins?: string[];
       anyBins?: string[];
@@ -3461,6 +3464,7 @@ export function ConfigPanel({
   const [capabilitiesAllowDraft, setCapabilitiesAllowDraft] = useState("");
   const [capabilitiesAskDraft, setCapabilitiesAskDraft] = useState("");
   const [capabilitiesDenyDraft, setCapabilitiesDenyDraft] = useState("");
+  const [capabilitiesSkillDraft, setCapabilitiesSkillDraft] = useState("");
   const [capabilitiesSaving, setCapabilitiesSaving] = useState(false);
 
   // Gateway tab state
@@ -3972,6 +3976,9 @@ export function ConfigPanel({
           defaultId?: string;
           agents?: Array<{ id?: string; name?: string }>;
         }>("agents.list").catch(() => null);
+        const familyPayload = await gatewayRequest<{
+          members?: Array<{ id?: string; name?: string; role?: string; team?: string }>;
+        }>("family.members").catch(() => null);
 
         const options = Array.isArray(agentsPayload?.agents)
           ? agentsPayload.agents
@@ -3984,6 +3991,19 @@ export function ConfigPanel({
               })
               .filter((row: AgentOption | null): row is AgentOption => Boolean(row))
           : [];
+        if (Array.isArray(familyPayload?.members)) {
+          const seen = new Set(options.map((row) => row.id));
+          for (const member of familyPayload.members) {
+            const id = typeof member?.id === "string" ? member.id.trim() : "";
+            if (!id || seen.has(id)) continue;
+            const name =
+              typeof member?.name === "string" && member.name.trim() ? member.name.trim() : id;
+            const team =
+              typeof member?.team === "string" && member.team.trim() ? member.team.trim() : "";
+            options.push({ id, label: team ? `${name} (${team})` : name });
+            seen.add(id);
+          }
+        }
 
         const resolvedDefaultAgentId =
           (typeof agentsPayload?.defaultId === "string" && agentsPayload.defaultId.trim()) ||
@@ -4033,6 +4053,7 @@ export function ConfigPanel({
         setCapabilitiesAllowDraft(formatMultilineList(toolsSettings?.allow));
         setCapabilitiesAskDraft(formatMultilineList(toolsSettings?.ask));
         setCapabilitiesDenyDraft(formatMultilineList(toolsSettings?.deny));
+        setCapabilitiesSkillDraft(formatMultilineList(agentSettingsPayload?.skills));
         setCapabilitiesUpdatedAt(Date.now());
       } catch (err) {
         console.error("[Capabilities] Failed to load capabilities:", err);
@@ -5524,6 +5545,43 @@ export function ConfigPanel({
     capabilitiesDenyDraft,
     loadCapabilities,
   ]);
+
+  const saveCapabilitiesSkillMapping = useCallback(async () => {
+    const targetAgentId = capabilitiesAgentId.trim() || defaultAgentId.trim() || "main";
+    if (!targetAgentId) return;
+    try {
+      setCapabilitiesSaving(true);
+      setCapabilitiesMessage(null);
+      const skills = parseMultilineList(capabilitiesSkillDraft);
+      const response = await fetch(
+        `/api/settings/agent?agentId=${encodeURIComponent(targetAgentId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ skills }),
+        },
+      );
+      if (!response.ok) {
+        const details = await response.json().catch(() => ({}));
+        throw new Error(
+          typeof details?.error === "string" ? details.error : `HTTP ${response.status}`,
+        );
+      }
+      setCapabilitiesMessage({
+        type: "success",
+        text: `Saved skill mapping for ${targetAgentId}.`,
+      });
+      await loadCapabilities(targetAgentId);
+    } catch (err) {
+      console.error("[Capabilities] Failed to save skill mapping:", err);
+      setCapabilitiesMessage({
+        type: "error",
+        text: `Failed to save skill mapping: ${err instanceof Error ? err.message : "request failed"}`,
+      });
+    } finally {
+      setCapabilitiesSaving(false);
+    }
+  }, [capabilitiesAgentId, defaultAgentId, capabilitiesSkillDraft, loadCapabilities]);
 
   const buildIntentPayloadFromDraft = useCallback(() => {
     if (!intentDraft) {
@@ -11569,6 +11627,43 @@ export function ConfigPanel({
                       </div>
                     </div>
 
+                    <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <div className="space-y-1">
+                          <h3 className="text-white/90 font-medium">Skill Mapping</h3>
+                          <div className="text-white/45 text-xs max-w-3xl">
+                            This sets the selected agent&apos;s skill allowlist. Leave it empty to
+                            expose all eligible workspace and shared skills.
+                          </div>
+                        </div>
+                        <div className="text-[11px] text-white/40 rounded-lg border border-white/10 px-3 py-1.5 bg-gray-900/30">
+                          {parseMultilineList(capabilitiesSkillDraft).length || "All"} mapped
+                        </div>
+                      </div>
+                      <textarea
+                        value={capabilitiesSkillDraft}
+                        onChange={(e) => setCapabilitiesSkillDraft(e.target.value)}
+                        rows={6}
+                        placeholder={
+                          "argentos-family-team-development\nargentos-implementation-planning\nargentos-code-verification"
+                        }
+                        className="w-full rounded-lg border border-white/10 bg-gray-900/40 px-3 py-2 text-sm text-white/85 focus:outline-none focus:border-cyan-500/50 resize-y"
+                      />
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div className="text-[11px] text-white/35">
+                          Skill names must match the entries below.
+                        </div>
+                        <button
+                          onClick={() => void saveCapabilitiesSkillMapping()}
+                          disabled={capabilitiesSaving || capabilitiesLoading}
+                          className="inline-flex items-center gap-2 rounded-lg bg-cyan-500/15 border border-cyan-500/25 px-3 py-2 text-sm text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-50"
+                        >
+                          <Sparkles className="w-4 h-4" />
+                          {capabilitiesSaving ? "Saving..." : "Save skill mapping"}
+                        </button>
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                       <div className="bg-white/5 rounded-xl p-4 space-y-3">
                         <div className="flex items-center justify-between">
@@ -11602,7 +11697,11 @@ export function ConfigPanel({
                                           : "bg-yellow-500/15 text-yellow-300 border border-yellow-500/20"
                                       }`}
                                     >
-                                      {skill.eligible ? "ready" : "blocked"}
+                                      {skill.selectedForAgent
+                                        ? "mapped"
+                                        : skill.eligible
+                                          ? "ready"
+                                          : "blocked"}
                                     </span>
                                   </div>
                                   {skill.description && (
@@ -11612,16 +11711,19 @@ export function ConfigPanel({
                                   )}
                                   {!skill.eligible && (
                                     <div className="text-[10px] text-white/40">
-                                      Missing:{" "}
-                                      {[
-                                        ...(skill.missing?.bins ?? []),
-                                        ...(skill.missing?.anyBins ?? []),
-                                        ...(skill.missing?.env ?? []),
-                                        ...(skill.missing?.config ?? []),
-                                        ...(skill.missing?.os ?? []),
-                                      ]
-                                        .slice(0, 4)
-                                        .join(", ") || "requirements"}
+                                      {skill.blockedByAgentSkillAllowlist
+                                        ? "Not in this agent's skill mapping"
+                                        : `Missing: ${
+                                            [
+                                              ...(skill.missing?.bins ?? []),
+                                              ...(skill.missing?.anyBins ?? []),
+                                              ...(skill.missing?.env ?? []),
+                                              ...(skill.missing?.config ?? []),
+                                              ...(skill.missing?.os ?? []),
+                                            ]
+                                              .slice(0, 4)
+                                              .join(", ") || "requirements"
+                                          }`}
                                     </div>
                                   )}
                                 </div>

@@ -13,6 +13,10 @@
  */
 
 import { Type } from "@sinclair/typebox";
+import type {
+  DispatchContractEvent,
+  DispatchContractRecord,
+} from "../../infra/dispatch-contracts.js";
 import type { GatewayMessageChannel } from "../../utils/message-channel.js";
 import type { AnyAgentTool } from "./common.js";
 import { getAgentFamily } from "../../data/agent-family.js";
@@ -53,6 +57,11 @@ const FamilyToolSchema = Type.Object({
   persona: Type.Optional(Type.String({ description: "System prompt / persona for the agent" })),
   tools: Type.Optional(
     Type.Array(Type.String(), { description: "Tool allowlist (e.g. web_search, memory_recall)" }),
+  ),
+  skills: Type.Optional(
+    Type.Array(Type.String(), {
+      description: "Skill allowlist for this family agent (e.g. argentos-code-verification)",
+    }),
   ),
   model: Type.Optional(Type.String({ description: "Model ID (e.g. claude-sonnet-4-20250514)" })),
   team: Type.Optional(Type.String({ description: "Team name (e.g. dev-team, marketing-team)" })),
@@ -450,29 +459,7 @@ async function handleContractHistory(params: Record<string, unknown>) {
   });
 }
 
-function serializeDispatchContract(contract: {
-  contractId: string;
-  taskId: string | null;
-  task: string;
-  targetAgentId: string;
-  dispatchedBy: string;
-  toolGrantSnapshot: string[];
-  timeoutMs: number;
-  heartbeatIntervalMs: number;
-  status: string;
-  createdAt: Date;
-  updatedAt: Date;
-  expiresAt: Date | null;
-  acceptedAt: Date | null;
-  startedAt: Date | null;
-  lastHeartbeatAt: Date | null;
-  completedAt: Date | null;
-  failedAt: Date | null;
-  cancelledAt: Date | null;
-  failureReason: string | null;
-  resultSummary: string | null;
-  metadata: Record<string, unknown>;
-}) {
+function serializeDispatchContract(contract: DispatchContractRecord) {
   return {
     contract_id: contract.contractId,
     task_id: contract.taskId,
@@ -498,13 +485,7 @@ function serializeDispatchContract(contract: {
   };
 }
 
-function serializeDispatchContractEvent(event: {
-  id: number;
-  contractId: string;
-  status: string;
-  eventAt: Date;
-  payload: Record<string, unknown>;
-}) {
+function serializeDispatchContractEvent(event: DispatchContractEvent) {
   return {
     id: event.id,
     contract_id: event.contractId,
@@ -541,6 +522,7 @@ async function handleRegister(params: Record<string, unknown>, callerAgentId?: s
   const role = readStringParam(params, "role", { required: true });
   const persona = readStringParam(params, "persona");
   const tools = readStringArrayParam(params, "tools");
+  const skills = readStringArrayParam(params, "skills");
   const model = readStringParam(params, "model");
   const team = readStringParam(params, "team");
 
@@ -558,6 +540,7 @@ async function handleRegister(params: Record<string, unknown>, callerAgentId?: s
     role,
     persona,
     tools,
+    skills,
     model,
     team,
     callerAgentId,
@@ -572,6 +555,7 @@ async function handleRegister(params: Record<string, unknown>, callerAgentId?: s
       team: provisioned.team,
       model: provisioned.model,
       provider: provisioned.provider,
+      skills: provisioned.skills,
       identityDir: provisioned.identityDir,
     },
     redis: provisioned.redis,
@@ -591,11 +575,15 @@ async function handleList() {
     name: m.name,
     role: m.role,
     team: m.team ?? "unassigned",
+    skills: m.skills ?? [],
     status: m.status,
     alive: m.alive,
   }));
   const toon = encodeForPrompt({ count: agents.length, agents });
-  return { content: [{ type: "text" as const, text: toon }] };
+  return {
+    content: [{ type: "text" as const, text: toon }],
+    details: { count: agents.length, agents },
+  };
 }
 
 // ── message ───────────────────────────────────────────────────────────────
@@ -695,7 +683,10 @@ async function handleInbox(params: Record<string, unknown>, callerAgentId?: stri
     const toonEncoded =
       messages.length > 0 ? encodeForPrompt({ agentId, count: messages.length, messages }) : null;
     return toonEncoded
-      ? { content: [{ type: "text" as const, text: toonEncoded }] }
+      ? {
+          content: [{ type: "text" as const, text: toonEncoded }],
+          details: { agentId, count: messages.length, messages },
+        }
       : jsonResult({ agentId, count: 0, messages: [] });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -1021,8 +1012,7 @@ async function handleSpawn(
     if (redis) {
       await refreshPresence(redis, id);
       await setAgentState(redis, id, {
-        status: "working",
-        currentTask: task.slice(0, 200),
+        status: "processing",
         lastActivity: new Date().toISOString(),
       });
     }

@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { ArgentConfig } from "../config/config.js";
+import { loadConfig, writeConfigFile } from "../config/config.js";
 import { getAgentFamily } from "../data/agent-family.js";
 
 const ARGENTOS_HOME = path.join(process.env.HOME ?? "", ".argentos");
@@ -20,6 +22,7 @@ export interface FamilyWorkerProvisionParams {
   role: string;
   persona?: string;
   tools?: string[];
+  skills?: string[];
   model?: string;
   team?: string;
   provider?: string;
@@ -33,6 +36,7 @@ export interface FamilyWorkerProvisionResult {
   team: string;
   model: string;
   provider: string | null;
+  skills: string[];
   identityDir: string;
   rootDir: string;
   redis: boolean;
@@ -44,14 +48,31 @@ interface IdentityParams {
   role: string;
   persona?: string;
   tools?: string[];
+  skills?: string[];
   model?: string;
   team?: string;
   provider?: string;
 }
 
+function normalizeStringList(list: string[] | undefined): string[] | undefined {
+  if (!Array.isArray(list)) return undefined;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of list) {
+    const value = String(item ?? "").trim();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+  }
+  return out.length > 0 ? out : [];
+}
+
 function buildTemplateVars(p: IdentityParams): Record<string, string> {
   const toolsList = p.tools?.length
     ? p.tools.map((t) => `- \`${t}\``).join("\n")
+    : "- (configured at runtime)";
+  const skillsList = p.skills?.length
+    ? p.skills.map((skill) => `- \`${skill}\``).join("\n")
     : "- (configured at runtime)";
 
   const persona = p.persona
@@ -66,6 +87,7 @@ function buildTemplateVars(p: IdentityParams): Record<string, string> {
     model: p.model ?? "default (inherited from config)",
     persona,
     tools_list: toolsList,
+    skills_list: skillsList,
   };
 }
 
@@ -117,6 +139,7 @@ function bootstrapIdentity(params: IdentityParams): { agentDir: string; rootDir:
     ...(params.model ? { model: params.model } : {}),
     ...(params.provider ? { provider: params.provider } : {}),
     ...(params.tools?.length ? { tools: params.tools } : {}),
+    ...(params.skills ? { skills: params.skills } : {}),
   };
   fs.writeFileSync(identityJsonPath, JSON.stringify(identityPayload, null, 2), "utf-8");
 
@@ -131,12 +154,60 @@ function inferProvider(model: string | undefined): string | undefined {
   return trimmed.slice(0, slash).trim() || undefined;
 }
 
+function upsertAgentConfigEntry(
+  cfg: ArgentConfig,
+  params: {
+    id: string;
+    name: string;
+    agentDir: string;
+    workspace: string;
+    model?: string;
+    tools?: string[];
+    skills?: string[];
+  },
+): boolean {
+  if (!cfg.agents) cfg.agents = {};
+  if (!Array.isArray(cfg.agents.list)) cfg.agents.list = [];
+  let changed = false;
+  let entry = cfg.agents.list.find((candidate) => candidate?.id === params.id);
+  if (!entry) {
+    entry = { id: params.id };
+    cfg.agents.list.push(entry);
+    changed = true;
+  }
+
+  const assign = <K extends keyof typeof entry>(key: K, value: (typeof entry)[K]) => {
+    if (JSON.stringify(entry?.[key]) === JSON.stringify(value)) return;
+    entry![key] = value;
+    changed = true;
+  };
+
+  assign("name", params.name);
+  assign("agentDir", params.agentDir);
+  assign("workspace", params.workspace);
+  if (params.model) {
+    assign("model", params.model);
+  }
+  if (params.skills !== undefined) {
+    assign("skills", params.skills);
+  }
+  if (params.tools !== undefined) {
+    const existingTools = entry.tools && typeof entry.tools === "object" ? entry.tools : {};
+    const nextTools = { ...existingTools, allow: params.tools };
+    assign("tools", nextTools);
+  }
+  return changed;
+}
+
 export async function provisionFamilyWorker(
   params: FamilyWorkerProvisionParams,
 ): Promise<FamilyWorkerProvisionResult> {
   const config: Record<string, unknown> = {};
+  const tools = normalizeStringList(params.tools);
+  const skills = normalizeStringList(params.skills);
   if (params.persona) config.persona = params.persona;
-  if (params.tools?.length) config.tools = params.tools;
+  if (tools?.length) config.tools = tools;
+  if (skills) config.skills = skills;
   if (params.model) config.model = params.model;
   if (params.team) config.team = params.team;
   const provider = params.provider ?? inferProvider(params.model);
@@ -150,11 +221,30 @@ export async function provisionFamilyWorker(
     name: params.name,
     role: params.role,
     persona: params.persona,
-    tools: params.tools,
+    tools,
+    skills,
     model: params.model,
     team: params.team,
     provider,
   });
+
+  try {
+    const cfg = loadConfig();
+    const changed = upsertAgentConfigEntry(cfg, {
+      id: params.id,
+      name: params.name,
+      agentDir,
+      workspace: path.join(ARGENTOS_HOME, `workspace-${params.id}`),
+      model: params.model,
+      tools,
+      skills,
+    });
+    if (changed) {
+      await writeConfigFile(cfg);
+    }
+  } catch {
+    // Config sync is best-effort; PostgreSQL + identity files remain authoritative.
+  }
 
   let redisOk = false;
   try {
@@ -191,6 +281,7 @@ export async function provisionFamilyWorker(
     team: params.team ?? "unassigned",
     model: params.model ?? "default",
     provider: provider ?? null,
+    skills: skills ?? [],
     identityDir: agentDir,
     rootDir,
     redis: redisOk,

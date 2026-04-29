@@ -11889,9 +11889,6 @@ app.get("/api/settings/agent", (req, res) => {
     const loadProfile = resolveLoadProfileConfig(config);
     const target = parseAgentSettingsTarget(req);
     const selectedAgent = findConfigAgent(config, target.agentId);
-    if (target.agentId && !selectedAgent) {
-      return res.status(404).json({ error: `Unknown agent: ${target.agentId}` });
-    }
     const defaults = config?.agents?.defaults || {};
     const kernelDefaults = defaults.kernel || {};
     const defaultAgentId = resolveDefaultAgentId(config);
@@ -12119,6 +12116,10 @@ app.get("/api/settings/agent", (req, res) => {
           ? toolsScope.deny.filter((entry) => typeof entry === "string")
           : [],
       },
+      skills:
+        target.agentId && Array.isArray(selectedAgent?.skills)
+          ? selectedAgent.skills.filter((entry) => typeof entry === "string")
+          : [],
       imageAnalysis: normalizeImageAnalysisConfig(config),
       backgroundModels: {
         kernel: kernelBackgroundSelection,
@@ -12263,11 +12264,12 @@ app.patch("/api/settings/agent", (req, res) => {
       }
       if (
         req.body.executionWorker === undefined &&
-        (req.body.tools === undefined || typeof req.body.tools !== "object")
+        (req.body.tools === undefined || typeof req.body.tools !== "object") &&
+        req.body.skills === undefined
       ) {
-        return res
-          .status(400)
-          .json({ error: "executionWorker or tools patch object required for per-agent updates" });
+        return res.status(400).json({
+          error: "executionWorker, tools, or skills patch object required for per-agent updates",
+        });
       }
       if (!Array.isArray(config.agents.list)) config.agents.list = [];
       let agentEntry = findConfigAgent(config, target.agentId);
@@ -12316,6 +12318,15 @@ app.patch("/api/settings/agent", (req, res) => {
         assignList("ask");
         assignList("alsoAllow");
         assignList("deny");
+      }
+      if (req.body.skills !== undefined) {
+        if (Array.isArray(req.body.skills)) {
+          agentEntry.skills = req.body.skills
+            .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+            .map((entry) => entry.trim());
+        } else {
+          delete agentEntry.skills;
+        }
       }
 
       writeArgentConfig(config);
