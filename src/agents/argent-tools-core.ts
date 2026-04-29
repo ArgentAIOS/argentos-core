@@ -18,6 +18,7 @@ import { createAudioAlertTool } from "./tools/audio-alert-tool.js";
 import { createAudioGenerationTool } from "./tools/audio-generation-tool.js";
 import { createBrowserTool } from "./tools/browser-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
+import { createChangelogTool } from "./tools/changelog-tool.js";
 import { createChannelConfigTool } from "./tools/channel-config-tool.js";
 import { createConnectorSetupTool } from "./tools/connector-setup-tool.js";
 import { createContemplationTool } from "./tools/contemplation-tool.js";
@@ -389,6 +390,7 @@ export function createArgentTools(options?: {
     createServiceKeysTool(),
     createSkillsTool({ config: options?.config }),
     createMarketplaceTool(),
+    createChangelogTool(),
     createTerminalTool(),
     createGithubIssueTool(),
     createMeetingRecorderTool({ agentSessionKey: options?.agentSessionKey }),
