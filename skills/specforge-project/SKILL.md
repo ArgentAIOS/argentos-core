@@ -23,6 +23,7 @@ Use this skill when the user says things like:
 2. Follow the returned `guidance`.
 3. Keep the conversation in the current SpecForge stage until the tool advances it.
 4. Do not implement, scaffold, assign tasks, or create execution work until SpecForge reaches approval/execution handoff.
+5. After approval, route code/project execution to the coding family team by default and keep an operator-visible orchestration loop.
 
 ## Stage Discipline
 
@@ -30,7 +31,7 @@ Use this skill when the user says things like:
 - `intake_interview`: ask one focused intake question at a time.
 - `draft_review`: draft/update the PRD or implementation spec and request feedback.
 - `awaiting_approval`: wait for explicit `APPROVE` or `REQUEST CHANGES`.
-- `approved_execution`: implementation handoff is allowed.
+- `approved_execution`: implementation handoff is allowed. Use `family.dispatch_contracted` for auditable development work with explicit `toolsAllow`, timeout, and heartbeat settings. Use `family.dispatch` for lighter development work; technical/code tasks auto-prefer the `dev-team` family specialists. Use `family.spawn` with `mode="family"` only when a specific named coding family member is required. Use `team_spawn` when the approved plan needs multiple coordinated agents with dependencies. Use `sessions_spawn` only for a single isolated background task when family/team routing does not fit. After handoff, keep checking `family.contract_history`, `team_status`, and completion announcements; update the operator when work starts, blocks, completes, fails, or changes scope.
 
 ## Commands
 

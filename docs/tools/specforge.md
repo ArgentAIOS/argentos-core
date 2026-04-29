@@ -56,6 +56,32 @@ SpecForge enforces this order:
 Implementation, scaffolding, task assignment, and orchestration should not start
 before `approved_execution`.
 
+## Execution Handoff
+
+After approval, SpecForge should route code/project execution to the coding
+family team by default:
+
+- Use `family.dispatch_contracted` for auditable development work with explicit
+  `toolsAllow`, timeout, and heartbeat settings.
+- Use `family.dispatch` for lighter development work. Technical/code tasks
+  auto-prefer the `dev-team` family specialists.
+- Use `family.spawn` with `mode="family"` only when a specific named coding
+  family member is required.
+- Use `team_spawn` when the approved plan needs multiple coordinated agents with
+  shared dependencies.
+- Use `sessions_spawn` only for a single isolated background task when
+  family/team routing does not fit.
+
+Each handoff task should stay contracted with files to edit, acceptance checks,
+tests, non-scope, and docs impact.
+
+The main agent remains the orchestrator after handoff. It should keep checking
+`family.contract_history` for active contracts and heartbeat/timeouts,
+`team_status` for member/task/dependency state when `team_spawn` is used, and
+completion announcements mirrored back into the requester transcript. It should
+update the operator when work starts, blocks, completes, fails, or changes scope,
+and escalate blocked or expired contracts instead of silently waiting.
+
 ## Core Boundary
 
 Core owns the strict guide-mode intake and approval flow. Business-only

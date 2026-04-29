@@ -236,13 +236,27 @@ function buildGuidePrompt(session: SpecforgeGuideSession): string {
     session.projectType === "unknown"
       ? "unknown"
       : `${session.projectType} (${session.projectType === "brownfield" ? "existing codebase" : "new build"})`;
+  const executionHandoff = [
+    "After approval, route code/project execution to the coding family team by default:",
+    "- Use family.dispatch_contracted for auditable development work with explicit toolsAllow, timeout, and heartbeat_interval_ms.",
+    "- Use family.dispatch for lighter development work; technical/code tasks auto-prefer the dev-team family specialists.",
+    '- Use family.spawn with mode="family" only when a specific named coding family member is required.',
+    "- Use team_spawn when the approved plan needs multiple coordinated agents with shared dependencies.",
+    "- Use sessions_spawn only for a single isolated background task when family/team routing does not fit.",
+    "- Keep each task contracted with files_to_edit, acceptance criteria, tests, non-scope, and docs impact.",
+    "Orchestrator loop after handoff:",
+    "- Check family.contract_history for active contracts and heartbeat/timeouts.",
+    "- Check team_status for member/task/dependency state when team_spawn is used.",
+    "- Send concise operator updates when work starts, blocks, completes, fails, or changes scope.",
+    "- Escalate blocked or expired contracts instead of silently waiting.",
+  ];
   const contract = [
     "SpecForge strict process (mandatory, no skipping):",
     "1. Confirm project type: GREENFIELD vs BROWNFIELD.",
     "2. Run intake interview one focused question at a time.",
     "3. Draft the PRD/spec and collect feedback plus explicit non-scope.",
     "4. Wait for explicit approval before implementation, scaffolding, or task assignment.",
-    "5. After approval only, hand off atomic implementation tasks with files, acceptance checks, and non-scope.",
+    "5. After approval only, hand off contracted implementation work through family/team routing.",
   ];
 
   if (session.stage === "project_type_gate") {
@@ -300,7 +314,7 @@ function buildGuidePrompt(session: SpecforgeGuideSession): string {
     `Current stage: ${session.stage}.`,
     `Project type: ${projectTypeNote}.`,
     "Approval received. Implementation handoff is unlocked.",
-    "Create atomic tasks with files_to_edit, acceptance criteria, tests, non-scope, and docs impact.",
+    ...executionHandoff,
   ].join("\n");
 }
 

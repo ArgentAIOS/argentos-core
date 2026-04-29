@@ -97,7 +97,56 @@ describe("specforge conductor strict guide mode", () => {
     });
     expect(approved.reason).toBe("guide_mode_approved");
     expect(approved.guidance).toContain("Approval received.");
+    expect(approved.guidance).toContain("family.dispatch_contracted");
+    expect(approved.guidance).toContain("family.dispatch");
+    expect(approved.guidance).toContain("dev-team family specialists");
+    expect(approved.guidance).toContain("family.contract_history");
+    expect(approved.guidance).toContain("heartbeat/timeouts");
+    expect(approved.guidance).toContain("operator updates");
+    expect(approved.guidance).toContain("team_spawn");
+    expect(approved.guidance).toContain(
+      "sessions_spawn only for a single isolated background task",
+    );
     expect(getSpecforgeGuideStateForTests(base.sessionKey)?.stage).toBe("approved_execution");
+  });
+
+  it("keeps family/team routing visible on later approved-execution turns", async () => {
+    await maybeKickoffSpecforgeFromMessage({
+      ...base,
+      message: "We need to build a new coding project",
+    });
+    await maybeKickoffSpecforgeFromMessage({
+      ...base,
+      message:
+        "greenfield. problem users scope success constraints non-scope stack are all covered for this effort.",
+    });
+    await maybeKickoffSpecforgeFromMessage({
+      ...base,
+      message: "draft prd",
+    });
+    await maybeKickoffSpecforgeFromMessage({
+      ...base,
+      message: "continue",
+    });
+    await maybeKickoffSpecforgeFromMessage({
+      ...base,
+      message: "Approve",
+    });
+
+    const followUp = await maybeKickoffSpecforgeFromMessage({
+      ...base,
+      message: "Break this into implementation tasks.",
+    });
+
+    expect(followUp.reason).toBe("guide_mode_execution_active");
+    expect(followUp.guidance).toContain("family.dispatch_contracted");
+    expect(followUp.guidance).toContain("family.dispatch");
+    expect(followUp.guidance).toContain("coding family team");
+    expect(followUp.guidance).toContain("Check team_status");
+    expect(followUp.guidance).toContain("Escalate blocked or expired contracts");
+    expect(followUp.guidance).toContain(
+      "contracted implementation work through family/team routing",
+    );
   });
 
   it("routes request-changes back to intake", async () => {

@@ -33,7 +33,14 @@ Use this tool whenever the user starts or continues a software/project build wor
 Actions:
 - handle: process the latest user message and advance the workflow
 - status: inspect current workflow stage without mutation
-- exit: clear active workflow state for this session`,
+- exit: clear active workflow state for this session
+
+After SpecForge approval, route code/project execution through family.dispatch by
+default so technical/code work reaches the dev-team family specialists. Prefer
+family.dispatch_contracted for auditable work that needs heartbeat/timeout
+tracking. Use team_spawn when the approved plan needs coordinated multi-agent
+dependencies, then monitor team_status and family.contract_history while
+reporting starts, blocks, completions, failures, and scope changes.`,
     parameters: SpecforgeToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
