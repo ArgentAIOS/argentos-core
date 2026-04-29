@@ -239,7 +239,7 @@ describe("runEmbeddedPiAgent commitment enforcement", () => {
     expect(result.meta.toolValidation?.missingCommitments.map((entry) => entry.kind)).toContain(
       "task_result",
     );
-    expect(result.payloads?.[0]?.text).toContain("Tool execution guardrail blocked this reply");
+    expect(result.payloads?.[0]?.text).toContain("I wasn't able to complete the requested action");
     expect(persistCommitmentMemoryMock).toHaveBeenCalledTimes(1);
   });
 
@@ -274,7 +274,84 @@ describe("runEmbeddedPiAgent commitment enforcement", () => {
     expect(result.meta.toolValidation?.missingClaimLabels).toEqual(
       expect.arrayContaining(["active work claim", "research action"]),
     );
-    expect(result.payloads?.[0]?.text).toContain("Tool execution guardrail blocked this reply");
+    expect(result.payloads?.[0]?.text).toContain("I wasn't able to complete the requested action");
     expect(persistCommitmentMemoryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries memory/rules answers until a memory recall tool runs", async () => {
+    const failedText = "Our rules are to check evidence and be careful.";
+    const repairedText = "I checked memory. Our rules include evidence before claims.";
+
+    runEmbeddedAttemptMock
+      .mockResolvedValueOnce(
+        makeAttempt({
+          assistantTexts: [failedText],
+          toolMetas: [{ toolName: "read" }],
+          lastAssistant: buildAssistant(failedText),
+        }),
+      )
+      .mockResolvedValueOnce(
+        makeAttempt({
+          assistantTexts: [repairedText],
+          toolMetas: [{ toolName: "memory_recall" }],
+          lastAssistant: buildAssistant(repairedText),
+        }),
+      );
+
+    const result = await runEmbeddedPiAgent({
+      sessionId: "session:test",
+      sessionKey: "agent:test:memory-recall-repair",
+      sessionFile: nextSessionFile(),
+      workspaceDir,
+      agentDir,
+      config: makeConfig(),
+      prompt: "What are our rules?",
+      provider: "openai",
+      model: "mock-1",
+      timeoutMs: 5_000,
+      runId: "run:memory-recall-repair",
+    });
+
+    expect(runEmbeddedAttemptMock).toHaveBeenCalledTimes(2);
+    expect(
+      String((runEmbeddedAttemptMock.mock.calls[1]?.[0] as { prompt?: string }).prompt),
+    ).toContain("MEMORY_RECALL_GUARDRAIL");
+    expect(result.meta.toolValidation?.valid).toBe(true);
+    expect(result.meta.toolValidation?.commitmentDisposition).toBe("repaired");
+    expect(result.meta.toolValidation?.evidenceTools).toContain("memory_recall");
+    expect(result.payloads?.[0]?.text).toContain("I checked memory");
+  });
+
+  it("blocks memory/rules answers when recall is still skipped after retry", async () => {
+    const responseText = "Our rules are to check evidence and be careful.";
+
+    runEmbeddedAttemptMock.mockResolvedValue(
+      makeAttempt({
+        assistantTexts: [responseText],
+        toolMetas: [{ toolName: "read" }],
+        lastAssistant: buildAssistant(responseText),
+      }),
+    );
+
+    const result = await runEmbeddedPiAgent({
+      sessionId: "session:test",
+      sessionKey: "agent:test:memory-recall-block",
+      sessionFile: nextSessionFile(),
+      workspaceDir,
+      agentDir,
+      config: makeConfig(),
+      prompt: "Daily Memory Files. Can you give me the path to those files?",
+      provider: "openai",
+      model: "mock-1",
+      timeoutMs: 5_000,
+      runId: "run:memory-recall-block",
+    });
+
+    expect(runEmbeddedAttemptMock).toHaveBeenCalledTimes(2);
+    expect(result.meta.toolValidation?.valid).toBe(false);
+    expect(result.meta.toolValidation?.commitmentDisposition).toBe("blocked");
+    expect(result.meta.toolValidation?.commitmentBlockedReason).toBe("memory recall");
+    expect(result.meta.toolValidation?.missingClaimLabels).toContain("memory recall");
+    expect(result.payloads?.[0]?.text).toContain("without first running memory recall");
   });
 });

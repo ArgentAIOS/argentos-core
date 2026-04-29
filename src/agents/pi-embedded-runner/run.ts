@@ -94,6 +94,7 @@ const MAX_UNAVAILABLE_MODEL_QUARANTINE_MS = 7 * 24 * 60 * 60_000;
 // Allow one extra retry to recover from transient "tool call as plain text" outputs.
 const MAX_TOOL_CLAIM_RETRIES = 2;
 const MAX_TOOL_CLAIM_EMERGENCY_RETRIES = 1;
+const MAX_MEMORY_RECALL_RETRIES = 1;
 const MAX_SUPPORT_QUALITY_RETRIES = 1;
 const STRUCTURED_BROWSER_JSON_SNIPPET_RE =
   /\{[\s\S]{0,1200}?"action"\s*:\s*"(?:act|open|navigate|focus|close|snapshot|screenshot|tabs|status|start|stop|console|pdf|upload|dialog)"[\s\S]{0,1200}?"request"\s*:\s*\{[\s\S]{0,400}?"kind"\s*:\s*"(?:click|type|press|hover|wait|evaluate|fill|select|navigate|scroll|upload|dialog|close|open|snapshot|screenshot)"[\s\S]{0,400}?\}[\s\S]{0,400}?\}/i;
@@ -253,6 +254,79 @@ function buildCommitmentGuardrailText(
     text += "4. If clarification is needed, ask the specific questions NOW.\n";
   }
   text += "[/TOOL_EXECUTION_GUARDRAIL]";
+  return text;
+}
+
+const MEMORY_RECALL_TOOL_NAMES = new Set([
+  "memory_search",
+  "memory_get",
+  "memory_recall",
+  "memory_timeline",
+  "memory_graph",
+]);
+
+const MEMORY_RECALL_PROMPT_PATTERNS = [
+  /\b(?:memory|memories|remember|recall|memor(?:y|ies)|daily memory files?)\b/i,
+  /\b(?:our|the|workspace|agent)\s+rules\b/i,
+  /\b(?:what|which|where|when|why|how)\b[\s\S]{0,180}\b(?:rules|prior work|previous|earlier|before|decision|decided|preference|todo|path|file|files|happened|accomplished)\b/i,
+  /\b(?:SOUL|USER|MEMORY|HEARTBEAT|WORKFLOWS)\.md\b/i,
+  /\b(?:what happened|what changed|what did we|what have we|what were we|where were we)\b[\s\S]{0,120}\b(?:last|yesterday|today|week|month|recently|earlier|before|decided|remember|memory|project)\b/i,
+];
+
+type MemoryRecallRequirement = {
+  required: boolean;
+  satisfied: boolean;
+  reason?: string;
+  executedMemoryTools: string[];
+};
+
+function validateMemoryRecallRequirement(params: {
+  prompt: string;
+  executedToolNames: string[];
+  disabled?: boolean;
+  hasConfig?: boolean;
+}): MemoryRecallRequirement {
+  if (params.disabled || !params.hasConfig) {
+    return { required: false, satisfied: true, executedMemoryTools: [] };
+  }
+  const prompt = params.prompt.trim();
+  if (!prompt) {
+    return { required: false, satisfied: true, executedMemoryTools: [] };
+  }
+  const matched = MEMORY_RECALL_PROMPT_PATTERNS.find((pattern) => pattern.test(prompt));
+  if (!matched) {
+    return { required: false, satisfied: true, executedMemoryTools: [] };
+  }
+  const executedMemoryTools = params.executedToolNames
+    .map((name) => name.trim().toLowerCase())
+    .filter((name) => MEMORY_RECALL_TOOL_NAMES.has(name));
+  return {
+    required: true,
+    satisfied: executedMemoryTools.length > 0,
+    reason: "memory/prior-work/rules prompt",
+    executedMemoryTools,
+  };
+}
+
+function buildMemoryRecallGuardrailText(params: {
+  failedResponse?: string;
+  reason?: string;
+}): string {
+  let text = "[MEMORY_RECALL_GUARDRAIL]\n";
+  text +=
+    "CRITICAL FAILURE: The user asked about memory, prior work, rules, decisions, preferences, todos, dates, or saved files, but you answered without using a memory recall tool.\n";
+  text += `Reason: ${params.reason ?? "memory recall required"}\n`;
+  if (params.failedResponse) {
+    text += `Your failed response was:\n---\n${params.failedResponse}\n---\n`;
+  }
+  text += "\n";
+  text += "RULES:\n";
+  text +=
+    "1. You MUST call `memory_recall`, `memory_timeline`, or `memory_search` before answering.\n";
+  text += "2. A plain `read` call is not enough for this class of question.\n";
+  text +=
+    "3. After recall, answer only from retrieved evidence; if evidence is weak, say that explicitly.\n";
+  text += "[/MEMORY_RECALL_GUARDRAIL]";
   return text;
 }
 
@@ -418,6 +492,7 @@ export async function runEmbeddedPiAgent(
       const basePromptText = promptText;
       let toolClaimRetryCount = 0;
       let toolClaimEmergencyRetryCount = 0;
+      let memoryRecallRetryCount = 0;
       let commitmentRepairCount = 0;
       let sawCommitmentMismatch = false;
       let firstCommitmentMismatchAt: number | undefined;
@@ -1194,7 +1269,15 @@ export async function runEmbeddedPiAgent(
             didSendViaMessagingTool: attempt.didSendViaMessagingTool,
             taskMutationEvidence: attempt.taskMutationEvidence ?? [],
           });
+          const memoryRecallValidation = validateMemoryRecallRequirement({
+            prompt: basePromptText,
+            executedToolNames: attempt.toolMetas.map((entry) => entry.toolName),
+            disabled: params.disableTools,
+            hasConfig: Boolean(params.config),
+          });
           const hasToolClaimMismatch = hasCommitmentMismatch(toolValidation);
+          const hasMemoryRecallMismatch =
+            memoryRecallValidation.required && !memoryRecallValidation.satisfied;
           const hasHighConfidenceToolClaimMismatch =
             hasHighConfidenceCommitmentMismatch(toolValidation);
           let hasSupportQualityMismatch = false;
@@ -1270,6 +1353,34 @@ export async function runEmbeddedPiAgent(
             }
             log.warn(
               `tool-claim mismatch on ${provider}/${modelId} after retry (${missingClaims}); suppressing unverified output`,
+            );
+          }
+          if (hasMemoryRecallMismatch && !aborted) {
+            sawCommitmentMismatch = true;
+            firstCommitmentMismatchAt ??= Date.now();
+            lastCommitmentMismatchValidation = {
+              ...toolValidation,
+              missingClaimLabels: Array.from(
+                new Set([...toolValidation.missingClaimLabels, "memory recall"]),
+              ),
+              valid: false,
+            };
+            if (memoryRecallRetryCount < MAX_MEMORY_RECALL_RETRIES) {
+              memoryRecallRetryCount += 1;
+              commitmentRepairCount += 1;
+              const failedResponseSnippet =
+                validationText.length > 500 ? validationText.slice(0, 500) + "..." : validationText;
+              promptText = `${basePromptText}\n\n${buildMemoryRecallGuardrailText({
+                failedResponse: failedResponseSnippet,
+                reason: memoryRecallValidation.reason,
+              })}`;
+              log.warn(
+                `memory recall required on ${provider}/${modelId}; retrying with memory guardrail`,
+              );
+              continue;
+            }
+            log.warn(
+              `memory recall required on ${provider}/${modelId} after retry; suppressing unverified output`,
             );
           }
 
@@ -1653,19 +1764,29 @@ export async function runEmbeddedPiAgent(
                   ]
               : payloads;
           const commitmentDisposition = sawCommitmentMismatch
-            ? hasToolClaimMismatch
+            ? hasToolClaimMismatch || hasMemoryRecallMismatch
               ? "blocked"
               : "repaired"
             : "pass";
           const commitmentBlockedReason = hasToolClaimMismatch
             ? formatMissingValidationClaims(toolValidation)
-            : undefined;
+            : hasMemoryRecallMismatch
+              ? "memory recall"
+              : undefined;
           const evidenceLatencyMs =
             sawCommitmentMismatch && firstCommitmentMismatchAt
               ? Date.now() - firstCommitmentMismatchAt
               : undefined;
           const toolValidationForMeta: CommitmentValidation = {
             ...toolValidation,
+            ...(hasMemoryRecallMismatch
+              ? {
+                  missingClaimLabels: Array.from(
+                    new Set([...toolValidation.missingClaimLabels, "memory recall"]),
+                  ),
+                  valid: false,
+                }
+              : {}),
             commitmentDisposition,
             commitmentRepairCount,
             ...(commitmentBlockedReason ? { commitmentBlockedReason } : {}),
@@ -1679,6 +1800,16 @@ export async function runEmbeddedPiAgent(
                   `I wasn't able to complete the requested action (${missingClaims}). ` +
                   "The tool execution failed after multiple attempts. " +
                   "Please try again or let me try a different approach.",
+                isError: true,
+              },
+            ];
+          }
+          if (hasMemoryRecallMismatch) {
+            payloadsForReturn = [
+              {
+                text:
+                  "I can't answer that from memory without first running memory recall. " +
+                  "The recall guardrail failed after retry, so I suppressed the unverified answer.",
                 isError: true,
               },
             ];
