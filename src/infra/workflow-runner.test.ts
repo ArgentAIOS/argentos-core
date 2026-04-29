@@ -500,6 +500,75 @@ describe("executeWorkflow", () => {
     expect(result.steps.at(-1)?.error).toContain("not renderable text");
   });
 
+  it("extracts payload text before saving agent result envelopes to DocPanel", async () => {
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output = makeOutput();
+    const saveToDocPanel = vi.fn(async () => ({ ok: true, docId: "doc-clean-1" }));
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const rawEnvelope = JSON.stringify({
+      payloads: [
+        {
+          text:
+            "[MOOD:focused]Step 12 artifact is done.\n\n" +
+            "[TTS:[focused] I created the Step twelve validation ledger.]",
+          mediaUrl: null,
+        },
+      ],
+      meta: {
+        agentMeta: { provider: "openai-codex", model: "gpt-5.5" },
+        systemPromptReport: { chars: 216349 },
+      },
+      toolValidation: { executedTools: ["doc_panel"] },
+    });
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-output-agent-envelope",
+      dispatcher: makeMockDispatcher(async () => ({
+        items: [{ json: { result: "envelope" }, text: rawEnvelope }],
+      })),
+      actions: { saveToDocPanel },
+    });
+
+    expect(result.status).toBe("completed");
+    expect(saveToDocPanel).toHaveBeenCalledWith("Result", "Step 12 artifact is done.", "markdown");
+    expect(result.steps.at(-1)?.output.items[0]?.text).toBe("Step 12 artifact is done.");
+  });
+
+  it("fails DocPanel saves for runtime metadata envelopes without payload text", async () => {
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output = makeOutput();
+    const saveToDocPanel = vi.fn(async () => ({ ok: true, docId: "bad-doc" }));
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-output-metadata-envelope",
+      dispatcher: makeMockDispatcher(async () => ({
+        items: [
+          {
+            json: { result: "envelope" },
+            text: JSON.stringify({ meta: { systemPromptReport: { chars: 216349 } } }),
+          },
+        ],
+      })),
+      actions: { saveToDocPanel },
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.steps.at(-1)?.error).toContain("agent runtime metadata");
+    expect(saveToDocPanel).not.toHaveBeenCalled();
+  });
+
   it("runs podcast_plan before podcast_generate through first-class action nodes", async () => {
     const trigger = makeTrigger();
     const script: ActionNode = {

@@ -1225,6 +1225,76 @@ function resolveOutputPayload(
   return lastOutput.text ? stringifyWorkflowValue(lastOutput.text) : JSON.stringify(lastOutput);
 }
 
+function normalizeWorkflowText(value: string): string {
+  return value
+    .replace(/^\s*\[MOOD:[^\]]+\]\s*/i, "")
+    .replace(/\n*\[TTS(?:_NOW)?:[\s\S]*$/i, "")
+    .trim();
+}
+
+function extractPayloadText(value: unknown): string {
+  const record = asRecord(value);
+  const payloads = Array.isArray(record.payloads) ? record.payloads : [];
+  const payloadText = payloads
+    .map((payload) => {
+      const payloadRecord = asRecord(payload);
+      return typeof payloadRecord.text === "string" ? payloadRecord.text : "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  if (payloadText) {
+    return normalizeWorkflowText(payloadText);
+  }
+  const directText =
+    typeof record.text === "string"
+      ? record.text
+      : typeof record.summary === "string"
+        ? record.summary
+        : typeof record.message === "string"
+          ? record.message
+          : typeof record.content === "string"
+            ? record.content
+            : "";
+  return normalizeWorkflowText(directText);
+}
+
+function normalizeRenderableWorkflowContent(value: string, label: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "[object Object]") {
+    throw new Error(
+      `${label} is not renderable text. Upstream step returned an object without a text field.`,
+    );
+  }
+
+  if (/^\s*[{[]/.test(trimmed)) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      const extracted = extractPayloadText(parsed);
+      if (extracted) {
+        return extracted;
+      }
+      const record = asRecord(parsed);
+      if (
+        Object.hasOwn(record, "payloads") ||
+        Object.hasOwn(record, "meta") ||
+        Object.hasOwn(record, "systemPromptReport") ||
+        Object.hasOwn(record, "toolValidation")
+      ) {
+        throw new Error(
+          `${label} is not renderable text. Upstream step returned agent runtime metadata.`,
+        );
+      }
+    } catch (err) {
+      if (err instanceof Error && /not renderable text/.test(err.message)) {
+        throw err;
+      }
+    }
+  }
+
+  return normalizeWorkflowText(trimmed);
+}
+
 function stringifyWorkflowValue(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -1241,15 +1311,6 @@ function stringifyWorkflowValue(value: unknown): string {
     return String(value);
   }
   return JSON.stringify(value);
-}
-
-function assertRenderableWorkflowContent(value: string, label: string): void {
-  const trimmed = value.trim();
-  if (!trimmed || trimmed === "[object Object]") {
-    throw new Error(
-      `${label} is not renderable text. Upstream step returned an object without a text field.`,
-    );
-  }
 }
 
 function extractToolResultText(result: unknown): string {
@@ -1919,8 +1980,10 @@ async function executeAction(
       const renderedTitle = resolveTemplate(title, context);
       const fallbackContent =
         context.history[context.history.length - 1]?.output?.items[0]?.text ?? "";
-      const renderedContent = resolveTemplate(content ?? fallbackContent, context);
-      assertRenderableWorkflowContent(renderedContent, "DocPanel action content");
+      const renderedContent = normalizeRenderableWorkflowContent(
+        resolveTemplate(content ?? fallbackContent, context),
+        "DocPanel action content",
+      );
       try {
         const { dashboardApiHeaders } = await import("../utils/dashboard-api.js");
         const dashboardApi = process.env.ARGENT_DASHBOARD_API || "http://localhost:9242";
@@ -2539,8 +2602,10 @@ async function executeOutput(
 
   switch (outputType) {
     case "docpanel": {
-      const content = resolveOutputPayload(config, context);
-      assertRenderableWorkflowContent(content, "DocPanel output content");
+      const content = normalizeRenderableWorkflowContent(
+        resolveOutputPayload(config, context),
+        "DocPanel output content",
+      );
       const title = resolveTemplate(config.title, context);
       const format = config.format ?? "markdown";
       const saved = actions?.saveToDocPanel
@@ -3060,13 +3125,14 @@ export class CoreAgentDispatcher implements AgentDispatcher {
       // delivery result whose shape varies.
       const responseText =
         typeof result === "object" && result !== null
-          ? stringifyWorkflowValue(
+          ? extractPayloadText(result) ||
+            stringifyWorkflowValue(
               (result as Record<string, unknown>).text ??
                 (result as Record<string, unknown>).summary ??
                 (result as Record<string, unknown>).message ??
                 (result as Record<string, unknown>).content ??
                 (result as Record<string, unknown>).details ??
-                result,
+                "",
             )
           : String(result ?? "");
 
