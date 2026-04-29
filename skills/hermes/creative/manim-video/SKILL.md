@@ -1,5 +1,5 @@
 ---
-name: hermes-manim-video
+name: argentos-manim-video
 description: "Production pipeline for mathematical and technical animations
   using Manim Community Edition. Creates 3Blue1Brown-style explainer videos,
   algorithm visualizations, equation derivations, architecture diagrams, and
@@ -9,9 +9,9 @@ description: "Production pipeline for mathematical and technical animations
   geometric/mathematical content."
 version: 1.0.0
 metadata:
-  hermes_import:
+  imported_from:
     original_name: manim-video
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Manim Video Production Pipeline

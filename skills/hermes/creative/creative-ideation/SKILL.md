@@ -1,5 +1,5 @@
 ---
-name: hermes-ideation
+name: argentos-ideation
 title: Creative Ideation — Constraint-Driven Project Generation
 description: Generate project ideas through creative constraints. Use when the
   user says 'I want to build something', 'give me a project idea', 'I'm bored',
@@ -10,7 +10,7 @@ version: 1.0.0
 author: SHL0MS
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - Creative
       - Ideation
@@ -19,9 +19,9 @@ metadata:
       - Inspiration
     category: creative
     requires_toolsets: []
-  hermes_import:
+  imported_from:
     original_name: ideation
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Creative Ideation

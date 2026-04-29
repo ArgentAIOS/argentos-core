@@ -75,12 +75,25 @@ family team by default:
 Each handoff task should stay contracted with files to edit, acceptance checks,
 tests, non-scope, and docs impact.
 
+Recommended coding-family skills:
+
+- Planner/architect: `argentos-implementation-planning`.
+- Implementer/debugger: `argentos-test-driven-development` and
+  `argentos-systematic-debugging`.
+- Reviewer/integrator: `argentos-code-verification`.
+- Multi-agent execution: `argentos-family-team-development`.
+- Browser/UI proof: Browser Use with Chrome-backed inspection instead of
+  standalone Playwright.
+
 The main agent remains the orchestrator after handoff. It should keep checking
 `family.contract_history` for active contracts and heartbeat/timeouts,
 `team_status` for member/task/dependency state when `team_spawn` is used, and
-completion announcements mirrored back into the requester transcript. It should
-update the operator when work starts, blocks, completes, fails, or changes scope,
-and escalate blocked or expired contracts instead of silently waiting.
+completion announcements mirrored back into the requester transcript. Use
+Redis-backed `family.message`/`family.inbox` for live agent-to-agent
+coordination, then mirror durable decisions, blockers, merge requests, and
+containment proof to the Threadmaster bus. The main agent should update the
+operator when work starts, blocks, completes, fails, or changes scope, and
+escalate blocked or expired contracts instead of silently waiting.
 
 ## Core Boundary
 

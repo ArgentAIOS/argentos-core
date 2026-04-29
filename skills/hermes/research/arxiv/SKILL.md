@@ -1,14 +1,14 @@
 ---
-name: hermes-arxiv
+name: argentos-arxiv
 description: Search and retrieve academic papers from arXiv using their free
   REST API. No API key needed. Search by keyword, author, category, or ID.
   Combine with web_extract or the ocr-and-documents skill to read full paper
   content.
 version: 1.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - Research
       - Arxiv
@@ -18,9 +18,9 @@ metadata:
       - API
     related_skills:
       - ocr-and-documents
-  hermes_import:
+  imported_from:
     original_name: arxiv
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # arXiv Research

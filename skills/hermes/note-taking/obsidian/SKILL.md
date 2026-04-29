@@ -1,10 +1,10 @@
 ---
-name: hermes-obsidian
+name: argentos-obsidian
 description: Read, search, and create notes in the Obsidian vault.
 metadata:
-  hermes_import:
+  imported_from:
     original_name: obsidian
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Obsidian Vault

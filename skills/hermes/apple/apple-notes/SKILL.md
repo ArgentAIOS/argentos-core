@@ -1,13 +1,13 @@
 ---
-name: hermes-apple-notes
+name: argentos-apple-notes
 description: Manage Apple Notes via the memo CLI on macOS (create, view, search, edit).
 version: 1.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 platforms:
   - macos
 metadata:
-  hermes:
+  argent:
     tags:
       - Notes
       - Apple
@@ -15,9 +15,9 @@ metadata:
       - note-taking
     related_skills:
       - obsidian
-  hermes_import:
+  imported_from:
     original_name: apple-notes
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
   argent:
     os:
       - darwin

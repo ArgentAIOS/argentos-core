@@ -1,13 +1,13 @@
 ---
-name: hermes-requesting-code-review
+name: argentos-code-verification
 description: Pre-commit verification pipeline — static security scan,
   baseline-aware quality gates, independent reviewer subagent, and auto-fix
   loop. Use after code changes and before committing, pushing, or opening a PR.
 version: 2.0.0
-author: Hermes Agent (adapted from obra/superpowers + MorAlekss)
+author: ArgentOS (adapted from obra/superpowers + MorAlekss)
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - code-review
       - security
@@ -16,13 +16,13 @@ metadata:
       - pre-commit
       - auto-fix
     related_skills:
-      - subagent-driven-development
-      - writing-plans
-      - test-driven-development
+      - argentos-family-team-development
+      - argentos-implementation-planning
+      - argentos-test-driven-development
       - github-code-review
-  hermes_import:
+  imported_from:
     original_name: requesting-code-review
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream software-development skill profile
 ---
 
 # Pre-Commit Code Verification

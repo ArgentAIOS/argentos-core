@@ -1,5 +1,5 @@
 ---
-name: hermes-dspy
+name: argentos-dspy
 description: Build complex AI systems with declarative programming, optimize
   prompts automatically, create modular RAG systems and agents with DSPy -
   Stanford NLP's framework for systematic LM programming
@@ -11,7 +11,7 @@ dependencies:
   - openai
   - anthropic
 metadata:
-  hermes:
+  argent:
     tags:
       - Prompt Engineering
       - DSPy
@@ -23,9 +23,9 @@ metadata:
       - Stanford NLP
       - Automatic Optimization
       - Modular AI
-  hermes_import:
+  imported_from:
     original_name: dspy
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # DSPy: Declarative Language Model Programming

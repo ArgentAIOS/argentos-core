@@ -1,5 +1,5 @@
 ---
-name: hermes-songsee
+name: argentos-songsee
 description: Generate spectrograms and audio feature visualizations (mel,
   chroma, MFCC, tempogram, etc.) from audio files via CLI. Useful for audio
   analysis, music production debugging, and visual documentation.
@@ -7,7 +7,7 @@ version: 1.0.0
 author: community
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - Audio
       - Visualization
@@ -15,9 +15,9 @@ metadata:
       - Music
       - Analysis
     homepage: https://github.com/steipete/songsee
-  hermes_import:
+  imported_from:
     original_name: songsee
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 prerequisites:
   commands:
     - songsee

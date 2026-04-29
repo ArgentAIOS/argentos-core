@@ -1,5 +1,5 @@
 ---
-name: hermes-evaluating-llms-harness
+name: argentos-evaluating-llms-harness
 description: Evaluates LLMs across 60+ academic benchmarks (MMLU, HumanEval,
   GSM8K, TruthfulQA, HellaSwag). Use when benchmarking model quality, comparing
   models, reporting academic results, or tracking training progress. Industry
@@ -13,7 +13,7 @@ dependencies:
   - transformers
   - vllm
 metadata:
-  hermes:
+  argent:
     tags:
       - Evaluation
       - LM Evaluation Harness
@@ -25,9 +25,9 @@ metadata:
       - Model Quality
       - Academic Benchmarks
       - Industry Standard
-  hermes_import:
+  imported_from:
     original_name: evaluating-llms-harness
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # lm-evaluation-harness - LLM Benchmarking

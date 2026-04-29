@@ -1,11 +1,11 @@
 ---
-name: hermes-popular-web-designs
+name: argentos-popular-web-designs
 description: 54 production-quality design systems extracted from real websites.
   Load a template to generate HTML/CSS that matches the visual identity of sites
   like Stripe, Linear, Vercel, Notion, Airbnb, and more. Each template includes
   colors, typography, components, layout rules, and ready-to-use CSS values.
 version: 1.0.0
-author: Hermes Agent + Teknium (design systems sourced from
+author: ArgentOS + Teknium (design systems sourced from
   VoltAgent/awesome-design-md)
 license: MIT
 tags:
@@ -27,9 +27,9 @@ triggers:
   - dashboard design
   - website styled like
 metadata:
-  hermes_import:
+  imported_from:
     original_name: popular-web-designs
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Popular Web Designs

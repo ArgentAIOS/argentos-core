@@ -1,5 +1,5 @@
 ---
-name: hermes-audiocraft-audio-generation
+name: argentos-audiocraft-audio-generation
 description: PyTorch library for audio generation including text-to-music
   (MusicGen) and text-to-sound (AudioGen). Use when you need to generate music
   from text descriptions, create sound effects, or perform melody-conditioned
@@ -12,16 +12,16 @@ dependencies:
   - torch>=2.0.0
   - transformers>=4.30.0
 metadata:
-  hermes:
+  argent:
     tags:
       - Multimodal
       - Audio Generation
       - Text-to-Music
       - Text-to-Audio
       - MusicGen
-  hermes_import:
+  imported_from:
     original_name: audiocraft-audio-generation
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # AudioCraft: Audio Generation

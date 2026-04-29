@@ -1,5 +1,5 @@
 ---
-name: hermes-baoyu-infographic
+name: argentos-baoyu-infographic
 description: Generate professional infographics with 21 layout types and 21
   visual styles. Analyzes content, recommends layout×style combinations, and
   generates publication-ready infographics. Use when user asks to create
@@ -8,16 +8,16 @@ version: 1.56.1
 author: 宝玉 (JimLiu)
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - infographic
       - visual-summary
       - creative
       - image-generation
     homepage: https://github.com/JimLiu/baoyu-skills#baoyu-infographic
-  hermes_import:
+  imported_from:
     original_name: baoyu-infographic
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Infographic Generator

@@ -1,5 +1,5 @@
 ---
-name: hermes-baoyu-comic
+name: argentos-baoyu-comic
 description: Knowledge comic creator supporting multiple art styles and tones.
   Creates original educational comics with detailed panel layouts and sequential
   image generation. Use when user asks to create "知识漫画", "教育漫画", "biography
@@ -8,16 +8,16 @@ version: 1.56.1
 author: 宝玉 (JimLiu)
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - comic
       - knowledge-comic
       - creative
       - image-generation
     homepage: https://github.com/JimLiu/baoyu-skills#baoyu-comic
-  hermes_import:
+  imported_from:
     original_name: baoyu-comic
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Knowledge Comic Creator

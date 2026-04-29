@@ -1,5 +1,5 @@
 ---
-name: hermes-xurl
+name: argentos-xurl
 description: Interact with X/Twitter via xurl, the official X API CLI. Use for
   posting, replying, quoting, searching, timelines, mentions, likes, reposts,
   bookmarks, follows, DMs, media upload, and raw v2 endpoint access.
@@ -13,7 +13,7 @@ prerequisites:
   commands:
     - xurl
 metadata:
-  hermes:
+  argent:
     tags:
       - twitter
       - x
@@ -22,9 +22,9 @@ metadata:
       - official-api
     homepage: https://github.com/xdevplatform/xurl
     upstream_skill: https://github.com/openclaw/openclaw/blob/main/skills/xurl/SKILL.md
-  hermes_import:
+  imported_from:
     original_name: xurl
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
   argent:
     os:
       - linux

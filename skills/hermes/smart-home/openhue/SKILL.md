@@ -1,5 +1,5 @@
 ---
-name: hermes-openhue
+name: argentos-openhue
 description: Control Philips Hue lights, rooms, and scenes via the OpenHue CLI.
   Turn lights on/off, adjust brightness, color, color temperature, and activate
   scenes.
@@ -7,7 +7,7 @@ version: 1.0.0
 author: community
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - Smart-Home
       - Hue
@@ -15,9 +15,9 @@ metadata:
       - IoT
       - Automation
     homepage: https://www.openhue.io/cli
-  hermes_import:
+  imported_from:
     original_name: openhue
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 prerequisites:
   commands:
     - openhue

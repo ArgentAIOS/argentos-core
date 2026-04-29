@@ -1,5 +1,5 @@
 ---
-name: hermes-ascii-art
+name: argentos-ascii-art
 description: Generate ASCII art using pyfiglet (571 fonts), cowsay, boxes,
   toilet, image-to-ascii, remote APIs (asciified, ascii.co.uk), and LLM
   fallback. No API keys required.
@@ -8,7 +8,7 @@ author: 0xbyt4, Hermes Agent
 license: MIT
 dependencies: []
 metadata:
-  hermes:
+  argent:
     tags:
       - ASCII
       - Art
@@ -22,9 +22,9 @@ metadata:
       - boxes
     related_skills:
       - excalidraw
-  hermes_import:
+  imported_from:
     original_name: ascii-art
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # ASCII Art Skill

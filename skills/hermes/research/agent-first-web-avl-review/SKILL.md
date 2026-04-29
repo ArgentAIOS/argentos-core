@@ -1,10 +1,10 @@
 ---
-name: hermes-agent-first-web-avl-review
+name: argentos-agent-first-web-avl-review
 description: "Review, position, and polish Agent View Layer (AVL) / agent-first
   web projects: .agent pages, agent.txt manifests, AI-native rendering, MCP/API
   positioning, and marketing/category narrative."
 version: 1.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 tags:
   - agent-first-web
@@ -24,9 +24,9 @@ triggers:
   - APIs are going away
   - MCP is the hands AVL is the eyes
 metadata:
-  hermes_import:
+  imported_from:
     original_name: agent-first-web-avl-review
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Agent-First Web / AVL Review

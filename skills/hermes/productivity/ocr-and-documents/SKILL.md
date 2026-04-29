@@ -1,13 +1,13 @@
 ---
-name: hermes-ocr-and-documents
+name: argentos-ocr-and-documents
 description: Extract text from PDFs and scanned documents. Use web_extract for
   remote URLs, pymupdf for local text-based PDFs, marker-pdf for OCR/scanned
   docs. For DOCX use python-docx, for PPTX see the powerpoint skill.
 version: 2.3.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - PDF
       - Documents
@@ -17,9 +17,9 @@ metadata:
       - OCR
     related_skills:
       - powerpoint
-  hermes_import:
+  imported_from:
     original_name: ocr-and-documents
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # PDF & Document Extraction

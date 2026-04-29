@@ -1,23 +1,23 @@
 ---
-name: hermes-native-mcp
+name: argentos-native-mcp
 description: Built-in MCP (Model Context Protocol) client that connects to
   external MCP servers, discovers their tools, and registers them as native
   Hermes Agent tools. Supports stdio and HTTP transports with automatic
   reconnection, security filtering, and zero-config tool injection.
 version: 1.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - MCP
       - Tools
       - Integrations
     related_skills:
       - mcporter
-  hermes_import:
+  imported_from:
     original_name: native-mcp
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Native MCP Client

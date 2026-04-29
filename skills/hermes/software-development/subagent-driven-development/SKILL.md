@@ -1,13 +1,13 @@
 ---
-name: hermes-subagent-driven-development
+name: argentos-family-team-development
 description: Use when executing implementation plans with independent tasks.
   Dispatches fresh delegate_task per task with two-stage review (spec compliance
   then code quality).
 version: 1.1.0
-author: Hermes Agent (adapted from obra/superpowers)
+author: ArgentOS (adapted from obra/superpowers)
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - delegation
       - subagent
@@ -15,12 +15,12 @@ metadata:
       - workflow
       - parallel
     related_skills:
-      - writing-plans
-      - requesting-code-review
-      - test-driven-development
-  hermes_import:
+      - argentos-implementation-planning
+      - argentos-code-verification
+      - argentos-test-driven-development
+  imported_from:
     original_name: subagent-driven-development
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream software-development skill profile
 ---
 
 # Subagent-Driven Development

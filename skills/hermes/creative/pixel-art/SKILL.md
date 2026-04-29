@@ -1,5 +1,5 @@
 ---
-name: hermes-pixel-art
+name: argentos-pixel-art
 description: Convert images into retro pixel art with hardware-accurate palettes
   (NES, Game Boy, PICO-8, C64, etc.), and animate them into short videos.
   Presets cover arcade, SNES, and 10+ era-correct looks. Use `clarify` to let
@@ -8,7 +8,7 @@ version: 2.0.0
 author: dodo-reach
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - creative
       - pixel-art
@@ -24,9 +24,9 @@ metadata:
       - Hardware palettes and animation loops ported from
         Synero/pixel-art-studio (MIT) —
         https://github.com/Synero/pixel-art-studio
-  hermes_import:
+  imported_from:
     original_name: pixel-art
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Pixel Art

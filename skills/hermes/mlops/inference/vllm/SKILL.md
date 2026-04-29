@@ -1,5 +1,5 @@
 ---
-name: hermes-serving-llms-vllm
+name: argentos-serving-llms-vllm
 description: Serves LLMs with high throughput using vLLM's PagedAttention and
   continuous batching. Use when deploying production LLM APIs, optimizing
   inference latency/throughput, or serving models with limited GPU memory.
@@ -13,7 +13,7 @@ dependencies:
   - torch
   - transformers
 metadata:
-  hermes:
+  argent:
     tags:
       - vLLM
       - Inference Serving
@@ -24,9 +24,9 @@ metadata:
       - OpenAI API
       - Quantization
       - Tensor Parallelism
-  hermes_import:
+  imported_from:
     original_name: serving-llms-vllm
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # vLLM - High-Performance LLM Serving

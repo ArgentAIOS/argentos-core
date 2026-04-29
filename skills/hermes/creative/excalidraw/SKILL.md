@@ -1,15 +1,15 @@
 ---
-name: hermes-excalidraw
+name: argentos-excalidraw
 description: Create hand-drawn style diagrams using Excalidraw JSON format.
   Generate .excalidraw files for architecture diagrams, flowcharts, sequence
   diagrams, concept maps, and more. Files can be opened at excalidraw.com or
   uploaded for shareable links.
 version: 1.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 dependencies: []
 metadata:
-  hermes:
+  argent:
     tags:
       - Excalidraw
       - Diagrams
@@ -18,9 +18,9 @@ metadata:
       - Visualization
       - JSON
     related_skills: []
-  hermes_import:
+  imported_from:
     original_name: excalidraw
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Excalidraw Diagram Skill

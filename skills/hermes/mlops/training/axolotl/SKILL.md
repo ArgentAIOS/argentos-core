@@ -1,5 +1,5 @@
 ---
-name: hermes-axolotl
+name: argentos-axolotl
 description: Expert guidance for fine-tuning LLMs with Axolotl - YAML configs,
   100+ models, LoRA/QLoRA, DPO/KTO/ORPO/GRPO, multimodal support
 version: 1.0.0
@@ -14,7 +14,7 @@ dependencies:
   - accelerate
   - deepspeed
 metadata:
-  hermes:
+  argent:
     tags:
       - Fine-Tuning
       - Axolotl
@@ -29,9 +29,9 @@ metadata:
       - HuggingFace
       - DeepSpeed
       - Multimodal
-  hermes_import:
+  imported_from:
     original_name: axolotl
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Axolotl Skill

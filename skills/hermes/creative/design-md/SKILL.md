@@ -1,15 +1,15 @@
 ---
-name: hermes-design-md
+name: argentos-design-md
 description: Author, validate, diff, and export DESIGN.md files — Google's
   open-source format spec that gives coding agents a persistent, structured
   understanding of a design system (tokens + rationale in one file). Use when
   building a design system, porting style rules between projects, generating UI
   with consistent brand, or auditing accessibility/contrast.
 version: 1.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - design
       - design-system
@@ -24,9 +24,9 @@ metadata:
       - popular-web-designs
       - excalidraw
       - architecture-diagram
-  hermes_import:
+  imported_from:
     original_name: design-md
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # DESIGN.md Skill

@@ -1,5 +1,5 @@
 ---
-name: hermes-pokemon-player
+name: argentos-pokemon-player
 description: Play Pokemon games autonomously via headless emulation. Starts a
   game server, reads structured game state from RAM, makes strategic decisions,
   and sends button inputs — all from the terminal.
@@ -11,9 +11,9 @@ tags:
   - gameplay
   - gameboy
 metadata:
-  hermes_import:
+  imported_from:
     original_name: pokemon-player
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Pokemon Player

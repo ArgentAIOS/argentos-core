@@ -100,6 +100,10 @@ describe("specforge conductor strict guide mode", () => {
     expect(approved.guidance).toContain("family.dispatch_contracted");
     expect(approved.guidance).toContain("family.dispatch");
     expect(approved.guidance).toContain("dev-team family specialists");
+    expect(approved.guidance).toContain("argentos-test-driven-development");
+    expect(approved.guidance).toContain("Browser Use");
+    expect(approved.guidance).toContain("family.message/family.inbox");
+    expect(approved.guidance).toContain("Threadmaster bus");
     expect(approved.guidance).toContain("family.contract_history");
     expect(approved.guidance).toContain("heartbeat/timeouts");
     expect(approved.guidance).toContain("operator updates");
@@ -142,7 +146,10 @@ describe("specforge conductor strict guide mode", () => {
     expect(followUp.guidance).toContain("family.dispatch_contracted");
     expect(followUp.guidance).toContain("family.dispatch");
     expect(followUp.guidance).toContain("coding family team");
+    expect(followUp.guidance).toContain("argentos-family-team-development");
+    expect(followUp.guidance).toContain("Chrome-backed inspection");
     expect(followUp.guidance).toContain("Check team_status");
+    expect(followUp.guidance).toContain("Redis-backed");
     expect(followUp.guidance).toContain("Escalate blocked or expired contracts");
     expect(followUp.guidance).toContain(
       "contracted implementation work through family/team routing",

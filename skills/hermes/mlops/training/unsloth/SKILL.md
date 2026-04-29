@@ -1,5 +1,5 @@
 ---
-name: hermes-unsloth
+name: argentos-unsloth
 description: Expert guidance for fast fine-tuning with Unsloth - 2-5x faster
   training, 50-80% less memory, LoRA/QLoRA optimization
 version: 1.0.0
@@ -13,7 +13,7 @@ dependencies:
   - datasets
   - peft
 metadata:
-  hermes:
+  argent:
     tags:
       - Fine-Tuning
       - Unsloth
@@ -26,9 +26,9 @@ metadata:
       - Mistral
       - Gemma
       - Qwen
-  hermes_import:
+  imported_from:
     original_name: unsloth
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Unsloth Skill

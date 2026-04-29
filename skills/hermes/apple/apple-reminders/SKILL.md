@@ -1,22 +1,22 @@
 ---
-name: hermes-apple-reminders
+name: argentos-apple-reminders
 description: Manage Apple Reminders via remindctl CLI (list, add, complete, delete).
 version: 1.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 platforms:
   - macos
 metadata:
-  hermes:
+  argent:
     tags:
       - Reminders
       - tasks
       - todo
       - macOS
       - Apple
-  hermes_import:
+  imported_from:
     original_name: apple-reminders
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
   argent:
     os:
       - darwin

@@ -1,13 +1,13 @@
 ---
-name: hermes-github-repo-management
+name: argentos-github-repo-management
 description: Clone, create, fork, configure, and manage GitHub repositories.
   Manage remotes, secrets, releases, and workflows. Works with gh CLI or falls
   back to git + GitHub REST API via curl.
 version: 1.1.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - GitHub
       - Repositories
@@ -19,9 +19,9 @@ metadata:
       - github-auth
       - github-pr-workflow
       - github-issues
-  hermes_import:
+  imported_from:
     original_name: github-repo-management
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # GitHub Repository Management

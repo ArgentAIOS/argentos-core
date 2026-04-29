@@ -1,13 +1,13 @@
 ---
-name: hermes-systematic-debugging
+name: argentos-systematic-debugging
 description: Use when encountering any bug, test failure, or unexpected
   behavior. 4-phase root cause investigation — NO fixes without understanding
   the problem first.
 version: 1.1.0
-author: Hermes Agent (adapted from obra/superpowers)
+author: ArgentOS (adapted from obra/superpowers)
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - debugging
       - troubleshooting
@@ -15,12 +15,12 @@ metadata:
       - root-cause
       - investigation
     related_skills:
-      - test-driven-development
-      - writing-plans
-      - subagent-driven-development
-  hermes_import:
+      - argentos-test-driven-development
+      - argentos-implementation-planning
+      - argentos-family-team-development
+  imported_from:
     original_name: systematic-debugging
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream software-development skill profile
 ---
 
 # Systematic Debugging
@@ -334,11 +334,11 @@ If you catch yourself thinking:
 | **3. Hypothesis**     | Form theory, test minimally, one variable at a time                     | Confirmed or new hypothesis  |
 | **4. Implementation** | Create regression test, fix root cause, verify                          | Bug resolved, all tests pass |
 
-## Hermes Agent Integration
+## ArgentOS Agent Integration
 
 ### Investigation Tools
 
-Use these Hermes tools during Phase 1:
+Use these ArgentOS tools during Phase 1:
 
 - **`search_files`** — Find error strings, trace function calls, locate patterns
 - **`read_file`** — Read source code with line numbers for precise analysis

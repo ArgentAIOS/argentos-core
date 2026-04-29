@@ -1,12 +1,12 @@
 ---
-name: hermes-argentos-positioning-and-website-rewrite
+name: argentos-argentos-positioning-and-website-rewrite
 description: Reconstruct, critique, and rewrite ArgentOS.ai positioning and
   website copy using Hermes's external-auditor role, the user's Medium/Substack
   scar-tissue articles, and stored Obsidian source-of-truth documents. Use when
   working on ArgentOS messaging, homepage copy, Core vs Business positioning,
   ecosystem framing, identity/philosophy pages, or claims/trust language.
 version: 1.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 tags:
   - argentos
@@ -26,9 +26,9 @@ triggers:
   - agent identity
   - ArgentOS messaging
 metadata:
-  hermes_import:
+  imported_from:
     original_name: argentos-positioning-and-website-rewrite
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # ArgentOS Positioning and Website Rewrite

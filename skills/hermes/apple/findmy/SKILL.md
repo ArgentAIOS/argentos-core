@@ -1,14 +1,14 @@
 ---
-name: hermes-findmy
+name: argentos-findmy
 description: Track Apple devices and AirTags via FindMy.app on macOS using
   AppleScript and screen capture.
 version: 1.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 platforms:
   - macos
 metadata:
-  hermes:
+  argent:
     tags:
       - FindMy
       - AirTag
@@ -16,9 +16,9 @@ metadata:
       - tracking
       - macOS
       - Apple
-  hermes_import:
+  imported_from:
     original_name: findmy
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
   argent:
     os:
       - darwin

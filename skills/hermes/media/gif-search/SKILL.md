@@ -1,10 +1,10 @@
 ---
-name: hermes-gif-search
+name: argentos-gif-search
 description: Search and download GIFs from Tenor using curl. No dependencies
   beyond curl and jq. Useful for finding reaction GIFs, creating visual content,
   and sending GIFs in chat.
 version: 1.1.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 prerequisites:
   env_vars:
@@ -13,16 +13,16 @@ prerequisites:
     - curl
     - jq
 metadata:
-  hermes:
+  argent:
     tags:
       - GIF
       - Media
       - Search
       - Tenor
       - API
-  hermes_import:
+  imported_from:
     original_name: gif-search
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # GIF Search (Tenor API)

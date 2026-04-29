@@ -1,5 +1,5 @@
 ---
-name: hermes-songwriting-and-ai-music
+name: argentos-songwriting-and-ai-music
 description: Songwriting craft, AI music generation prompts (Suno focus),
   parody/adaptation techniques, phonetic tricks, and lessons learned. These are
   tools and ideas, not rules. Break any of them when the art calls for it.
@@ -19,9 +19,9 @@ triggers:
   - adapting a song
   - AI music generation
 metadata:
-  hermes_import:
+  imported_from:
     original_name: songwriting-and-ai-music
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Songwriting & AI Music Generation

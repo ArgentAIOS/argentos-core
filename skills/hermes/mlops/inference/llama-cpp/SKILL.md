@@ -1,5 +1,5 @@
 ---
-name: hermes-llama-cpp
+name: argentos-llama-cpp
 description: llama.cpp local GGUF inference + HF Hub model discovery.
 version: 2.1.2
 author: Orchestra Research
@@ -7,7 +7,7 @@ license: MIT
 dependencies:
   - llama-cpp-python>=0.2.0
 metadata:
-  hermes:
+  argent:
     tags:
       - llama.cpp
       - GGUF
@@ -20,9 +20,9 @@ metadata:
       - Intel GPUs
       - NVIDIA
       - URL-first
-  hermes_import:
+  imported_from:
     original_name: llama-cpp
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # llama.cpp + GGUF

@@ -1,10 +1,10 @@
 ---
-name: hermes-linear
+name: argentos-linear
 description: Manage Linear issues, projects, and teams via the GraphQL API.
   Create, update, search, and organize issues. Uses API key auth (no OAuth
   needed). All operations via curl — no dependencies.
 version: 1.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 prerequisites:
   env_vars:
@@ -12,7 +12,7 @@ prerequisites:
   commands:
     - curl
 metadata:
-  hermes:
+  argent:
     tags:
       - Linear
       - Project Management
@@ -20,9 +20,9 @@ metadata:
       - GraphQL
       - API
       - Productivity
-  hermes_import:
+  imported_from:
     original_name: linear
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Linear — Issue & Project Management

@@ -1,5 +1,5 @@
 ---
-name: hermes-huggingface-hub
+name: argentos-huggingface-hub
 description: Hugging Face Hub CLI (hf) — search, download, and upload models and
   datasets, manage repos, query datasets with SQL, deploy inference endpoints,
   manage Spaces and buckets.
@@ -14,9 +14,9 @@ tags:
   - hub
   - mlops
 metadata:
-  hermes_import:
+  imported_from:
     original_name: huggingface-hub
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Hugging Face CLI (`hf`) Reference Guide

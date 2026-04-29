@@ -1,13 +1,13 @@
 ---
-name: hermes-codebase-inspection
+name: argentos-codebase-inspection
 description: Inspect and analyze codebases using pygount for LOC counting,
   language breakdown, and code-vs-comment ratios. Use when asked to check lines
   of code, repo size, language composition, or codebase stats.
 version: 1.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - LOC
       - Code Analysis
@@ -17,9 +17,9 @@ metadata:
       - Repository
     related_skills:
       - github-repo-management
-  hermes_import:
+  imported_from:
     original_name: codebase-inspection
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 prerequisites:
   commands:
     - pygount

@@ -1,13 +1,13 @@
 ---
-name: hermes-claude-code
+name: argentos-claude-code
 description: Delegate coding tasks to Claude Code (Anthropic's CLI agent). Use
   for building features, refactoring, PR reviews, and iterative coding. Requires
   the claude CLI installed.
 version: 2.2.0
-author: Hermes Agent + Teknium
+author: ArgentOS + Teknium
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - Coding-Agent
       - Claude
@@ -20,9 +20,9 @@ metadata:
       - codex
       - hermes-agent
       - opencode
-  hermes_import:
+  imported_from:
     original_name: claude-code
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Claude Code — Hermes Orchestration Guide

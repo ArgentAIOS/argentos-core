@@ -1,12 +1,12 @@
 ---
-name: hermes-spotify
+name: argentos-spotify
 description: Control Spotify — play music, search the catalog, manage playlists
   and library, inspect devices and playback state. Loads when the user asks to
   play/pause/queue music, search tracks/albums/artists, manage playlists, or
   check what's playing. Assumes the Hermes Spotify toolset is enabled and
   `hermes auth spotify` has been run.
 version: 1.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 prerequisites:
   tools:
@@ -18,7 +18,7 @@ prerequisites:
     - spotify_albums
     - spotify_library
 metadata:
-  hermes:
+  argent:
     tags:
       - spotify
       - music
@@ -27,9 +27,9 @@ metadata:
       - media
     related_skills:
       - gif-search
-  hermes_import:
+  imported_from:
     original_name: spotify
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Spotify

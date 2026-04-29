@@ -1,5 +1,5 @@
 ---
-name: hermes-outlines
+name: argentos-outlines
 description: Guarantee valid JSON/XML/code structure during generation, use
   Pydantic models for type-safe outputs, support local models (Transformers,
   vLLM), and maximize inference speed with Outlines - dottxt.ai's structured
@@ -13,7 +13,7 @@ dependencies:
   - vllm
   - pydantic
 metadata:
-  hermes:
+  argent:
     tags:
       - Prompt Engineering
       - Outlines
@@ -25,9 +25,9 @@ metadata:
       - vLLM
       - Transformers
       - Type Safety
-  hermes_import:
+  imported_from:
     original_name: outlines
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Outlines: Structured Text Generation

@@ -1,19 +1,19 @@
 ---
-name: hermes-polymarket
+name: argentos-polymarket
 description: Query Polymarket prediction market data — search markets, get
   prices, orderbooks, and price history. Read-only via public REST APIs, no API
   key needed.
 version: 1.0.0
-author: Hermes Agent + Teknium
+author: ArgentOS + Teknium
 tags:
   - polymarket
   - prediction-markets
   - market-data
   - trading
 metadata:
-  hermes_import:
+  imported_from:
     original_name: polymarket
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Polymarket — Prediction Market Data

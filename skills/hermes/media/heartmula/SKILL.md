@@ -1,11 +1,11 @@
 ---
-name: hermes-heartmula
+name: argentos-heartmula
 description: Set up and run HeartMuLa, the open-source music generation model
   family (Suno-like). Generates full songs from lyrics + tags with multilingual
   support.
 version: 1.0.0
 metadata:
-  hermes:
+  argent:
     tags:
       - music
       - audio
@@ -17,9 +17,9 @@ metadata:
       - songs
     related_skills:
       - audiocraft
-  hermes_import:
+  imported_from:
     original_name: heartmula
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # HeartMuLa - Open-Source Music Generation

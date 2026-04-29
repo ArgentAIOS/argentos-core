@@ -1,13 +1,13 @@
 ---
-name: hermes-opencode
+name: argentos-opencode
 description: Delegate coding tasks to OpenCode CLI agent for feature
   implementation, refactoring, PR review, and long-running autonomous sessions.
   Requires the opencode CLI installed and authenticated.
 version: 1.2.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - Coding-Agent
       - OpenCode
@@ -18,9 +18,9 @@ metadata:
       - claude-code
       - codex
       - hermes-agent
-  hermes_import:
+  imported_from:
     original_name: opencode
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # OpenCode CLI

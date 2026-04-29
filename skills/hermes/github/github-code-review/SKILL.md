@@ -1,13 +1,13 @@
 ---
-name: hermes-github-code-review
+name: argentos-github-code-review
 description: Review code changes by analyzing git diffs, leaving inline comments
   on PRs, and performing thorough pre-push review. Works with gh CLI or falls
   back to git + GitHub REST API via curl.
 version: 1.1.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - GitHub
       - Code-Review
@@ -17,9 +17,9 @@ metadata:
     related_skills:
       - github-auth
       - github-pr-workflow
-  hermes_import:
+  imported_from:
     original_name: github-code-review
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # GitHub Code Review

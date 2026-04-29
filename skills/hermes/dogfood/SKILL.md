@@ -1,10 +1,10 @@
 ---
-name: hermes-dogfood
+name: argentos-dogfood
 description: Systematic exploratory QA testing of web applications — find bugs,
   capture evidence, and generate structured reports
 version: 1.0.0
 metadata:
-  hermes:
+  argent:
     tags:
       - qa
       - testing
@@ -12,9 +12,9 @@ metadata:
       - web
       - dogfood
     related_skills: []
-  hermes_import:
+  imported_from:
     original_name: dogfood
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Dogfood: Systematic Web Application QA Testing

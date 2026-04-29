@@ -1,13 +1,13 @@
 ---
-name: hermes-codex
+name: argentos-codex
 description: Delegate coding tasks to OpenAI Codex CLI agent. Use for building
   features, refactoring, PR reviews, and batch issue fixing. Requires the codex
   CLI and a git repository.
 version: 1.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - Coding-Agent
       - Codex
@@ -17,9 +17,9 @@ metadata:
     related_skills:
       - claude-code
       - hermes-agent
-  hermes_import:
+  imported_from:
     original_name: codex
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Codex CLI

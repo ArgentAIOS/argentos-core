@@ -1,5 +1,5 @@
 ---
-name: hermes-notion
+name: argentos-notion
 description: Notion API for creating and managing pages, databases, and blocks
   via curl. Search, create, update, and query Notion workspaces directly from
   the terminal.
@@ -7,7 +7,7 @@ version: 1.0.0
 author: community
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - Notion
       - Productivity
@@ -15,9 +15,9 @@ metadata:
       - Database
       - API
     homepage: https://developers.notion.com
-  hermes_import:
+  imported_from:
     original_name: notion
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 prerequisites:
   env_vars:
     - NOTION_API_KEY

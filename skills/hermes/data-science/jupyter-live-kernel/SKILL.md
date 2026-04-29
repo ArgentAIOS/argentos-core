@@ -1,15 +1,15 @@
 ---
-name: hermes-jupyter-live-kernel
+name: argentos-jupyter-live-kernel
 description: Use a live Jupyter kernel for stateful, iterative Python execution
   via hamelnb. Load this skill when the task involves exploration, iteration, or
   inspecting intermediate results — data science, ML experimentation, API
   exploration, or building up complex code step-by-step. Uses terminal to run
   CLI commands against a live Jupyter kernel. No new tools required.
 version: 1.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - jupyter
       - notebook
@@ -18,9 +18,9 @@ metadata:
       - exploration
       - iterative
     category: data-science
-  hermes_import:
+  imported_from:
     original_name: jupyter-live-kernel
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Jupyter Live Kernel (hamelnb)

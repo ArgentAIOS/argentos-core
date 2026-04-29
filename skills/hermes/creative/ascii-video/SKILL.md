@@ -1,5 +1,5 @@
 ---
-name: hermes-ascii-video
+name: argentos-ascii-video
 description: "Production pipeline for ASCII art video — any format. Converts
   video/audio/images/generative input into colored ASCII character video output
   (MP4, GIF, image sequence). Covers: video-to-ASCII conversion, audio-reactive
@@ -9,9 +9,9 @@ description: "Production pipeline for ASCII art video — any format. Converts
   animation, retro text visualization, audio visualizer in ASCII, converting
   video to ASCII art, matrix-style effects, or any animated ASCII output."
 metadata:
-  hermes_import:
+  imported_from:
     original_name: ascii-video
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # ASCII Video Production Pipeline

@@ -1,5 +1,5 @@
 ---
-name: hermes-research-paper-writing
+name: argentos-research-paper-writing
 title: Research Paper Writing Pipeline
 description: End-to-end pipeline for writing ML/AI research papers — from
   experiment design through analysis, drafting, revision, and submission. Covers
@@ -22,7 +22,7 @@ platforms:
   - linux
   - macos
 metadata:
-  hermes:
+  argent:
     tags:
       - Research
       - Paper Writing
@@ -47,9 +47,9 @@ metadata:
     requires_toolsets:
       - terminal
       - files
-  hermes_import:
+  imported_from:
     original_name: research-paper-writing
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
   argent:
     os:
       - linux

@@ -1,5 +1,5 @@
 ---
-name: hermes-minecraft-modpack-server
+name: argentos-minecraft-modpack-server
 description: Set up a modded Minecraft server from a CurseForge/Modrinth server
   pack zip. Covers NeoForge/Forge install, Java version, JVM tuning, firewall,
   LAN config, backups, and launch scripts.
@@ -11,9 +11,9 @@ tags:
   - forge
   - modpack
 metadata:
-  hermes_import:
+  imported_from:
     original_name: minecraft-modpack-server
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Minecraft Modpack Server Setup

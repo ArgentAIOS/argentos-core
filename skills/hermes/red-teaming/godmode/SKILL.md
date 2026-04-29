@@ -1,15 +1,15 @@
 ---
-name: hermes-godmode
+name: argentos-godmode
 description: Jailbreak API-served LLMs using G0DM0D3 techniques — Parseltongue
   input obfuscation (33 techniques), GODMODE CLASSIC system prompt templates,
   ULTRAPLINIAN multi-model racing, encoding escalation, and Hermes-native
   prefill/system prompt integration. Use when a user wants to bypass safety
   filters, jailbreak a model, or red-team model robustness.
 version: 1.0.0
-author: Hermes Agent + Teknium
+author: ArgentOS + Teknium
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - jailbreak
       - red-teaming
@@ -22,9 +22,9 @@ metadata:
       - L1B3RT4S
     related_skills:
       - obliteratus
-  hermes_import:
+  imported_from:
     original_name: godmode
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # G0DM0D3 Jailbreaking Skill

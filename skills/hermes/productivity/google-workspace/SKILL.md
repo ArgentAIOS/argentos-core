@@ -1,5 +1,5 @@
 ---
-name: hermes-google-workspace
+name: argentos-google-workspace
 description: Gmail, Calendar, Drive, Contacts, Sheets, and Docs integration for
   Hermes. Uses Hermes-managed OAuth2 setup, prefers the Google Workspace CLI
   (`gws`) when available for broader API coverage, and falls back to the Python
@@ -8,7 +8,7 @@ version: 1.0.0
 author: Nous Research
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - Google
       - Gmail
@@ -22,9 +22,9 @@ metadata:
     homepage: https://github.com/NousResearch/hermes-agent
     related_skills:
       - himalaya
-  hermes_import:
+  imported_from:
     original_name: google-workspace
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Google Workspace

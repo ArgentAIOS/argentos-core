@@ -1,5 +1,5 @@
 ---
-name: hermes-blogwatcher
+name: argentos-blogwatcher
 description: Monitor blogs and RSS/Atom feeds for updates using the
   blogwatcher-cli tool. Add blogs, scan for new articles, track read status, and
   filter by category.
@@ -7,16 +7,16 @@ version: 2.0.0
 author: JulienTant (fork of Hyaxia/blogwatcher)
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - RSS
       - Blogs
       - Feed-Reader
       - Monitoring
     homepage: https://github.com/JulienTant/blogwatcher-cli
-  hermes_import:
+  imported_from:
     original_name: blogwatcher
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 prerequisites:
   commands:
     - blogwatcher-cli

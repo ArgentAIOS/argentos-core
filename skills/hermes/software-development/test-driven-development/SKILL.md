@@ -1,13 +1,13 @@
 ---
-name: hermes-test-driven-development
+name: argentos-test-driven-development
 description: Use when implementing any feature or bugfix, before writing
   implementation code. Enforces RED-GREEN-REFACTOR cycle with test-first
   approach.
 version: 1.1.0
-author: Hermes Agent (adapted from obra/superpowers)
+author: ArgentOS (adapted from obra/superpowers)
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - testing
       - tdd
@@ -15,12 +15,12 @@ metadata:
       - quality
       - red-green-refactor
     related_skills:
-      - systematic-debugging
-      - writing-plans
-      - subagent-driven-development
-  hermes_import:
+      - argentos-systematic-debugging
+      - argentos-implementation-planning
+      - argentos-family-team-development
+  imported_from:
     original_name: test-driven-development
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream software-development skill profile
 ---
 
 # Test-Driven Development (TDD)
@@ -310,7 +310,7 @@ Can't check all boxes? You skipped TDD. Start over.
 | Must mock everything   | Code too coupled. Use dependency injection.                        |
 | Test setup huge        | Extract helpers. Still complex? Simplify the design.               |
 
-## Hermes Agent Integration
+## ArgentOS Agent Integration
 
 ### Running Tests
 

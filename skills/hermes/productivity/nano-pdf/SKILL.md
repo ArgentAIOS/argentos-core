@@ -1,5 +1,5 @@
 ---
-name: hermes-nano-pdf
+name: argentos-nano-pdf
 description: Edit PDFs with natural-language instructions using the nano-pdf
   CLI. Modify text, fix typos, update titles, and make content changes to
   specific pages without manual editing.
@@ -7,7 +7,7 @@ version: 1.0.0
 author: community
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - PDF
       - Documents
@@ -15,9 +15,9 @@ metadata:
       - NLP
       - Productivity
     homepage: https://pypi.org/project/nano-pdf/
-  hermes_import:
+  imported_from:
     original_name: nano-pdf
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # nano-pdf

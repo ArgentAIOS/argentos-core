@@ -1,22 +1,22 @@
 ---
-name: hermes-imessage
+name: argentos-imessage
 description: Send and receive iMessages/SMS via the imsg CLI on macOS.
 version: 1.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 platforms:
   - macos
 metadata:
-  hermes:
+  argent:
     tags:
       - iMessage
       - SMS
       - messaging
       - macOS
       - Apple
-  hermes_import:
+  imported_from:
     original_name: imessage
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
   argent:
     os:
       - darwin

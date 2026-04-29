@@ -1,5 +1,5 @@
 ---
-name: hermes-segment-anything-model
+name: argentos-segment-anything-model
 description: Foundation model for image segmentation with zero-shot transfer.
   Use when you need to segment any object in images using points, boxes, or
   masks as prompts, or automatically generate all object masks in an image.
@@ -11,16 +11,16 @@ dependencies:
   - transformers>=4.30.0
   - torch>=1.7.0
 metadata:
-  hermes:
+  argent:
     tags:
       - Multimodal
       - Image Segmentation
       - Computer Vision
       - SAM
       - Zero-Shot
-  hermes_import:
+  imported_from:
     original_name: segment-anything-model
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Segment Anything Model (SAM)

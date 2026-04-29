@@ -1,13 +1,13 @@
 ---
-name: hermes-youtube-content
+name: argentos-youtube-content
 description: Fetch YouTube video transcripts and transform them into structured
   content (chapters, summaries, threads, blog posts). Use when the user shares a
   YouTube URL or video link, asks to summarize a video, requests a transcript,
   or wants to extract and reformat content from any YouTube video.
 metadata:
-  hermes_import:
+  imported_from:
     original_name: youtube-content
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # YouTube Content Tool

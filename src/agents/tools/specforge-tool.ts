@@ -40,7 +40,10 @@ default so technical/code work reaches the dev-team family specialists. Prefer
 family.dispatch_contracted for auditable work that needs heartbeat/timeout
 tracking. Use team_spawn when the approved plan needs coordinated multi-agent
 dependencies, then monitor team_status and family.contract_history while
-reporting starts, blocks, completions, failures, and scope changes.`,
+coordinating live over Redis-backed family.message/family.inbox and mirroring
+durable proof to the Threadmaster bus. Use Browser Use for Chrome-backed UI
+proof instead of standalone Playwright. Report starts, blocks, completions,
+failures, and scope changes.`,
     parameters: SpecforgeToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;

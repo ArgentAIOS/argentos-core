@@ -1,12 +1,12 @@
 ---
-name: hermes-project-credibility-review
+name: argentos-project-credibility-review
 description: Evaluate a startup/open-source project or AI product by
   cross-checking the website narrative against repositories, docs, demos,
   activity, and implementation evidence. Use when the user asks what you think
   of a product/project URL, especially if it has GitHub links or open-source
   claims.
 version: 1.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 tags:
   - research
@@ -23,9 +23,9 @@ triggers:
   - assess this GitHub repo
   - look at this AI product
 metadata:
-  hermes_import:
+  imported_from:
     original_name: project-credibility-review
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Project Credibility Review

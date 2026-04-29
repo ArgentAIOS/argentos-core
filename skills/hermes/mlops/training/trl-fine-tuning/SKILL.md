@@ -1,5 +1,5 @@
 ---
-name: hermes-fine-tuning-with-trl
+name: argentos-fine-tuning-with-trl
 description: Fine-tune LLMs using reinforcement learning with TRL - SFT for
   instruction tuning, DPO for preference alignment, PPO/GRPO for reward
   optimization, and reward model training. Use when need RLHF, align model with
@@ -16,7 +16,7 @@ dependencies:
   - accelerate
   - torch
 metadata:
-  hermes:
+  argent:
     tags:
       - Post-Training
       - TRL
@@ -29,9 +29,9 @@ metadata:
       - RLHF
       - Preference Alignment
       - HuggingFace
-  hermes_import:
+  imported_from:
     original_name: fine-tuning-with-trl
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # TRL - Transformer Reinforcement Learning

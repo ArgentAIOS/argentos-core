@@ -1,5 +1,5 @@
 ---
-name: hermes-maps
+name: argentos-maps
 description: Location intelligence — geocode a place, reverse-geocode
   coordinates, find nearby places (46 POI categories), driving/walking/cycling
   distance + time, turn-by-turn directions, timezone lookup, bounding box + area
@@ -9,7 +9,7 @@ version: 1.2.0
 author: Mibayy
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - maps
       - geocoding
@@ -28,9 +28,9 @@ metadata:
       - terminal
     supersedes:
       - find-nearby
-  hermes_import:
+  imported_from:
     original_name: maps
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Maps Skill

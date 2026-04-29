@@ -1,15 +1,15 @@
 ---
-name: hermes-agent
+name: argentos-agent
 description: Complete guide to using and extending Hermes Agent — CLI usage,
   setup, configuration, spawning additional agents, gateway platforms, skills,
   voice, tools, profiles, and a concise contributor reference. Load this skill
   when helping users configure Hermes, troubleshoot issues, spawn agent
   instances, or make code contributions.
 version: 2.0.0
-author: Hermes Agent + Teknium
+author: ArgentOS + Teknium
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - hermes
       - setup
@@ -24,9 +24,9 @@ metadata:
       - claude-code
       - codex
       - opencode
-  hermes_import:
+  imported_from:
     original_name: hermes-agent
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Hermes Agent

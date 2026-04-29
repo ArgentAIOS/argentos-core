@@ -1,5 +1,5 @@
 ---
-name: hermes-obliteratus
+name: argentos-obliteratus
 description: Remove refusal behaviors from open-weight LLMs using OBLITERATUS â€”
   mechanistic interpretability techniques (diff-in-means, SVD, whitened SVD,
   LEACE, SAE decomposition, etc.) to excise guardrails while preserving
@@ -7,7 +7,7 @@ description: Remove refusal behaviors from open-weight LLMs using OBLITERATUS â€
   compute tiers, tournament evaluation, and telemetry-driven recommendations.
   Use when a user wants to uncensor, abliterate, or remove refusal from an LLM.
 version: 2.0.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 dependencies:
   - obliteratus
@@ -17,7 +17,7 @@ dependencies:
   - accelerate
   - safetensors
 metadata:
-  hermes:
+  argent:
     tags:
       - Abliteration
       - Uncensoring
@@ -32,9 +32,9 @@ metadata:
       - vllm
       - gguf
       - huggingface-tokenizers
-  hermes_import:
+  imported_from:
     original_name: obliteratus
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # OBLITERATUS Skill

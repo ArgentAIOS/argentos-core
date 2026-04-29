@@ -1,13 +1,13 @@
 ---
-name: hermes-github-auth
+name: argentos-github-auth
 description: Set up GitHub authentication for the agent using git (universally
   available) or the gh CLI. Covers HTTPS tokens, SSH keys, credential helpers,
   and gh auth — with a detection flow to pick the right method automatically.
 version: 1.1.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - GitHub
       - Authentication
@@ -20,9 +20,9 @@ metadata:
       - github-code-review
       - github-issues
       - github-repo-management
-  hermes_import:
+  imported_from:
     original_name: github-auth
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # GitHub Authentication Setup

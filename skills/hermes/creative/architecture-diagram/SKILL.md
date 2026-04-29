@@ -1,5 +1,5 @@
 ---
-name: hermes-architecture-diagram
+name: argentos-architecture-diagram
 description: Generate dark-themed SVG diagrams of software systems and cloud
   infrastructure as standalone HTML files with inline SVG graphics. Semantic
   component colors (cyan=frontend, emerald=backend, violet=database,
@@ -16,7 +16,7 @@ author: Cocoon AI (hello@cocoon-ai.com), ported by Hermes Agent
 license: MIT
 dependencies: []
 metadata:
-  hermes:
+  argent:
     tags:
       - architecture
       - diagrams
@@ -28,9 +28,9 @@ metadata:
     related_skills:
       - concept-diagrams
       - excalidraw
-  hermes_import:
+  imported_from:
     original_name: architecture-diagram
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Architecture Diagram Skill

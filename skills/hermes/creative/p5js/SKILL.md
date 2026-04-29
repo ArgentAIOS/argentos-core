@@ -1,5 +1,5 @@
 ---
-name: hermes-p5js
+name: argentos-p5js
 description: "Production pipeline for interactive and generative visual art
   using p5.js. Creates browser-based sketches, generative art, data
   visualizations, interactive experiences, 3D scenes, audio-reactive visuals,
@@ -12,7 +12,7 @@ description: "Production pipeline for interactive and generative visual art
   project."
 version: 1.0.0
 metadata:
-  hermes:
+  argent:
     tags:
       - creative-coding
       - generative-art
@@ -27,9 +27,9 @@ metadata:
       - ascii-video
       - manim-video
       - excalidraw
-  hermes_import:
+  imported_from:
     original_name: p5js
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # p5.js Production Pipeline

@@ -1,13 +1,13 @@
 ---
-name: hermes-github-issues
+name: argentos-github-issues
 description: Create, manage, triage, and close GitHub issues. Search existing
   issues, add labels, assign people, and link to PRs. Works with gh CLI or falls
   back to git + GitHub REST API via curl.
 version: 1.1.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - GitHub
       - Issues
@@ -17,9 +17,9 @@ metadata:
     related_skills:
       - github-auth
       - github-pr-workflow
-  hermes_import:
+  imported_from:
     original_name: github-issues
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # GitHub Issues Management

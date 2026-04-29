@@ -1,5 +1,5 @@
 ---
-name: hermes-himalaya
+name: argentos-himalaya
 description: CLI to manage emails via IMAP/SMTP. Use himalaya to list, read,
   write, reply, forward, search, and organize emails from the terminal. Supports
   multiple accounts and message composition with MML (MIME Meta Language).
@@ -7,7 +7,7 @@ version: 1.0.0
 author: community
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - Email
       - IMAP
@@ -15,9 +15,9 @@ metadata:
       - CLI
       - Communication
     homepage: https://github.com/pimalaya/himalaya
-  hermes_import:
+  imported_from:
     original_name: himalaya
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 prerequisites:
   commands:
     - himalaya

@@ -1,13 +1,13 @@
 ---
-name: hermes-llm-wiki
+name: argentos-llm-wiki
 description: Karpathy's LLM Wiki — build and maintain a persistent, interlinked
   markdown knowledge base. Ingest sources, query compiled knowledge, and lint
   for consistency.
 version: 2.1.0
-author: Hermes Agent
+author: ArgentOS
 license: MIT
 metadata:
-  hermes:
+  argent:
     tags:
       - wiki
       - knowledge-base
@@ -19,9 +19,9 @@ metadata:
     related_skills:
       - obsidian
       - arxiv
-  hermes_import:
+  imported_from:
     original_name: llm-wiki
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Karpathy's LLM Wiki

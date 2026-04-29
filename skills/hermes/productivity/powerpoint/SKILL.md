@@ -1,5 +1,5 @@
 ---
-name: hermes-powerpoint
+name: argentos-powerpoint
 description: 'Use this skill any time a .pptx file is involved in any way — as
   input, output, or both. This includes: creating slide decks, pitch decks, or
   presentations; reading, parsing, or extracting text from any .pptx file (even
@@ -12,9 +12,9 @@ description: 'Use this skill any time a .pptx file is involved in any way — as
   use this skill.'
 license: Proprietary. LICENSE.txt has complete terms
 metadata:
-  hermes_import:
+  imported_from:
     original_name: powerpoint
-    source: NousResearch/hermes-agent active profile ~/.hermes/skills
+    source: upstream skill profile
 ---
 
 # Powerpoint Skill
