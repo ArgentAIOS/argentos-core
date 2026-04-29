@@ -11,6 +11,7 @@ import { resolveTelegramAccount } from "./accounts.js";
 import { resolveTelegramAllowedUpdates } from "./allowed-updates.js";
 import { createTelegramBot } from "./bot.js";
 import { isRecoverableTelegramNetworkError } from "./network-errors.js";
+import { acquireTelegramPollingSlot } from "./polling-singleton.js";
 import { makeProxyFetch } from "./proxy.js";
 import { readTelegramUpdateOffset, writeTelegramUpdateOffset } from "./update-offset-store.js";
 import { startTelegramWebhook } from "./webhook.js";
@@ -59,6 +60,15 @@ const TELEGRAM_POLL_RESTART_POLICY = {
   jitter: 0.25,
 };
 const TELEGRAM_GET_UPDATES_CONFLICT_COOLDOWN_MS = (TELEGRAM_LONG_POLL_TIMEOUT_SECONDS + 5) * 1000;
+
+const waitForAbort = async (abortSignal?: AbortSignal) => {
+  if (!abortSignal || abortSignal.aborted) {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    abortSignal.addEventListener("abort", () => resolve(), { once: true });
+  });
+};
 
 const isGetUpdatesConflict = (err: unknown) => {
   if (!err || typeof err !== "object") {
@@ -170,59 +180,75 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
       return;
     }
 
+    const pollingSlot = acquireTelegramPollingSlot({
+      token,
+      accountId: account.accountId,
+    });
+    if (!pollingSlot.acquired) {
+      log(
+        `Telegram polling already active for token ${pollingSlot.tokenHash} (account "${pollingSlot.existing.accountId}"); skipping duplicate poller for account "${account.accountId}".`,
+      );
+      await waitForAbort(opts.abortSignal);
+      return;
+    }
+
     // Use grammyjs/runner for concurrent update processing
     let restartAttempts = 0;
 
-    while (!opts.abortSignal?.aborted) {
-      const bot = createBot();
-      const runner = run(bot, createTelegramRunnerOptions(cfg));
-      const stopOnAbort = () => {
-        if (opts.abortSignal?.aborted) {
-          void runner.stop();
-        }
-      };
-      opts.abortSignal?.addEventListener("abort", stopOnAbort, { once: true });
-      try {
-        // runner.task() returns a promise that resolves when the runner stops
-        await runner.task();
-        return;
-      } catch (err) {
-        if (opts.abortSignal?.aborted) {
-          throw err;
-        }
-        try {
-          await runner.stop();
-        } catch (stopErr) {
-          (opts.runtime?.error ?? console.error)(
-            `Telegram polling runner stop failed after error: ${formatErrorMessage(stopErr)}.`,
-          );
-        }
-        const isConflict = isGetUpdatesConflict(err);
-        const isRecoverable = isRecoverableTelegramNetworkError(err, { context: "polling" });
-        if (!isConflict && !isRecoverable) {
-          throw err;
-        }
-        restartAttempts += 1;
-        const retryDelayMs = computeBackoff(TELEGRAM_POLL_RESTART_POLICY, restartAttempts);
-        const delayMs = isConflict
-          ? Math.max(retryDelayMs, TELEGRAM_GET_UPDATES_CONFLICT_COOLDOWN_MS)
-          : retryDelayMs;
-        const reason = isConflict ? "getUpdates conflict" : "network error";
-        const errMsg = formatErrorMessage(err);
-        (opts.runtime?.error ?? console.error)(
-          `Telegram ${reason}: ${errMsg}; retrying in ${formatDurationMs(delayMs)}.`,
-        );
-        try {
-          await sleepWithAbort(delayMs, opts.abortSignal);
-        } catch (sleepErr) {
+    try {
+      while (!opts.abortSignal?.aborted) {
+        const bot = createBot();
+        const runner = run(bot, createTelegramRunnerOptions(cfg));
+        const stopOnAbort = () => {
           if (opts.abortSignal?.aborted) {
-            return;
+            void runner.stop();
           }
-          throw sleepErr;
+        };
+        opts.abortSignal?.addEventListener("abort", stopOnAbort, { once: true });
+        try {
+          // runner.task() returns a promise that resolves when the runner stops
+          await runner.task();
+          return;
+        } catch (err) {
+          if (opts.abortSignal?.aborted) {
+            throw err;
+          }
+          try {
+            await runner.stop();
+          } catch (stopErr) {
+            (opts.runtime?.error ?? console.error)(
+              `Telegram polling runner stop failed after error: ${formatErrorMessage(stopErr)}.`,
+            );
+          }
+          const isConflict = isGetUpdatesConflict(err);
+          const isRecoverable = isRecoverableTelegramNetworkError(err, { context: "polling" });
+          if (!isConflict && !isRecoverable) {
+            throw err;
+          }
+          restartAttempts += 1;
+          const retryDelayMs = computeBackoff(TELEGRAM_POLL_RESTART_POLICY, restartAttempts);
+          const delayMs = isConflict
+            ? Math.max(retryDelayMs, TELEGRAM_GET_UPDATES_CONFLICT_COOLDOWN_MS)
+            : retryDelayMs;
+          const reason = isConflict ? "getUpdates conflict" : "network error";
+          const errMsg = formatErrorMessage(err);
+          (opts.runtime?.error ?? console.error)(
+            `Telegram ${reason}: ${errMsg}; retrying in ${formatDurationMs(delayMs)}.`,
+          );
+          try {
+            await sleepWithAbort(delayMs, opts.abortSignal);
+          } catch (sleepErr) {
+            if (opts.abortSignal?.aborted) {
+              return;
+            }
+            throw sleepErr;
+          }
+        } finally {
+          opts.abortSignal?.removeEventListener("abort", stopOnAbort);
         }
-      } finally {
-        opts.abortSignal?.removeEventListener("abort", stopOnAbort);
       }
+    } finally {
+      pollingSlot.release();
     }
   } finally {
     unregisterHandler();

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { monitorTelegramProvider } from "./monitor.js";
+import { resetTelegramPollingSlotsForTest } from "./polling-singleton.js";
 
 type MockCtx = {
   message: {
@@ -93,6 +94,7 @@ vi.mock("../auto-reply/reply.js", () => ({
 
 describe("monitorTelegramProvider (grammY)", () => {
   beforeEach(() => {
+    resetTelegramPollingSlotsForTest();
     loadConfig.mockReturnValue({
       agents: { defaults: { maxConcurrent: 2 } },
       channels: { telegram: {} },
@@ -206,6 +208,49 @@ describe("monitorTelegramProvider (grammY)", () => {
     expect(createBotSpy).toHaveBeenCalledTimes(2);
     expect(sleepWithAbort).toHaveBeenCalledWith(35_000, undefined);
     expect(runSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("skips a duplicate poller for the same bot token", async () => {
+    let resolveFirst!: () => void;
+    const firstTask = new Promise<void>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const firstStop = vi.fn(() => {
+      resolveFirst();
+    });
+    runSpy.mockImplementationOnce(() => ({
+      task: () => firstTask,
+      stop: firstStop,
+    }));
+    const firstAbort = new AbortController();
+    const firstRun = monitorTelegramProvider({
+      token: "tok",
+      accountId: "default",
+      abortSignal: firstAbort.signal,
+    });
+    await Promise.resolve();
+
+    const duplicateAbort = new AbortController();
+    const duplicateLog = vi.fn();
+    const duplicateRun = monitorTelegramProvider({
+      token: "tok",
+      accountId: "default",
+      abortSignal: duplicateAbort.signal,
+      runtime: { error: duplicateLog } as never,
+    });
+    await vi.waitFor(() => {
+      expect(duplicateLog).toHaveBeenCalledWith(
+        expect.stringContaining("Telegram polling already active"),
+      );
+    });
+
+    duplicateAbort.abort();
+    await duplicateRun;
+    expect(runSpy).toHaveBeenCalledTimes(1);
+
+    firstAbort.abort();
+    await firstRun;
+    expect(firstStop).toHaveBeenCalled();
   });
 
   it("surfaces non-recoverable errors", async () => {
