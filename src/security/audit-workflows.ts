@@ -62,7 +62,7 @@ const MUTATING_ACTION_WORDS = [
   "script",
 ];
 
-const DESTINATION_KEYS = [
+const DESTINATION_KEYS = new Set([
   "to",
   "recipient",
   "recipients",
@@ -77,7 +77,12 @@ const DESTINATION_KEYS = [
   "workflowid",
   "documentid",
   "destination",
-];
+]);
+
+const PODCAST_ACTIONS = new Map([
+  ["podcastplan", "podcast_plan"],
+  ["podcastgenerate", "podcast_generate"],
+]);
 
 export function collectWorkflowSecurityFindings(input: WorkflowAuditInput): WorkflowAuditFinding[] {
   const workflows = collectWorkflowRecords(input);
@@ -88,6 +93,8 @@ export function collectWorkflowSecurityFindings(input: WorkflowAuditInput): Work
     const nodes = collectWorkflowNodes(workflow);
     findings.push(...collectEmbeddedSecretFindings(workflow, nodes));
     findings.push(...collectLiveActionFindings(workflow, nodes));
+    findings.push(...collectLiveExecutionSplitFindings(workflow, nodes));
+    findings.push(...collectPodcastCapabilityFindings(workflow, nodes));
     findings.push(...collectMissingDestinationFindings(workflow, nodes));
   }
 
@@ -250,6 +257,7 @@ function collectScheduleReconciliationFindings(
   cronJobs: readonly unknown[],
 ): WorkflowAuditFinding[] {
   const cronEvidence = collectCronWorkflowEvidence(cronJobs);
+  const workflowRefs = collectWorkflowRefs(workflows);
   const findings: WorkflowAuditFinding[] = [];
 
   for (const workflow of workflows) {
@@ -259,10 +267,38 @@ function collectScheduleReconciliationFindings(
     }
     const workflowId = getWorkflowId(workflow);
     const workflowName = getWorkflowName(workflow);
+    const workflowCronJobIds = collectWorkflowCronJobIds(workflow, nodes);
+    const workflowScheduleExpressions = collectWorkflowScheduleExpressions(workflow, nodes);
+    const matchingCronEntries = cronEvidence.entries.filter(
+      (entry) =>
+        (workflowId !== null && entry.workflowId === workflowId) ||
+        (workflowName !== null && entry.workflowName === workflowName),
+    );
     const hasEvidence =
       (workflowId !== null && cronEvidence.workflowIds.has(workflowId)) ||
-      (workflowName !== null && cronEvidence.workflowNames.has(workflowName));
+      (workflowName !== null && cronEvidence.workflowNames.has(workflowName)) ||
+      workflowCronJobIds.some((cronJobId) => cronEvidence.jobIds.has(cronJobId));
     if (hasEvidence) {
+      if (
+        workflowScheduleExpressions.length > 0 &&
+        matchingCronEntries.some((entry) => entry.scheduleExpression !== null) &&
+        !matchingCronEntries.some(
+          (entry) =>
+            entry.scheduleExpression !== null &&
+            workflowScheduleExpressions.includes(entry.scheduleExpression),
+        )
+      ) {
+        findings.push({
+          checkId: "workflows.schedule.cron_expression_mismatch",
+          severity: "warn",
+          title: "Scheduled workflow cron expression differs from scheduler job",
+          detail: `${formatWorkflowLabel(
+            workflow,
+          )} has schedule metadata and an enabled cron job, but their cron expressions do not match.`,
+          remediation:
+            "Update the workflow row or scheduler row so the persisted schedule and enabled cron job describe the same cadence.",
+        });
+      }
       continue;
     }
     findings.push({
@@ -277,7 +313,347 @@ function collectScheduleReconciliationFindings(
     });
   }
 
+  for (const entry of cronEvidence.entries) {
+    const hasWorkflow =
+      (entry.workflowId !== null && workflowRefs.ids.has(entry.workflowId)) ||
+      (entry.workflowName !== null && workflowRefs.names.has(entry.workflowName));
+    if (hasWorkflow) {
+      continue;
+    }
+    findings.push({
+      checkId: "workflows.schedule.orphan_cron_workflow",
+      severity: "warn",
+      title: "Enabled cron job points at a missing workflow row",
+      detail:
+        "The provided cron snapshot includes an enabled workflow-run job, but the workflow snapshot does not include the referenced workflow row.",
+      remediation:
+        "Remove stale scheduler jobs or include the matching workflow row in the audit snapshot before marking scheduled workflow readiness complete.",
+    });
+  }
+
   return findings;
+}
+
+function collectLiveExecutionSplitFindings(
+  workflow: unknown,
+  nodes: readonly unknown[],
+): WorkflowAuditFinding[] {
+  const liveActionLabels: string[] = [];
+  for (const node of nodes) {
+    if (!isActionNode(node)) {
+      continue;
+    }
+    const action = getActionRecord(node);
+    const actionId = getActionId(node, action);
+    if (
+      isLiveSideEffectAction(node, action, actionId) &&
+      !hasSafeExecutionMode(workflow, node, action)
+    ) {
+      liveActionLabels.push(formatNodeLabel(node));
+    }
+  }
+  if (liveActionLabels.length === 0) {
+    return [];
+  }
+
+  const missing = [
+    hasWorkflowEvidence(workflow, "validate") ? null : "validate",
+    hasWorkflowEvidence(workflow, "dry-run") ? null : "dry-run",
+    hasWorkflowEvidence(workflow, "run-now") ? null : "run-now",
+  ].filter((value): value is string => value !== null);
+
+  if (missing.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      checkId: "workflows.actions.missing_execution_split_evidence",
+      severity: "warn",
+      title: "Live side-effect workflow lacks validate/dry-run/run-now evidence",
+      detail: `${formatWorkflowLabel(workflow)} contains live side-effect actions (${formatList(
+        liveActionLabels,
+      )}) but the workflow snapshot lacks separate ${missing.join(", ")} evidence.`,
+      remediation:
+        "Capture separate validate, dry-run, and run-now evidence in the workflow snapshot before enabling scheduled or live Morning Brief execution.",
+    },
+  ];
+}
+
+function collectPodcastCapabilityFindings(
+  workflow: unknown,
+  nodes: readonly unknown[],
+): WorkflowAuditFinding[] {
+  const configuredCapabilities = collectConfiguredCapabilityKeys(workflow, nodes);
+  const findings: WorkflowAuditFinding[] = [];
+
+  for (const node of nodes) {
+    if (!isActionNode(node)) {
+      continue;
+    }
+    const action = getActionRecord(node);
+    const actionId = getActionId(node, action);
+    if (!actionId) {
+      continue;
+    }
+    const requiredCapability = PODCAST_ACTIONS.get(normalizeKey(actionId));
+    if (!requiredCapability || configuredCapabilities.has(normalizeKey(requiredCapability))) {
+      continue;
+    }
+    findings.push({
+      checkId: "workflows.podcast.missing_capability_wiring",
+      severity: "warn",
+      title: "Podcast action lacks capability or tool wiring",
+      detail: `${formatWorkflowLabel(workflow)} ${formatNodeLabel(
+        node,
+      )} uses ${requiredCapability}, but the workflow snapshot does not expose matching capability or tool-grant wiring.`,
+      remediation:
+        "Add an explicit podcast capability/tool grant to the workflow snapshot so podcast planning and generation cannot rely on ambient runtime wiring.",
+    });
+  }
+
+  return findings;
+}
+
+function collectWorkflowRefs(workflows: readonly unknown[]): {
+  ids: Set<string>;
+  names: Set<string>;
+} {
+  const ids = new Set<string>();
+  const names = new Set<string>();
+  for (const workflow of workflows) {
+    const id = getWorkflowId(workflow);
+    const name = getWorkflowName(workflow);
+    if (id) {
+      ids.add(id);
+    }
+    if (name) {
+      names.add(name);
+    }
+  }
+  return { ids, names };
+}
+
+function collectWorkflowCronJobIds(workflow: unknown, nodes: readonly unknown[]): string[] {
+  const ids = new Set<string>();
+  for (const value of [...collectWorkflowSurfaces(workflow), ...nodes]) {
+    for (const path of [
+      ["cronJobId"],
+      ["jobId"],
+      ["schedule", "cronJobId"],
+      ["schedule", "jobId"],
+      ["config", "cronJobId"],
+      ["config", "jobId"],
+      ["data", "cronJobId"],
+      ["data", "jobId"],
+      ["data", "schedule", "cronJobId"],
+      ["data", "schedule", "jobId"],
+    ]) {
+      const id = asString(getNested(value, path));
+      if (id) {
+        ids.add(id);
+      }
+    }
+  }
+  return [...ids];
+}
+
+function collectWorkflowScheduleExpressions(
+  workflow: unknown,
+  nodes: readonly unknown[],
+): string[] {
+  const expressions = new Set<string>();
+  for (const value of [...collectWorkflowSurfaces(workflow), ...nodes]) {
+    for (const path of [
+      ["cron"],
+      ["cronExpr"],
+      ["cronExpression"],
+      ["schedule", "cron"],
+      ["schedule", "cronExpr"],
+      ["schedule", "cronExpression"],
+      ["config", "cron"],
+      ["config", "cronExpr"],
+      ["config", "cronExpression"],
+      ["data", "cron"],
+      ["data", "cronExpr"],
+      ["data", "cronExpression"],
+      ["data", "config", "cron"],
+      ["data", "config", "cronExpr"],
+      ["data", "config", "cronExpression"],
+    ]) {
+      const expression = asString(getNested(value, path));
+      if (expression) {
+        expressions.add(normalizeCronExpression(expression));
+      }
+    }
+  }
+  return [...expressions];
+}
+
+function hasWorkflowEvidence(
+  workflow: unknown,
+  evidenceType: "validate" | "dry-run" | "run-now",
+): boolean {
+  const evidenceKeys =
+    evidenceType === "validate"
+      ? [
+          "validateEvidence",
+          "validationEvidence",
+          "validateResult",
+          "validationResult",
+          "lastValidation",
+          "lastValidatedAt",
+          "validatedAt",
+        ]
+      : evidenceType === "dry-run"
+        ? [
+            "dryRunEvidence",
+            "dryRunResult",
+            "dryRunRunId",
+            "lastDryRun",
+            "lastDryRunAt",
+            "dryRunAt",
+          ]
+        : [
+            "runNowEvidence",
+            "runNowResult",
+            "runNowRunId",
+            "manualRunEvidence",
+            "manualRunResult",
+            "lastRunNow",
+            "lastRunNowAt",
+            "runNowAt",
+            "manualRunAt",
+          ];
+
+  for (const surface of collectWorkflowSurfaces(workflow)) {
+    if (
+      evidenceType === "validate" &&
+      (surface.validated === true || surface.validationPassed === true)
+    ) {
+      return true;
+    }
+    for (const key of evidenceKeys) {
+      if (hasEvidenceValue(surface[key])) {
+        return true;
+      }
+      const readiness = surface.readiness;
+      if (isRecord(readiness) && hasEvidenceValue(readiness[key])) {
+        return true;
+      }
+      const audit = surface.audit;
+      if (isRecord(audit) && hasEvidenceValue(audit[key])) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function hasEvidenceValue(value: unknown): boolean {
+  if (value === undefined || value === null || value === false) {
+    return false;
+  }
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+  if (typeof value === "number" || value === true) {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  return isRecord(value) && Object.keys(value).length > 0;
+}
+
+function collectConfiguredCapabilityKeys(
+  workflow: unknown,
+  nodes: readonly unknown[],
+): Set<string> {
+  const keys = new Set<string>();
+  const collect = (value: unknown, path: string[], depth: number) => {
+    if (depth > 4 || value === undefined || value === null) {
+      return;
+    }
+    const key = path[path.length - 1] ?? "";
+    if (typeof value === "string") {
+      if (isCapabilityEvidenceKey(key) || isCapabilityEvidenceKey(path[path.length - 2] ?? "")) {
+        keys.add(normalizeKey(value));
+      }
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((entry, index) => collect(entry, [...path, String(index)], depth + 1));
+      return;
+    }
+    if (!isRecord(value)) {
+      return;
+    }
+    for (const [childKey, childValue] of Object.entries(value)) {
+      collect(childValue, [...path, childKey], depth + 1);
+    }
+  };
+
+  for (const surface of collectWorkflowSurfaces(workflow)) {
+    for (const key of [
+      "tools",
+      "toolsAllow",
+      "toolGrants",
+      "toolGrantSnapshot",
+      "capabilities",
+      "configuredCapabilities",
+      "capabilityWiring",
+      "capabilityIds",
+    ]) {
+      collect(surface[key], [key], 0);
+    }
+  }
+
+  for (const node of nodes) {
+    if (isToolWiringNode(node)) {
+      collect(node, ["node"], 0);
+      continue;
+    }
+    const config = getNodeConfig(node);
+    if (isRecord(config)) {
+      for (const key of ["toolsAllow", "toolGrants", "capabilities", "capabilityWiring"]) {
+        collect(config[key], ["config", key], 0);
+      }
+    }
+  }
+
+  return keys;
+}
+
+function isToolWiringNode(node: unknown): boolean {
+  if (!isRecord(node)) {
+    return false;
+  }
+  const type = normalizeKey(
+    asString(node.type) ??
+      asString(node.kind) ??
+      asString(getNested(node, ["data", "subPortType"])) ??
+      asString(getNested(node, ["config", "nodeType"])) ??
+      asString(getNested(node, ["data", "config", "nodeType"])) ??
+      "",
+  );
+  return type.includes("toolgrant") || type === "toolgrant" || type === "toolgrantnode";
+}
+
+function isCapabilityEvidenceKey(key: string): boolean {
+  return [
+    "tool",
+    "toolname",
+    "toolsallow",
+    "id",
+    "name",
+    "capability",
+    "capabilityid",
+    "capabilityids",
+    "appcapabilityid",
+    "appcapabilityname",
+    "connectorid",
+  ].includes(normalizeKey(key));
 }
 
 function collectWorkflowNodes(workflow: unknown): unknown[] {
@@ -599,7 +975,7 @@ function hasExplicitDestination(node: unknown): boolean {
 function recordHasDestination(record: JsonRecord): boolean {
   for (const [key, value] of Object.entries(record)) {
     const normalizedKey = normalizeKey(key);
-    if (!DESTINATION_KEYS.includes(normalizedKey)) {
+    if (!DESTINATION_KEYS.has(normalizedKey)) {
       continue;
     }
     if (hasNonEmptyDestinationValue(value)) {
@@ -623,9 +999,23 @@ function hasNonEmptyDestinationValue(value: unknown): boolean {
 }
 
 function collectCronWorkflowEvidence(cronJobs: readonly unknown[]): {
+  entries: Array<{
+    jobId: string | null;
+    workflowId: string | null;
+    workflowName: string | null;
+    scheduleExpression: string | null;
+  }>;
+  jobIds: Set<string>;
   workflowIds: Set<string>;
   workflowNames: Set<string>;
 } {
+  const entries: Array<{
+    jobId: string | null;
+    workflowId: string | null;
+    workflowName: string | null;
+    scheduleExpression: string | null;
+  }> = [];
+  const jobIds = new Set<string>();
   const workflowIds = new Set<string>();
   const workflowNames = new Set<string>();
 
@@ -633,21 +1023,52 @@ function collectCronWorkflowEvidence(cronJobs: readonly unknown[]): {
     if (!isRecord(job) || job.enabled === false) {
       continue;
     }
+    const jobId =
+      asString(job.id) ??
+      asString(job.jobId) ??
+      asString(job.cronJobId) ??
+      asString(getNested(job, ["job", "id"]));
     const id =
       asString(job.workflowId) ??
       asString(job.targetWorkflowId) ??
       asString(getNested(job, ["payload", "workflowId"])) ??
       asString(getNested(job, ["workflow", "id"]));
+    const name =
+      asString(job.workflowName) ??
+      asString(job.targetWorkflowName) ??
+      asString(getNested(job, ["payload", "workflowName"])) ??
+      asString(getNested(job, ["workflow", "name"]));
+    const scheduleExpression = firstString([
+      job.cron,
+      job.cronExpr,
+      job.cronExpression,
+      getNested(job, ["schedule", "cron"]),
+      getNested(job, ["schedule", "cronExpr"]),
+      getNested(job, ["schedule", "cronExpression"]),
+      getNested(job, ["payload", "cron"]),
+      getNested(job, ["payload", "cronExpr"]),
+      getNested(job, ["payload", "cronExpression"]),
+    ]);
+    if (jobId) {
+      jobIds.add(jobId);
+    }
     if (id) {
       workflowIds.add(id);
     }
-    const name = asString(job.workflowName) ?? asString(getNested(job, ["workflow", "name"]));
     if (name) {
       workflowNames.add(name);
     }
+    if (id || name) {
+      entries.push({
+        jobId,
+        workflowId: id,
+        workflowName: name,
+        scheduleExpression: scheduleExpression ? normalizeCronExpression(scheduleExpression) : null,
+      });
+    }
   }
 
-  return { workflowIds, workflowNames };
+  return { entries, jobIds, workflowIds, workflowNames };
 }
 
 function isScheduledWorkflow(workflow: unknown, nodes: readonly unknown[]): boolean {
@@ -747,6 +1168,12 @@ function formatNodeLabel(node: unknown): string {
   return "node";
 }
 
+function formatList(values: readonly string[]): string {
+  const visible = values.slice(0, 3).join(", ");
+  const remaining = values.length - 3;
+  return remaining > 0 ? `${visible}, +${remaining} more` : visible;
+}
+
 function getNested(record: unknown, path: readonly string[]): unknown {
   let current = record;
   for (const key of path) {
@@ -758,8 +1185,22 @@ function getNested(record: unknown, path: readonly string[]): unknown {
   return current;
 }
 
+function firstString(values: readonly unknown[]): string | null {
+  for (const value of values) {
+    const stringValue = asString(value);
+    if (stringValue) {
+      return stringValue;
+    }
+  }
+  return null;
+}
+
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeCronExpression(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
 }
 
 function normalizeKey(value: string): string {

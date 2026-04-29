@@ -125,6 +125,175 @@ describe("workflow security audit collector", () => {
     expect(scheduleFindings[0]?.detail).toContain("wf-scheduled");
   });
 
+  it("reconciles scheduled workflow rows by cron job ID and detects stale scheduler rows", () => {
+    const findings = collectWorkflowSecurityFindings({
+      workflowSnapshots: {
+        records: [
+          {
+            id: "wf-cron-id",
+            schedule: { cronJobId: "cron-wf-cron-id", cronExpr: "30 6 * * *" },
+            nodes: [
+              {
+                kind: "trigger",
+                id: "schedule",
+                triggerType: "schedule",
+                config: { cronExpr: "30 6 * * *" },
+              },
+            ],
+          },
+        ],
+      },
+      cronSnapshots: {
+        jobs: [
+          {
+            id: "cron-wf-cron-id",
+            enabled: true,
+            cronExpression: "30 6 * * *",
+            payload: { kind: "workflowRun", workflowId: "wf-cron-id" },
+          },
+          {
+            id: "cron-stale",
+            enabled: true,
+            payload: { kind: "workflowRun", workflowId: "wf-stale" },
+          },
+        ],
+      },
+    });
+
+    expect(
+      findings.filter((entry) => entry.checkId === "workflows.schedule.missing_cron_evidence"),
+    ).toHaveLength(0);
+    const orphanFindings = findings.filter(
+      (entry) => entry.checkId === "workflows.schedule.orphan_cron_workflow",
+    );
+    expect(orphanFindings).toHaveLength(1);
+  });
+
+  it("warns when workflow and scheduler cron expressions differ", () => {
+    const findings = collectWorkflowSecurityFindings({
+      workflows: [
+        {
+          id: "wf-mismatch",
+          nodes: [
+            {
+              kind: "trigger",
+              id: "schedule",
+              triggerType: "schedule",
+              config: { cronExpr: "30 6 * * *" },
+            },
+          ],
+        },
+      ],
+      cronJobs: [
+        {
+          id: "cron-wf-mismatch",
+          enabled: true,
+          cronExpression: "0 9 * * *",
+          payload: { workflowId: "wf-mismatch" },
+        },
+      ],
+    });
+
+    const mismatchFindings = findings.filter(
+      (entry) => entry.checkId === "workflows.schedule.cron_expression_mismatch",
+    );
+    expect(mismatchFindings).toHaveLength(1);
+    expect(mismatchFindings[0]?.detail).toContain("wf-mismatch");
+  });
+
+  it("requires validate, dry-run, and run-now evidence for live side-effect workflows", () => {
+    const findings = collectWorkflowSecurityFindings({
+      workflows: [
+        {
+          id: "wf-live-ready",
+          deploymentStage: "live",
+          readiness: {
+            validationResult: { ok: true },
+            dryRunResult: { ok: true },
+            runNowResult: { ok: true },
+          },
+          nodes: [
+            {
+              kind: "action",
+              id: "ready-podcast",
+              config: {
+                operatorApprovedLive: true,
+                actionType: { type: "podcast_generate", title: "Brief" },
+              },
+            },
+          ],
+          toolsAllow: ["podcast_generate"],
+        },
+        {
+          id: "wf-live-missing",
+          deploymentStage: "live",
+          readiness: { validationResult: { ok: true } },
+          nodes: [
+            {
+              kind: "action",
+              id: "missing-evidence",
+              config: {
+                operatorApprovedLive: true,
+                actionType: { type: "send_email", to: "ops@example.com", subject: "Brief" },
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    const splitFindings = findings.filter(
+      (entry) => entry.checkId === "workflows.actions.missing_execution_split_evidence",
+    );
+    expect(splitFindings).toHaveLength(1);
+    expect(splitFindings[0]?.detail).toContain("wf-live-missing");
+    expect(splitFindings[0]?.detail).toContain("dry-run");
+    expect(splitFindings[0]?.detail).toContain("run-now");
+    expect(splitFindings[0]?.detail).not.toContain("ops@example.com");
+  });
+
+  it("requires podcast actions to expose matching capability or tool wiring", () => {
+    const findings = collectWorkflowSecurityFindings({
+      workflows: [
+        {
+          id: "wf-podcast-wired",
+          nodes: [
+            {
+              kind: "action",
+              id: "wired-generate",
+              config: { actionType: { type: "podcast_generate", title: "Brief" } },
+            },
+            {
+              type: "toolGrant",
+              id: "tool-podcast-generate",
+              data: {
+                subPortType: "tool_grant",
+                config: { capabilityId: "podcast_generate", toolName: "podcast_generate" },
+              },
+            },
+          ],
+        },
+        {
+          id: "wf-podcast-unwired",
+          nodes: [
+            {
+              kind: "action",
+              id: "unwired-plan",
+              config: { actionType: { type: "podcast_plan", title: "Brief" } },
+            },
+          ],
+        },
+      ],
+    });
+
+    const podcastFindings = findings.filter(
+      (entry) => entry.checkId === "workflows.podcast.missing_capability_wiring",
+    );
+    expect(podcastFindings).toHaveLength(1);
+    expect(podcastFindings[0]?.detail).toContain("unwired-plan");
+    expect(podcastFindings[0]?.detail).toContain("podcast_plan");
+  });
+
   it("requires explicit destinations for delivery and output nodes", () => {
     const findings = collectWorkflowSecurityFindings({
       workflows: [

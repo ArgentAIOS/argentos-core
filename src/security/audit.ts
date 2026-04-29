@@ -12,6 +12,10 @@ import { buildGatewayConnectionDetails } from "../gateway/call.js";
 import { probeGateway } from "../gateway/probe.js";
 import { readChannelAllowFromStore } from "../pairing/pairing-store.js";
 import { collectAgentProfileFindings } from "./audit-agents.js";
+import {
+  collectChannelDeepProbeFindings,
+  type ChannelDeepProbeDependencies,
+} from "./audit-channels.js";
 import { collectDependencyAuditFindings } from "./audit-dependencies.js";
 import {
   collectAttackSurfaceSummaryFindings,
@@ -108,6 +112,8 @@ export type SecurityAuditOptions = {
   plugins?: ReturnType<typeof listChannelPlugins>;
   /** Dependency injection for tests. */
   probeGatewayFn?: typeof probeGateway;
+  /** Dependency injection for channel deep probes. */
+  channelDeepProbeDeps?: ChannelDeepProbeDependencies;
   /** Dependency injection for tests (Windows ACL checks). */
   execIcacls?: ExecFn;
   /** Optional domain allowlist. Empty/undefined runs all domains. */
@@ -156,7 +162,9 @@ const DOMAIN_ALIASES: Record<string, SecurityAuditDomain[]> = {
 };
 
 function normalizeAuditDomains(raw: string[] | undefined): SecurityAuditDomain[] {
-  if (!raw || raw.length === 0) return ALL_AUDIT_DOMAINS;
+  if (!raw || raw.length === 0) {
+    return ALL_AUDIT_DOMAINS;
+  }
   const out = new Set<SecurityAuditDomain>();
   for (const item of raw) {
     for (const part of String(item)
@@ -165,7 +173,9 @@ function normalizeAuditDomains(raw: string[] | undefined): SecurityAuditDomain[]
       .filter(Boolean)) {
       const aliased = DOMAIN_ALIASES[part];
       if (aliased) {
-        for (const domain of aliased) out.add(domain);
+        for (const domain of aliased) {
+          out.add(domain);
+        }
         continue;
       }
       if ((ALL_AUDIT_DOMAINS as string[]).includes(part)) {
@@ -1022,7 +1032,9 @@ export async function runSecurityAudit(opts: SecurityAuditOptions): Promise<Secu
   const domainsExplicit = opts.domains?.some((domain) => domain.trim().length > 0) === true;
   const enabled = (domain: SecurityAuditDomain) => domains.includes(domain);
   const add = (domain: SecurityAuditDomain, items: SecurityAuditFinding[]) => {
-    if (items.length === 0) return;
+    if (items.length === 0) {
+      return;
+    }
     findings.push(...annotateDomain(domain, items));
   };
 
@@ -1126,6 +1138,15 @@ export async function runSecurityAudit(opts: SecurityAuditOptions): Promise<Secu
   if (opts.includeChannelSecurity !== false && enabled("channels")) {
     const plugins = opts.plugins ?? listChannelPlugins();
     add("channels", await collectChannelSecurityFindings({ cfg, plugins }));
+    add(
+      "channels",
+      await collectChannelDeepProbeFindings({
+        cfg,
+        live: opts.deep === true,
+        timeoutMs: Math.max(250, opts.deepTimeoutMs ?? 5000),
+        deps: opts.channelDeepProbeDeps,
+      }),
+    );
   }
 
   const deep =

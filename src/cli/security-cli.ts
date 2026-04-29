@@ -1,6 +1,12 @@
 import type { Command } from "commander";
 import { loadConfig } from "../config/config.js";
 import { defaultRuntime } from "../runtime.js";
+import {
+  SecurityAuditBaselineError,
+  applySecurityAuditBaseline,
+  type SecurityAuditReportWithBaseline,
+  readSecurityAuditBaseline,
+} from "../security/audit-baseline.js";
 import { runSecurityAudit } from "../security/audit.js";
 import { fixSecurityFootguns } from "../security/fix.js";
 import { formatDocsLink } from "../terminal/links.js";
@@ -15,6 +21,7 @@ type SecurityAuditOptions = {
   domain?: string[];
   failOn?: "critical" | "warn" | "info";
   saveReport?: string;
+  baseline?: string;
 };
 
 function formatSummary(summary: { critical: number; warn: number; info: number }): string {
@@ -49,6 +56,16 @@ function shouldFailOnSeverity(
   return false;
 }
 
+function hasBaselineReport(report: unknown): report is SecurityAuditReportWithBaseline {
+  return (
+    typeof report === "object" &&
+    report !== null &&
+    "baseline" in report &&
+    typeof (report as { baseline?: unknown }).baseline === "object" &&
+    (report as { baseline?: unknown }).baseline !== null
+  );
+}
+
 export function registerSecurityCli(program: Command) {
   const security = program
     .command("security")
@@ -76,17 +93,36 @@ export function registerSecurityCli(program: Command) {
       "Set exit code 1 when findings meet severity (critical|warn|info)",
     )
     .option("--save-report <path>", "Write JSON report to a file")
+    .option("--baseline <path>", "Apply JSON baseline suppressions")
     .action(async (opts: SecurityAuditOptions) => {
-      const fixResult = opts.fix ? await fixSecurityFootguns().catch((_err) => null) : null;
+      const baselinePath = opts.baseline?.trim();
+      const baseline = baselinePath
+        ? await readSecurityAuditBaseline(baselinePath).catch((err) => {
+            if (err instanceof SecurityAuditBaselineError) {
+              defaultRuntime.error(err.message);
+            } else {
+              defaultRuntime.error(`Failed to read security audit baseline: ${String(err)}`);
+            }
+            process.exitCode = 1;
+            return null;
+          })
+        : null;
+      if (baselinePath && !baseline) {
+        return;
+      }
 
+      const fixResult = opts.fix ? await fixSecurityFootguns().catch((_err) => null) : null;
       const cfg = loadConfig();
-      const report = await runSecurityAudit({
+      let report = await runSecurityAudit({
         config: cfg,
         deep: Boolean(opts.deep),
         includeFilesystem: true,
         includeChannelSecurity: true,
         domains: opts.domain,
       });
+      if (baseline && baselinePath) {
+        report = applySecurityAuditBaseline(report, baseline, baselinePath);
+      }
 
       if (opts.saveReport?.trim()) {
         const fs = await import("node:fs/promises");
@@ -115,6 +151,15 @@ export function registerSecurityCli(program: Command) {
       const lines: string[] = [];
       lines.push(heading("ArgentOS security audit"));
       lines.push(muted(`Summary: ${formatSummary(report.summary)}`));
+      if (hasBaselineReport(report)) {
+        const count = report.baseline.suppressed.length;
+        const suffix = count === 1 ? "finding" : "findings";
+        lines.push(
+          muted(
+            `Baseline: suppressed ${count} ${suffix} from ${shortenHomePath(report.baseline.source)}`,
+          ),
+        );
+      }
       lines.push(muted(`Run deeper: ${formatCliCommand("argent security audit --deep")}`));
 
       if (opts.fix) {
