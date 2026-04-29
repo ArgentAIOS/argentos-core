@@ -112,6 +112,23 @@ describe("sanitizeToolUseResultPairing", () => {
     expect(out.some((m) => m.role === "toolResult")).toBe(false);
     expect(out.map((m) => m.role)).toEqual(["user", "assistant"]);
   });
+
+  it("drops orphan OpenAI Responses function output after a pruned compound tool call", () => {
+    const input = [
+      { role: "user", content: "Daily Memory Files. Can you give me the path?" },
+      {
+        role: "toolResult",
+        toolCallId:
+          "call_W7xDHTP4JqLh8jUn0vDz7WrC|fc_02b2a421b63d95a60169f1198dea30819784b11f88f1e7400f",
+        toolName: "message",
+        content: [{ type: "text", text: "ok" }],
+        isError: false,
+      },
+    ] satisfies AgentMessage[];
+
+    const out = sanitizeToolUseResultPairing(input);
+    expect(out.map((m) => m.role)).toEqual(["user"]);
+  });
 });
 
 describe("sanitizeToolCallInputs", () => {
