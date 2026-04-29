@@ -64,6 +64,7 @@ describe("createArgentTools public-core surface", () => {
     expect(toolNames.has("tasks")).toBe(true);
     expect(toolNames.has("specforge")).toBe(true);
     expect(toolNames.has("visual_presence")).toBe(true);
+    expect(toolNames.has("changelog")).toBe(true);
     expect(toolNames.has("intent_tool")).toBe(false);
     expect(toolNames.has("workforce_setup_tool")).toBe(false);
     expect(toolNames.has("jobs_tool")).toBe(false);
