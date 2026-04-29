@@ -53,6 +53,73 @@ describe("security audit", () => {
     ).toBe(true);
   });
 
+  it("can limit findings to selected audit domains", async () => {
+    const cfg: ArgentConfig = {
+      gateway: {
+        bind: "lan",
+        auth: {},
+      },
+      logging: { redactSensitive: "off" },
+    };
+
+    const res = await runSecurityAudit({
+      config: cfg,
+      env: {},
+      includeFilesystem: false,
+      includeChannelSecurity: false,
+      domains: ["logging"],
+    });
+
+    expect(res.domains).toEqual(["logging"]);
+    expect(res.findings).toEqual([
+      expect.objectContaining({
+        checkId: "logging.redact_off",
+        domain: "logging",
+      }),
+    ]);
+    expect(res.findings.some((finding) => finding.checkId === "gateway.bind_no_auth")).toBe(false);
+  });
+
+  it("includes workflow safety findings when workflow snapshots are supplied", async () => {
+    const res = await runSecurityAudit({
+      config: {},
+      includeFilesystem: false,
+      includeChannelSecurity: false,
+      domains: ["workflows"],
+      workflowAudit: {
+        workflows: [
+          {
+            id: "wf-1",
+            name: "Outbound workflow",
+            nodes: [
+              {
+                id: "send-telegram",
+                type: "action",
+                action: "sendMessage",
+                config: { token: "secret-token-value", message: "hello" },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(res.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          checkId: "workflows.secrets.embedded",
+          domain: "workflows",
+          severity: "critical",
+        }),
+        expect.objectContaining({
+          checkId: "workflows.actions.live_requires_approval",
+          domain: "workflows",
+          severity: "warn",
+        }),
+      ]),
+    );
+  });
+
   it("warns when loopback control UI lacks trusted proxies", async () => {
     const cfg: ArgentConfig = {
       gateway: {

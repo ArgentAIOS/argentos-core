@@ -12,6 +12,9 @@ type SecurityAuditOptions = {
   json?: boolean;
   deep?: boolean;
   fix?: boolean;
+  domain?: string[];
+  failOn?: "critical" | "warn" | "info";
+  saveReport?: string;
 };
 
 function formatSummary(summary: { critical: number; warn: number; info: number }): string {
@@ -24,6 +27,26 @@ function formatSummary(summary: { critical: number; warn: number; info: number }
   parts.push(rich ? theme.warn(`${w} warn`) : `${w} warn`);
   parts.push(rich ? theme.muted(`${i} info`) : `${i} info`);
   return parts.join(" · ");
+}
+
+function collectDomainOption(value: string, previous: string[] = []): string[] {
+  return [...previous, value];
+}
+
+function shouldFailOnSeverity(
+  summary: { critical: number; warn: number; info: number },
+  failOn: SecurityAuditOptions["failOn"],
+): boolean {
+  if (failOn === "info") {
+    return summary.critical > 0 || summary.warn > 0 || summary.info > 0;
+  }
+  if (failOn === "warn") {
+    return summary.critical > 0 || summary.warn > 0;
+  }
+  if (failOn === "critical") {
+    return summary.critical > 0;
+  }
+  return false;
 }
 
 export function registerSecurityCli(program: Command) {
@@ -42,6 +65,17 @@ export function registerSecurityCli(program: Command) {
     .option("--deep", "Attempt live Gateway probe (best-effort)", false)
     .option("--fix", "Apply safe fixes (tighten defaults + chmod state/config)", false)
     .option("--json", "Print JSON", false)
+    .option(
+      "--domain <domain>",
+      "Limit audit to a domain (repeatable or comma-separated; e.g. channels,runtime)",
+      collectDomainOption,
+      [],
+    )
+    .option(
+      "--fail-on <severity>",
+      "Set exit code 1 when findings meet severity (critical|warn|info)",
+    )
+    .option("--save-report <path>", "Write JSON report to a file")
     .action(async (opts: SecurityAuditOptions) => {
       const fixResult = opts.fix ? await fixSecurityFootguns().catch((_err) => null) : null;
 
@@ -51,7 +85,21 @@ export function registerSecurityCli(program: Command) {
         deep: Boolean(opts.deep),
         includeFilesystem: true,
         includeChannelSecurity: true,
+        domains: opts.domain,
       });
+
+      if (opts.saveReport?.trim()) {
+        const fs = await import("node:fs/promises");
+        await fs.writeFile(
+          opts.saveReport.trim(),
+          JSON.stringify(fixResult ? { fix: fixResult, report } : report, null, 2),
+          "utf-8",
+        );
+      }
+
+      if (shouldFailOnSeverity(report.summary, opts.failOn)) {
+        process.exitCode = 1;
+      }
 
       if (opts.json) {
         defaultRuntime.log(

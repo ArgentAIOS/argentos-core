@@ -11,6 +11,8 @@ import { resolveGatewayAuth } from "../gateway/auth.js";
 import { buildGatewayConnectionDetails } from "../gateway/call.js";
 import { probeGateway } from "../gateway/probe.js";
 import { readChannelAllowFromStore } from "../pairing/pairing-store.js";
+import { collectAgentProfileFindings } from "./audit-agents.js";
+import { collectDependencyAuditFindings } from "./audit-dependencies.js";
 import {
   collectAttackSurfaceSummaryFindings,
   collectExposureMatrixFindings,
@@ -29,14 +31,40 @@ import {
   formatPermissionRemediation,
   inspectPathPermissions,
 } from "./audit-fs.js";
+import { collectRuntimeSecurityAuditFindings } from "./audit-runtime.js";
+import { collectLocalSecretExposureFindings } from "./audit-secrets.js";
+import { collectWorkflowSecurityFindings, type WorkflowAuditInput } from "./audit-workflows.js";
 
 export type SecurityAuditSeverity = "info" | "warn" | "critical";
+
+export type SecurityAuditDomain =
+  | "summary"
+  | "config"
+  | "filesystem"
+  | "gateway"
+  | "browser"
+  | "logging"
+  | "tools"
+  | "hooks"
+  | "secrets"
+  | "models"
+  | "plugins"
+  | "channels"
+  | "runtime"
+  | "workflows"
+  | "dependencies"
+  | "agents";
 
 export type SecurityAuditFinding = {
   checkId: string;
   severity: SecurityAuditSeverity;
+  domain?: SecurityAuditDomain;
   title: string;
   detail: string;
+  risk?: string;
+  proof?: string[];
+  autofixAvailable?: boolean;
+  docsPath?: string;
   remediation?: string;
 };
 
@@ -47,7 +75,9 @@ export type SecurityAuditSummary = {
 };
 
 export type SecurityAuditReport = {
+  schemaVersion: 1;
   ts: number;
+  domains: SecurityAuditDomain[];
   summary: SecurityAuditSummary;
   findings: SecurityAuditFinding[];
   deep?: {
@@ -80,7 +110,78 @@ export type SecurityAuditOptions = {
   probeGatewayFn?: typeof probeGateway;
   /** Dependency injection for tests (Windows ACL checks). */
   execIcacls?: ExecFn;
+  /** Optional domain allowlist. Empty/undefined runs all domains. */
+  domains?: string[];
+  /** Optional workflow/cron snapshots for workflow safety inspection. */
+  workflowAudit?: WorkflowAuditInput;
 };
+
+const ALL_AUDIT_DOMAINS: SecurityAuditDomain[] = [
+  "summary",
+  "config",
+  "filesystem",
+  "gateway",
+  "browser",
+  "logging",
+  "tools",
+  "hooks",
+  "secrets",
+  "models",
+  "plugins",
+  "channels",
+  "runtime",
+  "workflows",
+  "dependencies",
+  "agents",
+];
+
+const DOMAIN_ALIASES: Record<string, SecurityAuditDomain[]> = {
+  all: ALL_AUDIT_DOMAINS,
+  config: ["config", "gateway", "browser", "logging", "tools", "hooks", "secrets", "models"],
+  fs: ["filesystem"],
+  file: ["filesystem"],
+  files: ["filesystem"],
+  channel: ["channels"],
+  chat: ["channels"],
+  gateway: ["gateway"],
+  runtime: ["runtime"],
+  service: ["runtime"],
+  services: ["runtime"],
+  dependency: ["dependencies"],
+  deps: ["dependencies"],
+  supplychain: ["dependencies"],
+  "supply-chain": ["dependencies"],
+  workflow: ["workflows"],
+  agent: ["agents"],
+};
+
+function normalizeAuditDomains(raw: string[] | undefined): SecurityAuditDomain[] {
+  if (!raw || raw.length === 0) return ALL_AUDIT_DOMAINS;
+  const out = new Set<SecurityAuditDomain>();
+  for (const item of raw) {
+    for (const part of String(item)
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean)) {
+      const aliased = DOMAIN_ALIASES[part];
+      if (aliased) {
+        for (const domain of aliased) out.add(domain);
+        continue;
+      }
+      if ((ALL_AUDIT_DOMAINS as string[]).includes(part)) {
+        out.add(part as SecurityAuditDomain);
+      }
+    }
+  }
+  return out.size > 0 ? Array.from(out) : ALL_AUDIT_DOMAINS;
+}
+
+function annotateDomain(
+  domain: SecurityAuditDomain,
+  findings: SecurityAuditFinding[],
+): SecurityAuditFinding[] {
+  return findings.map((finding) => ({ ...finding, domain: finding.domain ?? domain }));
+}
 
 function countBySeverity(findings: SecurityAuditFinding[]): SecurityAuditSummary {
   let critical = 0;
@@ -917,53 +1018,118 @@ export async function runSecurityAudit(opts: SecurityAuditOptions): Promise<Secu
   const execIcacls = opts.execIcacls;
   const stateDir = opts.stateDir ?? resolveStateDir(env);
   const configPath = opts.configPath ?? resolveConfigPath(env, stateDir);
+  const domains = normalizeAuditDomains(opts.domains);
+  const domainsExplicit = opts.domains?.some((domain) => domain.trim().length > 0) === true;
+  const enabled = (domain: SecurityAuditDomain) => domains.includes(domain);
+  const add = (domain: SecurityAuditDomain, items: SecurityAuditFinding[]) => {
+    if (items.length === 0) return;
+    findings.push(...annotateDomain(domain, items));
+  };
 
-  findings.push(...collectAttackSurfaceSummaryFindings(cfg));
-  findings.push(...collectSyncedFolderFindings({ stateDir, configPath }));
+  if (enabled("summary")) {
+    add("summary", collectAttackSurfaceSummaryFindings(cfg));
+  }
+  if (enabled("filesystem")) {
+    add("filesystem", collectSyncedFolderFindings({ stateDir, configPath }));
+  }
 
-  findings.push(...collectGatewayConfigFindings(cfg, env));
-  findings.push(...collectBrowserControlFindings(cfg));
-  findings.push(...collectLoggingFindings(cfg));
-  findings.push(...collectElevatedFindings(cfg));
-  findings.push(...collectHooksHardeningFindings(cfg));
-  findings.push(...collectSecretsInConfigFindings(cfg));
-  findings.push(...collectModelHygieneFindings(cfg));
-  findings.push(...collectSmallModelRiskFindings({ cfg, env }));
-  findings.push(...collectExposureMatrixFindings(cfg));
+  if (enabled("gateway") || enabled("config")) {
+    add("gateway", collectGatewayConfigFindings(cfg, env));
+  }
+  if (enabled("browser") || enabled("config")) {
+    add("browser", collectBrowserControlFindings(cfg));
+  }
+  if (enabled("logging") || enabled("config")) {
+    add("logging", collectLoggingFindings(cfg));
+  }
+  if (enabled("tools") || enabled("config")) {
+    add("tools", collectElevatedFindings(cfg));
+    add("tools", collectExposureMatrixFindings(cfg));
+  }
+  if (enabled("hooks") || enabled("config")) {
+    add("hooks", collectHooksHardeningFindings(cfg));
+  }
+  if (enabled("secrets") || enabled("config")) {
+    add("secrets", collectSecretsInConfigFindings(cfg));
+    add(
+      "secrets",
+      await collectLocalSecretExposureFindings({
+        objects: [{ source: "loaded Argent config", value: cfg }],
+      }),
+    );
+  }
+  if (enabled("models") || enabled("config")) {
+    add("models", collectModelHygieneFindings(cfg));
+    add("models", collectSmallModelRiskFindings({ cfg, env }));
+  }
+  if (enabled("agents")) {
+    add("agents", collectAgentProfileFindings(cfg));
+  }
+  if (enabled("dependencies")) {
+    add(
+      "dependencies",
+      await collectDependencyAuditFindings({
+        rootDir: process.cwd(),
+        env,
+        live: opts.deep === true,
+      }),
+    );
+  }
+  if (enabled("runtime") && (opts.deep === true || domainsExplicit)) {
+    add(
+      "runtime",
+      await collectRuntimeSecurityAuditFindings({
+        config: cfg,
+        env,
+        platform,
+        includeGatewayProbe: false,
+        deepTimeoutMs: opts.deepTimeoutMs,
+      }),
+    );
+  }
+  if (enabled("workflows") && opts.workflowAudit) {
+    add("workflows", collectWorkflowSecurityFindings(opts.workflowAudit));
+  }
 
   const configSnapshot =
     opts.includeFilesystem !== false
       ? await readConfigSnapshotForAudit({ env, configPath }).catch(() => null)
       : null;
 
-  if (opts.includeFilesystem !== false) {
-    findings.push(
-      ...(await collectFilesystemFindings({
+  if (opts.includeFilesystem !== false && enabled("filesystem")) {
+    add(
+      "filesystem",
+      await collectFilesystemFindings({
         stateDir,
         configPath,
         env,
         platform,
         execIcacls,
-      })),
+      }),
     );
     if (configSnapshot) {
-      findings.push(
-        ...(await collectIncludeFilePermFindings({ configSnapshot, env, platform, execIcacls })),
+      add(
+        "filesystem",
+        await collectIncludeFilePermFindings({ configSnapshot, env, platform, execIcacls }),
       );
     }
-    findings.push(
-      ...(await collectStateDeepFilesystemFindings({ cfg, env, stateDir, platform, execIcacls })),
+    add(
+      "filesystem",
+      await collectStateDeepFilesystemFindings({ cfg, env, stateDir, platform, execIcacls }),
     );
-    findings.push(...(await collectPluginsTrustFindings({ cfg, stateDir })));
   }
 
-  if (opts.includeChannelSecurity !== false) {
+  if (opts.includeFilesystem !== false && enabled("plugins")) {
+    add("plugins", await collectPluginsTrustFindings({ cfg, stateDir }));
+  }
+
+  if (opts.includeChannelSecurity !== false && enabled("channels")) {
     const plugins = opts.plugins ?? listChannelPlugins();
-    findings.push(...(await collectChannelSecurityFindings({ cfg, plugins })));
+    add("channels", await collectChannelSecurityFindings({ cfg, plugins }));
   }
 
   const deep =
-    opts.deep === true
+    opts.deep === true && enabled("gateway")
       ? await maybeProbeGateway({
           cfg,
           timeoutMs: Math.max(250, opts.deepTimeoutMs ?? 5000),
@@ -972,15 +1138,18 @@ export async function runSecurityAudit(opts: SecurityAuditOptions): Promise<Secu
       : undefined;
 
   if (deep?.gateway?.attempted && !deep.gateway.ok) {
-    findings.push({
-      checkId: "gateway.probe_failed",
-      severity: "warn",
-      title: "Gateway probe failed (deep)",
-      detail: deep.gateway.error ?? "gateway unreachable",
-      remediation: `Run "${formatCliCommand("argent status --all")}" to debug connectivity/auth, then re-run "${formatCliCommand("argent security audit --deep")}".`,
-    });
+    add("gateway", [
+      {
+        checkId: "gateway.probe_failed",
+        severity: "warn",
+        domain: "gateway",
+        title: "Gateway probe failed (deep)",
+        detail: deep.gateway.error ?? "gateway unreachable",
+        remediation: `Run "${formatCliCommand("argent status --all")}" to debug connectivity/auth, then re-run "${formatCliCommand("argent security audit --deep")}".`,
+      },
+    ]);
   }
 
   const summary = countBySeverity(findings);
-  return { ts: Date.now(), summary, findings, deep };
+  return { schemaVersion: 1, ts: Date.now(), domains, summary, findings, deep };
 }
