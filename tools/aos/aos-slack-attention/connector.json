@@ -1,0 +1,215 @@
+{
+  "tool": "aos-slack-attention",
+  "backend": "slack-web-api",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "alert-scanner",
+    "surface": "slack-attention-alerts",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": false,
+    "live_write_smoke_tested": false,
+    "required": ["SLACK_BOT_TOKEN", "SLACK_ATTENTION_CHANNELS"],
+    "optional": [
+      "SLACK_ATTENTION_KEYWORDS",
+      "SLACK_ATTENTION_MENTION_USER_IDS",
+      "SLACK_ATTENTION_MENTION_NAMES",
+      "SLACK_ATTENTION_SCAN_CADENCE_SECONDS",
+      "SLACK_ATTENTION_LOOKBACK_MINUTES",
+      "SLACK_ATTENTION_MAX_MESSAGES",
+      "SLACK_ATTENTION_DEDUPE_WINDOW_SECONDS",
+      "SLACK_ATTENTION_QUIET_HOURS",
+      "SLACK_ATTENTION_ALERT_DESTINATIONS"
+    ],
+    "workerFields": [
+      "channels",
+      "keywords",
+      "mention_user_ids",
+      "mention_names",
+      "scan_cadence_seconds",
+      "lookback_minutes",
+      "max_messages",
+      "dedupe_window_seconds",
+      "quiet_hours",
+      "alert_destinations"
+    ],
+    "worker_visible_actions": ["scan.now", "config.show", "health", "doctor"],
+    "fields": [
+      {
+        "id": "channels",
+        "label": "Slack channels",
+        "type": "textarea",
+        "renderAs": "textarea",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["scan.now"],
+        "placeholder": "C1234567890, C2345678901",
+        "description": "Comma or JSON list of Slack channel IDs to scan."
+      },
+      {
+        "id": "keywords",
+        "label": "Attention keywords",
+        "type": "textarea",
+        "renderAs": "textarea",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["scan.now"],
+        "placeholder": "urgent, blocked, Jason, client down",
+        "description": "Keyword rules that identify relevant-to-Jason or important Slack messages."
+      },
+      {
+        "id": "mention_user_ids",
+        "label": "Mention user IDs",
+        "type": "textarea",
+        "renderAs": "textarea",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["scan.now"],
+        "placeholder": "U1234567890",
+        "description": "Slack user IDs whose mentions should become attention candidates."
+      },
+      {
+        "id": "lookback_minutes",
+        "label": "Lookback minutes",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "default": 10,
+        "applies_to": ["scan.now"],
+        "description": "How far back to scan channel history."
+      },
+      {
+        "id": "scan_cadence_seconds",
+        "label": "Scan cadence seconds",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "default": 300,
+        "applies_to": ["scan.now"],
+        "description": "Preferred scan cadence emitted as connector metadata; Workflows owns actual scheduling."
+      },
+      {
+        "id": "dedupe_window_seconds",
+        "label": "Dedupe window seconds",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "default": 604800,
+        "applies_to": ["scan.now"],
+        "description": "Window Workflows can use to suppress duplicate alert candidates."
+      }
+    ],
+    "commandDefaults": {
+      "scan.now": {
+        "selection_surface": "slack.message",
+        "options": {
+          "channels": "SLACK_ATTENTION_CHANNELS",
+          "keywords": "SLACK_ATTENTION_KEYWORDS",
+          "mention-user-ids": "SLACK_ATTENTION_MENTION_USER_IDS",
+          "scan-cadence-seconds": "SLACK_ATTENTION_SCAN_CADENCE_SECONDS",
+          "lookback-minutes": "SLACK_ATTENTION_LOOKBACK_MINUTES",
+          "max-messages": "SLACK_ATTENTION_MAX_MESSAGES"
+        }
+      }
+    },
+    "eventContract": {
+      "event_type": "operator.alert.candidate",
+      "source_provider": "slack",
+      "required_fields": [
+        "event_type",
+        "connector_id",
+        "source_provider",
+        "source_account",
+        "source_ref",
+        "detected_at",
+        "severity",
+        "reasons",
+        "candidate_text",
+        "url",
+        "dedupe_key"
+      ],
+      "workflow_owner": "Workflows owns timers, Run Now, retries, workload status, reminder semantics, and final delivery."
+    }
+  },
+  "connector": {
+    "label": "Slack Attention Alerts",
+    "category": "messaging",
+    "categories": ["messaging", "alerts", "team-collaboration"],
+    "resources": ["slack.message", "slack.channel", "operator.alert.candidate"]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["SLACK_BOT_TOKEN", "SLACK_ATTENTION_CHANNELS"],
+    "optional_service_keys": [
+      "SLACK_ATTENTION_KEYWORDS",
+      "SLACK_ATTENTION_MENTION_USER_IDS",
+      "SLACK_ATTENTION_MENTION_NAMES",
+      "SLACK_ATTENTION_SCAN_CADENCE_SECONDS",
+      "SLACK_ATTENTION_LOOKBACK_MINUTES",
+      "SLACK_ATTENTION_MAX_MESSAGES",
+      "SLACK_ATTENTION_DEDUPE_WINDOW_SECONDS",
+      "SLACK_ATTENTION_QUIET_HOURS",
+      "SLACK_ATTENTION_ALERT_DESTINATIONS"
+    ],
+    "interactive_setup": [
+      "Create or install a Slack app for the target workspace.",
+      "Bind SLACK_BOT_TOKEN and SLACK_ATTENTION_CHANNELS in operator-controlled service keys before enabling scans.",
+      "Grant Slack read scopes such as channels:history, groups:history, channels:read, groups:read, and users:read as needed.",
+      "Local environment variables are harness fallback only when operator service keys are unavailable.",
+      "The connector is read-only and emits alert candidates; Workflows owns scheduling and delivery."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted scanner configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run setup diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "scan.now",
+      "summary": "Scan Slack channels for attention signals and emit alert candidates",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "operator.alert.candidate",
+      "action_class": "read"
+    }
+  ]
+}

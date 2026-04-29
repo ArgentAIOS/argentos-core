@@ -159,6 +159,44 @@ test("records service-key and production-smoke caveats for consumers", () => {
   assert.equal(entry.scope.scaffold_only, false);
 });
 
+test("records operator-owned scanner config keys as service keys", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "aos-readiness-"));
+  writeConnector(root, "aos-alert-scanner", {
+    tool: "aos-alert-scanner",
+    backend: "scanner-api",
+    manifest_schema_version: "1.0.0",
+    scope: {
+      scaffold_only: false,
+      live_backend_available: true,
+      live_read_available: true,
+      write_bridge_available: false,
+      required: ["VIP_EMAIL_SENDERS", "SLACK_ATTENTION_CHANNELS"],
+      optional: [
+        "SLACK_ATTENTION_KEYWORDS",
+        "SLACK_ATTENTION_MENTION_USER_IDS",
+        "SLACK_ATTENTION_MAX_MESSAGES",
+        "VIP_EMAIL_ACCOUNTS",
+        "VIP_EMAIL_DEDUPE_WINDOW_SECONDS",
+      ],
+    },
+    commands: [
+      { id: "scan.now", action_class: "read", required_mode: "readonly", supports_json: true },
+    ],
+  });
+
+  const [entry] = buildReadinessIndex({ rootDir: root }).connectors;
+
+  assert.deepEqual(entry.auth.service_keys, [
+    "SLACK_ATTENTION_CHANNELS",
+    "SLACK_ATTENTION_KEYWORDS",
+    "SLACK_ATTENTION_MAX_MESSAGES",
+    "SLACK_ATTENTION_MENTION_USER_IDS",
+    "VIP_EMAIL_ACCOUNTS",
+    "VIP_EMAIL_DEDUPE_WINDOW_SECONDS",
+    "VIP_EMAIL_SENDERS",
+  ]);
+});
+
 test("preserves unspecified manifest booleans as null instead of false", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "aos-readiness-"));
   writeConnector(root, "aos-unknown", {

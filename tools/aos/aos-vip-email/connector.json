@@ -1,0 +1,217 @@
+{
+  "tool": "aos-vip-email",
+  "backend": "google-workspace-gmail",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "alert-scanner",
+    "surface": "gmail-vip-email-alerts",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": false,
+    "live_write_smoke_tested": false,
+    "required": ["GOOGLE_WORKSPACE_ACCOUNT", "VIP_EMAIL_SENDERS"],
+    "optional": [
+      "VIP_EMAIL_ACCOUNTS",
+      "VIP_EMAIL_SCAN_CADENCE_SECONDS",
+      "VIP_EMAIL_LOOKBACK_DAYS",
+      "VIP_EMAIL_MAX_RESULTS",
+      "VIP_EMAIL_DEDUPE_WINDOW_SECONDS",
+      "VIP_EMAIL_QUIET_HOURS",
+      "VIP_EMAIL_ALERT_DESTINATIONS"
+    ],
+    "workerFields": [
+      "account",
+      "vip_senders",
+      "lookback_days",
+      "scan_cadence_seconds",
+      "max_results",
+      "dedupe_window_seconds",
+      "quiet_hours",
+      "alert_destinations"
+    ],
+    "worker_visible_actions": ["scan.now", "vip.list", "config.show", "health", "doctor"],
+    "fields": [
+      {
+        "id": "account",
+        "label": "Google Workspace account",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["scan.now"],
+        "placeholder": "jason@example.com",
+        "description": "Google Workspace account alias or email already bound through the operator's Google Workspace setup."
+      },
+      {
+        "id": "vip_senders",
+        "label": "VIP senders",
+        "type": "textarea",
+        "renderAs": "textarea",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["scan.now", "vip.list"],
+        "placeholder": "dustin@example.com, richard@example.com",
+        "description": "Comma or JSON list of VIP sender email addresses managed by the operator."
+      },
+      {
+        "id": "lookback_days",
+        "label": "Lookback days",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "default": 7,
+        "applies_to": ["scan.now"],
+        "description": "How far back Gmail should scan for VIP messages."
+      },
+      {
+        "id": "scan_cadence_seconds",
+        "label": "Scan cadence seconds",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "default": 300,
+        "applies_to": ["scan.now"],
+        "description": "Preferred scan cadence emitted as connector metadata; Workflows owns actual scheduling."
+      },
+      {
+        "id": "dedupe_window_seconds",
+        "label": "Dedupe window seconds",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "default": 604800,
+        "applies_to": ["scan.now"],
+        "description": "Window Workflows can use to suppress duplicate alert candidates."
+      },
+      {
+        "id": "quiet_hours",
+        "label": "Quiet hours",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["scan.now"],
+        "placeholder": "22:00-07:00 America/Chicago",
+        "description": "Optional quiet-hours policy emitted as alert metadata; Workflows owns delivery behavior."
+      }
+    ],
+    "commandDefaults": {
+      "scan.now": {
+        "selection_surface": "gmail.message",
+        "args": ["GOOGLE_WORKSPACE_ACCOUNT"],
+        "options": {
+          "vip-senders": "VIP_EMAIL_SENDERS",
+          "scan-cadence-seconds": "VIP_EMAIL_SCAN_CADENCE_SECONDS",
+          "lookback-days": "VIP_EMAIL_LOOKBACK_DAYS",
+          "max-results": "VIP_EMAIL_MAX_RESULTS",
+          "dedupe-window-seconds": "VIP_EMAIL_DEDUPE_WINDOW_SECONDS"
+        }
+      }
+    },
+    "eventContract": {
+      "event_type": "operator.alert.candidate",
+      "source_provider": "google-workspace-gmail",
+      "required_fields": [
+        "event_type",
+        "connector_id",
+        "source_provider",
+        "source_account",
+        "source_ref",
+        "detected_at",
+        "severity",
+        "reasons",
+        "candidate_text",
+        "url",
+        "dedupe_key"
+      ],
+      "workflow_owner": "Workflows owns timers, Run Now, retries, workload status, reminder semantics, and final delivery."
+    }
+  },
+  "connector": {
+    "label": "VIP Email Alerts",
+    "category": "inbox",
+    "categories": ["inbox", "alerts", "google-workspace"],
+    "resources": ["gmail.message", "operator.alert.candidate"]
+  },
+  "auth": {
+    "kind": "oauth-local",
+    "required": true,
+    "service_keys": ["GOOGLE_WORKSPACE_ACCOUNT", "VIP_EMAIL_SENDERS"],
+    "optional_service_keys": [
+      "VIP_EMAIL_ACCOUNTS",
+      "VIP_EMAIL_SCAN_CADENCE_SECONDS",
+      "VIP_EMAIL_LOOKBACK_DAYS",
+      "VIP_EMAIL_MAX_RESULTS",
+      "VIP_EMAIL_DEDUPE_WINDOW_SECONDS",
+      "VIP_EMAIL_QUIET_HOURS",
+      "VIP_EMAIL_ALERT_DESTINATIONS"
+    ],
+    "interactive_setup": [
+      "Configure Google Workspace/Gmail through the existing operator Google Workspace setup.",
+      "Bind GOOGLE_WORKSPACE_ACCOUNT and VIP_EMAIL_SENDERS in operator-controlled service keys or connector config.",
+      "Do not use the old standalone vip_email cron path; Workflows owns scheduling and Run Now execution.",
+      "Local environment variables are harness fallback only when operator service keys are unavailable.",
+      "Keep live_write_smoke_tested=false because this connector emits read-only alert candidates."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted scanner configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run setup diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "vip.list",
+      "summary": "List configured VIP sender rules",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "gmail.vip_sender",
+      "action_class": "read"
+    },
+    {
+      "id": "scan.now",
+      "summary": "Scan Gmail for VIP sender messages and emit alert candidates",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "operator.alert.candidate",
+      "action_class": "read"
+    }
+  ]
+}

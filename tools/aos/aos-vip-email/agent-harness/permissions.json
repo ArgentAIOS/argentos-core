@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "vip.list": "readonly",
+    "scan.now": "readonly"
+  }
+}

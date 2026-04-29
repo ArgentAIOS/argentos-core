@@ -16,6 +16,7 @@ const DEFAULT_OUTPUT = path.join(DEFAULT_ROOT, "readiness-index.json");
 const SECRETISH_TOKEN = /\b[A-Z][A-Z0-9_]{2,}\b/g;
 const SERVICE_KEY_SUFFIXES = [
   "_ACCOUNT",
+  "_ACCOUNTS",
   "_API_KEY",
   "_API_URL",
   "_APP_TOKEN",
@@ -24,11 +25,21 @@ const SERVICE_KEY_SUFFIXES = [
   "_CHANNEL_ID",
   "_CLIENT_ID",
   "_CLIENT_SECRET",
+  "_DESTINATIONS",
   "_FIELD",
+  "_HOURS",
+  "_IDS",
   "_ITEM",
   "_KEY",
+  "_KEYWORDS",
+  "_MESSAGES",
+  "_MINUTES",
+  "_NAMES",
   "_PORTAL_ID",
+  "_RESULTS",
   "_SECRET",
+  "_SECONDS",
+  "_SENDERS",
   "_TEAM_ID",
   "_TENANT_ID",
   "_TOKEN",
@@ -36,6 +47,7 @@ const SERVICE_KEY_SUFFIXES = [
   "_USER_ID",
   "_VAULT",
   "_WEBHOOK_URL",
+  "_CHANNELS",
 ];
 const SERVICE_KEY_EXACT = new Set(["OP_ACCOUNT"]);
 

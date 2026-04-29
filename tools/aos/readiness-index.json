@@ -2,10 +2,17 @@
   "schema_version": "1.0.0",
   "generated_from": {
     "root": "tools/aos",
-    "sources": ["aos-*/connector.json", "aos-*/agent-harness/"]
+    "sources": [
+      "aos-*/connector.json",
+      "aos-*/agent-harness/"
+    ]
   },
   "consumer_contract": {
-    "allowed_consumers": ["Workflows", "AppForge", "AOU"],
+    "allowed_consumers": [
+      "Workflows",
+      "AppForge",
+      "AOU"
+    ],
     "consume_only": [
       "connector manifests",
       "permissions",
@@ -33,13 +40,13 @@
     "Consumers must still enforce required_mode, permissions, and side-effect approval at runtime."
   ],
   "totals": {
-    "connectors": 64,
-    "commands": 928,
-    "read_commands": 718,
+    "connectors": 66,
+    "commands": 939,
+    "read_commands": 729,
     "write_commands": 210,
     "by_readiness": {
       "live-ready": 46,
-      "read-only": 18,
+      "read-only": 20,
       "preview-only": 0,
       "manifest-only": 0,
       "scaffold/deferred": 0
@@ -199,12 +206,15 @@
         "kind": "base-table-record",
         "surface": null,
         "scaffold_only": null,
-        "live_backend_available": null,
-        "live_read_available": null,
-        "write_bridge_available": null
+        "live_backend_available": true,
+        "live_read_available": true,
+        "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["AIRTABLE_API_TOKEN"],
+        "service_keys": [
+          "AIRTABLE_API_BASE_URL",
+          "AIRTABLE_API_TOKEN"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -368,7 +378,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["ANTHROPIC_API_KEY"],
+        "service_keys": [
+          "ANTHROPIC_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -472,7 +484,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["ASANA_ACCESS_TOKEN"],
+        "service_keys": [
+          "ASANA_ACCESS_TOKEN"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -686,7 +700,9 @@
         "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["BLACKSMITH_API_KEY"],
+        "service_keys": [
+          "BLACKSMITH_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -850,7 +866,11 @@
         "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["BOX_ACCESS_TOKEN", "BOX_CLIENT_ID", "BOX_CLIENT_SECRET"],
+        "service_keys": [
+          "BOX_ACCESS_TOKEN",
+          "BOX_CLIENT_ID",
+          "BOX_CLIENT_SECRET"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -1153,7 +1173,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["CALENDLY_API_KEY"],
+        "service_keys": [
+          "CALENDLY_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -1307,7 +1329,11 @@
         "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["CALLSCRUB_API_BASE_URL", "CALLSCRUB_API_KEY", "CALLSCRUB_TEAM_ID"],
+        "service_keys": [
+          "CALLSCRUB_API_BASE_URL",
+          "CALLSCRUB_API_KEY",
+          "CALLSCRUB_TEAM_ID"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -1501,7 +1527,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["CANVA_ACCESS_TOKEN"],
+        "service_keys": [
+          "CANVA_ACCESS_TOKEN"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -1725,7 +1753,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["ANTHROPIC_API_KEY"],
+        "service_keys": [
+          "ANTHROPIC_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -1899,7 +1929,10 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["CLICKUP_ACCESS_TOKEN", "CLICKUP_API_TOKEN"],
+        "service_keys": [
+          "CLICKUP_ACCESS_TOKEN",
+          "CLICKUP_API_TOKEN"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -2173,7 +2206,11 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["CLIENTSYNC_API_KEY", "CLIENTSYNC_API_URL", "CLIENTSYNC_CLIENT_ID"],
+        "service_keys": [
+          "CLIENTSYNC_API_KEY",
+          "CLIENTSYNC_API_URL",
+          "CLIENTSYNC_CLIENT_ID"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -2557,7 +2594,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["CLOSE_API_KEY"],
+        "service_keys": [
+          "CLOSE_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -2801,7 +2840,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["CODERABBIT_API_KEY"],
+        "service_keys": [
+          "CODERABBIT_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -2945,7 +2986,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["OPENAI_API_KEY"],
+        "service_keys": [
+          "OPENAI_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -3069,7 +3112,11 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["CW_PRIVATE_KEY", "CW_PUBLIC_KEY", "CW_SITE_URL"],
+        "service_keys": [
+          "CW_PRIVATE_KEY",
+          "CW_PUBLIC_KEY",
+          "CW_SITE_URL"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -3323,7 +3370,10 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["DART_API_KEY", "DART_BASE_URL"],
+        "service_keys": [
+          "DART_API_KEY",
+          "DART_BASE_URL"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -3527,7 +3577,12 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["DISCORD_BOT_TOKEN", "DISCORD_CHANNEL_ID", "DISCORD_WEBHOOK_URL"],
+        "service_keys": [
+          "DISCORD_API_BASE_URL",
+          "DISCORD_BOT_TOKEN",
+          "DISCORD_CHANNEL_ID",
+          "DISCORD_WEBHOOK_URL"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -3861,7 +3916,10 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["ELEVENLABS_API_KEY", "ELEVENLABS_BASE_URL"],
+        "service_keys": [
+          "ELEVENLABS_API_KEY",
+          "ELEVENLABS_BASE_URL"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -4045,7 +4103,9 @@
         "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["FIRECRAWL_API_KEY"],
+        "service_keys": [
+          "FIRECRAWL_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -4129,7 +4189,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["GITHUB_TOKEN"],
+        "service_keys": [
+          "GITHUB_TOKEN"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -4616,7 +4678,9 @@
         "write_bridge_available": null
       },
       "auth": {
-        "service_keys": ["GOOGLE_PLACES_API_KEY"],
+        "service_keys": [
+          "GOOGLE_PLACES_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -4720,7 +4784,11 @@
         "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["HOLACE_API_BASE_URL", "HOLACE_API_KEY", "HOLACE_CLIENT_ID"],
+        "service_keys": [
+          "HOLACE_API_BASE_URL",
+          "HOLACE_API_KEY",
+          "HOLACE_CLIENT_ID"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -4954,7 +5022,11 @@
         "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["HOOTSUITE_ACCESS_TOKEN", "HOOTSUITE_BASE_URL", "HOOTSUITE_TEAM_ID"],
+        "service_keys": [
+          "HOOTSUITE_ACCESS_TOKEN",
+          "HOOTSUITE_BASE_URL",
+          "HOOTSUITE_TEAM_ID"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -5437,7 +5509,12 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["JIRA_API_TOKEN", "JIRA_BASE_URL", "JIRA_ISSUE_KEY", "JIRA_PROJECT_KEY"],
+        "service_keys": [
+          "JIRA_API_TOKEN",
+          "JIRA_BASE_URL",
+          "JIRA_ISSUE_KEY",
+          "JIRA_PROJECT_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -5651,7 +5728,9 @@
         "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["KLAVIYO_API_KEY"],
+        "service_keys": [
+          "KLAVIYO_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -5795,7 +5874,10 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["LINEAR_API_KEY", "LINEAR_TEAM_KEY"],
+        "service_keys": [
+          "LINEAR_API_KEY",
+          "LINEAR_TEAM_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -5929,7 +6011,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["LION_REPORT_API_KEY"],
+        "service_keys": [
+          "LION_REPORT_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -6143,7 +6227,11 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["M365_CLIENT_ID", "M365_CLIENT_SECRET", "M365_TENANT_ID"],
+        "service_keys": [
+          "M365_CLIENT_ID",
+          "M365_CLIENT_SECRET",
+          "M365_TENANT_ID"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -6367,7 +6455,9 @@
         "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["MAILCHIMP_API_KEY"],
+        "service_keys": [
+          "MAILCHIMP_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -6531,7 +6621,12 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["MAKE_API_KEY", "MAKE_API_URL", "MAKE_TEAM_ID", "MAKE_WEBHOOK_BASE_URL"],
+        "service_keys": [
+          "MAKE_API_KEY",
+          "MAKE_API_URL",
+          "MAKE_TEAM_ID",
+          "MAKE_WEBHOOK_BASE_URL"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -6695,7 +6790,10 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["MONDAY_API_URL", "MONDAY_TOKEN"],
+        "service_keys": [
+          "MONDAY_API_URL",
+          "MONDAY_TOKEN"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -6859,7 +6957,11 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["N8N_API_KEY", "N8N_API_URL", "N8N_WEBHOOK_BASE_URL"],
+        "service_keys": [
+          "N8N_API_KEY",
+          "N8N_API_URL",
+          "N8N_WEBHOOK_BASE_URL"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -6963,7 +7065,9 @@
         "write_bridge_available": null
       },
       "auth": {
-        "service_keys": ["GEMINI_API_KEY"],
+        "service_keys": [
+          "GEMINI_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -7097,7 +7201,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["NEON_API_KEY"],
+        "service_keys": [
+          "NEON_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -7231,7 +7337,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["NOTION_TOKEN"],
+        "service_keys": [
+          "NOTION_TOKEN"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -7385,7 +7493,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["OPENAI_API_KEY"],
+        "service_keys": [
+          "OPENAI_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -7539,7 +7649,10 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["PAGERDUTY_API_KEY", "PAGERDUTY_EVENTS_ROUTING_KEY"],
+        "service_keys": [
+          "PAGERDUTY_API_KEY",
+          "PAGERDUTY_EVENTS_ROUTING_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -7723,7 +7836,11 @@
         "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["PAYPUNCH_API_BASE_URL", "PAYPUNCH_API_KEY", "PAYPUNCH_TENANT_ID"],
+        "service_keys": [
+          "PAYPUNCH_API_BASE_URL",
+          "PAYPUNCH_API_KEY",
+          "PAYPUNCH_TENANT_ID"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -7917,7 +8034,9 @@
         "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["PERPLEXITY_API_KEY"],
+        "service_keys": [
+          "PERPLEXITY_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -8031,7 +8150,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["PINECONE_API_KEY"],
+        "service_keys": [
+          "PINECONE_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -8195,7 +8316,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["PIPEDRIVE_API_TOKEN"],
+        "service_keys": [
+          "PIPEDRIVE_API_TOKEN"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -8419,7 +8542,11 @@
         "write_bridge_available": null
       },
       "auth": {
-        "service_keys": ["QBO_CLIENT_ID", "QBO_CLIENT_SECRET", "QBO_REFRESH_TOKEN"],
+        "service_keys": [
+          "QBO_CLIENT_ID",
+          "QBO_CLIENT_SECRET",
+          "QBO_REFRESH_TOKEN"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -8703,7 +8830,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["RESEND_API_KEY"],
+        "service_keys": [
+          "RESEND_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -8867,7 +8996,10 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["SALESFORCE_ACCESS_TOKEN", "SALESFORCE_INSTANCE_URL"],
+        "service_keys": [
+          "SALESFORCE_ACCESS_TOKEN",
+          "SALESFORCE_INSTANCE_URL"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -9111,7 +9243,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["SENDGRID_API_KEY"],
+        "service_keys": [
+          "SENDGRID_API_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -9305,7 +9439,9 @@
         "write_bridge_available": null
       },
       "auth": {
-        "service_keys": ["SHOPIFY_ADMIN_ACCESS_TOKEN"],
+        "service_keys": [
+          "SHOPIFY_ADMIN_ACCESS_TOKEN"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -9603,6 +9739,102 @@
       ]
     },
     {
+      "tool": "aos-slack-attention",
+      "backend": "slack-web-api",
+      "path": "tools/aos/aos-slack-attention",
+      "manifest_schema_version": "1.0.0",
+      "readiness": "read-only",
+      "production_smoke_tested": false,
+      "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
+      "scope": {
+        "kind": "alert-scanner",
+        "surface": "slack-attention-alerts",
+        "scaffold_only": false,
+        "live_backend_available": true,
+        "live_read_available": true,
+        "write_bridge_available": false
+      },
+      "auth": {
+        "service_keys": [
+          "SLACK_ATTENTION_ALERT_DESTINATIONS",
+          "SLACK_ATTENTION_CHANNELS",
+          "SLACK_ATTENTION_DEDUPE_WINDOW_SECONDS",
+          "SLACK_ATTENTION_KEYWORDS",
+          "SLACK_ATTENTION_LOOKBACK_MINUTES",
+          "SLACK_ATTENTION_MAX_MESSAGES",
+          "SLACK_ATTENTION_MENTION_NAMES",
+          "SLACK_ATTENTION_MENTION_USER_IDS",
+          "SLACK_ATTENTION_QUIET_HOURS",
+          "SLACK_ATTENTION_SCAN_CADENCE_SECONDS",
+          "SLACK_BOT_TOKEN"
+        ],
+        "operator_service_keys_preferred": true,
+        "local_env_fallback_only": true
+      },
+      "runtime": {
+        "harness": {
+          "present": true,
+          "pyproject": true,
+          "tests": true
+        },
+        "command_count": 5,
+        "read_command_count": 5,
+        "write_command_count": 0
+      },
+      "commands": [
+        {
+          "id": "capabilities",
+          "summary": "Describe the connector manifest",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "config.show",
+          "summary": "Show redacted scanner configuration",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "health",
+          "summary": "Report connector setup readiness",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "doctor",
+          "summary": "Run setup diagnostics",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "scan.now",
+          "summary": "Scan Slack channels for attention signals and emit alert candidates",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        }
+      ]
+    },
+    {
       "tool": "aos-slack-workflow",
       "backend": "slack-web-api",
       "path": "tools/aos/aos-slack-workflow",
@@ -9619,7 +9851,13 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["SLACK_APP_TOKEN", "SLACK_BOT_TOKEN", "SLACK_CHANNEL_ID"],
+        "service_keys": [
+          "SLACK_APP_TOKEN",
+          "SLACK_BASE_URL",
+          "SLACK_BOT_TOKEN",
+          "SLACK_CHANNEL_ID",
+          "SLACK_USER_ID"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -9823,7 +10061,9 @@
         "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["SQUARE_ACCESS_TOKEN"],
+        "service_keys": [
+          "SQUARE_ACCESS_TOKEN"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -9997,7 +10237,9 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["STRIPE_SECRET_KEY"],
+        "service_keys": [
+          "STRIPE_SECRET_KEY"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -10211,7 +10453,11 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_URL"],
+        "service_keys": [
+          "SUPABASE_ANON_KEY",
+          "SUPABASE_SERVICE_ROLE_KEY",
+          "SUPABASE_URL"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -10376,10 +10622,14 @@
       },
       "auth": {
         "service_keys": [
+          "TEAMS_CHANNEL_ID",
           "TEAMS_CLIENT_ID",
           "TEAMS_CLIENT_SECRET",
+          "TEAMS_GRAPH_BASE_URL",
+          "TEAMS_HTTP_TIMEOUT_SECONDS",
           "TEAMS_TEAM_ID",
           "TEAMS_TENANT_ID",
+          "TEAMS_TOKEN_URL",
           "TEAMS_USER_ID"
         ],
         "operator_service_keys_preferred": true,
@@ -10468,7 +10718,7 @@
         },
         {
           "id": "meeting.list",
-          "summary": "List upcoming Teams meetings",
+          "summary": "List online calendar events for a scoped user",
           "required_mode": "readonly",
           "action_class": "read",
           "readiness": "read-only",
@@ -10505,7 +10755,10 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["TRELLO_API_KEY", "TRELLO_TOKEN"],
+        "service_keys": [
+          "TRELLO_API_KEY",
+          "TRELLO_TOKEN"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -10689,7 +10942,11 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["TWILIO_AUTH_TOKEN", "TWILIO_STATUS_CALLBACK_URL", "TWILIO_VOICE_URL"],
+        "service_keys": [
+          "TWILIO_AUTH_TOKEN",
+          "TWILIO_STATUS_CALLBACK_URL",
+          "TWILIO_VOICE_URL"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -10837,6 +11094,109 @@
       ]
     },
     {
+      "tool": "aos-vip-email",
+      "backend": "google-workspace-gmail",
+      "path": "tools/aos/aos-vip-email",
+      "manifest_schema_version": "1.0.0",
+      "readiness": "read-only",
+      "production_smoke_tested": false,
+      "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
+      "scope": {
+        "kind": "alert-scanner",
+        "surface": "gmail-vip-email-alerts",
+        "scaffold_only": false,
+        "live_backend_available": true,
+        "live_read_available": true,
+        "write_bridge_available": false
+      },
+      "auth": {
+        "service_keys": [
+          "GOOGLE_WORKSPACE_ACCOUNT",
+          "VIP_EMAIL_ACCOUNTS",
+          "VIP_EMAIL_ALERT_DESTINATIONS",
+          "VIP_EMAIL_DEDUPE_WINDOW_SECONDS",
+          "VIP_EMAIL_MAX_RESULTS",
+          "VIP_EMAIL_QUIET_HOURS",
+          "VIP_EMAIL_SCAN_CADENCE_SECONDS",
+          "VIP_EMAIL_SENDERS"
+        ],
+        "operator_service_keys_preferred": true,
+        "local_env_fallback_only": true
+      },
+      "runtime": {
+        "harness": {
+          "present": true,
+          "pyproject": true,
+          "tests": true
+        },
+        "command_count": 6,
+        "read_command_count": 6,
+        "write_command_count": 0
+      },
+      "commands": [
+        {
+          "id": "capabilities",
+          "summary": "Describe the connector manifest",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "config.show",
+          "summary": "Show redacted scanner configuration",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "health",
+          "summary": "Report connector setup readiness",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "doctor",
+          "summary": "Run setup diagnostics",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "vip.list",
+          "summary": "List configured VIP sender rules",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "scan.now",
+          "summary": "Scan Gmail for VIP sender messages and emit alert candidates",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        }
+      ]
+    },
+    {
       "tool": "aos-woocommerce",
       "backend": "woocommerce-rest-api",
       "path": "tools/aos/aos-woocommerce",
@@ -10853,7 +11213,11 @@
         "write_bridge_available": false
       },
       "auth": {
-        "service_keys": ["WOO_CONSUMER_KEY", "WOO_CONSUMER_SECRET", "WOO_STORE_URL"],
+        "service_keys": [
+          "WOO_CONSUMER_KEY",
+          "WOO_CONSUMER_SECRET",
+          "WOO_STORE_URL"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -11017,7 +11381,10 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["AOS_WORDPRESS_BASE_URL", "WORDPRESS_BASE_URL"],
+        "service_keys": [
+          "AOS_WORDPRESS_BASE_URL",
+          "WORDPRESS_BASE_URL"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -11462,7 +11829,11 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["ZAPIER_API_KEY", "ZAPIER_API_URL", "ZAPIER_WEBHOOK_BASE_URL"],
+        "service_keys": [
+          "ZAPIER_API_KEY",
+          "ZAPIER_API_URL",
+          "ZAPIER_WEBHOOK_BASE_URL"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
