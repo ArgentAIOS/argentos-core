@@ -141,7 +141,7 @@
   {
     "id": "task-20260428181411-5ddacs",
     "createdAt": "2026-04-28T18:14:11.954Z",
-    "updatedAt": "2026-04-28T18:33:01.765Z",
+    "updatedAt": "2026-04-29T00:25:17.169Z",
     "from": "master",
     "owner": "master",
     "title": "Core Business overlay contract C1-C5",
@@ -154,6 +154,11 @@
         "at": "2026-04-28T18:33:01.765Z",
         "lane": "master",
         "note": "Master is taking Core C1-C5 as the active blocker. Business has been assigned task-20260428183253-mc9yj2 to produce descriptor/status/redaction fixtures in parallel so Core implementation can use concrete acceptance cases."
+      },
+      {
+        "at": "2026-04-29T00:25:17.168Z",
+        "lane": "master",
+        "note": "Master reconfirmed ownership after Business blocker tm-20260429001833-ybgrul. Next action is Core C1-C5 implementation/landing packet in argent-core dev lane using Business fixture/spec and descriptor-register dry-run artifacts. Business should not replace its contract-draft shim until Master posts exact exported type names/paths and origin/dev containment proof."
       }
     ]
   },
@@ -223,5 +228,18 @@
         "note": "Business delivered descriptor-register dry-run spike in tm-20260428201403-0mpya9. Master accepts it as completion: descriptor-only dry-run files created under /Users/sem/code/ArgentOS-Business, forbidden-import rg check returned no matches, Core TypeScript check passed using NodeNext, and stop conditions were maintained. Business returns to standby/read-only until Core C1-C5 lands or Master assigns amendments."
       }
     ]
+  },
+  {
+    "id": "task-20260429002507-0qezhq",
+    "createdAt": "2026-04-29T00:25:07.621Z",
+    "updatedAt": "2026-04-29T00:25:07.621Z",
+    "from": "master",
+    "owner": "agent-persona",
+    "title": "Agent Profile UI/config exposure and redacted profile API",
+    "body": "LANE LOCK:\nRepo: ArgentAIOS/argentos-core\nLocal path: /Users/sem/code/argent-core\nTarget branch: dev\nForbidden repo for this task: ArgentAIOS/argentos\nReason: pure core Agent Persona/Profile UI and redacted config/API work\n\nTask: expose the merged Agent Profile foundation in dashboard/config UI and redacted profile API.\n\nScope:\n- Pull latest origin/dev and create a fresh branch from dev.\n- Identify current dashboard/config method surfaces and post STARTED with intended files before edits.\n- Add the smallest API/config surface for redacted agent profile data: agent identity, effective TTS profile, editable TTS override fields, persona metadata/selection, and redacted auth/account summaries.\n- Add/update Agent Profile tab/section in the UI with voice provider, voice/voice ID, persona metadata, and redacted credential/account summaries.\n- Add a narrow config update path for agents.list[].tts only.\n\nDo not touch:\n- Workflows canvas/runtime\n- AppForge/TableForge\n- AOS connector implementations\n- OpenClaw Voice/Meet/runtime\n- Business/licensing/private overlay\n- unrelated agent runtime\n\nRequired proof:\n- focused schema/API redaction/config update tests\n- UI rendering test if existing dashboard test lane supports it\n- pnpm check:repo-lane\n- formatting/diff checks\n- merge request with commits and origin/dev containment proof after merge\n\nSecrets policy: do not store secrets in persona markdown or dashboard state. Redacted summaries only; existing auth/channel/profile stores remain source of truth.",
+    "status": "todo",
+    "priority": "high",
+    "branch": "codex/agent-persona-profile-foundation",
+    "notes": []
   }
 ]
