@@ -569,6 +569,35 @@ describe("executeWorkflow", () => {
     expect(saveToDocPanel).not.toHaveBeenCalled();
   });
 
+  it("fails DocPanel saves for placeholder object envelopes", async () => {
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output = makeOutput();
+    const saveToDocPanel = vi.fn(async () => ({ ok: true, docId: "bad-doc" }));
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-output-placeholder-envelope",
+      dispatcher: makeMockDispatcher(async () => ({
+        items: [
+          {
+            json: { result: "placeholder" },
+            text: JSON.stringify({ name: "agent-draft", body: "demo payload" }),
+          },
+        ],
+      })),
+      actions: { saveToDocPanel },
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.steps.at(-1)?.error).toContain("placeholder object envelope");
+    expect(saveToDocPanel).not.toHaveBeenCalled();
+  });
+
   it("runs podcast_plan before podcast_generate through first-class action nodes", async () => {
     const trigger = makeTrigger();
     const script: ActionNode = {

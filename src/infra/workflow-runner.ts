@@ -1259,6 +1259,20 @@ function extractPayloadText(value: unknown): string {
   return normalizeWorkflowText(directText);
 }
 
+function looksLikePlaceholderEnvelope(value: unknown): boolean {
+  const record = asRecord(value);
+  const keys = Object.keys(record);
+  if (!keys.length) {
+    return false;
+  }
+  if ("name" in record && "body" in record) {
+    const name = record.name;
+    const body = record.body;
+    return typeof name === "string" && typeof body === "string";
+  }
+  return false;
+}
+
 function normalizeRenderableWorkflowContent(value: string, label: string): string {
   const trimmed = value.trim();
   if (!trimmed || trimmed === "[object Object]") {
@@ -1275,6 +1289,11 @@ function normalizeRenderableWorkflowContent(value: string, label: string): strin
         return extracted;
       }
       const record = asRecord(parsed);
+      if (looksLikePlaceholderEnvelope(record)) {
+        throw new Error(
+          `${label} is not renderable text. Upstream step returned a placeholder object envelope.`,
+        );
+      }
       if (
         Object.hasOwn(record, "payloads") ||
         Object.hasOwn(record, "meta") ||

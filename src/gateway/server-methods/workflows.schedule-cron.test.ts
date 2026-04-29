@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CronJob } from "../../cron/types.js";
 import type { WorkflowRow } from "../../infra/workflow-execution-service.js";
-import { syncWorkflowScheduleCronJob } from "./workflows.js";
+import {
+  activeWorkflowScheduleConflictIssues,
+  duplicatedWorkflowShouldStartActive,
+  syncWorkflowScheduleCronJob,
+} from "./workflows.js";
 
 function workflowRow(overrides: Partial<WorkflowRow> = {}): WorkflowRow {
   return {
@@ -128,5 +132,63 @@ describe("syncWorkflowScheduleCronJob", () => {
 
     expect(result).toMatchObject({ action: "removed", jobId: null });
     expect(cron.remove).toHaveBeenCalledWith("cron-paused");
+  });
+});
+
+describe("duplicatedWorkflowShouldStartActive", () => {
+  it("starts manual workflow duplicates active", () => {
+    expect(
+      duplicatedWorkflowShouldStartActive(
+        workflowRow({ trigger_type: "manual", trigger_config: { timezone: "America/Chicago" } }),
+      ),
+    ).toBe(true);
+  });
+
+  it("starts scheduled workflow duplicates inactive", () => {
+    expect(duplicatedWorkflowShouldStartActive(workflowRow())).toBe(false);
+  });
+});
+
+describe("activeWorkflowScheduleConflictIssues", () => {
+  it("warns when another active workflow shares the same cron schedule", async () => {
+    const sql = vi.fn(async () => [
+      {
+        id: "wf-legacy",
+        name: "Legacy Morning Brief",
+        trigger_type: "schedule",
+        trigger_config: { cronExpr: "30 6 * * *", timezone: "America/Chicago" },
+      },
+    ]) as unknown as ReturnType<typeof import("postgres").default>;
+
+    const issues = await activeWorkflowScheduleConflictIssues({
+      sql,
+      workflow: workflowRow(),
+    });
+
+    expect(issues).toEqual([
+      expect.objectContaining({
+        severity: "warning",
+        code: "schedule_conflict_active_workflow",
+        message: expect.stringContaining("Legacy Morning Brief"),
+      }),
+    ]);
+  });
+
+  it("ignores workflows that do not share the same cron expression and timezone", async () => {
+    const sql = vi.fn(async () => [
+      {
+        id: "wf-other",
+        name: "Different Schedule",
+        trigger_type: "schedule",
+        trigger_config: { cronExpr: "0 9 * * *", timezone: "America/Chicago" },
+      },
+    ]) as unknown as ReturnType<typeof import("postgres").default>;
+
+    const issues = await activeWorkflowScheduleConflictIssues({
+      sql,
+      workflow: workflowRow(),
+    });
+
+    expect(issues).toEqual([]);
   });
 });

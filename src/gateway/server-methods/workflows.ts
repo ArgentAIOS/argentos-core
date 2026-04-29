@@ -570,6 +570,10 @@ function workflowScheduleCronDescription(row: WorkflowRow): string {
   return `${WORKFLOW_SCHEDULE_CRON_MARKER}\nworkflowId=${row.id}\n${description}`;
 }
 
+export function duplicatedWorkflowShouldStartActive(source: WorkflowRow): boolean {
+  return resolveWorkflowSchedule(source) ? false : true;
+}
+
 function workflowScheduleCronSpec(row: WorkflowRow, schedule: { expr: string; timezone?: string }) {
   return {
     name: `Workflow: ${row.name}`,
@@ -676,6 +680,58 @@ export async function reconcileWorkflowScheduleCronJobs(cron: CronService) {
     log.info(`workflow schedule cron reconciliation: ${JSON.stringify(results)}`);
   }
   return { reconciled: results };
+}
+
+export async function activeWorkflowScheduleConflictIssues(params: {
+  sql: ReturnType<typeof postgres>;
+  workflow: WorkflowRow;
+}): Promise<WorkflowIssue[]> {
+  const schedule = resolveWorkflowSchedule(params.workflow);
+  if (!schedule || params.workflow.is_active !== true) {
+    return [];
+  }
+
+  const peers = await params.sql`
+    SELECT id, name, trigger_type, trigger_config
+    FROM workflows
+    WHERE id <> ${params.workflow.id}
+      AND is_active = true
+      AND trigger_type IN ('schedule', 'cron')
+  `;
+
+  const conflictingPeers = peers.filter((row) => {
+    const peerSchedule = resolveWorkflowSchedule(row as unknown as WorkflowRow);
+    if (!peerSchedule) {
+      return false;
+    }
+    return (
+      peerSchedule.expr === schedule.expr &&
+      (peerSchedule.timezone ?? "") === (schedule.timezone ?? "")
+    );
+  });
+
+  if (conflictingPeers.length === 0) {
+    return [];
+  }
+
+  const peerNames = conflictingPeers
+    .map((row) => (typeof row.name === "string" && row.name.trim() ? row.name.trim() : "Untitled"))
+    .slice(0, 3);
+  const remainder =
+    conflictingPeers.length > peerNames.length
+      ? ` and ${conflictingPeers.length - peerNames.length} more`
+      : "";
+
+  return [
+    {
+      severity: "warning",
+      code: "schedule_conflict_active_workflow",
+      category: "runtime",
+      message: `This workflow shares the active schedule ${schedule.expr}${
+        schedule.timezone ? ` (${schedule.timezone})` : ""
+      } with ${peerNames.join(", ")}${remainder}. All of them will appear in Workloads and all of them will run unless you pause the extra copies.`,
+    },
+  ];
 }
 
 function optionalWorkflowPackageFormat(
@@ -2352,6 +2408,9 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       const newId = randomUUID();
       const name = newName ?? `${source.name} (copy)`;
       const sourceJson = workflowJsonFieldsFromRow(source as unknown as WorkflowRow);
+      const duplicateStartsActive = duplicatedWorkflowShouldStartActive(
+        source as unknown as WorkflowRow,
+      );
 
       const [row] = await sql`
         INSERT INTO workflows (
@@ -2361,7 +2420,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           trigger_type, trigger_config, deployment_stage
         ) VALUES (
           ${newId}, ${name}, ${source.description},
-          ${source.owner_agent_id}, 1, true,
+          ${source.owner_agent_id}, 1, ${duplicateStartsActive},
           ${jsonParam(sql, sourceJson.nodes)}::jsonb,
           ${jsonParam(sql, sourceJson.edges)}::jsonb,
           ${jsonParam(sql, sourceJson.canvasLayout)}::jsonb,
@@ -2399,7 +2458,13 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           return;
         }
         const normalized = workflowFromRow(row as unknown as WorkflowRow);
-        const runtimeIssues = await validateWorkflowRuntimeCapabilities(normalized.workflow);
+        const runtimeIssues = [
+          ...(await validateWorkflowRuntimeCapabilities(normalized.workflow)),
+          ...(await activeWorkflowScheduleConflictIssues({
+            sql,
+            workflow: row as unknown as WorkflowRow,
+          })),
+        ];
         const issues = [...normalized.issues, ...runtimeIssues];
         respond(true, {
           ok: !hasBlockingWorkflowIssues(issues),
