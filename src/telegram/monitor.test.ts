@@ -22,12 +22,13 @@ const api = {
   setWebhook: vi.fn(),
   deleteWebhook: vi.fn(),
 };
-const { initSpy, runSpy, loadConfig } = vi.hoisted(() => ({
+const { initSpy, runSpy, createBotSpy, loadConfig } = vi.hoisted(() => ({
   initSpy: vi.fn(async () => undefined),
   runSpy: vi.fn(() => ({
     task: () => Promise.resolve(),
     stop: vi.fn(),
   })),
+  createBotSpy: vi.fn(),
   loadConfig: vi.fn(() => ({
     agents: { defaults: { maxConcurrent: 2 } },
     channels: { telegram: {} },
@@ -48,7 +49,8 @@ vi.mock("../config/config.js", async (importOriginal) => {
 });
 
 vi.mock("./bot.js", () => ({
-  createTelegramBot: () => {
+  createTelegramBot: (...args: unknown[]) => {
+    createBotSpy(...args);
     handlers.message = async (ctx: MockCtx) => {
       const chatId = ctx.message.chat.id;
       const isGroup = ctx.message.chat.type !== "private";
@@ -97,6 +99,7 @@ describe("monitorTelegramProvider (grammY)", () => {
     });
     initSpy.mockClear();
     runSpy.mockClear();
+    createBotSpy.mockClear();
     computeBackoff.mockClear();
     sleepWithAbort.mockClear();
   });
@@ -178,6 +181,30 @@ describe("monitorTelegramProvider (grammY)", () => {
     expect(computeBackoff).toHaveBeenCalled();
     expect(sleepWithAbort).toHaveBeenCalled();
     expect(failedRunnerStop).toHaveBeenCalled();
+    expect(runSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("recreates the bot and waits a full long-poll window after getUpdates conflicts", async () => {
+    const conflictError = Object.assign(new Error("terminated by other getUpdates request"), {
+      error_code: 409,
+      method: "getUpdates",
+    });
+    const failedRunnerStop = vi.fn();
+    runSpy
+      .mockImplementationOnce(() => ({
+        task: () => Promise.reject(conflictError),
+        stop: failedRunnerStop,
+      }))
+      .mockImplementationOnce(() => ({
+        task: () => Promise.resolve(),
+        stop: vi.fn(),
+      }));
+
+    await monitorTelegramProvider({ token: "tok" });
+
+    expect(failedRunnerStop).toHaveBeenCalled();
+    expect(createBotSpy).toHaveBeenCalledTimes(2);
+    expect(sleepWithAbort).toHaveBeenCalledWith(35_000, undefined);
     expect(runSpy).toHaveBeenCalledTimes(2);
   });
 

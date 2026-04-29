@@ -29,6 +29,8 @@ export type MonitorTelegramOpts = {
   webhookUrl?: string;
 };
 
+const TELEGRAM_LONG_POLL_TIMEOUT_SECONDS = 30;
+
 export function createTelegramRunnerOptions(cfg: ArgentConfig): RunOptions<unknown> {
   return {
     sink: {
@@ -37,7 +39,7 @@ export function createTelegramRunnerOptions(cfg: ArgentConfig): RunOptions<unkno
     runner: {
       fetch: {
         // Match grammY defaults
-        timeout: 30,
+        timeout: TELEGRAM_LONG_POLL_TIMEOUT_SECONDS,
         // Request reactions without dropping default update types.
         allowed_updates: resolveTelegramAllowedUpdates(),
       },
@@ -56,6 +58,7 @@ const TELEGRAM_POLL_RESTART_POLICY = {
   factor: 1.8,
   jitter: 0.25,
 };
+const TELEGRAM_GET_UPDATES_CONFLICT_COOLDOWN_MS = (TELEGRAM_LONG_POLL_TIMEOUT_SECONDS + 5) * 1000;
 
 const isGetUpdatesConflict = (err: unknown) => {
   if (!err || typeof err !== "object") {
@@ -138,17 +141,18 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
       }
     };
 
-    const bot = createTelegramBot({
-      token,
-      runtime: opts.runtime,
-      proxyFetch,
-      config: cfg,
-      accountId: account.accountId,
-      updateOffset: {
-        lastUpdateId,
-        onUpdateId: persistUpdateId,
-      },
-    });
+    const createBot = () =>
+      createTelegramBot({
+        token,
+        runtime: opts.runtime,
+        proxyFetch,
+        config: cfg,
+        accountId: account.accountId,
+        updateOffset: {
+          lastUpdateId,
+          onUpdateId: persistUpdateId,
+        },
+      });
 
     if (opts.useWebhook) {
       await startTelegramWebhook({
@@ -170,6 +174,7 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
     let restartAttempts = 0;
 
     while (!opts.abortSignal?.aborted) {
+      const bot = createBot();
       const runner = run(bot, createTelegramRunnerOptions(cfg));
       const stopOnAbort = () => {
         if (opts.abortSignal?.aborted) {
@@ -198,7 +203,10 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
           throw err;
         }
         restartAttempts += 1;
-        const delayMs = computeBackoff(TELEGRAM_POLL_RESTART_POLICY, restartAttempts);
+        const retryDelayMs = computeBackoff(TELEGRAM_POLL_RESTART_POLICY, restartAttempts);
+        const delayMs = isConflict
+          ? Math.max(retryDelayMs, TELEGRAM_GET_UPDATES_CONFLICT_COOLDOWN_MS)
+          : retryDelayMs;
         const reason = isConflict ? "getUpdates conflict" : "network error";
         const errMsg = formatErrorMessage(err);
         (opts.runtime?.error ?? console.error)(
