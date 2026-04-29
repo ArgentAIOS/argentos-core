@@ -83,6 +83,16 @@ describe("argent-tools: subagents", () => {
   it("sessions_spawn skips invalid model overrides and continues", async () => {
     resetSubagentRegistryForTests();
     callGatewayMock.mockReset();
+    configOverride = {
+      session: { mainKey: "main", scope: "per-sender" },
+      agents: {
+        defaults: {
+          models: {
+            "openai-codex/gpt-5.3-codex": {},
+          },
+        },
+      },
+    };
     const calls: Array<{ method?: string; params?: unknown }> = [];
     let agentCallCount = 0;
 
@@ -126,9 +136,19 @@ describe("argent-tools: subagents", () => {
     expect(result.details).toMatchObject({
       status: "accepted",
       modelApplied: false,
+      modelRequested: "bad-model",
+      modelDiagnostic: {
+        requestedModel: "bad-model",
+        allowlistSource: "agents.defaults.models",
+        allowedModels: ["openai-codex/gpt-5.3-codex"],
+        inspectCommand: "argent models status --agent main --json",
+      },
     });
     expect(String((result.details as { warning?: string }).warning ?? "")).toContain(
       "invalid model",
+    );
+    expect(String((result.details as { warning?: string }).warning ?? "")).toContain(
+      "Allowed models source",
     );
     expect(calls.some((call) => call.method === "agent")).toBe(true);
   });
