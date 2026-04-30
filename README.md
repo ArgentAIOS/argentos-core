@@ -28,7 +28,13 @@ ArgentOS is a personal AI operating system that runs on your hardware, speaks th
 
 ## Latest Update
 
-The April Core stabilization release is live on `main`: a month-long lane of install/update hardening, dashboard setup and model-routing polish, expanded public docs, the Cognee AOS connector, MCP exposure fixes, and the observable Rust executive shadow runtime. A supplemental patch documents and routes Z.AI Coding-subscription endpoints correctly. See [CHANGELOG.md](CHANGELOG.md) for the full release narrative.
+**ArgentOS Core 2026.4.30 is live on `main`.** This release brings the
+current personal AI OS foundation into one public build: first-class reminders
+inside Schedule, safer workflow and DocPanel output handling, Node 22 runtime
+pinning for more stable local services, richer AppForge and Argent Tables
+foundations, expanded AOS connector readiness, realtime voice/browser
+foundations, and clearer model/provider routing. See [CHANGELOG.md](CHANGELOG.md)
+for the full release narrative.
 
 ## Install
 
@@ -51,27 +57,34 @@ bash install.sh
 
 ## What's in Core
 
-| System                | What It Does                                                                   |
-| --------------------- | ------------------------------------------------------------------------------ |
-| **Memory**            | SQLite + pgvector hybrid search, auto-capture, entity tracking, embeddings     |
-| **Heartbeat**         | Periodic accountability, contract/promise system, scoring                      |
-| **Contemplation**     | Always-on thinking loop, local models via Ollama/LM Studio, episode journaling |
-| **Channels**          | Telegram, Discord, Slack, WhatsApp, Signal, iMessage, and more                 |
-| **Workflows**         | Visual multi-agent pipeline builder with 62 connector integrations             |
-| **Dashboard**         | React + WebGL avatar, chat, task board, alignment docs editor                  |
-| **62 Connectors**     | Stripe, HubSpot, GitHub, Notion, Salesforce, Jira, Twilio, and dozens more     |
-| **Intent System**     | Three-tier hierarchical policy engine for safe agent behavior                  |
-| **Model Router**      | Complexity scoring with local/fast/balanced/powerful tier routing              |
-| **SIS**               | Self-improving system — lesson extraction from experience                      |
-| **Knowledge Library** | RAG with agent-level ACL, PDF/DOCX/XLSX ingestion                              |
-| **Encrypted Secrets** | AES-256-GCM credential storage with OS keychain integration                    |
-| **Tasks & Projects**  | Full CRUD with priorities, dependencies, FTS                                   |
-| **Alignment Docs**    | SOUL.md, IDENTITY.md, USER.md — define who your agent is                       |
-| **Backup**            | SQLite backup with local/S3/R2 upload, compression, restore                    |
+| System                | What It Does                                                                     |
+| --------------------- | -------------------------------------------------------------------------------- |
+| **Memory**            | SQLite + pgvector hybrid search, auto-capture, entity tracking, embeddings       |
+| **Heartbeat**         | Periodic accountability, contract/promise system, scoring                        |
+| **Contemplation**     | Always-on thinking loop, local models via Ollama/LM Studio, episode journaling   |
+| **Channels**          | Telegram, Discord, Slack, WhatsApp, Signal, iMessage, and more                   |
+| **Workflows**         | Visual multi-agent pipeline builder with scheduling, approvals, and run history  |
+| **Schedule**          | Tasks, workflow runs, and simple reminders with delivery target metadata         |
+| **Dashboard**         | React control surface for chat, tasks, schedules, workflows, memory, and setup   |
+| **AppForge**          | Personal app and table-building substrate with bases, fields, records, and views |
+| **AOS Connectors**    | 64 connector harnesses with readiness metadata and service-key-first setup       |
+| **Realtime Voice**    | Voice-alert and browser-control foundations for operator-facing automation       |
+| **Intent System**     | Three-tier hierarchical policy engine for safe agent behavior                    |
+| **Model Router**      | Complexity scoring with local/fast/balanced/powerful tier routing                |
+| **SIS**               | Self-improving system — lesson extraction from experience                        |
+| **Knowledge Library** | RAG with agent-level ACL, PDF/DOCX/XLSX ingestion                                |
+| **Encrypted Secrets** | AES-256-GCM credential storage with OS keychain integration                      |
+| **Tasks & Projects**  | Full CRUD with priorities, dependencies, FTS                                     |
+| **Alignment Docs**    | SOUL.md, IDENTITY.md, USER.md — define who your agent is                         |
+| **Backup**            | SQLite backup with local/S3/R2 upload, compression, restore                      |
 
-## Marketplace
+## AOS And Marketplace
 
-The [ArgentOS Marketplace](https://marketplace.argentos.ai) has 116+ packages:
+Core includes connector harnesses for services such as Slack, Teams, Discord,
+Airtable, HubSpot, Notion, GitHub, Stripe, Twilio, Zapier, WordPress, n8n,
+Monday, Make, Salesforce, Shopify, QuickBooks, and more. The [ArgentOS
+Marketplace](https://marketplace.argentos.ai) is the discovery and install path
+for additional skills, plugins, connectors, and workflow templates:
 
 ```bash
 argent marketplace install <package>
@@ -93,7 +106,7 @@ src/
 └── cli/              # CLI commands
 
 dashboard/            # React dashboard (36K+ LOC)
-tools/aos/            # 62 connector harnesses
+tools/aos/            # 64 connector harnesses
 apps/                 # macOS, iOS, Android apps
 ```
 
@@ -142,7 +155,6 @@ Core is the free foundation. [ArgentOS Business](https://argentos.ai/business) a
 ArgentOS stands on the work of others:
 
 - **[pi-mono](https://github.com/badlogic/pi-mono)** by Mario Zechner ([@badlogic](https://github.com/badlogic)) — the agent runtime core that ArgentOS builds upon. pi-mono provides the foundational agent loop, session management, and tool execution framework.
-- **[OpenClaw](https://openclaw.ai/)** by [Peter Steinberger](https://steipete.me/) — the original fork that gave ArgentOS its launching pad. OpenClaw's architecture informed early design decisions for the gateway, plugin system, and channel infrastructure.
 - **[TOON](https://github.com/toon-format/toon)** — Token-Oriented Object Notation. ArgentOS uses TOON throughout the system to encode structured data for LLM prompts at 40-50% fewer tokens than JSON. Used in workflow pipeline context, agent handoffs, memory recall, tool results, task breakdowns, and team status.
 
 ## License

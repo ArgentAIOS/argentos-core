@@ -26,11 +26,10 @@ Docs: https://docs.argentos.ai
   readiness metadata and harness-backed connector work across tools such as
   Slack, Teams, Discord Workflow, Airtable, Buffer, Hootsuite, Monday, Zapier,
   WordPress, n8n, HubSpot, Make, PayPunch, CallScrub, and more.
-- **OpenClaw gains the next layer of real-time voice and browser control
-  foundations.** This includes browser diagnostics, OpenAI Realtime adapter
-  support, local audio smoke tools, operator voice-alert routing foundations,
-  and Google Meet setup/status plus browser-only recovery for already-open Meet
-  tabs.
+- **Realtime voice and browser automation foundations move forward.** This
+  includes browser diagnostics, OpenAI Realtime adapter support, local audio
+  smoke tools, operator voice-alert routing foundations, and Google Meet
+  setup/status plus browser-only recovery for already-open Meet tabs.
 
 ### Changes
 
@@ -93,9 +92,9 @@ Docs: https://docs.argentos.ai
 - AOS: configure service keys before expecting live connector reads or writes.
   Harness tests cover the connector packets, but most production accounts still
   need operator-specific smoke tests.
-- OpenClaw: set `OPENAI_API_KEY` before live realtime voice smoke. Google Meet
-  recovery requires a signed-in Chrome profile and an already-open Meet tab;
-  create/join/leave remain follow-up work.
+- Realtime voice: set `OPENAI_API_KEY` before live realtime voice smoke. Google
+  Meet recovery requires a signed-in Chrome profile and an already-open Meet
+  tab; create/join/leave remain follow-up work.
 
 ### Known Gaps
 
@@ -106,7 +105,7 @@ Docs: https://docs.argentos.ai
   automations are still follow-up work.
 - AOS connector claims are truth-labeled from manifests and harness tests; live
   external-account smoke tests still require operator credentials.
-- OpenClaw browser Talk has a gateway/API substrate, not a finished dashboard
+- Browser voice control has a gateway/API substrate, not a finished dashboard
   voice button yet. Remote WebRTC browser smoke and Gemini/Google Live provider
   parity remain follow-up work.
 - The Rust gateway remains in shadow mode; TypeScript remains the live gateway
