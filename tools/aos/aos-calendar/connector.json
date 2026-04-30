@@ -1,0 +1,117 @@
+{
+  "tool": "aos-calendar",
+  "backend": "calendar-provider-api",
+  "manifest_schema_version": "1.0.0",
+  "connector": {
+    "label": "Calendar",
+    "category": "calendar",
+    "categories": ["calendar", "productivity"],
+    "resources": ["calendar", "event"]
+  },
+  "scope": {
+    "kind": "calendar",
+    "surface": "event",
+    "scaffold_only": true,
+    "live_backend_available": false,
+    "live_read_available": false,
+    "write_bridge_available": false,
+    "workerFields": ["calendar_id", "window_minutes"],
+    "fields": [
+      {
+        "id": "calendar_id",
+        "label": "Calendar ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["event.upcoming", "event.list"],
+        "placeholder": "primary",
+        "description": "Calendar ID to inspect. Defaults to the primary calendar when the future harness supports it."
+      },
+      {
+        "id": "window_minutes",
+        "label": "Window Minutes",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "applies_to": ["event.upcoming"],
+        "placeholder": "60",
+        "description": "Look-ahead window for upcoming meetings."
+      }
+    ],
+    "known_provider_surfaces": [
+      {
+        "tool": "aos-google",
+        "commands": ["calendar.list", "calendar.create"],
+        "note": "Google Workspace currently exposes calendar commands under aos-google, not the aos-calendar connector ID expected by Workflows."
+      },
+      {
+        "tool": "aos-m365",
+        "commands": ["calendar.list", "calendar.create"],
+        "note": "Microsoft 365 exposes calendar commands under aos-m365, not the aos-calendar connector ID expected by Workflows."
+      }
+    ]
+  },
+  "auth": {
+    "kind": "oauth-provider",
+    "required": true,
+    "interactive_setup": [
+      "Choose the backing calendar provider and OAuth surface before enabling Workflows templates that reference aos-calendar.",
+      "Current runnable provider-specific calendar commands are exposed through aos-google and aos-m365.",
+      "This connector ID is manifest-only until an aos-calendar adapter or explicit provider alias contract is implemented."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report Calendar connector readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run Calendar connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "event.upcoming",
+      "summary": "List upcoming calendar events",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "event",
+      "action_class": "read"
+    },
+    {
+      "id": "event.list",
+      "summary": "List calendar events",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "event",
+      "action_class": "read"
+    }
+  ]
+}

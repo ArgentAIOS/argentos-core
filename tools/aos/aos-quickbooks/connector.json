@@ -1,4 +1,5 @@
 {
+  "tool": "aos-quickbooks",
   "backend": "quickbooks-online",
   "manifest_schema_version": "1.0.0",
   "connector": {
