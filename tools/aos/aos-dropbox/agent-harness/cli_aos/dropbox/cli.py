@@ -13,17 +13,12 @@ from .runtime import (
     capabilities_snapshot,
     config_show_result,
     doctor_snapshot,
-    file_delete_result,
     file_download_result,
     file_get_result,
     file_list_result,
-    file_move_result,
-    file_upload_result,
-    folder_create_result,
     folder_list_result,
     health_snapshot,
     search_query_result,
-    share_create_link_result,
     share_list_result,
 )
 
@@ -172,50 +167,18 @@ def file_get(ctx: click.Context, path: str | None, file_id: str | None) -> None:
     _emit_success(ctx, "file.get", file_get_result(ctx.obj, path=path, file_id=file_id))
 
 
-@file_group.command("upload")
-@click.option("--path", default=None)
-@click.option("--source-file", default=None)
-@click.pass_context
-def file_upload(ctx: click.Context, path: str | None, source_file: str | None) -> None:
-    _set_command(ctx, "file.upload")
-    require_mode(ctx, "file.upload")
-    _emit_success(ctx, "file.upload", file_upload_result(ctx.obj, path=path, source_file=source_file))
-
-
 @file_group.command("download")
 @click.option("--path", default=None)
 @click.option("--file-id", default=None)
-@click.option("--output-file", default=None)
 @click.pass_context
-def file_download(ctx: click.Context, path: str | None, file_id: str | None, output_file: str | None) -> None:
+def file_download(ctx: click.Context, path: str | None, file_id: str | None) -> None:
     _set_command(ctx, "file.download")
     require_mode(ctx, "file.download")
     _emit_success(
         ctx,
         "file.download",
-        file_download_result(ctx.obj, path=path, file_id=file_id, output_file=output_file),
+        file_download_result(ctx.obj, path=path, file_id=file_id),
     )
-
-
-@file_group.command("delete")
-@click.option("--path", default=None)
-@click.option("--file-id", default=None)
-@click.pass_context
-def file_delete(ctx: click.Context, path: str | None, file_id: str | None) -> None:
-    _set_command(ctx, "file.delete")
-    require_mode(ctx, "file.delete")
-    _emit_success(ctx, "file.delete", file_delete_result(ctx.obj, path=path, file_id=file_id))
-
-
-@file_group.command("move")
-@click.option("--path", default=None)
-@click.option("--file-id", default=None)
-@click.option("--dest-path", default=None)
-@click.pass_context
-def file_move(ctx: click.Context, path: str | None, file_id: str | None, dest_path: str | None) -> None:
-    _set_command(ctx, "file.move")
-    require_mode(ctx, "file.move")
-    _emit_success(ctx, "file.move", file_move_result(ctx.obj, path=path, file_id=file_id, dest_path=dest_path))
 
 
 @cli.group("folder")
@@ -234,28 +197,9 @@ def folder_list(ctx: click.Context, path: str | None, cursor: str | None, limit:
     _emit_success(ctx, "folder.list", folder_list_result(ctx.obj, path=path, cursor=cursor, limit=limit))
 
 
-@folder_group.command("create")
-@click.option("--path", default=None)
-@click.pass_context
-def folder_create(ctx: click.Context, path: str | None) -> None:
-    _set_command(ctx, "folder.create")
-    require_mode(ctx, "folder.create")
-    _emit_success(ctx, "folder.create", folder_create_result(ctx.obj, path=path))
-
-
 @cli.group("share")
 def share_group() -> None:
     pass
-
-
-@share_group.command("create-link")
-@click.option("--path", default=None)
-@click.option("--settings", default=None)
-@click.pass_context
-def share_create_link(ctx: click.Context, path: str | None, settings: str | None) -> None:
-    _set_command(ctx, "share.create_link")
-    require_mode(ctx, "share.create_link")
-    _emit_success(ctx, "share.create_link", share_create_link_result(ctx.obj, path=path, settings=settings))
 
 
 @share_group.command("list")

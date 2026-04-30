@@ -76,14 +76,6 @@ class SquareClient:
         response = self._request("GET", f"/payments/{payment_id}")
         return (response.data or {}).get("payment", {})
 
-    def create_payment(self, *, amount: int, currency: str, source_id: str, location_id: str | None = None, idempotency_key: str | None = None) -> dict[str, Any]:
-        return {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "Square payment creation remains scaffolded until write workflows are approved.",
-            "payment": {"amount": amount, "currency": currency, "source_id": source_id, "location_id": location_id},
-        }
-
     def list_customers(self, *, limit: int = 10) -> dict[str, Any]:
         response = self._request("GET", "/customers", params={"limit": limit})
         return {"customers": (response.data or {}).get("customers", [])}
@@ -91,22 +83,6 @@ class SquareClient:
     def get_customer(self, customer_id: str) -> dict[str, Any]:
         response = self._request("GET", f"/customers/{customer_id}")
         return (response.data or {}).get("customer", {})
-
-    def create_customer(self, *, email: str | None = None, given_name: str | None = None, family_name: str | None = None) -> dict[str, Any]:
-        return {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "Square customer creation remains scaffolded until write workflows are approved.",
-            "customer": {"email": email, "given_name": given_name, "family_name": family_name},
-        }
-
-    def update_customer(self, customer_id: str, **fields: Any) -> dict[str, Any]:
-        return {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "Square customer update remains scaffolded until write workflows are approved.",
-            "customer": {"id": customer_id, **fields},
-        }
 
     def list_orders(self, *, location_id: str, limit: int = 10) -> dict[str, Any]:
         body = {"location_ids": [location_id], "limit": limit}
@@ -117,14 +93,6 @@ class SquareClient:
         response = self._request("GET", f"/orders/{order_id}")
         return (response.data or {}).get("order", {})
 
-    def create_order(self, *, location_id: str, line_items: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-        return {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "Square order creation remains scaffolded until write workflows are approved.",
-            "order": {"location_id": location_id, "line_items": line_items or []},
-        }
-
     def list_items(self, *, limit: int = 10) -> dict[str, Any]:
         response = self._request("GET", "/catalog/list", params={"types": "ITEM", "limit": limit})
         return {"items": (response.data or {}).get("objects", [])}
@@ -133,30 +101,6 @@ class SquareClient:
         response = self._request("GET", f"/catalog/object/{item_id}")
         return (response.data or {}).get("object", {})
 
-    def create_item(self, *, name: str, currency: str = "USD") -> dict[str, Any]:
-        return {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "Square catalog item creation remains scaffolded until write workflows are approved.",
-            "item": {"name": name, "currency": currency},
-        }
-
     def list_invoices(self, *, location_id: str, limit: int = 10) -> dict[str, Any]:
         response = self._request("GET", "/invoices", params={"location_id": location_id, "limit": limit})
         return {"invoices": (response.data or {}).get("invoices", [])}
-
-    def create_invoice(self, *, location_id: str, customer_id: str, order_id: str | None = None) -> dict[str, Any]:
-        return {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "Square invoice creation remains scaffolded until write workflows are approved.",
-            "invoice": {"location_id": location_id, "customer_id": customer_id, "order_id": order_id},
-        }
-
-    def send_invoice(self, invoice_id: str) -> dict[str, Any]:
-        return {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "Square invoice sending remains scaffolded until write workflows are approved.",
-            "invoice": {"id": invoice_id},
-        }

@@ -90,6 +90,7 @@ LIVE_READ_COMMANDS = [
     "customer.read",
 ]
 
-SCAFFOLDED_COMMANDS = ["product.update", "order.cancel", "fulfillment.create"]
+LIVE_WRITE_COMMANDS = ["product.update", "order.cancel", "fulfillment.create"]
+SCAFFOLDED_COMMANDS: list[str] = []
 
 REQUIRED_ENV = ["SHOPIFY_SHOP_DOMAIN", "SHOPIFY_ADMIN_ACCESS_TOKEN"]

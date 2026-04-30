@@ -1583,6 +1583,7 @@ function App() {
     getApp: getForgeApp,
     recordOpen: recordForgeOpen,
     pinApp: pinForgeApp,
+    emitWorkflowEvent: emitForgeWorkflowEvent,
     refreshApps: refreshForgeApps,
   } = useApps({
     enabled: backgroundPollingEnabled,
@@ -1726,6 +1727,12 @@ function App() {
     [deleteForgeApp, appWindows.closeApp],
   );
 
+  const handleEmitForgeWorkflowEvent = useCallback(
+    async (appId: string, event: Parameters<typeof emitForgeWorkflowEvent>[1]) =>
+      emitForgeWorkflowEvent(appId, event),
+    [emitForgeWorkflowEvent],
+  );
+
   // Expose app functions globally
   useEffect(() => {
     (window as any).argentApps = {
@@ -1733,9 +1740,17 @@ function App() {
       open: handleOpenForgeApp,
       create: createForgeApp,
       delete: handleDeleteForgeApp,
+      emitWorkflowEvent: handleEmitForgeWorkflowEvent,
       refresh: refreshForgeApps,
     };
-  }, [forgeApps, handleOpenForgeApp, createForgeApp, handleDeleteForgeApp, refreshForgeApps]);
+  }, [
+    forgeApps,
+    handleOpenForgeApp,
+    createForgeApp,
+    handleDeleteForgeApp,
+    handleEmitForgeWorkflowEvent,
+    refreshForgeApps,
+  ]);
 
   const [logs, setLogs] = useState<LogEntry[]>(initialLogs);
   const [operatorDisplayName, setOperatorDisplayName] = useState<string | null>(null);
@@ -2187,6 +2202,7 @@ function App() {
   const { alerts, unreadCount, addAlert, markRead, markAllRead, deleteAlert, clearAll } =
     useAlerts();
   const criticalAlertSeenRef = useRef<Set<string>>(new Set());
+  const reminderAlertSeenRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const onHeartbeatStale = (event: Event) => {
@@ -2801,6 +2817,60 @@ function App() {
       }
     },
   });
+
+  useEffect(() => {
+    const onReminderDue = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          task?: Task;
+          message?: string;
+          deliveryTargets?: string[];
+          deliveries?: Array<{ target?: string; status?: string; reason?: string }>;
+        }>
+      ).detail;
+      const task = detail?.task;
+      if (!task?.id) return;
+      if (reminderAlertSeenRef.current.has(task.id)) return;
+      reminderAlertSeenRef.current.add(task.id);
+
+      const targets = Array.isArray(detail?.deliveryTargets)
+        ? detail.deliveryTargets.filter((target): target is string => typeof target === "string")
+        : [];
+      const message =
+        typeof detail?.message === "string" && detail.message.trim()
+          ? detail.message.trim()
+          : `Reminder: ${task.title || "Reminder"}`;
+
+      if (targets.length === 0 || targets.includes("in_app")) {
+        const failed = (detail?.deliveries || [])
+          .filter((delivery) => delivery.status === "failed" || delivery.status === "skipped")
+          .map((delivery) =>
+            delivery.reason ? `${delivery.target}: ${delivery.reason}` : String(delivery.target),
+          )
+          .filter(Boolean);
+        addAlert(
+          failed.length > 0 ? `${message}\n\nDelivery notes: ${failed.join("; ")}` : message,
+          "warning",
+          `reminder:${task.id}`,
+          {
+            label: "Open Schedule",
+            onClick: () => {
+              setActiveTab("home");
+            },
+          },
+        );
+      }
+
+      if (targets.includes("voice") && !isNativeVoiceActive()) {
+        void tts.speak(message, avatarMood ?? undefined);
+      }
+    };
+
+    window.addEventListener("argent:reminder_due", onReminderDue as EventListener);
+    return () => {
+      window.removeEventListener("argent:reminder_due", onReminderDue as EventListener);
+    };
+  }, [addAlert, avatarMood, tts]);
 
   const stopActiveSpeech = useCallback(() => {
     if (isNativeVoiceActive()) {
@@ -5993,6 +6063,9 @@ function App() {
         onNewApp={handleNewForgeApp}
         onRestoreApp={appWindows.restoreApp}
         onFocusApp={appWindows.focusApp}
+        gatewayConnected={gateway.connected}
+        gatewayRequest={gateway.request}
+        onEmitWorkflowEvent={handleEmitForgeWorkflowEvent}
       />
 
       {/* App Windows (rendered outside forge so they persist when forge closes) */}

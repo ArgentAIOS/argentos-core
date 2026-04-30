@@ -182,6 +182,9 @@ export const agentsHandlers: GatewayRequestHandlers = {
       const toolValues = Array.isArray(params.tools)
         ? params.tools.filter((item): item is string => typeof item === "string")
         : undefined;
+      const skillValues = Array.isArray(params.skills)
+        ? params.skills.filter((item): item is string => typeof item === "string")
+        : undefined;
       const result = await provisionFamilyWorker({
         id: idRaw,
         name: nameRaw,
@@ -194,6 +197,8 @@ export const agentsHandlers: GatewayRequestHandlers = {
           typeof params.provider === "string" ? params.provider.trim() || undefined : undefined,
         tools:
           toolValues?.map((item) => item.trim()).filter((item) => item.length > 0) ?? undefined,
+        skills:
+          skillValues?.map((item) => item.trim()).filter((item) => item.length > 0) ?? undefined,
         callerAgentId: "operator",
       });
       respond(true, { worker: result }, undefined);

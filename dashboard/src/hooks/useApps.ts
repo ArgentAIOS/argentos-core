@@ -16,6 +16,23 @@ export interface ForgeApp {
   lastOpenedAt?: string;
   openCount: number;
   pinned: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AppForgeWorkflowEventRequest {
+  eventType?: string;
+  type?: string;
+  action?: string;
+  capabilityId?: string;
+  workflowRunId?: string;
+  runId?: string;
+  nodeId?: string;
+  tableId?: string;
+  viewId?: string;
+  recordId?: string;
+  reviewId?: string;
+  decision?: string;
+  payload?: Record<string, unknown>;
 }
 
 interface UseAppsReturn {
@@ -28,6 +45,7 @@ interface UseAppsReturn {
     description?: string;
     icon?: string;
     code: string;
+    metadata?: Record<string, unknown>;
   }) => Promise<ForgeApp | null>;
   updateApp: (appId: string, updates: Partial<ForgeApp>) => Promise<ForgeApp | null>;
   deleteApp: (appId: string) => Promise<boolean>;
@@ -35,6 +53,7 @@ interface UseAppsReturn {
   recordOpen: (appId: string) => Promise<void>;
   pinApp: (appId: string) => Promise<ForgeApp | null>;
   searchApps: (query: string) => Promise<ForgeApp[]>;
+  emitWorkflowEvent: (appId: string, event: AppForgeWorkflowEventRequest) => Promise<boolean>;
   refreshApps: () => Promise<void>;
 }
 
@@ -181,6 +200,7 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
       description?: string;
       icon?: string;
       code: string;
+      metadata?: Record<string, unknown>;
     }): Promise<ForgeApp | null> => {
       try {
         const res = await fetchLocalApi(`${API_BASE}/apps`, {
@@ -241,13 +261,14 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
       setError(null);
       return true;
     } catch (err) {
-      if (isAbortLikeError(err)) {
+      let deleteErr = err;
+      if (isAbortLikeError(deleteErr)) {
         try {
           await sendXhrRequest("POST", `${API_BASE}/apps/${appId}/delete`);
           setError(null);
           return true;
         } catch (xhrErr) {
-          err = xhrErr;
+          deleteErr = xhrErr;
         }
       }
 
@@ -262,8 +283,8 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
         setApps(previousApps);
       }
 
-      console.error("[useApps] Error deleting app:", err);
-      setError(err instanceof Error ? err.message : "Failed to delete app");
+      console.error("[useApps] Error deleting app:", deleteErr);
+      setError(deleteErr instanceof Error ? deleteErr.message : "Failed to delete app");
       return false;
     }
   }, []);
@@ -313,6 +334,31 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
     }
   }, []);
 
+  const emitWorkflowEvent = useCallback(
+    async (appId: string, event: AppForgeWorkflowEventRequest): Promise<boolean> => {
+      try {
+        const res = await fetchLocalApi(`${API_BASE}/apps/${appId}/workflow-event`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(event),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(
+            typeof data.error === "string" ? data.error : "Failed to emit workflow event",
+          );
+        }
+        setError(null);
+        return true;
+      } catch (err) {
+        console.error("[useApps] Error emitting workflow event:", err);
+        setError(err instanceof Error ? err.message : "Failed to emit workflow event");
+        return false;
+      }
+    },
+    [],
+  );
+
   return {
     apps,
     loading,
@@ -325,6 +371,7 @@ export function useApps(options: UseAppsOptions = {}): UseAppsReturn {
     recordOpen,
     pinApp,
     searchApps,
+    emitWorkflowEvent,
     refreshApps,
   };
 }

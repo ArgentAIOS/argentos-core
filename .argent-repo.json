@@ -1,0 +1,7 @@
+{
+  "repo": "ArgentAIOS/argentos-core",
+  "lane": "core",
+  "forbiddenRemotes": ["ArgentAIOS/argentos"],
+  "installChannel": "dev",
+  "rule": "Core foundation work must land here unless explicitly marked business/licensing."
+}

@@ -10,19 +10,29 @@
     "kind": "service-key",
     "required": true,
     "service_keys": ["AIRTABLE_API_TOKEN", "AIRTABLE_BASE_ID"],
+    "optional_service_keys": [
+      "AIRTABLE_WORKSPACE_ID",
+      "AIRTABLE_TABLE_NAME",
+      "AIRTABLE_API_BASE_URL"
+    ],
     "interactive_setup": [
       "Create a dedicated Airtable personal access token for the target workspace.",
       "Grant the token access to the base this worker should operate on.",
-      "Add AIRTABLE_API_TOKEN and AIRTABLE_BASE_ID in API Keys.",
-      "Optionally set AIRTABLE_TABLE_NAME to pin a default table scope for worker commands.",
-      "Keep table scope narrow until live read/write support is intentionally enabled.",
-      "This scaffold does not implement live writes yet; commands are setup-oriented only."
+      "Add AIRTABLE_API_TOKEN and AIRTABLE_BASE_ID in operator-controlled API Keys.",
+      "Optionally set AIRTABLE_TABLE_NAME, AIRTABLE_WORKSPACE_ID, and AIRTABLE_API_BASE_URL in operator-controlled API Keys.",
+      "Scoped service-key entries must be injected by the operator runtime and are not bypassed with local env.",
+      "Keep table scope narrow before enabling write mode for record mutations.",
+      "Keep live_write_smoke_tested=false unless a real operator Airtable base smoke test verifies writes."
     ]
   },
   "scope": {
     "kind": "base-table-record",
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "live_write_smoke_tested": false,
     "required": ["AIRTABLE_API_TOKEN", "AIRTABLE_BASE_ID"],
-    "optional": ["AIRTABLE_WORKSPACE_ID", "AIRTABLE_TABLE_NAME"],
+    "optional": ["AIRTABLE_WORKSPACE_ID", "AIRTABLE_TABLE_NAME", "AIRTABLE_API_BASE_URL"],
     "workerFields": ["base_id", "table_name", "workspace_id"],
     "worker_visible_actions": [
       "base.list",
@@ -32,8 +42,8 @@
       "record.list",
       "record.search",
       "record.read",
-      "record.create_draft",
-      "record.update_draft"
+      "record.create",
+      "record.update"
     ],
     "fields": [
       {
@@ -89,7 +99,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "json",
-        "applies_to": ["record.create_draft", "record.update_draft"],
+        "applies_to": ["record.create", "record.update"],
         "placeholder": "{}",
         "description": "JSON object of field values for the record"
       },
@@ -128,12 +138,12 @@
           "table": "AIRTABLE_TABLE_NAME"
         }
       },
-      "record.create_draft": {
+      "record.create": {
         "options": {
           "table": "AIRTABLE_TABLE_NAME"
         }
       },
-      "record.update_draft": {
+      "record.update": {
         "options": {
           "table": "AIRTABLE_TABLE_NAME"
         }
@@ -230,16 +240,16 @@
       "action_class": "read"
     },
     {
-      "id": "record.create_draft",
-      "summary": "Create a draft record payload",
+      "id": "record.create",
+      "summary": "Create a record",
       "required_mode": "write",
       "supports_json": true,
       "resource": "record",
       "action_class": "write"
     },
     {
-      "id": "record.update_draft",
-      "summary": "Update a draft record payload",
+      "id": "record.update",
+      "summary": "Update a record",
       "required_mode": "write",
       "supports_json": true,
       "resource": "record",

@@ -13,7 +13,10 @@ Make connector for live reads of organizations, teams, scenarios, connections, a
 
 This connector is live-read first. The harness uses a configured Make bridge for truthfulness rather than fabricating Make state locally.
 
-The harness accepts these environment variables for live bridge configuration:
+The harness resolves operator-controlled service keys first, then uses local
+environment variables only as unmanaged harness fallbacks. Scoped service-key
+entries must be injected by the operator runtime and are not bypassed with
+local env. The accepted service-key variables are:
 
 - `MAKE_API_URL`
 - `MAKE_API_KEY`
@@ -31,4 +34,4 @@ The harness accepts these environment variables for live bridge configuration:
 - `MAKE_RUN_ID`
 
 Read-style commands call the configured Make bridge when `MAKE_API_URL` and `MAKE_API_KEY` are set and reachable.
-`scenario.trigger` and `execution.run` post a live execution payload through the configured bridge and return normalized bridge metadata.
+`scenario.trigger` and `execution.run` post a live execution payload through the configured bridge and return normalized bridge metadata. Production live-write smoke is not claimed until tested against an operator Make bridge.

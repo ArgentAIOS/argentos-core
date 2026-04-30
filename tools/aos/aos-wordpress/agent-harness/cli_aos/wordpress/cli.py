@@ -3,14 +3,29 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import click
 
 from . import __version__
 from .bridge import config_snapshot, doctor_snapshot, health_snapshot
-from .constants import COMMAND_SPECS, CONNECTOR_AUTH, CONNECTOR_CATEGORY, CONNECTOR_CATEGORIES, CONNECTOR_LABEL, CONNECTOR_RESOURCES, MANIFEST_SCHEMA_VERSION, MODE_ORDER, PERMISSIONS_PATH, TOOL_NAME
+from .constants import (
+    COMMAND_SPECS,
+    CONNECTOR_AUTH,
+    CONNECTOR_CATEGORY,
+    CONNECTOR_CATEGORIES,
+    CONNECTOR_LABEL,
+    CONNECTOR_RESOURCES,
+    CONNECTOR_SCOPE,
+    IMPLEMENTED_WRITE_COMMANDS,
+    MANIFEST_SCHEMA_VERSION,
+    MODE_ORDER,
+    PERMISSIONS_PATH,
+    TOOL_NAME,
+)
 from .errors import CliError
 from .runtime import (
+    assign_taxonomy_terms,
     create_draft_content,
     list_content,
     list_media,
@@ -19,10 +34,15 @@ from .runtime import (
     publish_post,
     read_content,
     read_site,
+    reset_runtime_context,
     schedule_post,
     search_content,
+    set_runtime_context,
     update_draft_content,
+    upload_media,
 )
+
+CONNECTOR_PATH = Path(__file__).resolve().parents[3] / "connector.json"
 
 
 def _mode_allows(actual: str, required: str) -> bool:
@@ -86,10 +106,13 @@ def _emit_error(ctx: click.Context, command_id: str, err: CliError) -> None:
 
 def _run(ctx: click.Context, command_id: str, fn, *args, **kwargs) -> None:
     require_mode(ctx, command_id)
+    token = set_runtime_context(ctx.obj)
     try:
         data = fn(*args, **kwargs)
     except CliError as err:
         _emit_error(ctx, command_id, err)
+    finally:
+        reset_runtime_context(token)
     payload = _result(
         ok=True,
         command=command_id,
@@ -134,6 +157,7 @@ def cli(ctx: click.Context, as_json: bool, mode: str, verbose: bool) -> None:
 @cli.command("capabilities")
 @click.pass_context
 def capabilities(ctx: click.Context) -> None:
+    manifest = json.loads(CONNECTOR_PATH.read_text())
     payload = {
         "tool": TOOL_NAME,
         "version": __version__,
@@ -146,7 +170,19 @@ def capabilities(ctx: click.Context) -> None:
             "categories": CONNECTOR_CATEGORIES,
             "resources": CONNECTOR_RESOURCES,
         },
+        "scope": CONNECTOR_SCOPE,
+        "fields": manifest.get("fields", {}),
+        "worker_visible_actions": manifest.get("worker_visible_actions", []),
         "auth": CONNECTOR_AUTH,
+        "read_support": {
+            command["id"]: command["required_mode"] == "readonly" for command in COMMAND_SPECS
+        },
+        "write_support": {
+            "live_writes_enabled": True,
+            "write_bridge_available": True,
+            "live_write_smoke_tested": False,
+            "implemented_write_commands": IMPLEMENTED_WRITE_COMMANDS,
+        },
         "commands": COMMAND_SPECS,
     }
     _emit(payload, True)
@@ -294,7 +330,8 @@ def post_create_draft(ctx: click.Context, title: str, content: str | None, excer
     _run(
         ctx,
         "post.create_draft",
-        create_draft_post,
+        create_draft_content,
+        "post",
         title=title,
         content=content,
         excerpt=excerpt,
@@ -320,8 +357,9 @@ def post_update_draft(
     _run(
         ctx,
         "post.update_draft",
-        update_draft_post,
-        post_id=post_id,
+        update_draft_content,
+        "post",
+        object_id=post_id,
         title=title,
         content=content,
         excerpt=excerpt,
@@ -440,20 +478,6 @@ def page_read(ctx: click.Context, page_id: str) -> None:
     _run(ctx, "page.read", read_content, "page", object_id=page_id)
 
 
-def _scaffold_result(command_id: str, resource: str, operation: str, inputs: dict[str, object]) -> dict[str, object]:
-    return {
-        "status": "scaffold",
-        "scaffold_only": True,
-        "executed": False,
-        "backend": "wordpress-rest-api",
-        "resource": resource,
-        "operation": operation,
-        "command_id": command_id,
-        "inputs": inputs,
-        "next_step": "Wire this command to a narrow WordPress REST implementation before enabling it.",
-    }
-
-
 @page_group.command("create_draft")
 @click.option("--title", required=True, help="Page title")
 @click.option("--content", default=None, help="Page body")
@@ -550,15 +574,7 @@ def media_list_cmd(
 @click.argument("items", nargs=-1)
 @click.pass_context
 def media_upload(ctx: click.Context, items: tuple[str, ...]) -> None:
-    require_mode(ctx, "media.upload")
-    payload = _result(
-        ok=True,
-        command="media.upload",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=_scaffold_result("media.upload", "media", "upload", {"items": list(items)}),
-    )
-    _emit(payload, ctx.obj["json"])
+    _run(ctx, "media.upload", upload_media, items)
 
 
 @cli.group("taxonomy")
@@ -586,15 +602,7 @@ def taxonomy_list_cmd(ctx: click.Context, per_page: int, page: int, search: str)
 @click.argument("items", nargs=-1)
 @click.pass_context
 def taxonomy_assign_terms(ctx: click.Context, items: tuple[str, ...]) -> None:
-    require_mode(ctx, "taxonomy.assign_terms")
-    payload = _result(
-        ok=True,
-        command="taxonomy.assign_terms",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=_scaffold_result("taxonomy.assign_terms", "taxonomy", "assign_terms", {"items": list(items)}),
-    )
-    _emit(payload, ctx.obj["json"])
+    _run(ctx, "taxonomy.assign_terms", assign_taxonomy_terms, items)
 
 
 if __name__ == "__main__":

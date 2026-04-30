@@ -1,6 +1,6 @@
 {
   "name": "@argentos/tasks-projects-enforcer",
-  "version": "2026.4.25.2",
+  "version": "2026.4.30",
   "description": "ArgentOS plugin to inject task and project instructions into agent bootstrap",
   "license": "MIT",
   "author": "Titanium Computing",

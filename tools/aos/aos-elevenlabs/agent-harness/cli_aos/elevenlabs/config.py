@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -29,12 +30,12 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     model_id_env = ctx_obj.get("model_id_env") or ELEVENLABS_MODEL_ID_ENV
     history_item_id_env = ctx_obj.get("history_item_id_env") or ELEVENLABS_HISTORY_ITEM_ID_ENV
 
-    api_key = (os.getenv(api_key_env) or "").strip()
-    configured_base_url = (os.getenv(base_url_env) or "").strip()
+    api_key = (service_key_env(api_key_env) or "").strip()
+    configured_base_url = (service_key_env(base_url_env) or "").strip()
     base_url = configured_base_url or DEFAULT_BASE_URL
-    voice_id = (os.getenv(voice_id_env) or "").strip()
-    model_id = (os.getenv(model_id_env) or "").strip()
-    history_item_id = (os.getenv(history_item_id_env) or "").strip()
+    voice_id = (service_key_env(voice_id_env) or "").strip()
+    model_id = (service_key_env(model_id_env) or "").strip()
+    history_item_id = (service_key_env(history_item_id_env) or "").strip()
 
     return {
         "backend": BACKEND_NAME,

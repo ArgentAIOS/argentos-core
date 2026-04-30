@@ -22,7 +22,7 @@ from .runtime import (
     doctor_snapshot,
     health_snapshot,
     run_read_command,
-    scaffold_write_command,
+    run_write_command,
 )
 
 TOOL_NAME = "aos-quickbooks"
@@ -123,22 +123,28 @@ def _run_read(ctx: click.Context, command_id: str, items: tuple[str, ...]) -> No
     _emit(payload, ctx.obj["json"])
 
 
-def _run_scaffold(ctx: click.Context, command_id: str, items: tuple[str, ...]) -> None:
+def _run_write(ctx: click.Context, command_id: str, items: tuple[str, ...]) -> None:
     require_mode(ctx, command_id)
-    scaffold = scaffold_write_command(command_id, items)
+    try:
+        data = run_write_command(command_id, items)
+    except ConnectorError as exc:
+        payload = _result(
+            ok=False,
+            command=command_id,
+            mode=ctx.obj["mode"],
+            started=ctx.obj["started"],
+            error=exc.to_error(),
+        )
+        _emit(payload, ctx.obj["json"])
+        raise SystemExit(exc.exit_code) from exc
     payload = _result(
-        ok=False,
+        ok=True,
         command=command_id,
         mode=ctx.obj["mode"],
         started=ctx.obj["started"],
-        error={
-            "code": "NOT_IMPLEMENTED",
-            "message": f"{command_id} is scaffolded but not implemented yet",
-            "details": scaffold,
-        },
+        data=data,
     )
     _emit(payload, ctx.obj["json"])
-    raise SystemExit(10)
 
 
 @click.group()
@@ -315,7 +321,7 @@ def invoice_read(ctx: click.Context, items: tuple[str, ...]) -> None:
 @click.argument("items", nargs=-1)
 @click.pass_context
 def invoice_create_draft(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _run_scaffold(ctx, "invoice.create_draft", items)
+    _run_write(ctx, "invoice.create_draft", items)
 
 
 @cli.group("bill")
@@ -348,7 +354,7 @@ def bill_read(ctx: click.Context, items: tuple[str, ...]) -> None:
 @click.argument("items", nargs=-1)
 @click.pass_context
 def bill_create_draft(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _run_scaffold(ctx, "bill.create_draft", items)
+    _run_write(ctx, "bill.create_draft", items)
 
 
 @cli.group("payment")

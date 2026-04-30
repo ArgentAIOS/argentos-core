@@ -42,6 +42,7 @@ describe("buildAuthChoiceOptions", () => {
     });
 
     expect(options.some((opt) => opt.value === "zai-api-key")).toBe(true);
+    expect(options.some((opt) => opt.value === "zai-coding-api-key")).toBe(true);
   });
 
   it("includes Xiaomi auth choice", () => {

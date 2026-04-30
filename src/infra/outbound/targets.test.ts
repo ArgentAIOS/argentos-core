@@ -97,6 +97,19 @@ describe("resolveOutboundTarget", () => {
     }
   });
 
+  it("falls back to Telegram allowFrom via config", () => {
+    const cfg: ArgentConfig = {
+      channels: { telegram: { botToken: "tg-test", allowFrom: ["8693117634"] } },
+    };
+    const res = resolveOutboundTarget({
+      channel: "telegram",
+      to: "",
+      cfg,
+      mode: "implicit",
+    });
+    expect(res).toEqual({ ok: true, to: "telegram:8693117634" });
+  });
+
   it("rejects webchat delivery", () => {
     const res = resolveOutboundTarget({ channel: "webchat", to: "x" });
     expect(res.ok).toBe(false);

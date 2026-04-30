@@ -1,6 +1,6 @@
 {
   "name": "@argentos/imessage",
-  "version": "2026.4.25.2",
+  "version": "2026.4.30",
   "description": "ArgentOS iMessage channel plugin",
   "type": "module",
   "devDependencies": {

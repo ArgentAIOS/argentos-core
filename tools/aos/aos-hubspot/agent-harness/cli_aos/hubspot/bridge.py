@@ -61,9 +61,13 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
 
     next_steps: list[str] = []
     if not config["portal_id"]:
-        next_steps.append("Set HUBSPOT_PORTAL_ID to the target HubSpot portal/account id.")
+        next_steps.append(
+            "Add HUBSPOT_PORTAL_ID in operator-controlled service keys first, or set it locally for harness fallback."
+        )
     if not config["access_token_present"]:
-        next_steps.append(f"Set {config['access_token_env']} for live HubSpot API access.")
+        next_steps.append(
+            f"Add {config['access_token_env']} in operator-controlled service keys first, or set it locally for harness fallback."
+        )
     if probe and not probe["ok"]:
         next_steps.append(f"Fix the HubSpot API probe failure: {probe['message']}")
     if not config["app_id_present"]:

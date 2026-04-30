@@ -31,10 +31,14 @@ export type TriggerType =
   | "appointment_booked"
   | "ticket_created"
   | "timer_elapsed"
+  | "appforge_event"
   // Connector-driven triggers (AOS Canvas Node)
   | "connector_event";
 
 export interface TriggerConfig {
+  /** Manual/test runs may substitute this ItemSet instead of executing the node. */
+  pinnedOutput?: unknown;
+
   // Schedule (cron expression)
   cronExpr?: string;
   timezone?: string;
@@ -59,6 +63,11 @@ export interface TriggerConfig {
   // Agent event
   agentId?: string;
   eventType?: string;
+
+  // AppForge local event
+  appId?: string;
+  capabilityId?: string;
+  eventFilter?: Record<string, unknown>;
 
   // Workflow done
   sourceWorkflowId?: string;
@@ -133,6 +142,9 @@ export interface AgentOutputSchema {
 }
 
 export interface AgentConfig {
+  /** Manual/test runs may substitute this ItemSet instead of executing the node. */
+  pinnedOutput?: unknown;
+
   agentId: string;
   rolePrompt: string;
   preset?: AgentPreset;
@@ -199,6 +211,25 @@ export type ActionType =
   // Media generation
   | { type: "generate_image"; prompt: string; model?: string; size?: string }
   | { type: "generate_audio"; text: string; voice?: string; mood?: string }
+  | {
+      type: "podcast_plan";
+      title: string;
+      script?: string;
+      dialogue?: Array<Record<string, unknown>>;
+      personas?: Array<Record<string, unknown>>;
+      defaultVoiceId?: string;
+      timezone?: string;
+      publishTimeLocal?: string;
+      music?: Record<string, unknown>;
+      publish?: Record<string, unknown>;
+    }
+  | {
+      type: "podcast_generate";
+      title: string;
+      payload?: Record<string, unknown>;
+      payloadTemplate?: string;
+      outputDir?: string;
+    }
   // Document panel
   | { type: "save_to_docpanel"; title: string; content?: string; format?: string }
   // Connector-driven action (AOS Canvas Node)
@@ -213,7 +244,12 @@ export type ActionType =
     };
 
 export interface ActionConfig {
+  /** Manual/test runs may substitute this ItemSet instead of executing the node. */
+  pinnedOutput?: unknown;
+
   actionType: ActionType;
+  operatorApprovedLive?: boolean;
+  operatorApprovedAt?: string;
   onError?: ErrorConfig;
   timeoutMs?: number;
 }
@@ -248,69 +284,74 @@ export interface MergeStrategyAgentConfig {
   modelTier?: ModelTier;
 }
 
-export type GateConfig =
+export type GateConfig = {
+  /** Manual/test runs may substitute this ItemSet instead of executing the node. */
+  pinnedOutput?: unknown;
+} &
   // Conditional branching
-  | { gateType: "condition"; expression: ConditionExpr; trueEdge: string; falseEdge: string }
-  | {
-      gateType: "switch";
-      cases: Array<{ label: string; expression: ConditionExpr; edgeId: string }>;
-      defaultEdge?: string;
-    }
-  // Parallel execution
-  | { gateType: "parallel"; branchEdges: string[] }
-  | {
-      gateType: "join";
-      strategy: JoinStrategy;
-      branchFailure: BranchFailurePolicy;
-      mergeStrategy: MergeStrategy;
-      timeoutMs?: number;
-      nRequired?: number;
-      mergeAgentConfig?: MergeStrategyAgentConfig;
-    }
-  // Timing
-  | { gateType: "wait_duration"; durationMs: number }
-  | {
-      gateType: "wait_event";
-      eventType: string;
-      eventFilter?: Record<string, unknown>;
-      timeoutMs?: number;
-      timeoutAction: "continue" | "fail";
-    }
-  // Approval (Business-tier — Core treats as pass-through)
-  | {
-      gateType: "approval";
-      approvers: string[];
-      channels: string[];
-      message: string;
-      showPreviousOutput: boolean;
-      allowEdit: boolean;
-      timeoutMs?: number;
-      timeoutAction: "approve" | "deny" | "escalate";
-    }
-  // Iteration
-  | {
-      gateType: "loop";
-      maxIterations: number;
-      condition?: ConditionExpr;
-      bodyEdge: string;
-      exitEdge: string;
-    }
-  // Error handling
-  | {
-      gateType: "error_handler";
-      catchFrom: string[];
-      actions: Array<{
-        type: "log" | "notify" | "create_task" | "retry" | "skip" | "abort";
-        config?: Record<string, unknown>;
-      }>;
-    }
-  // Composition
-  | {
-      gateType: "sub_workflow";
-      workflowId: string;
-      inputMapping?: Record<string, string>;
-      outputMapping?: Record<string, string>;
-    };
+  (
+    | { gateType: "condition"; expression: ConditionExpr; trueEdge: string; falseEdge: string }
+    | {
+        gateType: "switch";
+        cases: Array<{ label: string; expression: ConditionExpr; edgeId: string }>;
+        defaultEdge?: string;
+      }
+    // Parallel execution
+    | { gateType: "parallel"; branchEdges: string[] }
+    | {
+        gateType: "join";
+        strategy: JoinStrategy;
+        branchFailure: BranchFailurePolicy;
+        mergeStrategy: MergeStrategy;
+        timeoutMs?: number;
+        nRequired?: number;
+        mergeAgentConfig?: MergeStrategyAgentConfig;
+      }
+    // Timing
+    | { gateType: "wait_duration"; durationMs: number }
+    | {
+        gateType: "wait_event";
+        eventType: string;
+        eventFilter?: Record<string, unknown>;
+        timeoutMs?: number;
+        timeoutAction: "continue" | "fail";
+      }
+    // Approval (Business-tier — Core treats as pass-through)
+    | {
+        gateType: "approval";
+        approvers: string[];
+        channels: string[];
+        message: string;
+        showPreviousOutput: boolean;
+        allowEdit: boolean;
+        timeoutMs?: number;
+        timeoutAction: "approve" | "deny" | "escalate";
+      }
+    // Iteration
+    | {
+        gateType: "loop";
+        maxIterations: number;
+        condition?: ConditionExpr;
+        bodyEdge: string;
+        exitEdge: string;
+      }
+    // Error handling
+    | {
+        gateType: "error_handler";
+        catchFrom: string[];
+        actions: Array<{
+          type: "log" | "notify" | "create_task" | "retry" | "skip" | "abort";
+          config?: Record<string, unknown>;
+        }>;
+      }
+    // Composition
+    | {
+        gateType: "sub_workflow";
+        workflowId: string;
+        inputMapping?: Record<string, string>;
+        outputMapping?: Record<string, string>;
+      }
+  );
 
 export interface GateNode {
   kind: "gate";
@@ -321,14 +362,42 @@ export interface GateNode {
 
 // ── Output ───────────────────────────────────────────────────────
 
-export type OutputConfig =
-  | { outputType: "docpanel"; title: string; format?: string }
-  | { outputType: "channel"; channelType: string; channelId: string; template: string }
-  | { outputType: "email"; to: string; subject: string; bodyTemplate: string }
-  | { outputType: "webhook"; url: string; method: string; bodyTemplate: string }
-  | { outputType: "knowledge"; collectionId: string; metadata?: Record<string, unknown> }
-  | { outputType: "task_update"; taskId: string; status: string; evidence?: string }
-  | { outputType: "next_workflow"; workflowId: string; inputMapping?: Record<string, string> };
+export type OutputSourceMode = "previous" | "node" | "summary" | "custom";
+
+export type OutputPayloadConfig = {
+  /** Manual/test runs may substitute this ItemSet instead of executing the node. */
+  pinnedOutput?: unknown;
+
+  /** Which upstream data should be treated as the source payload for this output. */
+  sourceMode?: OutputSourceMode;
+  /** Node id used when sourceMode="node". */
+  sourceNodeId?: string;
+  /**
+   * Optional human-authored template for the output payload. Supports the same
+   * {{previous.*}} expressions as action templates.
+   */
+  contentTemplate?: string;
+};
+
+export type OutputConfig = OutputPayloadConfig &
+  (
+    | { outputType: "docpanel"; title: string; format?: string }
+    | { outputType: "channel"; channelType: string; channelId: string; template: string }
+    | { outputType: "email"; to: string; subject: string; bodyTemplate: string }
+    | { outputType: "webhook"; url: string; method: string; bodyTemplate: string }
+    | { outputType: "knowledge"; collectionId: string; metadata?: Record<string, unknown> }
+    | { outputType: "task_update"; taskId: string; status: string; evidence?: string }
+    | { outputType: "next_workflow"; workflowId: string; inputMapping?: Record<string, string> }
+    | {
+        outputType: "connector_action";
+        connectorId: string;
+        credentialId?: string;
+        resource: string;
+        operation: string;
+        parameters: Record<string, unknown>;
+        outputMapping?: Record<string, string>;
+      }
+  );
 
 export interface OutputNode {
   kind: "output";
@@ -384,6 +453,7 @@ export interface StepRecord {
   status: "completed" | "failed" | "skipped";
   durationMs: number;
   output: ItemSet;
+  error?: string;
   tokensUsed?: number;
   costUsd?: number;
   startedAt: number;
@@ -530,7 +600,7 @@ export interface MemorySourceNodeConfig {
 /** Tool Grant — grants a connector or builtin tool to an agent step */
 export interface ToolGrantNodeConfig {
   nodeType: "tool_grant";
-  grantType: "connector" | "builtin_tool" | "tool_set";
+  grantType: "connector" | "builtin_tool" | "tool_set" | "appforge_app";
   connectorId?: string;
   toolName?: string;
   toolSetPreset?: "web_search" | "code_execution" | "file_management";
@@ -566,8 +636,10 @@ export interface MemoryContextConfig {
 
 /** Individual tool grant entry */
 export interface ToolGrantEntry {
-  type: "connector" | "builtin";
+  type: "connector" | "builtin" | "plugin" | "skill" | "promoted_cli" | "appforge";
   id: string;
+  name?: string;
   credentialId?: string;
   permissions: "readonly" | "readwrite";
+  source?: "core" | "plugin" | "connector" | "skill" | "promoted-cli" | "appforge";
 }

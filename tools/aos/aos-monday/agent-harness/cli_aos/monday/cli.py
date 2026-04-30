@@ -7,7 +7,8 @@ from typing import Any
 import click
 
 from . import __version__
-from .constants import CONNECTOR_PATH, MANIFEST_SCHEMA_VERSION, MODE_ORDER, PERMISSIONS_PATH, TOOL_NAME
+from .client import MondayApiError
+from .constants import CONNECTOR_PATH, MANIFEST_SCHEMA_VERSION, MODE_ORDER, PERMISSIONS_PATH, TOOL_NAME, WRITE_COMMAND_IDS
 from .errors import CliError
 from . import runtime as runtime_module
 from .output import emit, failure, success
@@ -48,6 +49,19 @@ class AosGroup(click.Group):
             )
             emit(payload, as_json=ctx.obj.get("json", True) if ctx.obj else True)
             ctx.exit(err.exit_code)
+        except MondayApiError as err:
+            payload = failure(
+                command=ctx.obj.get("_command_id", "unknown") if ctx.obj else "unknown",
+                mode=ctx.obj.get("mode", "unknown") if ctx.obj else "unknown",
+                started=ctx.obj.get("started", time.time()) if ctx.obj else time.time(),
+                error={
+                    "code": err.code,
+                    "message": err.message,
+                    "details": {"status_code": err.status_code, **(err.details or {})},
+                },
+            )
+            emit(payload, as_json=ctx.obj.get("json", True) if ctx.obj else True)
+            ctx.exit(4)
         except click.ClickException as err:
             payload = failure(
                 command=ctx.obj.get("_command_id", "unknown") if ctx.obj else "unknown",
@@ -92,6 +106,7 @@ def cli(ctx: click.Context, as_json: bool, mode: str, verbose: bool) -> None:
 def capabilities(ctx: click.Context) -> None:
     _set_command(ctx, "capabilities")
     manifest = json.loads(CONNECTOR_PATH.read_text())
+    command_ids = [command["id"] for command in manifest["commands"]]
     emit(
         _success(
             ctx,
@@ -105,6 +120,14 @@ def capabilities(ctx: click.Context) -> None:
                 "modes": MODE_ORDER,
                 "connector": manifest["connector"],
                 "auth": manifest["auth"],
+                "scope": manifest.get("scope", {}),
+                "read_support": {command_id: True for command_id in command_ids if command_id not in WRITE_COMMAND_IDS},
+                "write_support": {
+                    "live_writes_enabled": bool(manifest["scope"].get("write_bridge_available")),
+                    "write_commands": sorted(WRITE_COMMAND_IDS),
+                    "live_write_smoke_tested": bool(manifest["scope"].get("live_write_smoke_tested")),
+                    "scaffolded_commands": [],
+                },
                 "commands": manifest["commands"],
             },
         ),
@@ -183,10 +206,10 @@ def board_list(ctx: click.Context, limit: int) -> None:
 
 
 @board_group.command("read")
-@click.argument("board_id")
+@click.argument("board_id", required=False)
 @click.option("--limit", default=5, show_default=True, type=int)
 @click.pass_context
-def board_read(ctx: click.Context, board_id: str, limit: int) -> None:
+def board_read(ctx: click.Context, board_id: str | None, limit: int) -> None:
     _set_command(ctx, "board.read")
     require_mode(ctx, "board.read")
     emit(
@@ -201,55 +224,63 @@ def item_group() -> None:
 
 
 @item_group.command("read")
-@click.argument("item_id")
+@click.argument("item_id", required=False)
 @click.pass_context
-def item_read(ctx: click.Context, item_id: str) -> None:
+def item_read(ctx: click.Context, item_id: str | None) -> None:
     _set_command(ctx, "item.read")
     require_mode(ctx, "item.read")
     emit(_success(ctx, "item.read", runtime_module.read_item(ctx.obj, item_id=item_id)), as_json=ctx.obj["json"])
 
 
 @item_group.command("create")
-@click.option("--board-id", required=True)
+@click.option("--board-id", default="", show_default=False)
 @click.option("--name", "item_name", required=True)
+@click.option("--group-id", default="", show_default=False)
+@click.option("--column-values", default="", show_default=False, help="JSON object string keyed by monday column IDs")
 @click.pass_context
-def item_create(ctx: click.Context, board_id: str, item_name: str) -> None:
+def item_create(ctx: click.Context, board_id: str, item_name: str, group_id: str, column_values: str) -> None:
     _set_command(ctx, "item.create")
     require_mode(ctx, "item.create")
-    raise CliError(
-        code="NOT_IMPLEMENTED",
-        message="item.create is scaffolded but not implemented yet",
-        exit_code=10,
-        details=runtime_module.scaffold_write_command(
-            ctx.obj,
-            command_id="item.create",
-            resource="item",
-            operation="create",
-            inputs={"board_id": board_id, "name": item_name},
-            consequential=True,
+    emit(
+        _success(
+            ctx,
+            "item.create",
+            runtime_module.create_item(
+                ctx.obj,
+                board_id=board_id,
+                item_name=item_name,
+                group_id=group_id or None,
+                column_values=column_values or None,
+            ),
         ),
+        as_json=ctx.obj["json"],
     )
 
 
 @item_group.command("update")
-@click.argument("item_id")
-@click.option("--name", default="", show_default=False)
+@click.argument("item_id", required=False)
+@click.option("--board-id", default="", show_default=False)
+@click.option("--column-id", default="", show_default=False)
+@click.option("--column-value", default="", show_default=False)
+@click.option("--column-values", default="", show_default=False, help="JSON object string keyed by monday column IDs")
 @click.pass_context
-def item_update(ctx: click.Context, item_id: str, name: str) -> None:
+def item_update(ctx: click.Context, item_id: str | None, board_id: str, column_id: str, column_value: str, column_values: str) -> None:
     _set_command(ctx, "item.update")
     require_mode(ctx, "item.update")
-    raise CliError(
-        code="NOT_IMPLEMENTED",
-        message="item.update is scaffolded but not implemented yet",
-        exit_code=10,
-        details=runtime_module.scaffold_write_command(
-            ctx.obj,
-            command_id="item.update",
-            resource="item",
-            operation="update",
-            inputs={"item_id": item_id, "name": name or None},
-            consequential=True,
+    emit(
+        _success(
+            ctx,
+            "item.update",
+            runtime_module.update_item(
+                ctx.obj,
+                item_id=item_id,
+                board_id=board_id,
+                column_id=column_id or None,
+                column_value=column_value or None,
+                column_values=column_values or None,
+            ),
         ),
+        as_json=ctx.obj["json"],
     )
 
 
@@ -282,22 +313,13 @@ def update_list(ctx: click.Context, limit: int, from_date: str, to_date: str) ->
 
 
 @update_group.command("create")
-@click.argument("item_id")
+@click.argument("item_id", required=False)
 @click.option("--body", required=True)
 @click.pass_context
-def update_create(ctx: click.Context, item_id: str, body: str) -> None:
+def update_create(ctx: click.Context, item_id: str | None, body: str) -> None:
     _set_command(ctx, "update.create")
     require_mode(ctx, "update.create")
-    raise CliError(
-        code="NOT_IMPLEMENTED",
-        message="update.create is scaffolded but not implemented yet",
-        exit_code=10,
-        details=runtime_module.scaffold_write_command(
-            ctx.obj,
-            command_id="update.create",
-            resource="update",
-            operation="create",
-            inputs={"item_id": item_id, "body": body},
-            consequential=True,
-        ),
+    emit(
+        _success(ctx, "update.create", runtime_module.create_update(ctx.obj, item_id=item_id, body=body)),
+        as_json=ctx.obj["json"],
     )

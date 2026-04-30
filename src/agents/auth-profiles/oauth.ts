@@ -9,6 +9,7 @@ import {
 } from "../../agent-core/ai.js";
 import { refreshQwenPortalCredentials } from "../../providers/qwen-portal-oauth.js";
 import { refreshChutesTokens } from "../chutes-oauth.js";
+import { refreshOpenAICodexCredentials } from "../openai-codex-auth.js";
 import { AUTH_STORE_LOCK_OPTIONS, log } from "./constants.js";
 import { formatAuthDoctorHint } from "./doctor.js";
 import { ensureAuthStoreFile, resolveAuthStorePath } from "./paths.js";
@@ -57,7 +58,10 @@ function sanitizePossiblyUrlAppendedToken(raw: string): string {
   const cutAt = markers
     .map((marker) => trimmed.indexOf(marker))
     .filter((idx) => idx >= 0)
-    .sort((a, b) => a - b)[0];
+    .reduce<number | undefined>(
+      (lowest, idx) => (typeof lowest === "number" && lowest < idx ? lowest : idx),
+      undefined,
+    );
   if (typeof cutAt === "number" && cutAt > 0) {
     return trimmed.slice(0, cutAt);
   }
@@ -104,26 +108,22 @@ async function refreshOAuthTokenWithLock(params: {
       [cred.provider]: cred,
     };
 
-    const result =
-      String(cred.provider) === "chutes"
-        ? await (async () => {
-            const newCredentials = await refreshChutesTokens({
-              credential: cred,
-            });
-            return { apiKey: newCredentials.access, newCredentials };
-          })()
-        : String(cred.provider) === "qwen-portal"
-          ? await (async () => {
-              const newCredentials = await refreshQwenPortalCredentials(cred);
-              return { apiKey: newCredentials.access, newCredentials };
-            })()
-          : await (async () => {
-              const oauthProvider = resolveOAuthProvider(cred.provider);
-              if (!oauthProvider) {
-                return null;
-              }
-              return await argentGetOAuthApiKey(oauthProvider, oauthCreds);
-            })();
+    let result: { apiKey: string; newCredentials: OAuthCredentials } | null;
+    if (String(cred.provider) === "chutes") {
+      const newCredentials = await refreshChutesTokens({
+        credential: cred,
+      });
+      result = { apiKey: newCredentials.access, newCredentials };
+    } else if (String(cred.provider) === "qwen-portal") {
+      const newCredentials = await refreshQwenPortalCredentials(cred);
+      result = { apiKey: newCredentials.access, newCredentials };
+    } else if (String(cred.provider) === "openai-codex") {
+      const newCredentials = await refreshOpenAICodexCredentials(cred);
+      result = { apiKey: newCredentials.access, newCredentials };
+    } else {
+      const oauthProvider = resolveOAuthProvider(cred.provider);
+      result = oauthProvider ? await argentGetOAuthApiKey(oauthProvider, oauthCreds) : null;
+    }
     if (!result) {
       return null;
     }

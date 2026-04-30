@@ -25,6 +25,7 @@ import {
   applyVeniceConfig,
   applyVercelAiGatewayConfig,
   applyXiaomiConfig,
+  applyZaiCodingConfig,
   applyZaiConfig,
   setAnthropicApiKey,
   setCloudflareAiGatewayConfig,
@@ -39,6 +40,7 @@ import {
   setVeniceApiKey,
   setVercelAiGatewayApiKey,
   setXiaomiApiKey,
+  setZaiCodingApiKey,
   setZaiApiKey,
 } from "../../onboard-auth.js";
 import { resolveNonInteractiveApiKey } from "../api-keys.js";
@@ -204,6 +206,29 @@ export async function applyNonInteractiveAuthChoice(params: {
       mode: "api_key",
     });
     return applyZaiConfig(nextConfig);
+  }
+
+  if (authChoice === "zai-coding-api-key") {
+    const resolved = await resolveNonInteractiveApiKey({
+      provider: "zai-coding",
+      cfg: baseConfig,
+      flagValue: opts.zaiCodingApiKey,
+      flagName: "--zai-coding-api-key",
+      envVar: "ZAI_CODING_API_KEY",
+      runtime,
+    });
+    if (!resolved) {
+      return null;
+    }
+    if (resolved.source !== "profile") {
+      await setZaiCodingApiKey(resolved.key);
+    }
+    nextConfig = applyAuthProfileConfig(nextConfig, {
+      profileId: "zai-coding:default",
+      provider: "zai-coding",
+      mode: "api_key",
+    });
+    return applyZaiCodingConfig(nextConfig);
   }
 
   if (authChoice === "xiaomi-api-key") {

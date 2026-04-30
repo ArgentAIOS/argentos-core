@@ -213,3 +213,112 @@ class MondayClient:
             variables={"limit": limit},
         )
         return list(payload.get("data", {}).get("updates") or [])
+
+    def create_item(
+        self,
+        *,
+        board_id: str,
+        item_name: str,
+        group_id: str | None = None,
+        column_values: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self.query(
+            """
+            mutation ($board_id: ID!, $item_name: String!, $group_id: String, $column_values: JSON) {
+              create_item(
+                board_id: $board_id,
+                item_name: $item_name,
+                group_id: $group_id,
+                column_values: $column_values
+              ) {
+                id
+                name
+                board {
+                  id
+                  name
+                }
+              }
+            }
+            """,
+            variables={
+                "board_id": board_id,
+                "item_name": item_name,
+                "group_id": group_id,
+                "column_values": column_values,
+            },
+        )
+        return payload.get("data", {}).get("create_item") or {}
+
+    def change_simple_column_value(
+        self,
+        *,
+        board_id: str,
+        item_id: str,
+        column_id: str,
+        value: str,
+    ) -> dict[str, Any]:
+        payload = self.query(
+            """
+            mutation ($board_id: ID!, $item_id: ID!, $column_id: String!, $value: String!) {
+              change_simple_column_value(
+                board_id: $board_id,
+                item_id: $item_id,
+                column_id: $column_id,
+                value: $value
+              ) {
+                id
+                name
+              }
+            }
+            """,
+            variables={
+                "board_id": board_id,
+                "item_id": item_id,
+                "column_id": column_id,
+                "value": value,
+            },
+        )
+        return payload.get("data", {}).get("change_simple_column_value") or {}
+
+    def change_multiple_column_values(
+        self,
+        *,
+        board_id: str,
+        item_id: str,
+        column_values: str,
+    ) -> dict[str, Any]:
+        payload = self.query(
+            """
+            mutation ($board_id: ID!, $item_id: ID!, $column_values: JSON!) {
+              change_multiple_column_values(
+                board_id: $board_id,
+                item_id: $item_id,
+                column_values: $column_values
+              ) {
+                id
+                name
+              }
+            }
+            """,
+            variables={
+                "board_id": board_id,
+                "item_id": item_id,
+                "column_values": column_values,
+            },
+        )
+        return payload.get("data", {}).get("change_multiple_column_values") or {}
+
+    def create_update(self, *, item_id: str, body: str) -> dict[str, Any]:
+        payload = self.query(
+            """
+            mutation ($item_id: ID!, $body: String!) {
+              create_update(item_id: $item_id, body: $body) {
+                id
+                body
+                created_at
+              }
+            }
+            """,
+            variables={"item_id": item_id, "body": body},
+        )
+        return payload.get("data", {}).get("create_update") or {}

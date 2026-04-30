@@ -3,7 +3,7 @@ from __future__ import annotations
 from cli_aos.google import bridge
 
 
-def test_run_gws_prefixes_json_flag(monkeypatch):
+def test_run_gws_uses_gws_default_json_output(monkeypatch):
     captured = {}
 
     monkeypatch.setattr(bridge.shutil, "which", lambda _name: "/usr/bin/gws")
@@ -22,5 +22,5 @@ def test_run_gws_prefixes_json_flag(monkeypatch):
 
     result = bridge.run_gws("gws", ["gmail", "users", "messages", "list"])
 
-    assert captured["cmd"] == ["gws", "--json", "gmail", "users", "messages", "list"]
+    assert captured["cmd"] == ["gws", "gmail", "users", "messages", "list"]
     assert result == {"ok": True}

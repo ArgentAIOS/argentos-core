@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -30,12 +31,12 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     org_id_env = ctx_obj.get("org_id_env") or PIPEDRIVE_ORG_ID_ENV
     pipeline_id_env = ctx_obj.get("pipeline_id_env") or PIPEDRIVE_PIPELINE_ID_ENV
 
-    api_token = (os.getenv(token_env) or "").strip()
-    company_domain = (os.getenv(domain_env) or "").strip() or None
-    deal_id = (os.getenv(deal_id_env) or "").strip()
-    person_id = (os.getenv(person_id_env) or "").strip()
-    org_id = (os.getenv(org_id_env) or "").strip()
-    pipeline_id = (os.getenv(pipeline_id_env) or "").strip()
+    api_token = (service_key_env(token_env) or "").strip()
+    company_domain = (service_key_env(domain_env) or "").strip() or None
+    deal_id = (service_key_env(deal_id_env) or "").strip()
+    person_id = (service_key_env(person_id_env) or "").strip()
+    org_id = (service_key_env(org_id_env) or "").strip()
+    pipeline_id = (service_key_env(pipeline_id_env) or "").strip()
 
     return {
         "backend": BACKEND_NAME,

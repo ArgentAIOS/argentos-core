@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+from .service_keys import service_key_env
 
 from .constants import (
     DEFAULT_BASE_URL,
@@ -29,11 +30,11 @@ class AsanaConnectorContext:
 
 def resolve_config() -> AsanaConfig:
     return AsanaConfig(
-        access_token=os.getenv(ENV_ACCESS_TOKEN),
-        base_url=os.getenv(ENV_BASE_URL, DEFAULT_BASE_URL),
-        workspace_gid=os.getenv(ENV_WORKSPACE_GID),
-        project_gid=os.getenv(ENV_PROJECT_GID),
-        task_gid=os.getenv(ENV_TASK_GID),
+        access_token=service_key_env(ENV_ACCESS_TOKEN),
+        base_url=service_key_env(ENV_BASE_URL, DEFAULT_BASE_URL),
+        workspace_gid=service_key_env(ENV_WORKSPACE_GID),
+        project_gid=service_key_env(ENV_PROJECT_GID),
+        task_gid=service_key_env(ENV_TASK_GID),
     )
 
 

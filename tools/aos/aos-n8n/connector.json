@@ -7,6 +7,17 @@
     "surface": "workflow",
     "scaffold_only": false,
     "live_backend_available": true,
+    "live_read_available": true,
+    "live_write_available": true,
+    "write_bridge_available": true,
+    "live_write_smoke_tested": false,
+    "required": ["N8N_API_URL", "N8N_API_KEY", "N8N_WEBHOOK_BASE_URL"],
+    "optional": [
+      "N8N_WORKSPACE_NAME",
+      "N8N_WORKFLOW_ID",
+      "N8N_WORKFLOW_NAME",
+      "N8N_WORKFLOW_STATUS"
+    ],
     "worker_visible_actions": ["workflow.list", "workflow.status", "workflow.trigger"],
     "workerFields": ["workflow_id", "workflow_name", "event", "payload"],
     "fields": [
@@ -76,13 +87,14 @@
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": ["N8N_API_URL", "N8N_API_KEY"],
+    "service_keys": ["N8N_API_URL", "N8N_API_KEY", "N8N_WEBHOOK_BASE_URL"],
     "interactive_setup": [
       "Create or connect an n8n instance for the workspace you want this worker to use.",
-      "Add N8N_API_URL and N8N_API_KEY in API Keys.",
-      "Set N8N_WEBHOOK_BASE_URL to the public base used by the workflow.trigger webhook bridge.",
+      "Add N8N_API_URL, N8N_API_KEY, and N8N_WEBHOOK_BASE_URL in operator-controlled service keys.",
+      "Optionally add N8N_WORKSPACE_NAME, N8N_WORKFLOW_ID, N8N_WORKFLOW_NAME, and N8N_WORKFLOW_STATUS in service keys to pin workflow defaults.",
+      "Use local N8N_* environment variables only as harness fallbacks when operator keys are unavailable.",
       "workflow.list and workflow.status use the live n8n API read path.",
-      "workflow.trigger posts a live webhook execution payload through the bridge."
+      "workflow.trigger posts a live webhook execution payload through the bridge, but production live-write smoke is not claimed until tested against an operator n8n instance."
     ]
   },
   "commands": [

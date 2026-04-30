@@ -9,12 +9,15 @@
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": false,
-    "workerFields": ["file_id", "folder_id", "name", "parent_id", "query", "collaboration_email"],
+    "workerFields": ["file_id", "folder_id", "query"],
     "worker_visible_actions": [
       "file.list",
       "file.get",
+      "file.download",
       "folder.list",
       "folder.get",
+      "collaboration.list",
+      "metadata.get",
       "search.query"
     ],
     "fields": [
@@ -28,16 +31,7 @@
         "valueType": "string",
         "description": "Box file ID for file-level operations",
         "placeholder": "123456789",
-        "applies_to": [
-          "file.get",
-          "file.download",
-          "file.copy",
-          "file.move",
-          "share.create",
-          "share.update",
-          "metadata.get",
-          "metadata.set"
-        ],
+        "applies_to": ["file.get", "file.download", "metadata.get"],
         "example": "123456789"
       },
       {
@@ -48,44 +42,10 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "description": "Box folder ID for listing or creating items",
+        "description": "Box folder ID for listing items and reading folder metadata",
         "placeholder": "987654321",
-        "applies_to": [
-          "file.list",
-          "file.upload",
-          "folder.list",
-          "folder.get",
-          "folder.create",
-          "collaboration.list",
-          "collaboration.create"
-        ],
+        "applies_to": ["file.list", "folder.list", "folder.get", "collaboration.list"],
         "example": "987654321"
-      },
-      {
-        "id": "name",
-        "label": "Name",
-        "type": "string",
-        "renderAs": "text",
-        "required": false,
-        "expressionEnabled": true,
-        "valueType": "string",
-        "description": "File or folder name",
-        "placeholder": "Project Proposal.docx",
-        "applies_to": ["file.upload", "file.copy", "folder.create"],
-        "example": "Project Proposal.docx"
-      },
-      {
-        "id": "parent_id",
-        "label": "Parent folder ID",
-        "type": "string",
-        "renderAs": "text",
-        "required": false,
-        "expressionEnabled": true,
-        "valueType": "string",
-        "description": "Parent folder ID for file uploads or moves (0 = root)",
-        "placeholder": "0",
-        "applies_to": ["file.upload", "file.move", "file.copy", "folder.create"],
-        "example": "0"
       },
       {
         "id": "query",
@@ -99,19 +59,6 @@
         "placeholder": "annual report 2026",
         "applies_to": ["search.query"],
         "example": "annual report 2026"
-      },
-      {
-        "id": "collaboration_email",
-        "label": "Collaborator email",
-        "type": "string",
-        "renderAs": "text",
-        "required": false,
-        "expressionEnabled": true,
-        "valueType": "string",
-        "description": "Email address of user to add as collaborator",
-        "placeholder": "colleague@company.com",
-        "applies_to": ["collaboration.create"],
-        "example": "colleague@company.com"
       }
     ],
     "commandDefaults": {
@@ -124,56 +71,22 @@
         "selection_surface": "file",
         "args": ["BOX_FILE_ID"]
       },
-      "file.upload": {
-        "selection_surface": "file",
-        "args": ["BOX_FOLDER_ID"],
-        "name": "BOX_FILE_NAME"
-      },
       "file.download": {
         "selection_surface": "file",
         "args": ["BOX_FILE_ID"]
-      },
-      "file.copy": {
-        "selection_surface": "file",
-        "args": ["BOX_FILE_ID"],
-        "parent": "BOX_PARENT_ID",
-        "name": "BOX_FILE_NAME"
-      },
-      "file.move": {
-        "selection_surface": "file",
-        "args": ["BOX_FILE_ID"],
-        "parent": "BOX_PARENT_ID"
       },
       "folder.list": {
         "selection_surface": "folder",
         "args": ["BOX_FOLDER_ID"],
         "limit": 25
       },
-      "folder.create": {
-        "selection_surface": "folder",
-        "name": "BOX_FOLDER_NAME",
-        "parent": "BOX_PARENT_ID"
-      },
       "folder.get": {
         "selection_surface": "folder",
         "args": ["BOX_FOLDER_ID"]
       },
-      "share.create": {
-        "selection_surface": "share",
-        "args": ["BOX_FILE_ID"]
-      },
-      "share.update": {
-        "selection_surface": "share",
-        "args": ["BOX_FILE_ID"]
-      },
       "collaboration.list": {
         "selection_surface": "collaboration",
         "args": ["BOX_FOLDER_ID"]
-      },
-      "collaboration.create": {
-        "selection_surface": "collaboration",
-        "args": ["BOX_FOLDER_ID"],
-        "email": "BOX_COLLABORATION_EMAIL"
       },
       "search.query": {
         "selection_surface": "file",
@@ -181,10 +94,6 @@
         "limit": 25
       },
       "metadata.get": {
-        "selection_surface": "file",
-        "args": ["BOX_FILE_ID"]
-      },
-      "metadata.set": {
         "selection_surface": "file",
         "args": ["BOX_FILE_ID"]
       }
@@ -230,17 +139,25 @@
   "auth": {
     "kind": "oauth2",
     "required": true,
-    "service_keys": ["BOX_CLIENT_ID", "BOX_CLIENT_SECRET", "BOX_ACCESS_TOKEN"],
+    "service_keys": [
+      "BOX_ACCESS_TOKEN",
+      "BOX_CLIENT_ID",
+      "BOX_CLIENT_SECRET",
+      "BOX_JWT_CONFIG",
+      "BOX_FOLDER_ID",
+      "BOX_FILE_ID",
+      "BOX_QUERY"
+    ],
     "interactive_setup": [
       "Create a Box application at https://app.box.com/developers/console.",
       "Choose 'Custom App' with 'User Authentication (OAuth 2.0)' or 'Server Authentication (JWT)'.",
       "Add BOX_CLIENT_ID, BOX_CLIENT_SECRET, and BOX_ACCESS_TOKEN in API Keys.",
       "For JWT auth, alternatively provide BOX_JWT_CONFIG with the full JSON config from Box.",
-      "Required scopes: Read all files and folders, Write all files and folders, Manage collaborations.",
+      "Required scopes: Read all files and folders, read collaborations, and read metadata.",
       "Set BOX_FOLDER_ID to scope default listings to a specific folder (optional, default '0' for root).",
-      "Set BOX_FILE_ID and BOX_COLLABORATION_EMAIL for worker flow defaults.",
-      "Metadata actions require enterprise admin approval for custom metadata templates.",
-      "The connector is live-read-first and will report API failures instead of masking them."
+      "Set BOX_FILE_ID and BOX_QUERY for worker flow defaults.",
+      "The connector is live read-only and will report API failures instead of masking them.",
+      "Box write operations are not advertised until a write bridge and approval policy are verified."
     ]
   },
   "commands": [
@@ -261,36 +178,12 @@
       "action_class": "read"
     },
     {
-      "id": "file.upload",
-      "summary": "Upload a file to Box",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "file",
-      "action_class": "write"
-    },
-    {
       "id": "file.download",
       "summary": "Download a file from Box",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "file",
       "action_class": "read"
-    },
-    {
-      "id": "file.copy",
-      "summary": "Copy a Box file",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "file",
-      "action_class": "write"
-    },
-    {
-      "id": "file.move",
-      "summary": "Move a Box file to a different folder",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "file",
-      "action_class": "write"
     },
     {
       "id": "folder.list",
@@ -301,14 +194,6 @@
       "action_class": "read"
     },
     {
-      "id": "folder.create",
-      "summary": "Create a new folder in Box",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "folder",
-      "action_class": "write"
-    },
-    {
       "id": "folder.get",
       "summary": "Get metadata for a Box folder",
       "required_mode": "readonly",
@@ -317,36 +202,12 @@
       "action_class": "read"
     },
     {
-      "id": "share.create",
-      "summary": "Create a shared link for a Box file",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "file",
-      "action_class": "write"
-    },
-    {
-      "id": "share.update",
-      "summary": "Update shared link settings for a Box file",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "file",
-      "action_class": "write"
-    },
-    {
       "id": "collaboration.list",
       "summary": "List collaborations on a Box folder",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "collaboration",
       "action_class": "read"
-    },
-    {
-      "id": "collaboration.create",
-      "summary": "Add a collaborator to a Box folder",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "collaboration",
-      "action_class": "write"
     },
     {
       "id": "search.query",
@@ -363,14 +224,6 @@
       "supports_json": true,
       "resource": "file",
       "action_class": "read"
-    },
-    {
-      "id": "metadata.set",
-      "summary": "Set metadata on a Box file",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "file",
-      "action_class": "write"
     },
     {
       "id": "capabilities",

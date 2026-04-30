@@ -38,6 +38,8 @@ export function createServiceKeysTool(): AnyAgentTool {
 
 Use this to discover what capabilities are available (e.g. Firecrawl, Brave Search, ElevenLabs, etc.) before attempting to use a service.
 
+Do not use this to check whether messaging channels like Telegram, Slack, Discord, Signal, WhatsApp, or iMessage are enabled. Use channel_config instead; channel readiness is stored in argent.json under channels.<id>, not service-keys.json.
+
 PARAMS:
 - category (optional): Filter by category (e.g. "Search", "TTS", "LLM")`,
     parameters: ServiceKeysToolSchema,
@@ -66,12 +68,14 @@ PARAMS:
         keys = keys.filter((k) => k.category.toLowerCase() === lower);
       }
 
-      const categories = [...new Set(keys.map((k) => k.category))].sort();
+      const categories = [...new Set(keys.map((k) => k.category))].toSorted();
 
       return jsonResult({
         total: keys.length,
         available: keys.filter((k) => k.available).length,
         categories,
+        channelConfigNotice:
+          "Messaging channel readiness lives in argent.json under channels.<id>. Use channel_config for Telegram/Slack/Discord/etc. service_keys only covers generic API secrets.",
         keys,
       });
     },

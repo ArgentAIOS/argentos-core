@@ -4,13 +4,7 @@
   "permissions": {
     "file.list": "readonly",
     "file.get": "readonly",
-    "file.create": "write",
-    "file.copy": "write",
-    "file.move": "write",
-    "file.delete": "write",
     "folder.list": "readonly",
-    "folder.create": "write",
-    "share.create": "write",
     "share.list": "readonly",
     "export.pdf": "readonly",
     "export.docx": "readonly",

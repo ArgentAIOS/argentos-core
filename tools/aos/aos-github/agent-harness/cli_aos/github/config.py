@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -28,11 +29,11 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     issue_number_env = ctx_obj.get("issue_number_env") or GITHUB_ISSUE_NUMBER_ENV
     pr_number_env = ctx_obj.get("pr_number_env") or GITHUB_PR_NUMBER_ENV
 
-    token = (os.getenv(token_env) or "").strip()
-    owner = (os.getenv(owner_env) or "").strip()
-    repo = (os.getenv(repo_env) or "").strip()
-    issue_number = (os.getenv(issue_number_env) or "").strip()
-    pr_number = (os.getenv(pr_number_env) or "").strip()
+    token = (service_key_env(token_env) or "").strip()
+    owner = (service_key_env(owner_env) or "").strip()
+    repo = (service_key_env(repo_env) or "").strip()
+    issue_number = (service_key_env(issue_number_env) or "").strip()
+    pr_number = (service_key_env(pr_number_env) or "").strip()
 
     return {
         "backend": BACKEND_NAME,

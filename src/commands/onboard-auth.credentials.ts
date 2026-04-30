@@ -115,6 +115,7 @@ export async function setVeniceApiKey(key: string, agentDir?: string) {
 }
 
 export const ZAI_DEFAULT_MODEL_REF = "zai/glm-4.7";
+export const ZAI_CODING_DEFAULT_MODEL_REF = "zai-coding/glm-4.7";
 export const XIAOMI_DEFAULT_MODEL_REF = "xiaomi/mimo-v2-flash";
 export const MISTRAL_DEFAULT_MODEL_REF = "mistral/mistral-large-latest";
 export const OPENROUTER_DEFAULT_MODEL_REF = "openrouter/auto";
@@ -127,6 +128,18 @@ export async function setZaiApiKey(key: string, agentDir?: string) {
     credential: {
       type: "api_key",
       provider: "zai",
+      key,
+    },
+    agentDir: resolveAuthAgentDir(agentDir),
+  });
+}
+
+export async function setZaiCodingApiKey(key: string, agentDir?: string) {
+  upsertAuthProfile({
+    profileId: "zai-coding:default",
+    credential: {
+      type: "api_key",
+      provider: "zai-coding",
       key,
     },
     agentDir: resolveAuthAgentDir(agentDir),

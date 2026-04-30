@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aos-monday"
 version = "0.1.0"
-description = "Live-read-first monday.com connector scaffold"
+description = "Agent-native monday.com connector"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["click>=8.1"]

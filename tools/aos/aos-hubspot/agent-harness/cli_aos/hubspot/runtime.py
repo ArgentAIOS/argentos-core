@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any
 from urllib import error, parse, request
 
 from .config import resolve_runtime_values
-from .constants import DEFAULT_PROPERTIES, OBJECT_ENDPOINTS
+from .constants import DEFAULT_PROPERTIES, NOTE_ASSOCIATION_TYPE_IDS, OBJECT_ENDPOINTS
 from .errors import CliError
 
 
@@ -166,6 +167,7 @@ _RESOURCE_PLURALS = {
     "company": "companies",
     "contact": "contacts",
     "deal": "deals",
+    "note": "notes",
     "owner": "owners",
     "pipeline": "pipelines",
     "ticket": "tickets",
@@ -339,6 +341,16 @@ def _scope_candidates(
     if resource == "owner" and details.get("team_id"):
         team_id = str(details["team_id"])
         _append_candidate(candidates, seen, kind="team_id", value=team_id, label=f"Team {team_id}")
+    if resource == "note" and details.get("object_type") and details.get("associated_object_id"):
+        object_type = str(details["object_type"])
+        object_id = str(details["associated_object_id"])
+        _append_candidate(
+            candidates,
+            seen,
+            kind=object_type,
+            value=object_id,
+            label=f"{object_type.title()} {object_id}",
+        )
     if records:
         for record in records:
             if not isinstance(record, dict):
@@ -496,18 +508,27 @@ def _object_collection_result(resource: str, operation: str, ctx_obj: dict[str, 
     }
 
 
-def _single_object_result(resource: str, operation: str, ctx_obj: dict[str, Any], response: dict[str, Any]) -> dict[str, Any]:
+def _single_object_result(
+    resource: str,
+    operation: str,
+    ctx_obj: dict[str, Any],
+    response: dict[str, Any],
+    *,
+    command_id: str | None = None,
+    **preview_details: Any,
+) -> dict[str, Any]:
     normalized = _normalize_object(response)
     picker_options = _picker_options(resource, [normalized], selected_id=normalized.get("id"))
     preview = _scope_preview(
         ctx_obj,
-        command_id=f"{resource}.{operation}",
+        command_id=command_id or f"{resource}.{operation}",
         resource=resource,
         operation=operation,
         picker_options=picker_options,
         records=[normalized],
         object_id=normalized.get("id"),
         count=1,
+        **preview_details,
     )
     return {
         "status": "ok",
@@ -529,6 +550,217 @@ def _default_properties(resource: str, properties: list[str] | tuple[str, ...] |
     if properties:
         return [value for value in properties if value]
     return list(DEFAULT_PROPERTIES.get(resource, []))
+
+
+def _object_path(resource: str, object_id: str | None = None) -> str:
+    endpoint = OBJECT_ENDPOINTS[resource]
+    base = f"/crm/v3/objects/{endpoint}"
+    if object_id is None:
+        return base
+    return f"{base}/{parse.quote(str(object_id), safe='')}"
+
+
+def _properties_payload(properties: dict[str, Any]) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    for key, value in properties.items():
+        key_text = str(key).strip()
+        if not key_text:
+            continue
+        if value is None:
+            continue
+        normalized[key_text] = value
+    if not normalized:
+        raise CliError(
+            code="INVALID_USAGE",
+            message="At least one property must be provided",
+            exit_code=2,
+            details={"properties": properties},
+        )
+    return normalized
+
+
+def _live_write_result(
+    resource: str,
+    operation: str,
+    ctx_obj: dict[str, Any],
+    response: dict[str, Any],
+    *,
+    command_id: str | None = None,
+    **preview_details: Any,
+) -> dict[str, Any]:
+    payload = _single_object_result(
+        resource,
+        operation,
+        ctx_obj,
+        response,
+        command_id=command_id,
+        **preview_details,
+    )
+    payload["executed"] = True
+    payload["command_id"] = command_id or f"{resource}.{operation}"
+    return payload
+
+
+def create_object(
+    ctx_obj: dict[str, Any],
+    *,
+    resource: str,
+    properties: dict[str, Any],
+    command_id: str | None = None,
+) -> dict[str, Any]:
+    response = _request_json(
+        ctx_obj,
+        "POST",
+        _object_path(resource),
+        payload={"properties": _properties_payload(properties)},
+    )
+    return _live_write_result(resource, "create", ctx_obj, response, command_id=command_id)
+
+
+def update_object(
+    ctx_obj: dict[str, Any],
+    *,
+    resource: str,
+    object_id: str,
+    properties: dict[str, Any],
+    operation: str = "update",
+    command_id: str | None = None,
+    **preview_details: Any,
+) -> dict[str, Any]:
+    response = _request_json(
+        ctx_obj,
+        "PATCH",
+        _object_path(resource, object_id),
+        payload={"properties": _properties_payload(properties)},
+    )
+    return _live_write_result(
+        resource,
+        operation,
+        ctx_obj,
+        response,
+        command_id=command_id,
+        **preview_details,
+    )
+
+
+def assign_owner(
+    ctx_obj: dict[str, Any],
+    *,
+    record_type: str,
+    record_id: str,
+    owner_id: str,
+) -> dict[str, Any]:
+    payload = update_object(
+        ctx_obj,
+        resource=record_type,
+        object_id=record_id,
+        properties={"hubspot_owner_id": owner_id},
+        operation="assign",
+        command_id="owner.assign",
+        owner_id=owner_id,
+        record_type=record_type,
+    )
+    payload["assignment"] = {
+        "record_type": record_type,
+        "record_id": record_id,
+        "owner_id": owner_id,
+    }
+    return payload
+
+
+def update_deal_stage(
+    ctx_obj: dict[str, Any],
+    *,
+    deal_id: str,
+    stage_id: str,
+    pipeline_id: str | None,
+) -> dict[str, Any]:
+    properties: dict[str, Any] = {"dealstage": stage_id}
+    if pipeline_id:
+        properties["pipeline"] = pipeline_id
+    return update_object(
+        ctx_obj,
+        resource="deal",
+        object_id=deal_id,
+        properties=properties,
+        operation="update_stage",
+        command_id="deal.update_stage",
+        stage_id=stage_id,
+        pipeline_id=pipeline_id,
+    )
+
+
+def update_ticket_status(
+    ctx_obj: dict[str, Any],
+    *,
+    ticket_id: str,
+    stage_id: str,
+    pipeline_id: str | None,
+) -> dict[str, Any]:
+    properties: dict[str, Any] = {"hs_pipeline_stage": stage_id}
+    if pipeline_id:
+        properties["hs_pipeline"] = pipeline_id
+    return update_object(
+        ctx_obj,
+        resource="ticket",
+        object_id=ticket_id,
+        properties=properties,
+        operation="update_status",
+        command_id="ticket.update_status",
+        stage_id=stage_id,
+        pipeline_id=pipeline_id,
+    )
+
+
+def create_note(
+    ctx_obj: dict[str, Any],
+    *,
+    object_type: str,
+    object_id: str,
+    body: str,
+) -> dict[str, Any]:
+    note_response = _request_json(
+        ctx_obj,
+        "POST",
+        _object_path("note"),
+        payload={
+            "properties": {
+                "hs_timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+                "hs_note_body": body,
+            }
+        },
+    )
+    note_id = note_response.get("id")
+    if not note_id:
+        raise CliError(
+            code="HUBSPOT_API_ERROR",
+            message="HubSpot note create did not return a note id",
+            exit_code=5,
+            details={"operation": "note.create", "response": note_response},
+        )
+    association_type_id = NOTE_ASSOCIATION_TYPE_IDS[object_type]
+    _request_json(
+        ctx_obj,
+        "PUT",
+        f"/crm/v3/objects/notes/{parse.quote(str(note_id), safe='')}/associations/"
+        f"{parse.quote(object_type, safe='')}/{parse.quote(str(object_id), safe='')}/{association_type_id}",
+    )
+    payload = _live_write_result(
+        "note",
+        "create",
+        ctx_obj,
+        note_response,
+        command_id="note.create",
+        object_type=object_type,
+        associated_object_id=object_id,
+        association_type_id=association_type_id,
+    )
+    payload["association"] = {
+        "object_type": object_type,
+        "object_id": object_id,
+        "association_type_id": association_type_id,
+    }
+    return payload
 
 
 def list_objects(

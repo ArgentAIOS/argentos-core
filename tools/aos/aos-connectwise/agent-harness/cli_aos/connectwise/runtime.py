@@ -1,13 +1,21 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Any
 
 from .client import ConnectWiseApiError, ConnectWiseClient
 from .config import config_snapshot, resolve_runtime_values
 from .constants import BACKEND_NAME, CONNECTOR_PATH
 from .errors import CliError
+
+
+LIVE_WRITE_COMMANDS = {
+    "ticket.create",
+    "company.create",
+    "contact.create",
+    "time_entry.create",
+}
+SCAFFOLDED_WRITE_COMMANDS = {"ticket.update"}
 
 
 def _load_manifest() -> dict[str, Any]:
@@ -43,13 +51,48 @@ def _load_json_arg(value: str | None, *, code: str, message: str, detail_key: st
     return parsed
 
 
+def _command_support(command_id: str, required_mode: str) -> bool:
+    if required_mode == "readonly":
+        return True
+    return command_id in LIVE_WRITE_COMMANDS
+
+
+def _write_result(
+    *,
+    command_id: str,
+    resource: str,
+    operation: str,
+    summary: str,
+    scope: dict[str, Any],
+    payload_key: str,
+    payload_value: Any,
+    inputs: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "status": "live_write",
+        "backend": BACKEND_NAME,
+        "command_id": command_id,
+        "resource": resource,
+        "operation": operation,
+        "executed": True,
+        "consequential": True,
+        "live_write_available": True,
+        "scaffold_only": False,
+        "inputs": inputs,
+        payload_key: payload_value,
+        "scope": scope,
+        "scope_preview": _scope_preview(command_id, resource, scope),
+        "summary": summary,
+    }
+
+
 def capabilities_snapshot() -> dict[str, Any]:
     manifest = _load_manifest()
     read_support: dict[str, bool] = {}
     write_support: dict[str, bool] = {}
     for command in manifest["commands"]:
         target = read_support if command["required_mode"] == "readonly" else write_support
-        target[command["id"]] = True
+        target[command["id"]] = _command_support(command["id"], command["required_mode"])
     return {
         "tool": manifest["tool"],
         "backend": manifest["backend"],
@@ -58,6 +101,9 @@ def capabilities_snapshot() -> dict[str, Any]:
         "auth": manifest["auth"],
         "scope": manifest.get("scope", {}),
         "commands": manifest["commands"],
+        "implementation_mode": "live_read_with_partial_live_writes",
+        "live_write_commands": sorted(LIVE_WRITE_COMMANDS),
+        "scaffolded_write_commands": sorted(SCAFFOLDED_WRITE_COMMANDS),
         "read_support": read_support,
         "write_support": write_support,
     }
@@ -131,16 +177,17 @@ def probe_runtime(ctx_obj: dict[str, Any]) -> dict[str, Any]:
 def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
     probe = probe_runtime(ctx_obj)
+    live_ready = bool(probe.get("ok"))
     status = "ready" if probe["ok"] else ("needs_setup" if probe["code"] == "CONNECTWISE_SETUP_REQUIRED" else "degraded")
     return {
         "status": status,
         "summary": probe["message"],
         "connector": {
             "backend": BACKEND_NAME,
-            "live_backend_available": bool(probe.get("ok")),
-            "live_read_available": bool(probe.get("ok")),
-            "write_bridge_available": False,
-            "scaffold_only": True,
+            "live_backend_available": live_ready,
+            "live_read_available": live_ready,
+            "write_bridge_available": live_ready and bool(LIVE_WRITE_COMMANDS),
+            "scaffold_only": False,
         },
         "auth": {
             "company_id_env": runtime["company_id_env"],
@@ -175,12 +222,17 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             },
             {"name": "live_backend", "ok": bool(probe.get("ok")), "details": probe.get("details", {})},
         ],
-        "runtime_ready": bool(probe.get("ok")),
+        "runtime": {
+            "implementation_mode": "live_read_with_partial_live_writes",
+            "live_write_commands": sorted(LIVE_WRITE_COMMANDS),
+            "scaffolded_write_commands": sorted(SCAFFOLDED_WRITE_COMMANDS),
+        },
+        "runtime_ready": live_ready,
         "probe": probe,
         "next_steps": [
-            f"Set {runtime['company_id_env']}, {runtime['public_key_env']}, and {runtime['private_key_env']} in API Keys.",
-            f"Set {runtime['site_url_env']} to your ConnectWise instance host.",
+            f"Set {runtime['company_id_env']}, {runtime['public_key_env']}, {runtime['private_key_env']}, and {runtime['site_url_env']} in operator-controlled service keys.",
             "Use ticket.list or board.list to confirm the live backend responds.",
+            "Use ticket.create, company.create, contact.create, or time-entry.create only with explicit payload input in write mode.",
         ],
     }
 
@@ -193,27 +245,29 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "status": "ready" if ready else ("needs_setup" if probe.get("code") == "CONNECTWISE_SETUP_REQUIRED" else "degraded"),
         "summary": "ConnectWise connector diagnostics.",
         "runtime": {
-            "implementation_mode": "live_read_scaffold_write",
+            "implementation_mode": "live_read_with_partial_live_writes",
             "command_readiness": {
                 "ticket.list": ready,
                 "ticket.get": ready and bool(runtime["ticket_id"]),
-                "ticket.create": False,
+                "ticket.create": ready,
                 "ticket.update": False,
                 "company.list": ready,
                 "company.get": ready and bool(runtime["company_scope"]),
-                "company.create": False,
+                "company.create": ready,
                 "contact.list": ready,
                 "contact.get": ready and bool(runtime["contact_id"]),
-                "contact.create": False,
+                "contact.create": ready,
                 "project.list": ready,
                 "project.get": ready and bool(runtime["project_id"]),
                 "board.list": ready,
                 "status.list": ready and bool(runtime["board_id"]),
                 "member.list": ready,
-                "time_entry.create": False,
+                "time_entry.create": ready and bool(runtime["ticket_id"]),
                 "configuration.list": ready,
                 "configuration.get": ready and bool(runtime["configuration_id"]),
             },
+            "live_write_commands": sorted(LIVE_WRITE_COMMANDS),
+            "scaffolded_write_commands": sorted(SCAFFOLDED_WRITE_COMMANDS),
         },
         "checks": [
             {"name": "required_env", "ok": runtime["credentials_present"]},
@@ -234,7 +288,11 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "configuration.list",
             "configuration.get",
         ],
-        "supported_write_commands": [
+        "supported_write_commands": sorted(LIVE_WRITE_COMMANDS),
+        "scaffolded_write_commands": [
+            "ticket.update",
+        ],
+        "known_write_commands": [
             "ticket.create",
             "ticket.update",
             "company.create",
@@ -248,7 +306,7 @@ def ticket_list_result(ctx_obj: dict[str, Any], *, board_id: str | None, status:
     runtime = resolve_runtime_values(ctx_obj)
     client = create_client(ctx_obj)
     resolved_board = board_id or runtime["board_id"] or None
-    payload = client.list_tickets(board_id=resolved_board, status=status or runtime["company_scope"] or None, priority=priority, limit=limit)
+    payload = client.list_tickets(board_id=resolved_board, status=status or None, priority=priority, limit=limit)
     tickets = payload.get("tickets", [])
     picker_items = [
         {
@@ -286,6 +344,23 @@ def ticket_get_result(ctx_obj: dict[str, Any], *, ticket_id: str | None) -> dict
         "ticket": ticket,
         "scope_preview": _scope_preview("ticket.get", "ticket", {"ticket_id": resolved_ticket}),
     }
+
+
+def ticket_create_result(ctx_obj: dict[str, Any], *, payload: dict[str, Any]) -> dict[str, Any]:
+    client = create_client(ctx_obj)
+    ticket = client.create_ticket(payload)
+    ticket_id = ticket.get("id")
+    ticket_label = ticket.get("summary") or ticket_id or "ticket"
+    return _write_result(
+        command_id="ticket.create",
+        resource="ticket",
+        operation="create",
+        summary=f"Created ConnectWise ticket {ticket_label}.",
+        scope={"ticket_id": ticket_id},
+        payload_key="ticket",
+        payload_value=ticket,
+        inputs={"payload": payload},
+    )
 
 
 def company_list_result(ctx_obj: dict[str, Any], *, limit: int) -> dict[str, Any]:
@@ -328,6 +403,23 @@ def company_get_result(ctx_obj: dict[str, Any], *, company_id: str | None) -> di
     }
 
 
+def company_create_result(ctx_obj: dict[str, Any], *, payload: dict[str, Any]) -> dict[str, Any]:
+    client = create_client(ctx_obj)
+    company = client.create_company(payload)
+    company_id = company.get("id")
+    company_label = company.get("name") or company_id or "company"
+    return _write_result(
+        command_id="company.create",
+        resource="company",
+        operation="create",
+        summary=f"Created ConnectWise company {company_label}.",
+        scope={"company_id": company_id},
+        payload_key="company",
+        payload_value=company,
+        inputs={"payload": payload},
+    )
+
+
 def contact_list_result(ctx_obj: dict[str, Any], *, company_id: str | None, limit: int) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
     client = create_client(ctx_obj)
@@ -368,6 +460,23 @@ def contact_get_result(ctx_obj: dict[str, Any], *, contact_id: str | None) -> di
         "contact": contact,
         "scope_preview": _scope_preview("contact.get", "contact", {"contact_id": resolved}),
     }
+
+
+def contact_create_result(ctx_obj: dict[str, Any], *, payload: dict[str, Any]) -> dict[str, Any]:
+    client = create_client(ctx_obj)
+    contact = client.create_contact(payload)
+    contact_id = contact.get("id")
+    contact_label = contact.get("name") or contact.get("email") or contact_id or "contact"
+    return _write_result(
+        command_id="contact.create",
+        resource="contact",
+        operation="create",
+        summary=f"Created ConnectWise contact {contact_label}.",
+        scope={"contact_id": contact_id},
+        payload_key="contact",
+        payload_value=contact,
+        inputs={"payload": payload},
+    )
 
 
 def project_list_result(ctx_obj: dict[str, Any], *, limit: int) -> dict[str, Any]:
@@ -486,6 +595,25 @@ def member_list_result(ctx_obj: dict[str, Any], *, limit: int) -> dict[str, Any]
     }
 
 
+def time_entry_create_result(ctx_obj: dict[str, Any], *, ticket_id: str | None, payload: dict[str, Any]) -> dict[str, Any]:
+    runtime = resolve_runtime_values(ctx_obj)
+    resolved_ticket = ticket_id or runtime["ticket_id"] or None
+    if not resolved_ticket:
+        raise CliError(code="CONNECTWISE_TICKET_ID_REQUIRED", message="ticket_id is required", exit_code=4, details={"env": runtime["ticket_id_env"]})
+    client = create_client(ctx_obj)
+    time_entry = client.create_time_entry(resolved_ticket, payload)
+    return _write_result(
+        command_id="time_entry.create",
+        resource="time_entry",
+        operation="create",
+        summary=f"Created ConnectWise time entry on ticket {resolved_ticket}.",
+        scope={"ticket_id": resolved_ticket},
+        payload_key="time_entry",
+        payload_value=time_entry,
+        inputs={"ticket_id": resolved_ticket, "payload": payload},
+    )
+
+
 def configuration_list_result(ctx_obj: dict[str, Any], *, company_id: str | None, limit: int) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
     client = create_client(ctx_obj)
@@ -529,4 +657,9 @@ def configuration_get_result(ctx_obj: dict[str, Any], *, configuration_id: str |
 
 
 def scaffold_write_result(command_id: str) -> dict[str, Any]:
-    return {"command_id": command_id, "status": "scaffolded", "write_bridge_available": False}
+    return {
+        "command_id": command_id,
+        "status": "scaffolded",
+        "write_bridge_available": False,
+        "scaffold_only": True,
+    }

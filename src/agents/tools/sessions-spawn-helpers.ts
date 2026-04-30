@@ -4,6 +4,7 @@
  */
 
 import crypto from "node:crypto";
+import type { ArgentConfig } from "../../config/config.js";
 import type { DeliveryContext } from "../../utils/delivery-context.js";
 import { formatThinkingLevels, normalizeThinkLevel } from "../../auto-reply/thinking.js";
 import { loadConfig } from "../../config/config.js";
@@ -16,11 +17,17 @@ import { registerSubagentRun } from "../subagent-registry.js";
 import { readStringParam } from "./common.js";
 
 function splitModelRef(ref?: string) {
-  if (!ref) return { provider: undefined, model: undefined };
+  if (!ref) {
+    return { provider: undefined, model: undefined };
+  }
   const trimmed = ref.trim();
-  if (!trimmed) return { provider: undefined, model: undefined };
+  if (!trimmed) {
+    return { provider: undefined, model: undefined };
+  }
   const [provider, model] = trimmed.split("/", 2);
-  if (model) return { provider, model };
+  if (model) {
+    return { provider, model };
+  }
   return { provider: undefined, model: trimmed };
 }
 
@@ -29,23 +36,71 @@ function normalizeModelSelection(value: unknown): string | undefined {
     const trimmed = value.trim();
     return trimmed || undefined;
   }
-  if (!value || typeof value !== "object") return undefined;
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
   const primary = (value as { primary?: unknown }).primary;
-  if (typeof primary === "string" && primary.trim()) return primary.trim();
+  if (typeof primary === "string" && primary.trim()) {
+    return primary.trim();
+  }
   return undefined;
 }
 
 function normalizeToolGrantList(list: string[] | undefined): string[] | undefined {
-  if (!Array.isArray(list)) return undefined;
+  if (!Array.isArray(list)) {
+    return undefined;
+  }
   const deduped = new Set<string>();
   for (const item of list) {
     const normalized = String(item ?? "")
       .trim()
       .toLowerCase();
-    if (!normalized) continue;
+    if (!normalized) {
+      continue;
+    }
     deduped.add(normalized);
   }
   return deduped.size > 0 ? Array.from(deduped) : [];
+}
+
+export type SpawnModelSelectionDiagnostic = {
+  requestedModel: string;
+  targetAgentId: string;
+  rawError: string;
+  warning: string;
+  allowlistSource: string;
+  allowlistOpen: boolean;
+  allowedModels: string[];
+  inspectCommand: string;
+};
+
+export function buildSpawnModelSelectionDiagnostic(params: {
+  cfg: ArgentConfig;
+  targetAgentId: string;
+  requestedModel: string;
+  rawError: string;
+}): SpawnModelSelectionDiagnostic {
+  const allowedModels = Object.keys(params.cfg.agents?.defaults?.models ?? {});
+  const allowlistOpen = allowedModels.length === 0;
+  const allowlistSource = allowlistOpen
+    ? "agents.defaults.models (empty: open allowlist)"
+    : "agents.defaults.models";
+  const allowedText = allowlistOpen ? "all configured/catalog models" : allowedModels.join(", ");
+  const inspectCommand = `argent models status --agent ${params.targetAgentId} --json`;
+  return {
+    requestedModel: params.requestedModel,
+    targetAgentId: params.targetAgentId,
+    rawError: params.rawError,
+    allowlistSource,
+    allowlistOpen,
+    allowedModels,
+    inspectCommand,
+    warning:
+      `Model selection failed for "${params.requestedModel}" on agent "${params.targetAgentId}": ` +
+      `${params.rawError}. Allowed models source: ${allowlistSource}; allowed models: ` +
+      `${allowedText}. The background session continued on default model routing. Inspect with: ` +
+      inspectCommand,
+  };
 }
 
 export type SpawnSessionParams = {
@@ -81,6 +136,8 @@ export type SpawnSessionResult =
       childSessionKey: string;
       runId: string;
       modelApplied?: boolean;
+      modelRequested?: string;
+      modelDiagnostic?: SpawnModelSelectionDiagnostic;
       warning?: string;
     }
   | {
@@ -162,6 +219,7 @@ export async function spawnSubagentSession(
 
   let modelApplied = false;
   let modelWarning: string | undefined;
+  let modelDiagnostic: SpawnModelSelectionDiagnostic | undefined;
   const toolsAllow = normalizeToolGrantList(params.toolsAllow);
   const toolsDeny = normalizeToolGrantList(params.toolsDeny);
 
@@ -190,7 +248,13 @@ export async function spawnSubagentSession(
       if (!recoverable) {
         return { ok: false, error: msg, childSessionKey };
       }
-      modelWarning = msg;
+      modelDiagnostic = buildSpawnModelSelectionDiagnostic({
+        cfg,
+        targetAgentId,
+        requestedModel: resolvedModel,
+        rawError: msg,
+      });
+      modelWarning = modelDiagnostic.warning;
       // Model selection failed (allowlist/invalid model). Retry patch without model so
       // strict tool grants can still apply and the run can proceed on default routing.
       if (toolsAllow !== undefined || toolsDeny !== undefined) {
@@ -270,6 +334,8 @@ export async function spawnSubagentSession(
     childSessionKey,
     runId: childRunId,
     modelApplied: resolvedModel ? modelApplied : undefined,
+    modelRequested: resolvedModel || undefined,
+    modelDiagnostic,
     warning: modelWarning,
   };
 }

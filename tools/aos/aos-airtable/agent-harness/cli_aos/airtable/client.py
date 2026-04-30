@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 
 from .errors import CliError
 from .constants import DEFAULT_BASE_ID_ENV, DEFAULT_TABLE_NAME_ENV, LEGACY_BASE_ID_ENV, LEGACY_TABLE_NAME_ENV
+from .service_keys import resolve_named_value
 
 
 def _coerce_text(value: Any) -> str:
@@ -142,39 +143,38 @@ class AirtableClient:
     api_base_url: str
     api_token: str
     base_id: str | None = None
+    table_name: str | None = None
     timeout: float = 30.0
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "AirtableClient":
         runtime = config["runtime"]
-        api_token = os.getenv("AIRTABLE_API_TOKEN", "").strip() or os.getenv("AOS_AIRTABLE_API_TOKEN", "").strip()
         return cls(
             api_base_url=str(runtime["api_base_url"]).rstrip("/"),
-            api_token=api_token,
+            api_token=str((config.get("_private") or {}).get("api_token") or ""),
             base_id=str(runtime["base_id"]).strip() or None,
+            table_name=str(runtime["table_name"]).strip() or None,
         )
 
-    @staticmethod
-    def _env_table_name() -> str:
-        for name in (DEFAULT_TABLE_NAME_ENV, LEGACY_TABLE_NAME_ENV):
-            value = os.getenv(name, "").strip()
-            if value:
-                return value
-        return ""
+    def _env_table_name(self) -> str:
+        return self.table_name or str(resolve_named_value(DEFAULT_TABLE_NAME_ENV, LEGACY_TABLE_NAME_ENV)["value"] or "")
 
     @staticmethod
     def _env_base_id() -> str:
-        for name in (DEFAULT_BASE_ID_ENV, LEGACY_BASE_ID_ENV):
-            value = os.getenv(name, "").strip()
-            if value:
-                return value
-        return ""
+        return str(resolve_named_value(DEFAULT_BASE_ID_ENV, LEGACY_BASE_ID_ENV)["value"] or "")
 
-    def _request_json(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _request_json(
+        self,
+        path: str,
+        *,
+        method: str = "GET",
+        params: dict[str, Any] | None = None,
+        body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         if not self.api_token:
             raise CliError(
                 code="AIRTABLE_CONFIG_ERROR",
-                message="AIRTABLE_API_TOKEN is required for live Airtable reads",
+                message="AIRTABLE_API_TOKEN is required for live Airtable API calls",
                 exit_code=4,
                 details={"missing_keys": ["AIRTABLE_API_TOKEN"]},
             )
@@ -183,13 +183,19 @@ class AirtableClient:
             query = urlencode([(key, value) for key, value in params.items() if value is not None], doseq=True)
             if query:
                 url = f"{url}?{query}"
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
+        data: bytes | None = None
+        if body is not None:
+            data = json.dumps(body).encode("utf-8")
+            headers["Content-Type"] = "application/json"
         request = Request(
             url,
-            headers={
-                "Authorization": f"Bearer {self.api_token}",
-                "Accept": "application/json",
-            },
-            method="GET",
+            data=data,
+            headers=headers,
+            method=method,
         )
         try:
             with urlopen(request, timeout=self.timeout) as response:
@@ -455,6 +461,80 @@ class AirtableClient:
         record = payload if isinstance(payload, dict) else {}
         return {
             "summary": f"Read Airtable record {record_id} from {resolved_table_name}",
+            "base_id": self.base_id,
+            "table": resolved_table_name,
+            "record_id": record_id,
+            "record": record,
+            "source": "live",
+        }
+
+    def _resolve_table_for_write(self, table_name: str | None) -> str:
+        resolved_table_name = (table_name or self._env_table_name()).strip()
+        if not self.base_id:
+            raise CliError(
+                code="AIRTABLE_CONFIG_ERROR",
+                message="AIRTABLE_BASE_ID is required for live Airtable writes",
+                exit_code=4,
+                details={"missing_keys": ["AIRTABLE_BASE_ID"]},
+            )
+        if not resolved_table_name:
+            raise CliError(
+                code="AIRTABLE_CONFIG_ERROR",
+                message="AIRTABLE_TABLE_NAME is required for table-scoped Airtable writes",
+                exit_code=4,
+                details={"missing_keys": ["AIRTABLE_TABLE_NAME"]},
+            )
+        return resolved_table_name
+
+    @staticmethod
+    def _validate_fields(fields: dict[str, Any]) -> dict[str, Any]:
+        if not fields:
+            raise CliError(
+                code="AIRTABLE_FIELDS_REQUIRED",
+                message="At least one Airtable field value is required",
+                exit_code=2,
+                details={"expected": "Use --field Name=value or --fields-json '{\"Name\":\"value\"}'"},
+            )
+        return fields
+
+    def create_record(self, table_name: str | None, fields: dict[str, Any], *, typecast: bool = False) -> dict[str, Any]:
+        resolved_table_name = self._resolve_table_for_write(table_name)
+        payload: dict[str, Any] = {"fields": self._validate_fields(fields)}
+        if typecast:
+            payload["typecast"] = True
+        record = self._request_json(
+            f"/v0/{_quote_path(self.base_id or '')}/{_quote_path(resolved_table_name)}",
+            method="POST",
+            body=payload,
+        )
+        return {
+            "summary": f"Created Airtable record in {resolved_table_name}",
+            "base_id": self.base_id,
+            "table": resolved_table_name,
+            "record_id": record.get("id"),
+            "record": record,
+            "source": "live",
+        }
+
+    def update_record(
+        self,
+        table_name: str | None,
+        record_id: str,
+        fields: dict[str, Any],
+        *,
+        typecast: bool = False,
+    ) -> dict[str, Any]:
+        resolved_table_name = self._resolve_table_for_write(table_name)
+        payload: dict[str, Any] = {"fields": self._validate_fields(fields)}
+        if typecast:
+            payload["typecast"] = True
+        record = self._request_json(
+            f"/v0/{_quote_path(self.base_id or '')}/{_quote_path(resolved_table_name)}/{_quote_path(record_id)}",
+            method="PATCH",
+            body=payload,
+        )
+        return {
+            "summary": f"Updated Airtable record {record_id} in {resolved_table_name}",
             "base_id": self.base_id,
             "table": resolved_table_name,
             "record_id": record_id,

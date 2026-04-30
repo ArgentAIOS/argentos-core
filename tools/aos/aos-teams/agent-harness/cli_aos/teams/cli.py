@@ -16,8 +16,8 @@ from .runtime import (
     config_snapshot,
     doctor_snapshot,
     health_snapshot,
+    run_write_command,
     meeting_list_result,
-    scaffold_write_command,
     team_list_result,
 )
 
@@ -75,8 +75,8 @@ def _emit_success(ctx: click.Context, command_id: str, data: dict) -> None:
     emit(success(command=command_id, mode=ctx.obj["mode"], started=ctx.obj["started"], data=data), as_json=ctx.obj["json"])
 
 
-def _emit_scaffold(ctx: click.Context, command_id: str, items: tuple[str, ...]) -> None:
-    raise CliError(code="NOT_IMPLEMENTED", message=f"{command_id} is scaffolded but not implemented yet", exit_code=10, details=scaffold_write_command(command_id, items))
+def _emit_write(ctx: click.Context, command_id: str, items: tuple[str, ...]) -> None:
+    _emit_success(ctx, command_id, run_write_command(ctx.obj, command_id, items))
 
 
 @click.group(cls=AosGroup)
@@ -95,7 +95,7 @@ def cli(ctx: click.Context, as_json: bool, mode: str, verbose: bool) -> None:
 def capabilities(ctx: click.Context) -> None:
     _set_command(ctx, "capabilities")
     require_mode(ctx, "capabilities")
-    _emit_success(ctx, "capabilities", capabilities_snapshot())
+    _emit_success(ctx, "capabilities", capabilities_snapshot(ctx.obj))
 
 
 @cli.group("config")
@@ -108,7 +108,7 @@ def config_group() -> None:
 def config_show(ctx: click.Context) -> None:
     _set_command(ctx, "config.show")
     require_mode(ctx, "config.show")
-    _emit_success(ctx, "config.show", config_snapshot())
+    _emit_success(ctx, "config.show", config_snapshot(ctx.obj))
 
 
 @cli.command("health")
@@ -162,7 +162,7 @@ def channel_list(ctx: click.Context, team_id: str | None, limit: int) -> None:
 def channel_create(ctx: click.Context, items: tuple[str, ...]) -> None:
     _set_command(ctx, "channel.create")
     require_mode(ctx, "channel.create")
-    _emit_scaffold(ctx, "channel.create", items)
+    _emit_write(ctx, "channel.create", items)
 
 
 @cli.group("meeting")
@@ -186,69 +186,4 @@ def meeting_list(ctx: click.Context, user_id: str | None, limit: int) -> None:
 def meeting_create(ctx: click.Context, items: tuple[str, ...]) -> None:
     _set_command(ctx, "meeting.create")
     require_mode(ctx, "meeting.create")
-    _emit_scaffold(ctx, "meeting.create", items)
-
-
-@cli.group("message")
-def message_group() -> None:
-    pass
-
-
-@message_group.command("send")
-@click.argument("items", nargs=-1)
-@click.pass_context
-def message_send(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _set_command(ctx, "message.send")
-    require_mode(ctx, "message.send")
-    _emit_scaffold(ctx, "message.send", items)
-
-
-@message_group.command("reply")
-@click.argument("items", nargs=-1)
-@click.pass_context
-def message_reply(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _set_command(ctx, "message.reply")
-    require_mode(ctx, "message.reply")
-    _emit_scaffold(ctx, "message.reply", items)
-
-
-@cli.group("chat")
-def chat_group() -> None:
-    pass
-
-
-@chat_group.command("send")
-@click.argument("items", nargs=-1)
-@click.pass_context
-def chat_send(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _set_command(ctx, "chat.send")
-    require_mode(ctx, "chat.send")
-    _emit_scaffold(ctx, "chat.send", items)
-
-
-@cli.group("file")
-def file_group() -> None:
-    pass
-
-
-@file_group.command("upload")
-@click.argument("items", nargs=-1)
-@click.pass_context
-def file_upload(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _set_command(ctx, "file.upload")
-    require_mode(ctx, "file.upload")
-    _emit_scaffold(ctx, "file.upload", items)
-
-
-@cli.group("adaptive-card")
-def adaptive_card_group() -> None:
-    pass
-
-
-@adaptive_card_group.command("send")
-@click.argument("items", nargs=-1)
-@click.pass_context
-def adaptive_card_send(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _set_command(ctx, "adaptive_card.send")
-    require_mode(ctx, "adaptive_card.send")
-    _emit_scaffold(ctx, "adaptive_card.send", items)
+    _emit_write(ctx, "meeting.create", items)

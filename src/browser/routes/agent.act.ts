@@ -16,6 +16,10 @@ import {
 } from "./agent.shared.js";
 import { jsonError, toBoolean, toNumber, toStringArray, toStringOrEmpty } from "./utils.js";
 
+function resolveActionTimeoutMs(ctx: BrowserRouteContext, raw: unknown) {
+  return toNumber(raw) ?? ctx.state().resolved.actionTimeoutMs;
+}
+
 export function registerBrowserAgentActRoutes(
   app: BrowserRouteRegistrar,
   ctx: BrowserRouteContext,
@@ -52,7 +56,7 @@ export function registerBrowserAgentActRoutes(
             return jsonError(res, 400, "ref is required");
           }
           const doubleClick = toBoolean(body.doubleClick) ?? false;
-          const timeoutMs = toNumber(body.timeoutMs);
+          const timeoutMs = resolveActionTimeoutMs(ctx, body.timeoutMs);
           const buttonRaw = toStringOrEmpty(body.button) || "";
           const button = buttonRaw ? parseClickButton(buttonRaw) : undefined;
           if (buttonRaw && !button) {
@@ -77,7 +81,7 @@ export function registerBrowserAgentActRoutes(
           if (modifiers) {
             clickRequest.modifiers = modifiers;
           }
-          if (timeoutMs) {
+          if (timeoutMs !== undefined) {
             clickRequest.timeoutMs = timeoutMs;
           }
           await pw.clickViaPlaywright(clickRequest);
@@ -94,7 +98,7 @@ export function registerBrowserAgentActRoutes(
           const text = body.text;
           const submit = toBoolean(body.submit) ?? false;
           const slowly = toBoolean(body.slowly) ?? false;
-          const timeoutMs = toNumber(body.timeoutMs);
+          const timeoutMs = resolveActionTimeoutMs(ctx, body.timeoutMs);
           const typeRequest: Parameters<typeof pw.typeViaPlaywright>[0] = {
             cdpUrl,
             targetId: tab.targetId,
@@ -103,7 +107,7 @@ export function registerBrowserAgentActRoutes(
             submit,
             slowly,
           };
-          if (timeoutMs) {
+          if (timeoutMs !== undefined) {
             typeRequest.timeoutMs = timeoutMs;
           }
           await pw.typeViaPlaywright(typeRequest);
@@ -128,7 +132,7 @@ export function registerBrowserAgentActRoutes(
           if (!ref) {
             return jsonError(res, 400, "ref is required");
           }
-          const timeoutMs = toNumber(body.timeoutMs);
+          const timeoutMs = resolveActionTimeoutMs(ctx, body.timeoutMs);
           await pw.hoverViaPlaywright({
             cdpUrl,
             targetId: tab.targetId,
@@ -142,13 +146,13 @@ export function registerBrowserAgentActRoutes(
           if (!ref) {
             return jsonError(res, 400, "ref is required");
           }
-          const timeoutMs = toNumber(body.timeoutMs);
+          const timeoutMs = resolveActionTimeoutMs(ctx, body.timeoutMs);
           const scrollRequest: Parameters<typeof pw.scrollIntoViewViaPlaywright>[0] = {
             cdpUrl,
             targetId: tab.targetId,
             ref,
           };
-          if (timeoutMs) {
+          if (timeoutMs !== undefined) {
             scrollRequest.timeoutMs = timeoutMs;
           }
           await pw.scrollIntoViewViaPlaywright(scrollRequest);
@@ -160,7 +164,7 @@ export function registerBrowserAgentActRoutes(
           if (!startRef || !endRef) {
             return jsonError(res, 400, "startRef and endRef are required");
           }
-          const timeoutMs = toNumber(body.timeoutMs);
+          const timeoutMs = resolveActionTimeoutMs(ctx, body.timeoutMs);
           await pw.dragViaPlaywright({
             cdpUrl,
             targetId: tab.targetId,
@@ -176,7 +180,7 @@ export function registerBrowserAgentActRoutes(
           if (!ref || !values?.length) {
             return jsonError(res, 400, "ref and values are required");
           }
-          const timeoutMs = toNumber(body.timeoutMs);
+          const timeoutMs = resolveActionTimeoutMs(ctx, body.timeoutMs);
           await pw.selectOptionViaPlaywright({
             cdpUrl,
             targetId: tab.targetId,
@@ -213,7 +217,7 @@ export function registerBrowserAgentActRoutes(
           if (!fields.length) {
             return jsonError(res, 400, "fields are required");
           }
-          const timeoutMs = toNumber(body.timeoutMs);
+          const timeoutMs = resolveActionTimeoutMs(ctx, body.timeoutMs);
           await pw.fillFormViaPlaywright({
             cdpUrl,
             targetId: tab.targetId,
@@ -250,7 +254,7 @@ export function registerBrowserAgentActRoutes(
               ? loadStateRaw
               : undefined;
           const fn = toStringOrEmpty(body.fn) || undefined;
-          const timeoutMs = toNumber(body.timeoutMs) ?? undefined;
+          const timeoutMs = resolveActionTimeoutMs(ctx, body.timeoutMs);
           if (fn && !evaluateEnabled) {
             return jsonError(
               res,
@@ -343,7 +347,7 @@ export function registerBrowserAgentActRoutes(
     const inputRef = toStringOrEmpty(body.inputRef) || undefined;
     const element = toStringOrEmpty(body.element) || undefined;
     const paths = toStringArray(body.paths) ?? [];
-    const timeoutMs = toNumber(body.timeoutMs);
+    const timeoutMs = resolveActionTimeoutMs(ctx, body.timeoutMs);
     if (!paths.length) {
       return jsonError(res, 400, "paths are required");
     }
@@ -376,6 +380,7 @@ export function registerBrowserAgentActRoutes(
             cdpUrl: profileCtx.profile.cdpUrl,
             targetId: tab.targetId,
             ref,
+            timeoutMs: timeoutMs ?? undefined,
           });
         }
       }
@@ -394,7 +399,7 @@ export function registerBrowserAgentActRoutes(
     const targetId = toStringOrEmpty(body.targetId) || undefined;
     const accept = toBoolean(body.accept);
     const promptText = toStringOrEmpty(body.promptText) || undefined;
-    const timeoutMs = toNumber(body.timeoutMs);
+    const timeoutMs = resolveActionTimeoutMs(ctx, body.timeoutMs);
     if (accept === undefined) {
       return jsonError(res, 400, "accept is required");
     }
@@ -425,7 +430,7 @@ export function registerBrowserAgentActRoutes(
     const body = readBody(req);
     const targetId = toStringOrEmpty(body.targetId) || undefined;
     const out = toStringOrEmpty(body.path) || undefined;
-    const timeoutMs = toNumber(body.timeoutMs);
+    const timeoutMs = resolveActionTimeoutMs(ctx, body.timeoutMs);
     try {
       const tab = await profileCtx.ensureTabAvailable(targetId);
       const pw = await requirePwAi(res, "wait for download");
@@ -453,7 +458,7 @@ export function registerBrowserAgentActRoutes(
     const targetId = toStringOrEmpty(body.targetId) || undefined;
     const ref = toStringOrEmpty(body.ref);
     const out = toStringOrEmpty(body.path);
-    const timeoutMs = toNumber(body.timeoutMs);
+    const timeoutMs = resolveActionTimeoutMs(ctx, body.timeoutMs);
     if (!ref) {
       return jsonError(res, 400, "ref is required");
     }
@@ -487,7 +492,7 @@ export function registerBrowserAgentActRoutes(
     const body = readBody(req);
     const targetId = toStringOrEmpty(body.targetId) || undefined;
     const url = toStringOrEmpty(body.url);
-    const timeoutMs = toNumber(body.timeoutMs);
+    const timeoutMs = resolveActionTimeoutMs(ctx, body.timeoutMs);
     const maxChars = toNumber(body.maxChars);
     if (!url) {
       return jsonError(res, 400, "url is required");

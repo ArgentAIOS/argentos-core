@@ -1,6 +1,6 @@
 {
   "name": "argentos",
-  "version": "2026.4.25.2",
+  "version": "2026.4.30",
   "description": "The Operating System for Personal AI",
   "keywords": [
     "agent",
@@ -14,13 +14,13 @@
   ],
   "homepage": "https://argentos.ai",
   "bugs": {
-    "url": "https://github.com/ArgentAIOS/argentos/issues"
+    "url": "https://github.com/ArgentAIOS/argentos-core/issues"
   },
   "license": "MIT",
   "author": "",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ArgentAIOS/argentos.git"
+    "url": "git+https://github.com/ArgentAIOS/argentos-core.git"
   },
   "bin": {
     "argent": "argent.mjs",
@@ -45,6 +45,7 @@
   "exports": {
     ".": "./dist/index.js",
     "./plugin-sdk": "./dist/plugin-sdk/index.js",
+    "./plugin-sdk/realtime-voice": "./dist/plugin-sdk/realtime-voice.js",
     "./cli-entry": "./argent.mjs"
   },
   "publishConfig": {
@@ -61,8 +62,9 @@
     "argentos:rpc": "node scripts/run-node.mjs agent --mode rpc --json",
     "build": "pnpm canvas:a2ui:bundle && tsdown && node --import tsx scripts/canvas-a2ui-copy.ts && node --import tsx scripts/copy-hook-metadata.ts && node --import tsx scripts/write-build-info.ts && node --import tsx scripts/write-cli-compat.ts",
     "canvas:a2ui:bundle": "bash scripts/bundle-a2ui.sh",
-    "check": "pnpm tsgo && pnpm lint && pnpm format",
+    "check": "pnpm check:repo-lane && pnpm tsgo && pnpm lint && pnpm format",
     "check:loc": "node --import tsx scripts/check-ts-max-loc.ts --max 500",
+    "check:repo-lane": "node scripts/check-repo-lane.mjs",
     "dev": "node scripts/run-node.mjs",
     "docs:bin": "node scripts/build-docs-list.mjs",
     "docs:build": "cd docs && pnpm dlx --reporter append-only mint broken-links",
@@ -126,6 +128,15 @@
     "test:live": "ARGENT_LIVE_TEST=1 vitest run --config vitest.live.config.ts",
     "test:ui": "pnpm --dir ui test",
     "test:watch": "vitest",
+    "threadmaster:ack": "node scripts/threadmaster-bus.mjs ack",
+    "threadmaster:bus": "node scripts/threadmaster-bus.mjs",
+    "threadmaster:list": "node scripts/threadmaster-bus.mjs list",
+    "threadmaster:poll": "node scripts/threadmaster-bus.mjs poll",
+    "threadmaster:post": "node scripts/threadmaster-bus.mjs post",
+    "threadmaster:status": "node scripts/threadmaster-bus.mjs status",
+    "threadmaster:task-add": "node scripts/threadmaster-bus.mjs task-add",
+    "threadmaster:task-list": "node scripts/threadmaster-bus.mjs task-list",
+    "threadmaster:task-update": "node scripts/threadmaster-bus.mjs task-update",
     "tui": "node scripts/run-node.mjs tui",
     "tui:dev": "ARGENT_PROFILE=dev node scripts/run-node.mjs --dev tui",
     "ui:build": "node scripts/ui.js build",

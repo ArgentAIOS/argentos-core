@@ -15,17 +15,11 @@ from .runtime import (
     doctor_snapshot,
     export_docx_result,
     export_pdf_result,
-    file_copy_result,
-    file_create_result,
-    file_delete_result,
     file_get_result,
     file_list_result,
-    file_move_result,
-    folder_create_result,
     folder_list_result,
     health_snapshot,
     search_query_result,
-    share_create_result,
     share_list_result,
 )
 
@@ -161,46 +155,6 @@ def file_get(ctx: click.Context, file_id: str | None) -> None:
     _emit_success(ctx, "file.get", file_get_result(ctx.obj, file_id=file_id))
 
 
-@file_group.command("create")
-@click.option("--name", default=None)
-@click.option("--mime-type", default=None)
-@click.option("--folder-id", default=None)
-@click.pass_context
-def file_create(ctx: click.Context, name: str | None, mime_type: str | None, folder_id: str | None) -> None:
-    _set_command(ctx, "file.create")
-    require_mode(ctx, "file.create")
-    _emit_success(ctx, "file.create", file_create_result(ctx.obj, name=name, mime_type=mime_type, folder_id=folder_id))
-
-
-@file_group.command("copy")
-@click.argument("file_id", required=False)
-@click.option("--name", default=None)
-@click.pass_context
-def file_copy(ctx: click.Context, file_id: str | None, name: str | None) -> None:
-    _set_command(ctx, "file.copy")
-    require_mode(ctx, "file.copy")
-    _emit_success(ctx, "file.copy", file_copy_result(ctx.obj, file_id=file_id, name=name))
-
-
-@file_group.command("move")
-@click.argument("file_id", required=False)
-@click.option("--folder-id", default=None)
-@click.pass_context
-def file_move(ctx: click.Context, file_id: str | None, folder_id: str | None) -> None:
-    _set_command(ctx, "file.move")
-    require_mode(ctx, "file.move")
-    _emit_success(ctx, "file.move", file_move_result(ctx.obj, file_id=file_id, folder_id=folder_id))
-
-
-@file_group.command("delete")
-@click.argument("file_id", required=False)
-@click.pass_context
-def file_delete(ctx: click.Context, file_id: str | None) -> None:
-    _set_command(ctx, "file.delete")
-    require_mode(ctx, "file.delete")
-    _emit_success(ctx, "file.delete", file_delete_result(ctx.obj, file_id=file_id))
-
-
 @cli.group("folder")
 def folder_group() -> None:
     pass
@@ -216,30 +170,9 @@ def folder_list(ctx: click.Context, limit: int, folder_id: str | None) -> None:
     _emit_success(ctx, "folder.list", folder_list_result(ctx.obj, limit=limit, folder_id=folder_id))
 
 
-@folder_group.command("create")
-@click.option("--name", default=None)
-@click.option("--folder-id", default=None)
-@click.pass_context
-def folder_create(ctx: click.Context, name: str | None, folder_id: str | None) -> None:
-    _set_command(ctx, "folder.create")
-    require_mode(ctx, "folder.create")
-    _emit_success(ctx, "folder.create", folder_create_result(ctx.obj, name=name, folder_id=folder_id))
-
-
 @cli.group("share")
 def share_group() -> None:
     pass
-
-
-@share_group.command("create")
-@click.argument("file_id", required=False)
-@click.option("--share-email", default=None)
-@click.option("--permission", default=None)
-@click.pass_context
-def share_create(ctx: click.Context, file_id: str | None, share_email: str | None, permission: str | None) -> None:
-    _set_command(ctx, "share.create")
-    require_mode(ctx, "share.create")
-    _emit_success(ctx, "share.create", share_create_result(ctx.obj, file_id=file_id, share_email=share_email, permission=permission))
 
 
 @share_group.command("list")

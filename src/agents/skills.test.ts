@@ -164,6 +164,85 @@ describe("buildWorkspaceSkillsPrompt", () => {
     expect(prompt).toContain(path.join(bundledSkillDir, "SKILL.md"));
   });
 
+  it("groups nested bundled skills by category with category descriptions", async () => {
+    const workspaceDir = await makeWorkspace();
+    const bundledDir = path.join(workspaceDir, ".bundled");
+    const categoryDir = path.join(bundledDir, "hermes", "creative");
+    const bundledSkillDir = path.join(categoryDir, "p5js");
+
+    await fs.mkdir(categoryDir, { recursive: true });
+    await fs.writeFile(
+      path.join(categoryDir, "DESCRIPTION.md"),
+      `---
+description: Creative content generation and visual design tools.
+---
+`,
+      "utf-8",
+    );
+    await writeSkill({
+      dir: bundledSkillDir,
+      name: "hermes-p5js",
+      description: "Production pipeline for p5.js creative coding",
+      body: "# p5.js\n",
+    });
+
+    const prompt = buildWorkspaceSkillsPrompt(workspaceDir, {
+      managedSkillsDir: path.join(workspaceDir, ".managed"),
+      bundledSkillsDir: bundledDir,
+    });
+
+    expect(prompt).toContain('<category name="hermes/creative"');
+    expect(prompt).toContain("Creative content generation and visual design tools.");
+    expect(prompt).toContain("hermes-p5js");
+    expect(prompt).toContain(path.join(bundledSkillDir, "SKILL.md"));
+  });
+
+  it("exposes the bundled community diagram skills from the real catalog", async () => {
+    const workspaceDir = await makeWorkspace();
+    const prompt = buildWorkspaceSkillsPrompt(workspaceDir, {
+      managedSkillsDir: path.join(workspaceDir, ".managed"),
+    });
+
+    expect(prompt).toContain('<category name="community/creative"');
+    expect(prompt).toContain("community-excalidraw");
+    expect(prompt).toContain("community-architecture-diagram");
+    expect(prompt).toContain(
+      path.join("skills", "community", "creative", "excalidraw", "SKILL.md"),
+    );
+  });
+
+  it("groups imported community skills by category with category descriptions", async () => {
+    const workspaceDir = await makeWorkspace();
+    const bundledDir = path.join(workspaceDir, ".bundled");
+    const categoryDir = path.join(bundledDir, "community", "creative");
+    const bundledSkillDir = path.join(categoryDir, "p5js");
+
+    await fs.mkdir(categoryDir, { recursive: true });
+    await fs.writeFile(
+      path.join(categoryDir, "DESCRIPTION.md"),
+      `---
+description: Creative content generation and visual design tools.
+---
+`,
+      "utf-8",
+    );
+    await writeSkill({
+      dir: bundledSkillDir,
+      name: "community-p5js",
+      description: "Production pipeline for p5.js creative coding",
+      body: "# p5.js\n",
+    });
+
+    const prompt = buildWorkspaceSkillsPrompt(workspaceDir, {
+      managedSkillsDir: path.join(workspaceDir, ".managed"),
+      bundledSkillsDir: bundledDir,
+    });
+
+    expect(prompt).toContain('<category name="community/creative"');
+    expect(prompt).toContain("Creative content generation and visual design tools.");
+    expect(prompt).toContain("community-p5js");
+    expect(prompt).toContain(path.join(bundledSkillDir, "SKILL.md"));
+  });
   it("loads extra skill folders from config (lowest precedence)", async () => {
     const workspaceDir = await makeWorkspace();
     const extraDir = path.join(workspaceDir, ".extra");

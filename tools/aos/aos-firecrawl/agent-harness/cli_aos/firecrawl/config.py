@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -15,7 +16,7 @@ from .constants import (
 
 def _first_present_env(*names: str) -> tuple[str, str]:
     for name in names:
-        value = os.getenv(name, "")
+        value = service_key_env(name, "")
         if value:
             return name, value
     return "", ""
@@ -36,7 +37,7 @@ def runtime_config(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
             api_key_source = "cli"
 
     normalized_proxy = (proxy_base_url or DEFAULT_PROXY_BASE_URL).rstrip("/")
-    direct_base_url = (os.getenv("FIRECRAWL_BASE_URL", DEFAULT_FIRECRAWL_BASE_URL) or DEFAULT_FIRECRAWL_BASE_URL).rstrip("/")
+    direct_base_url = (service_key_env("FIRECRAWL_BASE_URL", DEFAULT_FIRECRAWL_BASE_URL) or DEFAULT_FIRECRAWL_BASE_URL).rstrip("/")
     return {
         "proxy_base_url": normalized_proxy,
         "proxy_base_url_source": proxy_source or "default",

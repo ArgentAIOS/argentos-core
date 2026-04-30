@@ -8,7 +8,7 @@
     "scaffold_only": false,
     "live_backend_available": true,
     "live_read_available": true,
-    "write_bridge_available": false,
+    "write_bridge_available": true,
     "workerFields": [
       "board_id",
       "ticket_id",
@@ -22,15 +22,19 @@
     "worker_visible_actions": [
       "ticket.list",
       "ticket.get",
+      "ticket.create",
       "company.list",
       "company.get",
+      "company.create",
       "contact.list",
       "contact.get",
+      "contact.create",
       "project.list",
       "project.get",
       "board.list",
       "status.list",
       "member.list",
+      "time_entry.create",
       "configuration.list",
       "configuration.get"
     ],
@@ -303,13 +307,13 @@
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": ["CW_COMPANY_ID_AUTH", "CW_PUBLIC_KEY", "CW_PRIVATE_KEY"],
+    "service_keys": ["CW_SITE_URL", "CW_COMPANY_ID_AUTH", "CW_PUBLIC_KEY", "CW_PRIVATE_KEY"],
     "interactive_setup": [
       "Create a ConnectWise Manage API member and generate public/private key pair under System > Members > API Members.",
-      "Add CW_COMPANY_ID_AUTH (your ConnectWise company identifier, e.g. 'mycompany'), CW_PUBLIC_KEY, and CW_PRIVATE_KEY in API Keys.",
-      "Set CW_SITE_URL to your ConnectWise instance base URL (e.g. 'na.myconnectwise.net').",
+      "Add CW_SITE_URL, CW_COMPANY_ID_AUTH (your ConnectWise company identifier, e.g. 'mycompany'), CW_PUBLIC_KEY, and CW_PRIVATE_KEY in operator-controlled API Keys.",
       "Optionally set CW_BOARD_ID, CW_COMPANY_ID, CW_TICKET_ID for stable scope defaults.",
-      "ticket.create, ticket.update, company.create, contact.create, and time_entry.create are write actions \u2014 keep scaffolded until write workflows are approved.",
+      "ticket.create, company.create, contact.create, and time_entry.create are live write commands that require explicit payload input in write mode.",
+      "ticket.update remains scaffolded until ConnectWise PATCH payload semantics are validated for this harness.",
       "The connector is live-read-first and will report API failures instead of masking them."
     ]
   },
@@ -332,7 +336,7 @@
     },
     {
       "id": "ticket.create",
-      "summary": "Create a ConnectWise service ticket",
+      "summary": "Create a ConnectWise service ticket from an explicit JSON payload",
       "required_mode": "write",
       "supports_json": true,
       "resource": "ticket",
@@ -340,7 +344,7 @@
     },
     {
       "id": "ticket.update",
-      "summary": "Update a ConnectWise service ticket",
+      "summary": "Scaffolded: update a ConnectWise service ticket",
       "required_mode": "write",
       "supports_json": true,
       "resource": "ticket",
@@ -364,7 +368,7 @@
     },
     {
       "id": "company.create",
-      "summary": "Create a ConnectWise company",
+      "summary": "Create a ConnectWise company from an explicit JSON payload",
       "required_mode": "write",
       "supports_json": true,
       "resource": "company",
@@ -388,7 +392,7 @@
     },
     {
       "id": "contact.create",
-      "summary": "Create a ConnectWise contact",
+      "summary": "Create a ConnectWise contact from an explicit JSON payload",
       "required_mode": "write",
       "supports_json": true,
       "resource": "contact",
@@ -436,7 +440,7 @@
     },
     {
       "id": "time_entry.create",
-      "summary": "Create a time entry on a ConnectWise ticket",
+      "summary": "Create a time entry on a ConnectWise ticket from an explicit JSON payload",
       "required_mode": "write",
       "supports_json": true,
       "resource": "time_entry",

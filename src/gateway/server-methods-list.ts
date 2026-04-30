@@ -30,6 +30,11 @@ const BASE_METHODS = [
   "wizard.cancel",
   "wizard.status",
   "talk.mode",
+  "talk.realtime.session",
+  "talk.realtime.audio",
+  "talk.realtime.mark",
+  "talk.realtime.toolResult",
+  "talk.realtime.stop",
   "models.list",
   "connectors.catalog",
   "agents.list",
@@ -142,8 +147,26 @@ const BASE_METHODS = [
   // SpecForge
   "specforge.suggest",
   "specforge.kickoff",
+  // AppForge
+  "appforge.bases.list",
+  "appforge.bases.get",
+  "appforge.bases.put",
+  "appforge.bases.delete",
+  "appforge.tables.list",
+  "appforge.tables.get",
+  "appforge.tables.put",
+  "appforge.tables.delete",
+  "appforge.records.list",
+  "appforge.records.get",
+  "appforge.records.put",
+  "appforge.records.delete",
   // Intent
   "intent.simulate",
+  // Workflows
+  "workflows.emitAppForgeEvent",
+  "workflows.importPreview",
+  "workflows.templates.list",
+  "workflows.templates.get",
 ];
 
 export function listGatewayMethods(): string[] {
@@ -158,6 +181,7 @@ export const GATEWAY_EVENTS = [
   "presence",
   "tick",
   "talk.mode",
+  "talk.realtime.relay",
   "intent.simulation",
   "shutdown",
   "health",

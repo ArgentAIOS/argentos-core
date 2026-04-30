@@ -13,6 +13,10 @@
  */
 
 import { Type } from "@sinclair/typebox";
+import type {
+  DispatchContractEvent,
+  DispatchContractRecord,
+} from "../../infra/dispatch-contracts.js";
 import type { GatewayMessageChannel } from "../../utils/message-channel.js";
 import type { AnyAgentTool } from "./common.js";
 import { getAgentFamily } from "../../data/agent-family.js";
@@ -53,6 +57,17 @@ const FamilyToolSchema = Type.Object({
   persona: Type.Optional(Type.String({ description: "System prompt / persona for the agent" })),
   tools: Type.Optional(
     Type.Array(Type.String(), { description: "Tool allowlist (e.g. web_search, memory_recall)" }),
+  ),
+  skills: Type.Optional(
+    Type.Array(Type.String(), {
+      description: "Skill allowlist for this family agent (e.g. argentos-code-verification)",
+    }),
+  ),
+  skillsRequired: Type.Optional(
+    Type.Array(Type.String(), {
+      description:
+        "Skills this contracted task expects the target worker to apply (e.g. argentos-code-verification)",
+    }),
   ),
   model: Type.Optional(Type.String({ description: "Model ID (e.g. claude-sonnet-4-20250514)" })),
   team: Type.Optional(Type.String({ description: "Team name (e.g. dev-team, marketing-team)" })),
@@ -311,6 +326,16 @@ function readToolResultRunId(result: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function readToolResultAgent(result: unknown): Record<string, unknown> | undefined {
+  if (!result || typeof result !== "object") return undefined;
+  const details = (result as { details?: unknown }).details;
+  if (!details || typeof details !== "object") return undefined;
+  const agent = (details as { agent?: unknown }).agent;
+  return agent && typeof agent === "object" && !Array.isArray(agent)
+    ? (agent as Record<string, unknown>)
+    : undefined;
+}
+
 export function createFamilyTool(
   opts?: { agentId?: string } & FamilyToolSpawnContext,
 ): AnyAgentTool {
@@ -450,29 +475,7 @@ async function handleContractHistory(params: Record<string, unknown>) {
   });
 }
 
-function serializeDispatchContract(contract: {
-  contractId: string;
-  taskId: string | null;
-  task: string;
-  targetAgentId: string;
-  dispatchedBy: string;
-  toolGrantSnapshot: string[];
-  timeoutMs: number;
-  heartbeatIntervalMs: number;
-  status: string;
-  createdAt: Date;
-  updatedAt: Date;
-  expiresAt: Date | null;
-  acceptedAt: Date | null;
-  startedAt: Date | null;
-  lastHeartbeatAt: Date | null;
-  completedAt: Date | null;
-  failedAt: Date | null;
-  cancelledAt: Date | null;
-  failureReason: string | null;
-  resultSummary: string | null;
-  metadata: Record<string, unknown>;
-}) {
+function serializeDispatchContract(contract: DispatchContractRecord) {
   return {
     contract_id: contract.contractId,
     task_id: contract.taskId,
@@ -498,13 +501,7 @@ function serializeDispatchContract(contract: {
   };
 }
 
-function serializeDispatchContractEvent(event: {
-  id: number;
-  contractId: string;
-  status: string;
-  eventAt: Date;
-  payload: Record<string, unknown>;
-}) {
+function serializeDispatchContractEvent(event: DispatchContractEvent) {
   return {
     id: event.id,
     contract_id: event.contractId,
@@ -541,6 +538,7 @@ async function handleRegister(params: Record<string, unknown>, callerAgentId?: s
   const role = readStringParam(params, "role", { required: true });
   const persona = readStringParam(params, "persona");
   const tools = readStringArrayParam(params, "tools");
+  const skills = readStringArrayParam(params, "skills");
   const model = readStringParam(params, "model");
   const team = readStringParam(params, "team");
 
@@ -558,6 +556,7 @@ async function handleRegister(params: Record<string, unknown>, callerAgentId?: s
     role,
     persona,
     tools,
+    skills,
     model,
     team,
     callerAgentId,
@@ -572,6 +571,9 @@ async function handleRegister(params: Record<string, unknown>, callerAgentId?: s
       team: provisioned.team,
       model: provisioned.model,
       provider: provisioned.provider,
+      skills: provisioned.skills,
+      skillSource: provisioned.skillSource,
+      skillDefaultKey: provisioned.skillDefaultKey,
       identityDir: provisioned.identityDir,
     },
     redis: provisioned.redis,
@@ -591,11 +593,17 @@ async function handleList() {
     name: m.name,
     role: m.role,
     team: m.team ?? "unassigned",
+    skills: m.skills ?? [],
+    skillSource: m.skillSource ?? "unmapped",
+    skillDefaultKey: m.skillDefaultKey,
     status: m.status,
     alive: m.alive,
   }));
   const toon = encodeForPrompt({ count: agents.length, agents });
-  return { content: [{ type: "text" as const, text: toon }] };
+  return {
+    content: [{ type: "text" as const, text: toon }],
+    details: { count: agents.length, agents },
+  };
 }
 
 // ── message ───────────────────────────────────────────────────────────────
@@ -695,7 +703,10 @@ async function handleInbox(params: Record<string, unknown>, callerAgentId?: stri
     const toonEncoded =
       messages.length > 0 ? encodeForPrompt({ agentId, count: messages.length, messages }) : null;
     return toonEncoded
-      ? { content: [{ type: "text" as const, text: toonEncoded }] }
+      ? {
+          content: [{ type: "text" as const, text: toonEncoded }],
+          details: { agentId, count: messages.length, messages },
+        }
       : jsonResult({ agentId, count: 0, messages: [] });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -1021,8 +1032,7 @@ async function handleSpawn(
     if (redis) {
       await refreshPresence(redis, id);
       await setAgentState(redis, id, {
-        status: "working",
-        currentTask: task.slice(0, 200),
+        status: "processing",
         lastActivity: new Date().toISOString(),
       });
     }
@@ -1032,7 +1042,16 @@ async function handleSpawn(
 
   return jsonResult({
     ok: result.ok,
-    agent: { id, name: agent.name, role: agent.role },
+    agent: {
+      id,
+      name: agent.name,
+      role: agent.role,
+      skills: Array.isArray(agent.config.skills) ? agent.config.skills : [],
+      skillSource:
+        typeof agent.config.skillSource === "string" ? agent.config.skillSource : undefined,
+      skillDefaultKey:
+        typeof agent.config.skillDefaultKey === "string" ? agent.config.skillDefaultKey : undefined,
+    },
     sessionKey: result.childSessionKey,
     runId: result.runId,
     error: result.ok ? undefined : result.error,
@@ -1313,6 +1332,8 @@ async function handleDispatch(
       mode: "subagent",
       runId: result.runId,
       sessionKey: result.childSessionKey,
+      warning: result.ok ? result.warning : undefined,
+      modelDiagnostic: result.ok ? result.modelDiagnostic : undefined,
       error: result.ok ? undefined : (result as { error?: string }).error,
       message: result.ok
         ? "Spawned strict sub-agent worker with per-run tool grants."
@@ -1335,6 +1356,7 @@ async function handleDispatchContracted(
   const heartbeatIntervalMs =
     readNumberParam(params, "heartbeat_interval_ms", { integer: true }) ?? 5_000;
   const contractToolGrant = normalizeToolGrantList(params.toolsAllow);
+  const skillsRequired = readStringArrayParam(params, "skillsRequired") ?? [];
 
   if (!contractToolGrant || contractToolGrant.length === 0) {
     return jsonResult({
@@ -1355,6 +1377,13 @@ async function handleDispatchContracted(
   const dispatchedBy = spawnCtx?.agentId ?? spawnCtx?.requesterAgentIdOverride ?? "argent";
   const targetAgentId = readStringParam(params, "id") ?? "auto";
   let effectiveContractGrant = [...contractToolGrant];
+  let targetForContract: {
+    id: string;
+    name: string;
+    role: string;
+    status: string;
+    config: Record<string, unknown>;
+  } | null = null;
 
   if (mode === "subagent") {
     const safeSet = new Set(SUBAGENT_STRICT_DEFAULT_TOOLS.map((tool) => tool.toLowerCase()));
@@ -1369,8 +1398,8 @@ async function handleDispatchContracted(
 
   if (mode === "family" && targetAgentId !== "auto") {
     const family = await getAgentFamily();
-    const target = await family.getAgent(targetAgentId);
-    if (target && isThinkTankAgent(target)) {
+    targetForContract = await family.getAgent(targetAgentId);
+    if (targetForContract && isThinkTankAgent(targetForContract)) {
       const safeSet = new Set(THINK_TANK_SAFE_TOOLS.map((tool) => tool.toLowerCase()));
       const disallowed = effectiveContractGrant.filter((tool) => !safeSet.has(tool.toLowerCase()));
       if (disallowed.length > 0) {
@@ -1402,7 +1431,21 @@ async function handleDispatchContracted(
       heartbeatIntervalMs,
       createdAt,
       expiresAt,
-      metadata: { mode },
+      metadata: {
+        mode,
+        skillsRequired,
+        targetSkillsSnapshot: Array.isArray(targetForContract?.config.skills)
+          ? targetForContract.config.skills
+          : [],
+        targetSkillSource:
+          typeof targetForContract?.config.skillSource === "string"
+            ? targetForContract.config.skillSource
+            : undefined,
+        targetSkillDefaultKey:
+          typeof targetForContract?.config.skillDefaultKey === "string"
+            ? targetForContract.config.skillDefaultKey
+            : undefined,
+      },
     });
     contractId = created.contractId;
   } catch (err: unknown) {
@@ -1428,6 +1471,7 @@ async function handleDispatchContracted(
     const ok = readToolResultOk(routed) === true;
     const runId = readToolResultRunId(routed);
     const sessionKey = readToolResultSessionKey(routed);
+    const targetAgent = readToolResultAgent(routed);
     const dispatchError = readToolResultError(routed) ?? "dispatch failed";
     const { appendDispatchContractEvent } = await import("../../infra/dispatch-contracts.js");
 
@@ -1435,12 +1479,18 @@ async function handleDispatchContracted(
       await appendDispatchContractEvent({
         contractId,
         status: "accepted",
-        payload: { mode },
+        payload: { mode, skillsRequired },
       });
       await appendDispatchContractEvent({
         contractId,
         status: "started",
-        payload: { mode, runId: runId ?? null, sessionKey: sessionKey ?? null },
+        payload: {
+          mode,
+          runId: runId ?? null,
+          sessionKey: sessionKey ?? null,
+          targetAgent: targetAgent ?? null,
+          skillsRequired,
+        },
       });
       return jsonResult({
         ok: true,
@@ -1603,6 +1653,8 @@ async function spawnFamilyAgent(
       ok: result.ok,
       childSessionKey: result.childSessionKey,
       runId: result.runId,
+      warning: result.ok ? result.warning : undefined,
+      modelDiagnostic: result.ok ? result.modelDiagnostic : undefined,
       error: result.ok ? undefined : (result as { error?: string }).error,
     };
   } catch (err) {

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -17,12 +16,14 @@ from .runtime import (
     customer_list_snapshot,
     customer_read_snapshot,
     doctor_snapshot,
+    fulfillment_create_snapshot,
     health_snapshot,
+    order_cancel_snapshot,
     order_list_snapshot,
     order_read_snapshot,
     product_list_snapshot,
     product_read_snapshot,
-    scaffold_result,
+    product_update_snapshot,
     shop_read_snapshot,
 )
 
@@ -89,34 +90,6 @@ def _result(ctx: click.Context, *, command: str, data: dict[str, Any]) -> dict[s
         started=ctx.obj["started"],
         version=ctx.obj["version"],
         data=data,
-    )
-
-
-def _scaffold_command(
-    ctx: click.Context,
-    *,
-    command_id: str,
-    resource: str,
-    operation: str,
-    inputs: dict[str, Any],
-    consequential: bool = False,
-) -> None:
-    _set_command(ctx, command_id)
-    require_mode(ctx, command_id)
-    emit(
-        _result(
-            ctx,
-            command=command_id,
-            data=scaffold_result(
-                ctx.obj,
-                command_id=command_id,
-                resource=resource,
-                operation=operation,
-                inputs=inputs,
-                consequential=consequential,
-            ),
-        ),
-        as_json=ctx.obj["json"],
     )
 
 
@@ -234,13 +207,14 @@ def product_read(ctx: click.Context, product_id: str) -> None:
 @click.option("--status", default="", show_default=False)
 @click.pass_context
 def product_update(ctx: click.Context, product_id: str, title: str, status: str) -> None:
-    _scaffold_command(
+    _live_command(
         ctx,
         command_id="product.update",
-        resource="product",
-        operation="update",
-        inputs={"product_id": product_id, "title": title or None, "status": status or None},
-        consequential=True,
+        reader=lambda: product_update_snapshot(
+            product_id=product_id,
+            title=title or None,
+            status=status or None,
+        ),
     )
 
 
@@ -286,13 +260,10 @@ def order_read(ctx: click.Context, order_id: str) -> None:
 @click.option("--reason", default="", show_default=False)
 @click.pass_context
 def order_cancel(ctx: click.Context, order_id: str, reason: str) -> None:
-    _scaffold_command(
+    _live_command(
         ctx,
         command_id="order.cancel",
-        resource="order",
-        operation="cancel",
-        inputs={"order_id": order_id, "reason": reason or None},
-        consequential=True,
+        reader=lambda: order_cancel_snapshot(order_id=order_id, reason=reason or None),
     )
 
 
@@ -343,13 +314,13 @@ def fulfillment_group() -> None:
 @click.option("--tracking-number", default="", show_default=False)
 @click.pass_context
 def fulfillment_create(ctx: click.Context, order_id: str, tracking_number: str) -> None:
-    _scaffold_command(
+    _live_command(
         ctx,
         command_id="fulfillment.create",
-        resource="fulfillment",
-        operation="create",
-        inputs={"order_id": order_id, "tracking_number": tracking_number or None},
-        consequential=True,
+        reader=lambda: fulfillment_create_snapshot(
+            order_id=order_id,
+            tracking_number=tracking_number or None,
+        ),
     )
 
 

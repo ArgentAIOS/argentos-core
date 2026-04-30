@@ -4,7 +4,9 @@
  */
 const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert");
+const fs = require("node:fs");
 const http = require("node:http");
+const path = require("node:path");
 
 let baseUrl;
 let server;
@@ -52,6 +54,22 @@ describe("Health", () => {
     const res = await api("GET", "/api/health");
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.data.status, "ok");
+  });
+});
+
+describe("Gateway RPC client identity", () => {
+  it("uses a gateway protocol-compatible client id and mode", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../api-server.cjs"), "utf8");
+    const connectBlockMatch = source.match(
+      /client:\s*\{[\s\S]*?displayName:\s*"Dashboard API"[\s\S]*?\}/,
+    );
+    assert.ok(connectBlockMatch);
+    const connectBlock = connectBlockMatch[0];
+
+    assert.match(connectBlock, /id:\s*"gateway-client"/);
+    assert.match(connectBlock, /mode:\s*"backend"/);
+    assert.doesNotMatch(connectBlock, /id:\s*"dashboard-api"/);
+    assert.doesNotMatch(connectBlock, /mode:\s*"api"/);
   });
 });
 
@@ -161,9 +179,20 @@ describe("Apps", () => {
       description: "A test app",
       icon: "<svg></svg>",
       code: "<!DOCTYPE html><html><body>Test</body></html>",
+      metadata: {
+        workflowCapabilities: [
+          {
+            id: "review",
+            label: "Review",
+            type: "human_review",
+            sideEffect: "operator_interaction",
+          },
+        ],
+      },
     });
     assert.strictEqual(res.status, 201);
     assert.ok(res.data.app);
+    assert.strictEqual(res.data.app.metadata.workflowCapabilities[0].id, "review");
     appId = res.data.app.id;
   });
 
@@ -183,6 +212,67 @@ describe("Apps", () => {
     const res = await api("PATCH", `/api/apps/${appId}`, { name: "Updated App" });
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.data.app.name, "Updated App");
+  });
+
+  it("POST /api/apps/:id/workflow-event accepts AppForge workflow events", async () => {
+    const res = await api("POST", `/api/apps/${appId}/workflow-event`, {
+      eventType: "forge.review.requested",
+      capabilityId: "review",
+      payload: { reviewId: "review-1" },
+    });
+    assert.strictEqual(res.status, 202);
+    assert.strictEqual(res.data.ok, true);
+  });
+
+  it("POST /api/apps/:id/workflow-event rejects missing event type", async () => {
+    const res = await api("POST", `/api/apps/${appId}/workflow-event`, {
+      payload: { reviewId: "review-1" },
+    });
+    assert.strictEqual(res.status, 400);
+    assert.match(res.data.error, /eventType/i);
+  });
+
+  it("POST /api/apps/:id/workflow-event returns 404 for unknown apps", async () => {
+    const res = await api("POST", "/api/apps/missing-app/workflow-event", {
+      eventType: "forge.review.requested",
+    });
+    assert.strictEqual(res.status, 404);
+  });
+
+  it("POST /api/apps/:id/reviews/request emits review requested events", async () => {
+    const res = await api("POST", `/api/apps/${appId}/reviews/request`, {
+      capabilityId: "review",
+      workflowRunId: "run-1",
+      nodeId: "review-gate",
+      reviewId: "review-1",
+    });
+    assert.strictEqual(res.status, 202);
+    assert.strictEqual(res.data.ok, true);
+    assert.strictEqual(res.data.eventType, "forge.review.requested");
+  });
+
+  it("POST /api/apps/:id/reviews/complete emits review completed events", async () => {
+    const res = await api("POST", `/api/apps/${appId}/reviews/complete`, {
+      capabilityId: "review",
+      workflowRunId: "run-1",
+      nodeId: "review-gate",
+      reviewId: "review-1",
+      decision: "approved",
+    });
+    assert.strictEqual(res.status, 202);
+    assert.strictEqual(res.data.ok, true);
+    assert.strictEqual(res.data.eventType, "forge.review.completed");
+  });
+
+  it("POST /api/apps/:id/capabilities/:capabilityId/complete emits capability completed events", async () => {
+    const res = await api("POST", `/api/apps/${appId}/capabilities/review/complete`, {
+      workflowRunId: "run-1",
+      nodeId: "review-gate",
+      payload: { decision: "approved" },
+    });
+    assert.strictEqual(res.status, 202);
+    assert.strictEqual(res.data.ok, true);
+    assert.strictEqual(res.data.eventType, "forge.capability.completed");
   });
 
   it("DELETE /api/apps/:id deletes app", async () => {

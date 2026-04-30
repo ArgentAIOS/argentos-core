@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from typing import Any
 
@@ -10,7 +11,27 @@ from .bridge import capabilities_snapshot, config_snapshot, doctor_snapshot, hea
 from .constants import MODE_ORDER
 from .errors import CliError
 from .output import emit, failure, success
-from .runtime import run_read_command, scaffold_write_command
+from .runtime import (
+    cancel_subscription,
+    create_customer,
+    create_payment,
+    create_subscription,
+    list_customers,
+    list_invoices,
+    list_payments,
+    list_subscriptions,
+    read_account,
+    read_balance,
+    read_customer,
+    read_invoice,
+    read_payment,
+    read_subscription,
+    send_invoice,
+)
+
+
+def _mode_allows(actual: str, required: str) -> bool:
+    return MODE_ORDER.index(actual) >= MODE_ORDER.index(required)
 
 
 def _permissions() -> dict[str, str]:
@@ -19,15 +40,10 @@ def _permissions() -> dict[str, str]:
     return load_permissions()
 
 
-def _mode_allows(actual: str, required: str) -> bool:
-    return MODE_ORDER.index(actual) >= MODE_ORDER.index(required)
-
-
 COMMAND_PERMISSION_ALIASES = {
     "account.read": "readonly",
     "balance.read": "balance.get",
     "customer.read": "customer.get",
-    "customer.search": "customer.list",
     "payment.read": "payment.get",
     "invoice.read": "invoice.get",
 }
@@ -36,10 +52,7 @@ COMMAND_PERMISSION_ALIASES = {
 def require_mode(ctx: click.Context, command_id: str) -> None:
     permissions = _permissions()
     alias = COMMAND_PERMISSION_ALIASES.get(command_id)
-    if alias in MODE_ORDER:
-        required = alias
-    else:
-        required = permissions.get(alias or command_id, "admin")
+    required = alias if alias in MODE_ORDER else permissions.get(command_id) or permissions.get(str(alias), "admin")
     mode = ctx.obj["mode"]
     if _mode_allows(mode, required):
         return
@@ -79,6 +92,13 @@ def _set_command(ctx: click.Context, command_id: str) -> None:
     ctx.obj["_command_id"] = command_id
 
 
+def _emit_success(ctx: click.Context, command_id: str, data: dict[str, Any]) -> None:
+    emit(
+        success(command=command_id, mode=ctx.obj["mode"], started=ctx.obj["started"], data=data),
+        as_json=ctx.obj["json"],
+    )
+
+
 @click.group(cls=AosGroup)
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON output")
 @click.option("--mode", type=click.Choice(MODE_ORDER), default="readonly", show_default=True)
@@ -103,6 +123,7 @@ def cli(ctx: click.Context, as_json: bool, mode: str, verbose: bool) -> None:
 @click.pass_context
 def capabilities(ctx: click.Context) -> None:
     _set_command(ctx, "capabilities")
+    require_mode(ctx, "capabilities")
     emit(capabilities_snapshot(), as_json=True)
 
 
@@ -110,16 +131,16 @@ def capabilities(ctx: click.Context) -> None:
 @click.pass_context
 def health(ctx: click.Context) -> None:
     _set_command(ctx, "health")
-    payload = success(command="health", mode=ctx.obj["mode"], started=ctx.obj["started"], data=health_snapshot(ctx.obj))
-    emit(payload, as_json=ctx.obj["json"])
+    require_mode(ctx, "health")
+    _emit_success(ctx, "health", health_snapshot(ctx.obj))
 
 
 @cli.command("doctor")
 @click.pass_context
 def doctor(ctx: click.Context) -> None:
     _set_command(ctx, "doctor")
-    payload = success(command="doctor", mode=ctx.obj["mode"], started=ctx.obj["started"], data=doctor_snapshot(ctx.obj))
-    emit(payload, as_json=ctx.obj["json"])
+    require_mode(ctx, "doctor")
+    _emit_success(ctx, "doctor", doctor_snapshot(ctx.obj))
 
 
 @cli.group("config")
@@ -132,8 +153,28 @@ def config_group() -> None:
 def config_show(ctx: click.Context) -> None:
     _set_command(ctx, "config.show")
     require_mode(ctx, "config.show")
-    payload = success(command="config.show", mode=ctx.obj["mode"], started=ctx.obj["started"], data=config_snapshot(ctx.obj))
-    emit(payload, as_json=ctx.obj["json"])
+    _emit_success(ctx, "config.show", config_snapshot(ctx.obj))
+
+
+@cli.group("balance")
+def balance_group() -> None:
+    pass
+
+
+@balance_group.command("get")
+@click.pass_context
+def balance_get(ctx: click.Context) -> None:
+    _set_command(ctx, "balance.get")
+    require_mode(ctx, "balance.get")
+    _emit_success(ctx, "balance.get", read_balance(ctx.obj))
+
+
+@balance_group.command("read")
+@click.pass_context
+def balance_read(ctx: click.Context) -> None:
+    _set_command(ctx, "balance.read")
+    require_mode(ctx, "balance.read")
+    _emit_success(ctx, "balance.read", read_balance(ctx.obj))
 
 
 @cli.group("account")
@@ -146,49 +187,7 @@ def account_group() -> None:
 def account_read(ctx: click.Context) -> None:
     _set_command(ctx, "account.read")
     require_mode(ctx, "account.read")
-    payload = success(
-        command="account.read",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=run_read_command(ctx.obj, "account.read", {}),
-    )
-    emit(payload, as_json=ctx.obj["json"])
-
-
-def _scaffold_command(
-    ctx: click.Context,
-    *,
-    command_id: str,
-    inputs: dict[str, Any],
-) -> None:
-    _set_command(ctx, command_id)
-    require_mode(ctx, command_id)
-    raise CliError(
-        code="NOT_IMPLEMENTED",
-        message=f"{command_id} is not implemented yet",
-        exit_code=10,
-        details=scaffold_write_command(command_id, inputs),
-    )
-
-
-@cli.group("balance")
-def balance_group() -> None:
-    pass
-
-
-@balance_group.command("read")
-@click.option("--limit", default=1, show_default=True, type=int)
-@click.pass_context
-def balance_read(ctx: click.Context, limit: int) -> None:
-    _set_command(ctx, "balance.read")
-    require_mode(ctx, "balance.read")
-    payload = success(
-        command="balance.read",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=run_read_command(ctx.obj, "balance.read", {"limit": limit}),
-    )
-    emit(payload, as_json=ctx.obj["json"])
+    _emit_success(ctx, "account.read", read_account(ctx.obj))
 
 
 @cli.group("customer")
@@ -197,41 +196,32 @@ def customer_group() -> None:
 
 
 @customer_group.command("list")
-@click.option("--limit", default=10, show_default=True, type=int)
+@click.option("--limit", default=10, show_default=True, type=click.IntRange(1, 100))
 @click.option("--email", default="", show_default=False)
+@click.option("--starting-after", default="", show_default=False)
 @click.pass_context
-def customer_list(ctx: click.Context, limit: int, email: str) -> None:
+def customer_list(ctx: click.Context, limit: int, email: str, starting_after: str) -> None:
     _set_command(ctx, "customer.list")
     require_mode(ctx, "customer.list")
-    payload = success(
-        command="customer.list",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=run_read_command(
+    _emit_success(
+        ctx,
+        "customer.list",
+        list_customers(
             ctx.obj,
-            "customer.list",
-            {
-                "limit": limit,
-                "email": email or None,
-            },
+            limit=limit,
+            email=email or None,
+            starting_after=starting_after or None,
         ),
     )
-    emit(payload, as_json=ctx.obj["json"])
 
 
-@customer_group.command("search")
-@click.argument("query")
+@customer_group.command("get")
+@click.argument("customer_id", required=False)
 @click.pass_context
-def customer_search(ctx: click.Context, query: str) -> None:
-    _set_command(ctx, "customer.search")
-    require_mode(ctx, "customer.search")
-    payload = success(
-        command="customer.search",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=run_read_command(ctx.obj, "customer.search", {"query": query}),
-    )
-    emit(payload, as_json=ctx.obj["json"])
+def customer_get(ctx: click.Context, customer_id: str | None) -> None:
+    _set_command(ctx, "customer.get")
+    require_mode(ctx, "customer.get")
+    _emit_success(ctx, "customer.get", read_customer(ctx.obj, customer_id=customer_id))
 
 
 @customer_group.command("read")
@@ -240,13 +230,35 @@ def customer_search(ctx: click.Context, query: str) -> None:
 def customer_read(ctx: click.Context, customer_id: str) -> None:
     _set_command(ctx, "customer.read")
     require_mode(ctx, "customer.read")
-    payload = success(
-        command="customer.read",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=run_read_command(ctx.obj, "customer.read", {"customer_id": customer_id}),
+    _emit_success(ctx, "customer.read", read_customer(ctx.obj, customer_id=customer_id))
+
+
+@customer_group.command("create")
+@click.option("--email", default="", show_default=False)
+@click.option("--name", default="", show_default=False)
+@click.option("--description", default="", show_default=False)
+@click.option("--metadata-json", default="", show_default=False)
+@click.pass_context
+def customer_create(
+    ctx: click.Context,
+    email: str,
+    name: str,
+    description: str,
+    metadata_json: str,
+) -> None:
+    _set_command(ctx, "customer.create")
+    require_mode(ctx, "customer.create")
+    _emit_success(
+        ctx,
+        "customer.create",
+        create_customer(
+            ctx.obj,
+            email=email or None,
+            name=name or None,
+            description=description or None,
+            metadata_json=metadata_json or None,
+        ),
     )
-    emit(payload, as_json=ctx.obj["json"])
 
 
 @cli.group("payment")
@@ -255,8 +267,9 @@ def payment_group() -> None:
 
 
 @payment_group.command("list")
-@click.option("--limit", default=10, show_default=True, type=int)
+@click.option("--limit", default=10, show_default=True, type=click.IntRange(1, 100))
 @click.option("--customer-id", default="", show_default=False)
+@click.option("--starting-after", default="", show_default=False)
 @click.option("--created-after", default="", show_default=False)
 @click.option("--created-before", default="", show_default=False)
 @click.pass_context
@@ -264,42 +277,139 @@ def payment_list(
     ctx: click.Context,
     limit: int,
     customer_id: str,
+    starting_after: str,
     created_after: str,
     created_before: str,
 ) -> None:
     _set_command(ctx, "payment.list")
     require_mode(ctx, "payment.list")
-    payload = success(
-        command="payment.list",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=run_read_command(
+    _emit_success(
+        ctx,
+        "payment.list",
+        list_payments(
             ctx.obj,
-            "payment.list",
-            {
-                "limit": limit,
-                "customer_id": customer_id or None,
-                "created_after": created_after or None,
-                "created_before": created_before or None,
-            },
+            limit=limit,
+            customer_id=customer_id or None,
+            starting_after=starting_after or None,
+            created_after=created_after or None,
+            created_before=created_before or None,
         ),
     )
-    emit(payload, as_json=ctx.obj["json"])
+
+
+@payment_group.command("get")
+@click.argument("payment_intent_id", required=False)
+@click.pass_context
+def payment_get(ctx: click.Context, payment_intent_id: str | None) -> None:
+    _set_command(ctx, "payment.get")
+    require_mode(ctx, "payment.get")
+    _emit_success(ctx, "payment.get", read_payment(ctx.obj, payment_id=payment_intent_id))
 
 
 @payment_group.command("read")
-@click.argument("payment_id")
+@click.argument("payment_intent_id")
 @click.pass_context
-def payment_read(ctx: click.Context, payment_id: str) -> None:
+def payment_read(ctx: click.Context, payment_intent_id: str) -> None:
     _set_command(ctx, "payment.read")
     require_mode(ctx, "payment.read")
-    payload = success(
-        command="payment.read",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=run_read_command(ctx.obj, "payment.read", {"payment_id": payment_id}),
+    _emit_success(ctx, "payment.read", read_payment(ctx.obj, payment_id=payment_intent_id))
+
+
+@payment_group.command("create")
+@click.option("--amount", required=True, type=click.IntRange(1, 99999999))
+@click.option("--currency", required=True)
+@click.option("--customer-id", default="", show_default=False)
+@click.option("--payment-method", default="", show_default=False, type=click.Choice(["card", "bank_transfer", "us_bank_account"]))
+@click.option("--description", default="", show_default=False)
+@click.option("--metadata-json", default="", show_default=False)
+@click.pass_context
+def payment_create(
+    ctx: click.Context,
+    amount: int,
+    currency: str,
+    customer_id: str,
+    payment_method: str,
+    description: str,
+    metadata_json: str,
+) -> None:
+    _set_command(ctx, "payment.create")
+    require_mode(ctx, "payment.create")
+    _emit_success(
+        ctx,
+        "payment.create",
+        create_payment(
+            ctx.obj,
+            amount=amount,
+            currency=currency,
+            customer_id=customer_id or None,
+            payment_method=payment_method or None,
+            description=description or None,
+            metadata_json=metadata_json or None,
+        ),
     )
-    emit(payload, as_json=ctx.obj["json"])
+
+
+@cli.group("subscription")
+def subscription_group() -> None:
+    pass
+
+
+@subscription_group.command("list")
+@click.option("--limit", default=10, show_default=True, type=click.IntRange(1, 100))
+@click.option("--customer-id", default="", show_default=False)
+@click.option("--starting-after", default="", show_default=False)
+@click.pass_context
+def subscription_list(ctx: click.Context, limit: int, customer_id: str, starting_after: str) -> None:
+    _set_command(ctx, "subscription.list")
+    require_mode(ctx, "subscription.list")
+    _emit_success(
+        ctx,
+        "subscription.list",
+        list_subscriptions(
+            ctx.obj,
+            limit=limit,
+            customer_id=customer_id or None,
+            starting_after=starting_after or None,
+        ),
+    )
+
+
+@subscription_group.command("get")
+@click.argument("subscription_id", required=False)
+@click.pass_context
+def subscription_get(ctx: click.Context, subscription_id: str | None) -> None:
+    _set_command(ctx, "subscription.get")
+    require_mode(ctx, "subscription.get")
+    _emit_success(ctx, "subscription.get", read_subscription(ctx.obj, subscription_id=subscription_id))
+
+
+@subscription_group.command("create")
+@click.option("--customer-id", default="", show_default=False)
+@click.option("--price-id", default="", show_default=False)
+@click.option("--metadata-json", default="", show_default=False)
+@click.pass_context
+def subscription_create(ctx: click.Context, customer_id: str, price_id: str, metadata_json: str) -> None:
+    _set_command(ctx, "subscription.create")
+    require_mode(ctx, "subscription.create")
+    _emit_success(
+        ctx,
+        "subscription.create",
+        create_subscription(
+            ctx.obj,
+            customer_id=customer_id or None,
+            price_id=price_id or None,
+            metadata_json=metadata_json or None,
+        ),
+    )
+
+
+@subscription_group.command("cancel")
+@click.argument("subscription_id", required=False)
+@click.pass_context
+def subscription_cancel(ctx: click.Context, subscription_id: str | None) -> None:
+    _set_command(ctx, "subscription.cancel")
+    require_mode(ctx, "subscription.cancel")
+    _emit_success(ctx, "subscription.cancel", cancel_subscription(ctx.obj, subscription_id=subscription_id))
 
 
 @cli.group("invoice")
@@ -308,9 +418,10 @@ def invoice_group() -> None:
 
 
 @invoice_group.command("list")
-@click.option("--limit", default=10, show_default=True, type=int)
+@click.option("--limit", default=10, show_default=True, type=click.IntRange(1, 100))
 @click.option("--customer-id", default="", show_default=False)
-@click.option("--status", default="", show_default=False)
+@click.option("--status", default="", show_default=False, type=click.Choice(["draft", "open", "paid", "uncollectible", "void"]))
+@click.option("--starting-after", default="", show_default=False)
 @click.option("--created-after", default="", show_default=False)
 @click.option("--created-before", default="", show_default=False)
 @click.pass_context
@@ -319,28 +430,34 @@ def invoice_list(
     limit: int,
     customer_id: str,
     status: str,
+    starting_after: str,
     created_after: str,
     created_before: str,
 ) -> None:
     _set_command(ctx, "invoice.list")
     require_mode(ctx, "invoice.list")
-    payload = success(
-        command="invoice.list",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=run_read_command(
+    _emit_success(
+        ctx,
+        "invoice.list",
+        list_invoices(
             ctx.obj,
-            "invoice.list",
-            {
-                "limit": limit,
-                "customer_id": customer_id or None,
-                "status": status or None,
-                "created_after": created_after or None,
-                "created_before": created_before or None,
-            },
+            limit=limit,
+            customer_id=customer_id or None,
+            status=status or None,
+            starting_after=starting_after or None,
+            created_after=created_after or None,
+            created_before=created_before or None,
         ),
     )
-    emit(payload, as_json=ctx.obj["json"])
+
+
+@invoice_group.command("get")
+@click.argument("invoice_id", required=False)
+@click.pass_context
+def invoice_get(ctx: click.Context, invoice_id: str | None) -> None:
+    _set_command(ctx, "invoice.get")
+    require_mode(ctx, "invoice.get")
+    _emit_success(ctx, "invoice.get", read_invoice(ctx.obj, invoice_id=invoice_id))
 
 
 @invoice_group.command("read")
@@ -349,42 +466,16 @@ def invoice_list(
 def invoice_read(ctx: click.Context, invoice_id: str) -> None:
     _set_command(ctx, "invoice.read")
     require_mode(ctx, "invoice.read")
-    payload = success(
-        command="invoice.read",
-        mode=ctx.obj["mode"],
-        started=ctx.obj["started"],
-        data=run_read_command(ctx.obj, "invoice.read", {"invoice_id": invoice_id}),
-    )
-    emit(payload, as_json=ctx.obj["json"])
+    _emit_success(ctx, "invoice.read", read_invoice(ctx.obj, invoice_id=invoice_id))
 
 
-@invoice_group.command("create-draft")
-@click.option("--customer-id", default="", show_default=False)
-@click.option("--amount", default="", show_default=False)
+@invoice_group.command("send")
+@click.argument("invoice_id", required=False)
 @click.pass_context
-def invoice_create_draft(ctx: click.Context, customer_id: str, amount: str) -> None:
-    _scaffold_command(
-        ctx,
-        command_id="invoice.create_draft",
-        inputs={"customer_id": customer_id or None, "amount": amount or None},
-    )
-
-
-@cli.group("refund")
-def refund_group() -> None:
-    pass
-
-
-@refund_group.command("create")
-@click.option("--payment-id", required=True)
-@click.option("--amount", required=True, type=int)
-@click.pass_context
-def refund_create(ctx: click.Context, payment_id: str, amount: int) -> None:
-    _scaffold_command(
-        ctx,
-        command_id="refund.create",
-        inputs={"payment_id": payment_id, "amount": amount},
-    )
+def invoice_send(ctx: click.Context, invoice_id: str | None) -> None:
+    _set_command(ctx, "invoice.send")
+    require_mode(ctx, "invoice.send")
+    _emit_success(ctx, "invoice.send", send_invoice(ctx.obj, invoice_id=invoice_id))
 
 
 if __name__ == "__main__":

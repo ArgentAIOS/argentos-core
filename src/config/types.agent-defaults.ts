@@ -47,6 +47,26 @@ export type AgentExecutionWorkerConfig = {
 
 export type AgentConsciousnessKernelMode = "off" | "shadow" | "soft" | "full";
 
+export type AgentConsciousnessKernelOperatorNotificationTarget = {
+  /** Channel id (for example "telegram", "slack", or a plugin channel id). */
+  channel: string;
+  /** Destination id for the selected channel. */
+  to: string;
+  /** Optional account id for multi-account channels. */
+  accountId?: string;
+  /** Optional thread id for threaded channels. */
+  threadId?: string | number;
+};
+
+export type AgentConsciousnessKernelOperatorNotificationsConfig = {
+  /** Send operator-needed kernel requests to configured outbound targets. Default: false. */
+  enabled?: boolean;
+  /** Minimum time before re-sending the same request. Default: 15 minutes. */
+  cooldownMs?: number;
+  /** Explicit operator notification targets. */
+  targets?: AgentConsciousnessKernelOperatorNotificationTarget[];
+};
+
 export type AgentConsciousnessKernelConfig = {
   /** Enable the consciousness kernel for the default main agent only. */
   enabled?: boolean;
@@ -66,6 +86,8 @@ export type AgentConsciousnessKernelConfig = {
   allowListening?: boolean;
   /** Allow future vision-capable modes to use camera context. */
   allowVision?: boolean;
+  /** Configurable outbound surfaces for kernel requests that need operator input. */
+  operatorNotifications?: AgentConsciousnessKernelOperatorNotificationsConfig;
 };
 
 export type RuntimeLoadProfileId = "desktop" | "balanced-laptop" | "cool-laptop";

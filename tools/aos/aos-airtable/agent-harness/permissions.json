@@ -13,7 +13,7 @@
     "record.list": "readonly",
     "record.search": "readonly",
     "record.read": "readonly",
-    "record.create_draft": "write",
-    "record.update_draft": "write"
+    "record.create": "write",
+    "record.update": "write"
   }
 }

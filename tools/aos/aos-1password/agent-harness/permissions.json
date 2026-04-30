@@ -1,0 +1,16 @@
+{
+  "tool": "aos-1password",
+  "backend": "1password-cli",
+  "permissions": {
+    "account.whoami": "readonly",
+    "account.list": "readonly",
+    "vault.list": "readonly",
+    "item.list": "readonly",
+    "item.get": "readonly",
+    "item.reveal": "admin",
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly"
+  }
+}

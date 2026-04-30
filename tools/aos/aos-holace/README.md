@@ -1,30 +1,43 @@
 # aos-holace
 
-Agent-native HoLaCe connector — first-party reference implementation.
+Agent-native HoLaCe connector for personal-injury legal operations.
 
-HoLaCe is an AI-enhanced SaaS for personal injury law firms. This connector provides full read and write access to cases, clients, documents, deadlines, settlements, billing, and communications.
+This connector is a true AOS CLI app with a live-read HTTP bridge, focused tests, and an agent harness. It intentionally exposes read-only commands only. The prior stub advertised case/client/document/billing writes, but no verified write bridge or tenant smoke evidence exists in this repo.
 
-- `case.list`, `case.get`, `case.create`, `case.update`, and `case.timeline` manage the full case lifecycle.
-- `client.list`, `client.get`, `client.create`, and `client.intake` handle client records and intake workflows.
-- `document.list`, `document.get`, `document.generate`, and `document.upload` manage case documents including AI-generated demand letters.
-- `deadline.list`, `deadline.create`, and `deadline.check_statute` track deadlines and statute of limitations.
-- `settlement.list`, `settlement.get`, and `settlement.tracker` provide settlement pipeline visibility.
-- `billing.list` and `billing.create_invoice` manage case billing.
-- `communication.log` and `communication.list` track client communications.
-- `report.case_status` and `report.pipeline` generate firm-level analytics.
+## Read Commands
 
-## Auth
+- `case.list`, `case.get`, and `case.timeline`
+- `client.list` and `client.get`
+- `document.list` and `document.get`
+- `deadline.list` and `deadline.check_statute`
+- `settlement.list`, `settlement.get`, and `settlement.tracker`
+- `billing.list`
+- `communication.list`
+- `report.case_status` and `report.pipeline`
+- `capabilities`, `config.show`, `health`, and `doctor`
 
-The connector expects a HoLaCe API key via `HOLACE_API_KEY`.
+## Operator Service Keys
 
-Optional scope hints:
+Configure these values in operator-controlled service keys before linking HoLaCe to another system:
 
-- `HOLACE_ATTORNEY_ID` to default attorney filters.
-- `HOLACE_CASE_ID` to preselect a case scope.
-- `HOLACE_CLIENT_ID` to preselect a client scope.
-- `HOLACE_DOCUMENT_ID` to preselect a document scope.
-- `HOLACE_SETTLEMENT_ID` to preselect a settlement scope.
+- `HOLACE_API_KEY` (required)
+- `HOLACE_API_BASE_URL` (required; the connector does not assume a public default API host)
 
-## Live Reads + Writes
+Optional scope defaults can also be supplied through operator context or local harness fallback:
 
-This is a first-party connector with full live read and write support. All commands hit the HoLaCe API directly. Document generation uses AI templates for demand letters, medical summaries, and other PI law documents.
+- `HOLACE_ATTORNEY_ID`
+- `HOLACE_CASE_ID`
+- `HOLACE_CLIENT_ID`
+- `HOLACE_DOCUMENT_ID`
+- `HOLACE_SETTLEMENT_ID`
+- `HOLACE_CASE_TYPE`
+- `HOLACE_STATUTE_STATE`
+
+Local `HOLACE_*` environment variables are supported only as a development harness fallback. Operator service keys take precedence.
+
+## Readiness
+
+- Live reads: implemented, but not tenant-smoked in this repo.
+- Writes: not advertised.
+- Scaffold-only: false.
+- Required live setup: `HOLACE_API_KEY` and `HOLACE_API_BASE_URL` from operator-controlled service keys.

@@ -69,36 +69,6 @@ def _result(ctx: click.Context, *, command: str, data: dict[str, Any]) -> dict[s
     return success(command=command, mode=ctx.obj["mode"], started=ctx.obj["started"], data=data)
 
 
-def _scaffold_command(
-    ctx: click.Context,
-    *,
-    command_id: str,
-    resource: str,
-    operation: str,
-    inputs: dict[str, Any],
-    consequential: bool = False,
-) -> None:
-    _set_command(ctx, command_id)
-    require_mode(ctx, command_id)
-    emit(
-        _result(
-            ctx,
-            command=command_id,
-            data=runtime_module.scaffold_result(
-                ctx.obj,
-                command_id=command_id,
-                resource=resource,
-                operation=operation,
-                inputs=inputs,
-                consequential=consequential,
-            ),
-        ),
-        as_json=ctx.obj["json"],
-    )
-    if command_id in runtime_module.WRITE_COMMAND_IDS or consequential:
-        raise SystemExit(10)
-
-
 def _run_read(ctx: click.Context, command_id: str, items: tuple[str, ...]) -> None:
     _set_command(ctx, command_id)
     require_mode(ctx, command_id)

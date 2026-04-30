@@ -1,14 +1,12 @@
 import type { ApplyAuthChoiceParams, ApplyAuthChoiceResult } from "./auth-choice.apply.js";
-import { loginOpenAICodex } from "../agent-core/ai.js";
 import { resolveEnvApiKey } from "../agents/model-auth.js";
+import { loginOpenAICodexDevice } from "../agents/openai-codex-auth.js";
 import { upsertSharedEnvVar } from "../infra/env-file.js";
 import {
   formatApiKeyPreview,
   normalizeApiKeyInput,
   validateApiKeyInput,
 } from "./auth-choice.api-key.js";
-import { isRemoteEnvironment } from "./oauth-env.js";
-import { createVpsAwareOAuthHandlers } from "./oauth-flow.js";
 import { applyAuthProfileConfig, writeOAuthCredentials } from "./onboard-auth.js";
 import { openUrl } from "./onboard-helpers.js";
 import {
@@ -83,35 +81,26 @@ export async function applyAuthChoiceOpenAI(
       );
     };
 
-    const isRemote = isRemoteEnvironment();
     await params.prompter.note(
-      isRemote
-        ? [
-            "You are running in a remote/VPS environment.",
-            "A URL will be shown for you to open in your LOCAL browser.",
-            "After signing in, paste the redirect URL back here.",
-          ].join("\n")
-        : [
-            "Browser will open for OpenAI authentication.",
-            "If the callback doesn't auto-complete, paste the redirect URL.",
-            "OpenAI OAuth uses localhost:1455 for the callback.",
-          ].join("\n"),
+      [
+        "OpenAI will show a short device code.",
+        "Open the URL in your browser, enter the code, and return here.",
+        "No localhost callback is required.",
+      ].join("\n"),
       "OpenAI Codex OAuth",
     );
-    const spin = params.prompter.progress("Starting OAuth flow…");
+    const spin = params.prompter.progress("Starting Codex device login...");
     try {
-      const { onAuth, onPrompt } = createVpsAwareOAuthHandlers({
-        isRemote,
-        prompter: params.prompter,
-        runtime: params.runtime,
-        spin,
-        openUrl,
-        localBrowserMessage: "Complete sign-in in browser…",
-      });
-
-      const creds = await loginOpenAICodex({
-        onAuth,
-        onPrompt,
+      const creds = await loginOpenAICodexDevice({
+        onStart: async (info) => {
+          params.runtime.log(`Open: ${info.verificationUri}`);
+          params.runtime.log(`Code: ${info.userCode}`);
+          await openUrl(info.verificationUri);
+          await params.prompter.note(
+            [`Open: ${info.verificationUri}`, `Code: ${info.userCode}`].join("\n"),
+            "OpenAI Codex device login",
+          );
+        },
         onProgress: (msg) => spin.update(msg),
       });
       spin.stop("OpenAI OAuth complete");

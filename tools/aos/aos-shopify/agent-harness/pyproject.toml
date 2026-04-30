@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aos-shopify"
 version = "0.1.0"
-description = "Setup-first Shopify connector scaffold"
+description = "Shopify Admin connector for AOS workers"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["click>=8.1"]

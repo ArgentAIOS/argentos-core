@@ -2,6 +2,7 @@
   "tool": "aos-wordpress",
   "backend": "wordpress-rest-api",
   "permissions": {
+    "capabilities": "readonly",
     "health": "readonly",
     "doctor": "readonly",
     "config.show": "readonly",

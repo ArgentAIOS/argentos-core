@@ -1,27 +1,31 @@
 # aos-close
 
-Agent-native Close CRM connector scaffold.
+Agent-native Close CRM connector with live reads, live low-risk CRM writes, and scaffolded outreach actions.
 
-This first pass is live-read-first and keeps mutations scaffolded:
+What is live now:
 
-- `lead.list` and `lead.get` expose lead scope for pipeline pickers.
-- `lead.create` and `lead.update` are scaffolded write paths only.
-- `contact.list` and `contact.get` expose contact scope for record pickers.
-- `contact.create` is a scaffolded write path only.
-- `opportunity.list` and `opportunity.get` expose opportunity scope for deal pickers.
-- `opportunity.create` is a scaffolded write path only.
-- `activity.list` lists activities; `activity.create` is a scaffolded write path.
-- `task.list` lists tasks; `task.create` is a scaffolded write path.
-- `email.send`, `sms.send`, and `call.create` are scaffolded outreach write paths only.
+- `lead.list` and `lead.get` read lead scope.
+- `lead.create` and `lead.update` perform live Close lead writes.
+- `contact.list` and `contact.get` read contact scope, optionally filtered by lead.
+- `contact.create` performs a live Close contact write.
+- `opportunity.list` and `opportunity.get` read opportunity scope, with optional lead and status-type filters.
+- `opportunity.create` performs a live Close opportunity write.
+- `activity.list` reads activity scope; `activity.create` creates a live Close note activity.
+- `task.list` reads task scope; `task.create` creates a live Close task.
+
+What is still scaffolded:
+
+- `email.send`, `sms.send`, and `call.create` return explicit scaffold responses and do not deliver outreach yet.
 
 ## Auth
 
-The connector expects a Close API key via `CLOSE_API_KEY`.
+The connector resolves `CLOSE_API_KEY` from operator-controlled API Keys first, then falls back to the environment only inside the local service-key helper.
 
 Optional scope hints:
 
 - `CLOSE_LEAD_ID` to preselect a lead scope.
 - `CLOSE_CONTACT_ID` to preselect a contact scope.
+- `CLOSE_OPPORTUNITY_ID` to preselect an opportunity scope.
 
 ## Live Reads
 
@@ -29,4 +33,6 @@ The harness uses the Close REST API for lead, contact, opportunity, activity, an
 
 ## Writes
 
-Write commands are intentionally scaffolded and do not perform live mutations yet. They exist so the connector contract is complete and worker flows can see the eventual mutation surface. Outreach commands (email.send, sms.send, call.create) require additional approval gates before going live.
+Live CRM writes are limited to records that are straightforward to create safely through the Close REST API: leads, contacts, opportunities, note activities, and tasks.
+
+Outreach commands remain scaffolded on purpose. They still advertise their eventual surface area, but the runtime returns `scaffold_write_only` until delivery, consent, and audit safeguards exist for email, SMS, and calls.

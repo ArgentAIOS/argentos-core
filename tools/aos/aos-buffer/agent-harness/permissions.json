@@ -1,6 +1,6 @@
 {
   "tool": "aos-buffer",
-  "backend": "buffer-rest-api",
+  "backend": "buffer-graphql-api",
   "permissions": {
     "account.read": "readonly",
     "capabilities": "readonly",
@@ -8,12 +8,10 @@
     "health": "readonly",
     "doctor": "readonly",
     "profile.list": "readonly",
+    "profile.read": "readonly",
     "channel.list": "readonly",
-    "post.create": "write",
+    "channel.read": "readonly",
     "post.list": "readonly",
-    "post.update": "write",
-    "post.delete": "full",
-    "calendar.list": "readonly",
-    "analytics.get": "readonly"
+    "post.read": "readonly"
   }
 }

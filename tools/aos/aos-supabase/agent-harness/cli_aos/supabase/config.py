@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -28,11 +29,11 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     table_env = ctx_obj.get("table_env") or SUPABASE_TABLE_ENV
     bucket_env = ctx_obj.get("bucket_env") or SUPABASE_BUCKET_ENV
 
-    project_url = (os.getenv(url_env) or "").strip()
-    service_role_key = (os.getenv(key_env) or "").strip()
-    anon_key = (os.getenv(anon_env) or "").strip()
-    table = (os.getenv(table_env) or "").strip()
-    bucket = (os.getenv(bucket_env) or "").strip()
+    project_url = (service_key_env(url_env) or "").strip()
+    service_role_key = (service_key_env(key_env) or "").strip()
+    anon_key = (service_key_env(anon_env) or "").strip()
+    table = (service_key_env(table_env) or "").strip()
+    bucket = (service_key_env(bucket_env) or "").strip()
 
     return {
         "backend": BACKEND_NAME,

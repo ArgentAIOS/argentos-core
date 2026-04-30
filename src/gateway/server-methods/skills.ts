@@ -3,6 +3,7 @@ import type { PersonalSkillCandidate } from "../../memory/memu-types.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import {
   listAgentIds,
+  resolveAgentSkillsFilter,
   resolveAgentWorkspaceDir,
   resolveDefaultAgentId,
 } from "../../agents/agent-scope.js";
@@ -101,6 +102,158 @@ function deriveDemotionRisk(candidate: PersonalSkillCandidate): "low" | "medium"
   return "low";
 }
 
+export type WorkflowPersonalSkillCapability = {
+  id: string;
+  name: string;
+  label: string;
+  description: string;
+  category: "Skill";
+  source: "skill";
+  skillId: string;
+  state: "promoted";
+  executionReady: true;
+  relatedTools: string[];
+  triggerPatterns: string[];
+  preconditions: string[];
+  expectedOutcomes: string[];
+};
+
+export type WorkflowPromotedToolCapability = {
+  id: string;
+  name: string;
+  label: string;
+  description: string;
+  category: "Promoted";
+  source: "promoted-cli";
+  skillIds: string[];
+  skillTitles: string[];
+  governance: {
+    mode: "ask";
+    approvalBacked: false;
+    note: string;
+  };
+};
+
+export type WorkflowPersonalSkillCapabilities = {
+  agentId: string;
+  personalSkills: WorkflowPersonalSkillCapability[];
+  promotedTools: WorkflowPromotedToolCapability[];
+  tools: Array<WorkflowPersonalSkillCapability | WorkflowPromotedToolCapability>;
+};
+
+function isWorkflowReadyPersonalSkill(candidate: PersonalSkillCandidate): boolean {
+  return (
+    candidate.state === "promoted" &&
+    candidate.executionSteps.length > 0 &&
+    !candidate.supersededByCandidateId
+  );
+}
+
+function normalizeRelatedToolName(value: string): string {
+  return value.trim();
+}
+
+export function buildWorkflowPersonalSkillCapabilitiesFromCandidates(
+  agentId: string,
+  candidates: PersonalSkillCandidate[],
+): WorkflowPersonalSkillCapabilities {
+  const ready = candidates
+    .filter(isWorkflowReadyPersonalSkill)
+    .toSorted(
+      (a, b) =>
+        b.confidence - a.confidence ||
+        b.strength - a.strength ||
+        b.updatedAt.localeCompare(a.updatedAt) ||
+        a.title.localeCompare(b.title),
+    );
+
+  const personalSkills = ready.map((candidate) => ({
+    id: `skill:${candidate.id}`,
+    name: `skill:${candidate.id}`,
+    label: candidate.title,
+    description: candidate.summary,
+    category: "Skill" as const,
+    source: "skill" as const,
+    skillId: candidate.id,
+    state: "promoted" as const,
+    executionReady: true as const,
+    relatedTools: candidate.relatedTools.map(normalizeRelatedToolName).filter(Boolean),
+    triggerPatterns: candidate.triggerPatterns,
+    preconditions: candidate.preconditions,
+    expectedOutcomes: candidate.expectedOutcomes,
+  }));
+
+  const promotedToolsByName = new Map<
+    string,
+    {
+      skillIds: Set<string>;
+      skillTitles: Set<string>;
+    }
+  >();
+  for (const candidate of ready) {
+    for (const relatedToolRaw of candidate.relatedTools) {
+      const relatedTool = normalizeRelatedToolName(relatedToolRaw);
+      if (!relatedTool) {
+        continue;
+      }
+      const existing =
+        promotedToolsByName.get(relatedTool) ??
+        ({
+          skillIds: new Set<string>(),
+          skillTitles: new Set<string>(),
+        } satisfies {
+          skillIds: Set<string>;
+          skillTitles: Set<string>;
+        });
+      existing.skillIds.add(candidate.id);
+      existing.skillTitles.add(candidate.title);
+      promotedToolsByName.set(relatedTool, existing);
+    }
+  }
+
+  const promotedTools = Array.from(promotedToolsByName.entries())
+    .map(([name, refs]) => ({
+      id: name,
+      name,
+      label: name,
+      description: `Promoted operator tool referenced by ${Array.from(refs.skillTitles).join(", ")}`,
+      category: "Promoted" as const,
+      source: "promoted-cli" as const,
+      skillIds: Array.from(refs.skillIds).toSorted(),
+      skillTitles: Array.from(refs.skillTitles).toSorted(),
+      governance: {
+        mode: "ask" as const,
+        approvalBacked: false as const,
+        note: "Custom/promoted tools require workflow approval policy before mutation or outbound use.",
+      },
+    }))
+    .toSorted((a, b) => a.label.localeCompare(b.label));
+
+  return {
+    agentId,
+    personalSkills,
+    promotedTools,
+    tools: [...personalSkills, ...promotedTools],
+  };
+}
+
+export async function buildWorkflowPersonalSkillCapabilities(
+  params: Record<string, unknown> = {},
+): Promise<WorkflowPersonalSkillCapabilities> {
+  const cfg = loadConfig();
+  const agentId = resolveRequestedAgentId(
+    cfg,
+    typeof params?.agentId === "string" ? params.agentId : undefined,
+  );
+  const memory = await getMemoryAdapter();
+  const scopedMemory = memory.withAgentId ? memory.withAgentId(agentId) : memory;
+  const candidates = await scopedMemory.listPersonalSkillCandidates({
+    state: "promoted",
+    limit: 200,
+  });
+  return buildWorkflowPersonalSkillCapabilitiesFromCandidates(agentId, candidates);
+}
+
 function isAllowedManualState(
   value: string,
 ): value is "candidate" | "incubating" | "promoted" | "rejected" | "deprecated" {
@@ -129,21 +282,11 @@ export const skillsHandlers: GatewayRequestHandlers = {
     const cfg = loadConfig();
     const agentIdRaw = typeof params?.agentId === "string" ? params.agentId.trim() : "";
     const agentId = agentIdRaw ? normalizeAgentId(agentIdRaw) : resolveDefaultAgentId(cfg);
-    if (agentIdRaw) {
-      const knownAgents = listAgentIds(cfg);
-      if (!knownAgents.includes(agentId)) {
-        respond(
-          false,
-          undefined,
-          errorShape(ErrorCodes.INVALID_REQUEST, `unknown agent id "${agentIdRaw}"`),
-        );
-        return;
-      }
-    }
     const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
     const report = buildWorkspaceSkillStatus(workspaceDir, {
       config: cfg,
       eligibility: { remote: getRemoteSkillEligibility() },
+      skillFilter: resolveAgentSkillsFilter(cfg, agentId),
     });
     respond(true, report, undefined);
   },
@@ -272,8 +415,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
       const candidates = await scopedMemory.listPersonalSkillCandidates({ limit: 200 });
       const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
       const rows = candidates
-        .slice()
-        .sort((a, b) => {
+        .toSorted((a, b) => {
           const stateOrder = (state: string) =>
             state === "promoted"
               ? 0

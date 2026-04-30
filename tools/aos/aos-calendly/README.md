@@ -13,16 +13,21 @@ Agent-native Calendly connector for scheduling, event management, and availabili
 
 ### Write (mode=write)
 
-- `events.cancel` — cancel a scheduled event
-- `scheduling_links.create` — create a single-use booking link
+- `events.cancel` — live cancel of a scheduled event
+- `scheduling_links.create` — scaffold-only preview of single-use booking-link creation inputs
 
 ## Auth
 
 The connector expects a Calendly personal access token via `CALENDLY_API_KEY`.
 
+Auth resolution order:
+
+1. Operator-controlled service key `CALENDLY_API_KEY`
+2. Environment variable fallback inside the connector's service-key helper
+
 Generate one from Calendly Settings > Integrations > API & Webhooks.
 
-Optional scope hints:
+Optional scope hints from plain environment variables:
 
 - `CALENDLY_EVENT_TYPE_UUID` — preselect an event type scope
 - `CALENDLY_EVENT_UUID` — preselect an event scope
@@ -33,4 +38,6 @@ The harness uses Calendly's v2 REST API. The connector auto-discovers your user 
 
 ## Writes
 
-Write commands (events.cancel, scheduling_links.create) require `--mode write`. Cancellation is permanent and cannot be undone.
+`events.cancel` executes a live `POST /scheduled_events/{uuid}/cancellation` request when `--mode write` is supplied. Cancellation is permanent and cannot be undone.
+
+`scheduling_links.create` is still scaffolded. It returns a truthful preview payload instead of attempting a live write until the request/response contract is verified end-to-end in this harness.

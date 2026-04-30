@@ -55,6 +55,9 @@ type AgentFixture = {
   name: string;
   role: string;
   team?: string;
+  skills?: string[];
+  skillSource?: string;
+  skillDefaultKey?: string;
 };
 
 function createFamilyFixture(agents: AgentFixture[]) {
@@ -67,7 +70,12 @@ function createFamilyFixture(agents: AgentFixture[]) {
           id: agent.id,
           name: agent.name,
           role: agent.role,
-          config: agent.team ? { team: agent.team } : {},
+          config: {
+            ...(agent.team ? { team: agent.team } : {}),
+            ...(agent.skills ? { skills: agent.skills } : {}),
+            ...(agent.skillSource ? { skillSource: agent.skillSource } : {}),
+            ...(agent.skillDefaultKey ? { skillDefaultKey: agent.skillDefaultKey } : {}),
+          },
         })),
     ),
     listMembers: vi.fn(async () =>
@@ -88,7 +96,12 @@ function createFamilyFixture(agents: AgentFixture[]) {
         name: agent.name,
         role: agent.role,
         status: "active",
-        config: agent.team ? { team: agent.team } : {},
+        config: {
+          ...(agent.team ? { team: agent.team } : {}),
+          ...(agent.skills ? { skills: agent.skills } : {}),
+          ...(agent.skillSource ? { skillSource: agent.skillSource } : {}),
+          ...(agent.skillDefaultKey ? { skillDefaultKey: agent.skillDefaultKey } : {}),
+        },
       };
     }),
     getRedis: vi.fn(() => null),
@@ -107,7 +120,19 @@ describe("family dispatch_contracted", () => {
 
     mocks.getAgentFamily.mockResolvedValue(
       createFamilyFixture([
-        { id: "forge", name: "Forge", role: "software_engineer", team: "dev-team" },
+        {
+          id: "forge",
+          name: "Forge",
+          role: "software_engineer",
+          team: "dev-team",
+          skills: [
+            "argentos-family-team-development",
+            "argentos-test-driven-development",
+            "argentos-code-verification",
+          ],
+          skillSource: "team-role-default",
+          skillDefaultKey: "dev-team-implementer",
+        },
       ]),
     );
     mocks.createDispatchContract.mockResolvedValue({
@@ -134,6 +159,7 @@ describe("family dispatch_contracted", () => {
       timeout_ms: 60000,
       heartbeat_interval_ms: 5000,
       toolsAllow: ["read", "write"],
+      skillsRequired: ["argentos-test-driven-development", "argentos-code-verification"],
     });
 
     const details = result.details as {
@@ -152,6 +178,17 @@ describe("family dispatch_contracted", () => {
         toolGrantSnapshot: ["read", "write"],
         timeoutMs: 60000,
         heartbeatIntervalMs: 5000,
+        metadata: expect.objectContaining({
+          mode: "family",
+          skillsRequired: ["argentos-test-driven-development", "argentos-code-verification"],
+          targetSkillsSnapshot: [
+            "argentos-family-team-development",
+            "argentos-test-driven-development",
+            "argentos-code-verification",
+          ],
+          targetSkillSource: "team-role-default",
+          targetSkillDefaultKey: "dev-team-implementer",
+        }),
       }),
     );
 
@@ -160,6 +197,9 @@ describe("family dispatch_contracted", () => {
       expect.objectContaining({
         contractId: "contract-abc",
         status: "accepted",
+        payload: expect.objectContaining({
+          skillsRequired: ["argentos-test-driven-development", "argentos-code-verification"],
+        }),
       }),
     );
     expect(mocks.appendDispatchContractEvent).toHaveBeenNthCalledWith(

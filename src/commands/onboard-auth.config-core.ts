@@ -22,6 +22,7 @@ import {
   OPENROUTER_DEFAULT_MODEL_REF,
   VERCEL_AI_GATEWAY_DEFAULT_MODEL_REF,
   XIAOMI_DEFAULT_MODEL_REF,
+  ZAI_CODING_DEFAULT_MODEL_REF,
   ZAI_DEFAULT_MODEL_REF,
 } from "./onboard-auth.credentials.js";
 import {
@@ -59,6 +60,53 @@ export function applyZaiConfig(cfg: ArgentConfig): ArgentConfig {
             : undefined),
           primary: ZAI_DEFAULT_MODEL_REF,
         },
+      },
+    },
+  };
+}
+
+export function applyZaiCodingConfig(cfg: ArgentConfig): ArgentConfig {
+  const models = { ...cfg.agents?.defaults?.models };
+  models[ZAI_CODING_DEFAULT_MODEL_REF] = {
+    ...models[ZAI_CODING_DEFAULT_MODEL_REF],
+    alias: models[ZAI_CODING_DEFAULT_MODEL_REF]?.alias ?? "GLM Coding",
+  };
+
+  const existingModel = cfg.agents?.defaults?.model;
+  return {
+    ...cfg,
+    agents: {
+      ...cfg.agents,
+      defaults: {
+        ...cfg.agents?.defaults,
+        models,
+        model: {
+          ...(existingModel && "fallbacks" in (existingModel as Record<string, unknown>)
+            ? {
+                fallbacks: (existingModel as { fallbacks?: string[] }).fallbacks,
+              }
+            : undefined),
+          primary: ZAI_CODING_DEFAULT_MODEL_REF,
+        },
+      },
+    },
+  };
+}
+
+export function applyZaiCodingProviderConfig(cfg: ArgentConfig): ArgentConfig {
+  const models = { ...cfg.agents?.defaults?.models };
+  models[ZAI_CODING_DEFAULT_MODEL_REF] = {
+    ...models[ZAI_CODING_DEFAULT_MODEL_REF],
+    alias: models[ZAI_CODING_DEFAULT_MODEL_REF]?.alias ?? "GLM Coding",
+  };
+
+  return {
+    ...cfg,
+    agents: {
+      ...cfg.agents,
+      defaults: {
+        ...cfg.agents?.defaults,
+        models,
       },
     },
   };

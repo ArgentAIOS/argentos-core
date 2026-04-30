@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -52,15 +53,15 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     temperature_env = ctx_obj.get("temperature_env") or ANTHROPIC_TEMPERATURE_ENV
     thinking_budget_env = ctx_obj.get("thinking_budget_env") or ANTHROPIC_THINKING_BUDGET_ENV
 
-    api_key = (os.getenv(api_key_env) or "").strip()
-    base_url = (os.getenv(base_url_env) or DEFAULT_BASE_URL).strip().rstrip("/")
-    version = (os.getenv(version_env) or DEFAULT_VERSION).strip()
-    model = (os.getenv(model_env) or "").strip()
-    system_prompt = (os.getenv(system_prompt_env) or "").strip()
-    messages_json = (os.getenv(messages_json_env) or "").strip()
-    max_tokens = _int_or_none(os.getenv(max_tokens_env))
-    temperature = _float_or_none(os.getenv(temperature_env))
-    thinking_budget = _int_or_none(os.getenv(thinking_budget_env))
+    api_key = (service_key_env(api_key_env) or "").strip()
+    base_url = (service_key_env(base_url_env) or DEFAULT_BASE_URL).strip().rstrip("/")
+    version = (service_key_env(version_env) or DEFAULT_VERSION).strip()
+    model = (service_key_env(model_env) or "").strip()
+    system_prompt = (service_key_env(system_prompt_env) or "").strip()
+    messages_json = (service_key_env(messages_json_env) or "").strip()
+    max_tokens = _int_or_none(service_key_env(max_tokens_env))
+    temperature = _float_or_none(service_key_env(temperature_env))
+    thinking_budget = _int_or_none(service_key_env(thinking_budget_env))
 
     return {
         "backend": BACKEND_NAME,

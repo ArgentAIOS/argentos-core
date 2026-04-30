@@ -46,8 +46,8 @@ def resolve_service_key(variable: str) -> str | None:
 def runtime_config(ctx_obj: dict | None = None) -> dict[str, object]:
     api_key = (
         (ctx_obj or {}).get("api_key_override", "")
-        or os.getenv(DEFAULT_GOOGLE_PLACES_API_KEY_ENV, "")
         or resolve_service_key(DEFAULT_GOOGLE_PLACES_API_KEY_ENV)
+        or os.getenv(DEFAULT_GOOGLE_PLACES_API_KEY_ENV, "")
         or ""
     )
     return {
@@ -57,10 +57,10 @@ def runtime_config(ctx_obj: dict | None = None) -> dict[str, object]:
         "api_key_source": (
             "cli-override"
             if (ctx_obj or {}).get("api_key_override")
+            else "service-keys"
+            if resolve_service_key(DEFAULT_GOOGLE_PLACES_API_KEY_ENV)
             else "process.env"
             if os.getenv(DEFAULT_GOOGLE_PLACES_API_KEY_ENV)
-            else "service-keys"
-            if api_key
             else None
         ),
     }

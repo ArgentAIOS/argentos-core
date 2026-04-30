@@ -34,12 +34,23 @@ Agent-native Discord workflow connector for message, embed, role, and webhook op
 - Required: yes
 - Service keys:
   - DISCORD_BOT_TOKEN
+- Optional operator linking keys:
+  - DISCORD_WEBHOOK_URL
+  - DISCORD_GUILD_ID
+  - DISCORD_CHANNEL_ID
+  - DISCORD_MESSAGE_ID
+  - DISCORD_ROLE_ID
+  - DISCORD_MEMBER_ID
 - Required intents: SERVER MEMBERS, MESSAGE CONTENT
 - Required permissions: Send Messages, Manage Messages, Add Reactions, Manage Channels, Manage Roles, Attach Files, Create Public Threads, Send Messages in Threads, Use External Emojis
+- Operator-controlled service keys are resolved before local environment variables.
+- Scoped repo service keys block local environment fallback because the operator runtime must inject them.
+- `webhook.send` can run from `DISCORD_WEBHOOK_URL` without a bot token; the rest of the live read/write commands require `DISCORD_BOT_TOKEN`.
+- `live_write_smoke_tested=false` until a real operator Discord guild or webhook smoke test verifies writes.
 
 ## Next Steps
 
-1. Run `aos-discord-workflow --json health` and `aos-discord-workflow --json doctor` against a bot token.
-2. Verify `channel.list`, `member.list`, and `role.list` with live scopes.
-3. Test `message.send` and `embed.send` in a sandbox channel.
-4. Verify `webhook.send` with a configured channel webhook URL.
+1. Add `DISCORD_BOT_TOKEN` and any scoped IDs as operator-controlled service keys; use local env only as the harness fallback.
+2. Run `aos-discord-workflow --json health` and `aos-discord-workflow --json doctor` to confirm bot-backed readiness and webhook-only partial readiness.
+3. Verify `channel.list`, `member.list`, and `role.list` against a sandbox guild before enabling write mode.
+4. Test `message.send`, `thread.create`, and `embed.send` in a sandbox channel, then verify `webhook.send` with a dedicated webhook URL.

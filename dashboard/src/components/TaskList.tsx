@@ -6,6 +6,7 @@ import {
   Loader,
   Clock,
   Calendar,
+  Bell,
   Plus,
   Pencil,
   Trash2,
@@ -30,7 +31,7 @@ import { fetchLocalApi } from "../utils/localApiFetch";
 const API_BASE = "/api";
 
 export type TaskStatus = "pending" | "in-progress" | "in_progress" | "completed";
-export type TaskType = "one-time" | "scheduled" | "interval" | "project";
+export type TaskType = "one-time" | "scheduled" | "interval" | "reminder" | "project";
 
 export interface Task {
   id: string;
@@ -50,8 +51,9 @@ export interface Task {
   teamId?: string;
   // For scheduled tasks
   schedule?: {
-    frequency: "daily" | "weekly" | "monthly" | "custom" | "interval";
+    frequency: "daily" | "weekly" | "monthly" | "custom" | "interval" | "once";
     time?: string; // HH:MM format
+    at?: string; // ISO date/time for one-time reminders
     days?: number[]; // 0-6 for weekly, 1-31 for monthly
     cron?: string; // custom cron expression
     intervalMinutes?: number; // For interval-based scheduling (5, 10, 20, 30, 60)
@@ -105,6 +107,7 @@ interface TaskListProps {
     schedule?: Task["schedule"],
     details?: string,
     assignee?: string,
+    metadata?: Record<string, unknown>,
   ) => Promise<Task | boolean | null | void> | Task | boolean | null | void;
   onTaskExecute?: (task: Task) => Promise<boolean | void> | boolean | void;
   onProjectDelete?: (projectId: string) => Promise<boolean | void> | boolean | void;
@@ -298,6 +301,8 @@ export function TaskList({
   const [scheduleTime, setScheduleTime] = useState("09");
   const [scheduleMinute, setScheduleMinute] = useState("00");
   const [scheduleAmPm, setScheduleAmPm] = useState<"AM" | "PM">("AM");
+  const [reminderDate, setReminderDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [reminderDeliveryTargets, setReminderDeliveryTargets] = useState<string[]>(["in_app"]);
   const [selectedInterval, setSelectedInterval] = useState<number>(10); // minutes
   const [newTaskAssignee, setNewTaskAssignee] = useState<"operator" | "agent">("operator");
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
@@ -455,11 +460,26 @@ export function TaskList({
   const visibleProjects = projects.filter((project) => !isArchivedProject(project));
 
   const dayLabels = ["Su", "M", "Tu", "W", "Th", "F", "Sa"];
+  const reminderDeliveryOptions = [
+    { id: "in_app", label: "In-app" },
+    { id: "telegram", label: "Telegram" },
+    { id: "email", label: "Email" },
+    { id: "voice", label: "Voice" },
+    { id: "doc_panel", label: "DocPanel" },
+  ];
 
   const toggleDay = (dayIndex: number) => {
     setSelectedDays((prev) =>
       prev.includes(dayIndex) ? prev.filter((d) => d !== dayIndex) : [...prev, dayIndex].sort(),
     );
+  };
+
+  const toggleReminderDeliveryTarget = (target: string) => {
+    setReminderDeliveryTargets((prev) => {
+      if (!prev.includes(target)) return [...prev, target];
+      const next = prev.filter((item) => item !== target);
+      return next.length > 0 ? next : ["in_app"];
+    });
   };
 
   // Filter out child tasks (they appear under their project in the Projects tab)
@@ -469,7 +489,7 @@ export function TaskList({
   // Filter tasks by type
   const oneTimeTasks = topLevelTasks.filter((t) => t.type === "one-time" || !t.type);
   const scheduledTasks = topLevelTasks.filter(
-    (t) => t.type === "scheduled" || t.type === "interval",
+    (t) => t.type === "scheduled" || t.type === "interval" || t.type === "reminder",
   );
 
   const activeTasks = oneTimeTasks.filter((t) => t.status !== "completed");
@@ -679,7 +699,24 @@ export function TaskList({
 
       // Build schedule based on task type
       let schedule: Task["schedule"] | undefined;
-      if (newTaskType === "scheduled") {
+      let metadata: Record<string, unknown> | undefined;
+      if (newTaskType === "reminder") {
+        const at = new Date(`${reminderDate}T${time24}:00`);
+        if (Number.isNaN(at.getTime())) {
+          setActionError("Choose a valid reminder date and time.");
+          return;
+        }
+        schedule = {
+          frequency: "once",
+          at: at.toISOString(),
+        };
+        metadata = {
+          reminder: {
+            deliveryTargets: reminderDeliveryTargets,
+            action: newTaskAssignee === "agent" ? "agent" : "notify",
+          },
+        };
+      } else if (newTaskType === "scheduled") {
         schedule = {
           frequency: "weekly",
           days: selectedDays,
@@ -700,6 +737,7 @@ export function TaskList({
         schedule,
         newTaskDetails.trim() || undefined,
         assigneeValue,
+        metadata,
       );
       if (created === false || created === null) {
         setActionError("Failed to add task. Please retry.");
@@ -715,6 +753,8 @@ export function TaskList({
       setScheduleTime("09");
       setScheduleMinute("00");
       setScheduleAmPm("AM");
+      setReminderDate(new Date().toISOString().slice(0, 10));
+      setReminderDeliveryTargets(["in_app"]);
       setSelectedInterval(10);
       setShowAddModal(false);
     }
@@ -1109,6 +1149,19 @@ export function TaskList({
   const formatSchedule = (task: Task) => {
     if (!task.schedule) return "No schedule";
     const { frequency, time, days, intervalMinutes } = task.schedule;
+
+    if (frequency === "once" || task.type === "reminder") {
+      const at = task.schedule.at || task.schedule.nextRun;
+      if (!at) return "Reminder";
+      const date = new Date(at);
+      if (Number.isNaN(date.getTime())) return "Reminder";
+      return `Reminder: ${date.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })}`;
+    }
 
     if (frequency === "interval" || task.type === "interval") {
       return `Every ${intervalMinutes || 10} minutes`;
@@ -1673,7 +1726,11 @@ export function TaskList({
                     className="flex flex-col gap-1 p-3 rounded-xl bg-[hsl(var(--card))] hover:bg-[hsl(var(--card))] cursor-pointer transition-colors group"
                   >
                     <div className="flex items-center gap-3">
-                      <Calendar className="w-5 h-5 text-[hsl(var(--primary))] flex-shrink-0" />
+                      {task.type === "reminder" ? (
+                        <Bell className="w-5 h-5 text-[hsl(var(--primary))] flex-shrink-0" />
+                      ) : (
+                        <Calendar className="w-5 h-5 text-[hsl(var(--primary))] flex-shrink-0" />
+                      )}
                       <span className="text-[hsl(var(--muted-foreground))] text-sm flex-1 truncate group-hover:text-white transition-colors">
                         {task.title}
                       </span>
@@ -1704,6 +1761,28 @@ export function TaskList({
                     <div className="text-[hsl(var(--muted-foreground))]/60 text-xs ml-8">
                       {formatSchedule(task)}
                     </div>
+                    {task.type === "reminder" && (
+                      <div className="ml-8 flex flex-wrap gap-1.5">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide border border-[hsl(var(--primary))]/20 text-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10">
+                          Reminder
+                        </span>
+                        {Array.isArray(
+                          (task.metadata?.reminder as Record<string, unknown> | undefined)
+                            ?.deliveryTargets,
+                        ) &&
+                          (
+                            (task.metadata?.reminder as Record<string, unknown>)
+                              .deliveryTargets as string[]
+                          ).map((target) => (
+                            <span
+                              key={target}
+                              className="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]/60 bg-[hsl(var(--card))]"
+                            >
+                              {target.replace("_", " ")}
+                            </span>
+                          ))}
+                      </div>
+                    )}
                   </motion.div>
                 );
               })}
@@ -1786,6 +1865,16 @@ export function TaskList({
                   Scheduled
                 </button>
                 <button
+                  onClick={() => setNewTaskType("reminder")}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+                    newTaskType === "reminder"
+                      ? "bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))] border border-[hsl(var(--primary))]/50"
+                      : "bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 border border-[hsl(var(--border))] hover:bg-[hsl(var(--card))]"
+                  }`}
+                >
+                  Reminder
+                </button>
+                <button
                   onClick={() => setNewTaskType("interval")}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
                     newTaskType === "interval"
@@ -1796,6 +1885,97 @@ export function TaskList({
                   Interval
                 </button>
               </div>
+
+              {newTaskType === "reminder" && (
+                <div className="mb-4 space-y-4">
+                  <div>
+                    <label className="text-[hsl(var(--muted-foreground))]/60 text-xs uppercase tracking-wider mb-2 block">
+                      Date
+                    </label>
+                    <input
+                      type="date"
+                      value={reminderDate}
+                      onChange={(e) => setReminderDate(e.target.value)}
+                      className="w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[hsl(var(--primary))]/50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[hsl(var(--muted-foreground))]/60 text-xs uppercase tracking-wider mb-2 block">
+                      Time
+                    </label>
+                    <div className="flex gap-2 items-center">
+                      <select
+                        value={scheduleTime}
+                        onChange={(e) => setScheduleTime(e.target.value)}
+                        className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[hsl(var(--primary))]/50"
+                      >
+                        {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
+                          <option key={h} value={h.toString().padStart(2, "0")}>
+                            {h}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-[hsl(var(--muted-foreground))]/60">:</span>
+                      <select
+                        value={scheduleMinute}
+                        onChange={(e) => setScheduleMinute(e.target.value)}
+                        className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[hsl(var(--primary))]/50"
+                      >
+                        {["00", "15", "30", "45"].map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex bg-[hsl(var(--card))] rounded-lg border border-[hsl(var(--border))] overflow-hidden">
+                        <button
+                          onClick={() => setScheduleAmPm("AM")}
+                          className={`px-3 py-2 text-sm font-medium transition-all ${
+                            scheduleAmPm === "AM"
+                              ? "bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))]"
+                              : "text-[hsl(var(--muted-foreground))]/60 hover:bg-[hsl(var(--card))]"
+                          }`}
+                        >
+                          AM
+                        </button>
+                        <button
+                          onClick={() => setScheduleAmPm("PM")}
+                          className={`px-3 py-2 text-sm font-medium transition-all ${
+                            scheduleAmPm === "PM"
+                              ? "bg-[hsl(var(--primary))]/30 text-[hsl(var(--primary))]"
+                              : "text-[hsl(var(--muted-foreground))]/60 hover:bg-[hsl(var(--card))]"
+                          }`}
+                        >
+                          PM
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[hsl(var(--muted-foreground))]/60 text-xs uppercase tracking-wider mb-2 block">
+                      Alert
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {reminderDeliveryOptions.map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => toggleReminderDeliveryTarget(opt.id)}
+                          className={`rounded-lg border px-3 py-2 text-xs font-medium transition-all ${
+                            reminderDeliveryTargets.includes(opt.id)
+                              ? "border-[hsl(var(--primary))]/50 bg-[hsl(var(--primary))]/25 text-[hsl(var(--primary))]"
+                              : "border-[hsl(var(--border))] bg-[hsl(var(--card))] text-[hsl(var(--muted-foreground))]/60 hover:bg-[hsl(var(--card))]"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Assignee selector */}
               <div className="mb-4">

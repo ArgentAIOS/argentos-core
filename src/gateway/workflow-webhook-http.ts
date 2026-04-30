@@ -7,7 +7,12 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import {
+  createWorkflowRunRecord,
+  executeWorkflowRunFromRow,
+  type WorkflowRow,
+} from "../infra/workflow-execution-service.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("gateway/workflow-webhook");
@@ -185,19 +190,15 @@ export function createWorkflowWebhookHandler(
     const filteredPayload = extractPayloadFilter(payload, webhookPayloadFilter);
 
     // Create workflow run
-    const runId = randomUUID();
+    let runId: string;
     try {
-      await sql`
-        INSERT INTO workflow_runs (
-          id, workflow_id, workflow_version, status,
-          trigger_type, trigger_payload, variables
-        ) VALUES (
-          ${runId}, ${workflowId}, ${wf.version},
-          'running', 'webhook',
-          ${JSON.stringify(filteredPayload)}::jsonb,
-          '{}'::jsonb
-        )
-      `;
+      const created = await createWorkflowRunRecord(sql, {
+        workflowId,
+        workflowVersion: wf.version as number,
+        triggerType: "webhook",
+        triggerPayload: filteredPayload,
+      });
+      runId = created.runId;
     } catch (err) {
       log.warn(`failed to create webhook run: ${String(err)}`);
       sendJson(res, 500, { ok: false, error: "failed to create workflow run" });
@@ -219,122 +220,15 @@ export function createWorkflowWebhookHandler(
     // Respond immediately
     sendJson(res, 200, { ok: true, runId });
 
-    // Execute workflow in background
-    (async () => {
-      try {
-        const { executeWorkflow, CoreAgentDispatcher } =
-          await import("../infra/workflow-runner.js");
-
-        const definition: import("../infra/workflow-types.js").WorkflowDefinition = {
-          id: wf.id as string,
-          name: wf.name as string,
-          description: wf.description as string | undefined,
-          nodes: wf.nodes as import("../infra/workflow-types.js").WorkflowNode[],
-          edges: wf.edges as import("../infra/workflow-types.js").WorkflowEdge[],
-          defaultOnError:
-            (wf.default_on_error as import("../infra/workflow-types.js").ErrorConfig) ?? {
-              strategy: "fail" as const,
-              notifyOnError: true,
-            },
-          maxRunDurationMs: wf.max_run_duration_ms as number | undefined,
-          maxRunCostUsd: wf.max_run_cost_usd as number | undefined,
-        };
-
-        const dispatcher = new CoreAgentDispatcher();
-
-        let redis: import("ioredis").default | null = null;
-        try {
-          const { getAgentFamily } = await import("../data/agent-family.js");
-          const family = await getAgentFamily();
-          redis = family.getRedis();
-        } catch {
-          /* Redis optional */
-        }
-
-        await executeWorkflow({
-          workflow: definition,
-          runId,
-          dispatcher,
-          triggerPayload: filteredPayload,
-          triggerSource: "webhook",
-          redis,
-          onStepStart: (nodeId, node) => {
-            if (deps.broadcast) {
-              deps.broadcast("workflow.step.started", {
-                runId,
-                workflowId,
-                nodeId,
-                nodeKind: node.kind,
-              });
-            }
-          },
-          onStepComplete: (nodeId, record) => {
-            sql`
-              INSERT INTO workflow_step_runs (
-                id, run_id, node_id, node_kind, node_label,
-                agent_id, step_index, status, duration_ms,
-                output, tokens_used, cost_usd, started_at, ended_at
-              ) VALUES (
-                ${randomUUID()}, ${runId}, ${nodeId}, ${record.nodeKind},
-                ${record.nodeLabel}, ${record.agentId ?? null},
-                ${record.stepIndex}, ${record.status}, ${record.durationMs},
-                ${JSON.stringify(record.output)}::jsonb,
-                ${record.tokensUsed ?? null}, ${record.costUsd ?? null},
-                ${new Date(record.startedAt).toISOString()}::timestamptz,
-                ${new Date(record.endedAt).toISOString()}::timestamptz
-              )
-            `.catch((err: unknown) => {
-              log.warn(`failed to persist webhook step run: ${String(err)}`);
-            });
-
-            if (deps.broadcast) {
-              deps.broadcast("workflow.step.completed", {
-                runId,
-                workflowId,
-                nodeId,
-                status: record.status,
-                durationMs: record.durationMs,
-              });
-            }
-          },
-          onRunComplete: (status, steps) => {
-            sql`
-              UPDATE workflow_runs SET
-                status = ${status},
-                total_tokens = ${steps.reduce((sum, s) => sum + (s.tokensUsed ?? 0), 0)},
-                total_cost_usd = ${steps.reduce((sum, s) => sum + (s.costUsd ?? 0), 0)},
-                ended_at = NOW()
-              WHERE id = ${runId}
-            `.catch((err: unknown) => {
-              log.warn(`failed to update webhook workflow run: ${String(err)}`);
-            });
-
-            if (deps.broadcast) {
-              deps.broadcast("workflow.run.completed", {
-                runId,
-                workflowId,
-                status,
-                stepCount: steps.length,
-              });
-            }
-          },
-        });
-      } catch (err) {
-        log.error(`webhook workflow execution failed: runId=${runId} error=${String(err)}`);
-        sql`
-          UPDATE workflow_runs SET status = 'failed', ended_at = NOW()
-          WHERE id = ${runId}
-        `.catch(() => {});
-        if (deps.broadcast) {
-          deps.broadcast("workflow.run.completed", {
-            runId,
-            workflowId,
-            status: "failed",
-            error: String(err),
-          });
-        }
-      }
-    })();
+    void executeWorkflowRunFromRow({
+      sql,
+      workflowRow: wf as unknown as WorkflowRow,
+      runId,
+      triggerType: "webhook",
+      triggerPayload: filteredPayload,
+      triggerSource: "webhook",
+      broadcast: deps.broadcast,
+    });
 
     return true;
   };

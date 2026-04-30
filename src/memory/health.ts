@@ -1,6 +1,9 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import type { ArgentConfig } from "../config/config.js";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
+import { resolveStateDir } from "../config/paths.js";
 import { readSessionUpdatedAt, resolveDefaultSessionStorePath } from "../config/sessions.js";
 import { getPgClient, setAgentContext } from "../data/pg-client.js";
 import { resolveStorageConfig } from "../data/storage-config.js";
@@ -13,6 +16,18 @@ export type MemoryLaneHealth = {
   lastSuccessAt: string | null;
   staleHours: number | null;
   failureCount24h: number;
+};
+
+export type MemoryRecallReadinessHealth = {
+  status: MemoryLaneStatus;
+  lastRecallAt: string | null;
+  total24h: number;
+  thin24h: number;
+  notReady24h: number;
+  lowCoverage24h: number;
+  error24h: number;
+  empty24h: number;
+  latestNotice?: string;
 };
 
 export type MemoryHealthSummary = {
@@ -37,6 +52,7 @@ export type MemoryHealthSummary = {
       model: string;
     };
   };
+  recallReadiness: MemoryRecallReadinessHealth;
 };
 
 type MemoryHealthSignals = {
@@ -93,6 +109,122 @@ function clampCount(value: number): number {
     return 0;
   }
   return Math.max(0, Math.floor(value));
+}
+
+function emptyRecallReadinessHealth(): MemoryRecallReadinessHealth {
+  return {
+    status: "green",
+    lastRecallAt: null,
+    total24h: 0,
+    thin24h: 0,
+    notReady24h: 0,
+    lowCoverage24h: 0,
+    error24h: 0,
+    empty24h: 0,
+  };
+}
+
+function resolveMemoryRecallTelemetryPath(env: NodeJS.ProcessEnv = process.env): string {
+  const override = env.ARGENT_MEMORY_RECALL_TELEMETRY_PATH?.trim();
+  if (override) {
+    return path.resolve(override.replace(/^~(?=$|[\\/])/, env.HOME ?? process.env.HOME ?? "~"));
+  }
+  return path.join(resolveStateDir(env), "logs", "memory-recall.jsonl");
+}
+
+export function buildMemoryRecallReadinessHealthFromTelemetry(
+  entries: Array<Record<string, unknown>>,
+  nowMs = Date.now(),
+): MemoryRecallReadinessHealth {
+  const sinceMs = nowMs - 24 * 60 * 60 * 1000;
+  const summary = emptyRecallReadinessHealth();
+  let latestTs = 0;
+  let latestStatus: "green" | "yellow" | "red" | "error" | null = null;
+
+  for (const entry of entries) {
+    const ts = typeof entry.ts === "number" && Number.isFinite(entry.ts) ? entry.ts : null;
+    if (ts == null || ts < sinceMs || ts > nowMs + 60_000) {
+      continue;
+    }
+    summary.total24h += 1;
+    const status = entry.status === "error" ? "error" : "green";
+    if (entry.status === "error") {
+      summary.error24h += 1;
+    }
+    if (typeof entry.resultCount === "number" && entry.resultCount === 0) {
+      summary.empty24h += 1;
+    }
+
+    const readiness =
+      entry.readiness && typeof entry.readiness === "object"
+        ? (entry.readiness as Record<string, unknown>)
+        : null;
+    const readinessStatus =
+      readiness?.status === "red" || readiness?.status === "yellow" || readiness?.status === "green"
+        ? readiness.status
+        : status;
+    if (readinessStatus === "yellow") {
+      summary.thin24h += 1;
+    } else if (readinessStatus === "red") {
+      summary.notReady24h += 1;
+    }
+    const reasons = Array.isArray(readiness?.reasons) ? readiness.reasons : [];
+    if (
+      reasons.some(
+        (reason) => reason === "low_type_coverage" || reason === "very_low_type_coverage",
+      )
+    ) {
+      summary.lowCoverage24h += 1;
+    }
+
+    if (ts >= latestTs) {
+      latestTs = ts;
+      latestStatus = readinessStatus === "green" && status === "error" ? "error" : readinessStatus;
+      summary.lastRecallAt =
+        typeof entry.iso === "string" && entry.iso.trim() ? entry.iso : new Date(ts).toISOString();
+      if (typeof readiness?.notice === "string" && readiness.notice.trim()) {
+        summary.latestNotice = readiness.notice;
+      }
+    }
+  }
+
+  if (latestStatus === "red" || latestStatus === "error" || summary.notReady24h > 0) {
+    summary.status = "red";
+  } else if (
+    latestStatus === "yellow" ||
+    summary.thin24h > 0 ||
+    summary.lowCoverage24h > 0 ||
+    summary.error24h > 0 ||
+    summary.empty24h > 0
+  ) {
+    summary.status = "yellow";
+  }
+
+  return summary;
+}
+
+async function collectMemoryRecallReadinessHealth(
+  nowMs = Date.now(),
+): Promise<MemoryRecallReadinessHealth> {
+  const filePath = resolveMemoryRecallTelemetryPath();
+  const raw = await fs.readFile(filePath, "utf-8").catch(() => "");
+  if (!raw.trim()) {
+    return emptyRecallReadinessHealth();
+  }
+  const entries: Array<Record<string, unknown>> = [];
+  for (const line of raw.split("\n").slice(-5000)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === "object" && parsed.tool === "memory_recall") {
+        entries.push(parsed as Record<string, unknown>);
+      }
+    } catch {
+      // Ignore malformed telemetry lines.
+    }
+  }
+  return buildMemoryRecallReadinessHealthFromTelemetry(entries, nowMs);
 }
 
 export function classifyMemoryLaneStatus(params: {
@@ -206,6 +338,7 @@ export function buildMemoryHealthSummaryFromSignals(
         model: signals.embeddingsModel,
       },
     },
+    recallReadiness: emptyRecallReadinessHealth(),
   };
 }
 
@@ -315,5 +448,7 @@ export async function getMemoryHealthSummary(
   nowMs = Date.now(),
 ): Promise<MemoryHealthSummary> {
   const signals = await collectMemoryHealthSignalsPostgres(config);
-  return buildMemoryHealthSummaryFromSignals(signals, nowMs);
+  const summary = buildMemoryHealthSummaryFromSignals(signals, nowMs);
+  summary.recallReadiness = await collectMemoryRecallReadinessHealth(nowMs);
+  return summary;
 }

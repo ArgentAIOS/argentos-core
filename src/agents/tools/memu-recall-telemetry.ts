@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { MemoryRecallReadiness } from "../../memory/recall-readiness.js";
 import { resolveStateDir } from "../../config/paths.js";
 import { parseBooleanValue } from "../../utils/boolean.js";
 
@@ -79,6 +80,7 @@ export type MemoryRecallTelemetryEntry = {
     reason?: string;
     added?: number;
   };
+  readiness?: MemoryRecallReadiness;
   coverage?: MemoryRecallTelemetryCoverage;
   recallTelemetry?: MemoryRecallTelemetryMeta;
   topResults?: MemoryRecallTelemetryTopResult[];
@@ -92,6 +94,9 @@ export type MemoryRecallTelemetrySummary = {
   error: number;
   answered: number;
   empty: number;
+  thin: number;
+  notReady: number;
+  lowCoverage: number;
   vectorFallbacks: number;
   queryClasses: Record<string, number>;
   answerStrategies: Record<string, number>;
@@ -242,6 +247,33 @@ function sanitizeEntry(entry: MemoryRecallTelemetryEntry): MemoryRecallTelemetry
             Number.isFinite(entry.recallFallback.added)
               ? entry.recallFallback.added
               : undefined,
+        }
+      : undefined,
+    readiness: entry.readiness
+      ? {
+          status:
+            entry.readiness.status === "red" || entry.readiness.status === "yellow"
+              ? entry.readiness.status
+              : "green",
+          reasons: Array.isArray(entry.readiness.reasons)
+            ? entry.readiness.reasons.slice(0, 12).map((value) => truncateText(value, 64) ?? "")
+            : [],
+          resultCount:
+            typeof entry.readiness.resultCount === "number" &&
+            Number.isFinite(entry.readiness.resultCount)
+              ? Math.max(0, Math.floor(entry.readiness.resultCount))
+              : 0,
+          coverageScore:
+            typeof entry.readiness.coverageScore === "number" &&
+            Number.isFinite(entry.readiness.coverageScore)
+              ? Math.round(entry.readiness.coverageScore * 1000) / 1000
+              : undefined,
+          answerConfidence:
+            typeof entry.readiness.answerConfidence === "number" &&
+            Number.isFinite(entry.readiness.answerConfidence)
+              ? Math.round(entry.readiness.answerConfidence * 1000) / 1000
+              : undefined,
+          notice: truncateText(entry.readiness.notice, 200),
         }
       : undefined,
     coverage: sanitizeCoverage(entry.coverage),
@@ -427,6 +459,9 @@ export function summarizeMemoryRecallTelemetry(
     error: 0,
     answered: 0,
     empty: 0,
+    thin: 0,
+    notReady: 0,
+    lowCoverage: 0,
     vectorFallbacks: 0,
     queryClasses: {},
     answerStrategies: {},
@@ -441,6 +476,20 @@ export function summarizeMemoryRecallTelemetry(
     }
     if ((entry.resultCount ?? 0) === 0) {
       summary.empty += 1;
+    }
+    if (entry.readiness?.status === "yellow") {
+      summary.thin += 1;
+    } else if (entry.readiness?.status === "red") {
+      summary.notReady += 1;
+    }
+    if (
+      entry.readiness?.reasons?.some((reason) =>
+        ["low_type_coverage", "very_low_type_coverage"].includes(reason),
+      ) ||
+      (typeof entry.readiness?.coverageScore === "number" && entry.readiness.coverageScore < 0.5) ||
+      (typeof entry.coverage?.coverageScore === "number" && entry.coverage.coverageScore < 0.5)
+    ) {
+      summary.lowCoverage += 1;
     }
     if (entry.answer?.strategy) {
       summary.answered += 1;

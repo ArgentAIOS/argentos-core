@@ -199,7 +199,7 @@ async function scanLaunchdDir(params: {
     if (isIgnoredLaunchdLabel(label)) {
       continue;
     }
-    if (marker === "argent" && isArgentGatewayLaunchdService(label, contents)) {
+    if (marker === "argent" && !isArgentGatewayLaunchdService(label, contents)) {
       continue;
     }
     results.push({
@@ -246,7 +246,7 @@ async function scanSystemdDir(params: {
     if (!marker) {
       continue;
     }
-    if (marker === "argent" && isArgentGatewaySystemdService(name, contents)) {
+    if (marker === "argent" && !isArgentGatewaySystemdService(name, contents)) {
       continue;
     }
     results.push({

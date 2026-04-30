@@ -26,6 +26,16 @@ export function modelKey(provider: string, model: string) {
 
 export function normalizeProviderId(provider: string): string {
   const normalized = provider.trim().toLowerCase();
+  if (
+    normalized === "z.ai-coding" ||
+    normalized === "z-ai-coding" ||
+    normalized === "zai-coder" ||
+    normalized === "z.ai-coder" ||
+    normalized === "z-ai-coder" ||
+    normalized === "zai-coding-plan"
+  ) {
+    return "zai-coding";
+  }
   if (normalized === "z.ai" || normalized === "z-ai") {
     return "zai";
   }

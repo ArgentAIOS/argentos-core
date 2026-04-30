@@ -7,7 +7,19 @@ from typing import Any
 
 from .client import SquareClient
 from .config import SquareConnectorContext, redact_config, resolve_config
-from .constants import BACKEND_NAME, TOOL_NAME
+from .constants import BACKEND_NAME, ENV_ACCESS_TOKEN, TOOL_NAME
+from .service_keys import service_key_source
+
+LIVE_READ_SURFACES = ["payment", "customer", "order", "item", "invoice", "location"]
+SERVICE_KEYS = [
+    "SQUARE_ACCESS_TOKEN",
+    "SQUARE_ENVIRONMENT",
+    "SQUARE_LOCATION_ID",
+    "SQUARE_CUSTOMER_ID",
+    "SQUARE_ORDER_ID",
+    "SQUARE_PAYMENT_ID",
+    "SQUARE_ITEM_ID",
+]
 
 
 def resolve_runtime_binary() -> str | None:
@@ -56,19 +68,28 @@ def build_config_show_payload() -> dict[str, Any]:
         "backend": BACKEND_NAME,
         "data": {
             "config": redact_config(config),
+            "auth": {
+                "kind": "service-key",
+                "required": True,
+                "service_keys": SERVICE_KEYS,
+                "operator_service_keys": SERVICE_KEYS,
+                "configured": {ENV_ACCESS_TOKEN: bool(config.access_token)},
+                "sources": {key: service_key_source(key) for key in SERVICE_KEYS},
+                "development_fallback": SERVICE_KEYS,
+            },
             "scope": {
                 "location_id": config.location_id,
                 "customer_id": config.customer_id,
                 "order_id": config.order_id,
                 "payment_id": config.payment_id,
                 "item_id": config.item_id,
-                "invoice_id": config.invoice_id,
             },
             "runtime": {
                 "binary_path": resolve_runtime_binary(),
-                "implementation_mode": "live_read_with_scaffolded_writes",
-                "live_read_surfaces": ["payment", "customer", "order", "item", "invoice", "location"],
+                "implementation_mode": "live_read_only",
+                "live_read_surfaces": LIVE_READ_SURFACES,
                 "scaffolded_surfaces": [],
+                "scaffolded_commands": [],
             },
         },
     }
@@ -90,7 +111,11 @@ def build_health_payload(*, client_factory=None) -> dict[str, Any]:
             "label": "Square access token configured",
             "ok": bool(config.access_token),
             "optional": False,
-            "summary": "SQUARE_ACCESS_TOKEN is set" if config.access_token else "Add SQUARE_ACCESS_TOKEN in API Keys.",
+            "summary": (
+                f"SQUARE_ACCESS_TOKEN resolved from {service_key_source(ENV_ACCESS_TOKEN)}"
+                if config.access_token
+                else "Add SQUARE_ACCESS_TOKEN in operator-controlled API Keys, or use process.env only for local development."
+            ),
         },
         {
             "name": "environment",
@@ -138,10 +163,10 @@ def build_health_payload(*, client_factory=None) -> dict[str, Any]:
     if not resolve_runtime_binary():
         next_steps.append("Install the Square harness so the aos-square binary is available on PATH.")
     if not config.access_token:
-        next_steps.append("Create a Square application and add SQUARE_ACCESS_TOKEN.")
+        next_steps.append("Create a Square application and add SQUARE_ACCESS_TOKEN in operator-controlled API Keys. Use process.env only as a local development fallback.")
     if not config.location_id:
         next_steps.append("Optional: pin SQUARE_LOCATION_ID to default a worker to one Square location.")
-    next_steps.append("Keep write commands scaffolded until Square write workflows are approved.")
+    next_steps.append("Do not advertise Square write commands until live write workflows and approval policy are implemented.")
     return {
         "tool": TOOL_NAME,
         "backend": BACKEND_NAME,
@@ -225,24 +250,6 @@ def build_payment_get_payload(*, client_factory=None, payment_id: str | None = N
     }
 
 
-def build_payment_create_payload(*, client_factory=None, amount: str | None = None, currency: str | None = None, location_id: str | None = None) -> dict[str, Any]:
-    config = resolve_config()
-    amount = amount or config.amount
-    currency = currency or config.currency or "USD"
-    location_id = location_id or config.location_id
-    return {
-        "tool": TOOL_NAME,
-        "backend": BACKEND_NAME,
-        "data": {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "Square payment creation remains scaffolded until write workflows are approved.",
-            "payment": {"amount": amount, "currency": currency, "location_id": location_id},
-            "scope_preview": build_scope_preview("payment.create", "payment", location_id=location_id),
-        },
-    }
-
-
 def build_customer_list_payload(*, client_factory=None, limit: int = 10) -> dict[str, Any]:
     client_factory = client_factory or create_client
     config = resolve_config()
@@ -278,44 +285,6 @@ def build_customer_get_payload(*, client_factory=None, customer_id: str | None =
         "data": {
             "customer": customer,
             "scope_preview": build_scope_preview("customer.get", "customer", customer_id=customer_id),
-        },
-    }
-
-
-def build_customer_create_payload(*, email: str | None = None) -> dict[str, Any]:
-    config = resolve_config()
-    email = email or config.email
-    return {
-        "tool": TOOL_NAME,
-        "backend": BACKEND_NAME,
-        "data": {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "Square customer creation remains scaffolded until write workflows are approved.",
-            "customer": {"email": email},
-            "scope_preview": build_scope_preview("customer.create", "customer"),
-        },
-    }
-
-
-def build_customer_update_payload(*, customer_id: str | None = None, email: str | None = None) -> dict[str, Any]:
-    config = resolve_config()
-    customer_id = customer_id or config.customer_id
-    if not customer_id:
-        return {
-            "tool": TOOL_NAME,
-            "backend": BACKEND_NAME,
-            "error": {"code": "SQUARE_CUSTOMER_REQUIRED", "message": "Set SQUARE_CUSTOMER_ID or pass a customer id."},
-        }
-    return {
-        "tool": TOOL_NAME,
-        "backend": BACKEND_NAME,
-        "data": {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "Square customer update remains scaffolded until write workflows are approved.",
-            "customer": {"id": customer_id, "email": email},
-            "scope_preview": build_scope_preview("customer.update", "customer", customer_id=customer_id),
         },
     }
 
@@ -366,28 +335,6 @@ def build_order_get_payload(*, client_factory=None, order_id: str | None = None)
     }
 
 
-def build_order_create_payload(*, location_id: str | None = None) -> dict[str, Any]:
-    config = resolve_config()
-    location_id = location_id or config.location_id
-    if not location_id:
-        return {
-            "tool": TOOL_NAME,
-            "backend": BACKEND_NAME,
-            "error": {"code": "SQUARE_LOCATION_REQUIRED", "message": "Set SQUARE_LOCATION_ID or pass a location id."},
-        }
-    return {
-        "tool": TOOL_NAME,
-        "backend": BACKEND_NAME,
-        "data": {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "Square order creation remains scaffolded until write workflows are approved.",
-            "order": {"location_id": location_id},
-            "scope_preview": build_scope_preview("order.create", "order", location_id=location_id),
-        },
-    }
-
-
 def build_item_list_payload(*, client_factory=None, limit: int = 10) -> dict[str, Any]:
     client_factory = client_factory or create_client
     config = resolve_config()
@@ -427,22 +374,6 @@ def build_item_get_payload(*, client_factory=None, item_id: str | None = None) -
     }
 
 
-def build_item_create_payload(*, item_name: str | None = None) -> dict[str, Any]:
-    config = resolve_config()
-    item_name = item_name or config.item_name
-    return {
-        "tool": TOOL_NAME,
-        "backend": BACKEND_NAME,
-        "data": {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "Square catalog item creation remains scaffolded until write workflows are approved.",
-            "item": {"name": item_name},
-            "scope_preview": build_scope_preview("item.create", "item"),
-        },
-    }
-
-
 def build_invoice_list_payload(*, client_factory=None, location_id: str | None = None, limit: int = 10) -> dict[str, Any]:
     client_factory = client_factory or create_client
     config = resolve_config()
@@ -463,56 +394,5 @@ def build_invoice_list_payload(*, client_factory=None, location_id: str | None =
             "invoices": invoices,
             "picker": {"kind": "invoice", "items": invoices},
             "scope_preview": build_scope_preview("invoice.list", "invoice", location_id=location_id),
-        },
-    }
-
-
-def build_invoice_create_payload(*, location_id: str | None = None, customer_id: str | None = None) -> dict[str, Any]:
-    config = resolve_config()
-    location_id = location_id or config.location_id
-    customer_id = customer_id or config.customer_id
-    if not location_id:
-        return {
-            "tool": TOOL_NAME,
-            "backend": BACKEND_NAME,
-            "error": {"code": "SQUARE_LOCATION_REQUIRED", "message": "Set SQUARE_LOCATION_ID or pass a location id."},
-        }
-    if not customer_id:
-        return {
-            "tool": TOOL_NAME,
-            "backend": BACKEND_NAME,
-            "error": {"code": "SQUARE_CUSTOMER_REQUIRED", "message": "Set SQUARE_CUSTOMER_ID or pass a customer id."},
-        }
-    return {
-        "tool": TOOL_NAME,
-        "backend": BACKEND_NAME,
-        "data": {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "Square invoice creation remains scaffolded until write workflows are approved.",
-            "invoice": {"location_id": location_id, "customer_id": customer_id},
-            "scope_preview": build_scope_preview("invoice.create", "invoice", location_id=location_id),
-        },
-    }
-
-
-def build_invoice_send_payload(*, invoice_id: str | None = None) -> dict[str, Any]:
-    config = resolve_config()
-    invoice_id = invoice_id or config.invoice_id
-    if not invoice_id:
-        return {
-            "tool": TOOL_NAME,
-            "backend": BACKEND_NAME,
-            "error": {"code": "SQUARE_INVOICE_REQUIRED", "message": "Set SQUARE_INVOICE_ID or pass an invoice id."},
-        }
-    return {
-        "tool": TOOL_NAME,
-        "backend": BACKEND_NAME,
-        "data": {
-            "supported": False,
-            "status": "scaffold_write_only",
-            "reason": "Square invoice sending remains scaffolded until write workflows are approved.",
-            "invoice": {"id": invoice_id},
-            "scope_preview": build_scope_preview("invoice.send", "invoice", invoice_id=invoice_id),
         },
     }

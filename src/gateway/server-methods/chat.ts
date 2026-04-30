@@ -18,9 +18,9 @@ import { dispatchInboundMessage } from "../../auto-reply/dispatch.js";
 import { createReplyDispatcher } from "../../auto-reply/reply/reply-dispatcher.js";
 import { createReplyPrefixOptions } from "../../channels/reply-prefix.js";
 import { updateSessionStore, type SessionEntry } from "../../config/sessions.js";
+import { shouldInvokeSpecforgeToolForMessage } from "../../infra/specforge-conductor.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
-import { loadOptionalExport } from "../../utils/optional-module.js";
 import {
   abortChatRunById,
   abortChatRunsForSessionKey,
@@ -237,10 +237,6 @@ function buildSpecforgeToolDirective(userMessage: string): string {
     "Then continue the conversation using the tool result.",
   ].join("\n");
 }
-
-const shouldInvokeSpecforgeToolForMessageOptional = loadOptionalExport<
-  (params: { sessionKey?: string; message: string }) => Promise<boolean>
->(import.meta.url, "../../infra/specforge-conductor.js", "shouldInvokeSpecforgeToolForMessage");
 
 export const chatHandlers: GatewayRequestHandlers = {
   "chat.history": async ({ params, respond, context }) => {
@@ -621,8 +617,8 @@ export const chatHandlers: GatewayRequestHandlers = {
       );
       const resetThinking = p.thinking === "default" && trimmedMessage && !isCommand;
       let specforgeDirective = "";
-      if (trimmedMessage && !isCommand && shouldInvokeSpecforgeToolForMessageOptional) {
-        const shouldInvokeSpecforge = await shouldInvokeSpecforgeToolForMessageOptional({
+      if (trimmedMessage && !isCommand) {
+        const shouldInvokeSpecforge = await shouldInvokeSpecforgeToolForMessage({
           sessionKey: p.sessionKey,
           message: parsedMessage,
         });

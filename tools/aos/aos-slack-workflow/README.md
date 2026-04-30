@@ -41,11 +41,34 @@ Agent-native Slack workflow connector for post, react, and trigger operations.
 - Required: yes
 - Service keys:
   - SLACK_BOT_TOKEN
+- Optional service-key scope defaults:
+  - SLACK_APP_TOKEN
+  - SLACK_BASE_URL
+  - SLACK_CHANNEL_ID
+  - SLACK_THREAD_TS
+  - SLACK_TEXT
+  - SLACK_EMOJI
+  - SLACK_USER_ID
+  - SLACK_CHANNEL_NAME
+  - SLACK_CANVAS_ID
+  - SLACK_CANVAS_TITLE
+  - SLACK_CANVAS_CONTENT
+  - SLACK_CANVAS_CHANGES
+  - SLACK_FILE_PATH
+  - SLACK_FILE_TITLE
+  - SLACK_REMINDER_TEXT
+  - SLACK_REMINDER_TIME
+  - SLACK_REMINDER_USER
 - Required scopes: channels:read, channels:manage, chat:write, reactions:write, users:read, files:write, reminders:write, canvases:write
+- Operator-controlled service keys are preferred over local environment variables.
+  Local environment variables are only an unmanaged fallback, and scoped repo
+  service keys cannot be bypassed with local env.
+- Live write commands are implemented but `live_write_smoke_tested=false` until
+  a real operator Slack workspace smoke test verifies them.
 
 ## Next Steps
 
-1. Run `aos-slack-workflow --json health` and `aos-slack-workflow --json doctor` against a workspace token.
+1. Bind `SLACK_BOT_TOKEN` as an operator service key, then run `aos-slack-workflow --json health` and `aos-slack-workflow --json doctor` against a workspace token.
 2. Verify `channel.list` and `user.list` with live scopes.
 3. Test `message.post` and `thread.reply` in a sandbox channel.
 4. Verify canvas and reminder actions with appropriate scopes.

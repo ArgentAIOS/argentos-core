@@ -10,6 +10,7 @@ import {
   listTelegramDirectoryGroupsFromConfig,
   listTelegramDirectoryPeersFromConfig,
   looksLikeTelegramTargetId,
+  missingTargetError,
   migrateBaseNameToDefaultAccount,
   normalizeAccountId,
   normalizeTelegramMessagingTarget,
@@ -267,6 +268,27 @@ export const telegramPlugin: ChannelPlugin<ResolvedTelegramAccount, TelegramProb
     chunker: (text, limit) => getTelegramRuntime().channel.text.chunkMarkdownText(text, limit),
     chunkerMode: "markdown",
     textChunkLimit: 4000,
+    resolveTarget: ({ to, allowFrom }) => {
+      const normalize = (value: string) => normalizeTelegramMessagingTarget(value);
+      const trimmed = to?.trim() ?? "";
+      if (trimmed) {
+        const normalizedTo = normalize(trimmed);
+        if (normalizedTo) {
+          return { ok: true, to: normalizedTo };
+        }
+        return { ok: false, error: missingTargetError("Telegram", "<chatId>") };
+      }
+
+      const fallback = (allowFrom ?? [])
+        .map((entry) => String(entry).trim())
+        .filter((entry) => entry && entry !== "*")
+        .map(normalize)
+        .find((entry): entry is string => Boolean(entry));
+      if (fallback) {
+        return { ok: true, to: fallback };
+      }
+      return { ok: false, error: missingTargetError("Telegram", "<chatId>") };
+    },
     sendText: async ({ to, text, accountId, deps, replyToId, threadId }) => {
       const send = deps?.sendTelegram ?? getTelegramRuntime().channel.telegram.sendMessageTelegram;
       const replyToMessageId = parseReplyToMessageId(replyToId);

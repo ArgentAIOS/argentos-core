@@ -305,67 +305,8 @@ class GoogleDriveClient:
         )
         return _normalize_file(response)
 
-    def create_file(self, *, name: str, mime_type: str | None = None, folder_id: str | None = None) -> dict[str, Any]:
-        body: dict[str, Any] = {"name": name}
-        if mime_type:
-            body["mimeType"] = mime_type
-        if folder_id:
-            body["parents"] = [folder_id]
-        response = self._request(
-            "POST",
-            "/files",
-            query={"fields": "id,name,mimeType,parents,owners,webViewLink,webContentLink", "supportsAllDrives": "true"},
-            json_body=body,
-        )
-        return _normalize_file(response)
-
-    def copy_file(self, *, file_id: str, name: str | None = None) -> dict[str, Any]:
-        body: dict[str, Any] = {}
-        if name:
-            body["name"] = name
-        response = self._request(
-            "POST",
-            f"/files/{quote(file_id, safe='')}/copy",
-            query={"fields": "id,name,mimeType,parents,owners,webViewLink,webContentLink", "supportsAllDrives": "true"},
-            json_body=body,
-        )
-        return _normalize_file(response)
-
-    def move_file(self, *, file_id: str, folder_id: str) -> dict[str, Any]:
-        current = self.get_file(file_id)
-        old_parents = ",".join(current.get("parents") or [])
-        response = self._request(
-            "PATCH",
-            f"/files/{quote(file_id, safe='')}",
-            query={
-                "addParents": folder_id,
-                "removeParents": old_parents,
-                "fields": "id,name,mimeType,parents,owners,webViewLink,webContentLink",
-                "supportsAllDrives": "true",
-            },
-            json_body={},
-        )
-        return _normalize_file(response)
-
-    def delete_file(self, *, file_id: str) -> dict[str, Any]:
-        self._request("DELETE", f"/files/{quote(file_id, safe='')}", query={"supportsAllDrives": "true"}, expect_json=False)
-        return {"deleted": True, "id": file_id}
-
     def list_folders(self, *, limit: int = 25, folder_id: str | None = None) -> dict[str, Any]:
         return self.list_files(limit=limit, folder_id=folder_id, mime_type=DEFAULT_FOLDER_MIME)
-
-    def create_folder(self, *, name: str, folder_id: str | None = None) -> dict[str, Any]:
-        return self.create_file(name=name, mime_type=DEFAULT_FOLDER_MIME, folder_id=folder_id)
-
-    def create_permission(self, *, file_id: str, email_address: str, role: str) -> dict[str, Any]:
-        body = {"type": "user", "role": role, "emailAddress": email_address}
-        response = self._request(
-            "POST",
-            f"/files/{quote(file_id, safe='')}/permissions",
-            query={"sendNotificationEmail": "false", "supportsAllDrives": "true", "fields": "id,type,role,emailAddress,displayName,domain,allowFileDiscovery"},
-            json_body=body,
-        )
-        return _normalize_permission(response)
 
     def list_permissions(self, *, file_id: str) -> dict[str, Any]:
         response = self._request(

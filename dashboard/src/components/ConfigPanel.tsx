@@ -147,6 +147,48 @@ const defaultChannelSetupGuide = {
   guide: "Paste the provider token and add trusted sender IDs when using allowlist mode.",
 };
 
+const VISION_MODEL_OPTIONS = [
+  {
+    ref: "google/gemini-3-flash-preview",
+    label: "Gemini 3 Flash Preview",
+    provider: "google",
+    model: "gemini-3-flash-preview",
+  },
+  {
+    ref: "google/gemini-3-pro-preview",
+    label: "Gemini 3 Pro Preview",
+    provider: "google",
+    model: "gemini-3-pro-preview",
+  },
+  {
+    ref: "anthropic/claude-sonnet-4-6",
+    label: "Claude Sonnet 4.6",
+    provider: "anthropic",
+    model: "claude-sonnet-4-6",
+  },
+  {
+    ref: "anthropic/claude-haiku-4-5",
+    label: "Claude Haiku 4.5",
+    provider: "anthropic",
+    model: "claude-haiku-4-5",
+  },
+  {
+    ref: "anthropic/claude-opus-4-6",
+    label: "Claude Opus 4.6",
+    provider: "anthropic",
+    model: "claude-opus-4-6",
+  },
+  { ref: "openai/gpt-4o", label: "GPT-4o", provider: "openai", model: "gpt-4o" },
+  { ref: "openai/gpt-5.4", label: "GPT-5.4", provider: "openai", model: "gpt-5.4" },
+  { ref: "xai/grok-4", label: "Grok 4", provider: "xai", model: "grok-4" },
+  {
+    ref: "minimax/MiniMax-VL-01",
+    label: "MiniMax VL-01",
+    provider: "minimax",
+    model: "MiniMax-VL-01",
+  },
+] as const;
+
 function parseChannelAllowFrom(value: string): string[] {
   return Array.from(
     new Set(
@@ -3024,6 +3066,15 @@ export function ConfigPanel({
       alsoAllow?: string[];
       deny?: string[];
     };
+    skills?: string[];
+    skillSource?: string;
+    skillDefaultKey?: string;
+    imageAnalysis?: {
+      primary?: string;
+      fallbacks?: string[];
+      timeoutSeconds?: number;
+      models?: Array<{ provider: string; model: string }>;
+    };
   }
   interface MemoryV3StatusResponse {
     ok: boolean;
@@ -3203,6 +3254,8 @@ export function ConfigPanel({
     eligible?: boolean;
     disabled?: boolean;
     blockedByAllowlist?: boolean;
+    blockedByAgentSkillAllowlist?: boolean;
+    selectedForAgent?: boolean;
     missing?: {
       bins?: string[];
       anyBins?: string[];
@@ -3259,6 +3312,16 @@ export function ConfigPanel({
   });
   const [defaultAgentId, setDefaultAgentId] = useState("main");
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([]);
+  const [imagePrimaryRef, setImagePrimaryRef] = useState("google/gemini-3-flash-preview");
+  const [imageFallbackRefsDraft, setImageFallbackRefsDraft] = useState(
+    "anthropic/claude-sonnet-4-6",
+  );
+  const [imageTimeoutDraft, setImageTimeoutDraft] = useState("60");
+  const [imageAnalysisSaving, setImageAnalysisSaving] = useState(false);
+  const [imageAnalysisMessage, setImageAnalysisMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
   const [hasExecutionWorkerOverride, setHasExecutionWorkerOverride] = useState(false);
   useEffect(() => {
     if (!isPublicCoreSurface) return;
@@ -3403,6 +3466,9 @@ export function ConfigPanel({
   const [capabilitiesAllowDraft, setCapabilitiesAllowDraft] = useState("");
   const [capabilitiesAskDraft, setCapabilitiesAskDraft] = useState("");
   const [capabilitiesDenyDraft, setCapabilitiesDenyDraft] = useState("");
+  const [capabilitiesSkillDraft, setCapabilitiesSkillDraft] = useState("");
+  const [capabilitiesSkillSource, setCapabilitiesSkillSource] = useState("");
+  const [capabilitiesSkillDefaultKey, setCapabilitiesSkillDefaultKey] = useState("");
   const [capabilitiesSaving, setCapabilitiesSaving] = useState(false);
 
   // Gateway tab state
@@ -3914,6 +3980,9 @@ export function ConfigPanel({
           defaultId?: string;
           agents?: Array<{ id?: string; name?: string }>;
         }>("agents.list").catch(() => null);
+        const familyPayload = await gatewayRequest<{
+          members?: Array<{ id?: string; name?: string; role?: string; team?: string }>;
+        }>("family.members").catch(() => null);
 
         const options = Array.isArray(agentsPayload?.agents)
           ? agentsPayload.agents
@@ -3926,6 +3995,19 @@ export function ConfigPanel({
               })
               .filter((row: AgentOption | null): row is AgentOption => Boolean(row))
           : [];
+        if (Array.isArray(familyPayload?.members)) {
+          const seen = new Set(options.map((row) => row.id));
+          for (const member of familyPayload.members) {
+            const id = typeof member?.id === "string" ? member.id.trim() : "";
+            if (!id || seen.has(id)) continue;
+            const name =
+              typeof member?.name === "string" && member.name.trim() ? member.name.trim() : id;
+            const team =
+              typeof member?.team === "string" && member.team.trim() ? member.team.trim() : "";
+            options.push({ id, label: team ? `${name} (${team})` : name });
+            seen.add(id);
+          }
+        }
 
         const resolvedDefaultAgentId =
           (typeof agentsPayload?.defaultId === "string" && agentsPayload.defaultId.trim()) ||
@@ -3975,6 +4057,9 @@ export function ConfigPanel({
         setCapabilitiesAllowDraft(formatMultilineList(toolsSettings?.allow));
         setCapabilitiesAskDraft(formatMultilineList(toolsSettings?.ask));
         setCapabilitiesDenyDraft(formatMultilineList(toolsSettings?.deny));
+        setCapabilitiesSkillDraft(formatMultilineList(agentSettingsPayload?.skills));
+        setCapabilitiesSkillSource(agentSettingsPayload?.skillSource ?? "");
+        setCapabilitiesSkillDefaultKey(agentSettingsPayload?.skillDefaultKey ?? "");
         setCapabilitiesUpdatedAt(Date.now());
       } catch (err) {
         console.error("[Capabilities] Failed to load capabilities:", err);
@@ -4237,6 +4322,28 @@ export function ConfigPanel({
               : [],
           );
           setHasExecutionWorkerOverride(Boolean(agentData.hasExecutionWorkerOverride));
+          setImagePrimaryRef(
+            typeof agentData?.imageAnalysis?.primary === "string" &&
+              agentData.imageAnalysis.primary.trim()
+              ? agentData.imageAnalysis.primary.trim()
+              : "google/gemini-3-flash-preview",
+          );
+          setImageFallbackRefsDraft(
+            Array.isArray(agentData?.imageAnalysis?.fallbacks) &&
+              agentData.imageAnalysis.fallbacks.length > 0
+              ? agentData.imageAnalysis.fallbacks
+                  .filter((entry: unknown) => typeof entry === "string" && entry.trim())
+                  .join("\n")
+              : "anthropic/claude-sonnet-4-6",
+          );
+          setImageTimeoutDraft(
+            String(
+              typeof agentData?.imageAnalysis?.timeoutSeconds === "number" &&
+                Number.isFinite(agentData.imageAnalysis.timeoutSeconds)
+                ? Math.max(1, Math.floor(agentData.imageAnalysis.timeoutSeconds))
+                : 60,
+            ),
+          );
           const timeoutMs = agentData?.memory?.memu?.llm?.timeoutMs;
           if (typeof timeoutMs === "number" && Number.isFinite(timeoutMs)) {
             setMemoryTimeoutDraft(String(Math.max(1, Math.floor(timeoutMs))));
@@ -5445,6 +5552,43 @@ export function ConfigPanel({
     loadCapabilities,
   ]);
 
+  const saveCapabilitiesSkillMapping = useCallback(async () => {
+    const targetAgentId = capabilitiesAgentId.trim() || defaultAgentId.trim() || "main";
+    if (!targetAgentId) return;
+    try {
+      setCapabilitiesSaving(true);
+      setCapabilitiesMessage(null);
+      const skills = parseMultilineList(capabilitiesSkillDraft);
+      const response = await fetch(
+        `/api/settings/agent?agentId=${encodeURIComponent(targetAgentId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ skills }),
+        },
+      );
+      if (!response.ok) {
+        const details = await response.json().catch(() => ({}));
+        throw new Error(
+          typeof details?.error === "string" ? details.error : `HTTP ${response.status}`,
+        );
+      }
+      setCapabilitiesMessage({
+        type: "success",
+        text: `Saved skill mapping for ${targetAgentId}.`,
+      });
+      await loadCapabilities(targetAgentId);
+    } catch (err) {
+      console.error("[Capabilities] Failed to save skill mapping:", err);
+      setCapabilitiesMessage({
+        type: "error",
+        text: `Failed to save skill mapping: ${err instanceof Error ? err.message : "request failed"}`,
+      });
+    } finally {
+      setCapabilitiesSaving(false);
+    }
+  }, [capabilitiesAgentId, defaultAgentId, capabilitiesSkillDraft, loadCapabilities]);
+
   const buildIntentPayloadFromDraft = useCallback(() => {
     if (!intentDraft) {
       return { ok: false as const, error: "Intent settings are not loaded yet." };
@@ -5948,7 +6092,7 @@ export function ConfigPanel({
 
   const parseFallbackList = (value: string): string[] => {
     return String(value ?? "")
-      .split(",")
+      .split(/[,\n]+/)
       .map((entry) => entry.trim())
       .filter(Boolean);
   };
@@ -6174,6 +6318,106 @@ export function ConfigPanel({
         return "Low confidence";
       default:
         return "";
+    }
+  };
+
+  const visionModelOptions = (() => {
+    const seen = new Set<string>();
+    const rows: Array<{ ref: string; label: string; provider: string; model: string }> = [];
+    const push = (ref: string, label?: string) => {
+      const parsed = parseModelRef(ref);
+      if (!parsed || seen.has(ref)) return;
+      seen.add(ref);
+      rows.push({
+        ref,
+        label: label || `${ref} (custom)`,
+        provider: parsed.provider,
+        model: parsed.model,
+      });
+    };
+    for (const option of VISION_MODEL_OPTIONS) {
+      push(option.ref, `${option.ref} (${option.label})`);
+    }
+    push(imagePrimaryRef);
+    for (const fallback of parseFallbackList(imageFallbackRefsDraft)) {
+      push(fallback);
+    }
+    return rows;
+  })();
+
+  const saveImageAnalysisSettings = async () => {
+    const primary = imagePrimaryRef.trim();
+    const parsedPrimary = parseModelRef(primary);
+    if (!primary || !parsedPrimary) {
+      setImageAnalysisMessage({
+        type: "error",
+        text: "Choose a primary image model in provider/model format.",
+      });
+      return;
+    }
+    const fallbacks = parseFallbackList(imageFallbackRefsDraft).filter((ref) => ref !== primary);
+    const invalidFallback = fallbacks.find((ref) => !parseModelRef(ref));
+    if (invalidFallback) {
+      setImageAnalysisMessage({
+        type: "error",
+        text: `Fallback "${invalidFallback}" is not in provider/model format.`,
+      });
+      return;
+    }
+    const timeoutSeconds = Math.max(1, Math.floor(Number(imageTimeoutDraft) || 60));
+    const models = [primary, ...fallbacks]
+      .map((ref) => parseModelRef(ref))
+      .filter((entry): entry is { provider: string; model: string } => Boolean(entry));
+
+    setImageAnalysisSaving(true);
+    setImageAnalysisMessage(null);
+    try {
+      const response = await fetch("/api/settings/agent", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageAnalysis: {
+            primary,
+            fallbacks,
+            timeoutSeconds,
+            models,
+          },
+        }),
+      });
+      if (!response.ok) {
+        const details = await response.json().catch(() => ({}));
+        throw new Error(
+          typeof details?.error === "string" ? details.error : `HTTP ${response.status}`,
+        );
+      }
+      setAgentSettings((prev) =>
+        prev
+          ? {
+              ...prev,
+              imageAnalysis: {
+                primary,
+                fallbacks,
+                timeoutSeconds,
+                models,
+              },
+            }
+          : prev,
+      );
+      setImageTimeoutDraft(String(timeoutSeconds));
+      setImageAnalysisMessage({
+        type: "success",
+        text: "Image analysis model routing saved.",
+      });
+    } catch (err) {
+      console.error("[Agent] Failed to save image analysis config:", err);
+      setImageAnalysisMessage({
+        type: "error",
+        text: `Failed to save image analysis config: ${
+          err instanceof Error ? err.message : "request failed"
+        }`,
+      });
+    } finally {
+      setImageAnalysisSaving(false);
     }
   };
 
@@ -6422,6 +6666,12 @@ export function ConfigPanel({
       }
 
       window.open(String(startData.authUrl), "_blank", "noopener,noreferrer");
+      if (startData.userCode) {
+        setAuthMessage({
+          type: "success",
+          text: `OpenAI Codex code: ${String(startData.userCode)}`,
+        });
+      }
 
       const state = String(startData.state);
       const deadline = Date.now() + Math.max(Number(startData.expiresInMs || 0), 60_000);
@@ -9995,7 +10245,8 @@ export function ConfigPanel({
                               {
                                 category: "Chinese Providers",
                                 items: [
-                                  { id: "zai", label: "Z.AI (GLM)" },
+                                  { id: "zai", label: "Z.AI API Direct" },
+                                  { id: "zai-coding", label: "Z.AI Coding Plan" },
                                   { id: "moonshot", label: "Moonshot AI (Kimi)" },
                                   { id: "kimi-coding", label: "Kimi Coding" },
                                   { id: "qwen-portal", label: "Qwen (Alibaba)" },
@@ -11382,6 +11633,51 @@ export function ConfigPanel({
                       </div>
                     </div>
 
+                    <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <div className="space-y-1">
+                          <h3 className="text-white/90 font-medium">Skill Mapping</h3>
+                          <div className="text-white/45 text-xs max-w-3xl">
+                            This sets the selected agent&apos;s explicit skill allowlist. Empty
+                            clears the override so generated family-team defaults or all eligible
+                            skills can apply.
+                          </div>
+                          <div className="text-white/35 text-[11px]">
+                            Source:{" "}
+                            <span className="text-white/60">
+                              {capabilitiesSkillSource || "global/eligible"}
+                            </span>
+                            {capabilitiesSkillDefaultKey ? ` · ${capabilitiesSkillDefaultKey}` : ""}
+                          </div>
+                        </div>
+                        <div className="text-[11px] text-white/40 rounded-lg border border-white/10 px-3 py-1.5 bg-gray-900/30">
+                          {parseMultilineList(capabilitiesSkillDraft).length || "All"} mapped
+                        </div>
+                      </div>
+                      <textarea
+                        value={capabilitiesSkillDraft}
+                        onChange={(e) => setCapabilitiesSkillDraft(e.target.value)}
+                        rows={6}
+                        placeholder={
+                          "argentos-family-team-development\nargentos-implementation-planning\nargentos-code-verification"
+                        }
+                        className="w-full rounded-lg border border-white/10 bg-gray-900/40 px-3 py-2 text-sm text-white/85 focus:outline-none focus:border-cyan-500/50 resize-y"
+                      />
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div className="text-[11px] text-white/35">
+                          Skill names must match the entries below.
+                        </div>
+                        <button
+                          onClick={() => void saveCapabilitiesSkillMapping()}
+                          disabled={capabilitiesSaving || capabilitiesLoading}
+                          className="inline-flex items-center gap-2 rounded-lg bg-cyan-500/15 border border-cyan-500/25 px-3 py-2 text-sm text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-50"
+                        >
+                          <Sparkles className="w-4 h-4" />
+                          {capabilitiesSaving ? "Saving..." : "Save skill mapping"}
+                        </button>
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                       <div className="bg-white/5 rounded-xl p-4 space-y-3">
                         <div className="flex items-center justify-between">
@@ -11415,7 +11711,11 @@ export function ConfigPanel({
                                           : "bg-yellow-500/15 text-yellow-300 border border-yellow-500/20"
                                       }`}
                                     >
-                                      {skill.eligible ? "ready" : "blocked"}
+                                      {skill.selectedForAgent
+                                        ? "mapped"
+                                        : skill.eligible
+                                          ? "ready"
+                                          : "blocked"}
                                     </span>
                                   </div>
                                   {skill.description && (
@@ -11425,16 +11725,19 @@ export function ConfigPanel({
                                   )}
                                   {!skill.eligible && (
                                     <div className="text-[10px] text-white/40">
-                                      Missing:{" "}
-                                      {[
-                                        ...(skill.missing?.bins ?? []),
-                                        ...(skill.missing?.anyBins ?? []),
-                                        ...(skill.missing?.env ?? []),
-                                        ...(skill.missing?.config ?? []),
-                                        ...(skill.missing?.os ?? []),
-                                      ]
-                                        .slice(0, 4)
-                                        .join(", ") || "requirements"}
+                                      {skill.blockedByAgentSkillAllowlist
+                                        ? "Not in this agent's skill mapping"
+                                        : `Missing: ${
+                                            [
+                                              ...(skill.missing?.bins ?? []),
+                                              ...(skill.missing?.anyBins ?? []),
+                                              ...(skill.missing?.env ?? []),
+                                              ...(skill.missing?.config ?? []),
+                                              ...(skill.missing?.os ?? []),
+                                            ]
+                                              .slice(0, 4)
+                                              .join(", ") || "requirements"
+                                          }`}
                                     </div>
                                   )}
                                 </div>
@@ -14426,6 +14729,100 @@ export function ConfigPanel({
                               </span>{" "}
                               provider/model lane so it stays aligned with the other background
                               model selectors.
+                            </div>
+                            <div className="rounded-lg border border-sky-400/25 bg-sky-500/5 p-3 space-y-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-start gap-2">
+                                  <Eye className="w-4 h-4 mt-0.5 text-sky-300" />
+                                  <div>
+                                    <div className="text-white/85 text-sm font-medium">
+                                      Image Analysis
+                                    </div>
+                                    <div className="text-white/45 text-xs">
+                                      Global vision fallback for screenshots and image tools when
+                                      the primary chat model cannot see images.
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="rounded-full border border-sky-400/25 bg-sky-400/10 px-2 py-0.5 text-[10px] font-medium text-sky-200">
+                                  VLM
+                                </div>
+                              </div>
+                              {imageAnalysisMessage && (
+                                <div
+                                  className={`rounded-lg border px-3 py-2 text-xs ${
+                                    imageAnalysisMessage.type === "success"
+                                      ? "border-green-500/30 bg-green-500/10 text-green-300"
+                                      : "border-red-500/30 bg-red-500/10 text-red-300"
+                                  }`}
+                                >
+                                  {imageAnalysisMessage.text}
+                                </div>
+                              )}
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="md:col-span-2">
+                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                    Primary image model
+                                  </label>
+                                  <select
+                                    value={imagePrimaryRef}
+                                    onChange={(e) => setImagePrimaryRef(e.target.value)}
+                                    className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-sky-500/50 outline-none font-mono"
+                                  >
+                                    {visionModelOptions.map((entry) => (
+                                      <option key={`vision-primary-${entry.ref}`} value={entry.ref}>
+                                        {entry.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                    Timeout seconds
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={imageTimeoutDraft}
+                                    onChange={(e) => setImageTimeoutDraft(e.target.value)}
+                                    className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-sky-500/50 outline-none font-mono"
+                                  />
+                                </div>
+                                <div className="md:col-span-3">
+                                  <label className="text-white/40 text-[10px] uppercase tracking-wider">
+                                    Fallback models
+                                  </label>
+                                  <textarea
+                                    value={imageFallbackRefsDraft}
+                                    onChange={(e) => setImageFallbackRefsDraft(e.target.value)}
+                                    rows={2}
+                                    className="w-full mt-1 bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-sky-500/50 outline-none font-mono"
+                                    placeholder="anthropic/claude-sonnet-4-6"
+                                    spellCheck={false}
+                                  />
+                                  <div className="mt-1 text-white/35 text-[11px]">
+                                    One provider/model per line. These also seed the media image
+                                    pipeline order.
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div className="text-white/45 text-xs">
+                                  Current pipeline:{" "}
+                                  <span className="font-mono text-white/65">
+                                    {[imagePrimaryRef, ...parseFallbackList(imageFallbackRefsDraft)]
+                                      .filter(Boolean)
+                                      .join(" -> ")}
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={() => void saveImageAnalysisSettings()}
+                                  disabled={imageAnalysisSaving}
+                                  className="px-3 py-2 bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 rounded-lg transition-all text-xs font-medium disabled:opacity-50"
+                                >
+                                  {imageAnalysisSaving ? "Saving..." : "Save Image Routing"}
+                                </button>
+                              </div>
                             </div>
                             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
                               {(

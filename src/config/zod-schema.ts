@@ -525,6 +525,18 @@ export const ArgentSchema = z
         outputFormat: z.string().optional(),
         apiKey: z.string().optional(),
         interruptOnSpeech: z.boolean().optional(),
+        realtime: z
+          .object({
+            enabled: z.boolean().optional(),
+            provider: z.string().optional(),
+            transport: z.enum(["auto", "webrtc-sdp", "gateway-relay"]).optional(),
+            model: z.string().optional(),
+            voice: z.string().optional(),
+            instructions: z.string().optional(),
+            providers: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

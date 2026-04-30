@@ -8,13 +8,27 @@ function isMiniMaxM2Model(model: Model<Api>): boolean {
   return model.provider === "minimax" && /^MiniMax-M2(?:\.|$)/.test(model.id);
 }
 
+const ZAI_GENERAL_CHAT_COMPLETIONS_URL = "https://api.z.ai/api/paas/v4/chat/completions";
 const ZAI_CODING_CHAT_COMPLETIONS_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions";
 
+function defaultZaiChatCompletionsUrl(modelId: string): string {
+  const normalized = modelId.trim().toLowerCase();
+  if (normalized === "glm-5" || normalized === "glm-5-turbo" || normalized === "glm-5.1") {
+    return ZAI_GENERAL_CHAT_COMPLETIONS_URL;
+  }
+  return ZAI_CODING_CHAT_COMPLETIONS_URL;
+}
+
 function normalizeZaiBaseUrl(model: Model<"openai-completions">): string {
-  const baseUrl = model.baseUrl?.trim() ?? "";
-  if (!baseUrl || baseUrl.includes("open.bigmodel.cn")) {
+  if (model.provider === "zai-coding") {
     return ZAI_CODING_CHAT_COMPLETIONS_URL;
   }
+
+  const baseUrl = model.baseUrl?.trim() ?? "";
+  if (!baseUrl || baseUrl.includes("open.bigmodel.cn")) {
+    return defaultZaiChatCompletionsUrl(model.id);
+  }
+
   const withoutTrailingSlash = baseUrl.replace(/\/+$/, "");
   if (withoutTrailingSlash.includes("api.z.ai")) {
     if (withoutTrailingSlash.endsWith("/chat/completions")) {
@@ -27,6 +41,7 @@ function normalizeZaiBaseUrl(model: Model<"openai-completions">): string {
       return `${withoutTrailingSlash}/chat/completions`;
     }
   }
+
   return baseUrl;
 }
 
@@ -40,7 +55,8 @@ export function normalizeModelCompat(model: Model<Api>): Model<Api> {
   }
 
   const baseUrl = model.baseUrl ?? "";
-  const isZai = model.provider === "zai" || baseUrl.includes("api.z.ai");
+  const isZai =
+    model.provider === "zai" || model.provider === "zai-coding" || baseUrl.includes("api.z.ai");
   const isMiniMax = model.provider === "minimax" || baseUrl.includes("api.minimax");
   if ((!isZai && !isMiniMax) || !isOpenAiCompletionsModel(model)) {
     return model;

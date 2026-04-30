@@ -1,6 +1,6 @@
 # Stripe Agent Harness
 
-This directory contains the Click CLI scaffold for `aos-stripe`.
+This directory contains the Click CLI harness for `aos-stripe`.
 
 ## Commands
 
@@ -8,19 +8,22 @@ This directory contains the Click CLI scaffold for `aos-stripe`.
 - `health`
 - `doctor`
 - `config show`
-- `account.read`
-- `balance.read`
+- `balance.get` (`balance.read` remains as a compatibility alias)
 - `customer.list`
-- `customer.search`
-- `customer.read`
+- `customer.get`
+- `customer.create`
 - `payment.list`
-- `payment.read`
+- `payment.get`
+- `payment.create`
+- `subscription.list`
+- `subscription.get`
+- `subscription.create`
+- `subscription.cancel`
 - `invoice.list`
-- `invoice.read`
-- `invoice.create_draft`
-- `refund.create`
+- `invoice.get`
+- `invoice.send`
 
-Read commands are wired to the live Stripe API. Write commands are truthful stubs and return `NOT_IMPLEMENTED`.
+Read commands and permission-gated write commands are wired to the live Stripe API. Compatibility aliases remain for older read command names used by existing tests and operators.
 
 ## Development
 

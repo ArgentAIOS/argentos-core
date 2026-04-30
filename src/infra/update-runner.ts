@@ -970,6 +970,18 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       steps.push(dashboardBuildStep);
     }
 
+    const bundledHarnessInstaller = path.join(
+      gitRoot,
+      "scripts",
+      "install-bundled-aos-harnesses.mjs",
+    );
+    if (await pathExists(bundledHarnessInstaller)) {
+      const bundledHarnessStep = await runStep(
+        step("bundled AOS harness install", ["node", bundledHarnessInstaller], gitRoot),
+      );
+      steps.push(bundledHarnessStep);
+    }
+
     // Restore committed Control UI assets when they exist. Some public Core
     // checkouts generate dist/control-ui/ as an ignored artifact instead.
     const controlUiTracked = await runCommand(

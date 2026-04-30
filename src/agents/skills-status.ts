@@ -3,7 +3,6 @@ import type { ArgentConfig } from "../config/config.js";
 import { CONFIG_DIR } from "../utils.js";
 import {
   hasBinary,
-  isBundledSkillAllowed,
   isConfigPathTruthy,
   loadWorkspaceSkillEntries,
   resolveBundledAllowlist,
@@ -44,6 +43,8 @@ export type SkillStatusEntry = {
   always: boolean;
   disabled: boolean;
   blockedByAllowlist: boolean;
+  blockedByAgentSkillAllowlist: boolean;
+  selectedForAgent?: boolean;
   eligible: boolean;
   requirements: {
     bins: string[];
@@ -170,12 +171,11 @@ function buildSkillStatus(
   prefs?: SkillsInstallPreferences,
   eligibility?: SkillEligibilityContext,
   bundledNames?: Set<string>,
+  skillFilter?: Set<string>,
 ): SkillStatusEntry {
   const skillKey = resolveSkillKey(entry);
   const skillConfig = resolveSkillConfig(config, skillKey);
   const disabled = skillConfig?.enabled === false;
-  const allowBundled = resolveBundledAllowlist(config);
-  const blockedByAllowlist = !isBundledSkillAllowed(entry, allowBundled);
   const always = entry.metadata?.always === true;
   const emoji = entry.metadata?.emoji ?? entry.frontmatter.emoji;
   const homepageRaw =
@@ -187,7 +187,16 @@ function buildSkillStatus(
   const bundled =
     bundledNames && bundledNames.size > 0
       ? bundledNames.has(entry.skill.name)
-      : entry.skill.source === "argent-bundled";
+      : (entry.skill as { source?: string }).source === "argent-bundled";
+  const allowBundled = resolveBundledAllowlist(config);
+  const blockedByAllowlist =
+    Array.isArray(allowBundled) &&
+    allowBundled.length > 0 &&
+    bundled &&
+    !allowBundled.includes(skillKey) &&
+    !allowBundled.includes(entry.skill.name);
+  const selectedForAgent = skillFilter ? skillFilter.has(entry.skill.name) : undefined;
+  const blockedByAgentSkillAllowlist = skillFilter ? !selectedForAgent : false;
 
   const requiredBins = entry.metadata?.requires?.bins ?? [];
   const requiredAnyBins = entry.metadata?.requires?.anyBins ?? [];
@@ -252,6 +261,7 @@ function buildSkillStatus(
   const eligible =
     !disabled &&
     !blockedByAllowlist &&
+    !blockedByAgentSkillAllowlist &&
     (always ||
       (missing.bins.length === 0 &&
         missing.anyBins.length === 0 &&
@@ -262,7 +272,7 @@ function buildSkillStatus(
   return {
     name: entry.skill.name,
     description: entry.skill.description,
-    source: entry.skill.source,
+    source: (entry.skill as { source?: string }).source ?? entry.skill.baseDir,
     bundled,
     filePath: entry.skill.filePath,
     baseDir: entry.skill.baseDir,
@@ -273,6 +283,8 @@ function buildSkillStatus(
     always,
     disabled,
     blockedByAllowlist,
+    blockedByAgentSkillAllowlist,
+    selectedForAgent,
     eligible,
     requirements: {
       bins: requiredBins,
@@ -294,6 +306,7 @@ export function buildWorkspaceSkillStatus(
     managedSkillsDir?: string;
     entries?: SkillEntry[];
     eligibility?: SkillEligibilityContext;
+    skillFilter?: string[];
   },
 ): SkillStatusReport {
   const managedSkillsDir = opts?.managedSkillsDir ?? path.join(CONFIG_DIR, "skills");
@@ -306,11 +319,21 @@ export function buildWorkspaceSkillStatus(
       bundledSkillsDir: bundledContext.dir,
     });
   const prefs = resolveSkillsInstallPreferences(opts?.config);
+  const skillFilter = Array.isArray(opts?.skillFilter)
+    ? new Set(opts.skillFilter.map((entry) => String(entry).trim()).filter(Boolean))
+    : undefined;
   return {
     workspaceDir,
     managedSkillsDir,
     skills: skillEntries.map((entry) =>
-      buildSkillStatus(entry, opts?.config, prefs, opts?.eligibility, bundledContext.names),
+      buildSkillStatus(
+        entry,
+        opts?.config,
+        prefs,
+        opts?.eligibility,
+        bundledContext.names,
+        skillFilter,
+      ),
     ),
   };
 }

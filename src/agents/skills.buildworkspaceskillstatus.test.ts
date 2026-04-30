@@ -110,6 +110,34 @@ describe("buildWorkspaceSkillStatus", () => {
     }
   });
 
+  it("marks skills outside an agent mapping as blocked by the agent allowlist", async () => {
+    const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-"));
+    await writeSkill({
+      dir: path.join(workspaceDir, "skills", "agent-selected"),
+      name: "agent-selected",
+      description: "Mapped skill",
+    });
+    await writeSkill({
+      dir: path.join(workspaceDir, "skills", "agent-unselected"),
+      name: "agent-unselected",
+      description: "Unmapped skill",
+    });
+
+    const report = buildWorkspaceSkillStatus(workspaceDir, {
+      managedSkillsDir: path.join(workspaceDir, ".managed"),
+      skillFilter: ["agent-selected"],
+    });
+    const selected = report.skills.find((entry) => entry.name === "agent-selected");
+    const unselected = report.skills.find((entry) => entry.name === "agent-unselected");
+
+    expect(selected?.selectedForAgent).toBe(true);
+    expect(selected?.blockedByAgentSkillAllowlist).toBe(false);
+    expect(selected?.eligible).toBe(true);
+    expect(unselected?.selectedForAgent).toBe(false);
+    expect(unselected?.blockedByAgentSkillAllowlist).toBe(true);
+    expect(unselected?.eligible).toBe(false);
+  });
+
   it("filters install options by OS", async () => {
     const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-"));
     const skillDir = path.join(workspaceDir, "skills", "install-skill");

@@ -1,0 +1,238 @@
+{
+  "tool": "aos-1password",
+  "backend": "1password-cli",
+  "manifest_schema_version": "1.0.0",
+  "scope": {
+    "kind": "secret-management",
+    "surface": "account-vault-item-fields",
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": false,
+    "workerFields": ["account", "vault", "item", "field", "limit"],
+    "worker_visible_actions": [
+      "account.whoami",
+      "account.list",
+      "vault.list",
+      "item.list",
+      "item.get"
+    ],
+    "fields": [
+      {
+        "id": "account",
+        "label": "Account",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "1Password account shorthand or sign-in address.",
+        "placeholder": "my.1password.com",
+        "applies_to": ["account.whoami", "vault.list", "item.list", "item.get", "item.reveal"]
+      },
+      {
+        "id": "vault",
+        "label": "Vault",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "1Password vault name or ID.",
+        "placeholder": "Private",
+        "applies_to": ["item.list", "item.get", "item.reveal"]
+      },
+      {
+        "id": "item",
+        "label": "Item",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "1Password item name or ID.",
+        "placeholder": "github.com",
+        "applies_to": ["item.get", "item.reveal"]
+      },
+      {
+        "id": "field",
+        "label": "Field",
+        "type": "string",
+        "renderAs": "text",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Field ID or label to reveal in admin mode.",
+        "placeholder": "password",
+        "applies_to": ["item.reveal"]
+      },
+      {
+        "id": "limit",
+        "label": "Limit",
+        "type": "number",
+        "renderAs": "number",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "number",
+        "description": "Maximum item count to return.",
+        "placeholder": "50",
+        "applies_to": ["item.list"]
+      }
+    ],
+    "commandDefaults": {
+      "account.whoami": {
+        "selection_surface": "account",
+        "account": "OP_ACCOUNT"
+      },
+      "account.list": {
+        "selection_surface": "account"
+      },
+      "vault.list": {
+        "selection_surface": "vault",
+        "account": "OP_ACCOUNT"
+      },
+      "item.list": {
+        "selection_surface": "item",
+        "account": "OP_ACCOUNT",
+        "vault": "AOS_1PASSWORD_VAULT",
+        "limit": 50
+      },
+      "item.get": {
+        "selection_surface": "item",
+        "account": "OP_ACCOUNT",
+        "vault": "AOS_1PASSWORD_VAULT",
+        "args": ["AOS_1PASSWORD_ITEM"]
+      },
+      "item.reveal": {
+        "selection_surface": "field",
+        "account": "OP_ACCOUNT",
+        "vault": "AOS_1PASSWORD_VAULT",
+        "args": ["AOS_1PASSWORD_ITEM"],
+        "field": "AOS_1PASSWORD_FIELD"
+      }
+    },
+    "pickerHints": {
+      "account": {
+        "kind": "account",
+        "selection_surface": "account",
+        "resource": "1password.account",
+        "source_command": "account.list",
+        "source_fields": ["account_uuid", "account_name", "url", "user_email"]
+      },
+      "vault": {
+        "kind": "vault",
+        "selection_surface": "vault",
+        "resource": "1password.vault",
+        "source_command": "vault.list",
+        "source_fields": ["id", "name", "type"]
+      },
+      "item": {
+        "kind": "item",
+        "selection_surface": "item",
+        "resource": "1password.item",
+        "source_command": "item.list",
+        "source_fields": ["id", "title", "category", "vault", "updated_at"]
+      }
+    }
+  },
+  "connector": {
+    "label": "1Password",
+    "category": "security",
+    "categories": ["security", "password-manager", "secret-management"],
+    "resources": ["account", "vault", "item", "field"]
+  },
+  "auth": {
+    "kind": "local-cli",
+    "required": true,
+    "service_keys": ["OP_SERVICE_ACCOUNT_TOKEN"],
+    "interactive_setup": [
+      "Store OP_SERVICE_ACCOUNT_TOKEN in operator-controlled service keys to link 1Password to ArgentOS for headless runs.",
+      "For interactive local use, install the 1Password CLI (`op`) and sign in with the desktop app integration.",
+      "Set OP_ACCOUNT or AOS_1PASSWORD_ACCOUNT when multiple accounts are available.",
+      "Set AOS_1PASSWORD_VAULT to scope item lookups to a vault.",
+      "item.get redacts concealed values by default; item.reveal is admin-gated and returns one requested field value."
+    ]
+  },
+  "commands": [
+    {
+      "id": "account.whoami",
+      "summary": "Show the signed-in 1Password account",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "account",
+      "action_class": "read"
+    },
+    {
+      "id": "account.list",
+      "summary": "List configured 1Password accounts",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "account",
+      "action_class": "read"
+    },
+    {
+      "id": "vault.list",
+      "summary": "List accessible 1Password vaults",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "vault",
+      "action_class": "read"
+    },
+    {
+      "id": "item.list",
+      "summary": "List 1Password items",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "item",
+      "action_class": "read"
+    },
+    {
+      "id": "item.get",
+      "summary": "Get a 1Password item with concealed values redacted",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "item",
+      "action_class": "read"
+    },
+    {
+      "id": "item.reveal",
+      "summary": "Reveal one field value from a 1Password item",
+      "required_mode": "admin",
+      "supports_json": true,
+      "resource": "field",
+      "action_class": "read-sensitive"
+    },
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    }
+  ]
+}

@@ -30,12 +30,80 @@ CONNECTOR_AUTH = {
     "interactive_setup": [
         "Create a dedicated WordPress service user on the target site.",
         "Generate an Application Password for that user.",
-        "Add WORDPRESS_BASE_URL, WORDPRESS_USERNAME, and WORDPRESS_APPLICATION_PASSWORD in API Keys.",
+        "Add WORDPRESS_BASE_URL, WORDPRESS_USERNAME, and WORDPRESS_APPLICATION_PASSWORD in operator-controlled service keys.",
         "Restrict post types, status transitions, taxonomy scope, and media usage before going live.",
+        "Live write smoke is not claimed until tested against an operator WordPress site.",
+    ],
+}
+
+CONNECTOR_SCOPE = {
+    "kind": "wordpress-rest",
+    "surface": "site-content",
+    "scaffold_only": False,
+    "live_backend_available": True,
+    "live_read_available": True,
+    "live_write_available": True,
+    "write_bridge_available": True,
+    "live_write_smoke_tested": False,
+    "required": [
+        DEFAULT_BASE_URL_ENV,
+        DEFAULT_USERNAME_ENV,
+        DEFAULT_APPLICATION_PASSWORD_ENV,
+    ],
+    "optional": [
+        LEGACY_BASE_URL_ENV,
+        LEGACY_USERNAME_ENV,
+        LEGACY_APPLICATION_PASSWORD_ENV,
+    ],
+    "workerFields": [
+        "site_url",
+        "post_id",
+        "page_id",
+        "title",
+        "content",
+        "excerpt",
+        "slug",
+        "publish_at",
+        "search_query",
+        "status",
+        "per_page",
+        "media_file",
+        "media_type",
+        "mime_type",
+        "category_ids",
+        "tag_ids",
+    ],
+    "worker_visible_actions": [
+        "site.read",
+        "post.list",
+        "post.search",
+        "post.read",
+        "post.create_draft",
+        "post.update_draft",
+        "post.schedule",
+        "post.publish",
+        "page.list",
+        "page.search",
+        "page.read",
+        "page.create_draft",
+        "page.update_draft",
+        "page.publish",
+        "media.list",
+        "media.upload",
+        "taxonomy.list",
+        "taxonomy.assign_terms",
     ],
 }
 
 GLOBAL_COMMAND_SPECS = [
+    {
+        "id": "capabilities",
+        "summary": "Describe the WordPress connector manifest",
+        "required_mode": "readonly",
+        "supports_json": True,
+        "resource": "connector",
+        "action_class": "read",
+    },
     {
         "id": "health",
         "summary": "Check WordPress connectivity and auth readiness",
@@ -232,9 +300,8 @@ IMPLEMENTED_WRITE_COMMANDS = [
     "page.create_draft",
     "page.update_draft",
     "page.publish",
-]
-
-SCAFFOLDED_WRITE_COMMANDS = [
     "media.upload",
     "taxonomy.assign_terms",
 ]
+
+SCAFFOLDED_WRITE_COMMANDS: list[str] = []

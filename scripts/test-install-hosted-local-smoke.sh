@@ -26,13 +26,19 @@ echo "==> Run isolated hosted installer smoke"
   ARGENT_INSTALL_BIN_DIR="$BIN_DIR" \
   ARGENT_INSTALL_PACKAGE_DIR="$PKG_DIR" \
   ARGENT_SKIP_APP_INSTALL=1 \
+  ARGENT_SKIP_LAUNCH_AGENTS=1 \
+  ARGENT_SKIP_SERVICE_START=1 \
   ARGENT_NO_ONBOARD=1 \
   bash ./scripts/install-hosted.sh --install-method git --no-onboard --no-prompt
 )
 
 echo "==> Verify isolated install outputs"
 test -x "$BIN_DIR/argent"
+grep -F "export ARGENT_GIT_DIR=" "$BIN_DIR/argent" >/dev/null
+grep -F "export ARGENT_INSTALL_PACKAGE_DIR=" "$BIN_DIR/argent" >/dev/null
 test -f "$TEST_HOME/.argentos/vaults/ArgentOS Core Docs/Home.md"
+test ! -e "$TEST_HOME/Library/LaunchAgents/ai.argent.dashboard-ui.plist"
+test ! -e "$TEST_HOME/Library/LaunchAgents/ai.argent.dashboard-api.plist"
 "$BIN_DIR/argent" --help >/dev/null
 
 echo "OK"

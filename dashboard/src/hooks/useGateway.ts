@@ -223,11 +223,11 @@ function readStoredDashboardGatewayToken(): string {
 }
 
 // Module-level refs so HMR doesn't break message routing
-let globalPendingRequests: Map<
+const globalPendingRequests: Map<
   string,
   { resolve: (v: unknown) => void; reject: (e: Error) => void }
 > = new Map();
-let globalEventHandlers: Map<string, Set<(payload: unknown) => void>> = new Map();
+const globalEventHandlers: Map<string, Set<(payload: unknown) => void>> = new Map();
 
 // Track active user-initiated runIds so background "chat" events can be distinguished
 export const activeUserRunIds = new Set<string>();
@@ -466,12 +466,31 @@ export function useGateway(config: GatewayConfig = {}) {
         score?: number;
         routed?: boolean;
         matchedSkills?: Array<{
+          id?: string;
           name: string;
           source: string;
+          kind?: "generic" | "personal";
           state?: string;
           score: number;
+          confidence?: number;
+          provenanceCount?: number;
           reasons?: string[];
         }>;
+        personalProcedure?: {
+          id?: string;
+          name?: string;
+          scope?: string;
+          steps?: Array<{
+            index?: number;
+            text?: string;
+            expectedTools?: string[];
+          }>;
+          completedStepCount?: number;
+          totalStepCount?: number;
+          missingSteps?: string[];
+          executedTools?: string[];
+          succeeded?: boolean;
+        };
       }) => void,
       onToolUse?: (toolName: string, phase: "start" | "end") => void,
       attachments?: Array<{ type: string; mimeType: string; fileName: string; content: string }>,
@@ -528,6 +547,19 @@ export function useGateway(config: GatewayConfig = {}) {
                 executedTools?: string[];
                 succeeded?: boolean;
               };
+              skill?: Record<string, unknown>;
+              plan?: Array<{
+                index?: number;
+                text?: string;
+                expectedTools?: string[];
+              }>;
+              report?: {
+                completedStepCount?: number;
+                totalStepCount?: number;
+                missingSteps?: string[];
+                executedTools?: string[];
+                succeeded?: boolean;
+              };
               name?: string;
               error?: string;
             };
@@ -564,7 +596,7 @@ export function useGateway(config: GatewayConfig = {}) {
                     id: typeof entry?.id === "string" ? entry.id : undefined,
                     name: String(entry?.name ?? "").trim(),
                     source: String(entry?.source ?? "").trim(),
-                    kind: entry?.kind === "personal" ? "personal" : "generic",
+                    kind: entry?.kind === "personal" ? ("personal" as const) : ("generic" as const),
                     state: typeof entry?.state === "string" ? entry.state : undefined,
                     score: Number(entry?.score ?? 0),
                     confidence:

@@ -18,6 +18,9 @@ import { createAudioAlertTool } from "./tools/audio-alert-tool.js";
 import { createAudioGenerationTool } from "./tools/audio-generation-tool.js";
 import { createBrowserTool } from "./tools/browser-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
+import { createChangelogTool } from "./tools/changelog-tool.js";
+import { createChannelConfigTool } from "./tools/channel-config-tool.js";
+import { createConnectorSetupTool } from "./tools/connector-setup-tool.js";
 import { createContemplationTool } from "./tools/contemplation-tool.js";
 import { createCoolifyDeployTool } from "./tools/coolify-deploy-tool.js";
 import { createCronTool } from "./tools/cron-tool.js";
@@ -49,6 +52,9 @@ import {
   createMemoryRecallTool,
   createMemoryStoreTool,
   createMemoryCategoriesTool,
+  createMemoryCategoryCleanupTool,
+  createMemoryCategoryMergeTool,
+  createMemoryCategoryRenameTool,
   createMemoryForgetTool,
   createMemoryEntityTool,
   createMemoryReflectTool,
@@ -379,9 +385,12 @@ export function createArgentTools(options?: {
     }),
     // Utility tools
     createArgentConfigTool({ config: options?.config }),
+    createChannelConfigTool(),
+    createConnectorSetupTool(),
     createServiceKeysTool(),
     createSkillsTool({ config: options?.config }),
     createMarketplaceTool(),
+    createChangelogTool(),
     createTerminalTool(),
     createGithubIssueTool(),
     createMeetingRecorderTool({ agentSessionKey: options?.agentSessionKey }),
@@ -423,6 +432,9 @@ export function createArgentTools(options?: {
     createMemoryRecallTool({ config: options?.config, agentId: memoryAgentId }),
     createMemoryStoreTool({ config: options?.config, agentId: memoryAgentId }),
     createMemoryCategoriesTool({ config: options?.config, agentId: memoryAgentId }),
+    createMemoryCategoryMergeTool({ config: options?.config, agentId: memoryAgentId }),
+    createMemoryCategoryRenameTool({ config: options?.config, agentId: memoryAgentId }),
+    createMemoryCategoryCleanupTool({ config: options?.config, agentId: memoryAgentId }),
     createMemoryForgetTool({ config: options?.config, agentId: memoryAgentId }),
     createMemoryEntityTool({ config: options?.config, agentId: memoryAgentId }),
     createMemoryReflectTool({ config: options?.config, agentId: memoryAgentId }),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from .service_keys import service_key_env
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +22,7 @@ def expand_path(value: str | None) -> str:
 
 def argent_config_path() -> Path:
     return Path(
-        expand_path(os.getenv("ARGENT_CONFIG_PATH"))
+        expand_path(service_key_env("ARGENT_CONFIG_PATH"))
         or str(_home() / ".argentos" / "argent.json")
     )
 
@@ -34,36 +35,9 @@ def read_argent_config() -> dict[str, Any]:
         return {}
 
 
-def _config_env_vars(config: dict[str, Any] | None = None) -> dict[str, str]:
-    cfg = config if config is not None else read_argent_config()
-    env_config = cfg.get("env")
-    if not isinstance(env_config, dict):
-        return {}
-
-    entries: dict[str, str] = {}
-
-    raw_vars = env_config.get("vars")
-    if isinstance(raw_vars, dict):
-        for key, value in raw_vars.items():
-            if isinstance(value, str) and value.strip():
-                entries[str(key)] = value
-
-    for key, value in env_config.items():
-        if key in {"shellEnv", "vars"}:
-            continue
-        if isinstance(value, str) and value.strip():
-            entries[str(key)] = value
-
-    return entries
-
-
 def ensure_openai_api_key(config: dict[str, Any] | None = None) -> bool:
-    existing = (os.getenv(OPENAI_API_KEY_ENV) or "").strip()
-    if existing:
-        return True
-
-    config_env = _config_env_vars(config)
-    api_key = (config_env.get(OPENAI_API_KEY_ENV) or "").strip()
+    _ = config
+    api_key = (service_key_env(OPENAI_API_KEY_ENV) or "").strip()
     if not api_key:
         return False
 
@@ -74,7 +48,7 @@ def ensure_openai_api_key(config: dict[str, Any] | None = None) -> bool:
 def vault_path(config: dict[str, Any] | None = None, override: str | None = None) -> str:
     if override:
         return expand_path(override)
-    env_value = os.getenv("AOS_COGNEE_VAULT_PATH")
+    env_value = service_key_env("AOS_COGNEE_VAULT_PATH")
     if env_value:
         return expand_path(env_value)
     cfg = config if config is not None else read_argent_config()
@@ -87,7 +61,7 @@ def vault_path(config: dict[str, Any] | None = None, override: str | None = None
 def dataset_name(config: dict[str, Any] | None = None, override: str | None = None) -> str:
     if override and override.strip():
         return override.strip()
-    env_value = os.getenv("AOS_COGNEE_DATASET")
+    env_value = service_key_env("AOS_COGNEE_DATASET")
     if env_value and env_value.strip():
         return env_value.strip()
     cfg = config if config is not None else read_argent_config()

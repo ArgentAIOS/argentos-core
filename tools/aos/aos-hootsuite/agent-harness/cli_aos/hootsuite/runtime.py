@@ -4,9 +4,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from . import __version__
 from .client import HootsuiteApiError, HootsuiteClient
 from .config import config_snapshot, resolve_runtime_values, redacted_config_snapshot
-from .constants import BACKEND_NAME, CONNECTOR_CATEGORIES, CONNECTOR_CATEGORY, CONNECTOR_LABEL, CONNECTOR_RESOURCES, CONNECTOR_PATH
+from .constants import BACKEND_NAME, CONNECTOR_CATEGORIES, CONNECTOR_CATEGORY, CONNECTOR_LABEL, CONNECTOR_RESOURCES, CONNECTOR_PATH, MODE_ORDER
 from .errors import ConnectorError
 
 
@@ -45,27 +46,12 @@ def _scope_preview(*, command_id: str, selection_surface: str, **extra: Any) -> 
     }
 
 
-def _picker_items(items: list[dict[str, Any]], *, kind: str, label_keys: tuple[str, ...], subtitle_keys: tuple[str, ...] = ()) -> list[dict[str, Any]]:
-    picker: list[dict[str, Any]] = []
-    for item in items:
-        value = _pick_text(item, "id", "organizationId", "socialProfileId", "teamId", "messageId")
-        if not value:
-            continue
-        label = _pick_text(item, *label_keys) or value
-        subtitle = _pick_text(item, *subtitle_keys)
-        option: dict[str, Any] = {"value": value, "label": label, "kind": kind}
-        if subtitle:
-            option["subtitle"] = subtitle
-        picker.append(option)
-    return picker
-
-
 def create_client(ctx_obj: dict[str, Any] | None = None) -> HootsuiteClient:
     runtime = resolve_runtime_values(ctx_obj)
     if not runtime["access_token"]:
         raise ConnectorError(
             code="HOOTSUITE_ACCESS_TOKEN_REQUIRED",
-            message="HOOTSUITE_ACCESS_TOKEN is required for Hootsuite live reads.",
+            message="HOOTSUITE_ACCESS_TOKEN service key is required for Hootsuite live reads.",
             details={"env": runtime["access_token_env"]},
         )
     return HootsuiteClient(access_token=runtime["access_token"], base_url=runtime["base_url"])
@@ -116,7 +102,35 @@ def _resolve_message_id(runtime: dict[str, Any], message_id: str | None = None) 
 
 
 def capabilities_snapshot() -> dict[str, Any]:
-    return _connector_manifest()
+    manifest = _connector_manifest()
+    return {
+        "tool": manifest["tool"],
+        "version": __version__,
+        "backend": manifest["backend"],
+        "manifest_schema_version": manifest.get("manifest_schema_version", "1.0.0"),
+        "modes": MODE_ORDER,
+        "connector": manifest["connector"],
+        "auth": manifest["auth"],
+        "scope": manifest.get("scope", {}),
+        "commands": manifest["commands"],
+        "read_support": {
+            "me.read": True,
+            "organization.list": True,
+            "organization.read": True,
+            "social_profile.list": True,
+            "social_profile.read": True,
+            "team.list": True,
+            "team.read": True,
+            "message.list": True,
+            "message.read": True,
+        },
+        "write_support": {
+            "live_writes_enabled": False,
+            "scaffold_only": False,
+            "scaffolded_commands": [],
+            "live_write_smoke_tested": False,
+        },
+    }
 
 
 def probe_live_read(runtime: dict[str, Any]) -> dict[str, Any]:
@@ -158,10 +172,11 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     live_ready = bool(probe.get("ok"))
     if not auth_ready:
         status = "needs_setup"
-        summary = "Configure HOOTSUITE_ACCESS_TOKEN before using live Hootsuite reads."
+        summary = "Configure HOOTSUITE_ACCESS_TOKEN in operator-controlled service keys before using live Hootsuite reads."
         next_steps = [
-            f"Set {runtime['access_token_env']} to a valid Hootsuite OAuth access token.",
+            f"Set {runtime['access_token_env']} in operator-controlled service keys to a valid Hootsuite OAuth access token.",
             f"Optional: set {runtime['base_url_env']} if you need a non-default Hootsuite API host.",
+            "Use local HOOTSUITE_* environment variables only as harness fallback during development.",
         ]
     elif not live_ready:
         status = "degraded"
@@ -175,7 +190,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         summary = "Hootsuite live reads are ready."
         next_steps = [
             "Use me.read, organization.list/read, social_profile.list/read, team.list/read, and message.list/read.",
-            "Keep message.schedule scaffolded until publish approval and safety rules are finalized.",
+            "Do not advertise Hootsuite publish actions until a live write bridge and approval policy are implemented.",
         ]
     return {
         "status": status,
@@ -189,13 +204,16 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "live_backend_available": live_ready,
             "live_read_available": live_ready,
             "write_bridge_available": False,
+            "live_write_smoke_tested": False,
             "scaffold_only": False,
         },
         "auth": {
             "base_url_env": runtime["base_url_env"],
             "base_url_present": runtime["base_url_present"],
+            "base_url_source": runtime["base_url_source"],
             "access_token_env": runtime["access_token_env"],
             "access_token_present": runtime["access_token_present"],
+            "access_token_source": runtime["access_token_source"],
             "organization_id_env": runtime["organization_id_env"],
             "organization_id_present": runtime["organization_id_present"],
             "social_profile_id_env": runtime["social_profile_id_env"],
@@ -209,7 +227,11 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             {
                 "name": "access_token",
                 "ok": auth_ready,
-                "details": {"present": auth_ready, "env": runtime["access_token_env"]},
+                "details": {
+                    "present": auth_ready,
+                    "env": runtime["access_token_env"],
+                    "source": runtime["access_token_source"],
+                },
             },
             {
                 "name": "live_read",
@@ -222,6 +244,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "live_backend_available": live_ready,
         "live_read_available": live_ready,
         "write_bridge_available": False,
+        "live_write_smoke_tested": False,
         "scaffold_only": False,
         "next_steps": next_steps,
     }
@@ -231,7 +254,7 @@ def doctor_snapshot(ctx_obj: dict[str, Any], *, health: dict[str, Any] | None = 
     health = health or health_snapshot(ctx_obj)
     if health["status"] == "needs_setup":
         recommendations = [
-            "Configure HOOTSUITE_ACCESS_TOKEN before handing this connector to a worker.",
+            "Configure HOOTSUITE_ACCESS_TOKEN in operator-controlled service keys before handing this connector to a worker.",
             "Use organization.list and social_profile.list to narrow scope after setup.",
         ]
     elif health["status"] == "degraded":
@@ -242,7 +265,7 @@ def doctor_snapshot(ctx_obj: dict[str, Any], *, health: dict[str, Any] | None = 
     else:
         recommendations = [
             "Use me.read, organization.list/read, social_profile.list/read, team.list/read, and message.list/read.",
-            "Keep message.schedule scaffolded until publish approval is implemented.",
+            "Keep publish/schedule actions out of the manifest until a live write bridge is implemented.",
         ]
     return {
         **health,
@@ -454,15 +477,4 @@ def message_read_result(ctx_obj: dict[str, Any], message_id: str | None) -> dict
         "message_id": resolved,
         "scope_preview": _scope_preview(command_id="message.read", selection_surface="message", message_id=resolved),
         "summary": _pick_text(message, "text", "summary", "subject") or f"Message {resolved}",
-    }
-
-
-def scaffold_write_result(ctx_obj: dict[str, Any], *, command_id: str, inputs: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "status": "scaffold_write_only",
-        "command": command_id,
-        "tool": "aos-hootsuite",
-        "scaffold_only": True,
-        "inputs": inputs,
-        "summary": "This connector keeps publish actions scaffolded until approval and publish-safety rules are implemented.",
     }

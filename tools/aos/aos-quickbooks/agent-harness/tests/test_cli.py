@@ -51,6 +51,23 @@ def test_config_show_redacts_sensitive_values(monkeypatch):
     assert '"company_name": "Acme"' in result.output
 
 
+def test_runtime_config_prefers_operator_service_keys(monkeypatch):
+    for key, value in REQUIRED_ENV.items():
+        monkeypatch.setenv(key, f"env-{value}")
+
+    def fake_service_key_env(name, default=None):
+        if name in REQUIRED_ENV:
+            return f"service-{REQUIRED_ENV[name]}"
+        return default
+
+    monkeypatch.setattr(runtime, "service_key_env", fake_service_key_env)
+
+    config = runtime.runtime_config()
+    assert config["auth"]["configured"] == {key: True for key in REQUIRED_ENV}
+    assert config["auth"]["redacted"]["QBO_CLIENT_ID"] == "se...t-id"
+    assert config["auth"]["redacted"]["QBO_REFRESH_TOKEN"] == "se...oken"
+
+
 def test_doctor_reports_probe_failure(monkeypatch):
     _set_required_env(monkeypatch)
     monkeypatch.setattr(
@@ -70,11 +87,102 @@ def test_permission_gate_blocks_write_for_readonly():
     assert "PERMISSION_DENIED" in result.output
 
 
-def test_write_command_stays_scaffolded_in_write_mode():
-    result = CliRunner().invoke(cli, ["--json", "--mode", "write", "bill", "create_draft"])
-    assert result.exit_code == 10
-    assert "NOT_IMPLEMENTED" in result.output
-    assert '"scaffold_only": true' in result.output
+def test_bill_create_draft_posts_live_bill(monkeypatch):
+    _set_required_env(monkeypatch)
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(runtime, "refresh_access_token", lambda _config: {"access_token": "token"})
+
+    def fake_request_json(method, url, *, headers=None, payload=None, timeout_seconds=None):
+        calls.append({"method": method, "url": url, "headers": headers, "payload": payload})
+        return {
+            "Bill": {
+                "Id": "bill-1",
+                "DocNumber": "B-1",
+                "TxnDate": "2026-01-13",
+                "VendorRef": {"value": "vendor-1", "name": "Vendor Co"},
+            }
+        }
+
+    monkeypatch.setattr(runtime, "_request_json", fake_request_json)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "--mode",
+            "write",
+            "bill",
+            "create_draft",
+            "vendor_id=vendor-1",
+            "account_id=acct-1",
+            "amount=42.50",
+            "description=hosting",
+            "due_date=2026-02-01",
+        ],
+    )
+    assert result.exit_code == 0
+    assert calls[0]["method"] == "POST"
+    assert "/bill?" in calls[0]["url"]
+    assert calls[0]["headers"]["Authorization"] == "Bearer token"
+    assert calls[0]["payload"]["VendorRef"]["value"] == "vendor-1"
+    assert calls[0]["payload"]["Line"][0]["Amount"] == 42.5
+    assert calls[0]["payload"]["Line"][0]["AccountBasedExpenseLineDetail"]["AccountRef"]["value"] == "acct-1"
+    payload = json.loads(result.output)["data"]
+    assert payload["resource"] == "bill"
+    assert payload["operation"] == "create_draft"
+    assert payload["picker_options"][0]["value"] == "bill-1"
+
+
+def test_invoice_create_draft_requires_item_id(monkeypatch):
+    _set_required_env(monkeypatch)
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--mode", "write", "invoice", "create_draft", "customer_id=cust-1", "amount=99.00"],
+    )
+    assert result.exit_code == 2
+    assert "Missing required option: item_id" in result.output
+
+
+def test_invoice_create_draft_posts_live_invoice(monkeypatch):
+    _set_required_env(monkeypatch)
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(runtime, "refresh_access_token", lambda _config: {"access_token": "token"})
+
+    def fake_request_json(method, url, *, headers=None, payload=None, timeout_seconds=None):
+        calls.append({"method": method, "url": url, "headers": headers, "payload": payload})
+        return {
+            "Invoice": {
+                "Id": "inv-1",
+                "DocNumber": "INV-1",
+                "TxnDate": "2026-01-14",
+                "CustomerRef": {"value": "cust-1", "name": "Acme"},
+            }
+        }
+
+    monkeypatch.setattr(runtime, "_request_json", fake_request_json)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "--mode",
+            "write",
+            "invoice",
+            "create_draft",
+            "customer_id=cust-1",
+            "item_id=item-1",
+            "amount=99.00",
+            "memo=consulting",
+        ],
+    )
+    assert result.exit_code == 0
+    assert calls[0]["method"] == "POST"
+    assert "/invoice?" in calls[0]["url"]
+    assert calls[0]["payload"]["CustomerRef"]["value"] == "cust-1"
+    assert calls[0]["payload"]["Line"][0]["SalesItemLineDetail"]["ItemRef"]["value"] == "item-1"
+    payload = json.loads(result.output)["data"]
+    assert payload["resource"] == "invoice"
+    assert payload["operation"] == "create_draft"
 
 
 def test_customer_list_uses_live_query(monkeypatch):

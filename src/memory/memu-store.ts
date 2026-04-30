@@ -634,6 +634,13 @@ export class MemuStore {
       .run(summary, now(), id);
   }
 
+  updateCategoryName(id: string, name: string): MemoryCategory | null {
+    this.db
+      .prepare(`UPDATE memory_categories SET name = ?, updated_at = ? WHERE id = ?`)
+      .run(name, now(), id);
+    return this.getCategory(id);
+  }
+
   listCategories(): MemoryCategory[] {
     const rows = this.db.prepare(`SELECT * FROM memory_categories ORDER BY name`).all() as Record<
       string,

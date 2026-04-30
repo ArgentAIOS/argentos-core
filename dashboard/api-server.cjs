@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
 const net = require("net");
+const os = require("os");
 const { execSync, execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -49,6 +50,113 @@ function readRuntimeBuildInfo(baseDir) {
   };
 }
 
+function resolveGatewayAuthToken(config = readArgentConfig()) {
+  let gwToken = config.gateway?.auth?.token || "";
+  if (!gwToken) {
+    try {
+      const plistPath = path.join(os.homedir(), "Library/LaunchAgents/ai.argent.gateway.plist");
+      if (fs.existsSync(plistPath)) {
+        const plistRaw = fs.readFileSync(plistPath, "utf-8");
+        const match = plistRaw.match(
+          /<key>ARGENT_GATEWAY_TOKEN<\/key>\s*<string>([^<]+)<\/string>/,
+        );
+        if (match?.[1]) gwToken = match[1].trim();
+      }
+    } catch {}
+  }
+  if (!gwToken) {
+    try {
+      gwToken = require("child_process")
+        .execSync("/bin/launchctl getenv ARGENT_GATEWAY_TOKEN 2>/dev/null || true", {
+          timeout: 2000,
+        })
+        .toString()
+        .trim();
+    } catch {}
+  }
+  if (!gwToken) gwToken = process.env.ARGENT_GATEWAY_TOKEN || "";
+  return gwToken;
+}
+
+function sendGatewayRpcFireAndForget(method, params, options = {}) {
+  try {
+    const WebSocket = require("ws");
+    const config = readArgentConfig();
+    const gwPort = config.gateway?.port || 18789;
+    const gwToken = resolveGatewayAuthToken(config);
+    const ws = new WebSocket(`ws://127.0.0.1:${gwPort}`);
+    const connectId = `dashboard-api-connect-${crypto.randomUUID()}`;
+    const requestId = `dashboard-api-rpc-${crypto.randomUUID()}`;
+    const timeout = setTimeout(
+      () => {
+        try {
+          ws.close();
+        } catch {}
+      },
+      Number(options.timeoutMs) || 3000,
+    );
+    if (typeof timeout.unref === "function") timeout.unref();
+
+    function cleanup() {
+      clearTimeout(timeout);
+      try {
+        ws.close();
+      } catch {}
+    }
+
+    ws.on("open", () => {
+      ws.send(
+        JSON.stringify({
+          type: "req",
+          id: connectId,
+          method: "connect",
+          params: {
+            minProtocol: 3,
+            maxProtocol: 3,
+            client: {
+              id: "gateway-client",
+              displayName: "Dashboard API",
+              version: "1.0.0",
+              platform: "node",
+              mode: "backend",
+            },
+            caps: [],
+            auth: gwToken ? { token: gwToken } : undefined,
+          },
+        }),
+      );
+    });
+    ws.on("message", (raw) => {
+      let msg = null;
+      try {
+        msg = JSON.parse(String(raw));
+      } catch {
+        return;
+      }
+      if (msg?.type !== "res") return;
+      if (msg.id === connectId) {
+        if (!msg.ok) {
+          cleanup();
+          return;
+        }
+        ws.send(JSON.stringify({ type: "req", id: requestId, method, params }));
+        return;
+      }
+      if (msg.id === requestId) cleanup();
+    });
+    ws.on("error", (err) => {
+      if (options.logErrors) {
+        console.warn(`[GatewayRPC] ${method} failed:`, err.message);
+      }
+      cleanup();
+    });
+  } catch (err) {
+    if (options.logErrors) {
+      console.warn(`[GatewayRPC] ${method} unavailable:`, err.message);
+    }
+  }
+}
+
 // API responses should never rely on browser cache revalidation.
 // 304 + empty body breaks JSON fetch flows that expect a payload.
 app.disable("etag");
@@ -70,8 +178,10 @@ try {
 // ============================================
 const ALLOWED_ORIGINS = [
   "http://localhost:8080",
+  "http://localhost:8092",
   "http://localhost:5173",
   "http://127.0.0.1:8080",
+  "http://127.0.0.1:8092",
   "http://127.0.0.1:5173",
   "http://localhost:18789", // Gateway (Swift wrapper loads dashboard here)
   "http://127.0.0.1:18789", // Gateway (alternate)
@@ -96,7 +206,7 @@ try {
     }
   }
   for (const host of extraHosts) {
-    for (const port of [8080, 5173, 18789]) {
+    for (const port of [8080, 8092, 5173, 18789]) {
       const origin = `http://${host}:${port}`;
       if (!ALLOWED_ORIGINS.includes(origin)) {
         ALLOWED_ORIGINS.push(origin);
@@ -2438,6 +2548,11 @@ function computeNextScheduledRunEpoch(schedule, fromTime) {
     return now + minutes * 60_000;
   }
 
+  if (schedule.frequency === "once" && schedule.at) {
+    const at = new Date(schedule.at).getTime();
+    return Number.isFinite(at) ? at : null;
+  }
+
   if (schedule.frequency === "weekly" && Array.isArray(schedule.days) && schedule.days.length > 0) {
     const [hoursRaw, minutesRaw] = String(schedule.time || "09:00")
       .split(":")
@@ -2471,6 +2586,15 @@ function computeNextScheduledRunEpoch(schedule, fromTime) {
   }
 
   return null;
+}
+
+function enrichTaskScheduleForType(type, schedule, fromTime) {
+  if (!schedule || typeof schedule !== "object") return schedule;
+  if (!["scheduled", "interval", "reminder"].includes(String(type || ""))) return schedule;
+  return {
+    ...schedule,
+    nextRun: computeNextScheduledRunEpoch(schedule, fromTime),
+  };
 }
 
 function createPgTasksCompatDb() {
@@ -2859,7 +2983,7 @@ function createPgTasksCompatDb() {
         FROM tasks
         WHERE
           status NOT IN ('completed', 'in_progress')
-          AND COALESCE(metadata->>'type', '') IN ('scheduled', 'interval')
+          AND COALESCE(metadata->>'type', '') IN ('scheduled', 'interval', 'reminder')
           AND COALESCE(metadata->'schedule'->>'nextRun', '') ~ '^[0-9]+$'
           AND (metadata->'schedule'->>'nextRun')::bigint <= ${now}
         ORDER BY (metadata->'schedule'->>'nextRun')::bigint ASC
@@ -2884,6 +3008,8 @@ function createPgTasksCompatDb() {
         lastRun: now,
         nextRun: computeNextScheduledRunEpoch(task.schedule, now),
       };
+      const terminal =
+        task.type === "reminder" || task.schedule.frequency === "once" || !nextSchedule.nextRun;
       const metadata = {
         ...normalizeMetadata(task.metadata),
         type: task.type || extractTaskType(normalizeMetadata(task.metadata), task.parentTaskId),
@@ -2893,7 +3019,8 @@ function createPgTasksCompatDb() {
         UPDATE tasks
         SET
           metadata = ${metadata},
-          status = 'pending',
+          status = ${terminal ? "completed" : "pending"},
+          completed_at = ${terminal ? new Date(now) : null},
           updated_at = ${new Date(now)}
         WHERE id = ${id}
       `;
@@ -2963,7 +3090,16 @@ function statusToStorage(status) {
 }
 
 function normalizeMetadata(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
 }
 
 function extractTaskType(meta, parentTaskId) {
@@ -3073,10 +3209,9 @@ async function createTaskCompat(input) {
   const adapter = await getTaskStorageAdapter();
   if (!adapter) return getLegacyTasksDbOrThrow().createTask(input);
 
-  const metadata = mergeTaskMetadata(
-    {},
-    { type: input.type || "one-time", schedule: input.schedule, metadata: input.metadata },
-  );
+  const type = input.type || "one-time";
+  const schedule = enrichTaskScheduleForType(type, input.schedule, Date.now());
+  const metadata = mergeTaskMetadata({}, { type, schedule, metadata: input.metadata });
   const task = await adapter.tasks.create({
     title: input.title,
     description: input.details,
@@ -3098,7 +3233,13 @@ async function updateTaskCompat(id, updates) {
 
   const existing = await adapter.tasks.get(id);
   if (!existing) return null;
-  const metadata = mergeTaskMetadata(existing.metadata, updates);
+  const existingMeta = normalizeMetadata(existing.metadata);
+  const nextType = updates.type || extractTaskType(existingMeta, existing.parentTaskId);
+  const nextSchedule =
+    updates.schedule !== undefined
+      ? enrichTaskScheduleForType(nextType, updates.schedule, Date.now())
+      : undefined;
+  const metadata = mergeTaskMetadata(existing.metadata, { ...updates, schedule: nextSchedule });
   const updated = await adapter.tasks.update(id, {
     title: updates.title,
     description: updates.details,
@@ -3277,23 +3418,304 @@ function broadcastTasksEvent(event) {
   }
 }
 
+const REMINDER_DELIVERY_TARGETS = new Set([
+  "in_app",
+  "telegram",
+  "slack",
+  "email",
+  "voice",
+  "doc_panel",
+]);
+
+let reminderDeliveryHooks = {};
+
+function setReminderDeliveryHooksForTests(hooks = {}) {
+  reminderDeliveryHooks = hooks && typeof hooks === "object" ? hooks : {};
+}
+
+function normalizeReminderTarget(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, "_");
+  if (normalized === "docpanel") return "doc_panel";
+  if (normalized === "tts" || normalized === "audio" || normalized === "audio_alert")
+    return "voice";
+  if (normalized === "inapp" || normalized === "app") return "in_app";
+  return normalized;
+}
+
+function normalizeReminderTargets(reminder) {
+  const rawTargets = normalizeStringList(reminder?.deliveryTargets);
+  const normalized = rawTargets
+    .map(normalizeReminderTarget)
+    .filter((target) => REMINDER_DELIVERY_TARGETS.has(target));
+  return normalized.length > 0 ? Array.from(new Set(normalized)) : ["in_app"];
+}
+
+function getReminderConfig(config) {
+  const direct = config?.reminders;
+  if (direct && typeof direct === "object") return direct;
+  const nested = config?.tasks?.reminders;
+  if (nested && typeof nested === "object") return nested;
+  return {};
+}
+
+function resolveReminderRoute({ task, target, config }) {
+  const reminder = normalizeMetadata(task.metadata).reminder;
+  const routes = reminder && typeof reminder === "object" ? reminder.routes : undefined;
+  const route =
+    (routes && typeof routes === "object" ? routes[target] : undefined) ||
+    getReminderConfig(config)?.delivery?.[target] ||
+    getReminderConfig(config)?.[target];
+  return route && typeof route === "object" ? route : {};
+}
+
+function buildReminderMessage(task) {
+  const title = String(task.title || "Reminder").trim() || "Reminder";
+  const details = String(task.details || task.description || "").trim();
+  return details ? `Reminder: ${title}\n\n${details}` : `Reminder: ${title}`;
+}
+
+function reminderDeliveryResult(target, status, extra = {}) {
+  return {
+    target,
+    status,
+    ...extra,
+    deliveredAt: new Date().toISOString(),
+  };
+}
+
+async function deliverReminderChannel({ task, target, message, route }) {
+  const channel = String(route.channel || target)
+    .trim()
+    .toLowerCase();
+  const to = String(route.to || route.target || "").trim();
+  if (!to) {
+    return reminderDeliveryResult(target, "skipped", { reason: "missing-route", channel });
+  }
+  const sendGatewayRpc = reminderDeliveryHooks.sendGatewayRpc || sendGatewayRpcFireAndForget;
+  await Promise.resolve(
+    sendGatewayRpc(
+      "send",
+      {
+        channel,
+        to,
+        accountId: typeof route.accountId === "string" ? route.accountId.trim() : undefined,
+        message,
+        sessionKey: "agent:argent:reminders",
+        idempotencyKey: `reminder:${task.id}:${target}:${task.schedule?.lastRun || Date.now()}`,
+      },
+      { logErrors: true, timeoutMs: Number(route.timeoutMs) || 5000 },
+    ),
+  );
+  return reminderDeliveryResult(target, "queued", { channel, to });
+}
+
+async function sendReminderResendEmail({ route, message, subject }) {
+  const apiKey = await resolveServiceKeyForProxy("RESEND_API_KEY");
+  if (!apiKey) return { ok: false, reason: "missing-resend-key" };
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      from: route.from,
+      to: normalizeStringList(route.to),
+      subject,
+      text: message,
+    }),
+  });
+  const body = await res.text();
+  return { ok: res.ok, status: res.status, body };
+}
+
+async function deliverReminderEmail({ task, message, route }) {
+  const to = normalizeStringList(route.to);
+  const from = typeof route.from === "string" ? route.from.trim() : "";
+  if (to.length === 0 || !from) {
+    return reminderDeliveryResult("email", "skipped", { reason: "missing-email-route" });
+  }
+  const provider = String(route.provider || "resend")
+    .trim()
+    .toLowerCase();
+  if (provider !== "resend") {
+    return reminderDeliveryResult("email", "skipped", {
+      reason: "unsupported-provider",
+      provider,
+    });
+  }
+  const subjectPrefix =
+    typeof route.subjectPrefix === "string" && route.subjectPrefix.trim()
+      ? route.subjectPrefix.trim()
+      : "Argent reminder";
+  const subject = `${subjectPrefix}: ${String(task.title || "Reminder").trim() || "Reminder"}`;
+  const sendEmail = reminderDeliveryHooks.sendEmail || sendReminderResendEmail;
+  const result = await Promise.resolve(sendEmail({ route, message, subject, task }));
+  if (!result?.ok) {
+    return reminderDeliveryResult("email", "failed", {
+      reason: result?.reason || `email-send-failed-${result?.status || "unknown"}`,
+      provider,
+    });
+  }
+  return reminderDeliveryResult("email", "sent", { provider, to });
+}
+
+async function saveReminderDocPanelDocument({ task, message, route }) {
+  const docId = sanitizeTagValue(`reminder-${task.id}`, `reminder-${Date.now()}`);
+  const title = `Reminder - ${String(task.title || "Reminder").trim() || "Reminder"}`;
+  const content = [
+    `# ${title}`,
+    "",
+    message,
+    "",
+    `- Reminder ID: ${task.id}`,
+    `- Fired: ${new Date().toISOString()}`,
+  ].join("\n");
+  const collection = normalizeCanvasCollection(route.collection);
+  const sourceFile = canvasSourceFileForId(docId);
+  const sessionKey =
+    typeof route.sessionKey === "string" && route.sessionKey.trim()
+      ? route.sessionKey.trim()
+      : undefined;
+  await invokeKnowledgeGatewayMethod("knowledge.library.delete", {
+    options: {
+      scope: "global",
+      collection,
+      sourceFile,
+      limit: 100,
+      ingestedOnly: true,
+    },
+    sessionKey,
+  });
+  const saved = await invokeKnowledgeGatewayMethod("knowledge.ingest", {
+    files: [{ fileName: sourceFile, mimeType: "text/markdown", content }],
+    options: {
+      scope: "global",
+      collection,
+      chunkSize: 12000,
+      overlap: 300,
+      itemExtra: {
+        docId,
+        docTitle: title,
+        docType: "markdown",
+        docTags: ["reminder"],
+        docCreatedAt: new Date().toISOString(),
+        docUpdatedAt: new Date().toISOString(),
+        docAutoRouted: true,
+      },
+    },
+    sessionKey,
+  });
+  if (!saved.success) {
+    return { ok: false, reason: saved.error?.message || "doc-panel-save-failed" };
+  }
+  broadcastCanvasEvent({
+    type: "document_saved",
+    action: "push",
+    document: {
+      id: docId,
+      title,
+      content,
+      type: "markdown",
+      language: undefined,
+      tags: ["reminder"],
+      autoRouted: true,
+    },
+  });
+  return { ok: true, docId, collection };
+}
+
+async function deliverReminderDocPanel({ task, message, route }) {
+  const saveDoc = reminderDeliveryHooks.saveDocPanelDocument || saveReminderDocPanelDocument;
+  const result = await Promise.resolve(saveDoc({ task, message, route }));
+  if (!result?.ok) {
+    return reminderDeliveryResult("doc_panel", "failed", {
+      reason: result?.reason || "doc-panel-save-failed",
+    });
+  }
+  return reminderDeliveryResult("doc_panel", "saved", {
+    docId: result.docId,
+    collection: result.collection,
+  });
+}
+
+async function deliverReminder(task) {
+  const metadata = normalizeMetadata(task.metadata);
+  const reminder =
+    metadata.reminder && typeof metadata.reminder === "object" ? metadata.reminder : {};
+  const deliveryTargets = normalizeReminderTargets(reminder);
+  const message = buildReminderMessage(task);
+  const config = readArgentConfig();
+  const deliveries = [];
+
+  for (const target of deliveryTargets) {
+    try {
+      if (target === "in_app" || target === "voice") {
+        deliveries.push(reminderDeliveryResult(target, "queued"));
+        continue;
+      }
+      const route = resolveReminderRoute({ task, target, config });
+      if (target === "telegram" || target === "slack") {
+        deliveries.push(await deliverReminderChannel({ task, target, message, route }));
+        continue;
+      }
+      if (target === "email") {
+        deliveries.push(await deliverReminderEmail({ task, message, route }));
+        continue;
+      }
+      if (target === "doc_panel") {
+        deliveries.push(await deliverReminderDocPanel({ task, message, route }));
+      }
+    } catch (err) {
+      deliveries.push(
+        reminderDeliveryResult(target, "failed", {
+          reason: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+  }
+
+  return {
+    message,
+    deliveryTargets,
+    deliveries,
+  };
+}
+
 async function runSchedulerTick() {
   if (!tasksDb || typeof tasksDb.getScheduledTasksDue !== "function") {
     return { dueCount: 0 };
   }
   const dueTasks = await Promise.resolve(tasksDb.getScheduledTasksDue());
   const queue = Array.isArray(dueTasks) ? dueTasks : [];
+  const deliveryResults = [];
   if (queue.length > 0) {
     console.log(`[Scheduler] Found ${queue.length} due task(s)`);
   }
   for (const task of queue) {
     console.log(`[Scheduler] Executing task: ${task.title} (${task.id})`);
+    if (task.type === "reminder") {
+      const delivery = await deliverReminder(task);
+      deliveryResults.push({ taskId: task.id, ...delivery });
+      broadcastTasksEvent({
+        type: "reminder_due",
+        task,
+        reminder: normalizeMetadata(task.metadata).reminder || null,
+        message: delivery.message,
+        deliveryTargets: delivery.deliveryTargets,
+        deliveries: delivery.deliveries,
+      });
+    }
     broadcastTasksEvent({ type: "task_execute", task });
     if (typeof tasksDb.markScheduledTaskExecuted === "function") {
       await Promise.resolve(tasksDb.markScheduledTaskExecuted(task.id));
     }
   }
-  return { dueCount: queue.length };
+  return { dueCount: queue.length, deliveries: deliveryResults };
 }
 
 // GET /api/tasks - List all tasks
@@ -3327,7 +3749,16 @@ app.get("/api/tasks", async (req, res) => {
 // POST /api/tasks - Create a new task
 app.post("/api/tasks", async (req, res) => {
   console.log("Tasks create endpoint hit:", req.body);
-  const { title, details, type = "one-time", schedule, priority = "normal", assignee } = req.body;
+  const {
+    title,
+    details,
+    type = "one-time",
+    schedule,
+    priority = "normal",
+    assignee,
+    dueAt,
+    metadata,
+  } = req.body;
 
   if (!title || !title.trim()) {
     return res.status(400).json({ error: "Title is required" });
@@ -3341,6 +3772,8 @@ app.post("/api/tasks", async (req, res) => {
       schedule,
       priority,
       assignee: assignee || undefined,
+      dueAt,
+      metadata,
       source: "user",
     });
     broadcastTasksEvent({ type: "task_created", task: { id: task.id, title: task.title } });
@@ -6908,7 +7341,7 @@ function createPgAppsCompatDb() {
           id, name, description, icon, code, version, creator, created_at, updated_at, metadata
         ) VALUES (
           ${id}, ${name}, ${description || null}, ${icon || null}, ${code}, 1,
-          ${creator || "ai"}, ${now}, ${now}, ${normalizeMetadata(metadata)}
+          ${creator || "ai"}, ${now}, ${now}, ${JSON.stringify(normalizeMetadata(metadata))}::jsonb
         )
         RETURNING
           id, name, description, icon, code, version, creator,
@@ -6945,8 +7378,8 @@ function createPgAppsCompatDb() {
           },
           metadata = ${
             Object.prototype.hasOwnProperty.call(updates, "metadata")
-              ? normalizeMetadata(updates.metadata)
-              : normalizeMetadata(existing.metadata)
+              ? JSON.stringify(normalizeMetadata(updates.metadata))
+              : JSON.stringify(normalizeMetadata(existing.metadata))
           },
           updated_at = ${now}
         WHERE id = ${id} AND deleted_at IS NULL
@@ -7091,6 +7524,82 @@ function broadcastAppsEvent(event) {
   }
 }
 
+function emitAppForgeWorkflowEvent(event) {
+  if (process.env.ARGENT_DISABLE_APPFORGE_WORKFLOW_EVENTS === "1" || process.env.API_PORT === "0") {
+    return;
+  }
+  sendGatewayRpcFireAndForget("workflows.emitAppForgeEvent", {
+    emittedAt: new Date().toISOString(),
+    ...event,
+    payload: {
+      ...(event.payload && typeof event.payload === "object" ? event.payload : {}),
+      source: "dashboard-api",
+    },
+  });
+}
+
+function appForgeRecordPayload(app, action) {
+  return {
+    eventType: `forge.record.${action}`,
+    appId: app.id,
+    tableId: "dashboard_apps",
+    recordId: app.id,
+    payload: {
+      app: {
+        id: app.id,
+        name: app.name,
+        description: app.description,
+        creator: app.creator,
+        version: app.version,
+        metadata: app.metadata,
+      },
+    },
+  };
+}
+
+function appForgeRuntimeEventPayload(app, eventType, body = {}, extraPayload = {}) {
+  const payload = body && typeof body.payload === "object" && body.payload ? body.payload : {};
+  return {
+    ...body,
+    eventType,
+    appId: app.id,
+    capabilityId:
+      typeof body.capabilityId === "string" && body.capabilityId.trim()
+        ? body.capabilityId.trim()
+        : undefined,
+    workflowRunId:
+      typeof body.workflowRunId === "string" && body.workflowRunId.trim()
+        ? body.workflowRunId.trim()
+        : typeof body.runId === "string" && body.runId.trim()
+          ? body.runId.trim()
+          : undefined,
+    nodeId: typeof body.nodeId === "string" && body.nodeId.trim() ? body.nodeId.trim() : undefined,
+    reviewId:
+      typeof body.reviewId === "string" && body.reviewId.trim() ? body.reviewId.trim() : undefined,
+    decision:
+      typeof body.decision === "string" && body.decision.trim() ? body.decision.trim() : undefined,
+    payload: {
+      ...payload,
+      ...extraPayload,
+      app: { id: app.id, name: app.name, metadata: app.metadata },
+    },
+  };
+}
+
+async function emitAppForgeRuntimeEvent(req, res, eventType, extraPayload = {}) {
+  try {
+    const app = await appsDb.getApp(req.params.id);
+    if (!app) {
+      return res.status(404).json({ error: "App not found" });
+    }
+    emitAppForgeWorkflowEvent(appForgeRuntimeEventPayload(app, eventType, req.body, extraPayload));
+    res.status(202).json({ ok: true, eventType, appId: app.id });
+  } catch (err) {
+    console.error(`Error emitting ${eventType}:`, err);
+    res.status(500).json({ error: "Failed to emit app workflow event" });
+  }
+}
+
 // GET /api/apps/search - Search apps (must be before /:id)
 app.get("/api/apps/search", async (req, res) => {
   const { q, limit = 20 } = req.query;
@@ -7137,7 +7646,7 @@ app.get("/api/apps/:id", async (req, res) => {
 
 // POST /api/apps - Create app
 app.post("/api/apps", async (req, res) => {
-  const { name, description, icon, code, creator } = req.body;
+  const { name, description, icon, code, creator, metadata } = req.body;
 
   if (!name || !name.trim()) {
     return res.status(400).json({ error: "Name is required" });
@@ -7153,8 +7662,10 @@ app.post("/api/apps", async (req, res) => {
       icon,
       code,
       creator: creator || "ai",
+      metadata,
     });
     broadcastAppsEvent({ type: "app_created", app: { id: app.id, name: app.name } });
+    emitAppForgeWorkflowEvent(appForgeRecordPayload(app, "created"));
     res.status(201).json({ app });
   } catch (err) {
     console.error("Error creating app:", err);
@@ -7170,12 +7681,42 @@ app.patch("/api/apps/:id", async (req, res) => {
       return res.status(404).json({ error: "App not found" });
     }
     broadcastAppsEvent({ type: "app_updated", app: { id: app.id, name: app.name } });
+    emitAppForgeWorkflowEvent(appForgeRecordPayload(app, "updated"));
     res.json({ app });
   } catch (err) {
     console.error("Error updating app:", err);
     res.status(500).json({ error: "Failed to update app" });
   }
 });
+
+function parseAppForgeMetadataRequest(req) {
+  return typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+}
+
+// POST /api/apps/:id/appforge-metadata - Browser-safe AppForge metadata update
+app.post(
+  "/api/apps/:id/appforge-metadata",
+  express.text({ type: "text/plain", limit: "50mb" }),
+  async (req, res) => {
+    try {
+      const body = parseAppForgeMetadataRequest(req);
+      const metadata = body && typeof body === "object" ? body.metadata : undefined;
+      if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+        return res.status(400).json({ error: "metadata object is required" });
+      }
+      const app = await appsDb.updateApp(req.params.id, { metadata });
+      if (!app) {
+        return res.status(404).json({ error: "App not found" });
+      }
+      broadcastAppsEvent({ type: "app_updated", app: { id: app.id, name: app.name } });
+      emitAppForgeWorkflowEvent(appForgeRecordPayload(app, "updated"));
+      res.json({ app });
+    } catch (err) {
+      console.error("Error updating AppForge metadata:", err);
+      res.status(500).json({ error: "Failed to update AppForge metadata" });
+    }
+  },
+);
 
 // DELETE /api/apps/:id - Soft delete
 app.delete("/api/apps/:id", async (req, res) => {
@@ -7185,6 +7726,12 @@ app.delete("/api/apps/:id", async (req, res) => {
       return res.status(404).json({ error: "App not found" });
     }
     broadcastAppsEvent({ type: "app_deleted", appId: req.params.id });
+    emitAppForgeWorkflowEvent({
+      eventType: "forge.record.deleted",
+      appId: req.params.id,
+      tableId: "dashboard_apps",
+      recordId: req.params.id,
+    });
     res.json({ success: true });
   } catch (err) {
     console.error("Error deleting app:", err);
@@ -7200,11 +7747,76 @@ app.post("/api/apps/:id/delete", async (req, res) => {
       return res.status(404).json({ error: "App not found" });
     }
     broadcastAppsEvent({ type: "app_deleted", appId: req.params.id });
+    emitAppForgeWorkflowEvent({
+      eventType: "forge.record.deleted",
+      appId: req.params.id,
+      tableId: "dashboard_apps",
+      recordId: req.params.id,
+    });
     res.json({ success: true });
   } catch (err) {
     console.error("Error deleting app:", err);
     res.status(500).json({ error: "Failed to delete app" });
   }
+});
+
+// POST /api/apps/:id/workflow-event - Emit an AppForge workflow event
+app.post("/api/apps/:id/workflow-event", async (req, res) => {
+  try {
+    const app = await appsDb.getApp(req.params.id);
+    if (!app) {
+      return res.status(404).json({ error: "App not found" });
+    }
+    const eventType = String(req.body?.eventType || req.body?.type || "").trim();
+    if (!eventType) {
+      return res.status(400).json({ error: "eventType is required" });
+    }
+    emitAppForgeWorkflowEvent({
+      ...req.body,
+      eventType,
+      appId: app.id,
+      payload: {
+        ...(req.body?.payload && typeof req.body.payload === "object" ? req.body.payload : {}),
+        app: { id: app.id, name: app.name, metadata: app.metadata },
+      },
+    });
+    res.status(202).json({ ok: true });
+  } catch (err) {
+    console.error("Error emitting app workflow event:", err);
+    res.status(500).json({ error: "Failed to emit app workflow event" });
+  }
+});
+
+// POST /api/apps/:id/reviews/request - Emit a review requested AppForge event
+app.post("/api/apps/:id/reviews/request", async (req, res) => {
+  await emitAppForgeRuntimeEvent(req, res, "forge.review.requested", {
+    reviewState: "requested",
+  });
+});
+
+// POST /api/apps/:id/reviews/complete - Emit a review completed AppForge event
+app.post("/api/apps/:id/reviews/complete", async (req, res) => {
+  await emitAppForgeRuntimeEvent(req, res, "forge.review.completed", {
+    reviewState: "completed",
+  });
+});
+
+// POST /api/apps/:id/capabilities/:capabilityId/complete - Emit a capability completed event
+app.post("/api/apps/:id/capabilities/:capabilityId/complete", async (req, res) => {
+  await emitAppForgeRuntimeEvent(
+    {
+      params: req.params,
+      body: {
+        ...req.body,
+        capabilityId: req.body?.capabilityId || req.params.capabilityId,
+      },
+    },
+    res,
+    "forge.capability.completed",
+    {
+      capabilityState: "completed",
+    },
+  );
 });
 
 // POST /api/apps/:id/open - Record open
@@ -8088,6 +8700,11 @@ const AUTH_PROFILES_PATH = path.join(
 const OPENAI_CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const OPENAI_CODEX_AUTH_URL = "https://auth.openai.com/oauth/authorize";
 const OPENAI_CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token";
+const OPENAI_CODEX_DEVICE_URL = "https://auth.openai.com/codex/device";
+const OPENAI_CODEX_DEVICE_USER_CODE_URL =
+  "https://auth.openai.com/api/accounts/deviceauth/usercode";
+const OPENAI_CODEX_DEVICE_TOKEN_URL = "https://auth.openai.com/api/accounts/deviceauth/token";
+const OPENAI_CODEX_DEVICE_REDIRECT_URI = "https://auth.openai.com/deviceauth/callback";
 const OPENAI_CODEX_AUDIENCE = "https://api.openai.com/v1";
 const OPENAI_CODEX_SCOPE =
   "openid profile email offline_access api.connectors.read api.connectors.invoke";
@@ -8159,6 +8776,80 @@ function writeOpenAICodexOAuthProfile(tokenData) {
   if (!data.lastGood) data.lastGood = {};
   data.lastGood["openai-codex"] = "openai-codex:default";
   writeAuthProfiles(data);
+}
+
+async function pollOpenAICodexDeviceSession(state) {
+  const session = openAICodexAuthSessions.get(state);
+  if (!session || session.kind !== "device") {
+    return;
+  }
+
+  const deadline = (session.createdAt || Date.now()) + OPENAI_CODEX_OAUTH_TTL_MS;
+  try {
+    while (Date.now() < deadline) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.max(3, Number(session.pollIntervalSeconds || 5)) * 1000),
+      );
+      if (!openAICodexAuthSessions.has(state)) {
+        return;
+      }
+      const pollResp = await fetch(OPENAI_CODEX_DEVICE_TOKEN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          device_auth_id: session.deviceAuthId,
+          user_code: session.userCode,
+        }),
+      });
+      if (pollResp.status === 403 || pollResp.status === 404) {
+        continue;
+      }
+      if (!pollResp.ok) {
+        const detail = await pollResp.text().catch(() => "");
+        throw new Error(
+          `Device auth polling failed (${pollResp.status}): ${detail || "unknown error"}`,
+        );
+      }
+
+      const pollData = await pollResp.json();
+      const authorizationCode = String(pollData.authorization_code || "").trim();
+      const codeVerifier = String(pollData.code_verifier || "").trim();
+      if (!authorizationCode || !codeVerifier) {
+        throw new Error("Device auth response missing authorization_code or code_verifier");
+      }
+
+      const tokenBody = new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: OPENAI_CODEX_CLIENT_ID,
+        code_verifier: codeVerifier,
+        code: authorizationCode,
+        redirect_uri: OPENAI_CODEX_DEVICE_REDIRECT_URI,
+      });
+      const tokenRes = await fetch(OPENAI_CODEX_TOKEN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: tokenBody.toString(),
+      });
+      if (!tokenRes.ok) {
+        const detail = await tokenRes.text().catch(() => "");
+        throw new Error(`Token exchange failed (${tokenRes.status}): ${detail || "unknown error"}`);
+      }
+      const tokenData = await tokenRes.json();
+      writeOpenAICodexOAuthProfile(tokenData);
+      session.status = "success";
+      session.error = null;
+      session.completedAt = Date.now();
+      return;
+    }
+    throw new Error("OpenAI Codex device login timed out");
+  } catch (err) {
+    if (openAICodexAuthSessions.has(state)) {
+      session.status = "error";
+      session.error = err.message || String(err);
+      session.completedAt = Date.now();
+    }
+    console.error("[AuthProfiles] OpenAI Codex device login failed:", err);
+  }
 }
 
 function readAuthProfiles() {
@@ -9206,6 +9897,9 @@ app.get("/api/settings/service-keys/audit", async (req, res) => {
 
 const ARGENT_CONFIG_PATH = path.join(process.env.HOME, ".argentos", "argent.json");
 const REDACTED_CONFIG_SECRET = "__REDACTED__";
+const DEFAULT_IMAGE_ANALYSIS_MODEL = "google/gemini-3-flash-preview";
+const DEFAULT_IMAGE_ANALYSIS_FALLBACKS = ["anthropic/claude-sonnet-4-6"];
+const DEFAULT_IMAGE_ANALYSIS_TIMEOUT_SECONDS = 60;
 const LOAD_PROFILE_PRESETS = {
   desktop: {
     id: "desktop",
@@ -9919,6 +10613,110 @@ function writeArgentConfig(config) {
   fs.writeFileSync(ARGENT_CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
 }
 
+function normalizeImageAnalysisConfig(config) {
+  const rawImageModel = config?.agents?.defaults?.imageModel;
+  const primary =
+    typeof rawImageModel === "string"
+      ? rawImageModel.trim()
+      : typeof rawImageModel?.primary === "string"
+        ? rawImageModel.primary.trim()
+        : "";
+  const fallbacks =
+    rawImageModel && typeof rawImageModel === "object" && Array.isArray(rawImageModel.fallbacks)
+      ? rawImageModel.fallbacks
+          .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+          .map((entry) => entry.trim())
+      : [];
+  const mediaImage = config?.tools?.media?.image || {};
+  const timeoutSeconds =
+    typeof mediaImage.timeoutSeconds === "number" &&
+    Number.isFinite(mediaImage.timeoutSeconds) &&
+    mediaImage.timeoutSeconds > 0
+      ? Math.floor(mediaImage.timeoutSeconds)
+      : DEFAULT_IMAGE_ANALYSIS_TIMEOUT_SECONDS;
+  const configuredModels = Array.isArray(mediaImage.models)
+    ? mediaImage.models
+        .map((entry) => {
+          const provider = typeof entry?.provider === "string" ? entry.provider.trim() : "";
+          const model = typeof entry?.model === "string" ? entry.model.trim() : "";
+          return provider && model ? { provider, model } : null;
+        })
+        .filter(Boolean)
+    : [];
+  const resolvedPrimary = primary || DEFAULT_IMAGE_ANALYSIS_MODEL;
+  const resolvedFallbacks = fallbacks.length > 0 ? fallbacks : DEFAULT_IMAGE_ANALYSIS_FALLBACKS;
+  const resolvedModels =
+    configuredModels.length > 0
+      ? configuredModels
+      : [resolvedPrimary, ...resolvedFallbacks]
+          .map(parseProviderModelRef)
+          .filter(Boolean)
+          .map((entry) => ({ provider: entry.provider, model: entry.model }));
+
+  return {
+    primary: resolvedPrimary,
+    fallbacks: resolvedFallbacks,
+    timeoutSeconds,
+    models: resolvedModels,
+  };
+}
+
+function applyImageAnalysisConfigPatch(config, patch) {
+  if (!patch || typeof patch !== "object") return;
+  if (!config.agents || typeof config.agents !== "object") config.agents = {};
+  if (!config.agents.defaults || typeof config.agents.defaults !== "object") {
+    config.agents.defaults = {};
+  }
+  if (!config.tools || typeof config.tools !== "object") config.tools = {};
+  if (!config.tools.media || typeof config.tools.media !== "object") config.tools.media = {};
+  if (!config.tools.media.image || typeof config.tools.media.image !== "object") {
+    config.tools.media.image = {};
+  }
+
+  const primary =
+    typeof patch.primary === "string" && patch.primary.trim().length > 0
+      ? patch.primary.trim()
+      : DEFAULT_IMAGE_ANALYSIS_MODEL;
+  const fallbacks = Array.isArray(patch.fallbacks)
+    ? patch.fallbacks
+        .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+        .map((entry) => entry.trim())
+    : [];
+  const resolvedFallbacks = fallbacks.length > 0 ? fallbacks : DEFAULT_IMAGE_ANALYSIS_FALLBACKS;
+
+  config.agents.defaults.imageModel = {
+    primary,
+    fallbacks: resolvedFallbacks,
+  };
+
+  const timeoutSeconds =
+    typeof patch.timeoutSeconds === "number" &&
+    Number.isFinite(patch.timeoutSeconds) &&
+    patch.timeoutSeconds > 0
+      ? Math.max(1, Math.floor(patch.timeoutSeconds))
+      : DEFAULT_IMAGE_ANALYSIS_TIMEOUT_SECONDS;
+
+  const configuredModels = Array.isArray(patch.models)
+    ? patch.models
+        .map((entry) => {
+          const provider = typeof entry?.provider === "string" ? entry.provider.trim() : "";
+          const model = typeof entry?.model === "string" ? entry.model.trim() : "";
+          return provider && model ? { provider, model } : null;
+        })
+        .filter(Boolean)
+    : [];
+  const resolvedModels =
+    configuredModels.length > 0
+      ? configuredModels
+      : [primary, ...resolvedFallbacks]
+          .map(parseProviderModelRef)
+          .filter(Boolean)
+          .map((entry) => ({ provider: entry.provider, model: entry.model }));
+
+  config.tools.media.image.timeoutSeconds = timeoutSeconds;
+  config.tools.media.image.models = resolvedModels;
+}
+
 const DASHBOARD_REPO_ROOT = path.resolve(path.join(__dirname, ".."));
 const DEFAULT_ARGENT_VAULT_PATH = path.join(process.env.HOME || "", ".argentos", "vault");
 const AOS_GOOGLE_CONFIG_DIR = path.join(process.env.HOME || "", ".config", "gws");
@@ -9953,6 +10751,70 @@ function commandExists(cmd) {
   } catch {
     return false;
   }
+}
+
+function findBundledAosBinary(tool) {
+  const pathResult = (() => {
+    try {
+      const output = execSync(`command -v ${tool} 2>/dev/null || true`, {
+        encoding: "utf8",
+      }).trim();
+      return output || null;
+    } catch {
+      return null;
+    }
+  })();
+  if (pathResult) return pathResult;
+
+  const binaryName = process.platform === "win32" ? `${tool}.exe` : tool;
+  const candidates =
+    process.platform === "win32"
+      ? [
+          path.join(
+            DASHBOARD_REPO_ROOT,
+            "tools",
+            "aos",
+            tool,
+            "agent-harness",
+            ".venv",
+            "Scripts",
+            binaryName,
+          ),
+          path.join(
+            DASHBOARD_REPO_ROOT,
+            "tools",
+            "aos",
+            tool,
+            "agent-harness",
+            "venv",
+            "Scripts",
+            binaryName,
+          ),
+        ]
+      : [
+          path.join(
+            DASHBOARD_REPO_ROOT,
+            "tools",
+            "aos",
+            tool,
+            "agent-harness",
+            ".venv",
+            "bin",
+            binaryName,
+          ),
+          path.join(
+            DASHBOARD_REPO_ROOT,
+            "tools",
+            "aos",
+            tool,
+            "agent-harness",
+            "venv",
+            "bin",
+            binaryName,
+          ),
+        ];
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
 }
 
 function ensureAosGoogleConfigDir() {
@@ -10077,15 +10939,7 @@ function getMemoryV3StatusPayload(config) {
       ? "internal"
       : "external";
 
-  let aosCogneePath = null;
-  try {
-    const output = execSync("command -v aos-cognee 2>/dev/null || true", {
-      encoding: "utf8",
-    }).trim();
-    aosCogneePath = output || null;
-  } catch {
-    aosCogneePath = null;
-  }
+  const aosCogneePath = findBundledAosBinary("aos-cognee");
 
   return {
     vault: {
@@ -11349,9 +12203,6 @@ app.get("/api/settings/agent", (req, res) => {
     const loadProfile = resolveLoadProfileConfig(config);
     const target = parseAgentSettingsTarget(req);
     const selectedAgent = findConfigAgent(config, target.agentId);
-    if (target.agentId && !selectedAgent) {
-      return res.status(404).json({ error: `Unknown agent: ${target.agentId}` });
-    }
     const defaults = config?.agents?.defaults || {};
     const kernelDefaults = defaults.kernel || {};
     const defaultAgentId = resolveDefaultAgentId(config);
@@ -11579,6 +12430,19 @@ app.get("/api/settings/agent", (req, res) => {
           ? toolsScope.deny.filter((entry) => typeof entry === "string")
           : [],
       },
+      skills:
+        target.agentId && Array.isArray(selectedAgent?.skills)
+          ? selectedAgent.skills.filter((entry) => typeof entry === "string")
+          : [],
+      skillSource:
+        target.agentId && typeof selectedAgent?.skillSource === "string"
+          ? selectedAgent.skillSource
+          : "",
+      skillDefaultKey:
+        target.agentId && typeof selectedAgent?.skillDefaultKey === "string"
+          ? selectedAgent.skillDefaultKey
+          : "",
+      imageAnalysis: normalizeImageAnalysisConfig(config),
       backgroundModels: {
         kernel: kernelBackgroundSelection,
         contemplation: contemplationSelection,
@@ -11722,11 +12586,12 @@ app.patch("/api/settings/agent", (req, res) => {
       }
       if (
         req.body.executionWorker === undefined &&
-        (req.body.tools === undefined || typeof req.body.tools !== "object")
+        (req.body.tools === undefined || typeof req.body.tools !== "object") &&
+        req.body.skills === undefined
       ) {
-        return res
-          .status(400)
-          .json({ error: "executionWorker or tools patch object required for per-agent updates" });
+        return res.status(400).json({
+          error: "executionWorker, tools, or skills patch object required for per-agent updates",
+        });
       }
       if (!Array.isArray(config.agents.list)) config.agents.list = [];
       let agentEntry = findConfigAgent(config, target.agentId);
@@ -11775,6 +12640,26 @@ app.patch("/api/settings/agent", (req, res) => {
         assignList("ask");
         assignList("alsoAllow");
         assignList("deny");
+      }
+      if (req.body.skills !== undefined) {
+        if (Array.isArray(req.body.skills)) {
+          const skills = req.body.skills
+            .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+            .map((entry) => entry.trim());
+          if (skills.length > 0) {
+            agentEntry.skills = skills;
+            agentEntry.skillSource = "explicit";
+            delete agentEntry.skillDefaultKey;
+          } else {
+            delete agentEntry.skills;
+            delete agentEntry.skillSource;
+            delete agentEntry.skillDefaultKey;
+          }
+        } else {
+          delete agentEntry.skills;
+          delete agentEntry.skillSource;
+          delete agentEntry.skillDefaultKey;
+        }
       }
 
       writeArgentConfig(config);
@@ -12128,6 +13013,9 @@ app.patch("/api/settings/agent", (req, res) => {
           delete config.agents.defaults.contemplation.discoveryPhase.maxDurationMs;
         }
       }
+    }
+    if (req.body.imageAnalysis !== undefined) {
+      applyImageAnalysisConfigPatch(config, req.body.imageAnalysis);
     }
     if (req.body.tools !== undefined && typeof req.body.tools === "object") {
       if (!config.tools || typeof config.tools !== "object") config.tools = {};
@@ -13638,7 +14526,8 @@ const AUTH_PROFILE_PROVIDER_META = {
   opencode: { label: "OpenCode Zen", category: "Gateways & Routers" },
   "amazon-bedrock": { label: "Amazon Bedrock", category: "Gateways & Routers" },
   bedrock: { label: "Amazon Bedrock", category: "Gateways & Routers" },
-  zai: { label: "Z.AI (GLM)", category: "Chinese Providers" },
+  zai: { label: "Z.AI API Direct", category: "Chinese Providers" },
+  "zai-coding": { label: "Z.AI Coding Plan", category: "Chinese Providers" },
   moonshot: { label: "Moonshot AI (Kimi)", category: "Chinese Providers" },
   "kimi-coding": { label: "Kimi Coding", category: "Chinese Providers" },
   "qwen-portal": { label: "Qwen (Alibaba)", category: "Chinese Providers" },
@@ -14043,12 +14932,13 @@ app.get("/api/settings/provider-models", async (req, res) => {
       }
     }
 
+    const catalogProvider = provider === "zai-coding" ? "zai" : provider;
     const piCatalog = await loadPiBackedModelCatalog();
     for (const entry of piCatalog) {
       if (
         String(entry.provider || "")
           .trim()
-          .toLowerCase() !== provider
+          .toLowerCase() !== catalogProvider
       )
         continue;
       pushRow(entry.id, entry.name && entry.name !== entry.id ? entry.name : null, {
@@ -14068,6 +14958,7 @@ app.get("/api/settings/provider-models", async (req, res) => {
       ],
       "kimi-coding": ["k2p5"],
       zai: ["glm-5", "glm-4.7", "glm-4.6"],
+      "zai-coding": ["glm-5", "glm-4.7", "glm-4.6"],
       qianfan: ["ernie-4.0-8k"],
     };
 
@@ -14193,6 +15084,7 @@ app.get("/api/settings/provider-models", async (req, res) => {
           "cerebras",
           "qianfan",
           "minimax",
+          "zai-coding",
           "opencode",
           "synthetic",
           "vercel-ai-gateway",
@@ -14204,9 +15096,11 @@ app.get("/api/settings/provider-models", async (req, res) => {
           (typeof providerConfig?.baseUrl === "string" && providerConfig.baseUrl.trim()) ||
           (provider === "openai" || provider === "openai-codex"
             ? "https://api.openai.com/v1"
-            : provider === "moonshot"
-              ? "https://api.moonshot.ai/v1"
-              : "");
+            : provider === "zai-coding"
+              ? "https://api.z.ai/api/coding/paas/v4"
+              : provider === "moonshot"
+                ? "https://api.moonshot.ai/v1"
+                : "");
         await fetchOpenAICompatModels(
           resolvedBaseUrl,
           resolveProviderCredential(provider) || resolveProviderCredential("openai"),
@@ -14315,40 +15209,49 @@ app.get("/api/settings/auth-profiles/:key/reveal", (req, res) => {
   }
 });
 
-// POST /api/settings/auth-profiles/openai-codex/oauth/start — Start dashboard OAuth flow
+// POST /api/settings/auth-profiles/openai-codex/oauth/start — Start dashboard device-code OAuth flow
 app.post("/api/settings/auth-profiles/openai-codex/oauth/start", (req, res) => {
-  try {
+  (async () => {
     cleanupOpenAICodexAuthSessions();
-    const codeVerifier = generateCodeVerifier();
-    const codeChallenge = generateCodeChallenge(codeVerifier);
     const state = generateOAuthState();
-    const redirectUri = createOpenAICodexRedirectUri(req);
-    const authParams = new URLSearchParams({
-      response_type: "code",
-      client_id: OPENAI_CODEX_CLIENT_ID,
-      redirect_uri: redirectUri,
-      scope: OPENAI_CODEX_SCOPE,
-      audience: OPENAI_CODEX_AUDIENCE,
-      state,
-      code_challenge: codeChallenge,
-      code_challenge_method: "S256",
+    const deviceResp = await fetch(OPENAI_CODEX_DEVICE_USER_CODE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ client_id: OPENAI_CODEX_CLIENT_ID }),
     });
+    if (!deviceResp.ok) {
+      const detail = await deviceResp.text().catch(() => "");
+      throw new Error(
+        `Device code request failed (${deviceResp.status}): ${detail || "unknown error"}`,
+      );
+    }
+    const deviceData = await deviceResp.json();
+    const userCode = String(deviceData.user_code || "").trim();
+    const deviceAuthId = String(deviceData.device_auth_id || "").trim();
+    if (!userCode || !deviceAuthId) {
+      throw new Error("Device code response missing user_code or device_auth_id");
+    }
+    const pollIntervalSeconds = Math.max(3, Number.parseInt(String(deviceData.interval || 5), 10));
     openAICodexAuthSessions.set(state, {
-      codeVerifier,
-      redirectUri,
+      kind: "device",
+      userCode,
+      deviceAuthId,
+      pollIntervalSeconds: Number.isFinite(pollIntervalSeconds) ? pollIntervalSeconds : 5,
       createdAt: Date.now(),
       status: "pending",
     });
+    void pollOpenAICodexDeviceSession(state);
     res.json({
       ok: true,
       state,
-      authUrl: `${OPENAI_CODEX_AUTH_URL}?${authParams.toString()}`,
+      authUrl: OPENAI_CODEX_DEVICE_URL,
+      userCode,
       expiresInMs: OPENAI_CODEX_OAUTH_TTL_MS,
     });
-  } catch (err) {
+  })().catch((err) => {
     console.error("[AuthProfiles] Failed to start OpenAI Codex OAuth:", err);
     res.status(500).json({ error: "Failed to start OpenAI Codex OAuth" });
-  }
+  });
 });
 
 // GET /api/settings/auth-profiles/openai-codex/oauth/status — Poll dashboard OAuth flow status
@@ -17307,6 +18210,7 @@ if (require.main === module) {
     app,
     __test: {
       setPgSqlClientForTests,
+      setReminderDeliveryHooksForTests,
       runSchedulerTick,
       getStorageInfo() {
         return {

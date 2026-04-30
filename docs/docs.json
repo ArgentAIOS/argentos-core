@@ -866,6 +866,8 @@
                 "pages": [
                   "tools/lobster",
                   "tools/llm-task",
+                  "tools/specforge",
+                  "tools/room-reader",
                   "tools/exec",
                   "tools/web",
                   "tools/apply-patch",

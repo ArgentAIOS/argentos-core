@@ -8,6 +8,7 @@
     "scaffold_only": false,
     "live_backend_available": true,
     "live_read_available": true,
+    "live_write_available": false,
     "write_bridge_available": false,
     "workerFields": ["account", "list_id", "profile_id", "profile_email", "campaign_id"],
     "worker_visible_actions": [
@@ -154,14 +155,21 @@
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": ["KLAVIYO_API_KEY"],
+    "service_keys": [
+      "KLAVIYO_API_KEY",
+      "KLAVIYO_REVISION",
+      "KLAVIYO_LIST_ID",
+      "KLAVIYO_PROFILE_ID",
+      "KLAVIYO_PROFILE_EMAIL",
+      "KLAVIYO_CAMPAIGN_ID"
+    ],
     "interactive_setup": [
       "Create or choose a Klaviyo private API key for the target account.",
-      "Add KLAVIYO_API_KEY in API Keys before enabling live reads.",
+      "Add KLAVIYO_API_KEY to operator-controlled service keys before enabling live reads.",
+      "Use the KLAVIYO_API_KEY environment variable only as a local harness fallback when operator keys are unavailable.",
       "Optionally set KLAVIYO_REVISION to pin the API revision header used by the connector.",
-      "Set KLAVIYO_LIST_ID, KLAVIYO_PROFILE_ID, KLAVIYO_PROFILE_EMAIL, and KLAVIYO_CAMPAIGN_ID to give worker flows stable list, profile, and campaign scope defaults.",
-      "Keep campaign.create and profile.upsert scaffolded until Klaviyo write workflows are approved.",
-      "The connector is live-read-first and will report API failures instead of masking them."
+      "Add KLAVIYO_LIST_ID, KLAVIYO_PROFILE_ID, KLAVIYO_PROFILE_EMAIL, and KLAVIYO_CAMPAIGN_ID to operator-controlled service keys to give worker flows stable list, profile, and campaign scope defaults.",
+      "The connector exposes live reads only; Klaviyo mutation commands are not advertised until approval and compliance safeguards are explicitly shipped."
     ]
   },
   "commands": [
@@ -252,22 +260,6 @@
       "supports_json": true,
       "resource": "campaign",
       "action_class": "read"
-    },
-    {
-      "id": "campaign.create",
-      "summary": "Create a draft Klaviyo campaign",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "campaign",
-      "action_class": "write"
-    },
-    {
-      "id": "profile.upsert",
-      "summary": "Create or update a Klaviyo profile",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "profile",
-      "action_class": "write"
     }
   ]
 }

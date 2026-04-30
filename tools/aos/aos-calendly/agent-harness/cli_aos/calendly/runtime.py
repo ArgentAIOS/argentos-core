@@ -8,6 +8,11 @@ from .config import config_snapshot, resolve_runtime_values
 from .constants import BACKEND_NAME, CONNECTOR_PATH
 from .errors import CliError
 
+WRITE_SUPPORT = {
+    "events.cancel": "live",
+    "scheduling_links.create": "scaffold_only",
+}
+
 
 def _load_manifest() -> dict[str, Any]:
     return json.loads(CONNECTOR_PATH.read_text())
@@ -31,10 +36,7 @@ def capabilities_snapshot() -> dict[str, Any]:
             "invitees.list": True,
             "availability.get": True,
         },
-        "write_support": {
-            "events.cancel": "scaffold_only",
-            "scheduling_links.create": "scaffold_only",
-        },
+        "write_support": WRITE_SUPPORT,
     }
 
 
@@ -101,6 +103,29 @@ def probe_runtime(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _write_error(err: CalendlyApiError, *, operation: str) -> CliError:
+    code = "CALENDLY_AUTH_FAILED" if err.status_code in {401, 403} else "CALENDLY_API_ERROR"
+    message = err.message if err.status_code not in {401, 403} else f"Calendly {operation} failed because the token lacks access"
+    return CliError(
+        code=code,
+        message=message,
+        exit_code=5 if err.status_code in {401, 403} else 4,
+        details={
+            "operation": operation,
+            "status_code": err.status_code,
+            "error_code": err.code,
+            "error_details": err.details or {},
+        },
+    )
+
+
+def _require_value(value: str | None, *, code: str, message: str, detail_key: str, detail_value: str) -> str:
+    resolved = (value or "").strip()
+    if resolved:
+        return resolved
+    raise CliError(code=code, message=message, exit_code=4, details={detail_key: detail_value})
+
+
 def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
     probe = probe_runtime(ctx_obj)
@@ -112,7 +137,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "backend": BACKEND_NAME,
             "live_backend_available": bool(probe.get("ok")),
             "live_read_available": bool(probe.get("ok")),
-            "write_bridge_available": False,
+            "write_bridge_available": bool(probe.get("ok")),
             "scaffold_only": False,
         },
         "auth": {
@@ -134,8 +159,9 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "runtime_ready": bool(probe.get("ok")),
         "probe": probe,
         "next_steps": [
-            f"Set {runtime['api_key_env']} to a Calendly personal access token.",
+            f"Set {runtime['api_key_env']} in operator-controlled service keys, or fall back to an environment variable only if needed.",
             "Optionally pin CALENDLY_EVENT_TYPE_UUID to stabilize event type scope.",
+            "events.cancel executes live with --mode write; scheduling_links.create remains scaffolded.",
         ],
     }
 
@@ -147,11 +173,11 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "status": "ready" if probe.get("ok") else ("needs_setup" if probe.get("code") == "CALENDLY_SETUP_REQUIRED" else "degraded"),
         "summary": "Calendly connector diagnostics.",
         "runtime": {
-            "implementation_mode": "live_read_with_scaffolded_writes",
+            "implementation_mode": "live_read_with_partial_writes",
             "command_readiness": {
                 "events.list": bool(probe.get("ok")),
                 "events.get": bool(probe.get("ok")),
-                "events.cancel": False,
+                "events.cancel": bool(probe.get("ok")),
                 "event_types.list": bool(probe.get("ok")),
                 "event_types.get": bool(probe.get("ok")),
                 "invitees.list": bool(probe.get("ok")),
@@ -164,7 +190,14 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "checks": [
             {"name": "required_env", "ok": runtime["api_key_present"]},
             {"name": "live_backend", "ok": bool(probe.get("ok")), "details": probe.get("details", {})},
-            {"name": "write_commands", "ok": True, "details": {"mode": "scaffold_only"}},
+            {
+                "name": "write_commands",
+                "ok": True,
+                "details": {
+                    "live": ["events.cancel"],
+                    "scaffolded": ["scheduling_links.create"],
+                },
+            },
         ],
         "supported_read_commands": [
             "events.list",
@@ -174,11 +207,12 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "invitees.list",
             "availability.get",
         ],
-        "scaffolded_commands": ["events.cancel", "scheduling_links.create"],
+        "supported_write_commands": ["events.cancel"],
+        "scaffolded_commands": ["scheduling_links.create"],
         "next_steps": [
-            f"Set {runtime['api_key_env']} to a Calendly personal access token.",
+            f"Set {runtime['api_key_env']} in operator-controlled service keys, or fall back to an environment variable only if needed.",
             "Use event_types.list to discover available event types before scoping workers.",
-            "Decide whether events.cancel and scheduling_links.create should gain a write bridge.",
+            "events.cancel now executes live in write mode; scheduling_links.create still returns a scaffold-only preview.",
         ],
     }
 
@@ -285,14 +319,13 @@ def events_list_result(
 
 def events_get_result(ctx_obj: dict[str, Any], uuid: str | None) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
-    resolved = (uuid or runtime["event_uuid"] or "").strip()
-    if not resolved:
-        raise CliError(
-            code="CALENDLY_EVENT_REQUIRED",
-            message="Event UUID is required",
-            exit_code=4,
-            details={"env": runtime["event_uuid_env"]},
-        )
+    resolved = _require_value(
+        uuid or runtime["event_uuid"],
+        code="CALENDLY_EVENT_REQUIRED",
+        message="Event UUID is required",
+        detail_key="env",
+        detail_value=runtime["event_uuid_env"],
+    )
     client = create_client(ctx_obj)
     event = client.get_event(resolved)
     return {
@@ -310,14 +343,13 @@ def events_get_result(ctx_obj: dict[str, Any], uuid: str | None) -> dict[str, An
 
 def invitees_list_result(ctx_obj: dict[str, Any], event_uuid: str | None, *, limit: int, email: str | None = None) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
-    resolved = (event_uuid or runtime["event_uuid"] or "").strip()
-    if not resolved:
-        raise CliError(
-            code="CALENDLY_EVENT_REQUIRED",
-            message="Event UUID is required to list invitees",
-            exit_code=4,
-            details={"env": runtime["event_uuid_env"]},
-        )
+    resolved = _require_value(
+        event_uuid or runtime["event_uuid"],
+        code="CALENDLY_EVENT_REQUIRED",
+        message="Event UUID is required to list invitees",
+        detail_key="env",
+        detail_value=runtime["event_uuid_env"],
+    )
     client = create_client(ctx_obj)
     payload = client.list_invitees(resolved, count=limit, email=email)
     invitees = payload.get("invitees", [])
@@ -349,14 +381,13 @@ def invitees_list_result(ctx_obj: dict[str, Any], event_uuid: str | None, *, lim
 
 def availability_get_result(ctx_obj: dict[str, Any], event_type_uuid: str | None, *, start_time: str | None = None, end_time: str | None = None) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
-    resolved = (event_type_uuid or runtime["event_type_uuid"] or "").strip()
-    if not resolved:
-        raise CliError(
-            code="CALENDLY_EVENT_TYPE_REQUIRED",
-            message="Event type UUID is required for availability lookup",
-            exit_code=4,
-            details={"env": runtime["event_type_uuid_env"]},
-        )
+    resolved = _require_value(
+        event_type_uuid or runtime["event_type_uuid"],
+        code="CALENDLY_EVENT_TYPE_REQUIRED",
+        message="Event type UUID is required for availability lookup",
+        detail_key="env",
+        detail_value=runtime["event_type_uuid_env"],
+    )
     client = create_client(ctx_obj)
     payload = client.get_availability(resolved, start_time=start_time, end_time=end_time)
     return {
@@ -374,7 +405,63 @@ def availability_get_result(ctx_obj: dict[str, Any], event_type_uuid: str | None
     }
 
 
-def scaffold_write_result(ctx_obj: dict[str, Any], *, command_id: str, inputs: dict[str, Any]) -> dict[str, Any]:
+def events_cancel_result(ctx_obj: dict[str, Any], uuid: str | None, *, reason: str | None = None) -> dict[str, Any]:
+    runtime = resolve_runtime_values(ctx_obj)
+    resolved = _require_value(
+        uuid or runtime["event_uuid"],
+        code="CALENDLY_EVENT_REQUIRED",
+        message="Event UUID is required to cancel an event",
+        detail_key="env",
+        detail_value=runtime["event_uuid_env"],
+    )
+    client = create_client(ctx_obj)
+    try:
+        cancellation = client.cancel_event(resolved, reason=reason)
+    except CalendlyApiError as err:
+        raise _write_error(err, operation="event cancellation") from err
+    return {
+        "status": "live_write",
+        "backend": BACKEND_NAME,
+        "summary": f"Canceled Calendly event {resolved}.",
+        "event_uuid": resolved,
+        "cancellation": cancellation,
+        "scope_preview": {
+            "selection_surface": "event",
+            "command_id": "events.cancel",
+            "event_uuid": resolved,
+        },
+    }
+
+
+def scheduling_links_create_scaffold_result(
+    ctx_obj: dict[str, Any],
+    event_type_uuid: str | None,
+    *,
+    max_event_count: int,
+) -> dict[str, Any]:
+    runtime = resolve_runtime_values(ctx_obj)
+    resolved = _require_value(
+        event_type_uuid or runtime["event_type_uuid"],
+        code="CALENDLY_EVENT_TYPE_REQUIRED",
+        message="Event type UUID is required to preview scheduling link creation",
+        detail_key="env",
+        detail_value=runtime["event_type_uuid_env"],
+    )
+    return scaffold_write_result(
+        ctx_obj,
+        command_id="scheduling_links.create",
+        inputs={"event_type_uuid": resolved, "max_event_count": max_event_count},
+        selection_surface="event_type",
+    )
+
+
+def scaffold_write_result(
+    ctx_obj: dict[str, Any],
+    *,
+    command_id: str,
+    inputs: dict[str, Any],
+    selection_surface: str,
+) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
     return {
         "status": "scaffold_write_only",
@@ -383,9 +470,9 @@ def scaffold_write_result(ctx_obj: dict[str, Any], *, command_id: str, inputs: d
         "command": command_id,
         "inputs": inputs,
         "scope_preview": {
-            "selection_surface": "event",
+            "selection_surface": selection_surface,
             "event_type_uuid": runtime["event_type_uuid"] or None,
             "event_uuid": runtime["event_uuid"] or None,
         },
-        "next_step": "Keep Calendly write actions disabled until approval and safety rules are defined.",
+        "next_step": "Keep this write scaffold explicit until the Calendly API request and response contract is verified end-to-end.",
     }

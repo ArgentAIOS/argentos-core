@@ -22,6 +22,7 @@ type ResolvedAgentConfig = {
   skills?: AgentEntry["skills"];
   memorySearch?: AgentEntry["memorySearch"];
   humanDelay?: AgentEntry["humanDelay"];
+  tts?: AgentEntry["tts"];
   heartbeat?: AgentEntry["heartbeat"];
   executionWorker?: AgentEntry["executionWorker"];
   identity?: AgentEntry["identity"];
@@ -153,6 +154,7 @@ export function resolveAgentConfig(
     skills: Array.isArray(entry.skills) ? entry.skills : undefined,
     memorySearch: entry.memorySearch,
     humanDelay: entry.humanDelay,
+    tts: entry.tts,
     heartbeat: entry.heartbeat,
     executionWorker: entry.executionWorker,
     identity: entry.identity,

@@ -44,7 +44,7 @@ def _normalize_lead(raw: dict[str, Any]) -> dict[str, Any]:
     contacts = raw.get("contacts", [])
     return {
         "id": raw.get("id"),
-        "display_name": raw.get("display_name"),
+        "display_name": raw.get("display_name") or raw.get("name"),
         "status_label": raw.get("status_label"),
         "description": raw.get("description"),
         "url": raw.get("url"),
@@ -100,7 +100,7 @@ def _normalize_task(raw: dict[str, Any]) -> dict[str, Any]:
         "id": raw.get("id"),
         "text": raw.get("text"),
         "is_complete": raw.get("is_complete"),
-        "due_date": raw.get("due_date"),
+        "due_date": raw.get("due_date") or raw.get("date"),
         "assigned_to": raw.get("assigned_to"),
         "lead_id": raw.get("lead_id"),
         "date_created": raw.get("date_created"),
@@ -175,8 +175,11 @@ class CloseClient:
         raw = self._request("GET", f"/lead/{lead_id}/")
         return _normalize_lead(raw)
 
-    def list_contacts(self, *, limit: int = 10) -> list[dict[str, Any]]:
-        result = self._request("GET", "/contact/", params={"_limit": limit})
+    def list_contacts(self, *, limit: int = 10, lead_id: str | None = None) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"_limit": limit}
+        if lead_id:
+            params["lead_id"] = lead_id
+        result = self._request("GET", "/contact/", params=params)
         data = result.get("data", [])
         return [_normalize_contact(c) for c in data if isinstance(c, dict)]
 
@@ -184,8 +187,40 @@ class CloseClient:
         raw = self._request("GET", f"/contact/{contact_id}/")
         return _normalize_contact(raw)
 
-    def list_opportunities(self, *, limit: int = 10) -> list[dict[str, Any]]:
-        result = self._request("GET", "/opportunity/", params={"_limit": limit})
+    def create_contact(
+        self,
+        *,
+        name: str,
+        lead_id: str | None = None,
+        email: str | None = None,
+        phone: str | None = None,
+        title: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"name": name}
+        if lead_id:
+            body["lead_id"] = lead_id
+        if title:
+            body["title"] = title
+        if email:
+            body["emails"] = [{"email": email, "type": "office"}]
+        if phone:
+            body["phones"] = [{"phone": phone, "type": "office"}]
+        raw = self._request("POST", "/contact/", body=body)
+        return _normalize_contact(raw)
+
+    def list_opportunities(
+        self,
+        *,
+        limit: int = 10,
+        lead_id: str | None = None,
+        status_type: str | None = None,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"_limit": limit}
+        if lead_id:
+            params["lead_id"] = lead_id
+        if status_type:
+            params["status_type"] = status_type
+        result = self._request("GET", "/opportunity/", params=params)
         data = result.get("data", [])
         return [_normalize_opportunity(o) for o in data if isinstance(o, dict)]
 
@@ -193,15 +228,112 @@ class CloseClient:
         raw = self._request("GET", f"/opportunity/{opp_id}/")
         return _normalize_opportunity(raw)
 
-    def list_activities(self, *, limit: int = 10) -> list[dict[str, Any]]:
-        result = self._request("GET", "/activity/", params={"_limit": limit})
+    def create_opportunity(
+        self,
+        *,
+        lead_id: str,
+        note: str | None = None,
+        value: int | None = None,
+        confidence: int | None = None,
+        status_id: str | None = None,
+        contact_id: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"lead_id": lead_id}
+        if note:
+            body["note"] = note
+        if value is not None:
+            body["value"] = value
+        if confidence is not None:
+            body["confidence"] = confidence
+        if status_id:
+            body["status_id"] = status_id
+        if contact_id:
+            body["contact_id"] = contact_id
+        raw = self._request("POST", "/opportunity/", body=body)
+        return _normalize_opportunity(raw)
+
+    def list_activities(
+        self,
+        *,
+        limit: int = 10,
+        lead_id: str | None = None,
+        contact_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"_limit": limit}
+        if lead_id:
+            params["lead_id"] = lead_id
+        if contact_id:
+            params["contact_id"] = contact_id
+        result = self._request("GET", "/activity/", params=params)
         data = result.get("data", [])
         return [_normalize_activity(a) for a in data if isinstance(a, dict)]
 
-    def list_tasks(self, *, limit: int = 10) -> list[dict[str, Any]]:
-        result = self._request("GET", "/task/", params={"_limit": limit})
+    def create_note_activity(
+        self,
+        *,
+        lead_id: str,
+        note: str,
+        contact_id: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"lead_id": lead_id, "note": note}
+        if contact_id:
+            body["contact_id"] = contact_id
+        raw = self._request("POST", "/activity/note/", body=body)
+        return _normalize_activity(raw)
+
+    def list_tasks(
+        self,
+        *,
+        limit: int = 10,
+        lead_id: str | None = None,
+        assigned_to: str | None = None,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"_limit": limit}
+        if lead_id:
+            params["lead_id"] = lead_id
+        if assigned_to:
+            params["assigned_to"] = assigned_to
+        result = self._request("GET", "/task/", params=params)
         data = result.get("data", [])
         return [_normalize_task(t) for t in data if isinstance(t, dict)]
+
+    def create_task(
+        self,
+        *,
+        lead_id: str,
+        text: str,
+        assigned_to: str | None = None,
+        due_date: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"_type": "lead", "lead_id": lead_id, "text": text, "is_complete": False}
+        if assigned_to:
+            body["assigned_to"] = assigned_to
+        if due_date:
+            body["date"] = due_date
+        raw = self._request("POST", "/task/", body=body)
+        return _normalize_task(raw)
+
+    def create_lead(
+        self,
+        *,
+        name: str,
+        status: str | None = None,
+        description: str | None = None,
+        url: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"name": name}
+        if status:
+            body["status"] = status
+        if description:
+            body["description"] = description
+        if url:
+            body["url"] = url
+        raw = self._request("POST", "/lead/", body=body)
+        return _normalize_lead(raw)
+
+    def update_lead(self, lead_id: str, *, fields: dict[str, Any]) -> dict[str, Any]:
+        raw = self._request("PUT", f"/lead/{lead_id}/", body=fields)
+        return _normalize_lead(raw)
 
     def probe(self) -> dict[str, Any]:
         return self._request("GET", "/me/")

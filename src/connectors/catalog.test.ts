@@ -79,9 +79,13 @@ describe("discoverConnectorCatalog", () => {
       "tools",
       "aos",
     );
+    const expectedUserRoot = path.join(os.homedir(), ".argentos", "connectors");
     const externalRepoRoot = path.join(os.homedir(), "code", "agent-cli-tools");
 
     expect(defaultRepoRoots()).toContain(expectedVendoredRoot);
+    expect(defaultRepoRoots().indexOf(expectedUserRoot)).toBeLessThan(
+      defaultRepoRoots().indexOf(expectedVendoredRoot),
+    );
     expect(defaultRepoRoots().indexOf(expectedVendoredRoot)).toBeLessThan(
       defaultRepoRoots().indexOf(externalRepoRoot),
     );

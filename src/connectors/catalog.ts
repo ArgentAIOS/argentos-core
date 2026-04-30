@@ -156,7 +156,7 @@ export function defaultRepoRoots(): string[] {
     path.resolve(process.cwd(), "..", "agent-cli-tools"),
   ];
   return Array.from(
-    new Set([...envRoots, ...vendoredRoots, ...userRoots, ...externalRoots].filter(Boolean)),
+    new Set([...envRoots, ...userRoots, ...vendoredRoots, ...externalRoots].filter(Boolean)),
   );
 }
 

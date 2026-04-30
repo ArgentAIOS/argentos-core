@@ -18,6 +18,7 @@ async function resolveA2uiRoot(): Promise<string | null> {
   const candidates = [
     // Running from source (bun) or dist (tsc + copied assets).
     path.resolve(here, "a2ui"),
+    path.resolve(here, "canvas-host/a2ui"),
     // Running from dist without copied assets (fallback to source).
     path.resolve(here, "../../src/canvas-host/a2ui"),
     // Running from repo root.

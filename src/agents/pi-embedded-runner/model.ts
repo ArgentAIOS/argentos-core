@@ -22,6 +22,18 @@ type InlineProviderConfig = {
 
 const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1";
 const DEFAULT_LMSTUDIO_BASE_URL = "http://127.0.0.1:1234/v1";
+const ZAI_CODING_PROVIDER_ID = "zai-coding";
+const ZAI_CATALOG_PROVIDER_ID = "zai";
+
+function cloneZaiModelForCodingPlan(model: Model<Api>, cfg?: ArgentConfig): Model<Api> {
+  const cloned = {
+    ...model,
+    provider: ZAI_CODING_PROVIDER_ID,
+    baseUrl: "https://api.z.ai/api/coding/paas/v4",
+    api: "openai-completions",
+  } as Model<Api>;
+  return normalizeModelCompat(applyProviderOverrides(cloned, cfg));
+}
 
 export function buildInlineProviderModels(
   providers: Record<string, InlineProviderConfig>,
@@ -129,9 +141,28 @@ export function resolveModel(
   const modelRegistry = discoverModels(authStorage, resolvedAgentDir);
   const model = modelRegistry.find(provider, modelId) as Model<Api> | null;
   if (!model) {
+    const normalizedProvider = normalizeProviderId(provider);
+    if (normalizedProvider === ZAI_CODING_PROVIDER_ID) {
+      const piZaiModel = modelRegistry.find(ZAI_CATALOG_PROVIDER_ID, modelId) as Model<Api> | null;
+      if (piZaiModel) {
+        return {
+          model: cloneZaiModelForCodingPlan(piZaiModel, cfg),
+          authStorage,
+          modelRegistry,
+        };
+      }
+      const argentZaiModel = ARGENT_MODELS[ZAI_CATALOG_PROVIDER_ID]?.[modelId];
+      if (argentZaiModel) {
+        return {
+          model: cloneZaiModelForCodingPlan(argentZaiModel as Model<Api>, cfg),
+          authStorage,
+          modelRegistry,
+        };
+      }
+    }
+
     // Fallback 1: Check Argent's own models database (handles new models
     // before Pi's registry is updated — Pi is on OSS vacation until 2/23).
-    const normalizedProvider = normalizeProviderId(provider);
     const argentProvider = ARGENT_MODELS[normalizedProvider];
     if (argentProvider) {
       const argentModel = argentProvider[modelId];

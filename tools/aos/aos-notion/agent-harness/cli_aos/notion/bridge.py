@@ -52,22 +52,3 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
 
 def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     return redacted_config_snapshot(ctx_obj)
-
-
-def scaffold_result(
-    ctx_obj: dict[str, Any],
-    *,
-    command_id: str,
-    resource: str,
-    operation: str,
-    inputs: dict[str, Any],
-    consequential: bool = False,
-) -> dict[str, Any]:
-    return runtime_module.scaffold_result(
-        ctx_obj,
-        command_id=command_id,
-        resource=resource,
-        operation=operation,
-        inputs=inputs,
-        consequential=consequential,
-    )

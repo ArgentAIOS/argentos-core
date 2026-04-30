@@ -26,29 +26,11 @@ class FakeGoogleDriveClient:
     def get_file(self, file_id: str) -> dict[str, Any]:
         return {"id": file_id, "name": "Budget", "mimeType": "application/pdf", "parents": ["folder_1"], "owners": [{"displayName": "Tester", "emailAddress": "tester@example.com"}], "webViewLink": "https://example.com/file_1", "webContentLink": None, "trashed": False}
 
-    def create_file(self, *, name: str, mime_type: str | None = None, folder_id: str | None = None) -> dict[str, Any]:
-        return {"id": "file_created", "name": name, "mimeType": mime_type or "application/octet-stream", "parents": [folder_id] if folder_id else [], "owners": [], "webViewLink": "https://example.com/file_created", "webContentLink": None, "trashed": False}
-
-    def copy_file(self, *, file_id: str, name: str | None = None) -> dict[str, Any]:
-        return {"id": "file_copy", "name": name or "Copy", "mimeType": "application/pdf", "parents": ["folder_1"], "owners": [], "webViewLink": "https://example.com/file_copy", "webContentLink": None, "trashed": False}
-
-    def move_file(self, *, file_id: str, folder_id: str) -> dict[str, Any]:
-        return {"id": file_id, "name": "Budget", "mimeType": "application/pdf", "parents": [folder_id], "owners": [], "webViewLink": "https://example.com/file_1", "webContentLink": None, "trashed": False}
-
-    def delete_file(self, *, file_id: str) -> dict[str, Any]:
-        return {"deleted": True, "id": file_id}
-
     def list_folders(self, *, limit: int = 25, folder_id: str | None = None) -> dict[str, Any]:
         folders = [
             {"id": "folder_1", "name": "Invoices", "mimeType": "application/vnd.google-apps.folder", "parents": ["root"], "owners": [{"displayName": "Tester", "emailAddress": "tester@example.com"}], "webViewLink": "https://example.com/folder_1", "webContentLink": None, "trashed": False},
         ]
         return {"files": folders[:limit], "count": min(limit, len(folders)), "raw": {"files": folders}}
-
-    def create_folder(self, *, name: str, folder_id: str | None = None) -> dict[str, Any]:
-        return {"id": "folder_created", "name": name, "mimeType": "application/vnd.google-apps.folder", "parents": [folder_id] if folder_id else [], "owners": [], "webViewLink": "https://example.com/folder_created", "webContentLink": None, "trashed": False}
-
-    def create_permission(self, *, file_id: str, email_address: str, role: str) -> dict[str, Any]:
-        return {"id": "perm_1", "type": "user", "role": role, "emailAddress": email_address, "displayName": "Colleague"}
 
     def list_permissions(self, *, file_id: str) -> dict[str, Any]:
         permissions = [{"id": "perm_1", "type": "user", "role": "reader", "emailAddress": "colleague@example.com", "displayName": "Colleague"}]
@@ -78,12 +60,50 @@ def invoke_json_with_mode(mode: str, args: list[str]) -> dict[str, Any]:
     return json.loads(result.output)
 
 
+def invoke_result(args: list[str]):
+    return CliRunner().invoke(cli, ["--json", *args])
+
+
 def test_manifest_and_permissions_are_in_sync():
     manifest = json.loads(CONNECTOR_PATH.read_text())
     permissions = json.loads(PERMISSIONS_PATH.read_text())["permissions"]
     command_ids = [command["id"] for command in manifest["commands"]]
     assert set(command_ids) == set(permissions.keys())
     assert manifest["scope"]["kind"] == "document-storage"
+    assert {command["required_mode"] for command in manifest["commands"]} == {"readonly"}
+    assert "file.create" not in command_ids
+    assert "share.create" not in command_ids
+    field_ids = {field["id"] for field in manifest["scope"]["fields"]}
+    assert set(manifest["scope"]["workerFields"]) <= field_ids
+
+
+def test_manifest_field_applicability_matches_read_surface():
+    manifest = json.loads(CONNECTOR_PATH.read_text())
+    command_ids = {command["id"] for command in manifest["commands"]}
+    command_defaults = manifest["scope"]["commandDefaults"]
+    field_contracts = {
+        "folder_id": ("args", "GOOGLE_DRIVE_FOLDER_ID"),
+        "file_id": ("args", "GOOGLE_DRIVE_FILE_ID"),
+        "mime_type": ("args", "GOOGLE_DRIVE_MIME_TYPE"),
+        "query": ("args", "GOOGLE_DRIVE_QUERY"),
+    }
+
+    for field in manifest["scope"]["fields"]:
+        key, expected = field_contracts[field["id"]]
+        for command_id in field["applies_to"]:
+            assert command_id in command_ids
+            assert expected in command_defaults[command_id].get(key, [])
+
+
+def test_manifest_selection_surfaces_are_consistent():
+    manifest = json.loads(CONNECTOR_PATH.read_text())
+    picker_hints = manifest["scope"]["pickerHints"]
+    command_defaults = manifest["scope"]["commandDefaults"]
+
+    for command_id, defaults in command_defaults.items():
+        selection_surface = defaults["selection_surface"]
+        assert selection_surface in picker_hints
+        assert picker_hints[selection_surface]["selection_surface"] == selection_surface
 
 
 def test_capabilities_exposes_manifest():
@@ -91,7 +111,7 @@ def test_capabilities_exposes_manifest():
     assert payload["tool"] == "aos-google-drive"
     assert payload["data"]["backend"] == "google-drive-api"
     assert "file.list" in json.dumps(payload["data"])
-    assert "share.create" in json.dumps(payload["data"])
+    assert "share.create" not in json.dumps(payload["data"])
 
 
 def test_health_requires_credentials(monkeypatch):
@@ -126,7 +146,8 @@ def test_config_show_redacts_credentials(monkeypatch):
     assert "client-secret-secret" not in json.dumps(data)
     assert "refresh-token-secret" not in json.dumps(data)
     assert data["scope"]["folder_id"] == "folder_1"
-    assert data["runtime"]["implementation_mode"] == "live_read_write"
+    assert data["runtime"]["implementation_mode"] == "live_read_only"
+    assert "GOOGLE_DRIVE_FOLDER_ID" in data["auth"]["service_keys"]
 
 
 def test_file_list_requires_readonly_mode(monkeypatch):
@@ -138,26 +159,14 @@ def test_file_list_requires_readonly_mode(monkeypatch):
     assert result.exit_code == 0, result.output
 
 
-def test_file_create_requires_write_mode(monkeypatch):
+def test_removed_write_command_returns_usage_error(monkeypatch):
     monkeypatch.setenv("GOOGLE_DRIVE_CLIENT_ID", "client-id")
     monkeypatch.setenv("GOOGLE_DRIVE_CLIENT_SECRET", "client-secret")
     monkeypatch.setenv("GOOGLE_DRIVE_REFRESH_TOKEN", "refresh-token")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeGoogleDriveClient())
-    result = CliRunner().invoke(cli, ["--json", "--mode", "readonly", "file", "create", "--name", "Draft"])
-    payload = json.loads(result.output)
-    assert payload["ok"] is False
-    assert payload["error"]["code"] == "PERMISSION_DENIED"
-
-
-def test_file_create_succeeds_in_write_mode(monkeypatch):
-    monkeypatch.setenv("GOOGLE_DRIVE_CLIENT_ID", "client-id")
-    monkeypatch.setenv("GOOGLE_DRIVE_CLIENT_SECRET", "client-secret")
-    monkeypatch.setenv("GOOGLE_DRIVE_REFRESH_TOKEN", "refresh-token")
-    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeGoogleDriveClient())
-    payload = invoke_json_with_mode("write", ["file", "create", "--name", "Draft"])
-    assert payload["data"]["status"] == "live_write"
-    assert payload["data"]["file"]["id"] == "file_created"
-    assert payload["data"]["scope_preview"]["command_id"] == "file.create"
+    result = invoke_result(["--mode", "write", "file", "create", "--name", "Draft"])
+    assert result.exit_code != 0
+    assert "No such command" in result.output
 
 
 def test_search_query_returns_picker_metadata(monkeypatch):

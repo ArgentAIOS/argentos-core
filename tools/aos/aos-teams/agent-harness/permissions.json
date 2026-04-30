@@ -8,13 +8,8 @@
     "doctor": "readonly",
     "team.list": "readonly",
     "channel.list": "readonly",
-    "meeting.list": "readonly",
-    "message.send": "write",
-    "message.reply": "write",
     "channel.create": "write",
-    "chat.send": "write",
-    "meeting.create": "write",
-    "file.upload": "write",
-    "adaptive_card.send": "write"
+    "meeting.list": "readonly",
+    "meeting.create": "write"
   }
 }

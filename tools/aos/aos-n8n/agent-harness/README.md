@@ -2,6 +2,12 @@
 
 Click CLI harness for `aos-n8n`.
 
+The harness resolves `N8N_API_URL`, `N8N_API_KEY`, and
+`N8N_WEBHOOK_BASE_URL` from operator-controlled service keys first, then falls
+back to local environment variables for harness development. Scoped service-key
+entries must be injected by the operator runtime and are not bypassed with
+local env.
+
 ## Commands
 
 - `capabilities`
@@ -12,7 +18,7 @@ Click CLI harness for `aos-n8n`.
 - `workflow status`
 - `workflow trigger`
 
-`workflow.list` and `workflow.status` call the configured n8n API read path. `workflow.trigger` posts a live webhook payload through the configured bridge and returns normalized bridge metadata for local builders.
+`workflow.list` and `workflow.status` call the configured n8n API read path. `workflow.trigger` posts a live webhook payload through the configured bridge and returns normalized bridge metadata for local builders. Production live-write smoke is not claimed until tested against an operator n8n instance.
 
 Trigger affordances:
 

@@ -140,14 +140,14 @@ describe("resolveModel", () => {
     expect(result.model?.baseUrl).toBe("https://api.minimax.io/anthropic");
   });
 
-  it("uses the built-in GLM-5 fallback when Pi's catalog does not have it yet", () => {
-    const result = resolveModel("zai", "glm-5", "/tmp/agent", {});
+  it("uses the built-in GLM-5-Turbo fallback when Pi's catalog does not have it yet", () => {
+    const result = resolveModel("zai", "glm-5-turbo", "/tmp/agent", {});
 
     expect(result.error).toBeUndefined();
     expect(result.model?.provider).toBe("zai");
-    expect(result.model?.id).toBe("glm-5");
+    expect(result.model?.id).toBe("glm-5-turbo");
     expect(result.model?.api).toBe("openai-completions");
-    expect(result.model?.baseUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
+    expect(result.model?.baseUrl).toBe("https://api.z.ai/api/paas/v4/chat/completions");
     expect(result.model?.reasoning).toBe(true);
   });
 
@@ -164,11 +164,43 @@ describe("resolveModel", () => {
       },
     } as ArgentConfig;
 
-    const result = resolveModel("zai", "glm-5", "/tmp/agent", cfg);
+    const result = resolveModel("zai", "glm-5-turbo", "/tmp/agent", cfg);
 
     expect(result.error).toBeUndefined();
     expect(result.model?.provider).toBe("zai");
-    expect(result.model?.id).toBe("glm-5");
+    expect(result.model?.id).toBe("glm-5-turbo");
+    expect(result.model?.baseUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
+  });
+
+  it("borrows Pi Z.AI catalog rows for the Z.AI Coding Plan provider", () => {
+    const registryModel = {
+      ...makeModel("glm-4.7"),
+      provider: "zai",
+      api: "openai-completions" as const,
+      baseUrl: "https://api.z.ai/api/paas/v4",
+      reasoning: true,
+    };
+    vi.mocked(discoverModels).mockReturnValueOnce({
+      find: vi.fn((provider: string, id: string) =>
+        provider === "zai" && id === registryModel.id ? registryModel : null,
+      ),
+    } as never);
+
+    const result = resolveModel("zai-coding", "glm-4.7", "/tmp/agent", {});
+
+    expect(result.error).toBeUndefined();
+    expect(result.model?.provider).toBe("zai-coding");
+    expect(result.model?.id).toBe("glm-4.7");
+    expect(result.model?.reasoning).toBe(true);
+    expect(result.model?.baseUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
+  });
+
+  it("borrows Argent Z.AI fallback catalog rows for the Z.AI Coding Plan provider", () => {
+    const result = resolveModel("zai-coding", "glm-5-turbo", "/tmp/agent", {});
+
+    expect(result.error).toBeUndefined();
+    expect(result.model?.provider).toBe("zai-coding");
+    expect(result.model?.id).toBe("glm-5-turbo");
     expect(result.model?.baseUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
   });
 

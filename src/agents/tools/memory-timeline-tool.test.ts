@@ -129,6 +129,7 @@ type TimelineToolDetails = {
     entity?: string;
   };
   timeline?: string;
+  error?: string;
 };
 
 const defaultConfig = { agents: { list: [{ id: "main", default: true }] } } as ArgentConfig;
@@ -137,6 +138,20 @@ describe("memory timeline tool", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockMemory.searchKnowledgeObservations.mockResolvedValue([]);
+  });
+
+  it("handles missing params without throwing", async () => {
+    const tool = createMemoryTimelineTool({
+      config: defaultConfig,
+    });
+    if (!tool) {
+      throw new Error("tool missing");
+    }
+
+    const result = await tool.execute("call_timeline_missing_params", undefined as never);
+    const data = result.details as TimelineToolDetails;
+
+    expect(typeof data.count).toBe("number");
   });
 
   it("infers entity and date range from a natural-language Richard query and suppresses linked-only contamination", async () => {
@@ -270,6 +285,31 @@ describe("memory timeline tool", () => {
       expect(String(data.timeline)).toContain("Richard asked for more visibility");
       expect(mockMemory.searchByKeyword).toHaveBeenCalledWith("Jasons, INFRA Data Rack", 120);
       expect(mockMemory.searchByVector).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("handles timeline calls without a query", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-15T14:30:00Z"));
+    try {
+      const tool = createMemoryTimelineTool({
+        config: defaultConfig,
+      });
+      if (!tool) {
+        throw new Error("tool missing");
+      }
+
+      const result = await tool.execute("call_timeline_no_query", {
+        days: 30,
+        limit: 2,
+      });
+      const data = result.details as TimelineToolDetails;
+
+      expect(data.error).toBeUndefined();
+      expect(data.count).toBe(2);
+      expect(String(data.timeline)).toContain("Richard asked for more visibility");
     } finally {
       vi.useRealTimers();
     }

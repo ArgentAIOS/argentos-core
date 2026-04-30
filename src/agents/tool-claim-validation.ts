@@ -11,7 +11,20 @@ const MONITORED_CLAIM_TOOLS = [
   "marketplace",
 ] as const;
 
-const EXECUTED_TOOL_NAMES = [...MONITORED_CLAIM_TOOLS, "read", "exec", "process"] as const;
+const MEMORY_RECALL_TOOL_NAMES = [
+  "memory_search",
+  "memory_get",
+  "memory_recall",
+  "memory_timeline",
+] as const;
+
+const EXECUTED_TOOL_NAMES = [
+  ...MONITORED_CLAIM_TOOLS,
+  ...MEMORY_RECALL_TOOL_NAMES,
+  "read",
+  "exec",
+  "process",
+] as const;
 
 const EXTERNAL_ARTIFACT_TOOLS = new Set<ExecutedToolName>([
   "web_search",
@@ -49,6 +62,22 @@ const TOOL_CANONICAL_MAP: Array<{ canonical: ExecutedToolName; matches: RegExp[]
   {
     canonical: "memory_reflect",
     matches: [/\bmemory_reflect\b/i],
+  },
+  {
+    canonical: "memory_search",
+    matches: [/\bmemory_search\b/i],
+  },
+  {
+    canonical: "memory_get",
+    matches: [/\bmemory_get\b/i],
+  },
+  {
+    canonical: "memory_recall",
+    matches: [/\bmemory_recall\b/i],
+  },
+  {
+    canonical: "memory_timeline",
+    matches: [/\bmemory_timeline\b/i],
   },
   {
     canonical: "tasks",
@@ -288,6 +317,10 @@ const COMMITMENT_PATTERNS: readonly CommitmentPattern[] = [
     expectedToolFamilies: [
       "memory_store",
       "memory_reflect",
+      "memory_search",
+      "memory_get",
+      "memory_recall",
+      "memory_timeline",
       "web_search",
       "web_fetch",
       "browser",
@@ -311,6 +344,10 @@ const COMMITMENT_PATTERNS: readonly CommitmentPattern[] = [
 const TOOL_EVIDENCE_KIND_MAP: Partial<Record<ExecutedToolName, CommitmentEvidenceKind>> = {
   memory_store: "memory",
   memory_reflect: "memory",
+  memory_search: "memory",
+  memory_get: "memory",
+  memory_recall: "memory",
+  memory_timeline: "memory",
   web_search: "research",
   web_fetch: "research",
   browser: "research",
@@ -322,6 +359,7 @@ const TOOL_EVIDENCE_KIND_MAP: Partial<Record<ExecutedToolName, CommitmentEvidenc
 };
 
 const GENERIC_PROGRESS_EVIDENCE_KINDS: CommitmentEvidenceKind[] = [
+  "memory",
   "research",
   "planning",
   "task",
@@ -330,6 +368,10 @@ const GENERIC_PROGRESS_EVIDENCE_KINDS: CommitmentEvidenceKind[] = [
 ];
 
 const GENERIC_PROGRESS_TOOL_FAMILIES: ExecutedToolName[] = [
+  "memory_search",
+  "memory_get",
+  "memory_recall",
+  "memory_timeline",
   "web_search",
   "web_fetch",
   "browser",

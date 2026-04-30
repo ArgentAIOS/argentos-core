@@ -24,4 +24,6 @@ The harness accepts these environment variables for live bridge configuration:
 - `ZAPIER_ZAP_NAME`
 - `ZAPIER_ZAP_STATUS`
 
-Read-style zap commands call the configured Zapier bridge when `ZAPIER_API_URL` and `ZAPIER_API_KEY` are set and reachable. Trigger execution uses the same bridge and is guarded by `write` mode.
+Operator-controlled API Keys are the primary source for all Zapier bridge and scope variables. Local environment variables are only a harness fallback when those operator-managed keys are unavailable. Scoped service-key entries must be injected by the operator runtime; the harness will not bypass them with local env.
+
+Read-style zap commands call the configured Zapier bridge when `ZAPIER_API_URL` and `ZAPIER_API_KEY` are set and reachable. Trigger execution uses the same bridge and is guarded by `write` mode. The connector exposes a real write path, but production live-write smoke is not claimed until tested against an operator Zapier bridge.

@@ -161,6 +161,18 @@ export type ConsciousnessKernelPendingSurfaceState = {
   rationale: string | null;
 };
 
+export type ConsciousnessKernelOperatorRequestState = {
+  needed: boolean;
+  question: string | null;
+  reason: string | null;
+  source: "agenda" | "active-work" | "background-work" | "agency" | "concern" | "executive" | null;
+};
+
+export type ConsciousnessKernelOperatorNotificationState = {
+  lastSignature: string | null;
+  lastNotifiedAt: string | null;
+};
+
 export type ConsciousnessKernelExecutiveState = {
   updatedAt: string | null;
   work: ConsciousnessKernelExecutiveWorkState | null;
@@ -231,6 +243,7 @@ export type ConsciousnessKernelSelfState = {
   activeWork: ConsciousnessKernelActiveWorkState;
   backgroundWork: ConsciousnessKernelActiveWorkState;
   agenda: ConsciousnessKernelAgendaState;
+  operatorNotifications: ConsciousnessKernelOperatorNotificationState;
   executive: ConsciousnessKernelExecutiveState;
   concerns: string[];
   shadow: {
@@ -376,6 +389,10 @@ export function createConsciousnessKernelSelfState(params: {
     activeWork: createEmptyConsciousnessKernelActiveWorkState(),
     backgroundWork: createEmptyConsciousnessKernelActiveWorkState(),
     agenda: createEmptyConsciousnessKernelAgendaState(),
+    operatorNotifications: {
+      lastSignature: null,
+      lastNotifiedAt: null,
+    },
     executive: createEmptyConsciousnessKernelExecutiveState(),
     concerns: [],
     shadow: {
@@ -387,6 +404,138 @@ export function createConsciousnessKernelSelfState(params: {
     recentDecision: null,
     decisionCount: 0,
     lastError: null,
+  };
+}
+
+const OPERATOR_REQUEST_PATTERNS = [
+  /\bawaiting\b.{0,80}\b(?:operator|user|human|approval|clarity|input|decision|policy)\b/i,
+  /\bwaiting\b.{0,80}\b(?:operator|user|human|approval|clarity|input|decision|policy)\b/i,
+  /\b(?:need|needs|needed|require|requires|required)\b.{0,80}\b(?:operator|user|human|approval|clarity|input|decision|policy)\b/i,
+  /\b(?:operator|user|human)\b.{0,80}\b(?:approval|clarity|input|decision|policy)\b/i,
+  /\bpolicy ambiguity\b/i,
+  /\bdeletion policy\b/i,
+  /\bapproval policy\b/i,
+];
+
+const APPROVAL_QUESTION_PATTERNS = [
+  /\bwhat\b.{0,80}\b(?:policy|defines|approve|approval|delete|deletion|retain|retention|immutable)\b/i,
+  /\bwhich\b.{0,80}\b(?:docs?|documents?|items?|files?)\b.{0,80}\b(?:delete|deletion|retain|retention|orphaned|immutable)\b/i,
+  /\bshould\b.{0,80}\b(?:delete|retain|archive|approve|proceed)\b/i,
+];
+
+function matchesOperatorRequestSignal(value: string | null | undefined): boolean {
+  const text = value?.trim();
+  if (!text) {
+    return false;
+  }
+  return OPERATOR_REQUEST_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function looksLikeApprovalQuestion(value: string | null | undefined): boolean {
+  const text = value?.trim();
+  if (!text) {
+    return false;
+  }
+  return (
+    text.endsWith("?") ||
+    APPROVAL_QUESTION_PATTERNS.some((pattern) => pattern.test(text)) ||
+    matchesOperatorRequestSignal(text)
+  );
+}
+
+function firstApprovalQuestion(value: string[]): string | null {
+  return value.find((entry) => looksLikeApprovalQuestion(entry)) ?? null;
+}
+
+export function resolveConsciousnessKernelOperatorRequest(
+  selfState: ConsciousnessKernelSelfState,
+): ConsciousnessKernelOperatorRequestState {
+  const openQuestion = firstApprovalQuestion(selfState.agenda.openQuestions);
+  const agendaReason =
+    selfState.agenda.activeItem?.rationale ?? selfState.agenda.activeItem?.title ?? null;
+  if (
+    openQuestion &&
+    (matchesOperatorRequestSignal(selfState.agency.selfSummary) ||
+      matchesOperatorRequestSignal(selfState.activeWork.lastConclusion) ||
+      matchesOperatorRequestSignal(selfState.activeWork.nextStep) ||
+      matchesOperatorRequestSignal(selfState.backgroundWork.lastConclusion) ||
+      matchesOperatorRequestSignal(selfState.backgroundWork.nextStep) ||
+      matchesOperatorRequestSignal(agendaReason) ||
+      selfState.concerns.some(matchesOperatorRequestSignal))
+  ) {
+    return {
+      needed: true,
+      question: openQuestion,
+      reason:
+        selfState.agency.selfSummary ??
+        selfState.activeWork.lastConclusion ??
+        selfState.backgroundWork.lastConclusion ??
+        agendaReason,
+      source: "agenda",
+    };
+  }
+
+  const candidates: Array<{
+    source: ConsciousnessKernelOperatorRequestState["source"];
+    reason: string | null | undefined;
+    question?: string | null | undefined;
+  }> = [
+    {
+      source: "active-work",
+      reason: selfState.activeWork.lastConclusion,
+      question: selfState.activeWork.nextStep,
+    },
+    {
+      source: "active-work",
+      reason: selfState.activeWork.nextStep,
+      question: openQuestion,
+    },
+    {
+      source: "background-work",
+      reason: selfState.backgroundWork.lastConclusion,
+      question: selfState.backgroundWork.nextStep,
+    },
+    {
+      source: "background-work",
+      reason: selfState.backgroundWork.nextStep,
+      question: openQuestion,
+    },
+    {
+      source: "agency",
+      reason: selfState.agency.selfSummary,
+      question: openQuestion,
+    },
+    {
+      source: "executive",
+      reason: selfState.executive.pendingSurface?.summary,
+      question: selfState.executive.pendingSurface?.rationale,
+    },
+    ...selfState.concerns.map((concern) => ({
+      source: "concern" as const,
+      reason: concern,
+      question: openQuestion,
+    })),
+  ];
+
+  for (const candidate of candidates) {
+    if (!matchesOperatorRequestSignal(candidate.reason)) {
+      continue;
+    }
+    return {
+      needed: true,
+      question: looksLikeApprovalQuestion(candidate.question)
+        ? candidate.question!.trim()
+        : openQuestion,
+      reason: candidate.reason!.trim(),
+      source: candidate.source,
+    };
+  }
+
+  return {
+    needed: false,
+    question: null,
+    reason: null,
+    source: null,
   };
 }
 
@@ -941,6 +1090,9 @@ export function loadConsciousnessKernelSelfState(
     const activeWork = isPlainObject(parsed.activeWork) ? parsed.activeWork : {};
     const backgroundWork = isPlainObject(parsed.backgroundWork) ? parsed.backgroundWork : {};
     const agenda = isPlainObject(parsed.agenda) ? parsed.agenda : {};
+    const operatorNotifications = isPlainObject(parsed.operatorNotifications)
+      ? parsed.operatorNotifications
+      : {};
     const executive = isPlainObject(parsed.executive) ? parsed.executive : {};
     const shadow = isPlainObject(parsed.shadow) ? parsed.shadow : {};
     const recentDecision = isPlainObject(parsed.recentDecision) ? parsed.recentDecision : null;
@@ -1049,6 +1201,10 @@ export function loadConsciousnessKernelSelfState(
         candidateItems: asAgendaItems(agenda.candidateItems),
         activeItem:
           asAgendaItem(agenda.activeItem) ?? asAgendaItems(agenda.candidateItems)[0] ?? null,
+      },
+      operatorNotifications: {
+        lastSignature: asString(operatorNotifications.lastSignature),
+        lastNotifiedAt: asString(operatorNotifications.lastNotifiedAt),
       },
       executive: {
         updatedAt: asString(executive.updatedAt),

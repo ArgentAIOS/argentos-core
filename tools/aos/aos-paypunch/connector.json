@@ -5,19 +5,16 @@
   "scope": {
     "kind": "time-tracking",
     "surface": "timesheet-employee-export",
-    "scaffold_only": true,
-    "live_backend_available": false,
+    "scaffold_only": false,
+    "live_backend_available": true,
     "live_read_available": true,
-    "write_bridge_available": true,
-    "workerFields": ["tenant_id", "company_id", "employee_id", "pay_period"],
+    "write_bridge_available": false,
+    "workerFields": ["tenant_id", "company_id", "employee_id", "timesheet_id", "pay_period"],
     "worker_visible_actions": [
       "timesheet.list",
       "timesheet.get",
-      "timesheet.approve",
-      "timesheet.reject",
       "employee.list",
       "employee.get",
-      "employee.create",
       "company.list",
       "company.get",
       "export.quickbooks_iif",
@@ -35,7 +32,7 @@
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
-        "description": ""
+        "description": "Optional operator service-key default PAYPUNCH_TENANT_ID."
       },
       {
         "id": "company_id",
@@ -44,68 +41,72 @@
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
-        "description": ""
+        "description": "Optional operator service-key default PAYPUNCH_COMPANY_ID."
       },
       {
         "id": "employee_id",
         "label": "Employee",
         "required": false,
+        "applies_to": ["timesheet.list", "employee.get"],
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
-        "description": ""
+        "description": "Optional operator service-key default PAYPUNCH_EMPLOYEE_ID."
+      },
+      {
+        "id": "timesheet_id",
+        "label": "Timesheet",
+        "required": false,
+        "applies_to": ["timesheet.get"],
+        "renderAs": "text",
+        "expressionEnabled": true,
+        "valueType": "string",
+        "description": "Optional operator service-key default PAYPUNCH_TIMESHEET_ID."
       },
       {
         "id": "pay_period",
         "label": "Pay Period",
         "required": false,
-        "applies_to": ["timesheet.list", "export.quickbooks_iif", "report.hours_summary"],
+        "applies_to": [
+          "timesheet.list",
+          "export.quickbooks_iif",
+          "export.csv",
+          "report.hours_summary",
+          "report.overtime"
+        ],
         "renderAs": "text",
         "expressionEnabled": true,
         "valueType": "string",
-        "description": ""
-      },
-      {
-        "id": "export_format",
-        "label": "Export Format",
-        "required": false,
-        "applies_to": ["export.quickbooks_iif", "export.csv"],
-        "renderAs": "text",
-        "expressionEnabled": true,
-        "valueType": "string",
-        "description": ""
+        "description": "Optional operator service-key default PAYPUNCH_PAY_PERIOD."
       }
     ],
     "commandDefaults": {
       "timesheet.list": {
         "selection_surface": "timesheet",
+        "args": [
+          "PAYPUNCH_TENANT_ID",
+          "PAYPUNCH_COMPANY_ID",
+          "PAYPUNCH_EMPLOYEE_ID",
+          "PAYPUNCH_PAY_PERIOD"
+        ],
         "limit": 50
       },
       "timesheet.get": {
         "selection_surface": "timesheet",
         "args": ["PAYPUNCH_TIMESHEET_ID"]
       },
-      "timesheet.approve": {
-        "selection_surface": "timesheet",
-        "args": ["PAYPUNCH_TIMESHEET_ID"]
-      },
-      "timesheet.reject": {
-        "selection_surface": "timesheet",
-        "args": ["PAYPUNCH_TIMESHEET_ID"]
-      },
       "employee.list": {
         "selection_surface": "employee",
+        "args": ["PAYPUNCH_COMPANY_ID"],
         "limit": 100
       },
       "employee.get": {
         "selection_surface": "employee",
         "args": ["PAYPUNCH_EMPLOYEE_ID"]
       },
-      "employee.create": {
-        "selection_surface": "employee"
-      },
       "company.list": {
         "selection_surface": "company",
+        "args": ["PAYPUNCH_TENANT_ID"],
         "limit": 50
       },
       "company.get": {
@@ -113,23 +114,29 @@
         "args": ["PAYPUNCH_COMPANY_ID"]
       },
       "export.quickbooks_iif": {
-        "selection_surface": "export"
+        "selection_surface": "export",
+        "args": ["PAYPUNCH_COMPANY_ID", "PAYPUNCH_PAY_PERIOD"]
       },
       "export.csv": {
-        "selection_surface": "export"
+        "selection_surface": "export",
+        "args": ["PAYPUNCH_COMPANY_ID", "PAYPUNCH_PAY_PERIOD"]
       },
       "pay_period.list": {
         "selection_surface": "pay_period",
+        "args": ["PAYPUNCH_COMPANY_ID"],
         "limit": 12
       },
       "pay_period.current": {
-        "selection_surface": "pay_period"
+        "selection_surface": "pay_period",
+        "args": ["PAYPUNCH_COMPANY_ID"]
       },
       "report.hours_summary": {
-        "selection_surface": "report"
+        "selection_surface": "report",
+        "args": ["PAYPUNCH_COMPANY_ID", "PAYPUNCH_PAY_PERIOD"]
       },
       "report.overtime": {
-        "selection_surface": "report"
+        "selection_surface": "report",
+        "args": ["PAYPUNCH_COMPANY_ID", "PAYPUNCH_PAY_PERIOD"]
       }
     },
     "pickerHints": {
@@ -172,13 +179,20 @@
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": ["PAYPUNCH_API_KEY"],
+    "service_keys": ["PAYPUNCH_API_KEY", "PAYPUNCH_API_BASE_URL"],
+    "optional_scope_service_keys": [
+      "PAYPUNCH_TENANT_ID",
+      "PAYPUNCH_COMPANY_ID",
+      "PAYPUNCH_EMPLOYEE_ID",
+      "PAYPUNCH_TIMESHEET_ID",
+      "PAYPUNCH_PAY_PERIOD"
+    ],
     "interactive_setup": [
-      "Create or retrieve your PayPunch API key from the bookkeeper admin panel.",
-      "Add PAYPUNCH_API_KEY in API Keys before enabling live reads.",
-      "Set PAYPUNCH_TENANT_ID to scope to a specific bookkeeper tenant.",
-      "Set PAYPUNCH_COMPANY_ID to default company filters.",
-      "All read and write paths are live \u2014 this is a first-party connector."
+      "Create or retrieve a PayPunch API key from the bookkeeper admin panel.",
+      "Add PAYPUNCH_API_KEY in operator-controlled service keys before enabling live reads.",
+      "Add PAYPUNCH_API_BASE_URL in operator-controlled service keys for the PayPunch API host.",
+      "Optionally set PAYPUNCH_TENANT_ID, PAYPUNCH_COMPANY_ID, PAYPUNCH_EMPLOYEE_ID, PAYPUNCH_TIMESHEET_ID, and PAYPUNCH_PAY_PERIOD as operator-controlled scope defaults.",
+      "This connector is live read-only. Do not advertise PayPunch write actions until a write bridge is implemented and verified."
     ]
   },
   "commands": [
@@ -199,22 +213,6 @@
       "action_class": "read"
     },
     {
-      "id": "timesheet.approve",
-      "summary": "Approve a timesheet for payroll",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "timesheet",
-      "action_class": "write"
-    },
-    {
-      "id": "timesheet.reject",
-      "summary": "Reject a timesheet with reason",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "timesheet",
-      "action_class": "write"
-    },
-    {
       "id": "employee.list",
       "summary": "List employees",
       "required_mode": "readonly",
@@ -229,14 +227,6 @@
       "supports_json": true,
       "resource": "employee",
       "action_class": "read"
-    },
-    {
-      "id": "employee.create",
-      "summary": "Create a new employee",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "employee",
-      "action_class": "write"
     },
     {
       "id": "company.list",
@@ -256,7 +246,7 @@
     },
     {
       "id": "export.quickbooks_iif",
-      "summary": "Export timesheet data as QuickBooks IIF",
+      "summary": "Read a QuickBooks IIF export payload",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "export",
@@ -264,7 +254,7 @@
     },
     {
       "id": "export.csv",
-      "summary": "Export timesheet data as CSV",
+      "summary": "Read a CSV export payload",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "export",
@@ -288,7 +278,7 @@
     },
     {
       "id": "report.hours_summary",
-      "summary": "Generate hours summary report",
+      "summary": "Read an hours summary report",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "report",
@@ -296,7 +286,7 @@
     },
     {
       "id": "report.overtime",
-      "summary": "Generate overtime report",
+      "summary": "Read an overtime report",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "report",

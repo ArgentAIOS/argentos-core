@@ -6,7 +6,7 @@
  * and merge strategies (via parallel segments).
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type {
   TriggerNode,
   AgentNode,
@@ -16,12 +16,54 @@ import type {
   WorkflowEdge,
   WorkflowDefinition,
   AgentDispatcher,
-  ItemSet,
+  ActionNode,
 } from "./workflow-types.js";
+
+const storageMocks = vi.hoisted(() => ({
+  createMemoryItem: vi.fn(async (item: { summary?: string }) => ({
+    id: "mem-workflow-output",
+    ...item,
+  })),
+}));
+
+const connectorMocks = vi.hoisted(() => ({
+  runConnectorCommandJson: vi.fn(async () => ({
+    ok: true,
+    exitCode: 0,
+    stdout: '{"id":"msg-1","status":"sent"}',
+    stderr: "",
+    data: { id: "msg-1", status: "sent" },
+  })),
+}));
 
 // Mock redis-client to avoid real Redis connections in tests
 vi.mock("../data/redis-client.js", () => ({
   refreshPresence: vi.fn(),
+}));
+
+vi.mock("../data/storage-factory.js", () => ({
+  getStorageAdapter: vi.fn(async () => ({
+    memory: {
+      createItem: storageMocks.createMemoryItem,
+    },
+    tasks: {
+      update: vi.fn(),
+    },
+  })),
+}));
+
+vi.mock("../connectors/catalog.js", () => ({
+  defaultRepoRoots: () => [],
+  discoverConnectorCatalog: vi.fn(async () => ({
+    total: 1,
+    connectors: [
+      {
+        tool: "aos-slack",
+        discovery: { binaryPath: "/tmp/aos-slack", harnessDir: "/tmp" },
+      },
+    ],
+  })),
+  runConnectorCommandJson: connectorMocks.runConnectorCommandJson,
 }));
 
 // Mock subsystem logger
@@ -214,6 +256,503 @@ describe("executeWorkflow", () => {
     expect(result.steps[0].nodeKind).toBe("trigger");
     expect(result.steps[1].nodeKind).toBe("agent");
     expect(result.steps[2].nodeKind).toBe("output");
+    expect(result.steps[2].output.items[0].text).toBe("Agent completed the task.");
+  });
+
+  it("renders DocPanel output from an explicit payload template", async () => {
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output: OutputNode = {
+      ...makeOutput(),
+      config: {
+        outputType: "docpanel",
+        title: "Brief",
+        sourceMode: "previous",
+        contentTemplate: "Rendered: {{previous.result}}",
+      },
+    };
+
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-output-template",
+      dispatcher: mockDispatcher,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.steps[2].output.items[0]).toMatchObject({
+      text: "Rendered: mock output",
+      json: {
+        outputType: "docpanel",
+        title: "Brief",
+        content: "Rendered: mock output",
+      },
+    });
+  });
+
+  it("renders output templates from a selected upstream node by id or label", async () => {
+    const trigger = makeTrigger();
+    const planner: AgentNode = {
+      ...makeAgent("planner-1", "Planner"),
+      config: {
+        ...makeAgent("planner-1", "Planner").config,
+        pinnedOutput: {
+          items: [{ json: { summary: "Plan JSON" }, text: "Plan text" }],
+        },
+      },
+    };
+    const reviewer: AgentNode = {
+      ...makeAgent("reviewer-1", "Reviewer"),
+      config: {
+        ...makeAgent("reviewer-1", "Reviewer").config,
+        pinnedOutput: {
+          items: [{ json: { summary: "Review JSON" }, text: "Review text" }],
+        },
+      },
+    };
+    const output: OutputNode = {
+      ...makeOutput(),
+      config: {
+        outputType: "docpanel",
+        title: "Mapped Brief",
+        sourceMode: "node",
+        sourceNodeId: "planner-1",
+        contentTemplate:
+          "By id: {{steps.planner-1.text}} / {{steps.planner-1.json.summary}}\nBy label: {{steps.Reviewer.output.text}} / {{steps.Reviewer.output.json.summary}}",
+      },
+    };
+
+    const workflow = makeWorkflow(
+      [trigger, planner, reviewer, output],
+      [edge(trigger.id, planner.id), edge(planner.id, reviewer.id), edge(reviewer.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-selected-node-output-template",
+      dispatcher: makeMockDispatcher(vi.fn()),
+      triggerSource: "gateway:manual_test",
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.steps[3].output.items[0].text).toBe(
+      "By id: Plan text / Plan JSON\nBy label: Review text / Review JSON",
+    );
+  });
+
+  it("substitutes pinned node output during manual test runs", async () => {
+    const trigger = makeTrigger();
+    const dispatchMock = vi.fn();
+    const dispatcher = makeMockDispatcher(dispatchMock);
+    const baseAgent = makeAgent("agent-1", "Worker");
+    const agent: AgentNode = {
+      ...baseAgent,
+      config: {
+        ...baseAgent.config,
+        pinnedOutput: {
+          items: [{ json: { result: "pinned" }, text: "Pinned agent result" }],
+        },
+      },
+    };
+    const output = makeOutput();
+
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-pinned-agent",
+      dispatcher,
+      triggerSource: "gateway:manual",
+    });
+
+    expect(dispatchMock).not.toHaveBeenCalled();
+    expect(result.status).toBe("completed");
+    expect(result.steps[1].output.items[0].text).toBe("Pinned agent result");
+    expect(result.steps[2].output.items[0].text).toBe("Pinned agent result");
+  });
+
+  it("ignores pinned node output for production/event runs", async () => {
+    const trigger = makeTrigger();
+    const dispatchMock = vi.fn(async () => ({
+      items: [{ json: { result: "live" }, text: "Live agent result" }],
+    }));
+    const dispatcher = makeMockDispatcher(dispatchMock);
+    const baseAgent = makeAgent("agent-1", "Worker");
+    const agent: AgentNode = {
+      ...baseAgent,
+      config: {
+        ...baseAgent.config,
+        pinnedOutput: {
+          items: [{ json: { result: "pinned" }, text: "Pinned agent result" }],
+        },
+      },
+    };
+    const output = makeOutput();
+
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-pinned-production",
+      dispatcher,
+      triggerSource: "appforge:event",
+    });
+
+    expect(dispatchMock).toHaveBeenCalledOnce();
+    expect(result.steps[1].output.items[0].text).toBe("Live agent result");
+  });
+
+  it("can stop a manual partial run after a selected node", async () => {
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output = makeOutput();
+
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-partial-agent",
+      dispatcher: mockDispatcher,
+      triggerSource: "gateway:manual_partial",
+      stopAfterNodeId: agent.id,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.steps.map((step) => step.nodeId)).toEqual([trigger.id, agent.id]);
+  });
+
+  it("persists DocPanel output through the supplied action executor", async () => {
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output: OutputNode = {
+      ...makeOutput(),
+      config: {
+        outputType: "docpanel",
+        title: "Brief {{previous.result}}",
+        format: "markdown",
+        sourceMode: "previous",
+        contentTemplate: "Rendered: {{previous.result}}",
+      },
+    };
+    const saveToDocPanel = vi.fn(async () => ({ ok: true, docId: "doc-real-1" }));
+
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-output-save",
+      dispatcher: mockDispatcher,
+      actions: { saveToDocPanel },
+    });
+
+    expect(saveToDocPanel).toHaveBeenCalledWith(
+      "Brief mock output",
+      "Rendered: mock output",
+      "markdown",
+    );
+    expect(result.steps[2].output.items[0]).toMatchObject({
+      text: "Rendered: mock output",
+      json: {
+        outputType: "docpanel",
+        title: "Brief mock output",
+        saved: true,
+        docId: "doc-real-1",
+      },
+      artifacts: [{ type: "docpanel", id: "doc:doc-real-1", title: "Brief mock output" }],
+    });
+  });
+
+  it("refuses to save a DocPanel output when the upstream text is object-string sludge", async () => {
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output = makeOutput();
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-output-object-object",
+      dispatcher: makeMockDispatcher(async () => ({
+        items: [{ json: { nested: true }, text: "[object Object]" }],
+      })),
+      actions: { saveToDocPanel: vi.fn(async () => ({ ok: true, docId: "bad-doc" })) },
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.steps.at(-1)?.error).toContain("not renderable text");
+  });
+
+  it("extracts payload text before saving agent result envelopes to DocPanel", async () => {
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output = makeOutput();
+    const saveToDocPanel = vi.fn(async () => ({ ok: true, docId: "doc-clean-1" }));
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const rawEnvelope = JSON.stringify({
+      payloads: [
+        {
+          text:
+            "[MOOD:focused]Step 12 artifact is done.\n\n" +
+            "[TTS:[focused] I created the Step twelve validation ledger.]",
+          mediaUrl: null,
+        },
+      ],
+      meta: {
+        agentMeta: { provider: "openai-codex", model: "gpt-5.5" },
+        systemPromptReport: { chars: 216349 },
+      },
+      toolValidation: { executedTools: ["doc_panel"] },
+    });
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-output-agent-envelope",
+      dispatcher: makeMockDispatcher(async () => ({
+        items: [{ json: { result: "envelope" }, text: rawEnvelope }],
+      })),
+      actions: { saveToDocPanel },
+    });
+
+    expect(result.status).toBe("completed");
+    expect(saveToDocPanel).toHaveBeenCalledWith("Result", "Step 12 artifact is done.", "markdown");
+    expect(result.steps.at(-1)?.output.items[0]?.text).toBe("Step 12 artifact is done.");
+  });
+
+  it("fails DocPanel saves for runtime metadata envelopes without payload text", async () => {
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output = makeOutput();
+    const saveToDocPanel = vi.fn(async () => ({ ok: true, docId: "bad-doc" }));
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-output-metadata-envelope",
+      dispatcher: makeMockDispatcher(async () => ({
+        items: [
+          {
+            json: { result: "envelope" },
+            text: JSON.stringify({ meta: { systemPromptReport: { chars: 216349 } } }),
+          },
+        ],
+      })),
+      actions: { saveToDocPanel },
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.steps.at(-1)?.error).toContain("agent runtime metadata");
+    expect(saveToDocPanel).not.toHaveBeenCalled();
+  });
+
+  it("fails DocPanel saves for placeholder object envelopes", async () => {
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output = makeOutput();
+    const saveToDocPanel = vi.fn(async () => ({ ok: true, docId: "bad-doc" }));
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-output-placeholder-envelope",
+      dispatcher: makeMockDispatcher(async () => ({
+        items: [
+          {
+            json: { result: "placeholder" },
+            text: JSON.stringify({ name: "agent-draft", body: "demo payload" }),
+          },
+        ],
+      })),
+      actions: { saveToDocPanel },
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.steps.at(-1)?.error).toContain("placeholder object envelope");
+    expect(saveToDocPanel).not.toHaveBeenCalled();
+  });
+
+  it("runs podcast_plan before podcast_generate through first-class action nodes", async () => {
+    const trigger = makeTrigger();
+    const script: ActionNode = {
+      kind: "action",
+      id: "podcast-plan",
+      label: "Podcast Plan",
+      config: {
+        actionType: {
+          type: "podcast_plan",
+          title: "Morning Brief",
+          script: "ARGENT: [warm] Good morning from the workflow.",
+          personas: [{ id: "argent", aliases: ["ARGENT"], voice_id: "voice-1" }],
+        },
+      },
+    };
+    const render: ActionNode = {
+      kind: "action",
+      id: "podcast-generate",
+      label: "Podcast Generate",
+      config: {
+        pinnedOutput: {
+          items: [
+            {
+              json: { generated: true, path: "/tmp/morning-brief.mp3" },
+              text: "MEDIA:/tmp/morning-brief.mp3",
+            },
+          ],
+        },
+        actionType: {
+          type: "podcast_generate",
+          title: "Morning Brief",
+          payloadTemplate: "{{previous.json.podcast_generate}}",
+        },
+      },
+    };
+    const workflow = makeWorkflow(
+      [trigger, script, render],
+      [edge(trigger.id, script.id), edge(script.id, render.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-podcast-actions",
+      dispatcher: mockDispatcher,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.steps[1].output.items[0].json.podcast_generate).toMatchObject({
+      title: "Morning Brief",
+      dialogue: [expect.objectContaining({ text: "[warm] Good morning from the workflow." })],
+    });
+    expect(result.steps[2].output.items[0].text).toBe("MEDIA:/tmp/morning-brief.mp3");
+  });
+
+  it("delivers output through a connector action destination", async () => {
+    connectorMocks.runConnectorCommandJson.mockClear();
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output: OutputNode = {
+      ...makeOutput(),
+      config: {
+        outputType: "connector_action",
+        connectorId: "aos-slack",
+        resource: "message",
+        operation: "message.send",
+        parameters: { channel_id: "ops", text: "Rendered: {{previous.result}}" },
+        outputMapping: { messageId: "id" },
+      },
+    };
+
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-output-connector",
+      dispatcher: mockDispatcher,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(connectorMocks.runConnectorCommandJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: [
+          "--json",
+          "message",
+          "send",
+          "--channel-id",
+          "ops",
+          "--text",
+          "Rendered: mock output",
+        ],
+        binaryPath: "/tmp/aos-slack",
+      }),
+    );
+    expect(result.steps[2].output.items[0]).toMatchObject({
+      text: '{"id":"msg-1","status":"sent"}',
+      json: {
+        ok: true,
+        connectorId: "aos-slack",
+        operation: "message.send",
+        resource: "message",
+        messageId: "msg-1",
+      },
+    });
+  });
+
+  it("stores Knowledge output with the rendered payload", async () => {
+    storageMocks.createMemoryItem.mockClear();
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const output: OutputNode = {
+      ...makeOutput(),
+      config: {
+        outputType: "knowledge",
+        collectionId: "briefs",
+        sourceMode: "previous",
+        contentTemplate: "Store: {{previous.result}}",
+      },
+    };
+
+    const workflow = makeWorkflow(
+      [trigger, agent, output],
+      [edge(trigger.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-knowledge-output",
+      dispatcher: mockDispatcher,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(storageMocks.createMemoryItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        memoryType: "knowledge",
+        summary: "Store: mock output",
+        extra: expect.objectContaining({
+          collection: "briefs",
+          source: "workflow_output",
+          workflowRunId: "run-knowledge-output",
+          outputNodeId: output.id,
+        }),
+      }),
+    );
+    expect(result.steps[2].output.items[0]).toMatchObject({
+      text: "Store: mock output",
+      json: {
+        outputType: "knowledge",
+        stored: true,
+        collectionId: "briefs",
+        memoryId: "mem-workflow-output",
+      },
+    });
   });
 
   it("tracks step callbacks", async () => {
@@ -307,7 +846,9 @@ describe("executeWorkflow", () => {
     let callCount = 0;
     const failingDispatcher = makeMockDispatcher(async () => {
       callCount++;
-      if (callCount < 3) throw new Error("temporary failure");
+      if (callCount < 3) {
+        throw new Error("temporary failure");
+      }
       return { items: [{ json: {}, text: "success after retry" }] };
     });
 
@@ -419,13 +960,87 @@ describe("executeWorkflow", () => {
     expect(capturedPrompt).toContain("PIPELINE_CONTEXT");
     expect(capturedPrompt).toContain("Worker");
   });
+
+  it("resumes after an approved gate without rerunning prior steps", async () => {
+    const trigger = makeTrigger();
+    const approval: GateNode = {
+      kind: "gate",
+      id: "approval-1",
+      label: "Approve Send",
+      config: {
+        gateType: "approval",
+        approvers: ["operator"],
+        channels: ["dashboard"],
+        message: "Approve send?",
+        showPreviousOutput: true,
+        allowEdit: false,
+        timeoutAction: "deny",
+      },
+    };
+    const agent = makeAgent("agent-1", "Worker");
+    const output = makeOutput();
+    const dispatch = vi.fn(async () => ({
+      items: [{ json: { resumed: true }, text: "resumed agent step" }],
+    }));
+
+    const workflow = makeWorkflow(
+      [trigger, approval, agent, output],
+      [edge(trigger.id, approval.id), edge(approval.id, agent.id), edge(agent.id, output.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-resume-approval",
+      dispatcher: makeMockDispatcher(dispatch),
+      resume: {
+        afterNodeId: approval.id,
+        history: [
+          {
+            nodeId: trigger.id,
+            nodeKind: "trigger",
+            nodeLabel: trigger.id,
+            stepIndex: 0,
+            status: "completed",
+            durationMs: 1,
+            output: { items: [{ json: { triggerType: "manual" }, text: "triggered" }] },
+            startedAt: 1,
+            endedAt: 2,
+          },
+          {
+            nodeId: approval.id,
+            nodeKind: "gate",
+            nodeLabel: approval.label,
+            stepIndex: 1,
+            status: "completed",
+            durationMs: 1,
+            output: { items: [{ json: { approved: true }, text: "approved" }] },
+            startedAt: 2,
+            endedAt: 3,
+          },
+        ],
+        trigger: {
+          triggerType: "manual",
+          firedAt: 1,
+          payload: { source: "test" },
+          source: "resume-test",
+        },
+      },
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.steps.map((step) => step.nodeId)).toEqual([
+      trigger.id,
+      approval.id,
+      agent.id,
+      output.id,
+    ]);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ── Condition Evaluation (via gate execution) ─────────────────────
 
 describe("condition evaluation via gates", () => {
-  const mockDispatcher = makeMockDispatcher();
-
   it("evaluates equals condition from previous step output", async () => {
     const trigger = makeTrigger();
 
@@ -675,6 +1290,80 @@ describe("condition evaluation via gates", () => {
     const gateStep = result.steps.find((s) => s.nodeKind === "gate");
     expect(gateStep!.output.items[0].json.result).toBe(true);
   });
+
+  it("fails closed for agent-evaluated conditions until agent evaluation is implemented", async () => {
+    const trigger = makeTrigger();
+    const agent = makeAgent("agent-1", "Worker");
+    const dispatcher = makeMockDispatcher(async () => ({
+      items: [{ json: { confidence: "unclear" }, text: "Needs judgment" }],
+    }));
+    const gate: GateNode = {
+      kind: "gate",
+      id: "gate-agent-eval",
+      label: "Agent Judgment",
+      config: {
+        gateType: "condition",
+        expression: {
+          evaluator: "agent",
+          agentId: "reviewer",
+          question: "Should this proceed?",
+        },
+        trueEdge: "e-pass",
+        falseEdge: "e-fail",
+      },
+    };
+    const output = makeOutput();
+
+    const result = await executeWorkflow({
+      workflow: makeWorkflow(
+        [trigger, agent, gate, output],
+        [edge(trigger.id, agent.id), edge(agent.id, gate.id), edge(gate.id, output.id)],
+      ),
+      runId: "run-agent-eval-fail-closed",
+      dispatcher,
+    });
+
+    const gateStep = result.steps.find((s) => s.nodeKind === "gate");
+    expect(gateStep!.output.items[0].json.result).toBe(false);
+    expect(gateStep!.output.items[0].json.selectedEdge).toBe("e-fail");
+  });
+
+  it("persists wait_event gates and returns waiting_event", async () => {
+    const trigger = makeTrigger();
+    const gate: GateNode = {
+      kind: "gate",
+      id: "wait-event-1",
+      label: "Wait For AppForge Approval",
+      config: {
+        gateType: "wait_event",
+        eventType: "app.asset.approved",
+        eventFilter: { appId: "app-1", capabilityId: "campaign_review" },
+        timeoutAction: "fail",
+      },
+    };
+    const output = makeOutput();
+    const pgSql = vi.fn(async () => []);
+
+    const result = await executeWorkflow({
+      workflow: makeWorkflow(
+        [trigger, gate, output],
+        [edge(trigger.id, gate.id), edge(gate.id, output.id)],
+      ),
+      runId: "run-wait-event",
+      dispatcher: makeMockDispatcher(),
+      pgSql,
+    });
+
+    expect(result.status).toBe("waiting_event");
+    expect(result.waitingNodeId).toBe(gate.id);
+    expect(result.steps.at(-1)?.output.items[0].json).toMatchObject({
+      gateType: "wait_event",
+      waiting: true,
+      eventType: "app.asset.approved",
+      eventFilter: { appId: "app-1", capabilityId: "campaign_review" },
+    });
+    expect(pgSql.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
 });
 
 // ── Merge Strategies (via parallel gate segments) ─────────────────
@@ -718,9 +1407,7 @@ describe("merge strategies via parallel segments", () => {
       edge(joinGate.id, output.id),
     ];
 
-    let callIdx = 0;
     const branchDispatcher = makeMockDispatcher(async (agentId) => {
-      callIdx++;
       return {
         items: [
           {

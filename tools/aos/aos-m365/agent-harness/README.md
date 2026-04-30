@@ -28,4 +28,4 @@ Live read commands also need one or more of:
 - `M365_TEAM_ID` and `M365_CHANNEL_ID` for Teams channel reads
 - `M365_EXCEL_ITEM_ID`, `M365_EXCEL_WORKSHEET_NAME`, and `M365_EXCEL_RANGE` for Excel reads
 
-Write commands are still scaffolded and will return `NOT_IMPLEMENTED`.
+`mail.send`, `mail.reply`, and `calendar.create` use live Microsoft Graph writes in `write` mode or higher. `excel.append_rows` and `teams.reply_message` remain disabled with `NOT_IMPLEMENTED` because those paths are not supported for this app-only operator auth model.

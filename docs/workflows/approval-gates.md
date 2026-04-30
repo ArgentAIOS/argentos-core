@@ -37,6 +37,21 @@ AI is powerful but not perfect. Before your workflow:
    - **Approve** -- workflow continues to the next step
    - **Deny** -- workflow stops, nothing gets sent
 
+## Where Approval Alerts Go
+
+Approval gates create a durable pending approval and emit an
+`operator.alert.requested` event. ArgentOS routes that event in two ways:
+
+- **Dashboard listeners** receive the live approval banner and run history update.
+- **Registered operator-alert sinks** receive the same structured alert event for
+  optional surfaces such as Telegram, macOS alerting, or voice. These routes are
+  best-effort: a failed optional sink does not block the workflow approval record,
+  dashboard banner, or existing outbound notification fallback.
+
+The alert payload includes the workflow name, run id, node label, approval id,
+side-effect class, previous output preview, approve/deny actions, timeout
+behavior, and audit fields.
+
 ## Example
 
 ```

@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import json
-import os
 from typing import Any
 
 from .client import GraphApiError, TeamsClient
 from .config import config_snapshot, runtime_config
 from .constants import BACKEND_NAME, CONNECTOR_AUTH, CONNECTOR_CATEGORY, CONNECTOR_CATEGORIES, CONNECTOR_LABEL, CONNECTOR_PATH, CONNECTOR_RESOURCES, MANIFEST_SCHEMA_VERSION, PERMISSIONS_PATH, TOOL_NAME
 from .errors import CliError
+from .service_keys import service_key_env
+
+SUPPORTED_READ_COMMANDS = ("team.list", "channel.list", "meeting.list")
+SUPPORTED_WRITE_COMMANDS = ("channel.create", "meeting.create")
 
 
 def _load_manifest() -> dict[str, Any]:
@@ -32,13 +36,47 @@ def _require_arg(value: str | None, *, code: str, message: str, detail_key: str,
     raise CliError(code=code, message=message, exit_code=4, details={detail_key: detail_value})
 
 
-def capabilities_snapshot() -> dict[str, Any]:
+def _parse_json_argument(raw: str, *, code: str, message: str) -> Any:
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise CliError(code=code, message=message, exit_code=4, details={"raw": raw[:500]}) from exc
+
+
+def _parse_datetime_input(value: str, *, field_name: str) -> datetime:
+    normalized = value.strip()
+    if not normalized:
+        raise CliError(code="INVALID_ARGUMENT", message=f"{field_name} is required", exit_code=4, details={})
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise CliError(
+            code="INVALID_ARGUMENT",
+            message=f"{field_name} must be a valid ISO 8601 datetime",
+            exit_code=4,
+            details={"field": field_name, "value": value},
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _normalize_meeting_times(start_time: str, end_time: str | None) -> tuple[str, str]:
+    start_dt = _parse_datetime_input(start_time, field_name="start_time")
+    end_dt = _parse_datetime_input(end_time, field_name="end_time") if end_time else start_dt + timedelta(minutes=30)
+    if end_dt <= start_dt:
+        raise CliError(code="INVALID_ARGUMENT", message="end_time must be later than start_time", exit_code=4, details={})
+    return (
+        start_dt.isoformat(timespec="seconds").replace("+00:00", "Z"),
+        end_dt.isoformat(timespec="seconds").replace("+00:00", "Z"),
+    )
+
+
+def capabilities_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
     manifest = _load_manifest()
-    read_support: dict[str, bool] = {}
-    write_support: dict[str, bool] = {}
-    for command in manifest["commands"]:
-        target = read_support if command["required_mode"] == "readonly" else write_support
-        target[command["id"]] = True
+    config = runtime_config(ctx_obj)
     return {
         "tool": manifest["tool"],
         "backend": manifest["backend"],
@@ -47,13 +85,13 @@ def capabilities_snapshot() -> dict[str, Any]:
         "auth": manifest["auth"],
         "scope": manifest.get("scope", {}),
         "commands": manifest["commands"],
-        "read_support": read_support,
-        "write_support": write_support,
+        "read_support": config["read_support"],
+        "write_support": config["write_support"],
     }
 
 
 def create_client(ctx_obj: dict[str, Any] | None = None) -> TeamsClient:
-    config = runtime_config()
+    config = runtime_config(ctx_obj)
     auth = config["auth"]
     runtime = config["runtime"]
     if auth["missing_keys"]:
@@ -64,9 +102,9 @@ def create_client(ctx_obj: dict[str, Any] | None = None) -> TeamsClient:
             details={"missing_keys": auth["missing_keys"]},
         )
     return TeamsClient(
-        tenant_id=os.getenv("TEAMS_TENANT_ID", ""),
-        client_id=os.getenv("TEAMS_CLIENT_ID", ""),
-        client_secret=os.getenv("TEAMS_CLIENT_SECRET", ""),
+        tenant_id=service_key_env("TEAMS_TENANT_ID", "", ctx_obj) or "",
+        client_id=service_key_env("TEAMS_CLIENT_ID", "", ctx_obj) or "",
+        client_secret=service_key_env("TEAMS_CLIENT_SECRET", "", ctx_obj) or "",
         graph_base_url=runtime["graph_base_url"],
         token_url=runtime["token_url"] or None,
         timeout_seconds=runtime["timeout_seconds"],
@@ -74,7 +112,7 @@ def create_client(ctx_obj: dict[str, Any] | None = None) -> TeamsClient:
 
 
 def probe_runtime(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
-    config = runtime_config()
+    config = runtime_config(ctx_obj)
     auth = config["auth"]
     if auth["missing_keys"]:
         return {
@@ -105,7 +143,7 @@ def probe_runtime(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
-    config = runtime_config()
+    config = runtime_config(ctx_obj)
     probe = probe_runtime(ctx_obj)
     status = "ready" if probe["ok"] else ("needs_setup" if probe["code"] == "TEAMS_SETUP_REQUIRED" else "degraded")
     runtime = config["runtime"]
@@ -134,11 +172,15 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
             "backend": BACKEND_NAME,
             "live_backend_available": bool(probe.get("ok")),
             "live_read_available": bool(probe.get("ok")),
-            "write_bridge_available": False,
-            "scaffold_only": True,
+            "write_bridge_available": True,
+            "live_write_smoke_tested": False,
+            "scaffold_only": False,
         },
         "auth": config["auth"],
+        "scope": config["scope"],
         "runtime": runtime,
+        "read_support": config["read_support"],
+        "write_support": config["write_support"],
         "checks": checks,
         "runtime_ready": bool(probe.get("ok")),
         "probe": probe,
@@ -149,8 +191,8 @@ def health_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
 def doctor_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
     snapshot = health_snapshot(ctx_obj)
     recommendations = [
-        "Keep write commands scaffolded until a real Graph mutation bridge exists.",
-        "Use readonly mode for live Teams reads.",
+        "Use readonly mode for live team/channel/meeting discovery and write mode only for channel.create or meeting.create.",
+        "meeting.create requires OnlineMeetings.ReadWrite.All plus an application access policy granted to the scoped TEAMS_USER_ID user.",
     ]
     if snapshot["status"] == "needs_setup":
         recommendations.insert(0, "Set the Teams auth service keys before assigning this connector.")
@@ -163,29 +205,10 @@ def doctor_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
         "backend": BACKEND_NAME,
         "runtime_ready": snapshot["status"] == "ready",
         "recommendations": recommendations,
-        "config": config_snapshot(),
-        "supported_read_commands": ["team.list", "channel.list", "meeting.list"],
-        "supported_write_commands": [
-            "message.send",
-            "message.reply",
-            "channel.create",
-            "chat.send",
-            "meeting.create",
-            "file.upload",
-            "adaptive_card.send",
-        ],
-        "command_readiness": {
-            "team.list": snapshot["runtime"]["team_ready"],
-            "channel.list": snapshot["runtime"]["channel_ready"],
-            "meeting.list": snapshot["runtime"]["meeting_ready"],
-            "message.send": False,
-            "message.reply": False,
-            "channel.create": False,
-            "chat.send": False,
-            "meeting.create": False,
-            "file.upload": False,
-            "adaptive_card.send": False,
-        },
+        "config": config_snapshot(ctx_obj),
+        "supported_read_commands": list(SUPPORTED_READ_COMMANDS),
+        "supported_write_commands": list(SUPPORTED_WRITE_COMMANDS),
+        "command_readiness": dict(snapshot["runtime"]["command_readiness"]),
     }
 
 
@@ -205,7 +228,7 @@ def team_list_result(ctx_obj: dict[str, Any], *, limit: int) -> dict[str, Any]:
 
 
 def channel_list_result(ctx_obj: dict[str, Any], *, team_id: str | None, limit: int) -> dict[str, Any]:
-    runtime = runtime_config()
+    runtime = runtime_config(ctx_obj)
     resolved_team_id = team_id or runtime["runtime"]["team_id"]
     resolved_team_id = _require_arg(
         resolved_team_id,
@@ -229,7 +252,7 @@ def channel_list_result(ctx_obj: dict[str, Any], *, team_id: str | None, limit: 
 
 
 def meeting_list_result(ctx_obj: dict[str, Any], *, user_id: str | None, limit: int) -> dict[str, Any]:
-    runtime = runtime_config()
+    runtime = runtime_config(ctx_obj)
     resolved_user_id = user_id or runtime["runtime"]["user_id"]
     resolved_user_id = _require_arg(
         resolved_user_id,
@@ -245,18 +268,135 @@ def meeting_list_result(ctx_obj: dict[str, Any], *, user_id: str | None, limit: 
     return {
         "status": "live_read",
         "backend": BACKEND_NAME,
-        "summary": f"Listed {len(meetings)} meeting(s).",
+        "summary": f"Listed {len(meetings)} online calendar event(s).",
         "meetings": meetings,
         "picker_options": picker_items,
         "scope_preview": _scope_preview("meeting.list", "meeting", {"user_id": resolved_user_id, "candidate_count": len(meetings), "picker": _picker(picker_items, kind="meeting")}),
     }
 
 
-def scaffold_write_command(command_id: str, items: tuple[str, ...]) -> dict[str, Any]:
+def _parse_channel_create_items(items: tuple[str, ...], runtime: dict[str, Any]) -> dict[str, str]:
+    if len(items) == 1 and items[0].lstrip().startswith("{"):
+        payload = _parse_json_argument(
+            items[0],
+            code="INVALID_ARGUMENT",
+            message="channel.create expected a JSON object.",
+        )
+        if not isinstance(payload, dict):
+            raise CliError(code="INVALID_ARGUMENT", message="channel.create JSON input must be an object", exit_code=4, details={})
+        team_id = str(payload.get("team_id") or runtime["runtime"]["team_id"] or "").strip()
+        display_name = str(payload.get("display_name") or payload.get("channel_name") or "").strip()
+        description = str(payload.get("description") or payload.get("channel_description") or "").strip()
+    else:
+        default_team_id = str(runtime["runtime"]["team_id"] or "").strip()
+        if len(items) == 1 and default_team_id:
+            team_id = default_team_id
+            display_name = items[0].strip()
+            description = ""
+        elif len(items) >= 2:
+            team_id = items[0].strip()
+            display_name = items[1].strip()
+            description = " ".join(items[2:]).strip()
+        else:
+            raise CliError(
+                code="ARGUMENT_REQUIRED",
+                message="channel.create requires <team_id> <display_name> [description] or a single JSON object argument",
+                exit_code=4,
+                details={},
+            )
+    if not team_id or not display_name:
+        raise CliError(code="ARGUMENT_REQUIRED", message="channel.create requires team_id and display_name", exit_code=4, details={})
+    return {"team_id": team_id, "display_name": display_name, "description": description}
+
+
+def _parse_meeting_create_items(items: tuple[str, ...], runtime: dict[str, Any]) -> dict[str, str]:
+    if len(items) == 1 and items[0].lstrip().startswith("{"):
+        payload = _parse_json_argument(
+            items[0],
+            code="INVALID_ARGUMENT",
+            message="meeting.create expected a JSON object.",
+        )
+        if not isinstance(payload, dict):
+            raise CliError(code="INVALID_ARGUMENT", message="meeting.create JSON input must be an object", exit_code=4, details={})
+        user_id = str(payload.get("user_id") or runtime["runtime"]["user_id"] or "").strip()
+        subject = str(payload.get("subject") or payload.get("meeting_subject") or "").strip()
+        start_time = str(payload.get("start_time") or runtime["runtime"]["start_time"] or "").strip()
+        end_time = str(payload.get("end_time") or runtime["runtime"]["end_time"] or "").strip()
+    else:
+        user_id = (runtime["runtime"]["user_id"] or "").strip()
+        if len(items) < 2:
+            raise CliError(
+                code="ARGUMENT_REQUIRED",
+                message="meeting.create requires <subject> <start_time> [end_time] or a single JSON object argument",
+                exit_code=4,
+                details={},
+            )
+        subject = items[0].strip()
+        start_time = items[1].strip()
+        end_time = items[2].strip() if len(items) >= 3 else ""
+    if not user_id:
+        raise CliError(code="TEAMS_USER_ID_REQUIRED", message="user_id is required", exit_code=4, details={"env": "TEAMS_USER_ID"})
+    if not subject or not start_time:
+        raise CliError(code="ARGUMENT_REQUIRED", message="meeting.create requires subject and start_time", exit_code=4, details={})
+    normalized_start, normalized_end = _normalize_meeting_times(start_time, end_time or None)
+    return {"user_id": user_id, "subject": subject, "start_time": normalized_start, "end_time": normalized_end}
+
+
+def channel_create_result(ctx_obj: dict[str, Any], *, items: tuple[str, ...]) -> dict[str, Any]:
+    runtime = runtime_config(ctx_obj)
+    parsed = _parse_channel_create_items(items, runtime)
+    client = create_client(ctx_obj)
+    channel = client.create_channel(
+        team_id=parsed["team_id"],
+        display_name=parsed["display_name"],
+        description=parsed["description"] or None,
+    )
     return {
-        "command_id": command_id,
-        "arguments": list(items),
-        "scaffold_only": True,
+        "status": "live_write",
         "backend": BACKEND_NAME,
-        "available": False,
+        "summary": f"Created channel {channel.get('displayName') or parsed['display_name']}.",
+        "channel": channel,
+        "scope_preview": _scope_preview(
+            "channel.create",
+            "channel",
+            {"team_id": parsed["team_id"], "display_name": parsed["display_name"]},
+        ),
+        "live_write_smoke_tested": False,
     }
+
+
+def meeting_create_result(ctx_obj: dict[str, Any], *, items: tuple[str, ...]) -> dict[str, Any]:
+    runtime = runtime_config(ctx_obj)
+    parsed = _parse_meeting_create_items(items, runtime)
+    client = create_client(ctx_obj)
+    meeting = client.create_online_meeting(
+        user_id=parsed["user_id"],
+        subject=parsed["subject"],
+        start_iso=parsed["start_time"],
+        end_iso=parsed["end_time"],
+    )
+    return {
+        "status": "live_write",
+        "backend": BACKEND_NAME,
+        "summary": f"Created online meeting {meeting.get('id') or parsed['subject']}.",
+        "meeting": meeting,
+        "scope_preview": _scope_preview(
+            "meeting.create",
+            "meeting",
+            {
+                "user_id": parsed["user_id"],
+                "subject": parsed["subject"],
+                "start_time": parsed["start_time"],
+                "end_time": parsed["end_time"],
+            },
+        ),
+        "live_write_smoke_tested": False,
+    }
+
+
+def run_write_command(ctx_obj: dict[str, Any], command_id: str, items: tuple[str, ...]) -> dict[str, Any]:
+    if command_id == "channel.create":
+        return channel_create_result(ctx_obj, items=items)
+    if command_id == "meeting.create":
+        return meeting_create_result(ctx_obj, items=items)
+    raise CliError(code="UNKNOWN_COMMAND", message=f"Unknown command: {command_id}", exit_code=2, details={})

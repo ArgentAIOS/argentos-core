@@ -9,8 +9,12 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from .service_keys import service_key_env
+
 
 _GID_PATTERN = re.compile(r"^gid://shopify/[^/]+/(?P<id>[^/?#]+)$")
+_PRODUCT_STATUSES = {"active", "draft", "archived"}
+_ORDER_CANCEL_REASONS = {"customer", "inventory", "fraud", "declined", "other"}
 
 
 class ShopifyApiError(Exception):
@@ -31,10 +35,8 @@ class ShopifyAdminClient:
 
     @classmethod
     def from_env(cls, *, api_version: str = "latest") -> ShopifyAdminClient:
-        import os
-
-        shop_domain = os.getenv("SHOPIFY_SHOP_DOMAIN", "").strip()
-        access_token = os.getenv("SHOPIFY_ADMIN_ACCESS_TOKEN", "").strip()
+        shop_domain = (service_key_env("SHOPIFY_SHOP_DOMAIN", "") or "").strip()
+        access_token = (service_key_env("SHOPIFY_ADMIN_ACCESS_TOKEN", "") or "").strip()
         if not shop_domain or not access_token:
             missing = []
             if not shop_domain:
@@ -52,22 +54,31 @@ class ShopifyAdminClient:
     def base_url(self) -> str:
         return f"https://{self.shop_domain}/admin/api/{self.api_version}"
 
-    def _request_json(self, path: str, *, params: Mapping[str, Any] | None = None) -> tuple[dict[str, Any], dict[str, str], int]:
+    def _request_json(
+        self,
+        path: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        method: str = "GET",
+        body: Mapping[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, str], int]:
         normalized_path = path.lstrip("/")
         url = f"{self.base_url}/{normalized_path}"
         if params:
             query = urlencode([(key, str(value)) for key, value in params.items() if value is not None])
             if query:
                 url = f"{url}?{query}"
+        payload_bytes = json.dumps(body).encode("utf-8") if body is not None else None
 
         request = Request(
             url,
+            data=payload_bytes,
             headers={
                 "Accept": "application/json",
                 "Content-Type": "application/json",
                 "X-Shopify-Access-Token": self.access_token,
             },
-            method="GET",
+            method=method,
         )
 
         try:
@@ -114,6 +125,27 @@ class ShopifyAdminClient:
         payload, _, _ = self._request_json(f"products/{_normalize_identifier(product_id)}.json")
         return payload.get("product", payload)
 
+    def update_product(self, product_id: str, *, title: str | None = None, status: str | None = None) -> dict[str, Any]:
+        product: dict[str, Any] = {"id": int(_normalize_identifier(product_id))}
+        normalized_title = (title or "").strip()
+        normalized_status = _normalize_product_status(status)
+        if normalized_title:
+            product["title"] = normalized_title
+        if normalized_status:
+            product["status"] = normalized_status
+        if len(product) == 1:
+            raise ShopifyApiError(
+                code="SHOPIFY_INVALID_INPUT",
+                message="Provide at least one mutable product field",
+                details={"allowed_fields": ["title", "status"]},
+            )
+        payload, _, _ = self._request_json(
+            f"products/{product['id']}.json",
+            method="PUT",
+            body={"product": product},
+        )
+        return payload.get("product", payload)
+
     def orders(
         self,
         *,
@@ -134,6 +166,18 @@ class ShopifyAdminClient:
 
     def order(self, order_id: str) -> dict[str, Any]:
         payload, _, _ = self._request_json(f"orders/{_normalize_identifier(order_id)}.json")
+        return payload.get("order", payload)
+
+    def cancel_order(self, order_id: str, *, reason: str | None = None) -> dict[str, Any]:
+        normalized_order_id = _normalize_identifier(order_id)
+        payload, _, _ = self._request_json(
+            f"orders/{normalized_order_id}/cancel.json",
+            method="POST",
+            body={
+                "email": False,
+                "reason": _normalize_cancel_reason(reason),
+            },
+        )
         return payload.get("order", payload)
 
     def customers(
@@ -175,6 +219,26 @@ class ShopifyAdminClient:
         payload, _, _ = self._request_json(f"customers/{_normalize_identifier(customer_id)}.json")
         return payload.get("customer", payload)
 
+    def fulfillment_orders(self, order_id: str) -> list[dict[str, Any]]:
+        payload, _, _ = self._request_json(f"orders/{_normalize_identifier(order_id)}/fulfillment_orders.json")
+        return payload.get("fulfillment_orders", [])
+
+    def create_fulfillment(self, *, fulfillment_order_id: str | int, tracking_number: str | None = None) -> dict[str, Any]:
+        normalized_fulfillment_order_id = int(_normalize_identifier(str(fulfillment_order_id)))
+        fulfillment: dict[str, Any] = {
+            "notify_customer": False,
+            "line_items_by_fulfillment_order": [{"fulfillment_order_id": normalized_fulfillment_order_id}],
+        }
+        normalized_tracking_number = (tracking_number or "").strip()
+        if normalized_tracking_number:
+            fulfillment["tracking_info"] = {"number": normalized_tracking_number}
+        payload, _, _ = self._request_json(
+            "fulfillments.json",
+            method="POST",
+            body={"fulfillment": fulfillment},
+        )
+        return payload.get("fulfillment", payload)
+
 
 def _normalize_identifier(value: str) -> str:
     raw = value.strip()
@@ -208,6 +272,30 @@ def _pagination_from_headers(headers: Mapping[str, str]) -> dict[str, Any]:
     if call_limit:
         pagination["api_call_limit"] = call_limit
     return pagination
+
+
+def _normalize_product_status(value: str | None) -> str | None:
+    normalized = (value or "").strip().lower()
+    if not normalized:
+        return None
+    if normalized not in _PRODUCT_STATUSES:
+        raise ShopifyApiError(
+            code="SHOPIFY_INVALID_INPUT",
+            message=f"Unsupported product status {value!r}",
+            details={"allowed_statuses": sorted(_PRODUCT_STATUSES), "input": value},
+        )
+    return normalized
+
+
+def _normalize_cancel_reason(value: str | None) -> str:
+    normalized = (value or "other").strip().lower()
+    if normalized not in _ORDER_CANCEL_REASONS:
+        raise ShopifyApiError(
+            code="SHOPIFY_INVALID_INPUT",
+            message=f"Unsupported order cancel reason {value!r}",
+            details={"allowed_reasons": sorted(_ORDER_CANCEL_REASONS), "input": value},
+        )
+    return normalized
 
 
 def _parse_iso_datetime(value: str | None) -> datetime | None:

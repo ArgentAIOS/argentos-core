@@ -37,7 +37,7 @@ Agent-native QuickBooks Online accounting connector.
 - `transaction.list` (readonly)
 - `transaction.read` (readonly)
 
-Write paths remain scaffolded and permission-gated:
+Write paths use live QuickBooks Online API calls and remain permission-gated:
 
 - `invoice.create_draft` (write)
 - `bill.create_draft` (write)
@@ -61,5 +61,14 @@ Write paths remain scaffolded and permission-gated:
 
 1. Create a venv and install with `pip install -e '.[dev]'`.
 2. Run `aos-quickbooks --json doctor` to verify auth and backend readiness.
-3. Use readonly commands for live QuickBooks reads while write paths remain scaffolded.
+3. Use readonly commands for live QuickBooks reads, and write mode only for sandbox or tightly scoped company contexts.
 4. Add integration tests against QuickBooks Online when sandbox credentials are available.
+
+## Write Inputs
+
+Write commands accept `key=value` arguments:
+
+- `invoice create_draft customer_id=<id> item_id=<sales item id> amount=<amount> [description=...] [due_date=YYYY-MM-DD] [doc_number=...]`
+- `bill create_draft vendor_id=<id> account_id=<account id> amount=<amount> [description=...] [due_date=YYYY-MM-DD] [doc_number=...]`
+
+QuickBooks Online requires a sales item for invoice lines, so `invoice.create_draft` intentionally requires `item_id`.

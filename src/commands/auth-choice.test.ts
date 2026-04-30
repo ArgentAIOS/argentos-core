@@ -987,6 +987,58 @@ describe("applyAuthChoice", () => {
       apiKey: "ollama-local",
     });
   });
+
+  it("prompts and writes Z.AI Coding Plan API key separately from Z.AI direct", async () => {
+    tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-auth-"));
+    process.env.ARGENT_STATE_DIR = tempStateDir;
+    process.env.ARGENT_AGENT_DIR = path.join(tempStateDir, "agent");
+    process.env.PI_CODING_AGENT_DIR = process.env.ARGENT_AGENT_DIR;
+
+    const text = vi.fn().mockResolvedValue("sk-zai-coding-test");
+    const prompter: WizardPrompter = {
+      intro: vi.fn(noopAsync),
+      outro: vi.fn(noopAsync),
+      note: vi.fn(noopAsync),
+      select: vi.fn(async (params) => params.options[0]?.value as never),
+      multiselect: vi.fn(async () => []),
+      text,
+      confirm: vi.fn(async () => false),
+      progress: vi.fn(() => ({ update: noop, stop: noop })),
+    };
+    const runtime: RuntimeEnv = {
+      log: vi.fn(),
+      error: vi.fn(),
+      exit: vi.fn((code: number) => {
+        throw new Error(`exit:${code}`);
+      }),
+    };
+
+    const result = await applyAuthChoice({
+      authChoice: "zai-coding-api-key",
+      config: {},
+      prompter,
+      runtime,
+      setDefaultModel: true,
+    });
+
+    expect(text).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Enter Z.AI Coding Plan API key" }),
+    );
+    expect(result.config.auth?.profiles?.["zai-coding:default"]).toMatchObject({
+      provider: "zai-coding",
+      mode: "api_key",
+    });
+    expect(result.config.agents?.defaults?.model?.primary).toBe("zai-coding/glm-4.7");
+
+    const raw = await fs.readFile(authProfilePathFor(requireAgentDir()), "utf8");
+    const parsed = JSON.parse(raw) as {
+      profiles?: Record<string, { provider?: string; key?: string }>;
+    };
+    expect(parsed.profiles?.["zai-coding:default"]).toMatchObject({
+      provider: "zai-coding",
+      key: "sk-zai-coding-test",
+    });
+  });
 });
 
 describe("resolvePreferredProviderForAuthChoice", () => {
@@ -1008,6 +1060,10 @@ describe("resolvePreferredProviderForAuthChoice", () => {
 
   it("maps mistral-api-key to the provider", () => {
     expect(resolvePreferredProviderForAuthChoice("mistral-api-key")).toBe("mistral");
+  });
+
+  it("maps zai-coding-api-key to the provider", () => {
+    expect(resolvePreferredProviderForAuthChoice("zai-coding-api-key")).toBe("zai-coding");
   });
 
   it("maps minimax-api-m27 to the provider", () => {

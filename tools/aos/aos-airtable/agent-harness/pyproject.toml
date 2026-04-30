@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aos-airtable"
 version = "0.1.0"
-description = "Agent-native Airtable connector scaffold"
+description = "Agent-native Airtable connector"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["click>=8.1"]

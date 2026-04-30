@@ -51,6 +51,7 @@ interface ZAIStreamChoice {
   delta: {
     role?: string;
     content?: string;
+    reasoning_content?: string;
     tool_calls?: Array<{
       index: number;
       id?: string;
@@ -77,6 +78,7 @@ interface ZAINonStreamChoice {
   message: {
     role: string;
     content?: string;
+    reasoning_content?: string;
     tool_calls?: Array<{
       id: string;
       type: "function";
@@ -120,6 +122,28 @@ export class ZAIProvider implements Provider {
    * Execute a turn (non-streaming)
    */
   async execute(request: TurnRequest, modelConfig: ModelConfig): Promise<TurnResponse> {
+    const data = await this.fetchNonStreamResponse(request, modelConfig);
+    const response = this.convertNonStreamResponse(data, modelConfig);
+
+    if (this.shouldRetryReasoningOnlyResponse(response, modelConfig)) {
+      const retryConfig = { ...modelConfig, thinking: false };
+      const retryData = await this.fetchNonStreamResponse(request, retryConfig);
+      const retryResponse = this.convertNonStreamResponse(retryData, retryConfig);
+      if (!this.hasVisibleOutput(retryResponse)) {
+        throw new Error(
+          "Z.AI returned an empty assistant response after retrying without thinking.",
+        );
+      }
+      return retryResponse;
+    }
+
+    return response;
+  }
+
+  private async fetchNonStreamResponse(
+    request: TurnRequest,
+    modelConfig: ModelConfig,
+  ): Promise<ZAINonStreamResponse> {
     const body = this.buildRequestBody(request, modelConfig, false);
     const response = await fetch(this.getBaseURL(), {
       method: "POST",
@@ -132,8 +156,7 @@ export class ZAIProvider implements Provider {
       throw new Error(`Z.AI API error ${response.status}: ${errorText}`);
     }
 
-    const data = (await response.json()) as ZAINonStreamResponse;
-    return this.convertNonStreamResponse(data, modelConfig);
+    return (await response.json()) as ZAINonStreamResponse;
   }
 
   /**
@@ -144,6 +167,7 @@ export class ZAIProvider implements Provider {
 
     const partial: TurnResponse = {
       text: "",
+      thinking: "",
       toolCalls: [],
       usage: {
         inputTokens: 0,
@@ -159,6 +183,7 @@ export class ZAIProvider implements Provider {
 
     const pendingToolCalls = new Map<number, { id: string; name: string; argsJson: string }>();
     let textStarted = false;
+    let thinkingStarted = false;
 
     try {
       const response = await fetch(this.getBaseURL(), {
@@ -184,7 +209,9 @@ export class ZAIProvider implements Provider {
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
@@ -192,10 +219,14 @@ export class ZAIProvider implements Provider {
 
         for (const line of lines) {
           const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith("data:")) continue;
+          if (!trimmed || !trimmed.startsWith("data:")) {
+            continue;
+          }
 
           const data = trimmed.slice(5).trim();
-          if (data === "[DONE]") continue;
+          if (data === "[DONE]") {
+            continue;
+          }
 
           let chunk: ZAIStreamChunk;
           try {
@@ -212,15 +243,30 @@ export class ZAIProvider implements Provider {
           }
 
           const choice = chunk.choices?.[0];
-          if (!choice) continue;
+          if (!choice) {
+            continue;
+          }
 
           // Handle finish reason
           if (choice.finish_reason) {
             partial.stopReason = this.mapStopReason(choice.finish_reason);
           }
 
+          if (choice.delta.reasoning_content) {
+            if (!thinkingStarted) {
+              thinkingStarted = true;
+              yield { type: "thinking_start", partial };
+            }
+            partial.thinking += choice.delta.reasoning_content;
+            yield { type: "thinking_delta", delta: choice.delta.reasoning_content, partial };
+          }
+
           // Handle text content
           if (choice.delta.content) {
+            if (thinkingStarted && partial.thinking) {
+              thinkingStarted = false;
+              yield { type: "thinking_end", thinking: partial.thinking, partial };
+            }
             if (!textStarted) {
               textStarted = true;
               yield { type: "text_start", partial };
@@ -244,7 +290,9 @@ export class ZAIProvider implements Provider {
               } else {
                 const pending = pendingToolCalls.get(idx);
                 if (pending) {
-                  if (tc.function?.name) pending.name += tc.function.name;
+                  if (tc.function?.name) {
+                    pending.name += tc.function.name;
+                  }
                   if (tc.function?.arguments) {
                     pending.argsJson += tc.function.arguments;
                     yield { type: "tool_call_delta", delta: tc.function.arguments, partial };
@@ -256,6 +304,10 @@ export class ZAIProvider implements Provider {
 
           // Finalize on finish
           if (choice.finish_reason) {
+            if (thinkingStarted && partial.thinking) {
+              yield { type: "thinking_end", thinking: partial.thinking, partial };
+              thinkingStarted = false;
+            }
             if (textStarted) {
               yield { type: "text_end", text: partial.text, partial };
               textStarted = false;
@@ -279,6 +331,36 @@ export class ZAIProvider implements Provider {
             }
             pendingToolCalls.clear();
           }
+        }
+      }
+
+      if (this.shouldRetryReasoningOnlyResponse(partial, modelConfig)) {
+        if (thinkingStarted && partial.thinking) {
+          yield { type: "thinking_end", thinking: partial.thinking, partial };
+          thinkingStarted = false;
+        }
+
+        const recovered = await this.execute(request, { ...modelConfig, thinking: false });
+        if (!this.hasVisibleOutput(recovered)) {
+          throw new Error(
+            "Z.AI returned an empty assistant response after retrying without thinking.",
+          );
+        }
+
+        partial.text = recovered.text;
+        partial.toolCalls = recovered.toolCalls;
+        partial.usage = recovered.usage;
+        partial.stopReason = recovered.stopReason;
+        partial.errorMessage = recovered.errorMessage;
+
+        if (partial.text) {
+          yield { type: "text_start", partial };
+          yield { type: "text_delta", delta: partial.text, partial };
+          yield { type: "text_end", text: partial.text, partial };
+        }
+
+        for (const toolCall of partial.toolCalls) {
+          yield { type: "tool_call_end", toolCall, partial };
         }
       }
 
@@ -319,6 +401,7 @@ export class ZAIProvider implements Provider {
       max_tokens: modelConfig.maxTokens || DEFAULT_MAX_TOKENS,
       stream,
       ...(stream && { stream_options: { include_usage: true } }),
+      thinking: { type: modelConfig.thinking ? "enabled" : "disabled" },
       ...(tools && tools.length > 0 && { tools }),
       ...(modelConfig.temperature !== undefined && { temperature: modelConfig.temperature }),
     };
@@ -402,6 +485,7 @@ export class ZAIProvider implements Provider {
 
     return {
       text: choice?.message.content || "",
+      thinking: choice?.message.reasoning_content || "",
       toolCalls,
       usage: {
         inputTokens: data.usage?.prompt_tokens || 0,
@@ -414,6 +498,27 @@ export class ZAIProvider implements Provider {
       provider: this.name,
       model: modelConfig.id,
     };
+  }
+
+  private shouldRetryReasoningOnlyResponse(
+    response: TurnResponse,
+    modelConfig: ModelConfig,
+  ): boolean {
+    return (
+      modelConfig.thinking === true &&
+      !this.hasVisibleOutput(response) &&
+      typeof response.thinking === "string" &&
+      response.thinking.trim().length > 0 &&
+      response.stopReason === "stop"
+    );
+  }
+
+  private hasVisibleOutput(response: TurnResponse): boolean {
+    return (
+      response.text.trim().length > 0 ||
+      response.toolCalls.length > 0 ||
+      response.stopReason === "error"
+    );
   }
 
   private mapStopReason(reason: string): TurnResponse["stopReason"] {

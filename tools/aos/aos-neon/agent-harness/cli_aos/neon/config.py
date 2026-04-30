@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -45,10 +46,10 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     project_id_env = ctx_obj.get("project_id_env") or NEON_PROJECT_ID_ENV
     branch_env = ctx_obj.get("branch_env") or NEON_BRANCH_ENV
 
-    api_key = (os.getenv(api_key_env) or "").strip()
-    connection_string = (os.getenv(conn_env) or "").strip()
-    project_id = (os.getenv(project_id_env) or "").strip()
-    branch = (os.getenv(branch_env) or "").strip()
+    api_key = (service_key_env(api_key_env) or "").strip()
+    connection_string = (service_key_env(conn_env) or "").strip()
+    project_id = (service_key_env(project_id_env) or "").strip()
+    branch = (service_key_env(branch_env) or "").strip()
 
     return {
         "backend": BACKEND_NAME,

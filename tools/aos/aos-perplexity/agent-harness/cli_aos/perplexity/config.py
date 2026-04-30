@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import API_KEY_ENV, BASE_URL_ENV, DEFAULT_BASE_URL, DEFAULT_MODEL, MODEL_ENV, SEARCH_DOMAIN_ENV
@@ -33,10 +34,10 @@ def _parse_search_domains(value: str | None) -> list[str]:
 
 
 def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
-    api_key = os.getenv(API_KEY_ENV)
-    model = os.getenv(MODEL_ENV, DEFAULT_MODEL).strip() or DEFAULT_MODEL
-    base_url = os.getenv(BASE_URL_ENV, DEFAULT_BASE_URL).strip() or DEFAULT_BASE_URL
-    search_domain = os.getenv(SEARCH_DOMAIN_ENV)
+    api_key = service_key_env(API_KEY_ENV)
+    model = service_key_env(MODEL_ENV, DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    base_url = service_key_env(BASE_URL_ENV, DEFAULT_BASE_URL).strip() or DEFAULT_BASE_URL
+    search_domain = service_key_env(SEARCH_DOMAIN_ENV)
     search_domains = _parse_search_domains(search_domain)
     return {
         "api_key_env": API_KEY_ENV,

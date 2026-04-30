@@ -92,6 +92,11 @@ export type CronServiceDeps = {
     summary?: string;
     error?: string;
   }>;
+  resumeDueWorkflowWaits?: (params: { nowMs: number }) => Promise<{
+    resumed: number;
+    failed?: number;
+    errors: string[];
+  }>;
   onEvent?: (evt: CronEvent) => void;
 };
 

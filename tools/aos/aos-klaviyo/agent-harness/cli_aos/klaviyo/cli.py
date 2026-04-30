@@ -21,7 +21,6 @@ from .runtime import (
     list_read_result,
     profile_list_result,
     profile_read_result,
-    scaffold_write_result,
 )
 
 
@@ -226,30 +225,3 @@ def campaign_read(ctx: click.Context, campaign_id: str | None) -> None:
     _set_command(ctx, "campaign.read")
     require_mode(ctx, "campaign.read")
     _emit_success(ctx, "campaign.read", campaign_read_result(ctx.obj, campaign_id))
-
-
-@campaign_group.command("create")
-@click.argument("name")
-@click.pass_context
-def campaign_create(ctx: click.Context, name: str) -> None:
-    _set_command(ctx, "campaign.create")
-    require_mode(ctx, "campaign.create")
-    _emit_success(
-        ctx,
-        "campaign.create",
-        scaffold_write_result(ctx.obj, command_id="campaign.create", inputs={"name": name}),
-    )
-
-
-@profile_group.command("upsert")
-@click.argument("list_id", required=False)
-@click.argument("email", required=False)
-@click.pass_context
-def profile_upsert(ctx: click.Context, list_id: str | None, email: str | None) -> None:
-    _set_command(ctx, "profile.upsert")
-    require_mode(ctx, "profile.upsert")
-    _emit_success(
-        ctx,
-        "profile.upsert",
-        scaffold_write_result(ctx.obj, command_id="profile.upsert", inputs={"list_id": list_id, "email": email}),
-    )

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from .service_keys import service_key_env
 from .constants import (
     BACKEND_NAME,
     CONNECTWISE_BOARD_ID_ENV,
@@ -38,10 +39,10 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     project_id_env = ctx_obj.get("project_id_env") or CONNECTWISE_PROJECT_ID_ENV
     configuration_id_env = ctx_obj.get("configuration_id_env") or CONNECTWISE_CONFIGURATION_ID_ENV
 
-    company_id = (os.getenv(company_id_env) or "").strip()
-    public_key = (os.getenv(public_key_env) or "").strip()
-    private_key = (os.getenv(private_key_env) or "").strip()
-    site_url = (os.getenv(site_url_env) or "").strip()
+    company_id = (service_key_env(company_id_env) or "").strip()
+    public_key = (service_key_env(public_key_env) or "").strip()
+    private_key = (service_key_env(private_key_env) or "").strip()
+    site_url = (service_key_env(site_url_env) or "").strip()
     board_id = (os.getenv(board_id_env) or "").strip()
     company_scope = (os.getenv(company_scope_env) or "").strip()
     ticket_id = (os.getenv(ticket_id_env) or "").strip()
@@ -84,6 +85,12 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     return {
         "auth": {
             "company_id_env": runtime["company_id_env"],
+            "operator_service_keys": [
+                runtime["company_id_env"],
+                runtime["public_key_env"],
+                runtime["private_key_env"],
+                runtime["site_url_env"],
+            ],
             "company_id_present": runtime["company_id_present"],
             "company_id_preview": _mask(runtime["company_id"]),
             "public_key_env": runtime["public_key_env"],

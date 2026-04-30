@@ -1,0 +1,245 @@
+[
+  {
+    "id": "task-20260426121910-vnvz5n",
+    "createdAt": "2026-04-26T12:19:10.606Z",
+    "updatedAt": "2026-04-26T12:19:10.935Z",
+    "from": "master",
+    "owner": "workflows",
+    "title": "Bus task smoke test",
+    "body": "Verify task-add, task-list, task-update, and status work for the master threadmaster bus.",
+    "status": "done",
+    "priority": "normal",
+    "branch": "codex/aos-next-connector-wave",
+    "notes": [
+      {
+        "at": "2026-04-26T12:19:10.934Z",
+        "lane": "workflows",
+        "note": "Smoke test completed."
+      }
+    ]
+  },
+  {
+    "id": "task-20260427222958-9b6jkb",
+    "createdAt": "2026-04-27T22:29:58.902Z",
+    "updatedAt": "2026-04-27T22:29:58.902Z",
+    "from": "master",
+    "owner": "workflows",
+    "title": "Wire operator.alert.requested into shared alert router",
+    "body": "Implement the A2 workflow-owned hook from existing operator.alert.requested broadcasts to routeOperatorAlertEvent. Must be best-effort/non-blocking, avoid importing voice-call internals, preserve approval creation, and prove with focused tests plus repo-lane/diff checks before merge request.",
+    "status": "todo",
+    "priority": "high",
+    "branch": "dev",
+    "notes": []
+  },
+  {
+    "id": "task-20260427222958-0hf9vr",
+    "createdAt": "2026-04-27T22:29:58.923Z",
+    "updatedAt": "2026-04-27T22:29:58.923Z",
+    "from": "master",
+    "owner": "openclaw",
+    "title": "Continue bounded OpenClaw voice smoke evidence",
+    "body": "Proceed only in extension-owned voice-call/ops surfaces: prove operator alert voice dry-run/process behavior, privacy/gate labels, and runbook evidence. Do not touch workflow hook/gateway/schema surfaces unless separately assigned. Post merge request/evidence to bus when ready.",
+    "status": "todo",
+    "priority": "high",
+    "branch": "dev",
+    "notes": []
+  },
+  {
+    "id": "task-20260427223359-6ytxc2",
+    "createdAt": "2026-04-27T22:33:59.329Z",
+    "updatedAt": "2026-04-27T22:33:59.329Z",
+    "from": "master",
+    "owner": "aos",
+    "title": "Harden channel startup failures so gateway health stays responsive",
+    "body": "Investigate and patch gateway channel startup failure isolation for Telegram getUpdates 409 conflicts and Discord bad/partial app identity failures. Sem local workaround disabled channels.telegram.enabled and channels.discord.enabled to restore health, but core should ensure one bad channel cannot spin CPU, block health handshakes, or crash/wedge the gateway after argent update/restart. Required proof: focused channel startup/error tests, health remains responsive with failing Telegram/Discord configs, oxlint/diff check, repo-lane, and dev containment after merge.",
+    "status": "todo",
+    "priority": "high",
+    "branch": "dev",
+    "notes": []
+  },
+  {
+    "id": "task-20260427223553-kbi5mf",
+    "createdAt": "2026-04-27T22:35:53.326Z",
+    "updatedAt": "2026-04-27T22:35:53.326Z",
+    "from": "master",
+    "owner": "appforge",
+    "title": "Phase 1E validation + field model hardening",
+    "body": "Start after Phase 1D is in origin/dev as 96aa2df3. Harden TableForge/AppForge field validation and the field model: required/default/options constraints, honest validation errors, stable persistence, and regression tests. Keep workflow, connector, permissions, and schema/migration overlap behind explicit bus tasks before touching those surfaces. Submit merge request with focused tests, dashboard build/type proof, docs/changelog update, repo-lane, diff check, and origin/dev containment proof after merge.",
+    "status": "todo",
+    "priority": "high",
+    "branch": "dev",
+    "notes": []
+  },
+  {
+    "id": "task-20260428173443-hzlksv",
+    "createdAt": "2026-04-28T17:34:43.341Z",
+    "updatedAt": "2026-04-28T18:13:45.502Z",
+    "from": "master",
+    "owner": "workflows",
+    "title": "Morning Brief workflow readiness and template hardening",
+    "body": "LANE LOCK:\nRepo: ArgentAIOS/argentos-core\nLocal path: /Users/sem/code/argent-core\nTarget branch: dev\nForbidden repo for this task: ArgentAIOS/argentos\nReason: pure core Workflows readiness/template hardening work\n\nOwner lane: Workflows\nTask: Morning Brief workflow readiness and template hardening\nScope: workflow validation UX, dry-run/run split, live side-effect approval, podcast tool wiring, output safety, morning brief template\nDo not touch: AppForge, AOS, OpenClaw Voice, unrelated agent runtime\nRequired proof: tests, dry-run evidence, saved workflow inspection, origin/dev containment after merge\n\nOperator note: workflow agent is already aware of the Morning Brief goal and has a plan; this task exists to route the work through the bus and keep ownership/proof explicit.",
+    "status": "done",
+    "priority": "normal",
+    "branch": "codex/workflow-modal-telegram-target-repair",
+    "notes": [
+      {
+        "at": "2026-04-28T17:35:06.827Z",
+        "lane": "workflows",
+        "note": "Master clarification: bus auto-stamped this task with the posting branch codex/workflow-modal-telegram-target-repair. Ignore that as task ownership metadata; implementation target remains dev per lane lock/body."
+      },
+      {
+        "at": "2026-04-28T17:40:20.518Z",
+        "lane": "workflows",
+        "note": "Operator scope update: Task is now Capability-backed workflow actions and Morning Brief template hardening. Scope: action capability catalog; action picker categories; podcast_plan / podcast_generate as first-class actions; live side-effect approval UX; validate / dry-run / run-now split; action config normalization; DocPanel output safety; update Morning Brief Podcast 2.0; create reusable AI Morning Brief template. Do not touch: AppForge, AOS, OpenClaw Voice, unrelated agent runtime, business/licensing surfaces. Required proof: focused unit tests; workflow validation test; dry-run evidence; saved workflow inspection; one approved live-run test when safe; origin/dev containment proof after merge."
+      },
+      {
+        "at": "2026-04-28T17:56:59.567Z",
+        "lane": "workflows",
+        "note": "Progress: implemented capability-backed workflow actions and Morning Brief hardening on branch codex/workflow-capability-actions. Added action capability catalog exposed via workflows.capabilities; added first-class podcast_plan and podcast_generate action types; fixed action config normalization so canonical action objects do not collapse to api_call; added approval metadata to unsafe live-side-effect validation issues; dry-run trace now reports action capability/approval requirements; runner now executes podcast_plan/podcast_generate through existing podcast tools and blocks DocPanel [object Object] saves; builder now emits visible Morning Brief scout -> brief -> script -> podcast_plan -> podcast_generate -> delivery -> ledger graph; added AI Morning Brief Podcast owner-operator template; dashboard action picker now includes Podcast Plan/Generate controls. Verification so far: focused vitest suite passed 63 tests; git diff --check passed; repo-lane passed. pnpm tsgo remains blocked by existing unrelated repo-wide type failures, not clean for this branch."
+      },
+      {
+        "at": "2026-04-28T18:01:23.457Z",
+        "lane": "workflows",
+        "note": "Merge request submitted to Master as bus message tm-20260428180114-mm19t9. Branch pushed: codex/workflow-capability-actions. Commit: 6aa4e62b2c0da18c44a521983af5fd8ff95cd2ab. Blocked only on Master review/merge and origin/dev containment proof; origin/dev does not contain the commit yet."
+      },
+      {
+        "at": "2026-04-28T18:13:45.502Z",
+        "lane": "workflows",
+        "note": "Master merged codex/workflow-capability-actions into origin/dev as merge commit bcd9f30a. Containment proof: git branch -r --contains 6aa4e62b2c0da18c44a521983af5fd8ff95cd2ab includes origin/dev; git branch -r --contains bcd9f30a includes origin/dev. Verification rerun: 64 focused workflow tests passed; oxfmt check passed; git diff --check passed; pnpm check:repo-lane passed."
+      }
+    ]
+  },
+  {
+    "id": "task-20260428181411-ow84bp",
+    "createdAt": "2026-04-28T18:14:11.939Z",
+    "updatedAt": "2026-04-28T18:21:47.969Z",
+    "from": "master",
+    "owner": "business",
+    "title": "Prepare descriptor-only Business overlay adaptation plan",
+    "body": "Master approved the Core-first overlay contract in bus message tm-20260428181423-rxmotb. Business lane may proceed read-only/planning only: map /Users/sem/code/ArgentOS-Business files to the future Core extension API descriptors, identify DTO/facade seams, identify imports that must be replaced, and prepare a compile/adaptation plan. Do not implement executable worker/governance runtime, migrations, license protocol internals, or Core imports until Core C1-C5 lands and Master explicitly authorizes code work.",
+    "status": "done",
+    "priority": "high",
+    "branch": "codex/aos-google-gws-invocation-repair",
+    "notes": [
+      {
+        "at": "2026-04-28T18:14:32.132Z",
+        "lane": "business",
+        "note": "Approval bus message posted as tm-20260428181423-rxmotb. Scope remains read-only/planning until Core task task-20260428181411-5ddacs lands."
+      },
+      {
+        "at": "2026-04-28T18:16:30.995Z",
+        "lane": "business",
+        "note": "Correction: the approval bus message id is tm-20260428181423-rxmotb. Ignore the placeholder id in the original task body; binding scope remains read-only/planning until Core task task-20260428181411-5ddacs lands."
+      },
+      {
+        "at": "2026-04-28T18:21:47.969Z",
+        "lane": "business",
+        "note": "Business delivered descriptor-only adaptation map in tm-20260428182047-ylczb0. Master accepts as completion of the read-only planning task. Next blocker remains Core task task-20260428181411-5ddacs; no executable Business runtime/governance/migrations/license protocol work is authorized until Core C1-C5 lands."
+      }
+    ]
+  },
+  {
+    "id": "task-20260428181411-5ddacs",
+    "createdAt": "2026-04-28T18:14:11.954Z",
+    "updatedAt": "2026-04-29T00:25:17.169Z",
+    "from": "master",
+    "owner": "master",
+    "title": "Core Business overlay contract C1-C5",
+    "body": "Implement the Core-owned first slice for the private Business overlay: type-only core extension API; manifest validator that never imports Business code; redacted entitlement/status store; gateway stubs business.status/business.activate/business.sync/business.disable; descriptor registry placeholders gated by entitlement, manifest, signature/checksum, and Core-version checks. Preserve Core startup/update behavior with no Business installed. Required proof: unit tests for validator/status redaction/expiration policy, gateway stub tests, no private URL/license leakage, repo-lane, formatting/diff checks, and origin/dev containment.",
+    "status": "doing",
+    "priority": "high",
+    "branch": "codex/aos-google-gws-invocation-repair",
+    "notes": [
+      {
+        "at": "2026-04-28T18:33:01.765Z",
+        "lane": "master",
+        "note": "Master is taking Core C1-C5 as the active blocker. Business has been assigned task-20260428183253-mc9yj2 to produce descriptor/status/redaction fixtures in parallel so Core implementation can use concrete acceptance cases."
+      },
+      {
+        "at": "2026-04-29T00:25:17.168Z",
+        "lane": "master",
+        "note": "Master reconfirmed ownership after Business blocker tm-20260429001833-ybgrul. Next action is Core C1-C5 implementation/landing packet in argent-core dev lane using Business fixture/spec and descriptor-register dry-run artifacts. Business should not replace its contract-draft shim until Master posts exact exported type names/paths and origin/dev containment proof."
+      }
+    ]
+  },
+  {
+    "id": "task-20260428182901-juxrg1",
+    "createdAt": "2026-04-28T18:29:01.616Z",
+    "updatedAt": "2026-04-28T18:41:05.097Z",
+    "from": "master",
+    "owner": "agent-persona",
+    "title": "Agent Profile first-class foundation slice",
+    "body": "LANE LOCK:\nRepo: ArgentAIOS/argentos-core\nLocal path: /Users/sem/code/argent-core\nTarget branch: dev\nForbidden repo for this task: ArgentAIOS/argentos\nReason: pure core Agent Persona / Agent Profile foundation work\n\nCanonical plan: .omx/plans/agent-profile-first-class-plan-2026-04-28.md\nOnboarding prompt: ops/AGENT_PERSONA_ONBOARDING_PROMPT.md\n\nTask: Start the Agent Persona/Profile first-class implementation lane with the smallest safe foundation slice.\n\nScope for first slice:\n- Read the canonical plan and current Argent/OpenClaw references.\n- Identify exact Argent files for AgentConfig, TTS config, dashboard agent/profile APIs, auth-profile summaries, and Agents UI.\n- Implement or propose the first narrow code slice only if contained: AgentConfig.tts typing, generic-compatible TTS config additions, and an effective per-agent TTS/profile helper with tests.\n- Post STARTED before code edits and MERGE REQUEST when ready.\n\nDo not touch:\n- Workflows canvas/runtime\n- AppForge/TableForge\n- AOS connector implementations\n- OpenClaw Voice/Meet/runtime surfaces\n- Business/licensing/private overlay code\n- unrelated agent runtime\n\nRequired proof:\n- focused unit tests for schema/effective merge/redaction if code changes\n- pnpm check:repo-lane\n- formatting/diff checks\n- origin/dev containment proof after merge",
+    "status": "done",
+    "priority": "high",
+    "branch": "codex/aos-google-gws-invocation-repair",
+    "notes": [
+      {
+        "at": "2026-04-28T18:31:58.239Z",
+        "lane": "agent-persona",
+        "note": "Started agent-persona foundation slice on codex/agent-persona-profile-foundation. Boundaries: config AgentConfig/TTS types, effective profile/TTS helper, redacted auth summary helper, focused tests only."
+      },
+      {
+        "at": "2026-04-28T18:38:13.586Z",
+        "lane": "agent-persona",
+        "note": "Completed on branch codex/agent-persona-profile-foundation at f4fecaaa. Focused tests, targeted oxfmt/oxlint, repo lane check passed. origin/dev 3466953f is ancestor of HEAD. MERGE REQUEST posted to Master. Known residuals: full tsgo/format have unrelated pre-existing failures; local acks.json modified from bus ack only."
+      },
+      {
+        "at": "2026-04-28T18:41:05.097Z",
+        "lane": "agent-persona",
+        "note": "Master merged Agent Persona foundation slice to origin/dev. Feature commit f4fecaaa plus dev-version stamp commit 3716776b are contained in origin/dev. Version: 2026.4.28-dev.1. Verification rerun by Master: pnpm vitest run src/agents/agent-profile.test.ts src/config/config.agent-tts-profile.test.ts passed 4 tests; oxfmt --check touched files passed; oxlint --type-aware touched files passed; pnpm check:repo-lane passed."
+      }
+    ]
+  },
+  {
+    "id": "task-20260428183253-mc9yj2",
+    "createdAt": "2026-04-28T18:32:53.819Z",
+    "updatedAt": "2026-04-28T18:41:11.762Z",
+    "from": "master",
+    "owner": "business",
+    "title": "Business overlay Core contract fixture pack",
+    "body": "LANE LOCK:\nRepo: ArgentAIOS/argentos-core coordination, Business source at /Users/sem/code/ArgentOS-Business\nTarget branch: dev for Core coordination; do not edit Core unless explicitly authorized\nForbidden repo for core runtime changes: ArgentAIOS/argentos\nReason: keep Business overlay lane moving while Core C1-C5 is pending\n\nTask: Prepare a descriptor-only fixture/spec pack that Master can use to implement Core task task-20260428181411-5ddacs.\n\nScope:\n- Draft example business-overlay.json manifests for valid, expired, revoked, incompatible-core, missing-entitlement, unsafe-private-url, and malformed-descriptor cases.\n- Draft expected public business.status outputs for none, active, grace, expired, revoked, invalid, disabled, and error states.\n- Draft descriptor examples for tools, gateway handlers, dashboard panels/widgets, docs roots, and migration previews using only public-safe metadata.\n- Draft redaction expectations: raw license keys, private package URLs, registry coordinates, private protocol payloads must never appear in public status/logs/bus.\n- Identify minimal fields Business needs Core C1-C5 to expose before Business can compile descriptor-only register.ts.\n\nDo not touch:\n- executable worker/governance runtime\n- migrations apply logic\n- license protocol internals\n- private package download code\n- Core source files unless Master separately authorizes\n\nDeliverable:\n- Post a bus message to Master with the fixture/spec pack, or write a planning doc under the Business repo and post the path plus summary. Keep it descriptor-only and secret-free.",
+    "status": "done",
+    "priority": "high",
+    "branch": "codex/agent-persona-profile-foundation",
+    "notes": [
+      {
+        "at": "2026-04-28T18:41:11.762Z",
+        "lane": "business",
+        "note": "Business delivered descriptor/status/redaction fixture pack in tm-20260428183538-qenabc. Master accepts it as completion of the planning-only fixture task. Core C1-C5 remains active on Master and should use these fixtures for validator/status/gateway-stub tests."
+      }
+    ]
+  },
+  {
+    "id": "task-20260428184523-dvsyep",
+    "createdAt": "2026-04-28T18:45:23.310Z",
+    "updatedAt": "2026-04-28T20:18:11.871Z",
+    "from": "master",
+    "owner": "business",
+    "title": "Business descriptor-register dry-run spike",
+    "body": "LANE LOCK:\nBusiness source: /Users/sem/code/ArgentOS-Business\nCore coordination repo: /Users/sem/code/argent-core\nTarget for Core contract: dev\nReason: keep Business moving while Core C1-C5 is being implemented\n\nTask: Create a descriptor-register dry-run spike that proves Business can become descriptor-only once Core C1-C5 lands.\n\nAllowed work:\n- Work in /Users/sem/code/ArgentOS-Business only, or post a bus-only packet if you cannot edit that repo safely.\n- Create a planning/draft area such as docs/internal/boundary/CORE_EXTENSION_API_ACCEPTANCE.md and/or src/contract-draft/**.\n- Draft a local TypeScript contract shim that mirrors the expected Core extension API types from the accepted fixture/spec pack.\n- Draft or adjust a descriptor-only register module that exports manifest/tool/gateway/dashboard/docs/migration-preview metadata without importing executable tools, gateway handlers, dashboard components, worker runtime, governance runtime, migrations, or license protocol internals.\n- Add static import notes or a lightweight script/test plan showing the descriptor path has no forbidden imports.\n- Identify the exact Core API type names and fields Business needs before this can become real compile-time integration.\n\nDo not touch:\n- Argent Core source files\n- executable worker/governance runtime\n- migration apply logic\n- private license protocol internals\n- package download/update code\n- any raw secrets, private URLs, registry coordinates, or signed payloads\n\nDeliverable:\n- Post a bus message to Master with changed Business files or a bus-only design packet, forbidden-import findings, and the remaining Core C1-C5 fields needed.\n- Keep this explicitly labeled as a dry-run spike; it must not claim runtime readiness.",
+    "status": "done",
+    "priority": "high",
+    "branch": "codex/agent-persona-profile-foundation",
+    "notes": [
+      {
+        "at": "2026-04-28T20:18:11.871Z",
+        "lane": "business",
+        "note": "Business delivered descriptor-register dry-run spike in tm-20260428201403-0mpya9. Master accepts it as completion: descriptor-only dry-run files created under /Users/sem/code/ArgentOS-Business, forbidden-import rg check returned no matches, Core TypeScript check passed using NodeNext, and stop conditions were maintained. Business returns to standby/read-only until Core C1-C5 lands or Master assigns amendments."
+      }
+    ]
+  },
+  {
+    "id": "task-20260429002507-0qezhq",
+    "createdAt": "2026-04-29T00:25:07.621Z",
+    "updatedAt": "2026-04-29T00:25:07.621Z",
+    "from": "master",
+    "owner": "agent-persona",
+    "title": "Agent Profile UI/config exposure and redacted profile API",
+    "body": "LANE LOCK:\nRepo: ArgentAIOS/argentos-core\nLocal path: /Users/sem/code/argent-core\nTarget branch: dev\nForbidden repo for this task: ArgentAIOS/argentos\nReason: pure core Agent Persona/Profile UI and redacted config/API work\n\nTask: expose the merged Agent Profile foundation in dashboard/config UI and redacted profile API.\n\nScope:\n- Pull latest origin/dev and create a fresh branch from dev.\n- Identify current dashboard/config method surfaces and post STARTED with intended files before edits.\n- Add the smallest API/config surface for redacted agent profile data: agent identity, effective TTS profile, editable TTS override fields, persona metadata/selection, and redacted auth/account summaries.\n- Add/update Agent Profile tab/section in the UI with voice provider, voice/voice ID, persona metadata, and redacted credential/account summaries.\n- Add a narrow config update path for agents.list[].tts only.\n\nDo not touch:\n- Workflows canvas/runtime\n- AppForge/TableForge\n- AOS connector implementations\n- OpenClaw Voice/Meet/runtime\n- Business/licensing/private overlay\n- unrelated agent runtime\n\nRequired proof:\n- focused schema/API redaction/config update tests\n- UI rendering test if existing dashboard test lane supports it\n- pnpm check:repo-lane\n- formatting/diff checks\n- merge request with commits and origin/dev containment proof after merge\n\nSecrets policy: do not store secrets in persona markdown or dashboard state. Redacted summaries only; existing auth/channel/profile stores remain source of truth.",
+    "status": "todo",
+    "priority": "high",
+    "branch": "codex/agent-persona-profile-foundation",
+    "notes": []
+  }
+]

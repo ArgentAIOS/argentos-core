@@ -2,27 +2,35 @@
 
 Python Click harness for the `aos-canva` connector.
 
-It uses Canva Connect APIs directly for live read flows and the write flows that have documented endpoints.
+The harness resolves Canva credentials and scope defaults from operator-managed
+service keys first, then falls back to local process env for development.
 
-## Supported areas
+## Auth
 
-- designs
-- templates
-- brand templates
-- assets
-- folders
-- export jobs
+- primary: `CANVA_ACCESS_TOKEN`
+- legacy fallback: `CANVA_API_KEY`
+
+The value must be a Canva Connect OAuth access token that can act on behalf of
+the target user.
+
+## Supported live areas
+
+- designs: list, get, create
+- brand templates: list, get, create-design via autofill job
+- assets: list, upload
+- folders: list, get, create
+- exports: start, status, download
 - autofill jobs
 
-## Runtime
+## Not exposed as live connector commands
 
-The harness expects `CANVA_API_KEY` to be set.
+- generic template catalog commands
+- design clone
 
-Optional defaults:
+## Optional defaults
 
 - `CANVA_FOLDER_ID`
 - `CANVA_DESIGN_ID`
-- `CANVA_TEMPLATE_ID`
 - `CANVA_BRAND_TEMPLATE_ID`
 - `CANVA_EXPORT_FORMAT`
 - `CANVA_EXPORT_JOB_ID`
@@ -36,4 +44,5 @@ Optional defaults:
 ```bash
 cd tools/aos/aos-canva/agent-harness
 python -m pytest tests/
+python -m compileall cli_aos tests
 ```

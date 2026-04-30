@@ -10,7 +10,7 @@ from .bridge import capabilities_snapshot, config_snapshot, doctor_snapshot, hea
 from .constants import MODE_ORDER
 from .errors import ConnectorError
 from .output import emit, failure, success
-from .runtime import run_read_command, run_trigger_command
+from .runtime import reset_runtime_context, run_read_command, run_trigger_command, set_runtime_context
 
 
 def _mode_allows(actual: str, required: str) -> bool:
@@ -87,7 +87,11 @@ def _set_command(ctx: click.Context, command_id: str) -> None:
 def _run_read(ctx: click.Context, command_id: str, items: tuple[str, ...]) -> None:
     _set_command(ctx, command_id)
     require_mode(ctx, command_id)
-    data = run_read_command(command_id, items)
+    token = set_runtime_context(ctx.obj)
+    try:
+        data = run_read_command(command_id, items)
+    finally:
+        reset_runtime_context(token)
     payload = success(command=command_id, mode=ctx.obj["mode"], started=ctx.obj["started"], data=data)
     emit(payload, as_json=ctx.obj["json"])
 
@@ -95,7 +99,11 @@ def _run_read(ctx: click.Context, command_id: str, items: tuple[str, ...]) -> No
 def _run_write(ctx: click.Context, command_id: str, inputs: dict[str, Any]) -> None:
     _set_command(ctx, command_id)
     require_mode(ctx, command_id)
-    data = run_trigger_command(inputs)
+    token = set_runtime_context(ctx.obj)
+    try:
+        data = run_trigger_command(inputs)
+    finally:
+        reset_runtime_context(token)
     payload = success(
         command=command_id,
         mode=ctx.obj["mode"],

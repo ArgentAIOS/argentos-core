@@ -7,6 +7,7 @@ BACKEND_NAME = "close-api"
 CLOSE_API_KEY_ENV = "CLOSE_API_KEY"
 CLOSE_LEAD_ID_ENV = "CLOSE_LEAD_ID"
 CLOSE_CONTACT_ID_ENV = "CLOSE_CONTACT_ID"
+CLOSE_OPPORTUNITY_ID_ENV = "CLOSE_OPPORTUNITY_ID"
 
 MODE_ORDER = ["readonly", "write", "full", "admin"]
 HARNESS_ROOT = Path(__file__).resolve().parents[2]

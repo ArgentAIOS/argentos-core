@@ -1,6 +1,6 @@
 {
   "name": "@argentos/googlechat",
-  "version": "2026.4.25.2",
+  "version": "2026.4.30",
   "description": "ArgentOS Google Chat channel plugin",
   "type": "module",
   "dependencies": {

@@ -10,7 +10,7 @@ import click
 from . import __version__
 from .bridge import config_snapshot
 from .constants import COMMAND_SPECS, CONNECTOR_AUTH, CONNECTOR_CATEGORY, CONNECTOR_CATEGORIES, CONNECTOR_LABEL, CONNECTOR_RESOURCES, GLOBAL_COMMAND_SPECS, MANIFEST_SCHEMA_VERSION, MODE_ORDER, TOOL_NAME
-from .runtime import doctor_snapshot, health_snapshot, run_read_command, scaffold_write_command
+from .runtime import doctor_snapshot, health_snapshot, run_read_command, run_write_command
 from .errors import ConnectorError
 
 
@@ -109,22 +109,28 @@ def _run_read(ctx: click.Context, command_id: str, items: tuple[str, ...]) -> No
     _emit(payload, ctx.obj["json"])
 
 
-def _run_scaffold(ctx: click.Context, command_id: str, items: tuple[str, ...]) -> None:
+def _run_write(ctx: click.Context, command_id: str, items: tuple[str, ...]) -> None:
     require_mode(ctx, command_id)
-    scaffold = scaffold_write_command(command_id, items)
+    try:
+        data = run_write_command(command_id, items)
+    except ConnectorError as exc:
+        payload = _result(
+            ok=False,
+            command=command_id,
+            mode=ctx.obj["mode"],
+            started=ctx.obj["started"],
+            error=exc.to_error(),
+        )
+        _emit(payload, ctx.obj["json"])
+        raise SystemExit(exc.exit_code) from exc
     payload = _result(
-        ok=False,
+        ok=True,
         command=command_id,
         mode=ctx.obj["mode"],
         started=ctx.obj["started"],
-        error={
-            "code": "NOT_IMPLEMENTED",
-            "message": f"{command_id} is scaffolded but not implemented yet",
-            "details": scaffold,
-        },
+        data=data,
     )
     _emit(payload, ctx.obj["json"])
-    raise SystemExit(10)
 
 
 @click.group()
@@ -229,14 +235,14 @@ def mail_read(ctx: click.Context, items: tuple[str, ...]) -> None:
 @click.argument("items", nargs=-1)
 @click.pass_context
 def mail_reply(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _run_scaffold(ctx, "mail.reply", items)
+    _run_write(ctx, "mail.reply", items)
 
 
 @mail_group.command("send")
 @click.argument("items", nargs=-1)
 @click.pass_context
 def mail_send(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _run_scaffold(ctx, "mail.send", items)
+    _run_write(ctx, "mail.send", items)
 
 
 @cli.group("calendar")
@@ -255,7 +261,7 @@ def calendar_list(ctx: click.Context, items: tuple[str, ...]) -> None:
 @click.argument("items", nargs=-1)
 @click.pass_context
 def calendar_create(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _run_scaffold(ctx, "calendar.create", items)
+    _run_write(ctx, "calendar.create", items)
 
 
 @cli.group("file")
@@ -307,7 +313,7 @@ def excel_read_rows(ctx: click.Context, items: tuple[str, ...]) -> None:
 @click.argument("items", nargs=-1)
 @click.pass_context
 def excel_append_rows(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _run_scaffold(ctx, "excel.append_rows", items)
+    _run_write(ctx, "excel.append_rows", items)
 
 
 @cli.group("teams")
@@ -340,7 +346,7 @@ def teams_list_channels(ctx: click.Context, items: tuple[str, ...]) -> None:
 @click.argument("items", nargs=-1)
 @click.pass_context
 def teams_reply_message(ctx: click.Context, items: tuple[str, ...]) -> None:
-    _run_scaffold(ctx, "teams.reply_message", items)
+    _run_write(ctx, "teams.reply_message", items)
 
 
 if __name__ == "__main__":

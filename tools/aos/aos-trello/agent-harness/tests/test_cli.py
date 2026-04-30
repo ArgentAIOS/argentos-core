@@ -7,6 +7,7 @@ from typing import Any
 from click.testing import CliRunner
 
 from cli_aos.trello.cli import cli
+import cli_aos.trello.config as config
 import cli_aos.trello.runtime as runtime
 
 
@@ -161,6 +162,38 @@ class FakeTrelloClient:
             "short_url": f"https://trello.com/c/{card_id}",
         }
 
+    def create_card(self, *, list_id: str, name: str, desc: str = "") -> dict[str, Any]:
+        return {
+            "id": "card_created",
+            "name": name,
+            "desc": desc,
+            "closed": False,
+            "due": None,
+            "due_complete": False,
+            "board_id": "board_1",
+            "list_id": list_id,
+            "member_ids": [],
+            "label_ids": [],
+            "url": "https://trello.com/c/card_created",
+            "short_url": "https://trello.com/c/card_created",
+        }
+
+    def update_card(self, card_id: str, *, name: str | None = None, desc: str | None = None) -> dict[str, Any]:
+        return {
+            "id": card_id,
+            "name": name or "Draft launch plan",
+            "desc": "Draft the launch plan" if desc is None else desc,
+            "closed": False,
+            "due": None,
+            "due_complete": False,
+            "board_id": "board_1",
+            "list_id": "list_1",
+            "member_ids": ["mem_current"],
+            "label_ids": ["label_1"],
+            "url": f"https://trello.com/c/{card_id}",
+            "short_url": f"https://trello.com/c/{card_id}",
+        }
+
 
 def _invoke(args: list[str], monkeypatch) -> Any:
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeTrelloClient())
@@ -231,6 +264,7 @@ def test_health_reports_ready_when_probe_succeeds(monkeypatch):
     assert payload["data"]["status"] == "ready"
     assert payload["data"]["runtime_ready"] is True
     assert payload["data"]["live_backend_available"] is True
+    assert payload["data"]["write_bridge_available"] is True
     assert payload["data"]["probe"]["details"]["account"]["id"] == "mem_current"
 
 
@@ -251,9 +285,35 @@ def test_config_show_redacts_scope_values(monkeypatch):
     payload = json.loads(result.output)
     data = payload["data"]
     assert data["runtime"]["auth_ready"] is True
+    assert data["runtime"]["implementation_mode"] == "live_read_with_live_writes"
     assert data["runtime"]["command_defaults"]["board.read"]["args"][0] == "board_1"
     assert data["runtime"]["command_defaults"]["list.read"]["args"][0] == "list_1"
     assert data["runtime"]["command_defaults"]["card.read"]["args"][0] == "card_1"
+
+
+def test_runtime_config_prefers_operator_service_keys(monkeypatch):
+    monkeypatch.setenv("TRELLO_API_KEY", "env-api-key")
+    monkeypatch.setenv("TRELLO_TOKEN", "env-token")
+    monkeypatch.setenv("TRELLO_LIST_ID", "env-list")
+    monkeypatch.setenv("TRELLO_CARD_ID", "env-card")
+
+    def fake_service_key_env(name: str, default=None):
+        overrides = {
+            "TRELLO_API_KEY": "service-api-key",
+            "TRELLO_TOKEN": "service-token",
+            "TRELLO_LIST_ID": "service-list",
+            "TRELLO_CARD_ID": "service-card",
+        }
+        return overrides.get(name, default)
+
+    monkeypatch.setattr(config, "service_key_env", fake_service_key_env)
+    payload = config.resolve_runtime_values({})
+
+    assert payload["auth"]["configured"]["TRELLO_API_KEY"] is True
+    assert payload["auth"]["configured"]["TRELLO_TOKEN"] is True
+    assert payload["runtime"]["list_id"] == "service-list"
+    assert payload["runtime"]["card_id"] == "service-card"
+    assert payload["auth"]["redacted"]["TRELLO_API_KEY"] == "se...-key"
 
 
 def test_account_read_returns_live_payload(monkeypatch):
@@ -321,7 +381,7 @@ def test_card_read_returns_live_payload(monkeypatch):
     assert data["scope_preview"]["selection_surface"] == "card"
 
 
-def test_card_create_draft_stays_scaffolded(monkeypatch):
+def test_card_create_draft_executes_live_write(monkeypatch):
     monkeypatch.setenv("TRELLO_API_KEY", "api_key_secret")
     monkeypatch.setenv("TRELLO_TOKEN", "token_secret")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeTrelloClient())
@@ -333,12 +393,46 @@ def test_card_create_draft_stays_scaffolded(monkeypatch):
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     data = payload["data"]
-    assert data["status"] == "scaffold"
-    assert data["executed"] is False
+    assert data["status"] == "live_write"
+    assert data["executed"] is True
     assert data["command_id"] == "card.create_draft"
     assert data["inputs"]["list_id"] == "list_1"
     assert data["inputs"]["name"] == "New card"
-    assert data["live_write_available"] is False
+    assert data["live_write_available"] is True
+    assert data["card"]["id"] == "card_created"
+
+
+def test_card_update_draft_executes_live_write(monkeypatch):
+    monkeypatch.setenv("TRELLO_API_KEY", "api_key_secret")
+    monkeypatch.setenv("TRELLO_TOKEN", "token_secret")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeTrelloClient())
+
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--mode", "write", "card", "update_draft", "--card-id", "card_1", "--name", "Updated card"],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    data = payload["data"]
+    assert data["status"] == "live_write"
+    assert data["executed"] is True
+    assert data["command_id"] == "card.update_draft"
+    assert data["inputs"]["card_id"] == "card_1"
+    assert data["card"]["name"] == "Updated card"
+
+
+def test_card_update_draft_requires_at_least_one_field(monkeypatch):
+    monkeypatch.setenv("TRELLO_API_KEY", "api_key_secret")
+    monkeypatch.setenv("TRELLO_TOKEN", "token_secret")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeTrelloClient())
+
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--mode", "write", "card", "update_draft", "--card-id", "card_1"],
+    )
+    assert result.exit_code == 4
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "TRELLO_UPDATE_REQUIRED"
 
 
 def test_write_command_is_blocked_in_readonly_mode(monkeypatch):
@@ -352,4 +446,3 @@ def test_write_command_is_blocked_in_readonly_mode(monkeypatch):
     )
     assert result.exit_code == 3
     assert "PERMISSION_DENIED" in result.output
-

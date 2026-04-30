@@ -348,7 +348,9 @@ export function ExpressionEditor({
 
   // Sync mode if value changes externally
   useEffect(() => {
-    if (isExpression(value) && mode === "fixed") setMode("expression");
+    if (isExpression(value) && mode === "fixed") {
+      queueMicrotask(() => setMode("expression"));
+    }
   }, [value, mode]);
 
   const autocompleteItems = useMemo(
@@ -365,7 +367,7 @@ export function ExpressionEditor({
   // Clamp selected index
   useEffect(() => {
     if (selectedIdx >= filteredItems.length) {
-      setSelectedIdx(Math.max(0, filteredItems.length - 1));
+      queueMicrotask(() => setSelectedIdx(Math.max(0, filteredItems.length - 1)));
     }
   }, [filteredItems.length, selectedIdx]);
 
@@ -495,15 +497,6 @@ export function ExpressionEditor({
     if (!raw.includes("{{")) return null;
     return resolveExpression(raw, pipelineVariables, lastExecutionData);
   }, [value, mode, pipelineVariables, lastExecutionData]);
-
-  // ── Syntax-highlighted overlay (for display in the textarea region) ─
-
-  const highlightedHtml = useMemo(() => {
-    if (mode !== "expression") return "";
-    const raw = toEditable(value);
-    // Highlight {{ ... }} tokens in green
-    return raw.replace(/(\{\{.*?\}\})/g, '<span style="color:#34d399;font-weight:600">$1</span>');
-  }, [value, mode]);
 
   // ── Render ──────────────────────────────────────────────────────────
 

@@ -385,6 +385,68 @@ describe("update-cli", () => {
     expect(call?.channel).toBe("stable");
   });
 
+  it("switches package installs to the core git checkout on dev", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-core-"));
+    const previousArgentosGitDir = process.env.ARGENTOS_GIT_DIR;
+    const previousLegacyGitDir = process.env.ARGENT_GIT_DIR;
+    try {
+      process.env.ARGENTOS_GIT_DIR = tempDir;
+      delete process.env.ARGENT_GIT_DIR;
+
+      const { checkUpdateStatus } = await import("../infra/update-check.js");
+      const { runGatewayUpdate } = await import("../infra/update-runner.js");
+      const { runCommandWithTimeout } = await import("../process/exec.js");
+      const { updateCommand } = await import("./update-cli.js");
+
+      vi.mocked(checkUpdateStatus).mockResolvedValue({
+        root: "/test/package",
+        installKind: "package",
+        packageManager: "npm",
+        deps: {
+          manager: "npm",
+          status: "ok",
+          lockfilePath: null,
+          markerPath: null,
+        },
+      });
+      vi.mocked(runGatewayUpdate).mockResolvedValue({
+        status: "ok",
+        mode: "git",
+        steps: [],
+        durationMs: 100,
+      });
+
+      await updateCommand({ channel: "dev", yes: true });
+
+      const cloneCall = vi
+        .mocked(runCommandWithTimeout)
+        .mock.calls.find(
+          ([argv]) => Array.isArray(argv) && argv[0] === "git" && argv[1] === "clone",
+        );
+      expect(cloneCall?.[0]).toEqual([
+        "git",
+        "clone",
+        "https://github.com/ArgentAIOS/argentos-core.git",
+        tempDir,
+      ]);
+      const updateCall = vi.mocked(runGatewayUpdate).mock.calls[0]?.[0];
+      expect(updateCall?.cwd).toBe(tempDir);
+      expect(updateCall?.channel).toBe("dev");
+    } finally {
+      if (previousArgentosGitDir) {
+        process.env.ARGENTOS_GIT_DIR = previousArgentosGitDir;
+      } else {
+        delete process.env.ARGENTOS_GIT_DIR;
+      }
+      if (previousLegacyGitDir) {
+        process.env.ARGENT_GIT_DIR = previousLegacyGitDir;
+      } else {
+        delete process.env.ARGENT_GIT_DIR;
+      }
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("falls back to latest when beta tag is older than release", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-"));
     try {
@@ -542,7 +604,7 @@ describe("update-cli", () => {
     expect(lines.some((line) => line.includes("Already up to date"))).toBe(true);
   });
 
-  it("updateCommand restarts daemon through a fresh CLI process by default", async () => {
+  it("updateCommand refreshes the daemon service through a fresh CLI process by default", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "argent-update-root-"));
     try {
       await fs.writeFile(path.join(tempRoot, "argent.mjs"), "#!/usr/bin/env node\n");
@@ -563,7 +625,7 @@ describe("update-cli", () => {
 
       expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
         expect.any(String),
-        [path.join(tempRoot, "argent.mjs"), "gateway", "restart"],
+        [path.join(tempRoot, "argent.mjs"), "daemon", "install", "--force"],
         expect.objectContaining({
           cwd: tempRoot,
           stdio: "inherit",
@@ -683,7 +745,7 @@ describe("update-cli", () => {
     const calls = vi
       .mocked(spawnSync)
       .mock.calls.map(([, args]) => (Array.isArray(args) ? args.join(" ") : ""));
-    expect(calls.some((args) => args.includes("gateway restart"))).toBe(false);
+    expect(calls.some((args) => args.includes("daemon install --force"))).toBe(false);
   });
 
   it("updateCommand skips success message when restart does not run", async () => {

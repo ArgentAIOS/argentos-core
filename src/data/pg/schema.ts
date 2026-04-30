@@ -1231,3 +1231,129 @@ export const workflowStepRuns = pgTable(
     uniqueIndex("idx_stepruns_idempotency").on(t.idempotencyKey),
   ],
 );
+
+export const workflowApprovals = pgTable(
+  "workflow_approvals",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade" }),
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    nodeId: text("node_id").notNull(),
+    workflowName: text("workflow_name"),
+    nodeLabel: text("node_label"),
+    message: text("message").notNull(),
+    sideEffectClass: text("side_effect_class"),
+    previousOutputPreview: jsonb("previous_output_preview"),
+    approveAction: jsonb("approve_action").default(sql`'{}'::jsonb`),
+    denyAction: jsonb("deny_action").default(sql`'{}'::jsonb`),
+    timeoutAt: timestamp("timeout_at", { withTimezone: true }),
+    timeoutAction: text("timeout_action").$type<"approve" | "deny">().default("deny"),
+    status: text("status").$type<WorkflowApprovalStatus>().default("pending"),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: text("resolved_by"),
+    resolutionNote: text("resolution_note"),
+    notificationStatus: text("notification_status").default("pending"),
+    notificationError: text("notification_error"),
+    metadata: jsonb("metadata").default(sql`'{}'::jsonb`),
+  },
+  (t) => [
+    uniqueIndex("idx_workflow_approvals_run_node").on(t.runId, t.nodeId),
+    index("idx_workflow_approvals_run").on(t.runId),
+    index("idx_workflow_approvals_workflow").on(t.workflowId, t.requestedAt),
+    index("idx_workflow_approvals_status").on(t.status),
+  ],
+);
+
+// ============================================================================
+// APPFORGE STRUCTURED STORAGE
+// ============================================================================
+
+export const appForgeBases = pgTable(
+  "appforge_bases",
+  {
+    id: text("id").primaryKey(),
+    appId: text("app_id").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    activeTableId: text("active_table_id"),
+    revision: integer("revision").notNull().default(0),
+    metadata: jsonb("metadata").default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_appforge_bases_app").on(t.appId),
+    index("idx_appforge_bases_updated").on(t.updatedAt),
+  ],
+);
+
+export const appForgeTables = pgTable(
+  "appforge_tables",
+  {
+    id: text("id").primaryKey(),
+    baseId: text("base_id")
+      .notNull()
+      .references(() => appForgeBases.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    fields: jsonb("fields")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    revision: integer("revision").notNull().default(0),
+    position: integer("position").notNull().default(0),
+    metadata: jsonb("metadata").default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_appforge_tables_base").on(t.baseId),
+    index("idx_appforge_tables_base_position").on(t.baseId, t.position),
+  ],
+);
+
+export const appForgeRecords = pgTable(
+  "appforge_records",
+  {
+    id: text("id").primaryKey(),
+    baseId: text("base_id")
+      .notNull()
+      .references(() => appForgeBases.id, { onDelete: "cascade" }),
+    tableId: text("table_id")
+      .notNull()
+      .references(() => appForgeTables.id, { onDelete: "cascade" }),
+    values: jsonb("values")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    revision: integer("revision").notNull().default(0),
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_appforge_records_table").on(t.tableId),
+    index("idx_appforge_records_base_table").on(t.baseId, t.tableId),
+    index("idx_appforge_records_table_updated").on(t.tableId, t.updatedAt),
+  ],
+);
+
+export const appForgeIdempotencyKeys = pgTable(
+  "appforge_idempotency_keys",
+  {
+    idempotencyKey: text("idempotency_key").primaryKey(),
+    operation: text("operation").notNull(),
+    resourceType: text("resource_type").notNull(),
+    resourceId: text("resource_id").notNull(),
+    response: jsonb("response")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_appforge_idempotency_resource").on(t.resourceType, t.resourceId),
+    index("idx_appforge_idempotency_created").on(t.createdAt),
+  ],
+);

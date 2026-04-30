@@ -49,6 +49,7 @@ import type {
   MemoryStats,
   MemoryEntityListFilter,
   MemoryItemListFilter,
+  MemoryCategoryListFilter,
 } from "./adapter.js";
 import type { TasksModule } from "./tasks.js";
 import type { TeamsModule } from "./teams.js";
@@ -169,7 +170,7 @@ class SQLiteMemoryAdapter implements MemoryAdapter {
     return this.store.getOrCreateCategory(name, description);
   }
 
-  async listCategories(filter?: { query?: string; limit?: number }): Promise<MemoryCategory[]> {
+  async listCategories(filter?: MemoryCategoryListFilter): Promise<MemoryCategory[]> {
     if (filter?.query) {
       return this.store.searchCategoriesByKeyword(filter.query, filter.limit ?? 20);
     }
@@ -195,6 +196,10 @@ class SQLiteMemoryAdapter implements MemoryAdapter {
 
   async unlinkItemFromCategory(itemId: string, categoryId: string): Promise<void> {
     this.store.unlinkItemFromCategory(itemId, categoryId);
+  }
+
+  async updateCategoryName(categoryId: string, name: string): Promise<MemoryCategory | null> {
+    return this.store.updateCategoryName(categoryId, name);
   }
 
   async updateCategorySummary(categoryId: string, summary: string): Promise<void> {

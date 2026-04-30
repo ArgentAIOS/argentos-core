@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .constants import (
@@ -26,10 +27,10 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     record_id_env = ctx_obj.get("record_id_env") or SALESFORCE_RECORD_ID_ENV
     report_id_env = ctx_obj.get("report_id_env") or SALESFORCE_REPORT_ID_ENV
 
-    access_token = (os.getenv(token_env) or "").strip()
-    instance_url = (os.getenv(instance_env) or "").strip()
-    record_id = (os.getenv(record_id_env) or "").strip()
-    report_id = (os.getenv(report_id_env) or "").strip()
+    access_token = (service_key_env(token_env) or "").strip()
+    instance_url = (service_key_env(instance_env) or "").strip()
+    record_id = (service_key_env(record_id_env) or "").strip()
+    report_id = (service_key_env(report_id_env) or "").strip()
 
     return {
         "backend": BACKEND_NAME,

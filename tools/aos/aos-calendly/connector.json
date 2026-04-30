@@ -8,7 +8,7 @@
     "scaffold_only": false,
     "live_backend_available": true,
     "live_read_available": true,
-    "write_bridge_available": false,
+    "write_bridge_available": true,
     "workerFields": ["event_type", "invitee_email", "start_time", "end_time"],
     "worker_visible_actions": [
       "events.list",
@@ -245,7 +245,7 @@
       "Create a Calendly personal access token from Settings > Integrations > API & Webhooks.",
       "Add CALENDLY_API_KEY in API Keys before enabling live reads.",
       "Set CALENDLY_EVENT_TYPE_UUID to give worker flows a stable event type scope default.",
-      "Write commands (events.cancel, scheduling_links.create) require mode=write.",
+      "events.cancel executes live in mode=write; scheduling_links.create remains scaffolded until its write contract is verified.",
       "The connector auto-discovers your Calendly user URI on first probe."
     ]
   },
@@ -346,7 +346,7 @@
     },
     {
       "id": "events.cancel",
-      "summary": "Cancel a Calendly event",
+      "summary": "Cancel a Calendly event with a live API write",
       "required_mode": "write",
       "supports_json": true,
       "resource": "event",
@@ -386,7 +386,7 @@
     },
     {
       "id": "scheduling_links.create",
-      "summary": "Create a single-use Calendly scheduling link",
+      "summary": "Scaffold-only preview for creating a single-use Calendly scheduling link",
       "required_mode": "write",
       "supports_json": true,
       "resource": "scheduling_link",

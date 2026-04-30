@@ -1,0 +1,22 @@
+{
+  "tool": "aos-callscrub",
+  "backend": "callscrub-api",
+  "permissions": {
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "call.list": "readonly",
+    "call.get": "readonly",
+    "transcript.get": "readonly",
+    "transcript.search": "readonly",
+    "coaching.list": "readonly",
+    "coaching.get": "readonly",
+    "agent.list": "readonly",
+    "agent.stats": "readonly",
+    "agent.scorecard": "readonly",
+    "team.list": "readonly",
+    "team.stats": "readonly",
+    "report.list": "readonly"
+  }
+}

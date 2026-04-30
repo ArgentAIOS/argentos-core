@@ -9,6 +9,27 @@
     "live_backend_available": true,
     "live_read_available": true,
     "write_bridge_available": true,
+    "live_write_smoke_tested": false,
+    "required": ["SLACK_BOT_TOKEN"],
+    "optional": [
+      "SLACK_APP_TOKEN",
+      "SLACK_BASE_URL",
+      "SLACK_CHANNEL_ID",
+      "SLACK_THREAD_TS",
+      "SLACK_TEXT",
+      "SLACK_EMOJI",
+      "SLACK_USER_ID",
+      "SLACK_CHANNEL_NAME",
+      "SLACK_CANVAS_ID",
+      "SLACK_CANVAS_TITLE",
+      "SLACK_CANVAS_CONTENT",
+      "SLACK_CANVAS_CHANGES",
+      "SLACK_FILE_PATH",
+      "SLACK_FILE_TITLE",
+      "SLACK_REMINDER_TEXT",
+      "SLACK_REMINDER_TIME",
+      "SLACK_REMINDER_USER"
+    ],
     "workerFields": ["channel_id", "thread_ts", "text", "emoji", "user_id"],
     "worker_visible_actions": [
       "message.post",
@@ -57,33 +78,6 @@
         "description": "The ts value of the parent message. Required for thread replies and message updates."
       },
       {
-        "id": "message_type",
-        "label": "Message Type",
-        "type": "select",
-        "renderAs": "select",
-        "required": true,
-        "expressionEnabled": false,
-        "applies_to": ["message.post", "thread.reply"],
-        "options": [
-          {
-            "value": "text",
-            "label": "Simple Text Message",
-            "description": "Supports basic Markdown (mrkdwn)"
-          },
-          {
-            "value": "blocks",
-            "label": "Block Kit",
-            "description": "Rich layout: text, buttons, form elements, dividers"
-          },
-          {
-            "value": "attachments",
-            "label": "Attachments",
-            "description": "Legacy rich message format with color sidebar"
-          }
-        ],
-        "default": "text"
-      },
-      {
         "id": "text",
         "label": "Message Text",
         "type": "richtext",
@@ -94,30 +88,6 @@
         "applies_to": ["message.post", "message.update", "thread.reply"],
         "placeholder": "Hello from ArgentOS",
         "description": "The message body. Supports Slack mrkdwn formatting."
-      },
-      {
-        "id": "blocks_json",
-        "label": "Block Kit JSON",
-        "type": "json",
-        "renderAs": "json",
-        "required": true,
-        "expressionEnabled": true,
-        "applies_to": ["message.post", "thread.reply"],
-        "showWhen": { "field": "message_type", "equals": "blocks" },
-        "placeholder": "[{\"type\": \"section\", \"text\": {\"type\": \"mrkdwn\", \"text\": \"Hello\"}}]",
-        "description": "Block Kit layout array. Use Slack Block Kit Builder to design."
-      },
-      {
-        "id": "attachments_json",
-        "label": "Attachments JSON",
-        "type": "json",
-        "renderAs": "json",
-        "required": true,
-        "expressionEnabled": true,
-        "applies_to": ["message.post", "thread.reply"],
-        "showWhen": { "field": "message_type", "equals": "attachments" },
-        "placeholder": "[{\"color\": \"#36a64f\", \"text\": \"Attachment text\"}]",
-        "description": "Legacy attachments array. Prefer Block Kit for new messages."
       },
       {
         "id": "emoji",
@@ -191,8 +161,19 @@
         "renderAs": "text",
         "required": true,
         "expressionEnabled": true,
-        "applies_to": ["canvas.create", "canvas.update"],
+        "applies_to": ["canvas.create"],
         "placeholder": "Meeting Notes — Q2 Planning"
+      },
+      {
+        "id": "canvas_id",
+        "label": "Canvas ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "applies_to": ["canvas.update"],
+        "placeholder": "F1234567890",
+        "description": "The Slack canvas ID returned by canvas.create."
       },
       {
         "id": "canvas_content",
@@ -207,6 +188,17 @@
         "description": "Markdown content for the canvas document."
       },
       {
+        "id": "canvas_changes",
+        "label": "Canvas Changes JSON",
+        "type": "json",
+        "renderAs": "json",
+        "required": false,
+        "expressionEnabled": true,
+        "applies_to": ["canvas.update"],
+        "placeholder": "[{\"operation\":\"replace\",\"document_content\":{\"type\":\"markdown\",\"markdown\":\"# Updated\"}}]",
+        "description": "Optional Slack canvases.edit changes array. If omitted, canvas_content is converted into a replace operation."
+      },
+      {
         "id": "file_path",
         "label": "File Path",
         "type": "text",
@@ -215,7 +207,7 @@
         "expressionEnabled": true,
         "applies_to": ["file.upload"],
         "placeholder": "/path/to/file.pdf",
-        "description": "Local path or URL of the file to upload."
+        "description": "Local filesystem path of the file to upload."
       },
       {
         "id": "file_title",
@@ -226,46 +218,6 @@
         "expressionEnabled": true,
         "applies_to": ["file.upload"],
         "placeholder": "Quarterly Report"
-      },
-      {
-        "id": "options",
-        "label": "Options",
-        "type": "options_group",
-        "applies_to": ["message.post", "thread.reply"],
-        "children": [
-          {
-            "id": "unfurl_links",
-            "label": "Unfurl Links",
-            "type": "boolean",
-            "renderAs": "boolean",
-            "default": true,
-            "description": "Automatically expand URLs into rich previews."
-          },
-          {
-            "id": "unfurl_media",
-            "label": "Unfurl Media",
-            "type": "boolean",
-            "renderAs": "boolean",
-            "default": true,
-            "description": "Automatically expand media URLs (images, video)."
-          },
-          {
-            "id": "include_workflow_link",
-            "label": "Include Link to Workflow",
-            "type": "boolean",
-            "renderAs": "boolean",
-            "default": false,
-            "description": "Append a small footer link back to the originating workflow run."
-          },
-          {
-            "id": "reply_broadcast",
-            "label": "Also Send to Channel",
-            "type": "boolean",
-            "renderAs": "boolean",
-            "default": false,
-            "description": "When replying to a thread, also post the reply to the main channel."
-          }
-        ]
       }
     ],
     "commandDefaults": {
@@ -317,13 +269,33 @@
     "kind": "service-key",
     "required": true,
     "service_keys": ["SLACK_BOT_TOKEN"],
+    "optional_service_keys": [
+      "SLACK_APP_TOKEN",
+      "SLACK_BASE_URL",
+      "SLACK_CHANNEL_ID",
+      "SLACK_THREAD_TS",
+      "SLACK_TEXT",
+      "SLACK_EMOJI",
+      "SLACK_USER_ID",
+      "SLACK_CHANNEL_NAME",
+      "SLACK_CANVAS_ID",
+      "SLACK_CANVAS_TITLE",
+      "SLACK_CANVAS_CONTENT",
+      "SLACK_CANVAS_CHANGES",
+      "SLACK_FILE_PATH",
+      "SLACK_FILE_TITLE",
+      "SLACK_REMINDER_TEXT",
+      "SLACK_REMINDER_TIME",
+      "SLACK_REMINDER_USER"
+    ],
     "interactive_setup": [
       "Create or install a Slack app for the target workspace.",
-      "Add SLACK_BOT_TOKEN in API Keys.",
+      "Bind SLACK_BOT_TOKEN as an operator-controlled service key.",
       "Grant bot scopes: channels:read, channels:manage, chat:write, reactions:write, users:read, files:write, reminders:write.",
       "For canvas actions add canvases:write scope.",
-      "Set SLACK_CHANNEL_ID and SLACK_THREAD_TS to give worker flows stable channel and thread scope defaults.",
-      "Optional: add SLACK_APP_TOKEN for Socket Mode event ingestion."
+      "Optionally bind SLACK_CHANNEL_ID and SLACK_THREAD_TS as service-key scope defaults for stable worker flows.",
+      "Optional: bind SLACK_APP_TOKEN for Socket Mode event ingestion.",
+      "Local environment variables are only unmanaged fallback; scoped repo service keys cannot be bypassed with local env."
     ]
   },
   "events": [

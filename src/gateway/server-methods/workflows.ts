@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import postgres from "postgres";
+import type { ArgentConfig } from "../../config/config.js";
+import type { CronService } from "../../cron/service.js";
+import type { CronJob, CronJobCreate, CronJobPatch } from "../../cron/types.js";
+import type { WorkflowDefinition, WorkflowNode } from "../../infra/workflow-types.js";
 import type { GatewayRequestHandlers } from "./types.js";
+import { createOutboundSendDeps } from "../../cli/deps.js";
 import {
   parseConnectorManifest,
   enrichWithHealthProbe,
@@ -17,20 +22,159 @@ import {
 } from "../../connectors/catalog.js";
 import { resolvePostgresUrl, resolveRuntimeStorageConfig } from "../../data/storage-resolver.js";
 import {
+  collectAppForgeWorkflowCapabilities,
+  type AppForgeAppSummary,
+  type AppForgeWorkflowCapability,
+} from "../../infra/appforge-workflow-capabilities.js";
+import {
+  appForgeEventMatchesTriggerConfig,
+  normalizeAppForgeWorkflowEvent,
+  type NormalizedAppForgeWorkflowEvent,
+} from "../../infra/appforge-workflow-events.js";
+import {
   pgListServiceKeys,
   pgUpsertServiceKey,
   pgDeleteServiceKey,
   pgGetServiceKeyByVariable,
 } from "../../infra/pg-secret-store.js";
+import {
+  getWorkflowActionCapability,
+  WORKFLOW_ACTION_CAPABILITIES,
+} from "../../infra/workflow-action-capabilities.js";
+import { resolveDurableWorkflowApproval } from "../../infra/workflow-approvals.js";
+import { draftWorkflowFromIntent } from "../../infra/workflow-builder.js";
+import {
+  connectorCommandExtraArgToCliArg,
+  connectorCommandToCliArgs,
+} from "../../infra/workflow-connector-command.js";
+import {
+  buildWorkflowRetryFromStepResumeOptions,
+  createWorkflowRunRecord,
+  executeWorkflowRunFromRow,
+  parseWorkflowJsonColumn,
+  publicWorkflowRow,
+  resumeWorkflowRunsForEvent,
+  resumeWorkflowRunAfterApproval,
+  resumeWorkflowRunAfterWait,
+  type WorkflowRow,
+  workflowFromRow,
+  workflowJsonFieldsFromRow,
+} from "../../infra/workflow-execution-service.js";
+import {
+  hasBlockingWorkflowIssues,
+  normalizeWorkflow,
+  type WorkflowIssue,
+} from "../../infra/workflow-normalize.js";
+import { OWNER_OPERATOR_WORKFLOW_PACKAGES } from "../../infra/workflow-owner-operator-templates.js";
+import {
+  applyWorkflowPackageTestFixtures,
+  importWorkflowPackage,
+  parseWorkflowPackageText,
+  type WorkflowPackage,
+  type WorkflowPackageFormat,
+} from "../../infra/workflow-package.js";
+import {
+  buildWorkflowAgentSessionKey,
+  topologicalSort,
+  validateWorkflowAgentSessionIdentity,
+} from "../../infra/workflow-runner.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { dashboardApiHeaders } from "../../utils/dashboard-api.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+import { buildWorkflowPersonalSkillCapabilities } from "./skills.js";
+import { buildToolsStatusPayload } from "./tools.js";
 
 const log = createSubsystemLogger("gateway/workflows");
+const WORKFLOW_SCHEDULE_CRON_MARKER = "[workflow_schedule]";
+
+const WORKFLOW_PRIMITIVES = [
+  { id: "trigger", label: "Trigger", description: "Start condition" },
+  { id: "agentStep", label: "Agent Step", description: "ArgentOS agent handoff" },
+  { id: "action", label: "Action", description: "Deterministic operation" },
+  { id: "gate", label: "Gate", description: "Control flow and approvals" },
+  { id: "output", label: "Output", description: "Deliver or persist results" },
+  { id: "modelProvider", label: "Model", description: "Per-agent model override" },
+  { id: "memorySource", label: "Memory", description: "Knowledge context binding" },
+  { id: "toolGrant", label: "Tool", description: "Grant a runtime tool or connector" },
+] as const;
+
+const DASHBOARD_API = process.env.ARGENT_DASHBOARD_API || "http://localhost:9242";
+
+type WorkflowOutputChannelTarget = {
+  id: string;
+  label: string;
+  kind: "dm" | "group" | "channel" | "allowlist" | "custom";
+};
+
+type WorkflowOutputChannelOption = {
+  id: string;
+  label: string;
+  defaultAccountId: string;
+  accountIds: string[];
+  deliveryMode: "direct" | "gateway" | "hybrid";
+  configured: boolean;
+  statusLabel?: string;
+  targets?: WorkflowOutputChannelTarget[];
+};
+
+type WorkflowConnectorCapability = {
+  id: string;
+  name: string;
+  category: string;
+  categories: string[] | undefined;
+  commands: Array<{
+    id: string;
+    summary: string | undefined;
+    actionClass: string | undefined;
+  }>;
+  installState: string;
+  statusOk: boolean;
+  scaffoldOnly: boolean;
+  readinessState: "blocked" | "setup_required" | "write_ready";
+};
+
+function isWorkflowOutputConnectorCommand(command: {
+  id: string;
+  actionClass: string | undefined;
+}): boolean {
+  const actionClass = command.actionClass?.toLowerCase();
+  if (actionClass === "read") {
+    return false;
+  }
+  if (actionClass === "write" || actionClass === "destructive") {
+    return true;
+  }
+  return /\.(send|post|create|update|delete|publish|schedule|reply|upload|append|trigger)\b/.test(
+    command.id,
+  );
+}
 
 // ── Postgres connection (lazy singleton) ────────────────────────────────────
 
 let _sql: ReturnType<typeof postgres> | null = null;
 let _initPromise: Promise<ReturnType<typeof postgres> | null> | null = null;
+
+function jsonParam(sql: ReturnType<typeof postgres>, value: unknown) {
+  return sql.json(value as postgres.JSONValue);
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function jsonEqual(left: unknown, right: unknown): boolean {
+  return stableJson(left ?? null) === stableJson(right ?? null);
+}
 
 function isPgBacked(): boolean {
   const cfg = resolveRuntimeStorageConfig(process.env);
@@ -38,10 +182,14 @@ function isPgBacked(): boolean {
 }
 
 async function getSql(): Promise<ReturnType<typeof postgres>> {
-  if (_sql) return _sql;
+  if (_sql) {
+    return _sql;
+  }
   if (_initPromise) {
     const result = await _initPromise;
-    if (result) return result;
+    if (result) {
+      return result;
+    }
   }
 
   _initPromise = (async () => {
@@ -67,7 +215,9 @@ async function getSql(): Promise<ReturnType<typeof postgres>> {
   })();
 
   const result = await _initPromise;
-  if (!result) throw new Error("Workflows PG connection failed");
+  if (!result) {
+    throw new Error("Workflows PG connection failed");
+  }
   return result;
 }
 
@@ -83,66 +233,1727 @@ function requireString(params: Record<string, unknown>, key: string): string {
 
 function optionalString(params: Record<string, unknown>, key: string): string | undefined {
   const v = params[key];
-  if (v === undefined || v === null) return undefined;
-  if (typeof v !== "string") throw new Error(`${key} must be a string`);
+  if (v === undefined || v === null) {
+    return undefined;
+  }
+  if (typeof v !== "string") {
+    throw new Error(`${key} must be a string`);
+  }
   const trimmed = v.trim();
   return trimmed || undefined;
 }
 
+export async function resolveRunnableWorkflowRow(
+  sql: ReturnType<typeof postgres>,
+  params: Record<string, unknown>,
+): Promise<
+  | { ok: true; workflowId: string; workflowRow: WorkflowRow; resolvedBy: "id" | "name" }
+  | { ok: false; error: string }
+> {
+  const requestedId = optionalString(params, "workflowId") ?? optionalString(params, "id");
+  const requestedName =
+    optionalString(params, "workflowName") ??
+    optionalString(params, "name") ??
+    optionalString(params, "workflow");
+
+  if (!requestedId && !requestedName) {
+    return { ok: false, error: "workflowId or workflowName is required" };
+  }
+
+  if (requestedId) {
+    const [byId] = await sql`
+      SELECT * FROM workflows WHERE id = ${requestedId} AND is_active = true LIMIT 1
+    `;
+    if (byId) {
+      return {
+        ok: true,
+        workflowId: String(byId.id),
+        workflowRow: byId as unknown as WorkflowRow,
+        resolvedBy: "id",
+      };
+    }
+  }
+
+  const candidateName = requestedName ?? requestedId;
+  if (!candidateName) {
+    return { ok: false, error: "Workflow not found or inactive" };
+  }
+
+  const rows = await sql`
+    SELECT * FROM workflows
+    WHERE lower(name) = lower(${candidateName}) AND is_active = true
+    ORDER BY updated_at DESC
+    LIMIT 2
+  `;
+  if (rows.length > 1) {
+    return {
+      ok: false,
+      error: `Multiple active workflows are named "${candidateName}". Use a workflow ID.`,
+    };
+  }
+  const [byName] = rows;
+  if (byName) {
+    return {
+      ok: true,
+      workflowId: String(byName.id),
+      workflowRow: byName as unknown as WorkflowRow,
+      resolvedBy: "name",
+    };
+  }
+
+  return {
+    ok: false,
+    error: requestedName
+      ? `Workflow named "${candidateName}" was not found or is inactive`
+      : "Workflow not found or inactive",
+  };
+}
+
+export function workflowRowWithCanvasOverride(
+  row: WorkflowRow,
+  params: Record<string, unknown>,
+): WorkflowRow {
+  const jsonFields = workflowJsonFieldsFromRow(row);
+  const payload = workflowGraphPayload(params, {
+    nodes: jsonFields.nodes,
+    edges: jsonFields.edges,
+    canvasLayout: jsonFields.canvasLayout,
+  });
+  if (!payload.changed) {
+    return row;
+  }
+  const deploymentStage =
+    optionalDeploymentStage(params) ??
+    workflowDeploymentStageFromDefinition(payload.definition) ??
+    (typeof row.deployment_stage === "string" ? row.deployment_stage : undefined);
+  const normalized = normalizeWorkflow({
+    id: row.id,
+    name: row.name,
+    description: row.description ?? undefined,
+    nodes: payload.nodes,
+    edges: payload.edges,
+    canvasLayout: payload.canvasLayout,
+    defaultOnError: jsonFields.defaultOnError,
+    maxRunDurationMs:
+      typeof row.max_run_duration_ms === "number" ? row.max_run_duration_ms : undefined,
+    maxRunCostUsd: typeof row.max_run_cost_usd === "number" ? row.max_run_cost_usd : undefined,
+    deploymentStage,
+  });
+  return {
+    ...row,
+    nodes: normalized.workflow.nodes,
+    edges: normalized.workflow.edges,
+    canvas_layout: normalized.canvasLayout,
+    default_on_error: normalized.workflow.defaultOnError,
+    max_run_duration_ms: normalized.workflow.maxRunDurationMs ?? row.max_run_duration_ms,
+    max_run_cost_usd: normalized.workflow.maxRunCostUsd ?? row.max_run_cost_usd,
+    deployment_stage: normalized.workflow.deploymentStage ?? row.deployment_stage,
+  };
+}
+
 function optionalNumber(params: Record<string, unknown>, key: string): number | undefined {
   const v = params[key];
-  if (v === undefined || v === null) return undefined;
-  if (typeof v !== "number" || !Number.isFinite(v)) throw new Error(`${key} must be a number`);
+  if (v === undefined || v === null) {
+    return undefined;
+  }
+  if (typeof v !== "number" || !Number.isFinite(v)) {
+    throw new Error(`${key} must be a number`);
+  }
   return v;
 }
 
 function optionalBoolean(params: Record<string, unknown>, key: string): boolean | undefined {
   const v = params[key];
-  if (v === undefined || v === null) return undefined;
-  if (typeof v !== "boolean") throw new Error(`${key} must be a boolean`);
+  if (v === undefined || v === null) {
+    return undefined;
+  }
+  if (typeof v !== "boolean") {
+    throw new Error(`${key} must be a boolean`);
+  }
   return v;
+}
+
+function timestampIso(value: unknown): string | undefined {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+  return undefined;
 }
 
 function optionalObject(
   params: Record<string, unknown>,
   key: string,
 ): Record<string, unknown> | undefined {
-  const v = params[key];
-  if (v === undefined || v === null) return undefined;
-  if (typeof v !== "object" || Array.isArray(v)) throw new Error(`${key} must be an object`);
-  return v as Record<string, unknown>;
+  return recordValue(params[key], key);
+}
+
+function publicWorkflowVersionRow(row: Record<string, unknown>) {
+  const nodes = parseWorkflowJsonColumn(row.nodes);
+  const edges = parseWorkflowJsonColumn(row.edges);
+  return {
+    id: row.id,
+    workflowId: row.workflow_id,
+    version: typeof row.version === "number" ? row.version : Number(row.version ?? 0),
+    changedBy: typeof row.changed_by === "string" ? row.changed_by : undefined,
+    changeSummary: typeof row.change_summary === "string" ? row.change_summary : undefined,
+    createdAt: timestampIso(row.created_at),
+    nodeCount: Array.isArray(nodes) ? nodes.length : 0,
+    edgeCount: Array.isArray(edges) ? edges.length : 0,
+  };
+}
+
+function recordValue(value: unknown, label: string): Record<string, unknown> | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
 }
 
 function optionalArray(params: Record<string, unknown>, key: string): unknown[] | undefined {
   const v = params[key];
-  if (v === undefined || v === null) return undefined;
-  if (!Array.isArray(v)) throw new Error(`${key} must be an array`);
+  if (v === undefined || v === null) {
+    return undefined;
+  }
+  if (!Array.isArray(v)) {
+    throw new Error(`${key} must be an array`);
+  }
   return v;
+}
+
+function arrayValue(value: unknown, label: string): unknown[] | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} must be an array`);
+  }
+  return value;
+}
+
+function numberValue(value: unknown, label: string): number | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${label} must be a number`);
+  }
+  return value;
+}
+
+function optionalStringValue(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+function workflowDefinitionParam(params: Record<string, unknown>) {
+  return optionalObject(params, "definition") ?? optionalObject(params, "workflowDefinition");
+}
+
+function workflowDeploymentStageFromDefinition(
+  definition: Record<string, unknown> | undefined,
+): WorkflowDefinition["deploymentStage"] | undefined {
+  const stage = optionalStringValue(definition?.deploymentStage);
+  if (!stage) {
+    return undefined;
+  }
+  if (stage === "simulate" || stage === "shadow" || stage === "limited_live" || stage === "live") {
+    return stage;
+  }
+  throw new Error("definition.deploymentStage must be simulate, shadow, limited_live, or live");
+}
+
+function workflowGraphPayload(
+  params: Record<string, unknown>,
+  fallback?: { nodes?: unknown[]; edges?: unknown[]; canvasLayout?: unknown },
+) {
+  const canvasData = optionalObject(params, "canvasData");
+  const explicitCanvasLayout = optionalObject(params, "canvasLayout");
+  const definition = workflowDefinitionParam(params);
+  const definitionCanvasLayout = recordValue(definition?.canvasLayout, "definition.canvasLayout");
+  const nodes =
+    optionalArray(params, "nodes") ??
+    arrayValue(canvasData?.nodes, "canvasData.nodes") ??
+    arrayValue(definition?.nodes, "definition.nodes") ??
+    fallback?.nodes ??
+    [];
+  const edges =
+    optionalArray(params, "edges") ??
+    arrayValue(canvasData?.edges, "canvasData.edges") ??
+    arrayValue(definition?.edges, "definition.edges") ??
+    fallback?.edges ??
+    [];
+  const canvasLayout =
+    explicitCanvasLayout ?? canvasData ?? definitionCanvasLayout ?? fallback?.canvasLayout ?? {};
+  return {
+    nodes,
+    edges,
+    canvasLayout,
+    definition,
+    changed:
+      Boolean(explicitCanvasLayout) ||
+      Boolean(canvasData) ||
+      Boolean(definition) ||
+      params.nodes !== undefined ||
+      params.edges !== undefined,
+  };
+}
+
+export function derivedWorkflowTrigger(workflow: WorkflowDefinition) {
+  const trigger = workflow.nodes.find(
+    (node): node is Extract<WorkflowNode, { kind: "trigger" }> => {
+      return node.kind === "trigger";
+    },
+  );
+  if (!trigger) {
+    return { triggerType: undefined, triggerConfig: undefined };
+  }
+  return {
+    triggerType: trigger.triggerType,
+    triggerConfig: trigger.config,
+  };
+}
+
+function stringField(source: unknown, keys: string[]): string | undefined {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return undefined;
+  }
+  const record = source as Record<string, unknown>;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function workflowRunCronJobs(jobs: CronJob[], workflowId: string): CronJob[] {
+  return jobs.filter(
+    (job) => job.payload.kind === "workflowRun" && job.payload.workflowId === workflowId,
+  );
+}
+
+function resolveWorkflowSchedule(row: WorkflowRow): { expr: string; timezone?: string } | null {
+  const triggerType = typeof row.trigger_type === "string" ? row.trigger_type : undefined;
+  if (triggerType !== "schedule" && triggerType !== "cron") {
+    return null;
+  }
+  const triggerConfig = row.trigger_config;
+  const expr = stringField(triggerConfig, [
+    "cronExpression",
+    "cronExpr",
+    "scheduleCron",
+    "expr",
+    "cron",
+  ]);
+  if (!expr) {
+    return null;
+  }
+  const timezone = stringField(triggerConfig, ["timezone", "timeZone", "tz"]);
+  return { expr, timezone };
+}
+
+function workflowScheduleCronDescription(row: WorkflowRow): string {
+  const description =
+    typeof row.description === "string" && row.description.trim()
+      ? row.description.trim()
+      : "Workflow schedule trigger";
+  return `${WORKFLOW_SCHEDULE_CRON_MARKER}\nworkflowId=${row.id}\n${description}`;
+}
+
+export function duplicatedWorkflowShouldStartActive(source: WorkflowRow): boolean {
+  return resolveWorkflowSchedule(source) ? false : true;
+}
+
+function workflowScheduleCronSpec(row: WorkflowRow, schedule: { expr: string; timezone?: string }) {
+  return {
+    name: `Workflow: ${row.name}`,
+    description: workflowScheduleCronDescription(row),
+    enabled: row.is_active === true,
+    schedule: {
+      kind: "cron" as const,
+      expr: schedule.expr,
+      ...(schedule.timezone ? { tz: schedule.timezone } : {}),
+    },
+    sessionTarget: "isolated" as const,
+    wakeMode: "next-heartbeat" as const,
+    payload: {
+      kind: "workflowRun" as const,
+      workflowId: row.id,
+      triggerPayload: {
+        source: "workflow_schedule",
+        workflowId: row.id,
+        triggerType: row.trigger_type ?? "schedule",
+      },
+    },
+    delivery: { mode: "none" as const },
+  };
+}
+
+async function setWorkflowNextFireAt(
+  sql: ReturnType<typeof postgres>,
+  workflowId: string,
+  nextRunAtMs: number | undefined,
+) {
+  const nextFireAt = typeof nextRunAtMs === "number" ? new Date(nextRunAtMs).toISOString() : null;
+  await sql`
+    UPDATE workflows
+    SET next_fire_at = ${nextFireAt}::timestamptz
+    WHERE id = ${workflowId}
+  `;
+}
+
+export async function syncWorkflowScheduleCronJob(params: {
+  sql: ReturnType<typeof postgres>;
+  cron: CronService;
+  workflow: WorkflowRow;
+}) {
+  const { sql, cron, workflow } = params;
+  const existing = workflowRunCronJobs(await cron.list({ includeDisabled: true }), workflow.id);
+  const schedule = resolveWorkflowSchedule(workflow);
+
+  if (!schedule || workflow.is_active !== true) {
+    for (const job of existing) {
+      await cron.remove(job.id);
+    }
+    await setWorkflowNextFireAt(sql, workflow.id, undefined);
+    return { action: existing.length > 0 ? "removed" : "none", jobId: null, nextRunAtMs: null };
+  }
+
+  const spec = workflowScheduleCronSpec(workflow, schedule);
+  const [primary, ...duplicates] = existing;
+  for (const duplicate of duplicates) {
+    await cron.remove(duplicate.id);
+  }
+
+  const job = primary
+    ? await cron.update(primary.id, spec as CronJobPatch)
+    : await cron.add(spec as CronJobCreate);
+  await setWorkflowNextFireAt(sql, workflow.id, job.state.nextRunAtMs);
+  return {
+    action: primary ? "updated" : "added",
+    jobId: job.id,
+    nextRunAtMs: job.state.nextRunAtMs ?? null,
+  };
+}
+
+export async function reconcileWorkflowScheduleCronJobs(cron: CronService) {
+  const sql = await getSql();
+  const rows = await sql`SELECT * FROM workflows`;
+  const scheduledWorkflowIds = new Set<string>();
+  const results: Array<{ workflowId: string; action: string; jobId: string | null }> = [];
+
+  for (const row of rows) {
+    const workflow = row as unknown as WorkflowRow;
+    const schedule = resolveWorkflowSchedule(workflow);
+    if (schedule && workflow.is_active === true) {
+      scheduledWorkflowIds.add(workflow.id);
+    }
+    const result = await syncWorkflowScheduleCronJob({ sql, cron, workflow });
+    if (result.action !== "none") {
+      results.push({ workflowId: workflow.id, action: result.action, jobId: result.jobId });
+    }
+  }
+
+  const jobs = await cron.list({ includeDisabled: true });
+  for (const job of jobs) {
+    if (job.payload.kind !== "workflowRun") {
+      continue;
+    }
+    const workflowId = job.payload.workflowId;
+    if (!scheduledWorkflowIds.has(workflowId)) {
+      await cron.remove(job.id);
+      results.push({ workflowId, action: "removed-stale", jobId: job.id });
+    }
+  }
+
+  if (results.length > 0) {
+    log.info(`workflow schedule cron reconciliation: ${JSON.stringify(results)}`);
+  }
+  return { reconciled: results };
+}
+
+export async function activeWorkflowScheduleConflictIssues(params: {
+  sql: ReturnType<typeof postgres>;
+  workflow: WorkflowRow;
+}): Promise<WorkflowIssue[]> {
+  const schedule = resolveWorkflowSchedule(params.workflow);
+  if (!schedule || params.workflow.is_active !== true) {
+    return [];
+  }
+
+  const peers = await params.sql`
+    SELECT id, name, trigger_type, trigger_config
+    FROM workflows
+    WHERE id <> ${params.workflow.id}
+      AND is_active = true
+      AND trigger_type IN ('schedule', 'cron')
+  `;
+
+  const conflictingPeers = peers.filter((row) => {
+    const peerSchedule = resolveWorkflowSchedule(row as unknown as WorkflowRow);
+    if (!peerSchedule) {
+      return false;
+    }
+    return (
+      peerSchedule.expr === schedule.expr &&
+      (peerSchedule.timezone ?? "") === (schedule.timezone ?? "")
+    );
+  });
+
+  if (conflictingPeers.length === 0) {
+    return [];
+  }
+
+  const peerNames = conflictingPeers
+    .map((row) => (typeof row.name === "string" && row.name.trim() ? row.name.trim() : "Untitled"))
+    .slice(0, 3);
+  const remainder =
+    conflictingPeers.length > peerNames.length
+      ? ` and ${conflictingPeers.length - peerNames.length} more`
+      : "";
+
+  return [
+    {
+      severity: "warning",
+      code: "schedule_conflict_active_workflow",
+      category: "runtime",
+      message: `This workflow shares the active schedule ${schedule.expr}${
+        schedule.timezone ? ` (${schedule.timezone})` : ""
+      } with ${peerNames.join(", ")}${remainder}. All of them will appear in Workloads and all of them will run unless you pause the extra copies.`,
+    },
+  ];
+}
+
+function optionalWorkflowPackageFormat(
+  params: Record<string, unknown>,
+): WorkflowPackageFormat | undefined {
+  const v = optionalString(params, "format");
+  if (!v) {
+    return undefined;
+  }
+  if (v !== "json" && v !== "yaml") {
+    throw new Error('format must be "json" or "yaml"');
+  }
+  return v;
+}
+
+function optionalDeploymentStage(params: Record<string, unknown>) {
+  const stage = optionalString(params, "deploymentStage");
+  if (!stage) {
+    return undefined;
+  }
+  if (stage === "simulate" || stage === "shadow" || stage === "limited_live" || stage === "live") {
+    return stage;
+  }
+  throw new Error("deploymentStage must be simulate, shadow, limited_live, or live");
+}
+
+function workflowTemplateSummary(workflowPackage: WorkflowPackage) {
+  const imported = importWorkflowPackage(workflowPackage);
+  return {
+    id: workflowPackage.id,
+    slug: workflowPackage.slug,
+    name: workflowPackage.name,
+    description: workflowPackage.description,
+    scenario: workflowPackage.scenario,
+    credentialCount: workflowPackage.credentials?.required.length ?? 0,
+    dependencyCount: workflowPackage.dependencies?.length ?? 0,
+    nodeCount: workflowPackage.workflow.nodes.length,
+    edgeCount: workflowPackage.workflow.edges.length,
+    okForImport: imported.readiness.okForImport,
+    okForPinnedTestRun: imported.readiness.okForPinnedTestRun,
+    liveRequirements: imported.readiness.liveRequirements,
+    notes: workflowPackage.notes ?? [],
+  };
+}
+
+function workflowPackagePreviewPayload(workflowPackage: WorkflowPackage) {
+  const imported = importWorkflowPackage(workflowPackage);
+  return {
+    package: workflowPackage,
+    workflow: applyWorkflowPackageTestFixtures(workflowPackage),
+    canvasLayout: imported.normalized.canvasLayout,
+    readiness: imported.readiness,
+    validation: {
+      ok: imported.readiness.okForImport,
+      issues: imported.normalized.issues,
+    },
+  };
+}
+
+type WorkflowRunPublicStep = {
+  id: string;
+  nodeId: string;
+  nodeName: string;
+  nodeKind: string;
+  status: string;
+  agentId?: string;
+  startedAt?: string;
+  endedAt?: string;
+  durationMs: number;
+  error?: string;
+  tokensUsed: number;
+  costUsd: number;
+  retryCount: number;
+  approvalStatus?: string;
+  approvalNote?: string;
+  input?: unknown;
+  output?: unknown;
+};
+
+type WorkflowRunPublicApproval = {
+  approvalId: string;
+  runId: string;
+  workflowId: string;
+  nodeId: string;
+  nodeLabel?: string;
+  message: string;
+  sideEffectClass?: string;
+  previousOutputPreview?: unknown;
+  timeoutAt?: string;
+  timeoutAction?: string;
+  status: string;
+  requestedAt?: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  resolutionNote?: string;
+  notificationStatus?: string;
+  notificationError?: string;
+};
+
+function isoString(value: unknown): string | undefined {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? new Date(parsed).toISOString() : value;
+  }
+  return undefined;
+}
+
+function numericValue(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  return fallback;
+}
+
+function stringValue(value: unknown, fallback = ""): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  return fallback;
+}
+
+function elapsedMs(start: unknown, end: unknown, nowMs = Date.now()): number {
+  const startIso = isoString(start);
+  if (!startIso) {
+    return 0;
+  }
+  const startMs = Date.parse(startIso);
+  const endIso = isoString(end);
+  const endMs = endIso ? Date.parse(endIso) : nowMs;
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
+    return 0;
+  }
+  return endMs - startMs;
+}
+
+function buildNodeLabelMap(nodes: unknown): Map<string, string> {
+  const labels = new Map<string, string>();
+  if (!Array.isArray(nodes)) {
+    return labels;
+  }
+  for (const node of nodes) {
+    if (!node || typeof node !== "object") {
+      continue;
+    }
+    const record = node as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id : undefined;
+    if (!id) {
+      continue;
+    }
+    const data =
+      record.data && typeof record.data === "object"
+        ? (record.data as Record<string, unknown>)
+        : {};
+    const label =
+      (typeof record.label === "string" && record.label.trim()
+        ? record.label
+        : typeof data.label === "string" && data.label.trim()
+          ? data.label
+          : undefined) ?? id;
+    labels.set(id, label);
+  }
+  return labels;
+}
+
+export function publicWorkflowRunStep(
+  row: Record<string, unknown>,
+  nodeLabels: Map<string, string> = new Map(),
+): WorkflowRunPublicStep {
+  const nodeId = stringValue(row.node_id ?? row.nodeId);
+  const startedAt = isoString(row.started_at ?? row.startedAt);
+  const endedAt = isoString(row.ended_at ?? row.endedAt);
+  return {
+    id: stringValue(row.id),
+    nodeId,
+    nodeName: nodeLabels.get(nodeId) ?? nodeId,
+    nodeKind: stringValue(row.node_kind ?? row.nodeKind, "action"),
+    status: stringValue(row.status, "pending"),
+    agentId:
+      typeof row.agent_id === "string"
+        ? row.agent_id
+        : typeof row.agentId === "string"
+          ? row.agentId
+          : undefined,
+    startedAt,
+    endedAt,
+    durationMs: numericValue(row.duration_ms ?? row.durationMs, elapsedMs(startedAt, endedAt)),
+    error: typeof row.error === "string" && row.error.trim() ? String(row.error) : undefined,
+    tokensUsed: numericValue(row.tokens_used ?? row.tokensUsed),
+    costUsd: numericValue(row.cost_usd ?? row.costUsd),
+    retryCount: numericValue(row.retry_count ?? row.retryCount),
+    approvalStatus:
+      typeof row.approval_status === "string"
+        ? row.approval_status
+        : typeof row.approvalStatus === "string"
+          ? row.approvalStatus
+          : undefined,
+    approvalNote:
+      typeof row.approval_note === "string"
+        ? row.approval_note
+        : typeof row.approvalNote === "string"
+          ? row.approvalNote
+          : undefined,
+    input: row.input_context ?? row.inputContext,
+    output: row.output_items ?? row.outputItems,
+  };
+}
+
+export function publicWorkflowApproval(row: Record<string, unknown>): WorkflowRunPublicApproval {
+  return {
+    approvalId: stringValue(row.id ?? row.approval_id),
+    runId: stringValue(row.run_id ?? row.runId),
+    workflowId: stringValue(row.workflow_id ?? row.workflowId),
+    nodeId: stringValue(row.node_id ?? row.nodeId),
+    nodeLabel:
+      typeof row.node_label === "string"
+        ? row.node_label
+        : typeof row.nodeLabel === "string"
+          ? row.nodeLabel
+          : undefined,
+    message: stringValue(row.message, "Review required before continuing"),
+    sideEffectClass:
+      typeof row.side_effect_class === "string"
+        ? row.side_effect_class
+        : typeof row.sideEffectClass === "string"
+          ? row.sideEffectClass
+          : undefined,
+    previousOutputPreview: row.previous_output_preview ?? row.previousOutputPreview,
+    timeoutAt: isoString(row.timeout_at ?? row.timeoutAt),
+    timeoutAction:
+      typeof row.timeout_action === "string"
+        ? row.timeout_action
+        : typeof row.timeoutAction === "string"
+          ? row.timeoutAction
+          : undefined,
+    status: stringValue(row.status, "pending"),
+    requestedAt: isoString(row.requested_at ?? row.requestedAt),
+    resolvedAt: isoString(row.resolved_at ?? row.resolvedAt),
+    resolvedBy:
+      typeof row.resolved_by === "string"
+        ? row.resolved_by
+        : typeof row.resolvedBy === "string"
+          ? row.resolvedBy
+          : undefined,
+    resolutionNote:
+      typeof row.resolution_note === "string"
+        ? row.resolution_note
+        : typeof row.resolutionNote === "string"
+          ? row.resolutionNote
+          : undefined,
+    notificationStatus:
+      typeof row.notification_status === "string"
+        ? row.notification_status
+        : typeof row.notificationStatus === "string"
+          ? row.notificationStatus
+          : undefined,
+    notificationError:
+      typeof row.notification_error === "string"
+        ? row.notification_error
+        : typeof row.notificationError === "string"
+          ? row.notificationError
+          : undefined,
+  };
+}
+
+export function publicWorkflowRun(
+  row: Record<string, unknown>,
+  opts: {
+    steps?: Record<string, unknown>[];
+    approvals?: Record<string, unknown>[];
+    workflowNodes?: unknown;
+    nowMs?: number;
+  } = {},
+) {
+  const nodeLabels = buildNodeLabelMap(opts.workflowNodes ?? row.workflow_nodes);
+  const steps = (opts.steps ?? []).map((step) => publicWorkflowRunStep(step, nodeLabels));
+  const approvals = (opts.approvals ?? []).map(publicWorkflowApproval);
+  const startedAt = isoString(row.started_at ?? row.startedAt);
+  const endedAt = isoString(row.ended_at ?? row.endedAt);
+  const nowMs = opts.nowMs ?? Date.now();
+  const rawTimeline = [
+    startedAt
+      ? {
+          at: startedAt,
+          type: "run_started",
+          label: "Run started",
+          status: row.status,
+        }
+      : null,
+    ...steps.flatMap((step) => [
+      step.startedAt
+        ? {
+            at: step.startedAt,
+            type: "step_started",
+            nodeId: step.nodeId,
+            label: `${step.nodeName} started`,
+            status: step.status,
+          }
+        : null,
+      step.endedAt
+        ? {
+            at: step.endedAt,
+            type: step.status === "failed" ? "step_failed" : "step_completed",
+            nodeId: step.nodeId,
+            label:
+              step.status === "failed" ? `${step.nodeName} failed` : `${step.nodeName} completed`,
+            status: step.status,
+            error: step.error,
+          }
+        : null,
+    ]),
+    ...approvals.flatMap((approval) => [
+      approval.requestedAt
+        ? {
+            at: approval.requestedAt,
+            type: "approval_requested",
+            nodeId: approval.nodeId,
+            label: `${approval.nodeLabel ?? approval.nodeId} requested approval`,
+            status: approval.status,
+          }
+        : null,
+      approval.resolvedAt
+        ? {
+            at: approval.resolvedAt,
+            type: "approval_resolved",
+            nodeId: approval.nodeId,
+            label: `${approval.nodeLabel ?? approval.nodeId} approval ${approval.status}`,
+            status: approval.status,
+            note: approval.resolutionNote,
+          }
+        : null,
+    ]),
+    endedAt
+      ? {
+          at: endedAt,
+          type: "run_finished",
+          label: `Run ${stringValue(row.status, "finished")}`,
+          status: row.status,
+          error: typeof row.error === "string" ? row.error : undefined,
+        }
+      : null,
+  ];
+  const timeline = rawTimeline
+    .filter((event): event is NonNullable<typeof event> => event !== null)
+    .toSorted((a, b) => String(a.at).localeCompare(String(b.at)));
+
+  return {
+    id: stringValue(row.id),
+    runId: stringValue(row.id),
+    workflowId: stringValue(row.workflow_id ?? row.workflowId),
+    workflowName:
+      typeof row.workflow_name === "string"
+        ? row.workflow_name
+        : typeof row.workflowName === "string"
+          ? row.workflowName
+          : undefined,
+    workflowVersion: numericValue(row.workflow_version ?? row.workflowVersion),
+    status: stringValue(row.status, "created"),
+    triggerType: stringValue(row.trigger_type ?? row.triggerType),
+    triggerPayload: row.trigger_payload ?? row.triggerPayload,
+    currentNodeId:
+      typeof row.current_node_id === "string"
+        ? row.current_node_id
+        : typeof row.currentNodeId === "string"
+          ? row.currentNodeId
+          : undefined,
+    startedAt: startedAt ?? "",
+    endedAt,
+    finishedAt: endedAt,
+    durationMs: numericValue(
+      row.duration_ms ?? row.durationMs,
+      elapsedMs(startedAt, endedAt, nowMs),
+    ),
+    totalTokensUsed: numericValue(row.total_tokens_used ?? row.totalTokensUsed),
+    totalCostUsd: numericValue(row.total_cost_usd ?? row.totalCostUsd),
+    error: typeof row.error === "string" && row.error.trim() ? row.error : undefined,
+    metadata: row.metadata,
+    variables: row.variables,
+    steps,
+    approvals,
+    timeline,
+  };
+}
+
+async function buildWorkflowAppForgeCapabilities(): Promise<{
+  apps: AppForgeAppSummary[];
+  capabilities: AppForgeWorkflowCapability[];
+}> {
+  const response = await fetch(`${DASHBOARD_API}/api/apps`, {
+    headers: dashboardApiHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`AppForge API returned ${response.status}`);
+  }
+  const payload = (await response.json()) as { apps?: unknown[] };
+  const apps = (payload.apps ?? [])
+    .filter((app): app is Record<string, unknown> => Boolean(app && typeof app === "object"))
+    .map((app) => ({
+      id: stringValue(app.id),
+      name: stringValue(app.name, "Untitled App"),
+      description: typeof app.description === "string" ? app.description : undefined,
+      version: typeof app.version === "number" ? app.version : undefined,
+      metadata: app.metadata,
+    }))
+    .filter((app) => app.id);
+  return {
+    apps,
+    capabilities: collectAppForgeWorkflowCapabilities(apps),
+  };
+}
+
+function collectRecordKeys(value: unknown): string[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  return Object.keys(value as Record<string, unknown>).filter((key) => key.trim());
+}
+
+function collectStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((entry) => String(entry).trim()).filter(Boolean);
+}
+
+function workflowOutputTarget(
+  id: string,
+  kind: WorkflowOutputChannelTarget["kind"],
+  labelPrefix?: string,
+): WorkflowOutputChannelTarget {
+  return {
+    id,
+    kind,
+    label: labelPrefix ? `${labelPrefix}: ${id}` : id,
+  };
+}
+
+function uniqueWorkflowOutputTargets(
+  targets: WorkflowOutputChannelTarget[],
+): WorkflowOutputChannelTarget[] {
+  const seen = new Set<string>();
+  const unique: WorkflowOutputChannelTarget[] = [];
+  for (const target of targets) {
+    const key = `${target.kind}:${target.id}`.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    unique.push(target);
+  }
+  return unique;
+}
+
+function collectWorkflowOutputChannelTargets(
+  channelId: string,
+  cfg: ArgentConfig,
+): WorkflowOutputChannelTarget[] {
+  const channels = cfg.channels as Record<string, unknown> | undefined;
+  const raw = channels?.[channelId];
+  const channel = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  switch (channelId) {
+    case "telegram":
+      return uniqueWorkflowOutputTargets([
+        ...collectRecordKeys(channel.groups).map((id) =>
+          workflowOutputTarget(id, "group", "Group"),
+        ),
+        ...collectRecordKeys(channel.dms).map((id) => workflowOutputTarget(id, "dm", "DM")),
+        ...collectStringList(channel.allowFrom).map((id) =>
+          workflowOutputTarget(id, "allowlist", "Allowed"),
+        ),
+      ]);
+    case "discord":
+      return uniqueWorkflowOutputTargets([
+        ...collectRecordKeys(channel.channels).map((id) =>
+          workflowOutputTarget(id, "channel", "Channel"),
+        ),
+        ...collectStringList(channel.allowFrom).map((id) =>
+          workflowOutputTarget(id, "allowlist", "Allowed"),
+        ),
+      ]);
+    case "slack":
+      return uniqueWorkflowOutputTargets([
+        ...collectRecordKeys(channel.channels).map((id) =>
+          workflowOutputTarget(id, "channel", "Channel"),
+        ),
+        ...collectStringList(channel.allowFrom).map((id) =>
+          workflowOutputTarget(id, "allowlist", "Allowed"),
+        ),
+      ]);
+    case "whatsapp":
+      return uniqueWorkflowOutputTargets([
+        ...collectRecordKeys(channel.groups).map((id) =>
+          workflowOutputTarget(id, "group", "Group"),
+        ),
+        ...collectStringList(channel.allowFrom).map((id) =>
+          workflowOutputTarget(id, "allowlist", "Allowed"),
+        ),
+      ]);
+    default:
+      return uniqueWorkflowOutputTargets([
+        ...collectRecordKeys((channel as { channels?: unknown }).channels).map((id) =>
+          workflowOutputTarget(id, "channel", "Channel"),
+        ),
+        ...collectStringList((channel as { allowFrom?: unknown }).allowFrom).map((id) =>
+          workflowOutputTarget(id, "allowlist", "Allowed"),
+        ),
+      ]);
+  }
+}
+
+async function collectWorkflowOutputChannelTargetsWithAccounts(
+  channelId: string,
+  cfg: ArgentConfig,
+  accountIds: string[],
+): Promise<WorkflowOutputChannelTarget[]> {
+  const baseTargets = collectWorkflowOutputChannelTargets(channelId, cfg);
+  const accountTargets: WorkflowOutputChannelTarget[] = [];
+  const uniqueAccountIds = [...new Set(accountIds.filter(Boolean))];
+
+  try {
+    const directory = await import("../../channels/plugins/directory-config.js");
+    for (const accountId of uniqueAccountIds) {
+      switch (channelId) {
+        case "telegram": {
+          const [groups, peers] = await Promise.all([
+            directory.listTelegramDirectoryGroupsFromConfig({ cfg, accountId }),
+            directory.listTelegramDirectoryPeersFromConfig({ cfg, accountId }),
+          ]);
+          accountTargets.push(
+            ...groups.map((entry) => workflowOutputTarget(entry.id, "group", "Group")),
+            ...peers.map((entry) => workflowOutputTarget(entry.id, "dm", "DM")),
+          );
+          break;
+        }
+        case "discord": {
+          const [groups, peers] = await Promise.all([
+            directory.listDiscordDirectoryGroupsFromConfig({ cfg, accountId }),
+            directory.listDiscordDirectoryPeersFromConfig({ cfg, accountId }),
+          ]);
+          accountTargets.push(
+            ...groups.map((entry) => workflowOutputTarget(entry.id, "channel", "Channel")),
+            ...peers.map((entry) => workflowOutputTarget(entry.id, "dm", "DM")),
+          );
+          break;
+        }
+        case "slack": {
+          const [groups, peers] = await Promise.all([
+            directory.listSlackDirectoryGroupsFromConfig({ cfg, accountId }),
+            directory.listSlackDirectoryPeersFromConfig({ cfg, accountId }),
+          ]);
+          accountTargets.push(
+            ...groups.map((entry) => workflowOutputTarget(entry.id, "channel", "Channel")),
+            ...peers.map((entry) => workflowOutputTarget(entry.id, "dm", "DM")),
+          );
+          break;
+        }
+        case "whatsapp": {
+          const [groups, peers] = await Promise.all([
+            directory.listWhatsAppDirectoryGroupsFromConfig({ cfg, accountId }),
+            directory.listWhatsAppDirectoryPeersFromConfig({ cfg, accountId }),
+          ]);
+          accountTargets.push(
+            ...groups.map((entry) => workflowOutputTarget(entry.id, "group", "Group")),
+            ...peers.map((entry) => workflowOutputTarget(entry.id, "dm", "DM")),
+          );
+          break;
+        }
+      }
+    }
+  } catch (err) {
+    log.debug("workflow output channel account target discovery unavailable", {
+      channelId,
+      error: String(err),
+    });
+  }
+
+  return uniqueWorkflowOutputTargets([...baseTargets, ...accountTargets]);
+}
+
+export async function buildWorkflowOutputChannels(): Promise<WorkflowOutputChannelOption[]> {
+  const [
+    { loadConfig },
+    { listChatChannels },
+    { DEFAULT_ACCOUNT_ID },
+    { listTelegramAccountIds, resolveTelegramAccount },
+    { listDiscordAccountIds, resolveDiscordAccount },
+    { listSlackAccountIds, resolveSlackAccount },
+    { listWhatsAppAccountIds, hasAnyWhatsAppAuth },
+  ] = await Promise.all([
+    import("../../config/config.js"),
+    import("../../channels/registry.js"),
+    import("../../routing/session-key.js"),
+    import("../../telegram/accounts.js"),
+    import("../../discord/accounts.js"),
+    import("../../slack/accounts.js"),
+    import("../../web/accounts.js"),
+  ]);
+  const cfg = loadConfig();
+  const outputChannels = new Map<string, WorkflowOutputChannelOption>();
+
+  try {
+    const { listChannelPlugins } = await import("../../channels/plugins/index.js");
+    for (const plugin of listChannelPlugins()) {
+      const outbound = plugin.outbound;
+      if (!outbound) {
+        continue;
+      }
+      if (outbound.deliveryMode !== "gateway" && (!outbound.sendText || !outbound.sendMedia)) {
+        continue;
+      }
+
+      const accountIds = plugin.config.listAccountIds(cfg);
+      const defaultAccountId =
+        plugin.config.defaultAccountId?.(cfg) ?? accountIds[0] ?? DEFAULT_ACCOUNT_ID;
+      const configuredAccountIds = [];
+      const candidates = accountIds.length > 0 ? accountIds : [defaultAccountId];
+      for (const accountId of candidates) {
+        const account = plugin.config.resolveAccount(cfg, accountId);
+        const enabled = plugin.config.isEnabled
+          ? plugin.config.isEnabled(account, cfg)
+          : !account ||
+            typeof account !== "object" ||
+            (account as { enabled?: boolean }).enabled !== false;
+        const configured = plugin.config.isConfigured
+          ? await plugin.config.isConfigured(account, cfg)
+          : true;
+        if (enabled && configured) {
+          configuredAccountIds.push(accountId);
+        }
+      }
+
+      if (configuredAccountIds.length === 0) {
+        continue;
+      }
+
+      outputChannels.set(plugin.id, {
+        id: plugin.id,
+        label: plugin.meta.selectionLabel ?? plugin.meta.label ?? plugin.id,
+        defaultAccountId,
+        accountIds: configuredAccountIds,
+        deliveryMode: outbound.deliveryMode,
+        configured: true,
+        statusLabel: "Configured",
+        targets: await collectWorkflowOutputChannelTargetsWithAccounts(
+          plugin.id,
+          cfg,
+          configuredAccountIds,
+        ),
+      });
+    }
+  } catch (err) {
+    log.debug("workflow output channel plugin registry unavailable", { error: String(err) });
+  }
+
+  const channelsConfig =
+    cfg.channels && typeof cfg.channels === "object"
+      ? (cfg.channels as Record<string, unknown>)
+      : {};
+  const configuredCoreChannels: Record<
+    string,
+    { accountIds: string[]; defaultAccountId: string; configured: boolean; statusLabel: string }
+  > = {
+    telegram: (() => {
+      const accountIds = listTelegramAccountIds(cfg).filter((accountId) => {
+        const account = resolveTelegramAccount({ cfg, accountId });
+        return account.enabled && account.tokenSource !== "none";
+      });
+      return {
+        accountIds,
+        defaultAccountId: accountIds[0] ?? DEFAULT_ACCOUNT_ID,
+        configured: accountIds.length > 0,
+        statusLabel: accountIds.length > 0 ? "Configured" : "Needs Telegram bot token",
+      };
+    })(),
+    discord: (() => {
+      const accountIds = listDiscordAccountIds(cfg).filter((accountId) => {
+        const account = resolveDiscordAccount({ cfg, accountId });
+        return account.enabled && account.tokenSource !== "none";
+      });
+      return {
+        accountIds,
+        defaultAccountId: accountIds[0] ?? DEFAULT_ACCOUNT_ID,
+        configured: accountIds.length > 0,
+        statusLabel: accountIds.length > 0 ? "Configured" : "Needs Discord bot token",
+      };
+    })(),
+    slack: (() => {
+      const accountIds = listSlackAccountIds(cfg).filter((accountId) => {
+        const account = resolveSlackAccount({ cfg, accountId });
+        return account.enabled && account.botTokenSource !== "none";
+      });
+      return {
+        accountIds,
+        defaultAccountId: accountIds[0] ?? DEFAULT_ACCOUNT_ID,
+        configured: accountIds.length > 0,
+        statusLabel: accountIds.length > 0 ? "Configured" : "Needs Slack bot token",
+      };
+    })(),
+    whatsapp: (() => {
+      const accountIds = hasAnyWhatsAppAuth(cfg) ? listWhatsAppAccountIds(cfg) : [];
+      return {
+        accountIds,
+        defaultAccountId: accountIds[0] ?? DEFAULT_ACCOUNT_ID,
+        configured: accountIds.length > 0,
+        statusLabel: accountIds.length > 0 ? "Configured" : "Needs WhatsApp login",
+      };
+    })(),
+  };
+
+  for (const channel of listChatChannels()) {
+    const existing = outputChannels.get(channel.id);
+    const channelConfig = channelsConfig[channel.id];
+    const core = configuredCoreChannels[channel.id];
+    const configured =
+      core?.configured ||
+      Boolean(channelConfig && typeof channelConfig === "object" && outputChannels.has(channel.id));
+    if (!configured) {
+      continue;
+    }
+    const accountIds = existing?.accountIds?.length
+      ? existing.accountIds
+      : (core?.accountIds ?? []);
+    const targets = await collectWorkflowOutputChannelTargetsWithAccounts(
+      channel.id,
+      cfg,
+      accountIds,
+    );
+    outputChannels.set(channel.id, {
+      id: channel.id,
+      label: existing?.label ?? channel.selectionLabel ?? channel.label ?? channel.id,
+      defaultAccountId: existing?.defaultAccountId ?? core?.defaultAccountId ?? DEFAULT_ACCOUNT_ID,
+      accountIds,
+      deliveryMode: existing?.deliveryMode ?? "direct",
+      configured: true,
+      statusLabel: existing?.statusLabel ?? core?.statusLabel ?? "Configured in channel settings",
+      targets: targets.length > 0 ? targets : existing?.targets,
+    });
+  }
+
+  return [...outputChannels.values()];
+}
+
+export async function buildWorkflowConnectorCapabilities(): Promise<WorkflowConnectorCapability[]> {
+  const catalog = await discoverConnectorCatalog();
+  return catalog.connectors.map((c: ConnectorCatalogEntry) => {
+    let scaffoldOnly = false;
+    for (const root of defaultRepoRoots()) {
+      const mPath = path.join(root, c.tool, "connector.json");
+      if (fs.existsSync(mPath)) {
+        try {
+          const raw = JSON.parse(fs.readFileSync(mPath, "utf-8")) as Record<string, unknown>;
+          const scope =
+            raw.scope && typeof raw.scope === "object"
+              ? (raw.scope as Record<string, unknown>)
+              : {};
+          scaffoldOnly = scope.scaffold_only === true;
+        } catch {
+          /* ignore */
+        }
+        break;
+      }
+    }
+    const isBlocked = scaffoldOnly || c.installState === "repo-only";
+    return {
+      id: c.tool,
+      name: c.label || c.tool.replace(/^aos-/, "").replace(/-/g, " "),
+      category: c.category ?? "general",
+      categories: c.categories,
+      commands: c.commands.map((cmd) => ({
+        id: cmd.id,
+        summary: cmd.summary,
+        actionClass: cmd.actionClass,
+      })),
+      installState: c.installState,
+      statusOk: c.status.ok,
+      scaffoldOnly,
+      readinessState: isBlocked
+        ? "blocked"
+        : c.installState === "ready"
+          ? "write_ready"
+          : "setup_required",
+    };
+  });
+}
+
+export async function buildWorkflowConnectorCapabilitiesSafely(): Promise<
+  WorkflowConnectorCapability[]
+> {
+  try {
+    return await buildWorkflowConnectorCapabilities();
+  } catch (err) {
+    log.warn(`workflow connector capabilities unavailable: ${String(err)}`);
+    return [];
+  }
+}
+
+export async function validateWorkflowRuntimeCapabilities(
+  workflow: WorkflowDefinition,
+): Promise<WorkflowIssue[]> {
+  const issues: WorkflowIssue[] = [];
+  const [outputChannels, connectors] = await Promise.all([
+    buildWorkflowOutputChannels().catch((err) => {
+      log.warn(`workflow runtime channel validation unavailable: ${String(err)}`);
+      return [];
+    }),
+    buildWorkflowConnectorCapabilitiesSafely(),
+  ]);
+  const availableChannels = new Set(
+    outputChannels
+      .filter((channel) => channel.configured)
+      .map((channel) => channel.id.toLowerCase()),
+  );
+  const availableConnectors = new Set(
+    connectors
+      .filter((connector) => !connector.scaffoldOnly && connector.readinessState !== "blocked")
+      .map((connector) => connector.id),
+  );
+  const outputConnectorOperations = new Set(
+    connectors
+      .filter((connector) => !connector.scaffoldOnly && connector.readinessState !== "blocked")
+      .flatMap((connector) =>
+        connector.commands
+          .filter(isWorkflowOutputConnectorCommand)
+          .map((command) => `${connector.id}:${command.id}`),
+      ),
+  );
+  const channelLabel = outputChannels.length
+    ? outputChannels.map((channel) => channel.label).join(", ")
+    : "none";
+
+  for (const node of workflow.nodes) {
+    if (node.kind === "action") {
+      const actionType = node.config.actionType;
+      if (
+        actionType.type === "send_message" &&
+        actionType.channelType.trim() &&
+        !availableChannels.has(actionType.channelType.toLowerCase())
+      ) {
+        issues.push({
+          severity: "error",
+          code: "workflow_action_channel_unavailable",
+          nodeId: node.id,
+          message: `Message action uses "${actionType.channelType}", but that channel is not configured for workflow delivery. Active channels: ${channelLabel}.`,
+        });
+      }
+      if (
+        actionType.type === "connector_action" &&
+        actionType.connectorId.trim() &&
+        !availableConnectors.has(actionType.connectorId)
+      ) {
+        issues.push({
+          severity: "error",
+          code: "workflow_action_connector_unavailable",
+          nodeId: node.id,
+          message: `Connector action uses "${actionType.connectorId}", but that connector is not currently runnable.`,
+        });
+      }
+    }
+
+    if (node.kind === "output") {
+      const config = node.config;
+      if (
+        config.outputType === "channel" &&
+        config.channelType.trim() &&
+        !availableChannels.has(config.channelType.toLowerCase())
+      ) {
+        issues.push({
+          severity: "error",
+          code: "workflow_output_channel_unavailable",
+          nodeId: node.id,
+          message: `Output uses "${config.channelType}", but that channel is not configured for workflow delivery. Active channels: ${channelLabel}.`,
+        });
+      }
+      if (
+        config.outputType === "connector_action" &&
+        config.connectorId.trim() &&
+        !availableConnectors.has(config.connectorId)
+      ) {
+        issues.push({
+          severity: "error",
+          code: "workflow_output_connector_unavailable",
+          nodeId: node.id,
+          message: `Output uses connector "${config.connectorId}", but that connector is not currently runnable.`,
+        });
+      }
+      if (
+        config.outputType === "connector_action" &&
+        config.connectorId.trim() &&
+        config.operation.trim() &&
+        availableConnectors.has(config.connectorId) &&
+        !outputConnectorOperations.has(`${config.connectorId}:${config.operation}`)
+      ) {
+        issues.push({
+          severity: "error",
+          code: "workflow_output_connector_operation_unavailable",
+          nodeId: node.id,
+          message: `Output uses "${config.operation}" on "${config.connectorId}", but that operation is not advertised as a write/delivery operation.`,
+        });
+      }
+    }
+  }
+
+  return issues;
+}
+
+type WorkflowDryRunTraceStep = {
+  nodeId: string;
+  nodeKind: string;
+  label: string;
+  status: "passed" | "warning" | "failed";
+  message: string;
+  details?: Record<string, unknown>;
+};
+
+export async function buildWorkflowDryRunTrace(workflow: WorkflowDefinition): Promise<{
+  ok: boolean;
+  steps: WorkflowDryRunTraceStep[];
+  issues: WorkflowIssue[];
+}> {
+  const issues = await validateWorkflowRuntimeCapabilities(workflow);
+  const steps: WorkflowDryRunTraceStep[] = [];
+
+  try {
+    const order = topologicalSort(workflow.nodes, workflow.edges);
+    steps.push({
+      nodeId: "__graph__",
+      nodeKind: "graph",
+      label: "Execution order",
+      status: "passed",
+      message: `Graph sorts into ${order.length} executable node${order.length === 1 ? "" : "s"}.`,
+      details: { order: order.map((node) => node.id) },
+    });
+
+    for (const node of order) {
+      const label = "label" in node && typeof node.label === "string" ? node.label : node.id;
+      if (node.kind === "agent") {
+        const sessionKey = buildWorkflowAgentSessionKey(node.config.agentId, 1);
+        const identity = validateWorkflowAgentSessionIdentity(node.config.agentId, sessionKey);
+        const missingPrompt = !node.config.rolePrompt.trim();
+        steps.push({
+          nodeId: node.id,
+          nodeKind: node.kind,
+          label,
+          status: !identity.ok ? "failed" : missingPrompt ? "warning" : "passed",
+          message: !identity.ok
+            ? identity.message
+            : missingPrompt
+              ? `Agent "${node.config.agentId}" can dispatch, but its prompt is empty.`
+              : `Agent "${node.config.agentId}" can dispatch with an isolated workflow session.`,
+          details: {
+            agentId: node.config.agentId,
+            sessionKey,
+            sessionAgentId: identity.sessionAgentId,
+            timeoutMs: node.config.timeoutMs,
+          },
+        });
+        continue;
+      }
+
+      if (node.kind === "action") {
+        const capability = getWorkflowActionCapability(node.config.actionType.type);
+        steps.push({
+          nodeId: node.id,
+          nodeKind: node.kind,
+          label,
+          status: "passed",
+          message: capability
+            ? `Action "${capability.label}" dry-runs as ${capability.sideEffect}; live run approval=${capability.requiresOperatorApproval ? "required" : "not required"}.`
+            : `Action "${node.config.actionType.type}" is structurally reachable.`,
+          details: {
+            actionType: node.config.actionType.type,
+            capability,
+            dryRunOnly: true,
+          },
+        });
+        continue;
+      }
+
+      steps.push({
+        nodeId: node.id,
+        nodeKind: node.kind,
+        label,
+        status: "passed",
+        message:
+          node.kind === "trigger"
+            ? `Trigger "${node.triggerType}" is configured for dry run.`
+            : `${node.kind} node is structurally reachable.`,
+      });
+    }
+  } catch (err) {
+    steps.push({
+      nodeId: "__graph__",
+      nodeKind: "graph",
+      label: "Execution order",
+      status: "failed",
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  for (const issue of issues) {
+    steps.push({
+      nodeId: issue.nodeId ?? "__workflow__",
+      nodeKind: "validation",
+      label: issue.nodeId ?? "Workflow validation",
+      status: issue.severity === "error" ? "failed" : "warning",
+      message: issue.message,
+      details: { code: issue.code },
+    });
+  }
+
+  return {
+    ok: !steps.some((step) => step.status === "failed"),
+    steps,
+    issues,
+  };
+}
+
+export async function startAppForgeEventTriggeredWorkflows(opts: {
+  sql: ReturnType<typeof postgres>;
+  event: NormalizedAppForgeWorkflowEvent;
+  broadcast?: (event: string, payload: unknown) => void;
+  outboundDeps?: ReturnType<typeof createOutboundSendDeps>;
+}) {
+  const rows = await opts.sql`
+    SELECT *
+    FROM workflows
+    WHERE is_active = true
+      AND (
+        trigger_type = 'appforge_event'
+        OR nodes::text ILIKE '%appforge_event%'
+      )
+    ORDER BY updated_at DESC
+    LIMIT 50
+  `;
+
+  const started: string[] = [];
+  const errors: string[] = [];
+
+  for (const row of rows as unknown as WorkflowRow[]) {
+    try {
+      const normalized = workflowFromRow(row);
+      if (hasBlockingWorkflowIssues(normalized.issues)) {
+        errors.push(
+          `workflow=${row.id}: validation failed: ${normalized.issues
+            .filter((issue) => issue.severity === "error")
+            .map((issue) => issue.message)
+            .join("; ")}`,
+        );
+        continue;
+      }
+
+      const triggerNode = normalized.workflow.nodes.find((node) => node.kind === "trigger");
+      const nodeMatches =
+        triggerNode?.kind === "trigger" &&
+        triggerNode.triggerType === "appforge_event" &&
+        appForgeEventMatchesTriggerConfig(opts.event, triggerNode.config);
+      const rowMatches =
+        row.trigger_type === "appforge_event" &&
+        appForgeEventMatchesTriggerConfig(opts.event, row.trigger_config);
+      if (!nodeMatches && !rowMatches) {
+        continue;
+      }
+
+      const { runId } = await createWorkflowRunRecord(opts.sql, {
+        workflowId: row.id,
+        workflowVersion: typeof row.version === "number" ? row.version : 1,
+        triggerType: "appforge_event",
+        triggerPayload: opts.event.payload,
+      });
+      started.push(runId);
+      opts.broadcast?.("workflow.run.created", {
+        runId,
+        workflowId: row.id,
+        status: "running",
+        triggerType: "appforge_event",
+        source: "appforge",
+      });
+
+      void executeWorkflowRunFromRow({
+        sql: opts.sql,
+        workflowRow: row,
+        runId,
+        triggerType: "appforge_event",
+        triggerPayload: opts.event.payload,
+        triggerSource: "appforge:event",
+        broadcast: opts.broadcast,
+        outboundDeps: opts.outboundDeps,
+      }).catch((err: unknown) => {
+        log.warn(`AppForge-triggered workflow ${runId} failed: ${String(err)}`);
+      });
+    } catch (err) {
+      errors.push(`workflow=${String(row.id ?? "unknown")}: ${String(err)}`);
+    }
+  }
+
+  return { started, errors };
 }
 
 // ── Handlers ────────────────────────────────────────────────────────────────
 
 export const workflowsHandlers: GatewayRequestHandlers = {
+  // ── Import / Export ───────────────────────────────────────────────────────
+
+  "workflows.templates.list": async ({ params, respond }) => {
+    try {
+      const department = optionalString(params, "department");
+      const runPattern = optionalString(params, "runPattern");
+      const query = optionalString(params, "query")?.toLowerCase();
+      const templates = OWNER_OPERATOR_WORKFLOW_PACKAGES.filter((workflowPackage) => {
+        if (department && workflowPackage.scenario.department !== department) {
+          return false;
+        }
+        if (runPattern && workflowPackage.scenario.runPattern !== runPattern) {
+          return false;
+        }
+        if (query) {
+          const haystack = [
+            workflowPackage.name,
+            workflowPackage.description,
+            workflowPackage.scenario.department,
+            workflowPackage.scenario.runPattern,
+            workflowPackage.scenario.summary,
+          ]
+            .join(" ")
+            .toLowerCase();
+          return haystack.includes(query);
+        }
+        return true;
+      }).map(workflowTemplateSummary);
+      respond(true, { templates });
+    } catch (err) {
+      log.warn(`workflows.templates.list failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "workflows.templates.get": async ({ params, respond }) => {
+    try {
+      const slugOrId = optionalString(params, "slug") ?? optionalString(params, "id");
+      if (!slugOrId) {
+        throw new Error("slug or id is required");
+      }
+      const workflowPackage = OWNER_OPERATOR_WORKFLOW_PACKAGES.find(
+        (candidate) => candidate.slug === slugOrId || candidate.id === slugOrId,
+      );
+      if (!workflowPackage) {
+        throw new Error(`Workflow template not found: ${slugOrId}`);
+      }
+      respond(true, workflowPackagePreviewPayload(workflowPackage));
+    } catch (err) {
+      log.warn(`workflows.templates.get failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
+  "workflows.importPreview": async ({ params, respond }) => {
+    try {
+      const text = requireString(params, "text");
+      const format = optionalWorkflowPackageFormat(params);
+      const workflowPackage = parseWorkflowPackageText(text, format);
+      respond(true, workflowPackagePreviewPayload(workflowPackage));
+    } catch (err) {
+      log.warn(`workflows.importPreview failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+    }
+  },
+
   // ── CRUD ──────────────────────────────────────────────────────────────────
 
-  "workflows.create": async ({ params, respond }) => {
+  "workflows.create": async ({ params, respond, context }) => {
     try {
       const sql = await getSql();
-      const id = randomUUID();
+      const id =
+        optionalString(params, "id") ?? optionalString(params, "workflowId") ?? randomUUID();
       const name = requireString(params, "name");
       const description = optionalString(params, "description") ?? null;
       const ownerAgentId = optionalString(params, "ownerAgentId") ?? "argent";
-      const nodes = optionalArray(params, "nodes") ?? [];
-      const edges = optionalArray(params, "edges") ?? [];
-      const canvasLayout = optionalObject(params, "canvasLayout") ?? {};
-      const triggerType = optionalString(params, "triggerType") ?? null;
-      const triggerConfig = optionalObject(params, "triggerConfig") ?? null;
-      const defaultOnError = optionalObject(params, "defaultOnError") ?? {
-        strategy: "fail",
-        notifyOnError: true,
-      };
-      const maxRunDurationMs = optionalNumber(params, "maxRunDurationMs") ?? 3600000;
-      const maxRunCostUsd = optionalNumber(params, "maxRunCostUsd") ?? null;
+      const graph = workflowGraphPayload(params);
+      const defaultOnError = optionalObject(params, "defaultOnError") ??
+        recordValue(graph.definition?.defaultOnError, "definition.defaultOnError") ?? {
+          strategy: "fail",
+          notifyOnError: true,
+        };
+      const maxRunDurationMs =
+        optionalNumber(params, "maxRunDurationMs") ??
+        numberValue(graph.definition?.maxRunDurationMs, "definition.maxRunDurationMs") ??
+        3600000;
+      const maxRunCostUsd =
+        optionalNumber(params, "maxRunCostUsd") ??
+        numberValue(graph.definition?.maxRunCostUsd, "definition.maxRunCostUsd") ??
+        null;
+      const deploymentStage =
+        optionalDeploymentStage(params) ??
+        workflowDeploymentStageFromDefinition(graph.definition) ??
+        "live";
+      const normalized = normalizeWorkflow({
+        id,
+        name,
+        description: description ?? undefined,
+        nodes: graph.nodes,
+        edges: graph.edges,
+        canvasLayout: graph.canvasLayout,
+        defaultOnError:
+          defaultOnError as unknown as import("../../infra/workflow-types.js").ErrorConfig,
+        maxRunDurationMs,
+        maxRunCostUsd: maxRunCostUsd ?? undefined,
+        deploymentStage,
+      });
+      const derivedTrigger = derivedWorkflowTrigger(normalized.workflow);
+      const triggerType =
+        optionalString(params, "triggerType") ?? derivedTrigger.triggerType ?? null;
+      const triggerConfig =
+        optionalObject(params, "triggerConfig") ?? derivedTrigger.triggerConfig ?? null;
 
       const [row] = await sql`
         INSERT INTO workflows (
@@ -152,24 +1963,30 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           trigger_type, trigger_config, deployment_stage
         ) VALUES (
           ${id}, ${name}, ${description}, ${ownerAgentId}, 1, true,
-          ${JSON.stringify(nodes)}::jsonb, ${JSON.stringify(edges)}::jsonb,
-          ${JSON.stringify(canvasLayout)}::jsonb,
-          ${JSON.stringify(defaultOnError)}::jsonb, ${maxRunDurationMs},
-          ${maxRunCostUsd}, ${triggerType}, ${triggerConfig ? JSON.stringify(triggerConfig) : null}::jsonb,
-          'live'
+          ${jsonParam(sql, normalized.workflow.nodes)}::jsonb,
+          ${jsonParam(sql, normalized.workflow.edges)}::jsonb,
+          ${jsonParam(sql, normalized.canvasLayout)}::jsonb,
+          ${jsonParam(sql, normalized.workflow.defaultOnError)}::jsonb, ${maxRunDurationMs},
+          ${maxRunCostUsd}, ${triggerType}, ${triggerConfig ? jsonParam(sql, triggerConfig) : null}::jsonb,
+          ${deploymentStage}
         )
         RETURNING *
       `;
 
+      await syncWorkflowScheduleCronJob({
+        sql,
+        cron: context.cron,
+        workflow: row as unknown as WorkflowRow,
+      });
       log.info(`workflow created: ${id} "${name}"`);
-      respond(true, row);
+      respond(true, publicWorkflowRow(row as unknown as WorkflowRow));
     } catch (err) {
       log.warn(`workflows.create failed: ${String(err)}`);
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }
   },
 
-  "workflows.update": async ({ params, respond }) => {
+  "workflows.update": async ({ params, respond, context }) => {
     try {
       const sql = await getSql();
       // Accept both "id" and "workflowId" (dashboard sends workflowId)
@@ -185,60 +2002,123 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         return;
       }
 
-      const newVersion = (existing.version as number) + 1;
+      const existingJson = workflowJsonFieldsFromRow(existing as unknown as WorkflowRow);
 
-      // Save current state to version history
+      // Build SET clause dynamically
+      // Dashboard may send { canvasData: { nodes, edges } } and agent tools may send
+      // canonical { definition: { nodes, edges } }; both are valid persistence sources.
+      const graph = workflowGraphPayload(params, {
+        nodes: existingJson.nodes,
+        edges: existingJson.edges,
+        canvasLayout: existingJson.canvasLayout,
+      });
+
+      const name = optionalString(params, "name");
+      const description = optionalString(params, "description");
+      const triggerType = optionalString(params, "triggerType");
+      const triggerConfig = optionalObject(params, "triggerConfig");
+      const defaultOnError =
+        optionalObject(params, "defaultOnError") ??
+        recordValue(graph.definition?.defaultOnError, "definition.defaultOnError");
+      const maxRunDurationMs =
+        optionalNumber(params, "maxRunDurationMs") ??
+        numberValue(graph.definition?.maxRunDurationMs, "definition.maxRunDurationMs");
+      const maxRunCostUsd =
+        optionalNumber(params, "maxRunCostUsd") ??
+        numberValue(graph.definition?.maxRunCostUsd, "definition.maxRunCostUsd");
+      const deploymentStage =
+        optionalDeploymentStage(params) ?? workflowDeploymentStageFromDefinition(graph.definition);
+      const isActive = optionalBoolean(params, "isActive");
+      const nextFireAt = optionalString(params, "nextFireAt");
+
+      const normalized = graph.changed
+        ? normalizeWorkflow({
+            id,
+            name: name ?? (existing.name as string),
+            description: description ?? (existing.description as string | undefined),
+            nodes: graph.nodes,
+            edges: graph.edges,
+            canvasLayout: graph.canvasLayout,
+            defaultOnError:
+              (defaultOnError as unknown as import("../../infra/workflow-types.js").ErrorConfig) ??
+              (existing.default_on_error as unknown as import("../../infra/workflow-types.js").ErrorConfig),
+            maxRunDurationMs: maxRunDurationMs ?? (existing.max_run_duration_ms as number),
+            maxRunCostUsd:
+              maxRunCostUsd ??
+              (typeof existing.max_run_cost_usd === "number"
+                ? existing.max_run_cost_usd
+                : undefined),
+            deploymentStage:
+              deploymentStage ??
+              workflowDeploymentStageFromDefinition({
+                deploymentStage: existing.deployment_stage,
+              }) ??
+              "live",
+          })
+        : null;
+      const derivedTrigger = normalized ? derivedWorkflowTrigger(normalized.workflow) : null;
+      const nextTriggerType = triggerType ?? derivedTrigger?.triggerType;
+      const nextTriggerConfig = triggerConfig ?? derivedTrigger?.triggerConfig;
+      const graphChanged = Boolean(
+        normalized &&
+        (!jsonEqual(normalized.workflow.nodes, existingJson.nodes) ||
+          !jsonEqual(normalized.workflow.edges, existingJson.edges) ||
+          !jsonEqual(normalized.canvasLayout, existingJson.canvasLayout)),
+      );
+      const defaultOnErrorChanged =
+        defaultOnError !== undefined && !jsonEqual(defaultOnError, existing.default_on_error);
+      const changed =
+        graphChanged ||
+        (name !== undefined && name !== existing.name) ||
+        (description !== undefined && description !== existing.description) ||
+        (nextTriggerType !== undefined && nextTriggerType !== existing.trigger_type) ||
+        (nextTriggerConfig !== undefined &&
+          !jsonEqual(nextTriggerConfig, existing.trigger_config)) ||
+        defaultOnErrorChanged ||
+        (maxRunDurationMs !== undefined && maxRunDurationMs !== existing.max_run_duration_ms) ||
+        (maxRunCostUsd !== undefined && maxRunCostUsd !== existing.max_run_cost_usd) ||
+        (deploymentStage !== undefined && deploymentStage !== existing.deployment_stage) ||
+        (isActive !== undefined && isActive !== existing.is_active) ||
+        (nextFireAt !== undefined &&
+          new Date(nextFireAt).toISOString() !==
+            (existing.next_fire_at
+              ? new Date(existing.next_fire_at as string | number | Date).toISOString()
+              : null));
+
+      if (!changed) {
+        log.info(`workflow update ignored as no-op: ${id}`);
+        respond(true, publicWorkflowRow(existing as unknown as WorkflowRow));
+        return;
+      }
+
+      const newVersion = (existing.version as number) + 1;
       const versionId = randomUUID();
       await sql`
         INSERT INTO workflow_versions (id, workflow_id, version, nodes, edges, canvas_layout, changed_by, change_summary)
         VALUES (
           ${versionId}, ${id}, ${existing.version},
-          ${JSON.stringify(existing.nodes)}::jsonb,
-          ${JSON.stringify(existing.edges)}::jsonb,
-          ${JSON.stringify(existing.canvas_layout)}::jsonb,
+          ${jsonParam(sql, existingJson.nodes)}::jsonb,
+          ${jsonParam(sql, existingJson.edges)}::jsonb,
+          ${jsonParam(sql, existingJson.canvasLayout)}::jsonb,
           ${optionalString(params, "changedBy") ?? "operator"},
           ${optionalString(params, "changeSummary") ?? null}
         )
       `;
-
-      // Build SET clause dynamically
-      // Dashboard may send { canvasData: { nodes, edges } } instead of flat nodes/edges
-      const canvasData = optionalObject(params, "canvasData");
-
-      const name = optionalString(params, "name");
-      const description = optionalString(params, "description");
-      const nodes =
-        optionalArray(params, "nodes") ??
-        (canvasData && Array.isArray((canvasData as Record<string, unknown>).nodes)
-          ? ((canvasData as Record<string, unknown>).nodes as unknown[])
-          : undefined);
-      const edges =
-        optionalArray(params, "edges") ??
-        (canvasData && Array.isArray((canvasData as Record<string, unknown>).edges)
-          ? ((canvasData as Record<string, unknown>).edges as unknown[])
-          : undefined);
-      const canvasLayout = optionalObject(params, "canvasLayout");
-      const triggerType = optionalString(params, "triggerType");
-      const triggerConfig = optionalObject(params, "triggerConfig");
-      const defaultOnError = optionalObject(params, "defaultOnError");
-      const maxRunDurationMs = optionalNumber(params, "maxRunDurationMs");
-      const maxRunCostUsd = optionalNumber(params, "maxRunCostUsd");
-      const isActive = optionalBoolean(params, "isActive");
-      const nextFireAt = optionalString(params, "nextFireAt");
 
       const [updated] = await sql`
         UPDATE workflows SET
           version = ${newVersion},
           name = COALESCE(${name ?? null}, name),
           description = COALESCE(${description ?? null}, description),
-          nodes = COALESCE(${nodes ? JSON.stringify(nodes) : null}::jsonb, nodes),
-          edges = COALESCE(${edges ? JSON.stringify(edges) : null}::jsonb, edges),
-          canvas_layout = COALESCE(${canvasLayout ? JSON.stringify(canvasLayout) : null}::jsonb, canvas_layout),
-          trigger_type = COALESCE(${triggerType ?? null}, trigger_type),
-          trigger_config = COALESCE(${triggerConfig ? JSON.stringify(triggerConfig) : null}::jsonb, trigger_config),
-          default_on_error = COALESCE(${defaultOnError ? JSON.stringify(defaultOnError) : null}::jsonb, default_on_error),
+          nodes = COALESCE(${normalized ? jsonParam(sql, normalized.workflow.nodes) : null}::jsonb, nodes),
+          edges = COALESCE(${normalized ? jsonParam(sql, normalized.workflow.edges) : null}::jsonb, edges),
+          canvas_layout = COALESCE(${normalized ? jsonParam(sql, normalized.canvasLayout) : null}::jsonb, canvas_layout),
+          trigger_type = COALESCE(${nextTriggerType ?? null}, trigger_type),
+          trigger_config = COALESCE(${nextTriggerConfig ? jsonParam(sql, nextTriggerConfig) : null}::jsonb, trigger_config),
+          default_on_error = COALESCE(${normalized ? jsonParam(sql, normalized.workflow.defaultOnError) : defaultOnError ? jsonParam(sql, defaultOnError) : null}::jsonb, default_on_error),
           max_run_duration_ms = COALESCE(${maxRunDurationMs ?? null}, max_run_duration_ms),
           max_run_cost_usd = COALESCE(${maxRunCostUsd ?? null}, max_run_cost_usd),
+          deployment_stage = COALESCE(${deploymentStage ?? null}, deployment_stage),
           is_active = COALESCE(${isActive ?? null}, is_active),
           next_fire_at = COALESCE(${nextFireAt ?? null}::timestamptz, next_fire_at),
           updated_at = NOW()
@@ -246,8 +2126,13 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         RETURNING *
       `;
 
+      await syncWorkflowScheduleCronJob({
+        sql,
+        cron: context.cron,
+        workflow: updated as unknown as WorkflowRow,
+      });
       log.info(`workflow updated: ${id} → v${newVersion}`);
-      respond(true, updated);
+      respond(true, publicWorkflowRow(updated as unknown as WorkflowRow));
     } catch (err) {
       log.warn(`workflows.update failed: ${String(err)}`);
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
@@ -265,9 +2150,130 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         return;
       }
 
-      respond(true, row);
+      respond(true, publicWorkflowRow(row as unknown as WorkflowRow));
     } catch (err) {
       log.warn(`workflows.get failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "workflows.versions.list": async ({ params, respond }) => {
+    try {
+      const sql = await getSql();
+      const workflowId = optionalString(params, "workflowId") ?? requireString(params, "id");
+      const limit = optionalNumber(params, "limit") ?? 25;
+      const offset = optionalNumber(params, "offset") ?? 0;
+
+      const rows = await sql`
+        SELECT *
+        FROM workflow_versions
+        WHERE workflow_id = ${workflowId}
+        ORDER BY version DESC, created_at DESC
+        LIMIT ${limit} OFFSET ${offset}
+      `;
+      const [countRow] = await sql`
+        SELECT COUNT(*)::int AS total
+        FROM workflow_versions
+        WHERE workflow_id = ${workflowId}
+      `;
+      respond(true, {
+        versions: rows.map((row: Record<string, unknown>) => publicWorkflowVersionRow(row)),
+        total: countRow?.total ?? 0,
+        limit,
+        offset,
+      });
+    } catch (err) {
+      log.warn(`workflows.versions.list failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "workflows.versions.restore": async ({ params, respond }) => {
+    try {
+      const sql = await getSql();
+      const workflowId = optionalString(params, "workflowId") ?? requireString(params, "id");
+      const version = optionalNumber(params, "version");
+      if (version == null) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "version is required"));
+        return;
+      }
+
+      const [existing] = await sql`SELECT * FROM workflows WHERE id = ${workflowId}`;
+      if (!existing) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Workflow not found"));
+        return;
+      }
+
+      const [snapshot] = await sql`
+        SELECT *
+        FROM workflow_versions
+        WHERE workflow_id = ${workflowId} AND version = ${version}
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      if (!snapshot) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Version not found"));
+        return;
+      }
+
+      const newVersion = (existing.version as number) + 1;
+      const currentJson = workflowJsonFieldsFromRow(existing as unknown as WorkflowRow);
+      await sql`
+        INSERT INTO workflow_versions (id, workflow_id, version, nodes, edges, canvas_layout, changed_by, change_summary)
+        VALUES (
+          ${randomUUID()}, ${workflowId}, ${existing.version},
+          ${jsonParam(sql, currentJson.nodes)}::jsonb,
+          ${jsonParam(sql, currentJson.edges)}::jsonb,
+          ${jsonParam(sql, currentJson.canvasLayout)}::jsonb,
+          ${optionalString(params, "changedBy") ?? "operator"},
+          ${optionalString(params, "changeSummary") ?? `Before restoring v${version}`}
+        )
+        ON CONFLICT (workflow_id, version) DO NOTHING
+      `;
+
+      const snapshotJson = workflowJsonFieldsFromRow(snapshot as unknown as WorkflowRow);
+      const normalized = normalizeWorkflow({
+        id: workflowId,
+        name: existing.name as string,
+        description: existing.description as string | undefined,
+        nodes: snapshotJson.nodes,
+        edges: snapshotJson.edges,
+        canvasLayout: snapshotJson.canvasLayout,
+        defaultOnError:
+          currentJson.defaultOnError ??
+          (existing.default_on_error as unknown as import("../../infra/workflow-types.js").ErrorConfig),
+        maxRunDurationMs:
+          optionalNumber(params, "maxRunDurationMs") ?? (existing.max_run_duration_ms as number),
+        maxRunCostUsd:
+          typeof existing.max_run_cost_usd === "number" ? existing.max_run_cost_usd : undefined,
+        deploymentStage:
+          workflowDeploymentStageFromDefinition({ deploymentStage: existing.deployment_stage }) ??
+          "live",
+      });
+      const derivedTrigger = derivedWorkflowTrigger(normalized.workflow);
+      const restoredTriggerType = derivedTrigger.triggerType ?? "manual";
+
+      const [updated] = await sql`
+        UPDATE workflows SET
+          version = ${newVersion},
+          nodes = ${jsonParam(sql, normalized.workflow.nodes)}::jsonb,
+          edges = ${jsonParam(sql, normalized.workflow.edges)}::jsonb,
+          canvas_layout = ${jsonParam(sql, normalized.canvasLayout)}::jsonb,
+          trigger_type = ${restoredTriggerType},
+          trigger_config = ${derivedTrigger.triggerConfig ? jsonParam(sql, derivedTrigger.triggerConfig) : null}::jsonb,
+          updated_at = NOW()
+        WHERE id = ${workflowId}
+        RETURNING *
+      `;
+
+      log.info(`workflow restored: ${workflowId} v${version} → v${newVersion}`);
+      respond(true, {
+        restored: true,
+        restoredFromVersion: version,
+        workflow: publicWorkflowRow(updated as unknown as WorkflowRow),
+      });
+    } catch (err) {
+      log.warn(`workflows.versions.restore failed: ${String(err)}`);
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }
   },
@@ -283,29 +2289,53 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       let rows;
       if (activeOnly && ownerAgentId) {
         rows = await sql`
-          SELECT * FROM workflows
-          WHERE is_active = true AND owner_agent_id = ${ownerAgentId}
-          ORDER BY updated_at DESC
+          SELECT w.*, COALESCE(rc.run_count, 0)::int AS run_count
+          FROM workflows w
+          LEFT JOIN (
+            SELECT workflow_id, COUNT(*)::int AS run_count
+            FROM workflow_runs
+            GROUP BY workflow_id
+          ) rc ON rc.workflow_id = w.id
+          WHERE w.is_active = true AND w.owner_agent_id = ${ownerAgentId}
+          ORDER BY w.updated_at DESC
           LIMIT ${limit} OFFSET ${offset}
         `;
       } else if (activeOnly) {
         rows = await sql`
-          SELECT * FROM workflows
-          WHERE is_active = true
-          ORDER BY updated_at DESC
+          SELECT w.*, COALESCE(rc.run_count, 0)::int AS run_count
+          FROM workflows w
+          LEFT JOIN (
+            SELECT workflow_id, COUNT(*)::int AS run_count
+            FROM workflow_runs
+            GROUP BY workflow_id
+          ) rc ON rc.workflow_id = w.id
+          WHERE w.is_active = true
+          ORDER BY w.updated_at DESC
           LIMIT ${limit} OFFSET ${offset}
         `;
       } else if (ownerAgentId) {
         rows = await sql`
-          SELECT * FROM workflows
-          WHERE owner_agent_id = ${ownerAgentId}
-          ORDER BY updated_at DESC
+          SELECT w.*, COALESCE(rc.run_count, 0)::int AS run_count
+          FROM workflows w
+          LEFT JOIN (
+            SELECT workflow_id, COUNT(*)::int AS run_count
+            FROM workflow_runs
+            GROUP BY workflow_id
+          ) rc ON rc.workflow_id = w.id
+          WHERE w.owner_agent_id = ${ownerAgentId}
+          ORDER BY w.updated_at DESC
           LIMIT ${limit} OFFSET ${offset}
         `;
       } else {
         rows = await sql`
-          SELECT * FROM workflows
-          ORDER BY updated_at DESC
+          SELECT w.*, COALESCE(rc.run_count, 0)::int AS run_count
+          FROM workflows w
+          LEFT JOIN (
+            SELECT workflow_id, COUNT(*)::int AS run_count
+            FROM workflow_runs
+            GROUP BY workflow_id
+          ) rc ON rc.workflow_id = w.id
+          ORDER BY w.updated_at DESC
           LIMIT ${limit} OFFSET ${offset}
         `;
       }
@@ -315,17 +2345,27 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         ? await sql`SELECT COUNT(*)::int AS total FROM workflows WHERE is_active = true`
         : await sql`SELECT COUNT(*)::int AS total FROM workflows`;
 
-      respond(true, { workflows: rows, total: countRow?.total ?? 0, limit, offset });
+      respond(true, {
+        workflows: rows.map((row: Record<string, unknown>) =>
+          publicWorkflowRow(row as unknown as WorkflowRow),
+        ),
+        total: countRow?.total ?? 0,
+        limit,
+        offset,
+      });
     } catch (err) {
       log.warn(`workflows.list failed: ${String(err)}`);
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }
   },
 
-  "workflows.delete": async ({ params, respond }) => {
+  "workflows.delete": async ({ params, respond, context }) => {
     try {
       const sql = await getSql();
-      const id = requireString(params, "id");
+      const id =
+        typeof params.id === "string" && params.id.trim()
+          ? params.id.trim()
+          : requireString(params, "workflowId");
 
       // Cascading delete — workflow_runs and workflow_step_runs are ON DELETE CASCADE
       const [deleted] = await sql`
@@ -337,6 +2377,10 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         return;
       }
 
+      const jobs = workflowRunCronJobs(await context.cron.list({ includeDisabled: true }), id);
+      for (const job of jobs) {
+        await context.cron.remove(job.id);
+      }
       log.info(`workflow deleted: ${id} "${deleted.name}"`);
       respond(true, { deleted: true, id });
     } catch (err) {
@@ -345,7 +2389,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "workflows.duplicate": async ({ params, respond }) => {
+  "workflows.duplicate": async ({ params, respond, context }) => {
     try {
       const sql = await getSql();
       const sourceId = requireString(params, "id");
@@ -363,6 +2407,10 @@ export const workflowsHandlers: GatewayRequestHandlers = {
 
       const newId = randomUUID();
       const name = newName ?? `${source.name} (copy)`;
+      const sourceJson = workflowJsonFieldsFromRow(source as unknown as WorkflowRow);
+      const duplicateStartsActive = duplicatedWorkflowShouldStartActive(
+        source as unknown as WorkflowRow,
+      );
 
       const [row] = await sql`
         INSERT INTO workflows (
@@ -372,24 +2420,312 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           trigger_type, trigger_config, deployment_stage
         ) VALUES (
           ${newId}, ${name}, ${source.description},
-          ${source.owner_agent_id}, 1, true,
-          ${JSON.stringify(source.nodes)}::jsonb,
-          ${JSON.stringify(source.edges)}::jsonb,
-          ${JSON.stringify(source.canvas_layout)}::jsonb,
-          ${JSON.stringify(source.default_on_error)}::jsonb,
+          ${source.owner_agent_id}, 1, ${duplicateStartsActive},
+          ${jsonParam(sql, sourceJson.nodes)}::jsonb,
+          ${jsonParam(sql, sourceJson.edges)}::jsonb,
+          ${jsonParam(sql, sourceJson.canvasLayout)}::jsonb,
+          ${jsonParam(sql, sourceJson.defaultOnError ?? {})}::jsonb,
           ${source.max_run_duration_ms},
           ${source.max_run_cost_usd},
           ${source.trigger_type},
-          ${source.trigger_config ? JSON.stringify(source.trigger_config) : null}::jsonb,
+          ${source.trigger_config ? jsonParam(sql, source.trigger_config) : null}::jsonb,
           'live'
         )
         RETURNING *
       `;
 
+      await syncWorkflowScheduleCronJob({
+        sql,
+        cron: context.cron,
+        workflow: row as unknown as WorkflowRow,
+      });
       log.info(`workflow duplicated: ${sourceId} → ${newId} "${name}"`);
-      respond(true, row);
+      respond(true, publicWorkflowRow(row as unknown as WorkflowRow));
     } catch (err) {
       log.warn(`workflows.duplicate failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "workflows.validate": async ({ params, respond }) => {
+    try {
+      const sql = await getSql();
+      const id = optionalString(params, "id") ?? optionalString(params, "workflowId");
+      if (id) {
+        const [row] = await sql`SELECT * FROM workflows WHERE id = ${id}`;
+        if (!row) {
+          respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Workflow not found"));
+          return;
+        }
+        const normalized = workflowFromRow(row as unknown as WorkflowRow);
+        const runtimeIssues = [
+          ...(await validateWorkflowRuntimeCapabilities(normalized.workflow)),
+          ...(await activeWorkflowScheduleConflictIssues({
+            sql,
+            workflow: row as unknown as WorkflowRow,
+          })),
+        ];
+        const issues = [...normalized.issues, ...runtimeIssues];
+        respond(true, {
+          ok: !hasBlockingWorkflowIssues(issues),
+          issues,
+          definition: normalized.workflow,
+          canvasLayout: normalized.canvasLayout,
+        });
+        return;
+      }
+
+      const name = optionalString(params, "name") ?? "Untitled workflow";
+      const graph = workflowGraphPayload(params);
+      const normalized = normalizeWorkflow({
+        id: optionalString(params, "workflowId") ?? "draft",
+        name,
+        description: optionalString(params, "description"),
+        nodes: graph.nodes,
+        edges: graph.edges,
+        canvasLayout: graph.canvasLayout,
+        defaultOnError: (recordValue(
+          graph.definition?.defaultOnError,
+          "definition.defaultOnError",
+        ) ?? undefined) as unknown as import("../../infra/workflow-types.js").ErrorConfig,
+        maxRunDurationMs: numberValue(
+          graph.definition?.maxRunDurationMs,
+          "definition.maxRunDurationMs",
+        ),
+        maxRunCostUsd: numberValue(graph.definition?.maxRunCostUsd, "definition.maxRunCostUsd"),
+        deploymentStage:
+          optionalDeploymentStage(params) ??
+          workflowDeploymentStageFromDefinition(graph.definition) ??
+          "live",
+      });
+      const runtimeIssues = await validateWorkflowRuntimeCapabilities(normalized.workflow);
+      const issues = [...normalized.issues, ...runtimeIssues];
+      respond(true, {
+        ok: !hasBlockingWorkflowIssues(issues),
+        issues,
+        definition: normalized.workflow,
+        canvasLayout: normalized.canvasLayout,
+      });
+    } catch (err) {
+      log.warn(`workflows.validate failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "workflows.dryRun": async ({ params, respond }) => {
+    try {
+      const id = optionalString(params, "id") ?? optionalString(params, "workflowId");
+      let normalized;
+      if (id) {
+        const sql = await getSql();
+        const [row] = await sql`SELECT * FROM workflows WHERE id = ${id}`;
+        if (!row) {
+          respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Workflow not found"));
+          return;
+        }
+        normalized = workflowFromRow(
+          workflowRowWithCanvasOverride(row as unknown as WorkflowRow, params),
+        );
+      } else {
+        const graph = workflowGraphPayload(params);
+        normalized = normalizeWorkflow({
+          id: "dry-run",
+          name: optionalString(params, "name") ?? "Untitled workflow",
+          description: optionalString(params, "description"),
+          nodes: graph.nodes,
+          edges: graph.edges,
+          canvasLayout: graph.canvasLayout,
+          deploymentStage:
+            optionalDeploymentStage(params) ??
+            workflowDeploymentStageFromDefinition(graph.definition) ??
+            "live",
+        });
+      }
+
+      const trace = await buildWorkflowDryRunTrace(normalized.workflow);
+      respond(true, {
+        ok: trace.ok && !hasBlockingWorkflowIssues([...normalized.issues, ...trace.issues]),
+        steps: trace.steps,
+        issues: [...normalized.issues, ...trace.issues],
+        definition: normalized.workflow,
+        canvasLayout: normalized.canvasLayout,
+      });
+    } catch (err) {
+      log.warn(`workflows.dryRun failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "workflows.draft": async ({ params, respond }) => {
+    try {
+      const requestedAgentId =
+        optionalString(params, "preferredAgentId") ?? optionalString(params, "ownerAgentId");
+      const toolStatus = buildToolsStatusPayload(
+        requestedAgentId ? { agentId: requestedAgentId } : {},
+      );
+      const skillCapabilities = await buildWorkflowPersonalSkillCapabilities(params).catch(() => ({
+        agentId: toolStatus.agentId,
+        personalSkills: [],
+        promotedTools: [],
+        tools: [],
+      }));
+      const appForge = await buildWorkflowAppForgeCapabilities().catch(() => ({
+        apps: [],
+        capabilities: [],
+      }));
+      const draft = draftWorkflowFromIntent({
+        id: optionalString(params, "id") ?? optionalString(params, "workflowId"),
+        name: optionalString(params, "name"),
+        description: optionalString(params, "description"),
+        intent: requireString(params, "intent"),
+        ownerAgentId: optionalString(params, "ownerAgentId") ?? toolStatus.agentId,
+        preferredAgentId: optionalString(params, "preferredAgentId") ?? toolStatus.agentId,
+        preferredAgentName: optionalString(params, "preferredAgentName"),
+        triggerType: optionalString(params, "triggerType"),
+        scheduleCron: optionalString(params, "scheduleCron"),
+        timezone: optionalString(params, "timezone"),
+        preferredTools: optionalArray(params, "preferredTools")?.filter(
+          (tool): tool is string => typeof tool === "string" && tool.trim().length > 0,
+        ),
+        capabilities: [
+          ...toolStatus.tools,
+          ...skillCapabilities.personalSkills,
+          ...skillCapabilities.promotedTools,
+          ...appForge.capabilities,
+        ],
+      });
+      respond(true, {
+        ok: !hasBlockingWorkflowIssues(draft.issues),
+        name: draft.name,
+        description: draft.description,
+        nodes: draft.nodes,
+        edges: draft.edges,
+        definition: draft.workflow,
+        canvasLayout: draft.canvasLayout,
+        issues: draft.issues,
+        reviewNotes: draft.reviewNotes,
+        assumptions: draft.assumptions,
+        agentId: toolStatus.agentId,
+      });
+    } catch (err) {
+      log.warn(`workflows.draft failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "workflows.cancel": async ({ params, respond, context }) => {
+    try {
+      const sql = await getSql();
+      const runId = requireString(params, "runId");
+      const reason = optionalString(params, "reason") ?? "Cancelled by operator";
+      const [row] = await sql`
+        UPDATE workflow_runs SET
+          status = 'cancelled',
+          error = ${reason},
+          ended_at = COALESCE(ended_at, NOW())
+        WHERE id = ${runId}
+          AND status IN ('created', 'running', 'waiting_approval', 'waiting_event', 'waiting_duration')
+        RETURNING id, workflow_id, status
+      `;
+      if (!row) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "Run not found or not cancellable"),
+        );
+        return;
+      }
+      context?.broadcast?.("workflow.run.completed", {
+        runId,
+        workflowId: row.workflow_id,
+        status: "cancelled",
+        error: reason,
+      });
+      respond(true, { ok: true, runId, status: "cancelled" });
+    } catch (err) {
+      log.warn(`workflows.cancel failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "workflows.resume": async ({ params, respond, context }) => {
+    try {
+      const sql = await getSql();
+      const runId = requireString(params, "runId");
+      const nodeId = optionalString(params, "nodeId");
+      const force = optionalBoolean(params, "force") ?? false;
+      const [run] = await sql`
+        SELECT id, workflow_id, current_node_id, status
+        FROM workflow_runs
+        WHERE id = ${runId}
+      `;
+      const resumeNodeId = nodeId ?? (run?.current_node_id as string | undefined);
+      if (!run || !resumeNodeId) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "Run not found or missing resume node"),
+        );
+        return;
+      }
+      if (run.status === "waiting_duration") {
+        void resumeWorkflowRunAfterWait({
+          sql,
+          runId,
+          nodeId: resumeNodeId,
+          force,
+          triggerSource: "gateway:manual_wait_resume",
+          broadcast: context?.broadcast,
+          outboundDeps: context?.deps ? createOutboundSendDeps(context.deps) : undefined,
+        }).catch((err: unknown) => {
+          log.warn(`workflow wait resume failed: ${String(err)}`);
+          context?.broadcast?.("workflow.run.completed", {
+            runId,
+            workflowId: run.workflow_id,
+            status: "failed",
+            error: String(err),
+          });
+        });
+        respond(true, { ok: true, queued: true, runId, nodeId: resumeNodeId });
+        return;
+      }
+      const [approval] = await sql`
+        SELECT id, status
+        FROM workflow_approvals
+        WHERE run_id = ${runId}
+          AND node_id = ${resumeNodeId}
+        ORDER BY requested_at DESC
+        LIMIT 1
+      `;
+      if (!approval || approval.status !== "approved") {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "Run is not approved for resume"),
+        );
+        return;
+      }
+
+      void resumeWorkflowRunAfterApproval({
+        sql,
+        runId,
+        nodeId: resumeNodeId,
+        triggerSource: "gateway:manual_resume",
+        broadcast: context?.broadcast,
+        outboundDeps: context?.deps ? createOutboundSendDeps(context.deps) : undefined,
+      }).catch((err: unknown) => {
+        log.warn(`workflow manual resume failed: ${String(err)}`);
+        context?.broadcast?.("workflow.run.completed", {
+          runId,
+          workflowId: run.workflow_id,
+          status: "failed",
+          error: String(err),
+        });
+      });
+
+      respond(true, { ok: true, queued: true, runId, nodeId: resumeNodeId });
+    } catch (err) {
+      log.warn(`workflows.resume failed: ${String(err)}`);
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }
   },
@@ -399,34 +2735,66 @@ export const workflowsHandlers: GatewayRequestHandlers = {
   "workflows.run": async ({ params, respond, context }) => {
     try {
       const sql = await getSql();
-      const workflowId = requireString(params, "workflowId");
+      const resolution = await resolveRunnableWorkflowRow(sql, params);
+      if (!resolution.ok) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, resolution.error));
+        return;
+      }
+      const workflowId = resolution.workflowId;
+      const wf = workflowRowWithCanvasOverride(resolution.workflowRow, params);
       const triggerPayload = optionalObject(params, "triggerPayload") ?? {};
-
-      const [wf] = await sql`
-        SELECT * FROM workflows WHERE id = ${workflowId} AND is_active = true
-      `;
-      if (!wf) {
+      const fromStepId = optionalString(params, "fromStepId");
+      const sourceRunId = optionalString(params, "sourceRunId");
+      const stopAfterNodeId = optionalString(params, "stopAfterNodeId");
+      const normalizedForRun = workflowFromRow(wf);
+      const runtimeIssues = await validateWorkflowRuntimeCapabilities(normalizedForRun.workflow);
+      const runIssues = [...normalizedForRun.issues, ...runtimeIssues];
+      if (hasBlockingWorkflowIssues(runIssues)) {
         respond(
           false,
           undefined,
-          errorShape(ErrorCodes.INVALID_REQUEST, "Workflow not found or inactive"),
+          errorShape(
+            ErrorCodes.INVALID_REQUEST,
+            `Workflow validation failed: ${runIssues
+              .filter((issue) => issue.severity === "error")
+              .map((issue) => issue.message)
+              .join("; ")}`,
+          ),
         );
         return;
       }
 
-      const runId = randomUUID();
-      const [run] = await sql`
-        INSERT INTO workflow_runs (
-          id, workflow_id, workflow_version, status,
-          trigger_type, trigger_payload, variables
-        ) VALUES (
-          ${runId}, ${workflowId}, ${wf.version},
-          'running', 'manual',
-          ${JSON.stringify(triggerPayload)}::jsonb,
-          '{}'::jsonb
-        )
-        RETURNING *
-      `;
+      let resume;
+      if (fromStepId) {
+        if (!sourceRunId) {
+          respond(
+            false,
+            undefined,
+            errorShape(ErrorCodes.INVALID_REQUEST, "sourceRunId is required with fromStepId"),
+          );
+          return;
+        }
+        resume = await buildWorkflowRetryFromStepResumeOptions({
+          sql,
+          sourceRunId,
+          fromStepNodeId: fromStepId,
+          workflow: normalizedForRun.workflow,
+          triggerSource: "gateway:retry_from_step",
+        });
+      }
+
+      const runTriggerPayload = {
+        ...triggerPayload,
+        ...(fromStepId && sourceRunId ? { retry: { sourceRunId, fromStepId } } : {}),
+        ...(stopAfterNodeId ? { partial: { stopAfterNodeId } } : {}),
+      };
+
+      const { runId, run } = await createWorkflowRunRecord(sql, {
+        workflowId,
+        workflowVersion: wf.version as number,
+        triggerType: "manual",
+        triggerPayload: runTriggerPayload,
+      });
 
       log.info(`workflow run created: ${runId} for workflow ${workflowId} v${wf.version}`);
 
@@ -442,136 +2810,21 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       // Respond immediately with runId — execution happens in background
       respond(true, { ...run, status: "running" });
 
-      // Execute workflow in background
-      const { executeWorkflow, CoreAgentDispatcher } =
-        await import("../../infra/workflow-runner.js");
-
-      const definition: import("../../infra/workflow-types.js").WorkflowDefinition = {
-        id: wf.id as string,
-        name: wf.name as string,
-        description: wf.description as string | undefined,
-        nodes: wf.nodes as import("../../infra/workflow-types.js").WorkflowNode[],
-        edges: wf.edges as import("../../infra/workflow-types.js").WorkflowEdge[],
-        defaultOnError:
-          (wf.default_on_error as import("../../infra/workflow-types.js").ErrorConfig) ?? {
-            strategy: "fail" as const,
-            notifyOnError: true,
-          },
-        maxRunDurationMs: wf.max_run_duration_ms as number | undefined,
-        maxRunCostUsd: wf.max_run_cost_usd as number | undefined,
-      };
-
-      const dispatcher = new CoreAgentDispatcher();
-
-      // Get Redis for agent presence (optional)
-      let redis: import("ioredis").default | null = null;
-      try {
-        const { getAgentFamily } = await import("../../data/agent-family.js");
-        const family = await getAgentFamily();
-        redis = family.getRedis();
-      } catch {
-        /* Redis optional */
-      }
-
-      executeWorkflow({
-        workflow: definition,
+      void executeWorkflowRunFromRow({
+        sql,
+        workflowRow: wf as unknown as WorkflowRow,
         runId,
-        dispatcher,
-        triggerPayload: triggerPayload as Record<string, unknown>,
-        triggerSource: "gateway:manual",
-        redis,
-        pgSql: sql,
-        onApprovalRequested: (_nodeId, request) => {
-          if (context?.broadcast) {
-            context.broadcast("workflow.approval.requested", {
-              runId: request.runId,
-              nodeId: request.nodeId,
-              message: request.message,
-              previousOutput: request.showPreviousOutput ? request.previousOutput : undefined,
-              timeoutMs: request.timeoutMs,
-              timeoutAction: request.timeoutAction,
-              requestedAt: request.requestedAt,
-            });
-          }
-        },
-        onStepStart: (nodeId, node) => {
-          if (context?.broadcast) {
-            context.broadcast("workflow.step.started", {
-              runId,
-              workflowId,
-              nodeId,
-              nodeKind: node.kind,
-            });
-          }
-        },
-        onStepComplete: (nodeId, record) => {
-          // Persist step to PG (fire-and-forget)
-          sql`
-            INSERT INTO workflow_step_runs (
-              id, run_id, node_id, node_kind, node_label,
-              agent_id, step_index, status, duration_ms,
-              output, tokens_used, cost_usd, started_at, ended_at
-            ) VALUES (
-              ${randomUUID()}, ${runId}, ${nodeId}, ${record.nodeKind},
-              ${record.nodeLabel}, ${record.agentId ?? null},
-              ${record.stepIndex}, ${record.status}, ${record.durationMs},
-              ${JSON.stringify(record.output)}::jsonb,
-              ${record.tokensUsed ?? null}, ${record.costUsd ?? null},
-              ${new Date(record.startedAt).toISOString()}::timestamptz,
-              ${new Date(record.endedAt).toISOString()}::timestamptz
-            )
-          `.catch((err: unknown) => {
-            log.warn(`failed to persist step run: ${String(err)}`);
-          });
-
-          if (context?.broadcast) {
-            context.broadcast("workflow.step.completed", {
-              runId,
-              workflowId,
-              nodeId,
-              status: record.status,
-              durationMs: record.durationMs,
-              tokensUsed: record.tokensUsed,
-            });
-          }
-        },
-        onRunComplete: (status, steps) => {
-          // Update PG run record with final result
-          sql`
-            UPDATE workflow_runs SET
-              status = ${status},
-              total_tokens = ${steps.reduce((sum, s) => sum + (s.tokensUsed ?? 0), 0)},
-              total_cost_usd = ${steps.reduce((sum, s) => sum + (s.costUsd ?? 0), 0)},
-              ended_at = NOW()
-            WHERE id = ${runId}
-          `.catch((err: unknown) => {
-            log.warn(`failed to update workflow run: ${String(err)}`);
-          });
-
-          if (context?.broadcast) {
-            context.broadcast("workflow.run.completed", {
-              runId,
-              workflowId,
-              status,
-              stepCount: steps.length,
-            });
-          }
-        },
-      }).catch((err) => {
-        log.error(`workflow execution failed: runId=${runId} error=${String(err)}`);
-        // Mark run as failed in PG
-        sql`
-          UPDATE workflow_runs SET status = 'failed', ended_at = NOW()
-          WHERE id = ${runId}
-        `.catch(() => {});
-        if (context?.broadcast) {
-          context.broadcast("workflow.run.completed", {
-            runId,
-            workflowId,
-            status: "failed",
-            error: String(err),
-          });
-        }
+        triggerType: "manual",
+        triggerPayload: runTriggerPayload,
+        triggerSource: fromStepId
+          ? "gateway:retry_from_step"
+          : stopAfterNodeId
+            ? "gateway:manual_partial"
+            : "gateway:manual",
+        broadcast: context?.broadcast,
+        outboundDeps: context?.deps ? createOutboundSendDeps(context.deps) : undefined,
+        resume,
+        stopAfterNodeId,
       });
     } catch (err) {
       log.warn(`workflows.run failed: ${String(err)}`);
@@ -627,7 +2880,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         `;
       }
 
-      respond(true, { runs: rows, limit, offset });
+      respond(true, { runs: rows.map((row) => publicWorkflowRun(row)), limit, offset });
     } catch (err) {
       log.warn(`workflows.runs.list failed: ${String(err)}`);
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
@@ -640,7 +2893,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       const runId = requireString(params, "runId");
 
       const [run] = await sql`
-        SELECT r.*, w.name AS workflow_name
+        SELECT r.*, w.name AS workflow_name, w.nodes AS workflow_nodes
         FROM workflow_runs r
         JOIN workflows w ON w.id = r.workflow_id
         WHERE r.id = ${runId}
@@ -656,8 +2909,20 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         WHERE run_id = ${runId}
         ORDER BY started_at ASC NULLS LAST
       `;
+      const approvals = await sql`
+        SELECT *
+        FROM workflow_approvals
+        WHERE run_id = ${runId}
+        ORDER BY requested_at ASC NULLS LAST
+      `;
 
-      respond(true, { ...run, steps });
+      const detail = publicWorkflowRun(run, {
+        steps: steps as Record<string, unknown>[],
+        approvals: approvals as Record<string, unknown>[],
+        workflowNodes: (run as Record<string, unknown>).workflow_nodes,
+      });
+
+      respond(true, { ...detail, run: detail });
     } catch (err) {
       log.warn(`workflows.runs.get failed: ${String(err)}`);
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
@@ -722,7 +2987,65 @@ export const workflowsHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "workflows.subscribe": async ({ params, respond, client, context }) => {
+  "workflows.capabilities": async ({ params, respond }) => {
+    try {
+      const toolStatus = buildToolsStatusPayload(params);
+      const skillCapabilities = await buildWorkflowPersonalSkillCapabilities(params).catch(
+        (err) => {
+          log.warn(`workflow personal skill capabilities unavailable: ${String(err)}`);
+          return {
+            agentId: toolStatus.agentId,
+            personalSkills: [],
+            promotedTools: [],
+            tools: [],
+          };
+        },
+      );
+      const appForge = await buildWorkflowAppForgeCapabilities().catch((err) => {
+        log.warn(`workflow AppForge capabilities unavailable: ${String(err)}`);
+        return { apps: [], capabilities: [] };
+      });
+      const outputChannels = await buildWorkflowOutputChannels().catch((err) => {
+        log.warn(`workflow output channel capabilities unavailable: ${String(err)}`);
+        return [];
+      });
+      const connectors = await buildWorkflowConnectorCapabilitiesSafely();
+      const toolsByName = new Map<string, unknown>();
+      for (const tool of toolStatus.tools) {
+        toolsByName.set(tool.name, tool);
+      }
+      for (const tool of skillCapabilities.tools) {
+        if (!toolsByName.has(tool.name)) {
+          toolsByName.set(tool.name, tool);
+        }
+      }
+      for (const capability of appForge.capabilities) {
+        if (!toolsByName.has(capability.name)) {
+          toolsByName.set(capability.name, capability);
+        }
+      }
+      respond(true, {
+        primitives: WORKFLOW_PRIMITIVES,
+        actions: WORKFLOW_ACTION_CAPABILITIES,
+        actionCapabilities: WORKFLOW_ACTION_CAPABILITIES,
+        tools: Array.from(toolsByName.values()),
+        personalSkills: skillCapabilities.personalSkills,
+        promotedTools: skillCapabilities.promotedTools,
+        appForgeApps: appForge.apps,
+        appForgeCapabilities: appForge.capabilities,
+        outputChannels,
+        connectors,
+        policy: toolStatus.policy,
+        agentId: toolStatus.agentId,
+        sessionKey: toolStatus.sessionKey,
+      });
+    } catch (err) {
+      log.warn(`workflows.capabilities failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "workflows.subscribe": async ({ params, respond, client }) => {
     try {
       const workflowId = optionalString(params, "workflowId");
       const runId = optionalString(params, "runId");
@@ -754,17 +3077,168 @@ export const workflowsHandlers: GatewayRequestHandlers = {
     }
   },
 
+  "workflows.emitEvent": async ({ params, respond, context }) => {
+    try {
+      const sql = await getSql();
+      const eventType = requireString(params, "eventType");
+      const payload = optionalObject(params, "payload") ?? {};
+      const appId = optionalString(params, "appId");
+      const capabilityId = optionalString(params, "capabilityId");
+      const runId = optionalString(params, "runId") ?? optionalString(params, "workflowRunId");
+      const nodeId = optionalString(params, "nodeId");
+      const eventPayload = {
+        ...payload,
+        ...(appId ? { appId } : {}),
+        ...(capabilityId ? { capabilityId } : {}),
+      };
+
+      context?.broadcast?.("workflow.event.received", {
+        eventType,
+        runId: runId ?? null,
+        nodeId: nodeId ?? null,
+        appId: appId ?? null,
+        capabilityId: capabilityId ?? null,
+      });
+
+      const result = await resumeWorkflowRunsForEvent({
+        sql,
+        eventType,
+        eventPayload,
+        runId,
+        nodeId,
+        broadcast: context?.broadcast,
+        outboundDeps: context?.deps ? createOutboundSendDeps(context.deps) : undefined,
+      });
+
+      respond(true, {
+        ok: true,
+        eventType,
+        resumed: result.resumed,
+        errors: result.errors,
+      });
+    } catch (err) {
+      log.warn(`workflows.emitEvent failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "workflows.emitAppForgeEvent": async ({ params, respond, context }) => {
+    try {
+      const sql = await getSql();
+      const event = normalizeAppForgeWorkflowEvent(params);
+
+      context?.broadcast?.("appforge.event.emitted", {
+        eventType: event.eventType,
+        appId: event.appId,
+        capabilityId: event.capabilityId ?? null,
+        runId: event.workflowRunId ?? null,
+        nodeId: event.nodeId ?? null,
+      });
+      context?.broadcast?.("workflow.event.received", {
+        source: "appforge",
+        eventType: event.eventType,
+        runId: event.workflowRunId ?? null,
+        nodeId: event.nodeId ?? null,
+        appId: event.appId,
+        capabilityId: event.capabilityId ?? null,
+      });
+
+      const result = await resumeWorkflowRunsForEvent({
+        sql,
+        eventType: event.eventType,
+        eventPayload: event.payload,
+        runId: event.workflowRunId,
+        nodeId: event.nodeId,
+        broadcast: context?.broadcast,
+        outboundDeps: context?.deps ? createOutboundSendDeps(context.deps) : undefined,
+      });
+      const triggered = event.workflowRunId
+        ? { started: [], errors: [] }
+        : await startAppForgeEventTriggeredWorkflows({
+            sql,
+            event,
+            broadcast: context?.broadcast,
+            outboundDeps: context?.deps ? createOutboundSendDeps(context.deps) : undefined,
+          });
+
+      respond(true, {
+        ok: true,
+        source: "appforge",
+        eventType: event.eventType,
+        appId: event.appId,
+        capabilityId: event.capabilityId ?? null,
+        runId: event.workflowRunId ?? null,
+        nodeId: event.nodeId ?? null,
+        resumed: result.resumed,
+        started: triggered.started.length,
+        startedRunIds: triggered.started,
+        errors: result.errors,
+        triggerErrors: triggered.errors,
+      });
+    } catch (err) {
+      log.warn(`workflows.emitAppForgeEvent failed: ${String(err)}`);
+      const message = String(err);
+      const code = message.includes("required")
+        ? ErrorCodes.INVALID_REQUEST
+        : ErrorCodes.UNAVAILABLE;
+      respond(false, undefined, errorShape(code, message));
+    }
+  },
+
   // ── Approval Gate ───────────────────────────────────────────────────────────
 
   "workflows.approve": async ({ params, respond, context }) => {
     try {
+      const sql = await getSql();
       const runId = requireString(params, "runId");
       const nodeId = requireString(params, "nodeId");
+      const reason = optionalString(params, "reason");
+      const approvedBy = optionalString(params, "approvedBy") ?? "operator";
 
       const { resolveApproval, hasPendingApproval } =
         await import("../../infra/workflow-runner.js");
 
+      const durable = await resolveDurableWorkflowApproval(sql, {
+        runId,
+        nodeId,
+        approved: true,
+        reason,
+        approvedBy,
+      });
+
       if (!hasPendingApproval(runId, nodeId)) {
+        if (durable) {
+          void resumeWorkflowRunAfterApproval({
+            sql,
+            runId,
+            nodeId,
+            triggerSource: "gateway:approval_resume",
+            broadcast: context?.broadcast,
+            outboundDeps: context?.deps ? createOutboundSendDeps(context.deps) : undefined,
+          }).catch((err: unknown) => {
+            log.warn(`workflow approval resume failed: ${String(err)}`);
+            context?.broadcast?.("workflow.run.completed", {
+              runId,
+              workflowId: durable.workflow_id,
+              status: "failed",
+              error: String(err),
+            });
+          });
+          context?.broadcast?.("workflow.approval.resolved", {
+            approvalId: durable.id,
+            runId,
+            nodeId,
+            approved: true,
+            resumed: true,
+          });
+          respond(true, {
+            ok: true,
+            resumed: true,
+            approvalId: durable.id,
+            queued: true,
+          });
+          return;
+        }
         respond(
           false,
           undefined,
@@ -773,7 +3247,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         return;
       }
 
-      const resolved = resolveApproval(runId, nodeId, true);
+      const resolved = resolveApproval(runId, nodeId, true, reason);
       if (!resolved) {
         respond(
           false,
@@ -787,13 +3261,14 @@ export const workflowsHandlers: GatewayRequestHandlers = {
 
       if (context?.broadcast) {
         context.broadcast("workflow.approval.resolved", {
+          approvalId: durable?.id,
           runId,
           nodeId,
           approved: true,
         });
       }
 
-      respond(true, { ok: true, resumed: true });
+      respond(true, { ok: true, resumed: true, approvalId: durable?.id });
     } catch (err) {
       log.warn(`workflows.approve failed: ${String(err)}`);
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
@@ -802,14 +3277,59 @@ export const workflowsHandlers: GatewayRequestHandlers = {
 
   "workflows.deny": async ({ params, respond, context }) => {
     try {
+      const sql = await getSql();
       const runId = requireString(params, "runId");
       const nodeId = requireString(params, "nodeId");
       const reason = optionalString(params, "reason") ?? "Denied by operator";
+      const approvedBy = optionalString(params, "approvedBy") ?? "operator";
 
       const { resolveApproval, hasPendingApproval } =
         await import("../../infra/workflow-runner.js");
 
+      const durable = await resolveDurableWorkflowApproval(sql, {
+        runId,
+        nodeId,
+        approved: false,
+        reason,
+        approvedBy,
+      });
+
       if (!hasPendingApproval(runId, nodeId)) {
+        if (durable) {
+          await sql`
+            UPDATE workflow_runs SET status = 'failed', current_node_id = NULL,
+              error = ${reason},
+              ended_at = NOW()
+            WHERE id = ${runId}
+              AND status = 'waiting_approval'
+          `;
+          await sql`
+            UPDATE workflow_step_runs SET
+              approval_status = 'denied',
+              approval_note = ${reason},
+              ended_at = NOW(),
+              status = 'failed'
+            WHERE run_id = ${runId}
+              AND node_id = ${nodeId}
+              AND approval_status = 'pending'
+          `;
+          context?.broadcast?.("workflow.approval.resolved", {
+            approvalId: durable.id,
+            runId,
+            nodeId,
+            approved: false,
+            denied: true,
+            reason,
+          });
+          context?.broadcast?.("workflow.run.completed", {
+            runId,
+            workflowId: durable.workflow_id,
+            status: "failed",
+            error: reason,
+          });
+          respond(true, { ok: true, denied: true, reason, approvalId: durable.id });
+          return;
+        }
         respond(
           false,
           undefined,
@@ -832,6 +3352,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
 
       if (context?.broadcast) {
         context.broadcast("workflow.approval.resolved", {
+          approvalId: durable?.id,
           runId,
           nodeId,
           approved: false,
@@ -839,7 +3360,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         });
       }
 
-      respond(true, { ok: true, denied: true, reason });
+      respond(true, { ok: true, denied: true, reason, approvalId: durable?.id });
     } catch (err) {
       log.warn(`workflows.deny failed: ${String(err)}`);
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
@@ -854,25 +3375,19 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       let rows;
       if (workflowId) {
         rows = await sql`
-          SELECT r.id AS run_id, r.workflow_id, r.current_node_id,
-                 r.status, w.name AS workflow_name,
-                 s.approval_status, s.started_at AS approval_requested_at
-          FROM workflow_runs r
-          JOIN workflows w ON w.id = r.workflow_id
-          LEFT JOIN workflow_step_runs s ON s.run_id = r.id AND s.node_id = r.current_node_id
-          WHERE r.status = 'waiting_approval' AND r.workflow_id = ${workflowId}
-          ORDER BY r.started_at DESC
+          SELECT a.*, r.status AS run_status, r.current_node_id
+          FROM workflow_approvals a
+          JOIN workflow_runs r ON r.id = a.run_id
+          WHERE a.status = 'pending' AND a.workflow_id = ${workflowId}
+          ORDER BY a.requested_at DESC
         `;
       } else {
         rows = await sql`
-          SELECT r.id AS run_id, r.workflow_id, r.current_node_id,
-                 r.status, w.name AS workflow_name,
-                 s.approval_status, s.started_at AS approval_requested_at
-          FROM workflow_runs r
-          JOIN workflows w ON w.id = r.workflow_id
-          LEFT JOIN workflow_step_runs s ON s.run_id = r.id AND s.node_id = r.current_node_id
-          WHERE r.status = 'waiting_approval'
-          ORDER BY r.started_at DESC
+          SELECT a.*, r.status AS run_status, r.current_node_id
+          FROM workflow_approvals a
+          JOIN workflow_runs r ON r.id = a.run_id
+          WHERE a.status = 'pending'
+          ORDER BY a.requested_at DESC
         `;
       }
 
@@ -1211,13 +3726,12 @@ export const workflowsHandlers: GatewayRequestHandlers = {
         }
       }
 
-      // Build CLI args: --json <command> [extra args...]
-      const cliArgs = ["--json", command];
+      // Build CLI args: --json <resource> <operation> [extra args...]
+      const cliArgs = ["--json", ...connectorCommandToCliArgs(command)];
       for (const arg of args) {
-        if (typeof arg === "string") {
-          cliArgs.push(arg);
-        } else if (arg !== null && arg !== undefined) {
-          cliArgs.push(String(arg));
+        const cliArg = connectorCommandExtraArgToCliArg(arg);
+        if (cliArg !== undefined) {
+          cliArgs.push(cliArg);
         }
       }
 

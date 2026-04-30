@@ -1,6 +1,6 @@
 {
   "name": "argent-dashboard",
-  "version": "2026.4.24-dev.0",
+  "version": "2026.4.24-dev.2",
   "private": true,
   "description": "ArgentOS Dashboard - Visual interface with Live2D avatar, task board, canvas workspace, and chat",
   "type": "module",

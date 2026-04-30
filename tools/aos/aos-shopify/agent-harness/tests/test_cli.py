@@ -6,13 +6,23 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+import cli_aos.shopify.client as client_module
+import cli_aos.shopify.config as config_module
 import cli_aos.shopify.runtime as runtime
 from cli_aos.shopify.cli import cli
 
 
 class FakeShopifyAdminClient:
     probe_calls = 0
-    calls: list[tuple[str, str | int | None]] = []
+    calls: list[tuple[object, ...]] = []
+    fulfillment_orders_response: list[dict[str, object]] = [
+        {
+            "id": 901,
+            "status": "open",
+            "request_status": "unsubmitted",
+            "supported_actions": ["create_fulfillment", "hold"],
+        }
+    ]
 
     def __init__(self, *, api_version: str = "latest") -> None:
         self.api_version = api_version
@@ -48,6 +58,14 @@ class FakeShopifyAdminClient:
         self.__class__.calls.append(("product", product_id))
         return {"id": int(_normalize_shopify_id(product_id)), "title": "Blue Tee", "handle": "blue-tee"}
 
+    def update_product(self, product_id: str, *, title: str | None = None, status: str | None = None) -> dict[str, object]:
+        self.__class__.calls.append(("update_product", product_id, title, status))
+        return {
+            "id": int(_normalize_shopify_id(product_id)),
+            "title": title or "Blue Tee",
+            "status": status or "active",
+        }
+
     def orders(
         self,
         *,
@@ -68,6 +86,15 @@ class FakeShopifyAdminClient:
     def order(self, order_id: str) -> dict[str, object]:
         self.__class__.calls.append(("order", order_id))
         return {"id": int(_normalize_shopify_id(order_id)), "name": "#1002", "financial_status": "paid"}
+
+    def cancel_order(self, order_id: str, *, reason: str | None = None) -> dict[str, object]:
+        self.__class__.calls.append(("cancel_order", order_id, reason))
+        return {
+            "id": int(_normalize_shopify_id(order_id)),
+            "name": "#1002",
+            "cancel_reason": reason or "other",
+            "cancelled_at": "2026-01-10T12:00:00Z",
+        }
 
     def customers(
         self,
@@ -90,6 +117,19 @@ class FakeShopifyAdminClient:
         self.__class__.calls.append(("customer", customer_id))
         return {"id": int(_normalize_shopify_id(customer_id)), "first_name": "Jane", "last_name": "Doe", "email": "jane@example.com"}
 
+    def fulfillment_orders(self, order_id: str) -> list[dict[str, object]]:
+        self.__class__.calls.append(("fulfillment_orders", order_id))
+        return list(self.__class__.fulfillment_orders_response)
+
+    def create_fulfillment(self, *, fulfillment_order_id: str | int, tracking_number: str | None = None) -> dict[str, object]:
+        self.__class__.calls.append(("create_fulfillment", str(fulfillment_order_id), tracking_number))
+        return {
+            "id": 777,
+            "status": "success",
+            "tracking_number": tracking_number,
+            "line_items_by_fulfillment_order": [{"fulfillment_order_id": int(_normalize_shopify_id(str(fulfillment_order_id)))}],
+        }
+
 
 def _normalize_shopify_id(value: str) -> str:
     if value.startswith("gid://shopify/"):
@@ -101,6 +141,14 @@ def _normalize_shopify_id(value: str) -> str:
 def fake_shopify_client(monkeypatch: pytest.MonkeyPatch) -> FakeShopifyAdminClient:
     FakeShopifyAdminClient.probe_calls = 0
     FakeShopifyAdminClient.calls = []
+    FakeShopifyAdminClient.fulfillment_orders_response = [
+        {
+            "id": 901,
+            "status": "open",
+            "request_status": "unsubmitted",
+            "supported_actions": ["create_fulfillment", "hold"],
+        }
+    ]
     monkeypatch.setattr(runtime, "ShopifyAdminClient", FakeShopifyAdminClient)
     return FakeShopifyAdminClient
 
@@ -153,11 +201,12 @@ def test_doctor_reports_ready_when_probe_succeeds(monkeypatch: pytest.MonkeyPatc
     assert payload["setup_complete"] is True
     assert payload["live_backend_available"] is True
     assert "shop.read" in payload["supported_read_commands"]
-    assert "product.update" in payload["scaffolded_commands"]
+    assert "product.update" in payload["supported_write_commands"]
+    assert payload["scaffolded_commands"] == []
     assert fake_shopify_client.probe_calls == 1
 
 
-def test_config_show_reports_live_read_capability(monkeypatch: pytest.MonkeyPatch):
+def test_config_show_reports_live_read_and_write_capability(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("SHOPIFY_SHOP_DOMAIN", "example.myshopify.com")
     monkeypatch.setenv("SHOPIFY_ADMIN_ACCESS_TOKEN", "shpat_secret")
     monkeypatch.setenv("SHOPIFY_API_VERSION", "2025-10")
@@ -179,7 +228,7 @@ def test_config_show_reports_live_read_capability(monkeypatch: pytest.MonkeyPatc
     assert payload["runtime"]["api_version"] == "2025-10"
     assert payload["runtime"]["api_version_source"] == "env"
     assert payload["runtime"]["live_backend_available"] is True
-    assert payload["runtime"]["live_writes_enabled"] is False
+    assert payload["runtime"]["live_writes_enabled"] is True
     assert payload["scope"]["kind"] == "store-catalog"
     assert payload["runtime"]["scope"]["product_status"] == "active"
     assert payload["runtime"]["scope"]["order_status"] == "open"
@@ -187,6 +236,49 @@ def test_config_show_reports_live_read_capability(monkeypatch: pytest.MonkeyPatc
     assert payload["runtime"]["command_defaults"]["product.list"]["status"] == "active"
     assert payload["runtime"]["command_defaults"]["order.list"]["created_after"] == "2026-01-01"
     assert payload["runtime"]["command_defaults"]["customer.list"]["email"] == "vip@example.com"
+
+
+def test_config_show_prefers_operator_service_keys(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("SHOPIFY_SHOP_DOMAIN", raising=False)
+    monkeypatch.delenv("SHOPIFY_ADMIN_ACCESS_TOKEN", raising=False)
+
+    def fake_resolve(variable: str) -> str | None:
+        if variable == "SHOPIFY_SHOP_DOMAIN":
+            return "service.example.myshopify.com"
+        if variable == "SHOPIFY_ADMIN_ACCESS_TOKEN":
+            return "service_managed_token"
+        return None
+
+    monkeypatch.setattr(config_module, "resolve_service_key", fake_resolve)
+
+    result = CliRunner().invoke(cli, ["--json", "config", "show"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.output)["data"]
+    assert "service_managed_token" not in result.output
+    assert payload["auth"]["sources"]["SHOPIFY_SHOP_DOMAIN"] == "service-keys"
+    assert payload["auth"]["sources"]["SHOPIFY_ADMIN_ACCESS_TOKEN"] == "service-keys"
+    assert payload["runtime"]["shop_domain_source"] == "service-keys"
+    assert payload["runtime"]["access_token_source"] == "service-keys"
+
+
+def test_client_from_env_prefers_operator_service_keys(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("SHOPIFY_SHOP_DOMAIN", raising=False)
+    monkeypatch.delenv("SHOPIFY_ADMIN_ACCESS_TOKEN", raising=False)
+
+    def fake_service_key_env(variable: str, default: str | None = None) -> str | None:
+        if variable == "SHOPIFY_SHOP_DOMAIN":
+            return "service.example.myshopify.com"
+        if variable == "SHOPIFY_ADMIN_ACCESS_TOKEN":
+            return "service_managed_token"
+        return default
+
+    monkeypatch.setattr(client_module, "service_key_env", fake_service_key_env)
+    client = client_module.ShopifyAdminClient.from_env(api_version="2025-10")
+
+    assert client.shop_domain == "service.example.myshopify.com"
+    assert client.access_token == "service_managed_token"
+    assert client.api_version == "2025-10"
 
 
 @pytest.mark.parametrize(
@@ -342,9 +434,18 @@ def test_scope_defaults_apply_to_live_read_commands(
 def test_customer_list_filters_created_window_in_client(monkeypatch: pytest.MonkeyPatch):
     client = runtime.ShopifyAdminClient(shop_domain="example.myshopify.com", access_token="shpat_secret")
 
-    def fake_request_json(self, path: str, *, params: dict[str, object] | None = None):
+    def fake_request_json(
+        self,
+        path: str,
+        *,
+        params: dict[str, object] | None = None,
+        method: str = "GET",
+        body: dict[str, object] | None = None,
+    ):
         assert path == "customers.json"
         assert params == {"limit": 10, "created_at_min": "2026-01-01", "created_at_max": "2026-01-31"}
+        assert method == "GET"
+        assert body is None
         return (
             {
                 "customers": [
@@ -363,7 +464,10 @@ def test_customer_list_filters_created_window_in_client(monkeypatch: pytest.Monk
     assert pagination == {"has_next_page": False}
 
 
-def test_write_command_stays_scaffolded_in_write_mode(monkeypatch: pytest.MonkeyPatch):
+def test_product_update_executes_live_in_write_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_shopify_client: FakeShopifyAdminClient,
+):
     monkeypatch.setenv("SHOPIFY_SHOP_DOMAIN", "example.myshopify.com")
     monkeypatch.setenv("SHOPIFY_ADMIN_ACCESS_TOKEN", "shpat_secret")
 
@@ -372,12 +476,101 @@ def test_write_command_stays_scaffolded_in_write_mode(monkeypatch: pytest.Monkey
         ["--json", "--mode", "write", "product", "update", "gid://shopify/Product/1", "--title", "New Title"],
     )
     assert result.exit_code == 0
-    assert '"status": "scaffold"' in result.output
-    assert '"command_id": "product.update"' in result.output
-    assert '"executed": false' in result.output
+
+    payload = json.loads(result.output)["data"]
+    assert payload["status"] == "live"
+    assert payload["command_id"] == "product.update"
+    assert payload["executed"] is True
+    assert payload["record"]["title"] == "New Title"
+    assert fake_shopify_client.calls[-1] == ("update_product", "gid://shopify/Product/1", "New Title", None)
+
+
+def test_product_update_requires_mutable_fields(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("SHOPIFY_SHOP_DOMAIN", "example.myshopify.com")
+    monkeypatch.setenv("SHOPIFY_ADMIN_ACCESS_TOKEN", "shpat_secret")
+
+    result = CliRunner().invoke(cli, ["--json", "--mode", "write", "product", "update", "1"])
+    assert result.exit_code == 4
+    assert "SHOPIFY_INVALID_INPUT" in result.output
+
+
+def test_order_cancel_executes_live_in_full_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_shopify_client: FakeShopifyAdminClient,
+):
+    monkeypatch.setenv("SHOPIFY_SHOP_DOMAIN", "example.myshopify.com")
+    monkeypatch.setenv("SHOPIFY_ADMIN_ACCESS_TOKEN", "shpat_secret")
+
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--mode", "full", "order", "cancel", "gid://shopify/Order/202", "--reason", "fraud"],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.output)["data"]
+    assert payload["status"] == "live"
+    assert payload["command_id"] == "order.cancel"
+    assert payload["reason_used"] == "fraud"
+    assert fake_shopify_client.calls[-1] == ("cancel_order", "gid://shopify/Order/202", "fraud")
+
+
+def test_fulfillment_create_executes_live_for_single_eligible_order(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_shopify_client: FakeShopifyAdminClient,
+):
+    monkeypatch.setenv("SHOPIFY_SHOP_DOMAIN", "example.myshopify.com")
+    monkeypatch.setenv("SHOPIFY_ADMIN_ACCESS_TOKEN", "shpat_secret")
+
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--mode", "write", "fulfillment", "create", "gid://shopify/Order/202", "--tracking-number", "1Z999"],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.output)["data"]
+    assert payload["status"] == "live"
+    assert payload["command_id"] == "fulfillment.create"
+    assert payload["selected_fulfillment_order_id"] == "901"
+    assert fake_shopify_client.calls[-2:] == [
+        ("fulfillment_orders", "gid://shopify/Order/202"),
+        ("create_fulfillment", "901", "1Z999"),
+    ]
+
+
+def test_fulfillment_create_refuses_multiple_eligible_orders(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_shopify_client: FakeShopifyAdminClient,
+):
+    monkeypatch.setenv("SHOPIFY_SHOP_DOMAIN", "example.myshopify.com")
+    monkeypatch.setenv("SHOPIFY_ADMIN_ACCESS_TOKEN", "shpat_secret")
+    fake_shopify_client.fulfillment_orders_response = [
+        {
+            "id": 901,
+            "status": "open",
+            "request_status": "unsubmitted",
+            "supported_actions": ["create_fulfillment", "hold"],
+        },
+        {
+            "id": 902,
+            "status": "open",
+            "request_status": "unsubmitted",
+            "supported_actions": ["create_fulfillment", "hold"],
+        },
+    ]
+
+    result = CliRunner().invoke(cli, ["--json", "--mode", "write", "fulfillment", "create", "202"])
+    assert result.exit_code == 4
+    assert "SHOPIFY_FULFILLMENT_AMBIGUOUS" in result.output
+    assert '"eligible_fulfillment_order_ids": [' in result.output
 
 
 def test_permission_gate_blocks_write_for_readonly():
     result = CliRunner().invoke(cli, ["--json", "--mode", "readonly", "fulfillment", "create", "gid://shopify/Order/1"])
+    assert result.exit_code == 3
+    assert "PERMISSION_DENIED" in result.output
+
+
+def test_permission_gate_blocks_order_cancel_for_write_mode():
+    result = CliRunner().invoke(cli, ["--json", "--mode", "write", "order", "cancel", "gid://shopify/Order/1"])
     assert result.exit_code == 3
     assert "PERMISSION_DENIED" in result.output

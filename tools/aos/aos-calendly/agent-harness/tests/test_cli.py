@@ -7,6 +7,7 @@ from typing import Any
 from click.testing import CliRunner
 
 from cli_aos.calendly.cli import cli
+import cli_aos.calendly.config as config
 import cli_aos.calendly.runtime as runtime
 
 
@@ -89,6 +90,14 @@ class FakeCalendlyClient:
             "end_time": "2026-03-27T10:30:00Z",
         }
 
+    def cancel_event(self, uuid: str, *, reason: str | None = None) -> dict[str, Any]:
+        return {
+            "uri": f"https://api.calendly.com/scheduled_events/{uuid}/cancellation",
+            "canceled_by": "https://api.calendly.com/users/AAAA-BBBB-CCCC",
+            "reason": reason,
+            "created_at": "2026-03-26T08:00:00Z",
+        }
+
     def list_invitees(self, event_uuid: str, *, count: int = 20, email: str | None = None) -> dict[str, Any]:
         invitees = [
             {
@@ -164,7 +173,30 @@ def test_config_show_redacts_key(monkeypatch):
     data = payload["data"]
     assert "test_secret_token_value" not in json.dumps(data)
     assert data["auth"]["api_key_present"] is True
-    assert data["runtime"]["implementation_mode"] == "live_read_with_scaffolded_writes"
+    assert data["runtime"]["implementation_mode"] == "live_read_with_partial_writes"
+    assert data["write_support"]["events.cancel"] == "live"
+    assert data["write_support"]["scheduling_links.create"] == "scaffold_only"
+
+
+def test_resolve_runtime_values_prefers_service_key_for_auth(monkeypatch):
+    seen: list[str] = []
+
+    def fake_service_key_env(variable: str, default: str | None = None) -> str | None:
+        seen.append(variable)
+        if variable == "CALENDLY_API_KEY":
+            return "svc_token_abc"
+        return default
+
+    monkeypatch.setenv("CALENDLY_API_KEY", "env_token_xyz")
+    monkeypatch.setenv("CALENDLY_EVENT_TYPE_UUID", "ET1")
+    monkeypatch.setenv("CALENDLY_EVENT_UUID", "EV1")
+    monkeypatch.setattr(config, "service_key_env", fake_service_key_env)
+
+    resolved = config.resolve_runtime_values({})
+    assert resolved["api_key"] == "svc_token_abc"
+    assert resolved["event_type_uuid"] == "ET1"
+    assert resolved["event_uuid"] == "EV1"
+    assert seen == ["CALENDLY_API_KEY"]
 
 
 def test_event_types_list_returns_picker_metadata(monkeypatch):
@@ -225,18 +257,24 @@ def test_availability_get_returns_slots(monkeypatch):
     assert data["slots"][0]["status"] == "available"
 
 
-def test_scaffold_write_commands_do_not_execute_live(monkeypatch):
+def test_events_cancel_executes_live_write(monkeypatch):
     monkeypatch.setenv("CALENDLY_API_KEY", "test_token_abc")
-    payload = invoke_json_with_mode("write", ["events", "cancel", "EV1"])
-    assert payload["data"]["status"] == "scaffold_write_only"
-    assert payload["data"]["command"] == "events.cancel"
+    monkeypatch.setenv("CALENDLY_EVENT_UUID", "EV1")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeCalendlyClient())
+    payload = invoke_json_with_mode("write", ["events", "cancel", "--reason", "Rescheduled"])
+    assert payload["data"]["status"] == "live_write"
+    assert payload["data"]["event_uuid"] == "EV1"
+    assert payload["data"]["cancellation"]["reason"] == "Rescheduled"
 
 
 def test_scheduling_links_create_is_scaffolded(monkeypatch):
     monkeypatch.setenv("CALENDLY_API_KEY", "test_token_abc")
-    payload = invoke_json_with_mode("write", ["scheduling-links", "create", "ET1"])
+    monkeypatch.setenv("CALENDLY_EVENT_TYPE_UUID", "ET1")
+    payload = invoke_json_with_mode("write", ["scheduling-links", "create"])
     assert payload["data"]["status"] == "scaffold_write_only"
     assert payload["data"]["command"] == "scheduling_links.create"
+    assert payload["data"]["inputs"]["event_type_uuid"] == "ET1"
+    assert payload["data"]["scope_preview"]["event_type_uuid"] == "ET1"
 
 
 def test_readonly_mode_blocks_write_command():

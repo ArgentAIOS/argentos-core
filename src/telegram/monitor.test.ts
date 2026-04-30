@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { monitorTelegramProvider } from "./monitor.js";
+import { resetTelegramPollingSlotsForTest } from "./polling-singleton.js";
 
 type MockCtx = {
   message: {
@@ -22,12 +23,13 @@ const api = {
   setWebhook: vi.fn(),
   deleteWebhook: vi.fn(),
 };
-const { initSpy, runSpy, loadConfig } = vi.hoisted(() => ({
+const { initSpy, runSpy, createBotSpy, loadConfig } = vi.hoisted(() => ({
   initSpy: vi.fn(async () => undefined),
   runSpy: vi.fn(() => ({
     task: () => Promise.resolve(),
     stop: vi.fn(),
   })),
+  createBotSpy: vi.fn(),
   loadConfig: vi.fn(() => ({
     agents: { defaults: { maxConcurrent: 2 } },
     channels: { telegram: {} },
@@ -48,7 +50,8 @@ vi.mock("../config/config.js", async (importOriginal) => {
 });
 
 vi.mock("./bot.js", () => ({
-  createTelegramBot: () => {
+  createTelegramBot: (...args: unknown[]) => {
+    createBotSpy(...args);
     handlers.message = async (ctx: MockCtx) => {
       const chatId = ctx.message.chat.id;
       const isGroup = ctx.message.chat.type !== "private";
@@ -91,12 +94,14 @@ vi.mock("../auto-reply/reply.js", () => ({
 
 describe("monitorTelegramProvider (grammY)", () => {
   beforeEach(() => {
+    resetTelegramPollingSlotsForTest();
     loadConfig.mockReturnValue({
       agents: { defaults: { maxConcurrent: 2 } },
       channels: { telegram: {} },
     });
     initSpy.mockClear();
     runSpy.mockClear();
+    createBotSpy.mockClear();
     computeBackoff.mockClear();
     sleepWithAbort.mockClear();
   });
@@ -162,10 +167,11 @@ describe("monitorTelegramProvider (grammY)", () => {
 
   it("retries on recoverable network errors", async () => {
     const networkError = Object.assign(new Error("timeout"), { code: "ETIMEDOUT" });
+    const failedRunnerStop = vi.fn();
     runSpy
       .mockImplementationOnce(() => ({
         task: () => Promise.reject(networkError),
-        stop: vi.fn(),
+        stop: failedRunnerStop,
       }))
       .mockImplementationOnce(() => ({
         task: () => Promise.resolve(),
@@ -176,7 +182,100 @@ describe("monitorTelegramProvider (grammY)", () => {
 
     expect(computeBackoff).toHaveBeenCalled();
     expect(sleepWithAbort).toHaveBeenCalled();
+    expect(failedRunnerStop).toHaveBeenCalled();
     expect(runSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("recreates the bot and waits two long-poll windows after getUpdates conflicts", async () => {
+    const conflictError = Object.assign(new Error("terminated by other getUpdates request"), {
+      error_code: 409,
+      method: "getUpdates",
+    });
+    const failedRunnerStop = vi.fn();
+    runSpy
+      .mockImplementationOnce(() => ({
+        task: () => Promise.reject(conflictError),
+        stop: failedRunnerStop,
+      }))
+      .mockImplementationOnce(() => ({
+        task: () => Promise.resolve(),
+        stop: vi.fn(),
+      }));
+
+    await monitorTelegramProvider({ token: "tok" });
+
+    expect(failedRunnerStop).toHaveBeenCalled();
+    expect(createBotSpy).toHaveBeenCalledTimes(2);
+    expect(sleepWithAbort).toHaveBeenCalledWith(65_000, undefined);
+    expect(runSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops polling after repeated getUpdates conflicts", async () => {
+    const conflictError = Object.assign(new Error("terminated by other getUpdates request"), {
+      error_code: 409,
+      method: "getUpdates",
+    });
+    const runtimeError = vi.fn();
+    runSpy.mockImplementation(() => ({
+      task: () => Promise.reject(conflictError),
+      stop: vi.fn(),
+    }));
+
+    await expect(
+      monitorTelegramProvider({
+        token: "tok",
+        runtime: { error: runtimeError } as never,
+      }),
+    ).rejects.toThrow("Telegram getUpdates conflict persisted");
+
+    expect(runSpy).toHaveBeenCalledTimes(3);
+    expect(sleepWithAbort).toHaveBeenCalledTimes(2);
+    expect(runtimeError).toHaveBeenLastCalledWith(
+      expect.stringContaining("stopping polling until channel restart"),
+    );
+  });
+
+  it("skips a duplicate poller for the same bot token", async () => {
+    let resolveFirst!: () => void;
+    const firstTask = new Promise<void>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const firstStop = vi.fn(() => {
+      resolveFirst();
+    });
+    runSpy.mockImplementationOnce(() => ({
+      task: () => firstTask,
+      stop: firstStop,
+    }));
+    const firstAbort = new AbortController();
+    const firstRun = monitorTelegramProvider({
+      token: "tok",
+      accountId: "default",
+      abortSignal: firstAbort.signal,
+    });
+    await Promise.resolve();
+
+    const duplicateAbort = new AbortController();
+    const duplicateLog = vi.fn();
+    const duplicateRun = monitorTelegramProvider({
+      token: "tok",
+      accountId: "default",
+      abortSignal: duplicateAbort.signal,
+      runtime: { error: duplicateLog } as never,
+    });
+    await vi.waitFor(() => {
+      expect(duplicateLog).toHaveBeenCalledWith(
+        expect.stringContaining("Telegram polling already active"),
+      );
+    });
+
+    duplicateAbort.abort();
+    await duplicateRun;
+    expect(runSpy).toHaveBeenCalledTimes(1);
+
+    firstAbort.abort();
+    await firstRun;
+    expect(firstStop).toHaveBeenCalled();
   });
 
   it("surfaces non-recoverable errors", async () => {

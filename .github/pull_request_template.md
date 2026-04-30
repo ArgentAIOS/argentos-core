@@ -4,6 +4,14 @@ What changed, and why?
 
 ## Scope
 
+- Lane:
+  - [ ] core
+  - [ ] business
+- Repo verified:
+  - [ ] origin is `ArgentAIOS/argentos-core`
+  - [ ] target branch is `dev`
+  - [ ] no business/licensing-only files touched
+  - [ ] `argent update` path confirmed, if relevant
 - [ ] CLI
 - [ ] Installer / update path
 - [ ] Dashboard / frontend

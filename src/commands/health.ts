@@ -1087,6 +1087,12 @@ export async function healthCommand(
       if (summary.kernel.agendaActiveRationale) {
         kernelParts.push(`agendaWhy=${summary.kernel.agendaActiveRationale}`);
       }
+      if (summary.kernel.operatorRequestNeeded) {
+        kernelParts.push(`operatorRequest=${summary.kernel.operatorRequestQuestion ?? "pending"}`);
+        if (summary.kernel.operatorRequestSource) {
+          kernelParts.push(`operatorRequestSource=${summary.kernel.operatorRequestSource}`);
+        }
+      }
       if (summary.kernel.agendaOpenQuestions[0]) {
         kernelParts.push(`question=${summary.kernel.agendaOpenQuestions[0]}`);
       }

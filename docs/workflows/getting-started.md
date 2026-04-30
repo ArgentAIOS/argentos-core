@@ -12,8 +12,14 @@ Let's build a simple workflow: AI researches a topic and sends you a summary ema
 1. Open your dashboard
 2. Click **Operations** in the top bar
 3. Click the **Workflows** tab
-4. Click **+ New** in the left sidebar
+4. Click **New workflow**
 5. Name it "Daily Research Summary"
+6. Choose one path:
+   - **Generate AI draft canvas** if you want Argent to draft the first workflow from a plain-language description
+   - **Blank canvas** if you want to drag every node yourself
+   - **Template gallery** or **Import JSON/YAML** if you want to start from an executable package
+
+Imported packages start in fixture mode when they include pinned test data. That lets you click **Run fixture** without sending emails, posting to channels, or mutating external systems.
 
 ## Step 2: Add a Trigger
 
@@ -59,12 +65,16 @@ Send the research summary somewhere useful.
 
 ## Step 5: Run It
 
-1. Click **Run** in the top toolbar
-2. Watch the blocks light up as each step executes:
+1. Click **Validate** to check the graph and runtime bindings
+2. Click **Save**
+3. Click **Run** or **Run fixture** in the top toolbar
+4. Watch the blocks light up as each step executes:
    - Trigger glows cyan
    - Agent pulses while thinking
    - Output turns green when done
-3. Check your email -- your AI-generated research summary is there
+5. Check your output destination -- your AI-generated research summary is there
+
+If you imported a package, use **Bind** to connect required credentials, channels, connectors, AppForge bases, knowledge collections, or agents. Promote the workflow to live only after those bindings are complete.
 
 ## Step 6: Save
 

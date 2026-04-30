@@ -1,31 +1,41 @@
 # aos-callscrub
 
-Agent-native CallScrub connector — first-party reference implementation.
+Agent-native CallScrub connector for sales call analysis and coaching.
 
-CallScrub is a sales call analysis and coaching platform. This connector provides full read and write access to calls, transcripts, coaching recommendations, agent performance, and reporting.
+This connector is a true AOS CLI app with a live-read HTTP bridge, focused tests, and an agent harness. It intentionally exposes read-only commands only. The prior stub advertised call upload, analysis, coaching generation, and report generation writes, but no verified write bridge or tenant smoke evidence exists in this repo.
 
-- `call.list` and `call.get` browse recorded sales calls.
-- `call.upload` ingests new call recordings for processing.
-- `call.analyze` triggers AI analysis on a specific call.
-- `transcript.get` retrieves the full transcript for a call.
-- `transcript.search` performs full-text search across all transcripts.
-- `coaching.generate` creates AI coaching recommendations from a call.
-- `coaching.list` and `coaching.get` browse coaching reports.
-- `agent.list`, `agent.stats`, and `agent.scorecard` provide sales agent performance data.
-- `team.list` and `team.stats` provide team-level analytics.
-- `report.generate` and `report.list` manage performance reports.
+## Read Commands
 
-## Auth
+- `call.list` and `call.get`
+- `transcript.get` and `transcript.search`
+- `coaching.list` and `coaching.get`
+- `agent.list`, `agent.stats`, and `agent.scorecard`
+- `team.list` and `team.stats`
+- `report.list`
+- `capabilities`, `config.show`, `health`, and `doctor`
 
-The connector expects a CallScrub API key via `CALLSCRUB_API_KEY`.
+## Operator Service Keys
 
-Optional scope hints:
+Configure these values in operator-controlled service keys before linking CallScrub to another system:
 
-- `CALLSCRUB_TEAM_ID` to scope queries to a specific team.
-- `CALLSCRUB_AGENT_NAME` to default agent filters.
-- `CALLSCRUB_CALL_ID` to preselect a call scope.
-- `CALLSCRUB_COACHING_ID` to preselect a coaching report scope.
+- `CALLSCRUB_API_KEY` (required)
+- `CALLSCRUB_API_BASE_URL` (required; the connector does not assume a public default API host)
 
-## Live Reads + Writes
+Optional scope defaults can also be supplied through operator context or local harness fallback:
 
-This is a first-party connector with full live read and write support. All commands hit the CallScrub API directly. If the API key is present but the backend rejects requests, `health` and `doctor` report the API failure.
+- `CALLSCRUB_TEAM_ID`
+- `CALLSCRUB_AGENT_NAME`
+- `CALLSCRUB_CALL_ID`
+- `CALLSCRUB_COACHING_ID`
+- `CALLSCRUB_DATE_RANGE`
+- `CALLSCRUB_SEARCH_QUERY`
+- `CALLSCRUB_REPORT_TYPE`
+
+Local `CALLSCRUB_*` environment variables are supported only as a development harness fallback. Operator service keys take precedence.
+
+## Readiness
+
+- Live reads: implemented, but not tenant-smoked in this repo.
+- Writes: not advertised.
+- Scaffold-only: false.
+- Required live setup: `CALLSCRUB_API_KEY` and `CALLSCRUB_API_BASE_URL` from operator-controlled service keys.

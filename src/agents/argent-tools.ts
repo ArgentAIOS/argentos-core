@@ -19,6 +19,9 @@ import { createAudioAlertTool } from "./tools/audio-alert-tool.js";
 import { createAudioGenerationTool } from "./tools/audio-generation-tool.js";
 import { createBrowserTool } from "./tools/browser-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
+import { createChangelogTool } from "./tools/changelog-tool.js";
+import { createChannelConfigTool } from "./tools/channel-config-tool.js";
+import { createConnectorSetupTool } from "./tools/connector-setup-tool.js";
 import { createContemplationTool } from "./tools/contemplation-tool.js";
 import { createCoolifyDeployTool } from "./tools/coolify-deploy-tool.js";
 import { createCronTool } from "./tools/cron-tool.js";
@@ -50,6 +53,9 @@ import {
   createMemoryRecallTool,
   createMemoryStoreTool,
   createMemoryCategoriesTool,
+  createMemoryCategoryCleanupTool,
+  createMemoryCategoryMergeTool,
+  createMemoryCategoryRenameTool,
   createMemoryForgetTool,
   createMemoryEntityTool,
   createMemoryReflectTool,
@@ -78,6 +84,7 @@ import { createSessionsSendTool } from "./tools/sessions-send-tool.js";
 import { createSessionsSpawnTool } from "./tools/sessions-spawn-tool.js";
 import { createSkillsTool } from "./tools/skills-tool.js";
 import { createSlackSignalMonitorTool } from "./tools/slack-signal-monitor-tool.js";
+import { createSpecforgeTool } from "./tools/specforge-tool.js";
 import { createTasksTool } from "./tools/tasks-tools.js";
 import { createTeamSpawnTool } from "./tools/team-spawn-tool.js";
 import { createTeamStatusTool } from "./tools/team-status-tool.js";
@@ -92,6 +99,7 @@ import { createVipEmailTool } from "./tools/vip-email-tool.js";
 import { createVisualPresenceTool } from "./tools/visual-presence-tool.js";
 import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
 import { createWidgetBuilderTool } from "./tools/widget-builder-tool.js";
+import { createWorkflowBuilderTool } from "./tools/workflow-builder-tool.js";
 import { createYoutubeMetadataTool } from "./tools/youtube-metadata-tool.js";
 import { createYoutubeNotebookLmTool } from "./tools/youtube-notebooklm-tool.js";
 import { createYoutubeThumbnailTool } from "./tools/youtube-thumbnail-tool.js";
@@ -156,9 +164,6 @@ export function createArgentTools(options?: {
     "./tools/copilot-system-tool.js",
     "createCopilotSystemTool",
   );
-  const createSpecforgeTool = loadOptionalToolFactory<
-    (params: { agentSessionKey?: string; agentId?: string }) => AnyAgentTool
-  >("./tools/specforge-tool.js", "createSpecforgeTool");
   const imageTool = options?.agentDir?.trim()
     ? createImageTool({
         config: options?.config,
@@ -305,17 +310,13 @@ export function createArgentTools(options?: {
     ...(createWorkforceSetupTool ? [createWorkforceSetupTool()] : []),
     ...(createIntentTool ? [createIntentTool()] : []),
     ...(createCopilotSystemTool ? [createCopilotSystemTool()] : []),
-    ...(createSpecforgeTool
-      ? [
-          createSpecforgeTool({
-            agentSessionKey: options?.agentSessionKey,
-            agentId: resolveSessionAgentId({
-              sessionKey: options?.agentSessionKey,
-              config: options?.config,
-            }),
-          }),
-        ]
-      : []),
+    createSpecforgeTool({
+      agentSessionKey: options?.agentSessionKey,
+      agentId: resolveSessionAgentId({
+        sessionKey: options?.agentSessionKey,
+        config: options?.config,
+      }),
+    }),
     createAccountabilityTool({
       config: options?.config,
       agentId: resolveSessionAgentId({
@@ -346,6 +347,7 @@ export function createArgentTools(options?: {
     createDocPanelGetTool({ agentSessionKey: options?.agentSessionKey }),
     createPluginBuilderTool({ config: options?.config }),
     createWidgetBuilderTool(),
+    createWorkflowBuilderTool({ agentSessionKey: options?.agentSessionKey }),
     // Media generation tools
     createImageGenerationTool(),
     createVideoGenerationTool(),
@@ -422,11 +424,14 @@ export function createArgentTools(options?: {
     }),
     // Utility tools
     createArgentConfigTool({ config: options?.config }),
+    createChannelConfigTool(),
+    createConnectorSetupTool(),
     createServiceKeysTool(),
     createSkillsTool({ config: options?.config }),
     createTerminalTool(),
     createGithubIssueTool(),
     createMarketplaceTool(),
+    createChangelogTool(),
     createMeetingRecorderTool({ agentSessionKey: options?.agentSessionKey }),
     createOsDocsTool(),
     // Agent Family — multi-agent registration, messaging, shared knowledge, spawn
@@ -466,6 +471,9 @@ export function createArgentTools(options?: {
     createMemoryRecallTool({ config: options?.config, agentId: memoryAgentId }),
     createMemoryStoreTool({ config: options?.config, agentId: memoryAgentId }),
     createMemoryCategoriesTool({ config: options?.config, agentId: memoryAgentId }),
+    createMemoryCategoryMergeTool({ config: options?.config, agentId: memoryAgentId }),
+    createMemoryCategoryRenameTool({ config: options?.config, agentId: memoryAgentId }),
+    createMemoryCategoryCleanupTool({ config: options?.config, agentId: memoryAgentId }),
     createMemoryForgetTool({ config: options?.config, agentId: memoryAgentId }),
     createMemoryEntityTool({ config: options?.config, agentId: memoryAgentId }),
     createMemoryReflectTool({ config: options?.config, agentId: memoryAgentId }),

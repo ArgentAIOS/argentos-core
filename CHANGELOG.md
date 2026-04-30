@@ -2,6 +2,117 @@
 
 Docs: https://docs.argentos.ai
 
+## 2026.4.30
+
+### Highlights
+
+- **A more reliable personal AI operating system.** This release promotes the
+  active Core dev line to the public `main` branch, bringing the newest
+  gateway, workflow, dashboard, memory, connector, and installer improvements
+  into one stable release.
+- **Workflows now feel closer to an operator-ready automation surface.** The
+  canvas has better run visibility, JSON/YAML import/export, owner-operator
+  templates, richer binding reports, connector-backed destinations, approval
+  records, run history, and clearer failure feedback.
+- **Reminders become part of the schedule system instead of a separate timer
+  stack.** Schedule items can now carry reminder intent and delivery targets,
+  including in-app, voice, Telegram, Slack, email, and DocPanel routes where
+  configured.
+- **AppForge and Argent Tables move toward a true personal workspace builder.**
+  The shell now supports more honest Live/Preview/Declaration labels, native
+  base and table onboarding, typed field editing, saved table views, record
+  add/edit/delete flows, and reload-persistence proof.
+- **AOS connectors get a large service-key-first expansion.** Core now includes
+  readiness metadata and harness-backed connector work across tools such as
+  Slack, Teams, Discord Workflow, Airtable, Buffer, Hootsuite, Monday, Zapier,
+  WordPress, n8n, HubSpot, Make, PayPunch, CallScrub, and more.
+- **OpenClaw gains the next layer of real-time voice and browser control
+  foundations.** This includes browser diagnostics, OpenAI Realtime adapter
+  support, local audio smoke tools, operator voice-alert routing foundations,
+  and Google Meet setup/status plus browser-only recovery for already-open Meet
+  tabs.
+
+### Changes
+
+- **Gateway/runtime:** pin LaunchAgent and bundled service execution to the
+  selected Node 22 runtime, reducing native module mismatches and making update
+  behavior more predictable across local machines.
+- **Gateway status:** stop warning about unrelated LaunchAgents as if they were
+  duplicate gateways; status output now focuses on actual gateway-like services.
+- **Workflow scheduling:** new scheduled workflow copies start inactive by
+  default, and validation warns when multiple active workflows share the same
+  cron expression and timezone.
+- **Workflow payloads:** `podcast_generate` wiring is now validated so missing
+  or incorrectly shaped `podcast_plan` payloads are caught before a bad workflow
+  run creates confusing output.
+- **DocPanel output hygiene:** placeholder object envelopes such as demo
+  `name/body` payloads are rejected instead of being saved as operator-facing
+  documents.
+- **Changelog intelligence:** agents can now see changelog context directly,
+  making it easier for them to answer what changed without guessing from memory.
+- **Memory readiness:** memory recall and category cleanup now surface thinner
+  or degraded evidence more honestly, so agents can report when memory context
+  is unavailable instead of pretending it worked.
+- **Personal skills and agent family defaults:** coding-family skill mappings
+  and persona defaults are now more auditable, with clearer provenance for
+  promoted behavior.
+- **Security readiness:** marketplace tool claims now require evidence, security
+  audit coverage is broader, and failed memory recall is treated as degraded
+  evidence instead of a silent success.
+- **Telegram stability:** repeated polling ownership conflicts are guarded
+  against so duplicate pollers stop instead of fighting the same bot token.
+- **Z.AI subscriptions:** operators can choose General/API or Coding subscription
+  endpoints with `models.providers.zai.baseUrl`; ArgentOS appends
+  `/chat/completions` when needed and applies the override to built-in,
+  fallback, and discovered `zai/*` models.
+
+### Fixes
+
+- Fixed noisy DocPanel artifacts from workflow result envelopes.
+- Fixed duplicate Telegram pollers and repeated Telegram ownership conflicts.
+- Fixed false gateway-health warnings after updates and restarts.
+- Fixed Node-version drift that could break native modules such as
+  `better-sqlite3` after local runtime changes.
+- Fixed model-drift blind spots by exposing requested model, allowed model, and
+  allowlist diagnostics when a subagent model patch is rejected.
+- Fixed workflow duplicate scheduling behavior that could let morning workflow
+  variants overlap unexpectedly.
+- Fixed A2UI missing-asset behavior so the canvas host no longer ships a blank
+  or confusing surface when the bundle is unavailable.
+
+### Testing Notes
+
+- Workflows: test import, save, reload, bind, validate, schedule, Run Now, and
+  failure inspection with the Daily Marketing Brief, VIP Email Alert, Client
+  Onboarding, Operations Cleanup, Newsletter Builder, and podcast templates.
+- Reminders: test one-time and recurring reminders through the Schedule surface;
+  routes should report delivered, skipped, or config-missing rather than
+  silently failing.
+- AppForge/Argent Tables: test Create Base -> Create Table -> Add Field -> Add
+  Record -> Edit Record -> Delete Record -> Reload.
+- AOS: configure service keys before expecting live connector reads or writes.
+  Harness tests cover the connector packets, but most production accounts still
+  need operator-specific smoke tests.
+- OpenClaw: set `OPENAI_API_KEY` before live realtime voice smoke. Google Meet
+  recovery requires a signed-in Chrome profile and an already-open Meet tab;
+  create/join/leave remain follow-up work.
+
+### Known Gaps
+
+- Workflow browser smoke remains the main gate before calling the full canvas
+  broadly operator-ready.
+- AppForge is not yet a full TableForge/Airtable replacement; relational fields,
+  permissions enforcement, connector-backed tables, interface building, and deep
+  automations are still follow-up work.
+- AOS connector claims are truth-labeled from manifests and harness tests; live
+  external-account smoke tests still require operator credentials.
+- OpenClaw browser Talk has a gateway/API substrate, not a finished dashboard
+  voice button yet. Remote WebRTC browser smoke and Gemini/Google Live provider
+  parity remain follow-up work.
+- The Rust gateway remains in shadow mode; TypeScript remains the live gateway
+  authority until parity, restart recovery, and protocol drift checks are proven
+  over time.
+
 ## 2026.4.25.2
 
 ### Fixes

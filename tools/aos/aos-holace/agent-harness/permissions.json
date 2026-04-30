@@ -1,0 +1,26 @@
+{
+  "tool": "aos-holace",
+  "backend": "holace-api",
+  "permissions": {
+    "capabilities": "readonly",
+    "config.show": "readonly",
+    "health": "readonly",
+    "doctor": "readonly",
+    "case.list": "readonly",
+    "case.get": "readonly",
+    "case.timeline": "readonly",
+    "client.list": "readonly",
+    "client.get": "readonly",
+    "document.list": "readonly",
+    "document.get": "readonly",
+    "deadline.list": "readonly",
+    "deadline.check_statute": "readonly",
+    "settlement.list": "readonly",
+    "settlement.get": "readonly",
+    "settlement.tracker": "readonly",
+    "billing.list": "readonly",
+    "communication.list": "readonly",
+    "report.case_status": "readonly",
+    "report.pipeline": "readonly"
+  }
+}

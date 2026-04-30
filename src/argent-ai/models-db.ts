@@ -59,6 +59,11 @@ const zaiBase = {
   input: ["text"] as ("text" | "image")[],
 };
 
+const zaiGeneralBase = {
+  ...zaiBase,
+  baseUrl: "https://api.z.ai/api/paas/v4/chat/completions",
+};
+
 const nvidiaBase = {
   api: "openai-completions" as const,
   provider: "nvidia" as const,
@@ -644,8 +649,17 @@ export const MODELS: Record<string, Record<string, ModelDef>> = {
   },
 
   zai: {
+    "glm-5-turbo": {
+      ...zaiGeneralBase,
+      id: "glm-5-turbo",
+      name: "GLM-5-Turbo",
+      reasoning: true,
+      contextWindow: 204800,
+      maxTokens: 131072,
+      cost: { input: 1.2, output: 4, cacheRead: 0.24, cacheWrite: 1.2 },
+    },
     "glm-5": {
-      ...zaiBase,
+      ...zaiGeneralBase,
       id: "glm-5",
       name: "GLM-5",
       reasoning: true,

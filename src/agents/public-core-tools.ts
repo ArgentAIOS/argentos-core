@@ -7,6 +7,9 @@ export const PUBLIC_CORE_DEFAULT_TOOL_NAMES = [
   "argent_search",
   "browser",
   "canvas",
+  "channel_config",
+  "changelog",
+  "connector_setup",
   "cron",
   "doc_panel",
   "doc_panel_delete",
@@ -21,6 +24,9 @@ export const PUBLIC_CORE_DEFAULT_TOOL_NAMES = [
   "knowledge_search",
   "marketplace",
   "memory_categories",
+  "memory_category_cleanup",
+  "memory_category_merge",
+  "memory_category_rename",
   "memory_entity",
   "memory_forget",
   "memory_graph",
@@ -37,6 +43,7 @@ export const PUBLIC_CORE_DEFAULT_TOOL_NAMES = [
   "sessions_search",
   "sessions_send",
   "sessions_spawn",
+  "specforge",
   "tasks",
   "terminal",
   "tool_search",
@@ -94,7 +101,6 @@ export const PUBLIC_CORE_BUSINESS_BLOCKED_TOOL_NAMES = [
   "intent_tool",
   "jobs_tool",
   "onboarding_pack",
-  "specforge",
   "workforce_setup_tool",
 ] as const;
 
@@ -135,7 +141,7 @@ export function isPublicCorePluginAllowed(
   if (!gate) {
     return true;
   }
-  const normalized = normalizeToolName(pluginId);
+  const normalized = typeof pluginId === "string" ? normalizeToolName(pluginId) : "";
   if (!normalized) {
     return false;
   }
@@ -152,7 +158,7 @@ export function isPublicCorePluginToolAllowed(
   if (!gate) {
     return true;
   }
-  const normalized = normalizeToolName(toolName);
+  const normalized = typeof toolName === "string" ? normalizeToolName(toolName) : "";
   if (!normalized) {
     return false;
   }

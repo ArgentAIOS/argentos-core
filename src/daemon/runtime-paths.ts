@@ -4,6 +4,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { isSupportedNodeVersion } from "../infra/runtime-guard.js";
 
+export const RECOMMENDED_SERVICE_NODE_MAJOR = 22;
+
 const VERSION_MANAGER_MARKERS = [
   "/.nvm/",
   "/.fnm/",
@@ -33,7 +35,13 @@ function buildSystemNodeCandidates(
   platform: NodeJS.Platform,
 ): string[] {
   if (platform === "darwin") {
-    return ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"];
+    return [
+      "/opt/homebrew/opt/node@22/bin/node",
+      "/usr/local/opt/node@22/bin/node",
+      "/opt/homebrew/bin/node",
+      "/usr/local/bin/node",
+      "/usr/bin/node",
+    ];
   }
   if (platform === "linux") {
     return ["/usr/local/bin/node", "/usr/bin/node"];
@@ -71,6 +79,18 @@ async function resolveNodeVersion(
   } catch {
     return null;
   }
+}
+
+function parseMajorVersion(version: string | null | undefined): number | null {
+  if (!version) {
+    return null;
+  }
+  const major = Number.parseInt(version.split(".")[0] ?? "", 10);
+  return Number.isFinite(major) ? major : null;
+}
+
+export function isRecommendedServiceNodeVersion(version: string | null | undefined): boolean {
+  return parseMajorVersion(version) === RECOMMENDED_SERVICE_NODE_MAJOR;
 }
 
 export type SystemNodeInfo = {
@@ -158,16 +178,20 @@ export async function resolvePreferredNodePath(params: {
   }
 
   const execFileImpl = params.execFile ?? execFileAsync;
+  const systemNode = await resolveSystemNodeInfo(params);
+  if (systemNode?.supported && isRecommendedServiceNodeVersion(systemNode.version)) {
+    return systemNode.path;
+  }
+
   const currentExecPath = process.execPath;
   if (currentExecPath) {
     const currentVersion = await resolveNodeVersion(currentExecPath, execFileImpl);
-    if (isSupportedNodeVersion(currentVersion)) {
-      // Prefer the exact runtime that invoked install to avoid native ABI drift.
+    if (isSupportedNodeVersion(currentVersion) && isRecommendedServiceNodeVersion(currentVersion)) {
+      // Prefer the exact recommended runtime that invoked install to avoid native ABI drift.
       return currentExecPath;
     }
   }
 
-  const systemNode = await resolveSystemNodeInfo(params);
   if (!systemNode?.supported) {
     return undefined;
   }

@@ -7,6 +7,7 @@ from typing import Any
 from click.testing import CliRunner
 
 from cli_aos.canva.cli import cli
+from cli_aos.canva import config as canva_config
 import cli_aos.canva.runtime as runtime
 
 
@@ -77,13 +78,29 @@ class FakeCanvaClient:
         return {"job": {"id": export_id, "status": "success", "urls": ["https://example.com/export.png"]}}
 
 
-def invoke_json(args: list[str]) -> dict[str, Any]:
+def invoke_json(args: list[str], monkeypatch, service_keys: dict[str, str] | None = None) -> dict[str, Any]:
+    if monkeypatch is not None:
+        resolver = lambda name: (service_keys or {}).get(name)
+        monkeypatch.setattr(canva_config, "resolve_service_key", resolver)
+        monkeypatch.setattr(
+            canva_config,
+            "service_key_env",
+            lambda name, default=None: (service_keys or {}).get(name) or canva_config.os.getenv(name, default),
+        )
     result = CliRunner().invoke(cli, ["--json", *args])
     assert result.exit_code == 0, result.output
     return json.loads(result.output)
 
 
-def invoke_json_with_mode(mode: str, args: list[str]) -> dict[str, Any]:
+def invoke_json_with_mode(mode: str, args: list[str], monkeypatch, service_keys: dict[str, str] | None = None) -> dict[str, Any]:
+    if monkeypatch is not None:
+        resolver = lambda name: (service_keys or {}).get(name)
+        monkeypatch.setattr(canva_config, "resolve_service_key", resolver)
+        monkeypatch.setattr(
+            canva_config,
+            "service_key_env",
+            lambda name, default=None: (service_keys or {}).get(name) or canva_config.os.getenv(name, default),
+        )
     result = CliRunner().invoke(cli, ["--json", "--mode", mode, *args])
     assert result.exit_code == 0, result.output
     return json.loads(result.output)
@@ -95,48 +112,84 @@ def test_manifest_and_permissions_are_in_sync():
     command_ids = [command["id"] for command in manifest["commands"]]
     assert set(command_ids) == set(permissions.keys())
     assert manifest["scope"]["kind"] == "design"
+    assert "brand_template.get" in command_ids
+    assert "folder.get" in command_ids
+    assert "design.clone" not in command_ids
+    assert "template.list" not in command_ids
 
 
 def test_capabilities_exposes_manifest():
-    payload = invoke_json(["capabilities"])
+    payload = invoke_json(["capabilities"], monkeypatch=None)
     assert payload["tool"] == "aos-canva"
     assert payload["data"]["backend"] == "canva-api"
-    assert "autofill.create" in json.dumps(payload["data"])
+    encoded = json.dumps(payload["data"])
+    assert "brand_template.get" in encoded
+    assert "CANVA_ACCESS_TOKEN" in encoded
 
 
 def test_health_requires_credentials(monkeypatch):
+    monkeypatch.delenv("CANVA_ACCESS_TOKEN", raising=False)
     monkeypatch.delenv("CANVA_API_KEY", raising=False)
-    payload = invoke_json(["health"])
+    payload = invoke_json(["health"], monkeypatch)
     assert payload["data"]["status"] == "needs_setup"
-    assert "CANVA_API_KEY" in json.dumps(payload["data"])
+    assert "CANVA_ACCESS_TOKEN" in json.dumps(payload["data"])
 
 
 def test_health_ready_with_fake_client(monkeypatch):
-    monkeypatch.setenv("CANVA_API_KEY", "token-123")
+    monkeypatch.setenv("CANVA_ACCESS_TOKEN", "token-123")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeCanvaClient())
-    payload = invoke_json(["health"])
+    payload = invoke_json(["health"], monkeypatch)
     assert payload["data"]["status"] == "ready"
     assert payload["data"]["probe"]["details"]["designs"]["items"][0]["id"] == "design-1"
 
 
 def test_config_show_redacts_credentials(monkeypatch):
-    monkeypatch.setenv("CANVA_API_KEY", "secret-token")
-    payload = invoke_json(["config", "show"])
+    monkeypatch.setenv("CANVA_ACCESS_TOKEN", "secret-token")
+    payload = invoke_json(["config", "show"], monkeypatch)
     encoded = json.dumps(payload["data"])
     assert "secret-token" not in encoded
-    assert payload["data"]["auth"]["api_key_present"] is True
+    assert payload["data"]["auth"]["access_token_present"] is True
+
+
+def test_config_show_prefers_operator_service_keys(monkeypatch):
+    monkeypatch.setenv("CANVA_ACCESS_TOKEN", "env-token")
+    monkeypatch.setenv("CANVA_FOLDER_ID", "env-folder")
+    payload = invoke_json(
+        ["config", "show"],
+        monkeypatch,
+        service_keys={"CANVA_ACCESS_TOKEN": "operator-token", "CANVA_FOLDER_ID": "operator-folder"},
+    )
+    encoded = json.dumps(payload["data"])
+    assert "operator-token" not in encoded
+    assert "env-token" not in encoded
+    assert payload["data"]["auth"]["access_token_source"] == "service-keys"
+    assert payload["data"]["defaults"]["folder_id"] == "operator-folder"
 
 
 def test_design_list_returns_picker(monkeypatch):
-    monkeypatch.setenv("CANVA_API_KEY", "token-123")
+    monkeypatch.setenv("CANVA_ACCESS_TOKEN", "token-123")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeCanvaClient())
-    payload = invoke_json(["design", "list"])
+    payload = invoke_json(["design", "list"], monkeypatch)
     assert payload["data"]["picker"]["kind"] == "canva_design"
     assert payload["data"]["designs"][0]["id"] == "design-1"
 
 
+def test_brand_template_get_returns_template(monkeypatch):
+    monkeypatch.setenv("CANVA_ACCESS_TOKEN", "token-123")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeCanvaClient())
+    payload = invoke_json(["brand-template", "get", "brand-1"], monkeypatch)
+    assert payload["data"]["brand_template"]["id"] == "brand-1"
+
+
+def test_folder_get_returns_folder(monkeypatch):
+    monkeypatch.setenv("CANVA_ACCESS_TOKEN", "token-123")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeCanvaClient())
+    payload = invoke_json(["folder", "get", "folder-1"], monkeypatch)
+    assert payload["data"]["folder"]["id"] == "folder-1"
+
+
 def test_folder_create_requires_write_mode(monkeypatch):
-    monkeypatch.setenv("CANVA_API_KEY", "token-123")
+    monkeypatch.setenv("CANVA_ACCESS_TOKEN", "token-123")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeCanvaClient())
     result = CliRunner().invoke(cli, ["--json", "--mode", "readonly", "folder", "create", "--name", "New Folder"])
     payload = json.loads(result.output)
@@ -145,35 +198,44 @@ def test_folder_create_requires_write_mode(monkeypatch):
 
 
 def test_folder_create_succeeds_in_write_mode(monkeypatch):
-    monkeypatch.setenv("CANVA_API_KEY", "token-123")
+    monkeypatch.setenv("CANVA_ACCESS_TOKEN", "token-123")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeCanvaClient())
-    payload = invoke_json_with_mode("write", ["folder", "create", "--name", "New Folder"])
+    payload = invoke_json_with_mode("write", ["folder", "create", "--name", "New Folder"], monkeypatch)
     assert payload["data"]["status"] == "live_write"
     assert payload["data"]["folder"]["id"] == "folder-new"
 
 
-def test_export_download_returns_urls(monkeypatch):
-    monkeypatch.setenv("CANVA_API_KEY", "token-123")
+def test_export_start_requires_write_mode(monkeypatch):
+    monkeypatch.setenv("CANVA_ACCESS_TOKEN", "token-123")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeCanvaClient())
-    payload = invoke_json(["export", "download", "export-1"])
+    result = CliRunner().invoke(cli, ["--json", "--mode", "readonly", "export", "start", "design-1"])
+    payload = json.loads(result.output)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "PERMISSION_DENIED"
+
+
+def test_export_start_succeeds_in_write_mode(monkeypatch):
+    monkeypatch.setenv("CANVA_ACCESS_TOKEN", "token-123")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeCanvaClient())
+    payload = invoke_json_with_mode("write", ["export", "start", "design-1"], monkeypatch)
+    assert payload["data"]["status"] == "live_write"
+    assert payload["data"]["job"]["job"]["id"] == "export-1"
+
+
+def test_export_download_returns_urls(monkeypatch):
+    monkeypatch.setenv("CANVA_ACCESS_TOKEN", "token-123")
+    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeCanvaClient())
+    payload = invoke_json(["export", "download", "export-1"], monkeypatch)
     assert payload["data"]["downloads"][0] == "https://example.com/export.png"
 
 
-def test_design_clone_is_scaffolded_in_write_mode(monkeypatch):
-    monkeypatch.setenv("CANVA_API_KEY", "token-123")
-    monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeCanvaClient())
-    result = CliRunner().invoke(cli, ["--json", "--mode", "write", "design", "clone", "design-1"])
-    payload = json.loads(result.output)
-    assert result.exit_code == 10
-    assert payload["error"]["code"] == "CANVA_CLONE_NOT_IMPLEMENTED"
-
-
 def test_autofill_create_succeeds_in_write_mode(monkeypatch):
-    monkeypatch.setenv("CANVA_API_KEY", "token-123")
+    monkeypatch.setenv("CANVA_ACCESS_TOKEN", "token-123")
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeCanvaClient())
     payload = invoke_json_with_mode(
         "write",
         ["autofill-create", "--brand-template-id", "brand-1", "--autofill-data", "{\"headline\":\"Spring\"}"],
+        monkeypatch,
     )
     assert payload["data"]["status"] == "live_write"
     assert payload["data"]["job"]["job"]["id"] == "job-1"

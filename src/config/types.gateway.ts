@@ -59,6 +59,23 @@ export type TalkConfig = {
   apiKey?: string;
   /** Stop speaking when user starts talking (default: true). */
   interruptOnSpeech?: boolean;
+  /** Browser realtime Talk session defaults. Secrets remain server-side. */
+  realtime?: {
+    /** Enable browser realtime Talk sessions. Default: true when a provider is configured. */
+    enabled?: boolean;
+    /** Default realtime voice provider id or alias (for example, "openai"). */
+    provider?: string;
+    /** Default browser realtime transport. */
+    transport?: "auto" | "webrtc-sdp" | "gateway-relay";
+    /** Default realtime model. */
+    model?: string;
+    /** Default realtime voice. */
+    voice?: string;
+    /** Optional session instructions prepended by the gateway. */
+    instructions?: string;
+    /** Provider-specific server-side configuration. */
+    providers?: Record<string, Record<string, unknown>>;
+  };
 };
 
 export type GatewayControlUiConfig = {

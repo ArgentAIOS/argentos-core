@@ -2,8 +2,8 @@ import type { GatewayRequestHandlers } from "./types.js";
 import { completeSimple, getModel } from "../../agent-core/ai.js";
 import { resolveSessionAgentIds } from "../../agents/agent-scope.js";
 import { loadConfig } from "../../config/config.js";
+import { maybeKickoffSpecforgeFromMessage } from "../../infra/specforge-conductor.js";
 import { routeModel } from "../../models/router.js";
-import { loadOptionalExport } from "../../utils/optional-module.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 
 type SpecForgeFormData = {
@@ -15,14 +15,10 @@ type SpecForgeFormData = {
   scope: string;
 };
 
-const maybeKickoffSpecforgeFromMessageOptional = loadOptionalExport<
-  (params: { message: string; sessionKey: string; agentId: string }) => Promise<unknown>
->(import.meta.url, "../../infra/specforge-conductor.js", "maybeKickoffSpecforgeFromMessage");
-
 export const specforgeHandlers: GatewayRequestHandlers = {
   "specforge.suggest": async ({ params, respond }) => {
     try {
-      const field = String(params.field || "");
+      const field = typeof params.field === "string" ? params.field.trim() : "";
       const currentData = (params.currentData || {}) as SpecForgeFormData;
 
       if (!field) {
@@ -31,9 +27,6 @@ export const specforgeHandlers: GatewayRequestHandlers = {
       }
 
       const cfg = loadConfig();
-      const sessionKey = typeof params.sessionKey === "string" ? params.sessionKey : undefined;
-      const { sessionAgentId } = resolveSessionAgentIds({ sessionKey, config: cfg });
-
       const routerCfg = cfg.agents?.defaults?.modelRouter ?? {};
       const decision = routeModel({
         signals: {
@@ -45,7 +38,7 @@ export const specforgeHandlers: GatewayRequestHandlers = {
         defaultModel: "claude-3-5-haiku-latest",
       });
 
-      const model = getModel(decision.provider as any, decision.model);
+      const model = getModel(decision.provider, decision.model);
       if (!model) {
         respond(
           false,
@@ -95,11 +88,6 @@ Write a concise, professional suggestion (1-3 sentences) for the "${field}" fiel
         respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "title is required"));
         return;
       }
-      if (!maybeKickoffSpecforgeFromMessageOptional) {
-        respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "specforge unavailable"));
-        return;
-      }
-
       const cfg = loadConfig();
       const sessionKey = typeof params.sessionKey === "string" ? params.sessionKey : "";
       const { sessionAgentId } = resolveSessionAgentIds({ sessionKey, config: cfg });
@@ -116,7 +104,7 @@ Write a concise, professional suggestion (1-3 sentences) for the "${field}" fiel
         `**Scope Boundaries:** ${data.scope || "Not specified."}`,
       ].join("\n");
 
-      const result = await maybeKickoffSpecforgeFromMessageOptional({
+      const result = await maybeKickoffSpecforgeFromMessage({
         message: modalMessage,
         sessionKey: sessionKey || "agent:argent:main",
         agentId: sessionAgentId,

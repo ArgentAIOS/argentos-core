@@ -10,7 +10,7 @@ from . import __version__
 from .constants import MODE_ORDER, PERMISSIONS_PATH, TOOL_NAME
 from .errors import CliError
 from .output import emit, failure, success
-from .runtime import capabilities_snapshot, config_snapshot, doctor_snapshot, health_snapshot, live_read_result, scaffold_result
+from .runtime import capabilities_snapshot, config_snapshot, doctor_snapshot, health_snapshot, live_read_result, live_write_result
 
 
 def _mode_allows(actual: str, required: str) -> bool:
@@ -65,6 +65,27 @@ class AosGroup(click.Group):
 
 def _set_command(ctx: click.Context, command_id: str) -> None:
     ctx.obj["_command_id"] = command_id
+
+
+def _parse_fields(fields: tuple[str, ...], fields_json: str | None) -> dict[str, Any]:
+    parsed: dict[str, Any] = {}
+    if fields_json:
+        try:
+            json_payload = json.loads(fields_json)
+        except json.JSONDecodeError as err:
+            raise click.BadParameter(f"fields JSON is invalid: {err}") from err
+        if not isinstance(json_payload, dict):
+            raise click.BadParameter("fields JSON must be an object")
+        parsed.update(json_payload)
+    for item in fields:
+        if "=" not in item:
+            raise click.BadParameter("--field entries must use field=value syntax")
+        key, value = item.split("=", 1)
+        key = key.strip()
+        if not key:
+            raise click.BadParameter("--field entries must include a field name")
+        parsed[key] = value
+    return parsed
 
 
 @click.group(cls=AosGroup)
@@ -148,35 +169,6 @@ def doctor(ctx: click.Context) -> None:
     emit(payload, as_json=ctx.obj["json"])
 
 
-def _scaffold_command(
-    ctx: click.Context,
-    *,
-    command_id: str,
-    resource: str,
-    operation: str,
-    inputs: dict[str, Any],
-    consequential: bool = False,
-) -> None:
-    _set_command(ctx, command_id)
-    require_mode(ctx, command_id)
-    payload = success(
-        tool=TOOL_NAME,
-        command=command_id,
-        data=scaffold_result(
-            ctx.obj,
-            command_id=command_id,
-            resource=resource,
-            operation=operation,
-            inputs=inputs,
-            consequential=consequential,
-        ),
-        started=ctx.obj["started"],
-        mode=ctx.obj["mode"],
-        version=ctx.obj["version"],
-    )
-    emit(payload, as_json=ctx.obj["json"])
-
-
 def _live_read_command(
     ctx: click.Context,
     *,
@@ -200,6 +192,35 @@ def _live_read_command(
             inputs=inputs,
             fetcher=fetcher,
             consequential=consequential,
+        ),
+        started=ctx.obj["started"],
+        mode=ctx.obj["mode"],
+        version=ctx.obj["version"],
+    )
+    emit(payload, as_json=ctx.obj["json"])
+
+
+def _live_write_command(
+    ctx: click.Context,
+    *,
+    command_id: str,
+    resource: str,
+    operation: str,
+    inputs: dict[str, Any],
+    fetcher,
+) -> None:
+    _set_command(ctx, command_id)
+    require_mode(ctx, command_id)
+    payload = success(
+        tool=TOOL_NAME,
+        command=command_id,
+        data=live_write_result(
+            ctx.obj,
+            command_id=command_id,
+            resource=resource,
+            operation=operation,
+            inputs=inputs,
+            fetcher=fetcher,
         ),
         started=ctx.obj["started"],
         mode=ctx.obj["mode"],
@@ -341,7 +362,7 @@ def record_read(ctx: click.Context, record_id: str, table_name: str | None) -> N
     )
 
 
-@record_group.command("create-draft")
+@record_group.command("create")
 @click.option(
     "--table",
     "table_name",
@@ -350,19 +371,28 @@ def record_read(ctx: click.Context, record_id: str, table_name: str | None) -> N
     help="Target table name (defaults to AIRTABLE_TABLE_NAME when omitted)",
 )
 @click.option("--field", "fields", multiple=True, help="Repeated field=value entries")
+@click.option("--fields-json", required=False, default=None, help="JSON object of Airtable field values")
+@click.option("--typecast", is_flag=True, help="Ask Airtable to typecast compatible field values")
 @click.pass_context
-def record_create_draft(ctx: click.Context, table_name: str | None, fields: tuple[str, ...]) -> None:
-    _scaffold_command(
+def record_create(
+    ctx: click.Context,
+    table_name: str | None,
+    fields: tuple[str, ...],
+    fields_json: str | None,
+    typecast: bool,
+) -> None:
+    parsed_fields = _parse_fields(fields, fields_json)
+    _live_write_command(
         ctx,
-        command_id="record.create_draft",
+        command_id="record.create",
         resource="record",
-        operation="create_draft",
-        inputs={"table": table_name or "AIRTABLE_TABLE_NAME", "fields": list(fields)},
-        consequential=True,
+        operation="create",
+        inputs={"table": table_name or "AIRTABLE_TABLE_NAME", "fields": parsed_fields, "typecast": typecast},
+        fetcher=lambda client: client.create_record(table_name, parsed_fields, typecast=typecast),
     )
 
 
-@record_group.command("update-draft")
+@record_group.command("update")
 @click.argument("record_id")
 @click.option(
     "--table",
@@ -372,15 +402,25 @@ def record_create_draft(ctx: click.Context, table_name: str | None, fields: tupl
     help="Target table name (defaults to AIRTABLE_TABLE_NAME when omitted)",
 )
 @click.option("--field", "fields", multiple=True, help="Repeated field=value entries")
+@click.option("--fields-json", required=False, default=None, help="JSON object of Airtable field values")
+@click.option("--typecast", is_flag=True, help="Ask Airtable to typecast compatible field values")
 @click.pass_context
-def record_update_draft(ctx: click.Context, record_id: str, table_name: str | None, fields: tuple[str, ...]) -> None:
-    _scaffold_command(
+def record_update(
+    ctx: click.Context,
+    record_id: str,
+    table_name: str | None,
+    fields: tuple[str, ...],
+    fields_json: str | None,
+    typecast: bool,
+) -> None:
+    parsed_fields = _parse_fields(fields, fields_json)
+    _live_write_command(
         ctx,
-        command_id="record.update_draft",
+        command_id="record.update",
         resource="record",
-        operation="update_draft",
-        inputs={"record_id": record_id, "table": table_name or "AIRTABLE_TABLE_NAME", "fields": list(fields)},
-        consequential=True,
+        operation="update",
+        inputs={"record_id": record_id, "table": table_name or "AIRTABLE_TABLE_NAME", "fields": parsed_fields, "typecast": typecast},
+        fetcher=lambda client: client.update_record(table_name, record_id, parsed_fields, typecast=typecast),
     )
 
 

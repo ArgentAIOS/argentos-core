@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from . import __version__
@@ -22,11 +21,12 @@ from .constants import (
     DEFAULT_TOKEN_ENV,
     TOOL_NAME,
 )
+from .service_keys import service_key_env
 
 
 def _env(*names: str) -> str:
     for name in names:
-        value = os.getenv(name, "").strip()
+        value = (service_key_env(name) or "").strip()
         if value:
             return value
     return ""
@@ -128,7 +128,7 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         DEFAULT_MEMBER_ID_ENV: bool(member_id),
         DEFAULT_LIST_ID_ENV: bool(list_id),
         DEFAULT_CARD_ID_ENV: bool(card_id),
-        DEFAULT_API_BASE_URL_ENV: bool(os.getenv(DEFAULT_API_BASE_URL_ENV, "").strip()),
+        DEFAULT_API_BASE_URL_ENV: bool(api_base_url and api_base_url != DEFAULT_API_BASE_URL),
     }
     missing_keys = [name for name in (DEFAULT_API_KEY_ENV, DEFAULT_TOKEN_ENV) if not configured[name]]
     auth_ready = bool(api_key and token)
@@ -147,8 +147,8 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "card.read": auth_ready and bool(card_id),
     }
     write_support = {
-        "card.create_draft": False,
-        "card.update_draft": False,
+        "card.create_draft": auth_ready and bool(list_id),
+        "card.update_draft": auth_ready and bool(card_id),
     }
 
     return {
@@ -181,7 +181,7 @@ def resolve_runtime_values(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "auth_ready": auth_ready,
             "live_backend_ready": live_backend_ready,
             "live_read_ready": live_backend_ready,
-            "implementation_mode": "live_read_first_with_scaffolded_writes" if auth_ready else "configuration_only",
+            "implementation_mode": "live_read_with_live_writes" if auth_ready else "configuration_only",
             "board_id": board_id,
             "board_id_present": bool(board_id),
             "member_id": member_id,

@@ -312,6 +312,7 @@ describe("browser control server", () => {
         targetId: "abcd1234",
         ref: "5",
         values: ["a", "b"],
+        timeoutMs: 60_000,
       });
 
       const fill = await postJson(`${base}/act`, {
@@ -323,6 +324,7 @@ describe("browser control server", () => {
         cdpUrl: cdpBaseUrl,
         targetId: "abcd1234",
         fields: [{ ref: "6", type: "textbox", value: "hello" }],
+        timeoutMs: 60_000,
       });
 
       const resize = await postJson(`${base}/act`, {
@@ -349,6 +351,11 @@ describe("browser control server", () => {
         timeMs: 5,
         text: undefined,
         textGone: undefined,
+        selector: undefined,
+        url: undefined,
+        loadState: undefined,
+        fn: undefined,
+        timeoutMs: 60_000,
       });
 
       const evalRes = await postJson(`${base}/act`, {

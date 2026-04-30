@@ -26,6 +26,8 @@ FORCE_CLI_ONBOARD="${ARGENT_FORCE_CLI_ONBOARD:-0}"
 NO_PROMPT="${ARGENTOS_NO_PROMPT:-0}"
 DRY_RUN="${ARGENTOS_DRY_RUN:-0}"
 SKIP_CORE_DOCS_VAULT="${ARGENT_SKIP_CORE_DOCS_VAULT:-0}"
+SKIP_LAUNCH_AGENTS="${ARGENT_SKIP_LAUNCH_AGENTS:-0}"
+SKIP_SERVICE_START="${ARGENT_SKIP_SERVICE_START:-0}"
 PACKAGE_SPEC_OVERRIDE="${ARGENT_INSTALL_PACKAGE_SPEC:-}"
 NPM_PREFIX_OVERRIDE="${ARGENT_INSTALL_NPM_PREFIX:-}"
 BIN_DIR_OVERRIDE="${ARGENT_INSTALL_BIN_DIR:-$HOME/bin}"
@@ -74,6 +76,8 @@ Environment equivalents:
   ARGENT_NO_ONBOARD
   ARGENT_FORCE_CLI_ONBOARD
   ARGENT_INSTALL_BIN_DIR
+  ARGENT_SKIP_LAUNCH_AGENTS
+  ARGENT_SKIP_SERVICE_START
   ARGENT_NODE_VERSION
   ARGENT_NODE_BIN
 EOF
@@ -768,6 +772,7 @@ write_git_wrapper() {
 #!/usr/bin/env bash
 set -euo pipefail
 export ARGENT_GIT_DIR=${escaped_git_dir}
+export ARGENT_INSTALL_PACKAGE_DIR=${escaped_package_dir}
 ${PATH_LINE}
 cd ${escaped_package_dir}
 exec ${escaped_node_bin} ${escaped_entry} "\$@"
@@ -1131,6 +1136,12 @@ provision_core_storage_stack() {
     return 0
   fi
 
+  if is_truthy "$SKIP_LAUNCH_AGENTS" || is_truthy "$SKIP_SERVICE_START"; then
+    info "Skipping Core storage service provisioning (LaunchAgents/services disabled for this run)"
+    write_core_distribution_and_storage_defaults
+    return 0
+  fi
+
   mkdir -p "$HOME/Library/LaunchAgents"
 
   local pg_script="$GIT_DIR/scripts/setup-postgres.sh"
@@ -1374,6 +1385,8 @@ install_git() {
   run_git_nohooks -C "$GIT_DIR" checkout -- pnpm-lock.yaml 2>/dev/null || true
   run_pnpm "$GIT_DIR" build
   run_pnpm "$GIT_DIR" rebuild better-sqlite3
+  run_cmd "$NODE_BIN" "$GIT_DIR/scripts/install-bundled-aos-harnesses.mjs" \
+    || warn "Bundled AOS harness install failed — Cognee may require manual setup"
   snapshot_git_runtime "$GIT_DIR" "$PACKAGE_DIR_OVERRIDE"
   ok "Installed stable runtime snapshot: $PACKAGE_DIR_OVERRIDE"
   write_git_wrapper "$BIN_DIR_OVERRIDE"
@@ -1434,7 +1447,10 @@ install_git() {
 
     # Start dashboard UI and API services. The UI proxies /api/* to the API
     # service on port 9242, so both must be running for settings/auth writes.
-    if [[ "$(uname -s)" == "Darwin" && -d "$dashboard_dir/dist" ]] && ! is_truthy "$DRY_RUN"; then
+    if [[ "$(uname -s)" == "Darwin" && -d "$dashboard_dir/dist" ]] \
+      && ! is_truthy "$DRY_RUN" \
+      && ! is_truthy "$SKIP_LAUNCH_AGENTS" \
+      && ! is_truthy "$SKIP_SERVICE_START"; then
       mkdir -p "$HOME/.argentos/logs"
 
       # Kill anything on 8080/9242 first
@@ -1554,6 +1570,8 @@ UIPLIST
       else
         warn "Dashboard may not have started cleanly — check ~/.argentos/logs/dashboard-api.log and ~/.argentos/logs/dashboard-ui.log"
       fi
+    elif is_truthy "$SKIP_LAUNCH_AGENTS" || is_truthy "$SKIP_SERVICE_START"; then
+      info "Skipping dashboard service start (LaunchAgents/services disabled for this run)"
     elif [[ ! -d "$dashboard_dir/dist" ]]; then
       warn "Dashboard build output missing — dashboard will not be available on port 8080"
     fi
@@ -1639,39 +1657,44 @@ UIPLIST
     echo ""
   fi
 
-  # Ensure the gateway service is installed before health verification.
-  # On macOS we skip terminal onboarding by default because Argent.app guides
-  # first-run UX, but the service itself still needs to exist.
-  info "Installing gateway service..."
-  PATH="$(dirname "$NODE_BIN"):$PATH" "$argent_bin" gateway install --force >/dev/null 2>&1 \
-    || warn "Gateway service install failed — run manually: argent gateway install --force"
-
-  # ── Gateway health verification ───────────────────────────────────
-  # Deterministic: TCP probe on the gateway port. The gateway binds
-  # port 18789 only after full initialisation, so a successful connect
-  # means it is ready to accept WebSocket clients.
-  # Uses nc (netcat) — available on macOS and Linux by default.
-  # /dev/tcp is NOT available on macOS default bash (Apple disables it).
-  local gw_port=18789
-  local gw_healthy=false
-  info "Waiting for gateway on port ${gw_port}..."
-  for _attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-    if nc -z 127.0.0.1 "${gw_port}" 2>/dev/null; then
-      gw_healthy=true
-      break
-    fi
-    sleep 2
-  done
-  if $gw_healthy; then
-    ok "Gateway is healthy (port ${gw_port} accepting connections)"
+  if is_truthy "$SKIP_LAUNCH_AGENTS" || is_truthy "$SKIP_SERVICE_START"; then
+    info "Skipping gateway service install and health wait (LaunchAgents/services disabled for this run)"
   else
-    warn "Gateway did not become healthy within 30 s"
-    warn "Check logs: ~/.argentos/logs/gateway.log"
-    warn "Or run:     argent gateway status"
+    # Ensure the gateway service is installed before health verification.
+    # On macOS we skip terminal onboarding by default because Argent.app guides
+    # first-run UX, but the service itself still needs to exist.
+    info "Installing gateway service..."
+    PATH="$(dirname "$NODE_BIN"):$PATH" "$argent_bin" gateway install --force >/dev/null 2>&1 \
+      || warn "Gateway service install failed — run manually: argent gateway install --force"
+
+    # ── Gateway health verification ───────────────────────────────────
+    # Deterministic: TCP probe on the gateway port. The gateway binds
+    # port 18789 only after full initialisation, so a successful connect
+    # means it is ready to accept WebSocket clients.
+    # Uses nc (netcat) — available on macOS and Linux by default.
+    # /dev/tcp is NOT available on macOS default bash (Apple disables it).
+    local gw_port=18789
+    local gw_healthy=false
+    info "Waiting for gateway on port ${gw_port}..."
+    for _attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+      if nc -z 127.0.0.1 "${gw_port}" 2>/dev/null; then
+        gw_healthy=true
+        break
+      fi
+      sleep 2
+    done
+    if $gw_healthy; then
+      ok "Gateway is healthy (port ${gw_port} accepting connections)"
+    else
+      warn "Gateway did not become healthy within 30 s"
+      warn "Check logs: ~/.argentos/logs/gateway.log"
+      warn "Or run:     argent gateway status"
+    fi
   fi
 
   # macOS: Launch Argent.app after onboarding completes
-  if [[ -n "$master_key" && "$(uname -s)" == "Darwin" && -d /Applications/Argent.app ]]; then
+  if [[ -n "$master_key" && "$(uname -s)" == "Darwin" && -d /Applications/Argent.app ]] \
+    && ! is_truthy "$SKIP_SERVICE_START"; then
     launch_argent_app || true
   fi
 }

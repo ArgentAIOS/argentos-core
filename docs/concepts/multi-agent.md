@@ -29,6 +29,13 @@ copy `auth-profiles.json` into the other agent's `agentDir`.
 
 Skills are per-agent via each workspace’s `skills/` folder, with shared skills
 available from `~/.argentos/skills`. See [Skills: per-agent vs shared](/tools/skills#per-agent-vs-shared-skills).
+Set `agents.list[].skills` to restrict an agent to an explicit skill allowlist.
+Family agents registered through `family.register` can carry the same `skills`
+array, which is persisted into their identity record and mirrored into
+`agents.list[]` so runtime skill loading, the capabilities panel, and profile
+configuration all read the same mapping. If no explicit skills are provided for
+a `dev-team` coding family member, the gateway applies role defaults for
+planning, implementation, debugging, verification, and family-team execution.
 
 The Gateway can host **one agent** (default) or **many agents** side-by-side.
 
@@ -320,6 +327,12 @@ Notes:
 
 - Tool allow/deny lists are **tools**, not skills. If a skill needs to run a
   binary, ensure `exec` is allowed and the binary exists in the sandbox.
+- Skill mappings are **skills**, not tools. Use `agents.list[].skills` or
+  `family.register.skills` for role playbooks such as planning, implementation,
+  debugging, and verification.
+- Contracted development dispatches should include `skillsRequired` so
+  `family.contract_history` shows the expected playbooks next to the tool grant
+  and runtime heartbeat.
 - For stricter gating, set `agents.list[].groupChat.mentionPatterns` and keep
   group allowlists enabled for the channel.
 

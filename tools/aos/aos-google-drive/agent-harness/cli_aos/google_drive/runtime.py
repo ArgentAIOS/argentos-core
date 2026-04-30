@@ -144,16 +144,17 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "client_secret_present": runtime["client_secret_present"],
             "refresh_token_env": runtime["refresh_token_env"],
             "refresh_token_present": runtime["refresh_token_present"],
+            "service_keys": runtime.get("service_keys", []),
+            "operator_service_keys": runtime.get("service_keys", []),
+            "sources": runtime.get("sources", {}),
+            "development_fallback": runtime.get("service_keys", []),
         },
         "scope": {
             "base_url": runtime["base_url"],
             "folder_id": runtime["folder_id"] or None,
             "file_id": runtime["file_id"] or None,
-            "file_name": runtime["file_name"] or None,
             "mime_type": runtime["mime_type"] or None,
             "query": runtime["query"] or None,
-            "share_email": runtime["share_email"] or None,
-            "permission": runtime["permission"] or None,
         },
         "checks": [
             {"name": "required_env", "ok": runtime["credentials_present"], "details": {"missing_keys": [] if runtime["credentials_present"] else probe.get("details", {}).get("missing_keys", [])}},
@@ -166,9 +167,10 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "scaffold_only": False,
         "probe": probe,
         "next_steps": [
-            f"Set {runtime['client_id_env']}, {runtime['client_secret_env']}, and {runtime['refresh_token_env']} in API Keys.",
+            f"Set {runtime['client_id_env']}, {runtime['client_secret_env']}, and {runtime['refresh_token_env']} in operator-controlled API Keys.",
             f"Optionally set {runtime['folder_id_env']} and {runtime['file_id_env']} for defaults.",
-            "Use file.list to confirm the connected account is reachable before running write commands.",
+            "Use file.list to confirm the connected account is reachable.",
+            "Do not advertise Google Drive write commands until live write workflows and approval policy are implemented.",
         ],
     }
 
@@ -181,17 +183,11 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "status": "ready" if ready else ("needs_setup" if probe.get("code") == "GOOGLE_DRIVE_SETUP_REQUIRED" else "degraded"),
         "summary": "Google Drive connector diagnostics.",
         "runtime": {
-            "implementation_mode": "live_read_write",
+            "implementation_mode": "live_read_only",
             "command_readiness": {
                 "file.list": ready,
                 "file.get": ready,
-                "file.create": ready,
-                "file.copy": ready,
-                "file.move": ready,
-                "file.delete": ready,
                 "folder.list": ready,
-                "folder.create": ready,
-                "share.create": ready,
                 "share.list": ready,
                 "export.pdf": ready,
                 "export.docx": ready,
@@ -199,21 +195,19 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             },
             "folder_id_present": runtime["folder_id_present"],
             "file_id_present": runtime["file_id_present"],
-            "file_name_present": runtime["file_name_present"],
             "mime_type_present": runtime["mime_type_present"],
-            "share_email_present": runtime["share_email_present"],
-            "permission_present": runtime["permission_present"],
         },
         "checks": [
             {"name": "required_env", "ok": runtime["credentials_present"]},
             {"name": "live_backend", "ok": ready, "details": probe.get("details", {})},
         ],
         "supported_read_commands": ["file.list", "file.get", "folder.list", "share.list", "export.pdf", "export.docx", "search.query"],
-        "supported_write_commands": ["file.create", "file.copy", "file.move", "file.delete", "folder.create", "share.create"],
+        "supported_write_commands": [],
         "next_steps": [
             f"Set {runtime['client_id_env']}, {runtime['client_secret_env']}, and {runtime['refresh_token_env']} to enable live calls.",
             f"Set {runtime['file_id_env']} and {runtime['folder_id_env']} for stable worker defaults.",
-            "Use health to confirm OAuth and Drive access before running file mutation commands.",
+            "Use health to confirm OAuth and Drive access.",
+            "Do not advertise Google Drive write commands until live write workflows and approval policy are implemented.",
         ],
     }
 
@@ -238,63 +232,12 @@ def file_get_result(ctx_obj: dict[str, Any], *, file_id: str | None) -> dict[str
     return {"status": "live_read", "backend": BACKEND_NAME, "summary": f"Read file {file.get('name') or resolved_file_id}.", "file": file, "scope_preview": _scope_preview("file.get", "file", {"file_id": resolved_file_id})}
 
 
-def file_create_result(ctx_obj: dict[str, Any], *, name: str | None, mime_type: str | None, folder_id: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    resolved_name = _require_arg(name or runtime["file_name"], code="GOOGLE_DRIVE_FILE_NAME_REQUIRED", message="name is required", detail_key="env", detail_value=runtime["file_name_env"])
-    client = create_client(ctx_obj)
-    file = client.create_file(name=resolved_name, mime_type=mime_type or runtime["mime_type"] or None, folder_id=folder_id or runtime["folder_id"] or None)
-    return {"status": "live_write", "backend": BACKEND_NAME, "summary": f"Created file {file.get('name') or resolved_name}.", "file": file, "scope_preview": _scope_preview("file.create", "file", {"name": resolved_name})}
-
-
-def file_copy_result(ctx_obj: dict[str, Any], *, file_id: str | None, name: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    resolved_file_id = _require_arg(file_id or runtime["file_id"], code="GOOGLE_DRIVE_FILE_ID_REQUIRED", message="file_id is required", detail_key="env", detail_value=runtime["file_id_env"])
-    client = create_client(ctx_obj)
-    file = client.copy_file(file_id=resolved_file_id, name=name or runtime["file_name"] or None)
-    return {"status": "live_write", "backend": BACKEND_NAME, "summary": f"Copied file {resolved_file_id}.", "file": file, "scope_preview": _scope_preview("file.copy", "file", {"file_id": resolved_file_id})}
-
-
-def file_move_result(ctx_obj: dict[str, Any], *, file_id: str | None, folder_id: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    resolved_file_id = _require_arg(file_id or runtime["file_id"], code="GOOGLE_DRIVE_FILE_ID_REQUIRED", message="file_id is required", detail_key="env", detail_value=runtime["file_id_env"])
-    resolved_folder_id = _require_arg(folder_id or runtime["folder_id"], code="GOOGLE_DRIVE_FOLDER_ID_REQUIRED", message="folder_id is required", detail_key="env", detail_value=runtime["folder_id_env"])
-    client = create_client(ctx_obj)
-    file = client.move_file(file_id=resolved_file_id, folder_id=resolved_folder_id)
-    return {"status": "live_write", "backend": BACKEND_NAME, "summary": f"Moved file {resolved_file_id} to folder {resolved_folder_id}.", "file": file, "scope_preview": _scope_preview("file.move", "file", {"file_id": resolved_file_id, "folder_id": resolved_folder_id})}
-
-
-def file_delete_result(ctx_obj: dict[str, Any], *, file_id: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    resolved_file_id = _require_arg(file_id or runtime["file_id"], code="GOOGLE_DRIVE_FILE_ID_REQUIRED", message="file_id is required", detail_key="env", detail_value=runtime["file_id_env"])
-    client = create_client(ctx_obj)
-    result = client.delete_file(file_id=resolved_file_id)
-    return {"status": "live_write", "backend": BACKEND_NAME, "summary": f"Deleted file {resolved_file_id}.", "result": result, "scope_preview": _scope_preview("file.delete", "file", {"file_id": resolved_file_id})}
-
-
 def folder_list_result(ctx_obj: dict[str, Any], *, limit: int, folder_id: str | None = None) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
     client = create_client(ctx_obj)
     folders = client.list_folders(limit=limit, folder_id=folder_id or runtime["folder_id"] or None)
     picker_items = [{"value": item["id"], "label": item["name"] or item["id"], "subtitle": item.get("mimeType"), "selected": False} for item in folders["files"]]
     return {"status": "live_read", "backend": BACKEND_NAME, "summary": f"Listed {folders['count']} folder(s).", "folders": folders, "picker": _picker(picker_items, kind="folder"), "scope_preview": _scope_preview("folder.list", "folder", {"limit": limit})}
-
-
-def folder_create_result(ctx_obj: dict[str, Any], *, name: str | None, folder_id: str | None = None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    resolved_name = _require_arg(name or runtime["file_name"], code="GOOGLE_DRIVE_FILE_NAME_REQUIRED", message="name is required", detail_key="env", detail_value=runtime["file_name_env"])
-    client = create_client(ctx_obj)
-    folder = client.create_folder(name=resolved_name, folder_id=folder_id or runtime["folder_id"] or None)
-    return {"status": "live_write", "backend": BACKEND_NAME, "summary": f"Created folder {folder.get('name') or resolved_name}.", "folder": folder, "scope_preview": _scope_preview("folder.create", "folder", {"name": resolved_name})}
-
-
-def share_create_result(ctx_obj: dict[str, Any], *, file_id: str | None, share_email: str | None, permission: str | None) -> dict[str, Any]:
-    runtime = resolve_runtime_values(ctx_obj)
-    resolved_file_id = _require_arg(file_id or runtime["file_id"], code="GOOGLE_DRIVE_FILE_ID_REQUIRED", message="file_id is required", detail_key="env", detail_value=runtime["file_id_env"])
-    resolved_share_email = _require_arg(share_email or runtime["share_email"], code="GOOGLE_DRIVE_SHARE_EMAIL_REQUIRED", message="share_email is required", detail_key="env", detail_value=runtime["share_email_env"])
-    resolved_role = _require_arg(permission or runtime["permission"], code="GOOGLE_DRIVE_PERMISSION_REQUIRED", message="permission is required", detail_key="env", detail_value=runtime["permission_env"])
-    client = create_client(ctx_obj)
-    share = client.create_permission(file_id=resolved_file_id, email_address=resolved_share_email, role=resolved_role)
-    return {"status": "live_write", "backend": BACKEND_NAME, "summary": f"Shared file {resolved_file_id} with {resolved_share_email}.", "share": share, "scope_preview": _scope_preview("share.create", "share", {"file_id": resolved_file_id})}
 
 
 def share_list_result(ctx_obj: dict[str, Any], *, file_id: str | None) -> dict[str, Any]:

@@ -17,7 +17,8 @@
  *   const results = await family.searchKnowledge("error handling");
  */
 
-import type Redis from "ioredis";
+import type { Redis } from "ioredis";
+import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -42,6 +43,9 @@ export interface FamilyAgent {
   name: string;
   role: string;
   team?: string;
+  skills?: string[];
+  skillSource?: string;
+  skillDefaultKey?: string;
   status: "active" | "inactive";
   alive: boolean; // Redis presence — true if heartbeat within 30s
 }
@@ -66,6 +70,33 @@ export interface PublishKnowledgeInput {
   content: string;
   embedding?: Float32Array;
   confidence?: number;
+}
+
+function normalizeStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function normalizeConfig(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  }
+  return typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
 // ── Agent Family API ────────────────────────────────────────────────────
@@ -93,7 +124,7 @@ export class AgentFamily {
 
     try {
       const rows = await sql`
-        SELECT id, name, role, status, config->>'team' AS team FROM agents
+        SELECT id, name, role, status, config FROM agents
         WHERE status = 'active'
         ORDER BY CASE WHEN id = 'argent' THEN 0 ELSE 1 END, name
       `;
@@ -101,6 +132,12 @@ export class AgentFamily {
       // Check Redis presence for each agent
       const agents: FamilyAgent[] = [];
       for (const row of rows) {
+        const config = normalizeConfig(row.config);
+        const team = typeof config.team === "string" ? config.team.trim() : "";
+        const skills = normalizeStringList(config.skills);
+        const skillSource = typeof config.skillSource === "string" ? config.skillSource.trim() : "";
+        const skillDefaultKey =
+          typeof config.skillDefaultKey === "string" ? config.skillDefaultKey.trim() : "";
         let alive = false;
         if (this.redis) {
           try {
@@ -113,7 +150,10 @@ export class AgentFamily {
           id: row.id,
           name: row.name,
           role: row.role,
-          team: typeof row.team === "string" && row.team.trim().length > 0 ? row.team : undefined,
+          team: team || undefined,
+          skills,
+          skillSource: skillSource || undefined,
+          skillDefaultKey: skillDefaultKey || undefined,
           status: row.status as "active" | "inactive",
           alive,
         });
@@ -317,7 +357,7 @@ export class AgentFamily {
         id: r.id,
         name: r.name,
         role: r.role,
-        config: typeof r.config === "string" ? JSON.parse(r.config) : (r.config ?? {}),
+        config: normalizeConfig(r.config),
       }));
     } finally {
       await sql.end();
@@ -348,7 +388,7 @@ export class AgentFamily {
         name: r.name,
         role: r.role,
         status: r.status,
-        config: typeof r.config === "string" ? JSON.parse(r.config) : (r.config ?? {}),
+        config: normalizeConfig(r.config),
       };
     } finally {
       await sql.end();
@@ -370,7 +410,7 @@ export class AgentFamily {
     try {
       await sql`
         INSERT INTO agents (id, name, role, status, config)
-        VALUES (${id}, ${name}, ${role}, 'active', ${sql.json(config ?? {})})
+        VALUES (${id}, ${name}, ${role}, 'active', ${sql.json((config ?? {}) as any)})
         ON CONFLICT (id) DO UPDATE SET
           name = EXCLUDED.name,
           role = EXCLUDED.role,
@@ -418,7 +458,7 @@ async function readLocalFamilyAgentsFromDisk(): Promise<LocalFamilyAgent[]> {
   const home = process.env.HOME ?? "";
   if (!home) return [];
   const agentsDir = path.join(home, ".argentos", "agents");
-  let entries: Awaited<ReturnType<typeof fs.readdir>>;
+  let entries: Dirent[];
   try {
     entries = await fs.readdir(agentsDir, { withFileTypes: true });
   } catch {
@@ -453,10 +493,20 @@ async function readLocalFamilyAgentsFromDisk(): Promise<LocalFamilyAgent[]> {
             : undefined;
       const model = typeof parsed.model === "string" ? parsed.model.trim() : undefined;
       const provider = typeof parsed.provider === "string" ? parsed.provider.trim() : undefined;
+      const tools = normalizeStringList(parsed.tools);
+      const skills = normalizeStringList(parsed.skills);
+      const skillSource =
+        typeof parsed.skillSource === "string" ? parsed.skillSource.trim() : undefined;
+      const skillDefaultKey =
+        typeof parsed.skillDefaultKey === "string" ? parsed.skillDefaultKey.trim() : undefined;
       config = {
         ...(team ? { team } : {}),
         ...(model ? { model } : {}),
         ...(provider ? { provider } : {}),
+        ...(tools ? { tools } : {}),
+        ...(skills ? { skills } : {}),
+        ...(skillSource ? { skillSource } : {}),
+        ...(skillDefaultKey ? { skillDefaultKey } : {}),
       };
     } catch {
       // Fall through to markdown fallback below.

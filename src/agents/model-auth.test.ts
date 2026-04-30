@@ -233,6 +233,44 @@ describe("getApiKeyForModel", () => {
     }
   });
 
+  it("uses dedicated env vars for ZAI Coding Plan keys", async () => {
+    const previousZai = process.env.ZAI_API_KEY;
+    const previousCoding = process.env.ZAI_CODING_API_KEY;
+    const previousCoder = process.env.ZAI_CODER_API_KEY;
+
+    try {
+      process.env.ZAI_API_KEY = "direct-zai-key";
+      process.env.ZAI_CODING_API_KEY = "coding-zai-key";
+      delete process.env.ZAI_CODER_API_KEY;
+
+      vi.resetModules();
+      const { resolveApiKeyForProvider } = await import("./model-auth.js");
+
+      const resolved = await resolveApiKeyForProvider({
+        provider: "zai-coding",
+        store: { version: 1, profiles: {} },
+      });
+      expect(resolved.apiKey).toBe("coding-zai-key");
+      expect(resolved.source).toContain("ZAI_CODING_API_KEY");
+    } finally {
+      if (previousZai === undefined) {
+        delete process.env.ZAI_API_KEY;
+      } else {
+        process.env.ZAI_API_KEY = previousZai;
+      }
+      if (previousCoding === undefined) {
+        delete process.env.ZAI_CODING_API_KEY;
+      } else {
+        process.env.ZAI_CODING_API_KEY = previousCoding;
+      }
+      if (previousCoder === undefined) {
+        delete process.env.ZAI_CODER_API_KEY;
+      } else {
+        process.env.ZAI_CODER_API_KEY = previousCoder;
+      }
+    }
+  });
+
   it("resolves Synthetic API key from env", async () => {
     const previousSynthetic = process.env.SYNTHETIC_API_KEY;
 

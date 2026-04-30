@@ -102,6 +102,7 @@ export const CORE_TOOL_NAMES = new Set([
   // Discovery
   "tool_search",
   "marketplace",
+  "specforge",
   // Self-awareness
   "session_status",
   "agents_list",
@@ -121,6 +122,9 @@ export const CORE_TOOL_NAMES = new Set([
 const DEFERRED_TOOL_KEYWORDS: Record<string, string[]> = {
   // Memory extended
   memory_categories: ["memory", "category", "categories", "organize"],
+  memory_category_cleanup: ["memory", "category", "cleanup", "dedupe", "merge", "empty"],
+  memory_category_merge: ["memory", "category", "merge", "dedupe", "cleanup"],
+  memory_category_rename: ["memory", "category", "rename", "clean"],
   memory_forget: ["memory", "forget", "delete", "remove"],
   memory_entity: ["memory", "entity", "person", "contact", "identity"],
   memory_reflect: ["memory", "reflect", "reflection", "introspect"],
@@ -171,7 +175,19 @@ const DEFERRED_TOOL_KEYWORDS: Record<string, string[]> = {
   terminal: ["terminal", "shell", "command"],
   github_issue: ["github", "issue", "bug", "pr"],
   gateway: ["gateway", "server", "restart", "status"],
+  changelog: [
+    "changelog",
+    "release",
+    "release notes",
+    "version",
+    "update",
+    "history",
+    "dev",
+    "branch",
+  ],
   argent_config: ["config", "settings", "configuration"],
+  channel_config: ["channel", "channels", "telegram", "slack", "discord", "signal", "whatsapp"],
+  connector_setup: ["connector", "connect", "setup", "google", "gmail", "drive", "calendar"],
   service_keys: ["keys", "secrets", "credentials", "api"],
   // Knowledge
   knowledge_search: ["knowledge", "library", "rag", "search"],

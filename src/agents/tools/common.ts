@@ -18,6 +18,13 @@ export type ActionGate<T extends Record<string, boolean | undefined>> = (
   defaultValue?: boolean,
 ) => boolean;
 
+export function normalizeToolParams(params: unknown): Record<string, unknown> {
+  if (!params || typeof params !== "object") {
+    return {};
+  }
+  return params as Record<string, unknown>;
+}
+
 export function createActionGate<T extends Record<string, boolean | undefined>>(
   actions: T | undefined,
 ): ActionGate<T> {

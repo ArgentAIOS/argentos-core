@@ -65,6 +65,50 @@ describe("repairSessionFileIfNeeded", () => {
     expect(result.droppedLines).toBe(0);
   });
 
+  it("accepts model snapshot entries as valid transcript headers", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-session-repair-"));
+    const file = path.join(dir, "session.jsonl");
+    const header = {
+      type: "custom",
+      customType: "model-snapshot",
+      data: {
+        provider: "openai-codex",
+        modelId: "gpt-5.4-mini",
+      },
+      id: "snapshot-1",
+      parentId: null,
+      timestamp: new Date().toISOString(),
+    };
+    const message = {
+      type: "message",
+      id: "msg-1",
+      parentId: "snapshot-1",
+      timestamp: new Date().toISOString(),
+      message: { role: "user", content: "hello" },
+    };
+    const content = `${JSON.stringify(header)}\n${JSON.stringify(message)}\n{"type":"message"`;
+    await fs.writeFile(file, content, "utf-8");
+
+    const warn = vi.fn();
+    const result = await repairSessionFileIfNeeded({ sessionFile: file, warn });
+
+    expect(result.repaired).toBe(true);
+    expect(result.droppedLines).toBe(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain("session file repaired");
+
+    const repaired = await fs.readFile(file, "utf-8");
+    const entries = repaired
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string; customType?: string });
+    expect(entries[0]).toMatchObject({
+      type: "custom",
+      customType: "model-snapshot",
+    });
+    expect(entries).toHaveLength(2);
+  });
+
   it("warns and skips repair when the session header is invalid", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-session-repair-"));
     const file = path.join(dir, "session.jsonl");

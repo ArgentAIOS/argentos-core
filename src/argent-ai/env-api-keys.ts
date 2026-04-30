@@ -7,8 +7,6 @@
  * @module argent-ai/env-api-keys
  */
 
-import type { KnownProvider } from "./types.js";
-
 /**
  * Map of known providers to their environment variable names.
  */
@@ -30,6 +28,7 @@ const PROVIDER_ENV_VARS: Record<string, string[]> = {
   openrouter: ["OPENROUTER_API_KEY"],
   "vercel-ai-gateway": ["VERCEL_API_KEY"],
   zai: ["ZAI_API_KEY"],
+  "zai-coding": ["ZAI_CODING_API_KEY", "ZAI_CODER_API_KEY"],
   huggingface: ["HUGGINGFACE_API_KEY", "HF_TOKEN"],
 };
 
@@ -47,7 +46,7 @@ const OAUTH_PROVIDERS = new Set(["github-copilot", "google-antigravity"]);
  * @param provider - Provider name (e.g., "anthropic", "openai")
  * @returns API key string or undefined if not found
  */
-export function getEnvApiKey(provider: KnownProvider | string): string | undefined {
+export function getEnvApiKey(provider: string): string | undefined {
   // OAuth providers don't use env vars
   if (OAUTH_PROVIDERS.has(provider)) {
     return undefined;

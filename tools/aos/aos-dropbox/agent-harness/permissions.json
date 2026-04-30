@@ -4,13 +4,8 @@
   "permissions": {
     "file.list": "readonly",
     "file.get": "readonly",
-    "file.upload": "write",
     "file.download": "readonly",
-    "file.delete": "write",
-    "file.move": "write",
     "folder.list": "readonly",
-    "folder.create": "write",
-    "share.create_link": "write",
     "share.list": "readonly",
     "search.query": "readonly",
     "capabilities": "readonly",

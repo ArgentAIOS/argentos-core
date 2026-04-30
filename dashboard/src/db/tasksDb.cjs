@@ -126,6 +126,11 @@ function computeNextRun(schedule, fromTime) {
     return now + schedule.intervalMinutes * 60000;
   }
 
+  if (schedule.frequency === "once" && schedule.at) {
+    const at = new Date(schedule.at).getTime();
+    return Number.isFinite(at) ? at : null;
+  }
+
   if (schedule.frequency === "weekly" && schedule.days && schedule.days.length > 0) {
     const [hours, minutes] = (schedule.time || "09:00").split(":").map(Number);
     const base = new Date(now);
@@ -167,7 +172,8 @@ function getScheduledTasksDue() {
       SELECT * FROM tasks
       WHERE status NOT IN ('completed', 'in-progress')
         AND (json_extract(metadata, '$.type') = 'scheduled'
-          OR json_extract(metadata, '$.type') = 'interval')
+          OR json_extract(metadata, '$.type') = 'interval'
+          OR json_extract(metadata, '$.type') = 'reminder')
         AND json_extract(metadata, '$.schedule.nextRun') IS NOT NULL
         AND json_extract(metadata, '$.schedule.nextRun') <= ?
     `)
@@ -190,13 +196,12 @@ function markScheduledTaskExecuted(id) {
     nextRun: computeNextRun(task.schedule, now),
   };
 
-  // For recurring tasks (interval/weekly/daily), reset to pending so they fire again
-  const meta = JSON.stringify({ type: task.type, schedule: newSchedule });
-  db.prepare(`UPDATE tasks SET metadata = ?, status = 'pending', updated_at = ? WHERE id = ?`).run(
-    meta,
-    now,
-    id,
-  );
+  const meta = JSON.stringify({ ...(task.metadata || {}), type: task.type, schedule: newSchedule });
+  const terminal =
+    task.type === "reminder" || task.schedule.frequency === "once" || !newSchedule.nextRun;
+  db.prepare(
+    `UPDATE tasks SET metadata = ?, status = ?, completed_at = ?, updated_at = ? WHERE id = ?`,
+  ).run(meta, terminal ? "completed" : "pending", terminal ? now : null, now, id);
   return getTask(id);
 }
 
@@ -241,6 +246,7 @@ function rowToTask(row) {
     agentId: row.agent_id,
     teamId: row.team_id || undefined,
     parentTaskId: row.parent_task_id || undefined,
+    metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
   };
 }
 
@@ -328,17 +334,18 @@ function createTask({
   source = "user",
   assignee,
   parentTaskId,
+  metadata: extraMetadata,
 }) {
   const id = randomUUID();
   const now = Date.now();
 
   // Compute nextRun for scheduled/interval tasks
   let enrichedSchedule = schedule;
-  if ((type === "scheduled" || type === "interval") && schedule) {
+  if ((type === "scheduled" || type === "interval" || type === "reminder") && schedule) {
     const nextRun = computeNextRun(schedule, now);
     enrichedSchedule = { ...schedule, nextRun };
   }
-  const metadata = JSON.stringify({ type, schedule: enrichedSchedule });
+  const metadata = JSON.stringify({ ...(extraMetadata || {}), type, schedule: enrichedSchedule });
 
   db.prepare(`
     INSERT INTO tasks (id, title, description, status, priority, source, assignee, created_at, updated_at, metadata, parent_task_id)
@@ -404,12 +411,24 @@ function updateTask(id, updates) {
     params.push(updates.assignee);
   }
 
-  if (updates.type !== undefined || updates.schedule !== undefined) {
-    const currentMeta = existing.type ? { type: existing.type, schedule: existing.schedule } : {};
+  if (
+    updates.type !== undefined ||
+    updates.schedule !== undefined ||
+    updates.metadata !== undefined
+  ) {
+    const currentMeta =
+      existing.metadata && typeof existing.metadata === "object" ? existing.metadata : {};
+    const nextType = updates.type !== undefined ? updates.type : existing.type;
+    const nextSchedule =
+      updates.schedule !== undefined &&
+      (nextType === "scheduled" || nextType === "interval" || nextType === "reminder")
+        ? { ...updates.schedule, nextRun: computeNextRun(updates.schedule, now) }
+        : updates.schedule;
     const newMeta = {
       ...currentMeta,
       ...(updates.type !== undefined && { type: updates.type }),
-      ...(updates.schedule !== undefined && { schedule: updates.schedule }),
+      ...(updates.schedule !== undefined && { schedule: nextSchedule }),
+      ...(updates.metadata && typeof updates.metadata === "object" ? updates.metadata : {}),
     };
     sets.push("metadata = ?");
     params.push(JSON.stringify(newMeta));

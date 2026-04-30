@@ -3,6 +3,7 @@ import { ErrorCodes, errorShape } from "./protocol/index.js";
 import { aevpHandlers } from "./server-methods/aevp.js";
 import { agentHandlers } from "./server-methods/agent.js";
 import { agentsHandlers } from "./server-methods/agents.js";
+import { appForgeHandlers } from "./server-methods/app-forge.js";
 import { browserHandlers } from "./server-methods/browser.js";
 import { channelsHandlers } from "./server-methods/channels.js";
 import { chatHandlers } from "./server-methods/chat.js";
@@ -114,12 +115,25 @@ const READ_METHODS = new Set([
   "copilot.run.story",
   "providers.status",
   "providers.registry",
+  "appforge.bases.list",
+  "appforge.bases.get",
+  "appforge.tables.list",
+  "appforge.tables.get",
+  "appforge.records.list",
+  "appforge.records.get",
   "workflows.get",
   "workflows.list",
   "workflows.runs.list",
   "workflows.runs.get",
+  "workflows.versions.list",
   "workflows.subscribe",
   "workflows.pendingApprovals",
+  "workflows.importPreview",
+  "workflows.templates.list",
+  "workflows.templates.get",
+  "workflows.validate",
+  "workflows.draft",
+  "workflows.capabilities",
   "credentials.list",
   "credentials.validate",
   "workflows.manifest",
@@ -132,6 +146,11 @@ const WRITE_METHODS = new Set([
   "agent.wait",
   "wake",
   "talk.mode",
+  "talk.realtime.session",
+  "talk.realtime.audio",
+  "talk.realtime.mark",
+  "talk.realtime.toolResult",
+  "talk.realtime.stop",
   "tts.enable",
   "tts.disable",
   "tts.convert",
@@ -173,11 +192,22 @@ const WRITE_METHODS = new Set([
   "workflows.update",
   "workflows.delete",
   "workflows.duplicate",
+  "workflows.versions.restore",
   "workflows.run",
+  "workflows.cancel",
+  "workflows.resume",
+  "workflows.emitEvent",
+  "workflows.emitAppForgeEvent",
   "workflows.approve",
   "workflows.deny",
   "credentials.create",
   "credentials.delete",
+  "appforge.bases.put",
+  "appforge.bases.delete",
+  "appforge.tables.put",
+  "appforge.tables.delete",
+  "appforge.records.put",
+  "appforge.records.delete",
 ]);
 
 function authorizeGatewayMethod(method: string, client: GatewayRequestOptions["client"]) {
@@ -290,6 +320,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...browserHandlers,
   ...terminalHandlers,
   ...aevpHandlers,
+  ...appForgeHandlers,
   ...specforgeHandlers,
   ...intentHandlers,
   ...workflowsHandlers,

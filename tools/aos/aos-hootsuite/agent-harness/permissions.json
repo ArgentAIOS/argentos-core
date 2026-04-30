@@ -14,7 +14,6 @@
     "team.list": "readonly",
     "team.read": "readonly",
     "message.list": "readonly",
-    "message.read": "readonly",
-    "message.schedule": "write"
+    "message.read": "readonly"
   }
 }

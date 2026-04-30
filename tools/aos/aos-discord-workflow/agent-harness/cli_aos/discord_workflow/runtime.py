@@ -72,7 +72,14 @@ def _parse_channel_type(channel_type: str | int | None) -> int:
     value = str(channel_type).strip().lower()
     if value.isdigit():
         return int(value)
-    return CHANNEL_TYPE_MAP.get(value, 0)
+    if value in CHANNEL_TYPE_MAP:
+        return CHANNEL_TYPE_MAP[value]
+    raise CliError(
+        code="DISCORD_CHANNEL_TYPE_INVALID",
+        message="channel_type must be a Discord numeric type or a supported alias",
+        exit_code=4,
+        details={"allowed_values": sorted(CHANNEL_TYPE_MAP.keys()), "received": channel_type},
+    )
 
 
 def capabilities_snapshot() -> dict[str, Any]:
@@ -97,9 +104,9 @@ def capabilities_snapshot() -> dict[str, Any]:
     }
 
 
-def create_client(ctx_obj: dict[str, Any]) -> DiscordClient:
+def create_client(ctx_obj: dict[str, Any], *, require_bot_token: bool = True) -> DiscordClient:
     runtime = resolve_runtime_values(ctx_obj)
-    if not runtime["bot_token_present"]:
+    if require_bot_token and not runtime["bot_token_present"]:
         raise CliError(
             code="DISCORD_SETUP_REQUIRED",
             message="Discord connector is missing required credentials",
@@ -146,7 +153,13 @@ def probe_runtime(ctx_obj: dict[str, Any]) -> dict[str, Any]:
 def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
     probe = probe_runtime(ctx_obj)
-    status = "ready" if probe["ok"] else ("needs_setup" if probe["code"] == "DISCORD_SETUP_REQUIRED" else "degraded")
+    webhook_ready = runtime["webhook_url_present"]
+    if probe["ok"]:
+        status = "ready"
+    elif webhook_ready and probe["code"] == "DISCORD_SETUP_REQUIRED":
+        status = "partial_ready"
+    else:
+        status = "needs_setup" if probe["code"] == "DISCORD_SETUP_REQUIRED" else "degraded"
     return {
         "status": status,
         "summary": probe["message"],
@@ -154,12 +167,17 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "backend": BACKEND_NAME,
             "live_backend_available": bool(probe.get("ok")),
             "live_read_available": bool(probe.get("ok")),
-            "write_bridge_available": bool(probe.get("ok")),
+            "write_bridge_available": bool(probe.get("ok")) or webhook_ready,
+            "live_write_smoke_tested": False,
             "scaffold_only": False,
         },
         "auth": {
             "bot_token_env": runtime["bot_token_env"],
             "bot_token_present": runtime["bot_token_present"],
+            "bot_token_source": runtime["bot_token_source"],
+            "webhook_url_env": runtime["webhook_url_env"],
+            "webhook_url_present": runtime["webhook_url_present"],
+            "webhook_url_source": runtime["webhook_url_source"],
         },
         "scope": {
             "api_base_url": runtime["api_base_url"],
@@ -174,18 +192,24 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
                 "ok": runtime["bot_token_present"],
                 "details": {"missing_keys": [] if runtime["bot_token_present"] else [runtime["bot_token_env"]]},
             },
+            {
+                "name": "webhook_scope",
+                "ok": runtime["webhook_url_present"],
+                "details": {"env": runtime["webhook_url_env"], "source": runtime["webhook_url_source"]},
+            },
             {"name": "live_backend", "ok": bool(probe.get("ok")), "details": probe.get("details", {})},
         ],
         "runtime_ready": bool(probe.get("ok")),
         "live_backend_available": bool(probe.get("ok")),
         "live_read_available": bool(probe.get("ok")),
-        "write_bridge_available": bool(probe.get("ok")),
+        "write_bridge_available": bool(probe.get("ok")) or webhook_ready,
+        "live_write_smoke_tested": False,
         "scaffold_only": False,
         "probe": probe,
         "next_steps": [
-            f"Set {runtime['bot_token_env']} in API Keys.",
-            f"Set {runtime['guild_id_env']} for guild-scoped operations.",
-            "Use channel.list or member.list to confirm the bot can read the guild.",
+            f"Add {runtime['bot_token_env']} as an operator-controlled service key for bot-scoped Discord reads and writes.",
+            f"Add {runtime['webhook_url_env']} as an operator-controlled service key when using webhook.send without bot auth.",
+            f"Set {runtime['guild_id_env']} and {runtime['channel_id_env']} as scoped operator linking keys for worker flows; use local env only as a harness fallback.",
         ],
     }
 
@@ -194,11 +218,18 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     runtime = resolve_runtime_values(ctx_obj)
     probe = probe_runtime(ctx_obj)
     ready = bool(probe.get("ok"))
+    webhook_ready = runtime["webhook_url_present"]
+    if ready:
+        status = "ready"
+    elif webhook_ready and probe.get("code") == "DISCORD_SETUP_REQUIRED":
+        status = "partial_ready"
+    else:
+        status = "needs_setup" if probe.get("code") == "DISCORD_SETUP_REQUIRED" else "degraded"
     return {
-        "status": "ready" if ready else ("needs_setup" if probe.get("code") == "DISCORD_SETUP_REQUIRED" else "degraded"),
+        "status": status,
         "summary": "Discord connector diagnostics.",
         "runtime": {
-            "implementation_mode": "live_read_write",
+            "implementation_mode": "live_read_write" if ready else ("webhook_write_only" if webhook_ready else "configuration_only"),
             "command_readiness": {
                 "message.send": ready and runtime["channel_id_present"],
                 "message.edit": ready and runtime["channel_id_present"] and runtime["message_id_present"],
@@ -209,18 +240,19 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
                 "thread.create": ready and runtime["channel_id_present"],
                 "embed.send": ready and runtime["channel_id_present"],
                 "role.list": ready and runtime["guild_id_present"],
-                "role.assign": ready and runtime["guild_id_present"] and runtime["member_id"] and runtime["role_id"],
+                "role.assign": ready and runtime["guild_id_present"] and runtime["member_id_present"] and runtime["role_id_present"],
                 "member.list": ready and runtime["guild_id_present"],
-                "webhook.send": ready and runtime["webhook_url_present"],
+                "webhook.send": runtime["webhook_url_present"],
             },
         },
         "checks": [
             {"name": "required_env", "ok": runtime["bot_token_present"]},
             {"name": "guild_id", "ok": runtime["guild_id_present"], "details": {"env": runtime["guild_id_env"]}},
             {"name": "channel_id", "ok": runtime["channel_id_present"], "details": {"env": runtime["channel_id_env"]}},
+            {"name": "webhook_url", "ok": runtime["webhook_url_present"], "details": {"env": runtime["webhook_url_env"]}},
             {"name": "live_backend", "ok": ready, "details": probe.get("details", {})},
         ],
-        "supported_read_commands": ["channel.list", "role.list", "member.list"],
+        "supported_read_commands": ["capabilities", "health", "config.show", "doctor", "channel.list", "role.list", "member.list"],
         "supported_write_commands": [
             "message.send",
             "message.edit",
@@ -233,9 +265,9 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "webhook.send",
         ],
         "next_steps": [
-            f"Set {runtime['bot_token_env']} to enable live calls.",
-            f"Set {runtime['guild_id_env']}, {runtime['channel_id_env']}, and {runtime['message_id_env']} for scoped commands.",
-            "Use health to confirm the bot token is accepted before sending messages.",
+            f"Add {runtime['bot_token_env']} in operator-controlled service keys for bot-backed Discord commands.",
+            f"Add {runtime['webhook_url_env']} when the workflow should send via webhook without a bot token.",
+            f"Set {runtime['guild_id_env']}, {runtime['channel_id_env']}, {runtime['message_id_env']}, {runtime['role_id_env']}, and {runtime['member_id_env']} as operator linking keys for stable worker scope defaults.",
         ],
     }
 
@@ -264,6 +296,7 @@ def message_send_result(ctx_obj: dict[str, Any], *, channel_id: str | None, cont
         "summary": f"Sent message to channel {resolved_channel_id}.",
         "message": message,
         "scope_preview": _scope_preview("message.send", "message", {"channel_id": resolved_channel_id}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -280,6 +313,7 @@ def message_edit_result(ctx_obj: dict[str, Any], *, channel_id: str | None, mess
         "summary": f"Edited message {resolved_message_id}.",
         "message": message,
         "scope_preview": _scope_preview("message.edit", "message", {"channel_id": resolved_channel_id, "message_id": resolved_message_id}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -295,6 +329,7 @@ def message_delete_result(ctx_obj: dict[str, Any], *, channel_id: str | None, me
         "summary": f"Deleted message {resolved_message_id}.",
         "result": result,
         "scope_preview": _scope_preview("message.delete", "message", {"channel_id": resolved_channel_id, "message_id": resolved_message_id}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -311,6 +346,7 @@ def reaction_add_result(ctx_obj: dict[str, Any], *, channel_id: str | None, mess
         "summary": f"Added reaction to message {resolved_message_id}.",
         "result": result,
         "scope_preview": _scope_preview("reaction.add", "reaction", {"channel_id": resolved_channel_id, "message_id": resolved_message_id}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -350,6 +386,7 @@ def channel_create_result(ctx_obj: dict[str, Any], *, guild_id: str | None, name
         "summary": f"Created channel {resolved_name}.",
         "channel": channel,
         "scope_preview": _scope_preview("channel.create", "channel", {"guild_id": resolved_guild_id, "name": resolved_name}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -357,15 +394,21 @@ def thread_create_result(ctx_obj: dict[str, Any], *, channel_id: str | None, mes
     runtime = resolve_runtime_values(ctx_obj)
     resolved_channel_id = _require_arg(channel_id or runtime["channel_id"], code="DISCORD_CHANNEL_REQUIRED", message="channel_id is required", detail_key="env", detail_value=runtime["channel_id_env"])
     resolved_name = _require_arg(name or runtime["thread_name"] or runtime["content"], code="DISCORD_THREAD_NAME_REQUIRED", message="name is required", detail_key="env", detail_value=runtime["thread_name_env"])
+    resolved_message_id = message_id or runtime["message_id"] or None
+    initial_content = content or runtime["content"] or None
     client = create_client(ctx_obj)
-    thread = client.create_thread(channel_id=resolved_channel_id, message_id=message_id or runtime["message_id"] or None, name=resolved_name, content=content or runtime["content"] or None)
-    return {
+    thread = client.create_thread(channel_id=resolved_channel_id, message_id=resolved_message_id, name=resolved_name)
+    result: dict[str, Any] = {
         "status": "live_write",
         "backend": BACKEND_NAME,
         "summary": f"Created thread {resolved_name}.",
         "thread": thread,
-        "scope_preview": _scope_preview("thread.create", "thread", {"channel_id": resolved_channel_id}),
+        "scope_preview": _scope_preview("thread.create", "thread", {"channel_id": resolved_channel_id, "message_id": resolved_message_id}),
+        "live_write_smoke_tested": False,
     }
+    if initial_content:
+        result["initial_message"] = client.send_message(channel_id=thread["id"], content=initial_content)
+    return result
 
 
 def embed_send_result(ctx_obj: dict[str, Any], *, channel_id: str | None, embed_json: str | None, content: str | None) -> dict[str, Any]:
@@ -382,6 +425,7 @@ def embed_send_result(ctx_obj: dict[str, Any], *, channel_id: str | None, embed_
         "summary": f"Sent embed to channel {resolved_channel_id}.",
         "message": message,
         "scope_preview": _scope_preview("embed.send", "embed", {"channel_id": resolved_channel_id}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -422,6 +466,7 @@ def role_assign_result(ctx_obj: dict[str, Any], *, guild_id: str | None, member_
         "summary": f"Assigned role {resolved_role_id} to member {resolved_member_id}.",
         "result": result,
         "scope_preview": _scope_preview("role.assign", "role", {"guild_id": resolved_guild_id, "member_id": resolved_member_id, "role_id": resolved_role_id}),
+        "live_write_smoke_tested": False,
     }
 
 
@@ -453,10 +498,18 @@ def webhook_send_result(ctx_obj: dict[str, Any], *, webhook_url: str | None, con
     runtime = resolve_runtime_values(ctx_obj)
     resolved_webhook_url = _require_arg(webhook_url or runtime["webhook_url"], code="DISCORD_WEBHOOK_URL_REQUIRED", message="webhook_url is required", detail_key="env", detail_value=runtime["webhook_url_env"])
     embed = _parse_embed_json(embed_json or runtime["embed_json"])
-    client = create_client(ctx_obj)
+    resolved_content = content or runtime["content"] or None
+    if embed is None and not resolved_content:
+        raise CliError(
+            code="DISCORD_WEBHOOK_BODY_REQUIRED",
+            message="webhook.send requires content or embed_json",
+            exit_code=4,
+            details={"content_env": runtime["content_env"], "embed_json_env": runtime["embed_json_env"]},
+        )
+    client = create_client(ctx_obj, require_bot_token=False)
     result = client.send_webhook(
         webhook_url=resolved_webhook_url,
-        content=content or runtime["content"] or None,
+        content=resolved_content,
         embed=embed,
         username=username,
         avatar_url=avatar_url,
@@ -467,6 +520,7 @@ def webhook_send_result(ctx_obj: dict[str, Any], *, webhook_url: str | None, con
         "summary": "Sent Discord webhook message.",
         "result": result,
         "scope_preview": _scope_preview("webhook.send", "webhook", {"webhook_url_present": True}),
+        "live_write_smoke_tested": False,
     }
 
 

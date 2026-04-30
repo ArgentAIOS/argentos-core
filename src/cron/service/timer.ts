@@ -139,6 +139,19 @@ export async function runDueJobs(state: CronServiceState) {
     return;
   }
   const now = state.deps.nowMs();
+  if (state.deps.resumeDueWorkflowWaits) {
+    try {
+      const result = await state.deps.resumeDueWorkflowWaits({ nowMs: now });
+      if (result.resumed > 0 || (result.failed ?? 0) > 0 || result.errors.length > 0) {
+        state.deps.log.info(
+          { resumed: result.resumed, failed: result.failed ?? 0, errors: result.errors },
+          "cron: workflow wait resume scan completed",
+        );
+      }
+    } catch (err) {
+      state.deps.log.warn({ err: String(err) }, "cron: workflow wait resume scan failed");
+    }
+  }
   const due = state.store.jobs.filter((j) => {
     if (!j.enabled) {
       return false;
@@ -448,9 +461,8 @@ export async function executeJob(
 
     if (job.payload.kind === "workflowRun") {
       try {
-        const { executeWorkflow, CoreAgentDispatcher } =
-          await import("../../infra/workflow-runner.js");
-        const { randomUUID } = await import("node:crypto");
+        const { createWorkflowRunRecord, executeWorkflowRunFromRow } =
+          await import("../../infra/workflow-execution-service.js");
 
         // Lazy-import PG connection for loading workflow definition
         const postgres = (await import("postgres")).default;
@@ -473,59 +485,41 @@ export async function executeJob(
           return;
         }
 
-        const runId = randomUUID();
-        // Create PG run record
-        await sql`
-          INSERT INTO workflow_runs (
-            id, workflow_id, workflow_version, status,
-            trigger_type, trigger_payload, variables
-          ) VALUES (
-            ${runId}, ${workflowId}, ${wf.version},
-            'running', 'cron',
-            ${JSON.stringify(job.payload.triggerPayload ?? {})}::jsonb,
-            '{}'::jsonb
-          )
-        `;
+        const { runId } = await createWorkflowRunRecord(sql, {
+          workflowId,
+          workflowVersion: wf.version as number,
+          triggerType: "cron",
+          triggerPayload: job.payload.triggerPayload ?? {},
+        });
 
-        const definition = {
-          id: wf.id as string,
-          name: wf.name as string,
-          description: wf.description as string | undefined,
-          nodes: wf.nodes as import("../../infra/workflow-types.js").WorkflowNode[],
-          edges: wf.edges as import("../../infra/workflow-types.js").WorkflowEdge[],
-          defaultOnError:
-            (wf.default_on_error as import("../../infra/workflow-types.js").ErrorConfig) ?? {
-              strategy: "fail" as const,
-              notifyOnError: true,
-            },
-          maxRunDurationMs: wf.max_run_duration_ms as number | undefined,
-          maxRunCostUsd: wf.max_run_cost_usd as number | undefined,
-        };
-
-        const dispatcher = new CoreAgentDispatcher();
-        const result = await executeWorkflow({
-          workflow: definition,
+        await executeWorkflowRunFromRow({
+          sql,
+          workflowRow:
+            wf as unknown as import("../../infra/workflow-execution-service.js").WorkflowRow,
           runId,
-          dispatcher,
+          triggerType: "cron",
           triggerPayload: job.payload.triggerPayload,
           triggerSource: `cron:${job.id}`,
         });
 
-        // Update PG run record with result
-        await sql`
-          UPDATE workflow_runs SET
-            status = ${result.status},
-            total_tokens = ${result.totalTokens},
-            total_cost_usd = ${result.totalCostUsd},
-            duration_ms = ${result.durationMs},
-            ended_at = NOW()
-          WHERE id = ${runId}
+        const [runRow] = await sql`
+          SELECT status, error FROM workflow_runs WHERE id = ${runId}
         `;
-
         await sql.end();
 
-        const summary = `Workflow "${wf.name}" ${result.status} (${result.steps.length} steps, ${result.durationMs}ms)`;
-        await finish(result.status === "completed" ? "ok" : "error", undefined, summary);
+        const runStatus = typeof runRow?.status === "string" ? runRow.status : "unknown";
+        const summary = `Workflow "${wf.name}" ${runStatus} from cron run ${runId}`;
+        const okStatuses = new Set([
+          "completed",
+          "waiting_approval",
+          "waiting_event",
+          "waiting_duration",
+        ]);
+        await finish(
+          okStatuses.has(runStatus) ? "ok" : "error",
+          typeof runRow?.error === "string" ? runRow.error : undefined,
+          summary,
+        );
       } catch (err) {
         await finish("error", err instanceof Error ? err.message : String(err));
       }

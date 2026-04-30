@@ -1,20 +1,21 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from cli_aos.buffer.client import BufferClient
+import pytest
+
+from cli_aos.buffer.client import BufferAPIError, BufferClient
 
 
 class FakeResponse:
-    def __init__(self, data: Any, status: int = 200):
-        self._data = data
+    def __init__(self, payload: dict[str, Any], status: int = 200):
+        self._payload = payload
         self.status = status
         self.headers = {"Content-Type": "application/json"}
 
     def read(self) -> bytes:
-        import json
-
-        return json.dumps(self._data).encode("utf-8")
+        return json.dumps(self._payload).encode("utf-8")
 
     def __enter__(self):
         return self
@@ -28,31 +29,65 @@ class FakeURLLib:
         self.requests: list[dict[str, Any]] = []
 
     def __call__(self, request, timeout=None):
-        url = request.full_url
-        self.requests.append({"url": url, "method": request.method, "headers": dict(request.headers), "timeout": timeout})
-        if url.endswith("/user.json"):
-            return FakeResponse({"id": "user_1", "name": "Demo Account", "email": "demo@example.com"})
-        if url.endswith("/profiles.json"):
-            return FakeResponse([
-                {"id": "chan_1", "service": "twitter", "service_username": "bufferdemo", "formatted_username": "@bufferdemo"},
-                {"id": "chan_2", "service": "linkedin", "service_username": "bufferinc", "formatted_username": "Buffer"},
-            ])
-        if "/profiles/chan_1.json" in url:
-            return FakeResponse({"id": "chan_1", "service": "twitter", "service_username": "bufferdemo", "formatted_username": "@bufferdemo"})
-        if "/profiles/chan_1/schedules.json" in url:
-            return FakeResponse([{"days": ["mon"], "times": ["12:00"]}])
-        return FakeResponse({"ok": True})
+        body = json.loads(request.data.decode("utf-8"))
+        self.requests.append(
+            {
+                "url": request.full_url,
+                "method": request.method,
+                "headers": dict(request.headers),
+                "timeout": timeout,
+                "query": body.get("query"),
+                "variables": body.get("variables"),
+            }
+        )
+
+        query = body.get("query", "")
+        variables = body.get("variables", {})
+
+        if "account {" in query:
+            return FakeResponse({"data": {"account": {"id": "acct_1", "name": "Demo Account", "organizations": [{"id": "org_1"}]}}})
+        if "channels(input:" in query:
+            return FakeResponse({"data": {"channels": [{"id": "chan_1", "name": "Demo Channel", "service": "twitter"}]}})
+        if "channel(input:" in query:
+            return FakeResponse({"data": {"channel": {"id": variables["id"], "name": "Demo Channel", "displayName": "Demo Channel", "service": "twitter"}}})
+        if "posts(" in query:
+            return FakeResponse(
+                {
+                    "data": {
+                        "posts": {
+                            "edges": [{"cursor": "1", "node": {"id": "post_1", "text": "Hello", "status": "scheduled", "channelId": "chan_1"}}],
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        }
+                    }
+                }
+            )
+        return FakeResponse({"errors": [{"message": "Unexpected query", "extensions": {"code": "UNEXPECTED"}}]})
 
 
-def test_buffer_client_reads_account_and_profiles(monkeypatch):
+def test_buffer_client_uses_graphql_endpoint_and_bearer_auth(monkeypatch):
     fake = FakeURLLib()
     monkeypatch.setattr("cli_aos.buffer.client.urlopen", fake)
-    client = BufferClient(api_key="tok_123", base_url="https://api.bufferapp.com/1", graphql_url="https://api.buffer.com")
+    client = BufferClient(api_key="tok_123", base_url="https://api.buffer.com")
     account = client.read_account()
-    profiles = client.list_profiles()
-    channel = client.read_channel("chan_1")
-    schedules = client.list_profile_schedules("chan_1")
-    assert account["name"] == "Demo Account"
-    assert len(profiles["profiles"]) == 2
+    channels = client.list_channels(organization_id="org_1")
+    channel = client.read_channel(channel_id="chan_1")
+    posts = client.list_posts(organization_id="org_1", channel_ids=["chan_1"], statuses=["scheduled"], limit=10)
+    assert account["id"] == "acct_1"
+    assert channels[0]["id"] == "chan_1"
     assert channel["id"] == "chan_1"
-    assert schedules["schedules"][0]["days"] == ["mon"]
+    assert posts["edges"][0]["node"]["id"] == "post_1"
+    assert fake.requests[0]["headers"]["Authorization"] == "Bearer tok_123"
+    assert fake.requests[0]["url"] == "https://api.buffer.com"
+
+
+def test_buffer_client_raises_graphql_errors(monkeypatch):
+    def fake_error(request, timeout=None):
+        del request, timeout
+        return FakeResponse({"errors": [{"message": "Not authorized", "extensions": {"code": "UNAUTHORIZED"}}]})
+
+    monkeypatch.setattr("cli_aos.buffer.client.urlopen", fake_error)
+    client = BufferClient(api_key="tok_123", base_url="https://api.buffer.com")
+    with pytest.raises(BufferAPIError) as exc_info:
+        client.read_account()
+    assert exc_info.value.code == "UNAUTHORIZED"
+    assert exc_info.value.exit_code == 4

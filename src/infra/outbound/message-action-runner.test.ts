@@ -281,6 +281,29 @@ describe("runMessageAction context isolation", () => {
     expect(result.channel).toBe("slack");
   });
 
+  it("uses Telegram allowFrom as the implicit send target", async () => {
+    const result = await runMessageAction({
+      cfg: {
+        channels: {
+          telegram: {
+            botToken: "tg-test",
+            allowFrom: ["8693117634"],
+          },
+        },
+      } as ArgentConfig,
+      action: "send",
+      params: {
+        channel: "telegram",
+        message: "hi",
+      },
+      dryRun: true,
+    });
+
+    expect(result.kind).toBe("send");
+    expect(result.channel).toBe("telegram");
+    expect(result.to).toBe("telegram:8693117634");
+  });
+
   it("blocks cross-provider sends by default", async () => {
     await expect(
       runMessageAction({

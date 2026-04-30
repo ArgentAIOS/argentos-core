@@ -27,6 +27,7 @@ import type {
   TriggerNode,
   AgentNode,
   ActionNode,
+  ActionType,
   GateNode,
   OutputNode,
   AgentDispatcher,
@@ -42,9 +43,16 @@ import type {
   MemoryContextConfig,
   ToolGrantEntry,
 } from "./workflow-types.js";
+import { createPodcastGenerateTool } from "../agents/tools/podcast-generate-tool.js";
+import { createPodcastPlanTool } from "../agents/tools/podcast-plan-tool.js";
 // Real system integrations — these are the actual delivery systems, not stubs
 import { refreshPresence } from "../data/redis-client.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { buildAgentMainSessionKey, resolveAgentIdFromSessionKey } from "../routing/session-key.js";
+import {
+  connectorCommandExtraArgToCliArg,
+  connectorCommandToCliArgs,
+} from "./workflow-connector-command.js";
 import { buildAgentStepPrompt, buildRetryPrompt } from "./workflow-context.js";
 
 const log = createSubsystemLogger("infra/workflow-runner");
@@ -60,6 +68,13 @@ export interface ApprovalRequest {
   timeoutMs?: number;
   timeoutAction?: "approve" | "deny";
   requestedAt: number;
+}
+
+export interface WorkflowResumeOptions {
+  afterNodeId: string;
+  history: StepRecord[];
+  trigger?: TriggerOutput;
+  variables?: Record<string, unknown>;
 }
 
 /**
@@ -116,6 +131,8 @@ export interface ExecuteWorkflowParams {
   actions?: ActionExecutors;
   triggerPayload?: Record<string, unknown>;
   triggerSource?: string;
+  /** Manual/partial execution: stop after recording this node. */
+  stopAfterNodeId?: string;
   onStepStart?: (nodeId: string, node: WorkflowNode) => void;
   onStepComplete?: (nodeId: string, result: StepRecord) => void;
   onRunComplete?: (status: string, steps: StepRecord[]) => void;
@@ -123,10 +140,18 @@ export interface ExecuteWorkflowParams {
   /** PG sql instance for persisting approval state */
   pgSql?: PgSqlInstance | null;
   redis?: Redis | null;
+  resume?: WorkflowResumeOptions;
 }
 
 export interface WorkflowRunResult {
-  status: "completed" | "failed" | "cancelled" | "budget_exceeded" | "waiting_approval";
+  status:
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "budget_exceeded"
+    | "waiting_approval"
+    | "waiting_event"
+    | "waiting_duration";
   steps: StepRecord[];
   totalTokens: number;
   totalCostUsd: number;
@@ -206,30 +231,35 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
   });
 
   // 2. Initialize pipeline context
-  const triggerOutput: TriggerOutput = {
+  const triggerOutput: TriggerOutput = params.resume?.trigger ?? {
     triggerType: "manual",
     firedAt: Date.now(),
     payload: params.triggerPayload ?? {},
     source: params.triggerSource,
   };
+  const resumedHistory = params.resume?.history ?? [];
+  const resumedTokens = resumedHistory.reduce((sum, step) => sum + (step.tokensUsed ?? 0), 0);
+  const resumedCost = resumedHistory.reduce((sum, step) => sum + (step.costUsd ?? 0), 0);
 
   const context: PipelineContext = {
     workflowId: workflow.id,
     workflowName: workflow.name,
     runId,
     currentNodeId: "",
-    currentStepIndex: 0,
+    currentStepIndex: resumedHistory.length,
     totalSteps: executionOrder.length,
     trigger: triggerOutput,
-    history: [],
-    variables: {},
-    totalTokensUsed: 0,
-    totalCostUsd: 0,
-    budgetRemainingUsd: workflow.maxRunCostUsd,
+    history: [...resumedHistory],
+    variables: { ...(params.resume?.variables ?? {}) },
+    totalTokensUsed: resumedTokens,
+    totalCostUsd: resumedCost,
+    budgetRemainingUsd:
+      workflow.maxRunCostUsd === undefined ? undefined : workflow.maxRunCostUsd - resumedCost,
   };
 
   // 3. Execute each node
   let finalStatus: WorkflowRunResult["status"] = "completed";
+  let waitingNodeId: string | undefined;
 
   // Build skip sets for nodes inside parallel branches — they are executed
   // by executeParallelSegment when we encounter their parent parallel gate.
@@ -240,7 +270,12 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
   // Edge routing: nodes skipped because a gate selected a different branch
   const edgeRoutingSkipIds = new Set<string>();
 
-  for (let i = 0; i < executionOrder.length; i++) {
+  const resumeAfterIndex = params.resume
+    ? executionOrder.findIndex((node) => node.id === params.resume?.afterNodeId)
+    : -1;
+  const startIndex = resumeAfterIndex >= 0 ? resumeAfterIndex + 1 : 0;
+
+  for (let i = startIndex; i < executionOrder.length; i++) {
     const node = executionOrder[i];
 
     // Skip nodes owned by a parallel segment — already executed by fan-out.
@@ -261,10 +296,20 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
 
     let stepResult: ItemSet;
     let stepStatus: StepRecord["status"] = "completed";
+    let stepError: string | undefined;
 
     try {
-      // Detect parallel gate → execute full fan-out/join segment
-      if (node.kind === "gate" && node.config.gateType === "parallel") {
+      const pinnedOutput = getPinnedOutputForManualRun(params, node, context);
+      if (pinnedOutput) {
+        stepResult = pinnedOutput;
+        log.info("workflow node used pinned output", {
+          workflowId: workflow.id,
+          runId,
+          nodeId: node.id,
+          nodeKind: node.kind,
+        });
+      } else if (node.kind === "gate" && node.config.gateType === "parallel") {
+        // Detect parallel gate → execute full fan-out/join segment
         const segmentResult = await executeParallelSegment(
           node,
           context,
@@ -275,7 +320,9 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
         );
         stepResult = segmentResult.output;
         stepStatus = segmentResult.failed ? "failed" : "completed";
-        if (segmentResult.failed) finalStatus = "failed";
+        if (segmentResult.failed) {
+          finalStatus = "failed";
+        }
       } else {
         switch (node.kind) {
           case "trigger":
@@ -299,7 +346,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
             break;
 
           case "output":
-            stepResult = await executeOutput(node, context);
+            stepResult = await executeOutput(node, context, params.actions);
             break;
 
           default: {
@@ -312,6 +359,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
+      stepError = errorMsg;
       log.error("step execution failed", {
         nodeId: node.id,
         nodeKind: node.kind,
@@ -414,13 +462,24 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
       if (params.pgSql) {
         try {
           const pgStatus = decision.approved ? "approved" : "denied";
+          const approvalRecordStatus = decision.reason === "Timed out" ? "timed_out" : pgStatus;
           await params.pgSql`
             UPDATE workflow_step_runs SET
               approval_status = ${pgStatus},
               approval_note = ${decision.reason ?? null},
               ended_at = NOW(),
               status = 'completed'
-            WHERE id = ${`step-${runId}-${node.id}`}
+              WHERE id = ${`step-${runId}-${node.id}`}
+          `;
+          await params.pgSql`
+            UPDATE workflow_approvals SET
+              status = ${approvalRecordStatus},
+              resolved_at = NOW(),
+              resolved_by = 'operator',
+              resolution_note = ${decision.reason ?? null}
+            WHERE run_id = ${runId}
+              AND node_id = ${node.id}
+              AND status = 'pending'
           `;
           if (decision.approved) {
             await params.pgSql`
@@ -483,21 +542,21 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
       if (params.pgSql) {
         try {
           await params.pgSql`
-            UPDATE workflow_runs SET status = 'waiting', current_node_id = ${node.id}
+            UPDATE workflow_runs SET status = 'waiting_duration', current_node_id = ${node.id}
             WHERE id = ${runId}
           `;
           await params.pgSql`
             INSERT INTO workflow_step_runs (
               id, run_id, node_id, node_kind,
-              status, started_at, metadata
+              status, started_at, input_context
             ) VALUES (
               ${`step-${runId}-${node.id}`}, ${runId}, ${node.id}, 'gate',
-              'waiting',
+              'running',
               ${new Date().toISOString()}::timestamptz,
               ${JSON.stringify({ waitResumeAt: resumeAt, durationMs })}::jsonb
             )
-            ON CONFLICT (id) DO UPDATE SET status = 'waiting',
-              metadata = ${JSON.stringify({ waitResumeAt: resumeAt, durationMs })}::jsonb
+            ON CONFLICT (id) DO UPDATE SET status = 'running',
+              input_context = ${JSON.stringify({ waitResumeAt: resumeAt, durationMs })}::jsonb
           `;
         } catch (err) {
           log.warn("failed to persist wait state", { error: String(err) });
@@ -547,39 +606,97 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
           nodeId: node.id,
           resumeAt,
         });
-        // For now, we block anyway (the workflow is async).
-        // TODO: For true async resume, return here and let a cron pick it up.
-        await new Promise<void>((resolve) => setTimeout(resolve, durationMs));
-
-        if (params.pgSql) {
-          try {
-            await params.pgSql`
-              UPDATE workflow_runs SET status = 'running', current_node_id = NULL
-              WHERE id = ${runId}
-            `;
-            await params.pgSql`
-              UPDATE workflow_step_runs SET status = 'completed', ended_at = NOW()
-              WHERE id = ${`step-${runId}-${node.id}`}
-            `;
-          } catch (err) {
-            log.warn("failed to update long wait completion in PG", { error: String(err) });
-          }
-        }
-
+        finalStatus = "waiting_duration";
+        waitingNodeId = node.id;
         stepResult = {
           items: [
             {
               json: {
                 gateType: "wait_duration",
                 durationMs,
-                waited: true,
-                resumedAt: new Date().toISOString(),
+                waiting: true,
+                resumeAt,
               },
-              text: `Wait complete — resumed after ${durationMs}ms`,
+              text: `Wait persisted until ${resumeAt}`,
             },
           ],
         };
       }
+    }
+
+    // ── Wait event gate pause ───────────────────────────────────────
+    // Persist and return. A gateway/AppForge/local event resumes later.
+    const isEventPending = stepResult.items[0]?.json?.__eventPending === true;
+    if (isEventPending) {
+      const eventJson = stepResult.items[0].json as Record<string, unknown>;
+      const eventType = typeof eventJson.eventType === "string" ? eventJson.eventType : "";
+      const eventFilter =
+        eventJson.eventFilter && typeof eventJson.eventFilter === "object"
+          ? (eventJson.eventFilter as Record<string, unknown>)
+          : {};
+      const eventTimeoutMs =
+        typeof eventJson.timeoutMs === "number" && eventJson.timeoutMs > 0
+          ? eventJson.timeoutMs
+          : undefined;
+      const waitResumeAt = eventTimeoutMs
+        ? new Date(Date.now() + eventTimeoutMs).toISOString()
+        : undefined;
+      if (params.pgSql) {
+        try {
+          await params.pgSql`
+            UPDATE workflow_runs SET status = 'waiting_event', current_node_id = ${node.id}
+            WHERE id = ${runId}
+          `;
+          await params.pgSql`
+            INSERT INTO workflow_step_runs (
+              id, run_id, node_id, node_kind,
+              status, started_at, input_context
+            ) VALUES (
+              ${`step-${runId}-${node.id}`}, ${runId}, ${node.id}, 'gate',
+              'running',
+              ${new Date().toISOString()}::timestamptz,
+              ${JSON.stringify({
+                eventType,
+                eventFilter,
+                timeoutMs: eventJson.timeoutMs,
+                timeoutAction: eventJson.timeoutAction,
+                waitResumeAt,
+              })}::jsonb
+            )
+            ON CONFLICT (id) DO UPDATE SET status = 'running',
+              input_context = ${JSON.stringify({
+                eventType,
+                eventFilter,
+                timeoutMs: eventJson.timeoutMs,
+                timeoutAction: eventJson.timeoutAction,
+                waitResumeAt,
+              })}::jsonb
+          `;
+        } catch (err) {
+          log.warn("failed to persist wait_event state", { error: String(err) });
+        }
+      }
+
+      log.info("wait_event: persisted for event resume", {
+        runId,
+        nodeId: node.id,
+        eventType,
+      });
+      finalStatus = "waiting_event";
+      waitingNodeId = node.id;
+      stepResult = {
+        items: [
+          {
+            json: {
+              gateType: "wait_event",
+              waiting: true,
+              eventType,
+              eventFilter,
+            },
+            text: `Waiting for event ${eventType || "workflow.event"}`,
+          },
+        ],
+      };
     }
 
     // ── Sub-workflow gate execution ──────────────────────────────────
@@ -602,14 +719,34 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
       if (params.pgSql) {
         try {
           const rows = await params.pgSql`
-            SELECT definition FROM workflows WHERE id = ${subWorkflowId} LIMIT 1
+            SELECT * FROM workflows WHERE id = ${subWorkflowId} LIMIT 1
           `;
-          if (rows.length > 0 && rows[0].definition) {
-            const subDef = rows[0].definition as WorkflowDefinition;
+          if (rows.length > 0) {
+            const subRow = rows[0] as Record<string, unknown>;
+            const subDef: WorkflowDefinition = {
+              id: subRow.id as string,
+              name: subRow.name as string,
+              description: subRow.description as string | undefined,
+              nodes: (Array.isArray(subRow.nodes) ? subRow.nodes : []) as WorkflowNode[],
+              edges: (Array.isArray(subRow.edges) ? subRow.edges : []) as WorkflowEdge[],
+              defaultOnError: (subRow.default_on_error as WorkflowDefinition["defaultOnError"]) ?? {
+                strategy: "fail",
+                notifyOnError: true,
+              },
+              maxRunDurationMs:
+                typeof subRow.max_run_duration_ms === "number"
+                  ? (subRow.max_run_duration_ms as number)
+                  : undefined,
+              maxRunCostUsd:
+                typeof subRow.max_run_cost_usd === "number"
+                  ? (subRow.max_run_cost_usd as number)
+                  : undefined,
+            };
 
             // Execute the sub-workflow recursively
-            const subRunResult = await executeWorkflow(subDef, {
+            const subRunResult = await executeWorkflow({
               ...params,
+              workflow: subDef,
               triggerPayload: subInput,
             });
 
@@ -708,6 +845,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
       status: stepStatus,
       durationMs: stepEnd - stepStart,
       output: stepResult,
+      error: stepError,
       tokensUsed: stepTokens || undefined,
       costUsd: stepCost || undefined,
       startedAt: stepStart,
@@ -737,6 +875,19 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
       break;
     }
 
+    if (finalStatus === "waiting_duration" || finalStatus === "waiting_event") {
+      break;
+    }
+
+    if (params.stopAfterNodeId === node.id) {
+      log.info("workflow partial run stopped at requested node", {
+        workflowId: workflow.id,
+        runId,
+        nodeId: node.id,
+      });
+      break;
+    }
+
     // Abort on failed step (unless already handled)
     if (stepStatus === "failed" && finalStatus === "failed") {
       break;
@@ -749,6 +900,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
     totalTokens: context.totalTokensUsed,
     totalCostUsd: context.totalCostUsd,
     durationMs: Date.now() - runStart,
+    waitingNodeId,
   };
 
   params.onRunComplete?.(result.status, result.steps);
@@ -869,13 +1021,32 @@ async function executeAgentNode(
         const cfg = sourceNode.config as Record<string, unknown>;
         if (cfg.nodeType === "tool_grant" || cfg.grantType) {
           const grantType = (cfg.grantType as string) || "connector";
-          const id = (cfg.connectorId as string) || (cfg.toolName as string) || "";
+          const source = typeof cfg.source === "string" ? cfg.source : undefined;
+          const id =
+            (cfg.connectorId as string) ||
+            (cfg.toolName as string) ||
+            (cfg.capabilityId as string) ||
+            "";
           if (id) {
+            const type =
+              grantType === "connector" || source === "connector"
+                ? "connector"
+                : grantType === "appforge_app" || source === "appforge"
+                  ? "appforge"
+                  : source === "plugin"
+                    ? "plugin"
+                    : source === "skill"
+                      ? "skill"
+                      : source === "promoted-cli"
+                        ? "promoted_cli"
+                        : "builtin";
             toolGrants.push({
-              type: grantType === "builtin_tool" ? "builtin" : "connector",
+              type,
               id,
+              name: typeof cfg.name === "string" ? cfg.name : undefined,
               credentialId: typeof cfg.credentialId === "string" ? cfg.credentialId : undefined,
               permissions: (cfg.permissions as "readonly" | "readwrite") || "readonly",
+              source: source as ToolGrantEntry["source"],
             });
             log.info("sub-port: tool grant resolved", {
               nodeId: node.id,
@@ -889,7 +1060,9 @@ async function executeAgentNode(
   }
 
   // Build TOON-encoded prompt with pipeline context
-  const prompt = buildAgentStepPrompt(node.config, context);
+  const prompt =
+    buildAgentStepPrompt(node.config, context) +
+    formatWorkflowCapabilityContext(toolGrants, memoryContext, modelOverride);
 
   // Dispatch to agent with sub-port overrides
   const result = await dispatcher.dispatch(node.config.agentId, prompt, {
@@ -903,6 +1076,34 @@ async function executeAgentNode(
   });
 
   return result;
+}
+
+function formatWorkflowCapabilityContext(
+  toolGrants: ToolGrantEntry[],
+  memoryContext: MemoryContextConfig | undefined,
+  modelOverride: ModelOverrideConfig | undefined,
+): string {
+  if (!toolGrants.length && !memoryContext && !modelOverride) {
+    return "";
+  }
+  const lines = ["", "", "workflow_capability_context:"];
+  if (modelOverride) {
+    lines.push(`- model_override: ${modelOverride.provider}/${modelOverride.model}`);
+  }
+  if (memoryContext) {
+    lines.push(
+      `- memory_context: collections=${memoryContext.collections.join(",") || "default"} maxItems=${memoryContext.maxItems ?? "default"}`,
+    );
+    if (memoryContext.searchQuery) {
+      lines.push(`- memory_query: ${memoryContext.searchQuery}`);
+    }
+  }
+  for (const grant of toolGrants) {
+    lines.push(
+      `- tool_grant: id=${grant.id} type=${grant.type} permissions=${grant.permissions} source=${grant.source ?? "runtime"}`,
+    );
+  }
+  return lines.join("\n");
 }
 
 /**
@@ -980,6 +1181,232 @@ function resolveMemorySignificance(
     case 1:
     default:
       return "noteworthy";
+  }
+}
+
+function resolveOutputPayload(
+  config: { contentTemplate?: string; sourceMode?: string; sourceNodeId?: string },
+  context: PipelineContext,
+): string {
+  if (config.contentTemplate?.trim()) {
+    return resolveTemplate(config.contentTemplate, context);
+  }
+  if (config.sourceMode === "custom") {
+    return "";
+  }
+  if (config.sourceMode === "summary") {
+    return context.history
+      .map((step) => {
+        const output = step.output;
+        const text =
+          output.items
+            .map((item) => item.text)
+            .filter(Boolean)
+            .join("\n")
+            .trim() || JSON.stringify(output.items.map((item) => item.json));
+        return `## ${step.nodeLabel || step.nodeId}\n${text}`;
+      })
+      .join("\n\n")
+      .trim();
+  }
+  if (config.sourceMode === "node" && config.sourceNodeId?.trim()) {
+    const selected = context.history.find((step) => step.nodeId === config.sourceNodeId?.trim());
+    if (selected) {
+      return (
+        selected.output.items
+          .map((item) => item.text)
+          .filter(Boolean)
+          .join("\n")
+          .trim() || JSON.stringify(selected.output.items.map((item) => item.json))
+      );
+    }
+  }
+  const lastOutput = getLastOutput(context);
+  return lastOutput.text ? stringifyWorkflowValue(lastOutput.text) : JSON.stringify(lastOutput);
+}
+
+function normalizeWorkflowText(value: string): string {
+  return value
+    .replace(/^\s*\[MOOD:[^\]]+\]\s*/i, "")
+    .replace(/\n*\[TTS(?:_NOW)?:[\s\S]*$/i, "")
+    .trim();
+}
+
+function extractPayloadText(value: unknown): string {
+  const record = asRecord(value);
+  const payloads = Array.isArray(record.payloads) ? record.payloads : [];
+  const payloadText = payloads
+    .map((payload) => {
+      const payloadRecord = asRecord(payload);
+      return typeof payloadRecord.text === "string" ? payloadRecord.text : "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  if (payloadText) {
+    return normalizeWorkflowText(payloadText);
+  }
+  const directText =
+    typeof record.text === "string"
+      ? record.text
+      : typeof record.summary === "string"
+        ? record.summary
+        : typeof record.message === "string"
+          ? record.message
+          : typeof record.content === "string"
+            ? record.content
+            : "";
+  return normalizeWorkflowText(directText);
+}
+
+function looksLikePlaceholderEnvelope(value: unknown): boolean {
+  const record = asRecord(value);
+  const keys = Object.keys(record);
+  if (!keys.length) {
+    return false;
+  }
+  if ("name" in record && "body" in record) {
+    const name = record.name;
+    const body = record.body;
+    return typeof name === "string" && typeof body === "string";
+  }
+  return false;
+}
+
+function normalizeRenderableWorkflowContent(value: string, label: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "[object Object]") {
+    throw new Error(
+      `${label} is not renderable text. Upstream step returned an object without a text field.`,
+    );
+  }
+
+  if (/^\s*[{[]/.test(trimmed)) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      const extracted = extractPayloadText(parsed);
+      if (extracted) {
+        return extracted;
+      }
+      const record = asRecord(parsed);
+      if (looksLikePlaceholderEnvelope(record)) {
+        throw new Error(
+          `${label} is not renderable text. Upstream step returned a placeholder object envelope.`,
+        );
+      }
+      if (
+        Object.hasOwn(record, "payloads") ||
+        Object.hasOwn(record, "meta") ||
+        Object.hasOwn(record, "systemPromptReport") ||
+        Object.hasOwn(record, "toolValidation")
+      ) {
+        throw new Error(
+          `${label} is not renderable text. Upstream step returned agent runtime metadata.`,
+        );
+      }
+    } catch (err) {
+      if (err instanceof Error && /not renderable text/.test(err.message)) {
+        throw err;
+      }
+    }
+  }
+
+  return normalizeWorkflowText(trimmed);
+}
+
+function stringifyWorkflowValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint" ||
+    typeof value === "symbol"
+  ) {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
+function extractToolResultText(result: unknown): string {
+  const record = asRecord(result);
+  const content = Array.isArray(record.content) ? record.content : [];
+  const text = content
+    .map((entry) => {
+      const contentEntry = asRecord(entry);
+      return typeof contentEntry.text === "string" ? contentEntry.text : "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  if (text) {
+    return text;
+  }
+  const details = record.details;
+  return details === undefined ? "" : stringifyWorkflowValue(details);
+}
+
+function toolResultToItemSet(
+  result: unknown,
+  meta: { nodeId: string; label: string; actionType: string },
+): ItemSet {
+  const record = asRecord(result);
+  const details = asRecord(record.details);
+  const text = extractToolResultText(result);
+  return {
+    items: [
+      {
+        json: {
+          actionType: meta.actionType,
+          label: meta.label,
+          ...(Object.keys(details).length ? details : record),
+        },
+        text,
+        artifacts:
+          typeof details.path === "string"
+            ? [{ type: "audio" as const, id: details.path, title: meta.label }]
+            : undefined,
+      },
+    ],
+  };
+}
+
+function resolveWorkflowTemplateObject(
+  template: string | undefined,
+  context: PipelineContext,
+): Record<string, unknown> | undefined {
+  if (!template?.trim()) {
+    return undefined;
+  }
+  const singleExpression = /^\{\{\s*([^}]+)\s*\}\}$/.exec(template.trim());
+  if (singleExpression) {
+    const path = singleExpression.at(1)?.trim() ?? "";
+    if (path.startsWith("previous.")) {
+      const value = resolveFieldPath(getLastOutput(context), path.slice("previous.".length));
+      return isRecordValue(value) ? value : undefined;
+    }
+    if (path.startsWith("steps.")) {
+      const parts = path.split(".");
+      const stepKey = parts[1];
+      const step = context.history.find((s) => s.nodeId === stepKey || s.nodeLabel === stepKey);
+      if (!step?.output.items.length) {
+        return undefined;
+      }
+      const field = parts.slice(parts[2] === "output" ? 3 : 2).join(".");
+      const jsonField = field.startsWith("json.") ? field.slice(5) : field;
+      const value = resolveFieldPath(step.output.items[0].json, jsonField);
+      return isRecordValue(value) ? value : undefined;
+    }
+  }
+  try {
+    const parsed = JSON.parse(resolveTemplate(template, context)) as unknown;
+    return isRecordValue(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -1493,12 +1920,89 @@ async function executeAction(
       }
     }
 
+    case "podcast_plan": {
+      const {
+        title,
+        script,
+        dialogue,
+        personas,
+        defaultVoiceId,
+        timezone,
+        publishTimeLocal,
+        music,
+        publish,
+      } = actionType;
+      const resolvedScript = script ? resolveTemplate(script, context) : undefined;
+      const args: Record<string, unknown> = {
+        title: resolveTemplate(title, context),
+        personas:
+          personas && personas.length > 0
+            ? personas
+            : [
+                {
+                  id: "argent",
+                  aliases: ["ARGENT", "HOST"],
+                  voice_id:
+                    defaultVoiceId || process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM",
+                },
+              ],
+        default_voice_id:
+          defaultVoiceId || process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM",
+        timezone: timezone || "America/Chicago",
+        publish_time_local: publishTimeLocal || "08:00",
+        publish: publish ?? { spotify: false, youtube: false, heygen: false },
+      };
+      if (dialogue && dialogue.length > 0) {
+        args.dialogue = dialogue;
+      } else {
+        args.script = resolvedScript || "{{previous.text}}";
+      }
+      if (music) {
+        args.music = music;
+      }
+
+      const tool = createPodcastPlanTool();
+      const result = await tool.execute(`workflow-${context.runId}-${node.id}`, args);
+      return toolResultToItemSet(result, {
+        nodeId: node.id,
+        label: node.label,
+        actionType: "podcast_plan",
+      });
+    }
+
+    case "podcast_generate": {
+      const payload =
+        actionType.payload ??
+        resolveWorkflowTemplateObject(actionType.payloadTemplate, context) ??
+        resolveFieldPath(getLastOutput(context), "json.podcast_generate");
+      if (!isRecordValue(payload)) {
+        throw new Error("podcast_generate requires a podcast_plan payload object.");
+      }
+      const args: Record<string, unknown> = {
+        ...payload,
+        title: resolveTemplate(actionType.title, context),
+      };
+      if (actionType.outputDir) {
+        args.output_dir = resolveTemplate(actionType.outputDir, context);
+      }
+      const tool = createPodcastGenerateTool();
+      const result = await tool.execute(`workflow-${context.runId}-${node.id}`, args);
+      return toolResultToItemSet(result, {
+        nodeId: node.id,
+        label: node.label,
+        actionType: "podcast_generate",
+      });
+    }
+
     case "save_to_docpanel": {
       const { title, content, format } = actionType;
       const renderedTitle = resolveTemplate(title, context);
       const fallbackContent =
         context.history[context.history.length - 1]?.output?.items[0]?.text ?? "";
-      const renderedContent = resolveTemplate(content ?? fallbackContent, context);
+      const renderedContent = normalizeRenderableWorkflowContent(
+        resolveTemplate(content ?? fallbackContent, context),
+        "DocPanel action content",
+      );
       try {
         const { dashboardApiHeaders } = await import("../utils/dashboard-api.js");
         const dashboardApi = process.env.ARGENT_DASHBOARD_API || "http://localhost:9242";
@@ -1629,45 +2133,55 @@ async function executeAction(
     }
 
     case "connector_action": {
-      const { connectorId, credentialId, resource, operation, parameters, outputMapping } =
-        actionType;
-      try {
-        // 1. Discover connector binary from catalog
-        const { discoverConnectorCatalog, runConnectorCommandJson, defaultRepoRoots } =
-          await import("../connectors/catalog.js");
-        const catalog = await discoverConnectorCatalog();
-        const connector = catalog.connectors.find((c) => c.tool === connectorId);
-        if (!connector?.discovery.binaryPath) {
-          throw new Error(`Connector "${connectorId}" not found or has no runnable binary`);
-        }
+      return executeConnectorAction(actionType, node.id, node.config.timeoutMs ?? 30_000, context);
+    }
 
-        // 2. Load connector manifest for auth requirements
-        const fs = await import("node:fs");
-        const nodePath = await import("node:path");
-        let manifest: Record<string, unknown> | null = null;
-        for (const root of defaultRepoRoots()) {
-          const manifestPath = nodePath.join(root, connectorId, "connector.json");
-          if (fs.existsSync(manifestPath)) {
-            try {
-              manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as Record<
-                string,
-                unknown
-              >;
-              break;
-            } catch {
-              /* try next root */
-            }
-          }
-        }
+    default:
+      log.warn("unknown action type", { nodeId: node.id, actionType: actionName });
+      return emptyItemSet();
+  }
+}
 
-        // 2b. Guard: block manifest-only connectors from execution
-        if (manifest) {
-          const scope =
-            manifest.scope && typeof manifest.scope === "object"
-              ? (manifest.scope as Record<string, unknown>)
-              : {};
-          if (scope.scaffold_only === true || scope.live_backend_available === false) {
-            return {
+async function executeConnectorAction(
+  actionType: Extract<ActionType, { type: "connector_action" }>,
+  nodeId: string,
+  timeoutMs: number,
+  context: PipelineContext,
+): Promise<ItemSet> {
+  const { connectorId, credentialId, resource, operation, parameters, outputMapping } = actionType;
+  try {
+    const { discoverConnectorCatalog, runConnectorCommandJson, defaultRepoRoots } =
+      await import("../connectors/catalog.js");
+    const catalog = await discoverConnectorCatalog();
+    const connector = catalog.connectors.find((c) => c.tool === connectorId);
+    if (!connector?.discovery.binaryPath) {
+      throw new Error(`Connector "${connectorId}" not found or has no runnable binary`);
+    }
+
+    const fs = await import("node:fs");
+    const nodePath = await import("node:path");
+    let manifest: Record<string, unknown> | null = null;
+    for (const root of defaultRepoRoots()) {
+      const manifestPath = nodePath.join(root, connectorId, "connector.json");
+      if (fs.existsSync(manifestPath)) {
+        try {
+          manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as Record<string, unknown>;
+          break;
+        } catch {
+          /* try next root */
+        }
+      }
+    }
+
+    if (manifest) {
+      const scope =
+        manifest.scope && typeof manifest.scope === "object"
+          ? (manifest.scope as Record<string, unknown>)
+          : {};
+      if (scope.scaffold_only === true || scope.live_backend_available === false) {
+        return {
+          items: [
+            {
               text: `Connector "${connectorId}" is manifest-only — no runtime harness available. This connector cannot be executed until a Python CLI harness is implemented.`,
               json: {
                 connectorId,
@@ -1675,130 +2189,122 @@ async function executeAction(
                 status: "blocked",
                 reason: "manifest_only_no_runtime",
               },
-            };
-          }
-        }
-
-        // 3. Resolve credential secrets from pg-secret-store
-        let secretsEnv: Record<string, string> = {};
-        if (credentialId) {
-          const { pgGetServiceKeyByVariable } = await import("./pg-secret-store.js");
-          const { resolvePostgresUrl } = await import("../data/storage-resolver.js");
-          const postgres = (await import("postgres")).default;
-          const sql = postgres(resolvePostgresUrl(), {
-            max: 1,
-            idle_timeout: 5,
-            connect_timeout: 5,
-            prepare: false,
-          });
-          try {
-            const variable = `WORKFLOW_CRED_${credentialId}`;
-            const key = await pgGetServiceKeyByVariable(sql, variable);
-            if (key?.value) {
-              try {
-                const parsed = JSON.parse(key.value);
-                if (parsed && typeof parsed === "object") {
-                  secretsEnv = Object.fromEntries(
-                    Object.entries(parsed as Record<string, unknown>)
-                      .filter(([, v]) => typeof v === "string")
-                      .map(([k, v]) => [k, v as string]),
-                  );
-                }
-              } catch {
-                log.warn("connector_action: failed to parse credential secrets", {
-                  credentialId,
-                });
-              }
-            } else {
-              log.warn("connector_action: credential not found or empty", { credentialId });
-            }
-          } finally {
-            await sql.end({ timeout: 2 }).catch(() => {});
-          }
-        }
-
-        // 4. Build args: --json <operation> with parameters as JSON on stdin or args
-        const resolvedParams: Record<string, unknown> = {};
-        for (const [key, val] of Object.entries(parameters ?? {})) {
-          resolvedParams[key] = typeof val === "string" ? resolveTemplate(val, context) : val;
-        }
-
-        const args = ["--json", operation];
-        // Pass parameters as flattened --key=value args for the connector harness
-        for (const [key, val] of Object.entries(resolvedParams)) {
-          if (val !== undefined && val !== null) {
-            args.push(`--${key}`, String(val));
-          }
-        }
-
-        // 5. Execute connector command
-        const result = await runConnectorCommandJson({
-          binaryPath: connector.discovery.binaryPath,
-          args,
-          cwd: connector.discovery.harnessDir,
-          timeoutMs: node.config.timeoutMs ?? 30_000,
-          env: secretsEnv,
-        });
-
-        if (!result.ok) {
-          throw new Error(
-            `Connector ${connectorId} command "${operation}" failed: ${result.detail || result.stderr}`,
-          );
-        }
-
-        // 6. Map result to ItemSet output ports
-        let responseData: Record<string, unknown> = {};
-        if (result.data && typeof result.data === "object" && !Array.isArray(result.data)) {
-          responseData = result.data as Record<string, unknown>;
-        } else if (result.envelope && typeof result.envelope === "object") {
-          responseData = result.envelope as Record<string, unknown>;
-        } else if (typeof result.data === "string") {
-          try {
-            responseData = JSON.parse(result.data) as Record<string, unknown>;
-          } catch {
-            responseData = { raw: result.data };
-          }
-        }
-
-        const mapped = outputMapping
-          ? { ...responseData, ...applyOutputMapping(responseData, outputMapping) }
-          : responseData;
-
-        log.info("connector_action: SUCCESS", {
-          connectorId,
-          operation,
-          resource,
-          hasOutputMapping: !!outputMapping,
-        });
-
-        return {
-          items: [
-            {
-              json: {
-                ok: true,
-                connectorId,
-                operation,
-                resource,
-                ...mapped,
-              },
-              text: result.stdout?.trim() || JSON.stringify(mapped),
             },
           ],
         };
-      } catch (err) {
-        log.error("connector_action: FAILED", {
-          nodeId: node.id,
-          connectorId,
-          operation,
-          error: String(err),
-        });
-        throw err;
       }
     }
 
-    default:
-      log.warn("unknown action type", { nodeId: node.id, actionType: actionName });
-      return emptyItemSet();
+    let secretsEnv: Record<string, string> = {};
+    if (credentialId) {
+      const { pgGetServiceKeyByVariable } = await import("./pg-secret-store.js");
+      const { resolvePostgresUrl } = await import("../data/storage-resolver.js");
+      const postgres = (await import("postgres")).default;
+      const sql = postgres(resolvePostgresUrl(), {
+        max: 1,
+        idle_timeout: 5,
+        connect_timeout: 5,
+        prepare: false,
+      });
+      try {
+        const variable = `WORKFLOW_CRED_${credentialId}`;
+        const key = await pgGetServiceKeyByVariable(sql, variable);
+        if (key?.value) {
+          try {
+            const parsed = JSON.parse(key.value);
+            if (parsed && typeof parsed === "object") {
+              secretsEnv = Object.fromEntries(
+                Object.entries(parsed as Record<string, unknown>)
+                  .filter(([, v]) => typeof v === "string")
+                  .map(([k, v]) => [k, v as string]),
+              );
+            }
+          } catch {
+            log.warn("connector_action: failed to parse credential secrets", {
+              credentialId,
+            });
+          }
+        } else {
+          log.warn("connector_action: credential not found or empty", { credentialId });
+        }
+      } finally {
+        await sql.end({ timeout: 2 }).catch(() => {});
+      }
+    }
+
+    const resolvedParams: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(parameters ?? {})) {
+      resolvedParams[key] = typeof val === "string" ? resolveTemplate(val, context) : val;
+    }
+
+    const args = ["--json", ...connectorCommandToCliArgs(operation)];
+    for (const [key, val] of Object.entries(resolvedParams)) {
+      const cliArg = connectorCommandExtraArgToCliArg(val);
+      if (cliArg !== undefined) {
+        args.push(`--${key.replaceAll("_", "-")}`, cliArg);
+      }
+    }
+
+    const result = await runConnectorCommandJson({
+      binaryPath: connector.discovery.binaryPath,
+      args,
+      cwd: connector.discovery.harnessDir,
+      timeoutMs,
+      env: secretsEnv,
+    });
+
+    if (!result.ok) {
+      throw new Error(
+        `Connector ${connectorId} command "${operation}" failed: ${result.detail || result.stderr}`,
+      );
+    }
+
+    let responseData: Record<string, unknown> = {};
+    if (result.data && typeof result.data === "object" && !Array.isArray(result.data)) {
+      responseData = result.data as Record<string, unknown>;
+    } else if (result.envelope && typeof result.envelope === "object") {
+      responseData = result.envelope as Record<string, unknown>;
+    } else if (typeof result.data === "string") {
+      try {
+        responseData = JSON.parse(result.data) as Record<string, unknown>;
+      } catch {
+        responseData = { raw: result.data };
+      }
+    }
+
+    const mapped = outputMapping
+      ? { ...responseData, ...applyOutputMapping(responseData, outputMapping) }
+      : responseData;
+
+    log.info("connector_action: SUCCESS", {
+      connectorId,
+      operation,
+      resource,
+      hasOutputMapping: !!outputMapping,
+    });
+
+    return {
+      items: [
+        {
+          json: {
+            ok: true,
+            connectorId,
+            operation,
+            resource,
+            ...mapped,
+          },
+          text: result.stdout?.trim() || JSON.stringify(mapped),
+        },
+      ],
+    };
+  } catch (err) {
+    log.error("connector_action: FAILED", {
+      nodeId,
+      connectorId,
+      operation,
+      error: String(err),
+    });
+    throw err;
   }
 }
 
@@ -2071,22 +2577,23 @@ function executeGate(node: GateNode, context: PipelineContext, _edges: WorkflowE
     }
 
     case "wait_event":
-      // wait_event requires external event delivery (webhooks/streams).
-      // Log and pass through — full implementation needs event subscription system.
-      log.info("wait_event gate — not yet implemented, passing through", {
+      log.info("wait_event gate — pausing execution", {
         nodeId: node.id,
         eventType: config.eventType,
+        eventFilter: config.eventFilter,
       });
       return {
         items: [
           {
             json: {
               gateType: "wait_event",
+              __eventPending: true,
               eventType: config.eventType,
-              passThrough: true,
-              reason: "Event subscription system not yet implemented",
+              eventFilter: config.eventFilter,
+              timeoutMs: config.timeoutMs,
+              timeoutAction: config.timeoutAction,
             },
-            text: `wait_event: ${config.eventType ?? "unknown"} (pass-through — not yet implemented)`,
+            text: `Waiting for event: ${config.eventType ?? "unknown"}`,
           },
         ],
       };
@@ -2099,9 +2606,13 @@ function executeGate(node: GateNode, context: PipelineContext, _edges: WorkflowE
 
 /**
  * Execute an output node — delivers the pipeline result.
- * Sprint 2: stubs that log delivery and return confirmation.
+ * DocPanel persistence is injected by the gateway; standalone runs return rendered artifacts.
  */
-async function executeOutput(node: OutputNode, context: PipelineContext): Promise<ItemSet> {
+async function executeOutput(
+  node: OutputNode,
+  context: PipelineContext,
+  actions?: ActionExecutors,
+): Promise<ItemSet> {
   const config = node.config;
   const outputType = config.outputType;
   const lastOutput = getLastOutput(context);
@@ -2109,33 +2620,57 @@ async function executeOutput(node: OutputNode, context: PipelineContext): Promis
   log.info("executing output", { nodeId: node.id, outputType });
 
   switch (outputType) {
-    case "docpanel":
-      log.warn("docpanel output not yet wired — returning mock", {
-        nodeId: node.id,
-        title: config.title,
-      });
+    case "docpanel": {
+      const content = normalizeRenderableWorkflowContent(
+        resolveOutputPayload(config, context),
+        "DocPanel output content",
+      );
+      const title = resolveTemplate(config.title, context);
+      const format = config.format ?? "markdown";
+      const saved = actions?.saveToDocPanel
+        ? await actions.saveToDocPanel(title, content, format)
+        : undefined;
+      if (!actions?.saveToDocPanel) {
+        log.warn("docpanel output has no persistence executor — returning rendered artifact", {
+          nodeId: node.id,
+          title,
+        });
+      }
+      if (saved && !saved.ok) {
+        throw new Error(`DocPanel save failed for output "${title}"`);
+      }
+      const docId = saved?.docId ?? `${context.runId}-${node.id}`;
       return {
         items: [
           {
-            json: { outputType: "docpanel", title: config.title },
-            text: `DocPanel document created: ${config.title}`,
+            json: {
+              outputType: "docpanel",
+              title,
+              content,
+              saved: Boolean(saved?.ok),
+              docId: saved?.docId,
+            },
+            text: content,
             artifacts: [
               {
                 type: "docpanel",
-                id: `doc:${context.runId}-${node.id}`,
-                title: config.title,
+                id: `doc:${docId}`,
+                title,
               },
             ],
           },
         ],
       };
+    }
 
     case "channel": {
       const content = config.template
         ? resolveTemplate(config.template, context)
-        : lastOutput.text
-          ? String(lastOutput.text)
-          : JSON.stringify(lastOutput);
+        : config.contentTemplate
+          ? resolveTemplate(config.contentTemplate, context)
+          : lastOutput.text
+            ? stringifyWorkflowValue(lastOutput.text)
+            : JSON.stringify(lastOutput);
       const result = await sendWorkflowMessage(
         config.channelType,
         config.channelId,
@@ -2205,19 +2740,44 @@ async function executeOutput(node: OutputNode, context: PipelineContext): Promis
       };
     }
 
-    case "knowledge":
-      log.warn("knowledge output not yet wired — returning mock", {
+    case "knowledge": {
+      const content = resolveOutputPayload(config, context);
+      const collectionId =
+        resolveTemplate(config.collectionId || "workflow-output", context).trim() ||
+        "workflow-output";
+      log.info("knowledge output storing rendered payload", {
         nodeId: node.id,
-        collectionId: config.collectionId,
+        collectionId,
+      });
+      const { getStorageAdapter } = await import("../data/storage-factory.js");
+      const adapter = await getStorageAdapter();
+      const item = await adapter.memory.createItem({
+        memoryType: "knowledge",
+        summary: content,
+        significance: "noteworthy",
+        extra: {
+          ...config.metadata,
+          collection: collectionId,
+          source: "workflow_output",
+          workflowId: context.workflowId,
+          workflowRunId: context.runId,
+          outputNodeId: node.id,
+        },
       });
       return {
         items: [
           {
-            json: { outputType: "knowledge", collectionId: config.collectionId },
-            text: `Output stored to knowledge collection ${config.collectionId}`,
+            json: {
+              outputType: "knowledge",
+              stored: true,
+              collectionId,
+              memoryId: item.id,
+            },
+            text: content,
           },
         ],
       };
+    }
 
     case "task_update": {
       const { getStorageAdapter } = await import("../data/storage-factory.js");
@@ -2275,6 +2835,23 @@ async function executeOutput(node: OutputNode, context: PipelineContext): Promis
           },
         ],
       };
+    }
+
+    case "connector_action": {
+      return executeConnectorAction(
+        {
+          type: "connector_action",
+          connectorId: config.connectorId,
+          credentialId: config.credentialId ?? "",
+          resource: config.resource,
+          operation: config.operation,
+          parameters: config.parameters,
+          outputMapping: config.outputMapping,
+        },
+        node.id,
+        30_000,
+        context,
+      );
     }
 
     default:
@@ -2355,9 +2932,10 @@ function evaluateCondition(expr: ConditionExpr, data: Record<string, unknown>): 
     return !evaluateCondition(expr.not, data);
   }
   if ("evaluator" in expr) {
-    // Agent-evaluated condition — Sprint 3
-    log.warn("agent-evaluated condition not yet implemented, defaulting to true");
-    return true;
+    log.warn("agent-evaluated condition not yet implemented, failing closed", {
+      agentId: expr.agentId,
+    });
+    return false;
   }
 
   // Simple field comparison
@@ -2512,6 +3090,9 @@ export class CoreAgentDispatcher implements AgentDispatcher {
       modelTierHint?: ModelTier | string;
       toolsAllow?: string[];
       toolsDeny?: string[];
+      modelOverride?: ModelOverrideConfig;
+      memoryContext?: MemoryContextConfig;
+      toolGrants?: ToolGrantEntry[];
     },
   ): Promise<ItemSet> {
     const startMs = Date.now();
@@ -2531,20 +3112,23 @@ export class CoreAgentDispatcher implements AgentDispatcher {
 
       // Resolve model from tier hint when present
       const resolved = resolveModelFromTier(config.modelTierHint as ModelTier | undefined);
+      const modelBinding = config.modelOverride
+        ? { provider: config.modelOverride.provider, model: config.modelOverride.model }
+        : resolved;
 
-      // Each workflow step gets an isolated session key.
-      const sessionKey = `workflow:${agentId}:${Date.now()}`;
+      // Each workflow step gets an isolated key under the selected agent's session namespace.
+      const sessionKey = buildWorkflowAgentSessionKey(agentId);
       const timeoutSeconds = Math.ceil(config.timeoutMs / 1000);
 
       const result = await agentCommand(
         {
-          message: prompt,
+          message: prompt + formatWorkflowAgentDispatchContext(config),
           agentId,
           sessionKey,
           timeout: String(timeoutSeconds),
           lane: "workflow",
-          providerOverride: resolved?.provider,
-          modelOverride: resolved?.model,
+          providerOverride: modelBinding?.provider,
+          modelOverride: modelBinding?.model,
           extraSystemPrompt:
             "You are executing a step in an automated workflow pipeline. " +
             "Follow the TOON-encoded pipeline context in the message precisely. " +
@@ -2560,10 +3144,14 @@ export class CoreAgentDispatcher implements AgentDispatcher {
       // delivery result whose shape varies.
       const responseText =
         typeof result === "object" && result !== null
-          ? String(
+          ? extractPayloadText(result) ||
+            stringifyWorkflowValue(
               (result as Record<string, unknown>).text ??
                 (result as Record<string, unknown>).summary ??
-                result,
+                (result as Record<string, unknown>).message ??
+                (result as Record<string, unknown>).content ??
+                (result as Record<string, unknown>).details ??
+                "",
             )
           : String(result ?? "");
 
@@ -2626,6 +3214,60 @@ export class CoreAgentDispatcher implements AgentDispatcher {
       throw err;
     }
   }
+}
+
+export function buildWorkflowAgentSessionKey(agentId: string, nowMs = Date.now()): string {
+  return buildAgentMainSessionKey({
+    agentId,
+    mainKey: `workflow:${nowMs}`,
+  });
+}
+
+export function validateWorkflowAgentSessionIdentity(agentId: string, sessionKey: string) {
+  const sessionAgentId = resolveAgentIdFromSessionKey(sessionKey);
+  const ok = sessionAgentId === agentId.trim().toLowerCase();
+  return {
+    ok,
+    agentId,
+    sessionKey,
+    sessionAgentId,
+    message: ok
+      ? `Agent "${agentId}" matches workflow session key.`
+      : `Agent id "${agentId}" does not match session key agent "${sessionAgentId}".`,
+  };
+}
+
+function formatWorkflowAgentDispatchContext(config: {
+  toolsAllow?: string[];
+  toolsDeny?: string[];
+  modelOverride?: ModelOverrideConfig;
+  memoryContext?: MemoryContextConfig;
+  toolGrants?: ToolGrantEntry[];
+}): string {
+  const lines: string[] = [];
+  if (config.toolsAllow?.length) {
+    lines.push(`- tools_allow: ${config.toolsAllow.join(", ")}`);
+  }
+  if (config.toolsDeny?.length) {
+    lines.push(`- tools_deny: ${config.toolsDeny.join(", ")}`);
+  }
+  if (config.modelOverride) {
+    lines.push(`- model_binding: ${config.modelOverride.provider}/${config.modelOverride.model}`);
+  }
+  if (config.memoryContext) {
+    lines.push(
+      `- memory_binding: ${config.memoryContext.collections.join(",") || "default"} query=${config.memoryContext.searchQuery ?? "default"}`,
+    );
+  }
+  for (const grant of config.toolGrants ?? []) {
+    lines.push(
+      `- capability_grant: ${grant.id} type=${grant.type} permissions=${grant.permissions} source=${grant.source ?? "runtime"}`,
+    );
+  }
+  if (!lines.length) {
+    return "";
+  }
+  return `\n\nworkflow_runtime_bindings:\n${lines.join("\n")}`;
 }
 
 // ── Parallel / Join Execution ─────────────────────────────────────
@@ -3090,6 +3732,72 @@ function errorItemSet(message: string): ItemSet {
   };
 }
 
+function getPinnedOutputForManualRun(
+  params: ExecuteWorkflowParams,
+  node: WorkflowNode,
+  context: PipelineContext,
+): ItemSet | null {
+  const source = params.triggerSource ?? context.trigger.source ?? "";
+  const isManualTestRun =
+    source === "" ||
+    source.startsWith("gateway:manual") ||
+    source.startsWith("gateway:retry_from_step");
+  if (!isManualTestRun) {
+    return null;
+  }
+  const config = node.config as Record<string, unknown>;
+  const pinnedOutput = config.pinnedOutput;
+  if (pinnedOutput === undefined || pinnedOutput === null) {
+    return null;
+  }
+  return itemSetFromPinnedOutput(pinnedOutput, node);
+}
+
+function itemSetFromPinnedOutput(value: unknown, node: WorkflowNode): ItemSet {
+  if (value && typeof value === "object" && Array.isArray((value as { items?: unknown }).items)) {
+    return value as ItemSet;
+  }
+  if (Array.isArray(value)) {
+    return {
+      items: value.map((entry) => itemFromPinnedValue(entry, node)),
+    };
+  }
+  return { items: [itemFromPinnedValue(value, node)] };
+}
+
+function itemFromPinnedValue(value: unknown, node: WorkflowNode): PipelineItem {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    const json = isRecordValue(record.json) ? record.json : record;
+    return {
+      json,
+      text: typeof record.text === "string" ? record.text : undefined,
+      artifacts: Array.isArray(record.artifacts)
+        ? (record.artifacts as PipelineItem["artifacts"])
+        : undefined,
+      meta: {
+        nodeId: node.id,
+        status: "completed",
+        durationMs: 0,
+        ...(isRecordValue(record.meta) ? record.meta : {}),
+      },
+    };
+  }
+  return {
+    json: { value },
+    text: typeof value === "string" ? value : JSON.stringify(value),
+    meta: {
+      nodeId: node.id,
+      status: "completed",
+      durationMs: 0,
+    },
+  };
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
 function getNodeLabel(node: WorkflowNode): string {
   switch (node.kind) {
     case "trigger":
@@ -3114,6 +3822,7 @@ function getLastOutput(context: PipelineContext): Record<string, unknown> {
   const item = lastStep.output.items[0];
   return {
     ...item.json,
+    json: item.json,
     text: item.text,
     status: lastStep.status,
     nodeId: lastStep.nodeId,
@@ -3146,42 +3855,52 @@ function resolveTemplate(template: string, context: PipelineContext): string {
     if (path.startsWith("variables.")) {
       const subPath = path.slice("variables.".length);
       const val = resolveFieldPath(context.variables as Record<string, unknown>, subPath);
-      return val !== undefined ? String(val) : "";
+      return val !== undefined ? stringifyWorkflowValue(val) : "";
     }
 
-    // {{steps.nodeLabel.output.text}} or {{steps.nodeLabel.output.json.field}}
+    // {{steps.nodeId.text}}, {{steps.nodeLabel.output.text}}, or
+    // {{steps.nodeLabel.output.json.field}}.
     if (path.startsWith("steps.")) {
       const parts = path.split(".");
-      const stepLabel = parts[1];
-      const step = context.history.find((s) => s.nodeLabel === stepLabel);
-      if (step && parts[2] === "output" && step.output.items.length > 0) {
-        const field = parts.slice(3).join(".");
+      const stepKey = parts[1];
+      const step = context.history.find((s) => s.nodeId === stepKey || s.nodeLabel === stepKey);
+      if (step && step.output.items.length > 0) {
+        const hasOutputPrefix = parts[2] === "output";
+        const field = parts.slice(hasOutputPrefix ? 3 : 2).join(".");
         if (field === "text") return step.output.items[0].text ?? "";
+        if (field === "json") return JSON.stringify(step.output.items[0].json ?? {});
         // Allow steps.X.output.json.field — strip leading "json." prefix
         const jsonField = field.startsWith("json.") ? field.slice(5) : field;
         const val = resolveFieldPath(step.output.items[0].json, jsonField);
-        return val !== undefined ? String(val) : "";
+        return val !== undefined ? stringifyWorkflowValue(val) : "";
       }
       return "";
+    }
+
+    // {{previous.text}} or {{previous.json.field}} — previous node output
+    if (path.startsWith("previous.")) {
+      const subPath = path.slice("previous.".length);
+      const val = resolveFieldPath(getLastOutput(context), subPath);
+      return val !== undefined ? stringifyWorkflowValue(val) : "";
     }
 
     // {{trigger.payload.field}} — trigger data
     if (path.startsWith("trigger.")) {
       const subPath = path.slice("trigger.".length);
       const val = resolveFieldPath(context.trigger as unknown as Record<string, unknown>, subPath);
-      return val !== undefined ? String(val) : "";
+      return val !== undefined ? stringifyWorkflowValue(val) : "";
     }
 
     // {{context.runId}}, {{context.workflowId}}, etc. — run metadata
     if (path.startsWith("context.")) {
       const subPath = path.slice("context.".length);
       const val = resolveFieldPath(context as unknown as Record<string, unknown>, subPath);
-      return val !== undefined ? String(val) : "";
+      return val !== undefined ? stringifyWorkflowValue(val) : "";
     }
 
     // Fallback: check bare variables (backward compat with Sprint 2 usage)
     const fromVars = resolveFieldPath(context.variables as Record<string, unknown>, path);
-    if (fromVars !== undefined) return String(fromVars);
+    if (fromVars !== undefined) return stringifyWorkflowValue(fromVars);
 
     return "";
   });

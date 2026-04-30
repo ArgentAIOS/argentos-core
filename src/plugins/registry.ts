@@ -25,6 +25,13 @@ import type {
   PluginLogger,
   PluginOrigin,
   PluginKind,
+  PluginManifestCapability,
+  PluginManifestInstallNote,
+  PluginManifestNativeDependency,
+  PluginManifestOAuthProvider,
+  PluginManifestPermission,
+  PluginManifestRuntimeSurface,
+  PluginManifestSetupCheck,
   PluginHookName,
   PluginHookHandlerMap,
   PluginHookRegistration as TypedPluginHookRegistration,
@@ -119,6 +126,13 @@ export type PluginRecord = {
   configSchema: boolean;
   configUiHints?: Record<string, PluginConfigUiHint>;
   configJsonSchema?: Record<string, unknown>;
+  capabilities?: PluginManifestCapability[];
+  permissions?: PluginManifestPermission[];
+  runtimeSurfaces?: PluginManifestRuntimeSurface[];
+  nativeDependencies?: PluginManifestNativeDependency[];
+  setupChecks?: PluginManifestSetupCheck[];
+  oauthProviders?: PluginManifestOAuthProvider[];
+  installNotes?: PluginManifestInstallNote[];
 };
 
 export type PluginRegistry = {

@@ -8,12 +8,16 @@ type RepairReport = {
   reason?: string;
 };
 
-function isSessionHeader(entry: unknown): entry is { type: string; id: string } {
+function isValidTranscriptHeader(entry: unknown): entry is { type: string; id: string } {
   if (!entry || typeof entry !== "object") {
     return false;
   }
-  const record = entry as { type?: unknown; id?: unknown };
-  return record.type === "session" && typeof record.id === "string" && record.id.length > 0;
+  const record = entry as { type?: unknown; id?: unknown; customType?: unknown };
+  const hasId = typeof record.id === "string" && record.id.length > 0;
+  return (
+    (record.type === "session" && hasId) ||
+    (record.type === "custom" && record.customType === "model-snapshot" && hasId)
+  );
 }
 
 export async function repairSessionFileIfNeeded(params: {
@@ -58,7 +62,7 @@ export async function repairSessionFileIfNeeded(params: {
     return { repaired: false, droppedLines, reason: "empty session file" };
   }
 
-  if (!isSessionHeader(entries[0])) {
+  if (!isValidTranscriptHeader(entries[0])) {
     params.warn?.(
       `session file repair skipped: invalid session header (${path.basename(sessionFile)})`,
     );

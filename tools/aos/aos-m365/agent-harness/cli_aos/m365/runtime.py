@@ -9,8 +9,20 @@ from . import __version__
 from .config import redacted_config_snapshot, runtime_config
 from .constants import CONNECTOR_CATEGORY, CONNECTOR_CATEGORIES, CONNECTOR_LABEL, CONNECTOR_RESOURCES, TOOL_NAME, WRITE_COMMAND_IDS
 from .errors import ConnectorError
+from .service_keys import service_key_env
 
 GRAPH_SCOPE = "https://graph.microsoft.com/.default"
+SUPPORTED_WRITE_COMMAND_IDS = {"mail.reply", "mail.send", "calendar.create"}
+LIMITED_WRITE_COMMANDS = {
+    "excel.append_rows": (
+        "Microsoft Graph workbook range updates do not support application permissions, "
+        "so excel.append_rows stays disabled for this client-credentials connector."
+    ),
+    "teams.reply_message": (
+        "Microsoft Graph channel message replies only support application permissions for migration scenarios, "
+        "so teams.reply_message stays disabled for operator-driven app-only auth."
+    ),
+}
 
 
 def _utc_now() -> str:
@@ -154,9 +166,207 @@ def _fetch_access_token(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def _raw_env(name: str) -> str:
-    import os
+    return (service_key_env(name, "") or "").strip()
 
-    return os.getenv(name, "").strip()
+
+def _split_csv(value: str | None) -> list[str]:
+    return [part.strip() for part in str(value or "").split(",") if part.strip()]
+
+
+def _parse_json_argument(raw: str, *, code: str, message: str) -> Any:
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ConnectorError(code, message, 2, {"raw": raw[:500]}) from exc
+
+
+def _normalize_html_body(content: str) -> dict[str, str]:
+    return {"contentType": "html", "content": content}
+
+
+def _require_target_user(config: dict[str, Any], *, surface: str) -> str:
+    target_user = (config["context"]["target_user"] or "").strip()
+    if target_user:
+        return target_user
+    raise ConnectorError(
+        "M365_TARGET_USER_MISSING",
+        f"Set M365_TARGET_USER before using {surface}.",
+        2,
+        {},
+    )
+
+
+def _parse_datetime_input(value: str, *, field_name: str) -> datetime:
+    normalized = value.strip()
+    if not normalized:
+        raise ConnectorError("ARGUMENT_REQUIRED", f"{field_name} is required.", 2, {})
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise ConnectorError(
+            "INVALID_ARGUMENT",
+            f"{field_name} must be a valid ISO 8601 datetime.",
+            2,
+            {"field": field_name, "value": value},
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _graph_datetime(value: str, *, field_name: str) -> dict[str, str]:
+    parsed = _parse_datetime_input(value, field_name=field_name)
+    return {
+        "dateTime": parsed.replace(tzinfo=None).isoformat(timespec="seconds"),
+        "timeZone": "UTC",
+    }
+
+
+def _mail_recipient(address: str) -> dict[str, Any]:
+    return {"emailAddress": {"address": address}}
+
+
+def _parse_mail_send_items(
+    config: dict[str, Any],
+    items: tuple[str, ...],
+) -> dict[str, Any]:
+    sender = _require_target_user(config, surface="mail.send")
+    if len(items) == 1 and items[0].lstrip().startswith("{"):
+        payload = _parse_json_argument(
+            items[0],
+            code="INVALID_ARGUMENT",
+            message="mail.send expected a JSON object.",
+        )
+        if not isinstance(payload, dict):
+            raise ConnectorError("INVALID_ARGUMENT", "mail.send JSON input must be an object.", 2, {})
+        recipients = payload.get("to") or payload.get("to_recipients") or []
+        if isinstance(recipients, str):
+            recipients = _split_csv(recipients)
+        if not isinstance(recipients, list) or not recipients:
+            raise ConnectorError("ARGUMENT_REQUIRED", "mail.send requires at least one recipient.", 2, {})
+        subject = str(payload.get("subject") or "").strip()
+        body = str(payload.get("body") or payload.get("content") or "").strip()
+        if not subject or not body:
+            raise ConnectorError("ARGUMENT_REQUIRED", "mail.send requires subject and body.", 2, {})
+        mailbox_id = str(payload.get("mailbox_id") or sender).strip()
+        return {
+            "mailbox_id": mailbox_id,
+            "recipients": [str(recipient).strip() for recipient in recipients if str(recipient).strip()],
+            "subject": subject,
+            "body": body,
+        }
+    if len(items) < 3:
+        raise ConnectorError(
+            "ARGUMENT_REQUIRED",
+            "mail.send requires <to_csv> <subject> <body> or a single JSON object argument.",
+            2,
+            {},
+        )
+    recipients = _split_csv(items[0])
+    subject = items[1].strip()
+    body = " ".join(items[2:]).strip()
+    if not recipients or not subject or not body:
+        raise ConnectorError("ARGUMENT_REQUIRED", "mail.send requires recipients, subject, and body.", 2, {})
+    return {
+        "mailbox_id": sender,
+        "recipients": recipients,
+        "subject": subject,
+        "body": body,
+    }
+
+
+def _parse_mail_reply_items(
+    config: dict[str, Any],
+    items: tuple[str, ...],
+) -> dict[str, str]:
+    mailbox_id = _require_target_user(config, surface="mail.reply")
+    if len(items) == 1 and items[0].lstrip().startswith("{"):
+        payload = _parse_json_argument(
+            items[0],
+            code="INVALID_ARGUMENT",
+            message="mail.reply expected a JSON object.",
+        )
+        if not isinstance(payload, dict):
+            raise ConnectorError("INVALID_ARGUMENT", "mail.reply JSON input must be an object.", 2, {})
+        message_id = str(payload.get("message_id") or "").strip()
+        comment = str(payload.get("comment") or payload.get("body") or "").strip()
+        mailbox_id = str(payload.get("mailbox_id") or mailbox_id).strip()
+    else:
+        if len(items) < 2:
+            raise ConnectorError(
+                "ARGUMENT_REQUIRED",
+                "mail.reply requires <message_id> <comment> or a single JSON object argument.",
+                2,
+                {},
+            )
+        message_id = items[0].strip()
+        comment = " ".join(items[1:]).strip()
+    if not message_id or not comment:
+        raise ConnectorError("ARGUMENT_REQUIRED", "mail.reply requires message_id and comment.", 2, {})
+    return {"mailbox_id": mailbox_id, "message_id": message_id, "comment": comment}
+
+
+def _parse_calendar_create_items(
+    config: dict[str, Any],
+    items: tuple[str, ...],
+) -> dict[str, Any]:
+    target_user = _require_target_user(config, surface="calendar.create")
+    if len(items) == 1 and items[0].lstrip().startswith("{"):
+        payload = _parse_json_argument(
+            items[0],
+            code="INVALID_ARGUMENT",
+            message="calendar.create expected a JSON object.",
+        )
+        if not isinstance(payload, dict):
+            raise ConnectorError("INVALID_ARGUMENT", "calendar.create JSON input must be an object.", 2, {})
+        title = str(payload.get("title") or payload.get("subject") or "").strip()
+        start = str(payload.get("start") or payload.get("event_start") or "").strip()
+        end = str(payload.get("end") or payload.get("event_end") or "").strip()
+        body = str(payload.get("body") or payload.get("event_body") or "").strip()
+        location = str(payload.get("location") or payload.get("event_location") or "").strip()
+        calendar_id = str(payload.get("calendar_id") or "").strip()
+    else:
+        if len(items) < 2:
+            raise ConnectorError(
+                "ARGUMENT_REQUIRED",
+                "calendar.create requires <title> <start_iso> [end_iso] or a single JSON object argument.",
+                2,
+                {},
+            )
+        title = items[0].strip()
+        start = items[1].strip()
+        end = items[2].strip() if len(items) >= 3 else ""
+        body = ""
+        location = ""
+        calendar_id = ""
+    if not title or not start:
+        raise ConnectorError("ARGUMENT_REQUIRED", "calendar.create requires title and start.", 2, {})
+    start_dt = _parse_datetime_input(start, field_name="event_start")
+    end_dt = _parse_datetime_input(end, field_name="event_end") if end else start_dt + timedelta(minutes=30)
+    if end_dt <= start_dt:
+        raise ConnectorError(
+            "INVALID_ARGUMENT",
+            "calendar.create requires event_end to be later than event_start.",
+            2,
+            {},
+        )
+    return {
+        "target_user": target_user,
+        "calendar_id": calendar_id,
+        "title": title,
+        "start": {
+            "dateTime": start_dt.replace(tzinfo=None).isoformat(timespec="seconds"),
+            "timeZone": "UTC",
+        },
+        "end": {
+            "dateTime": end_dt.replace(tzinfo=None).isoformat(timespec="seconds"),
+            "timeZone": "UTC",
+        },
+        "body": body,
+        "location": location,
+    }
 
 
 def _graph_request(
@@ -275,7 +485,7 @@ def _resource_readiness(config: dict[str, Any]) -> dict[str, bool]:
         "file": runtime["file_ready"],
         "teams": runtime["teams_ready"],
         "excel": runtime["excel_ready"],
-        "writes": False,
+        "writes": True,
     }
 
 
@@ -373,8 +583,8 @@ def health_snapshot() -> dict[str, Any]:
 def doctor_snapshot() -> dict[str, Any]:
     snapshot = health_snapshot()
     recommendations = [
-        "Keep write actions disabled until the connector implements actual Graph mutation paths.",
-        "Use readonly mode for live reads; write commands remain scaffolded.",
+        "Use readonly mode for live reads and write mode only for supported Graph mutations.",
+        "excel.append_rows and teams.reply_message remain disabled because Microsoft Graph limits those paths for app-only auth.",
     ]
     if snapshot["status"] == "needs_setup":
         recommendations.insert(0, "Set the Microsoft 365 auth and target-user environment before assigning this connector.")
@@ -390,6 +600,8 @@ def doctor_snapshot() -> dict[str, Any]:
         "runtime_ready": snapshot["status"] == "healthy",
         "recommendations": recommendations,
         "config": redacted_config_snapshot(),
+        "supported_write_commands": sorted(SUPPORTED_WRITE_COMMAND_IDS),
+        "limited_write_commands": LIMITED_WRITE_COMMANDS,
     }
 
 
@@ -914,19 +1126,128 @@ def list_team_messages(
     }
 
 
+def send_mail_message(config: dict[str, Any], items: tuple[str, ...]) -> dict[str, Any]:
+    parsed = _parse_mail_send_items(config, items)
+    response = _graph_request(
+        config,
+        "POST",
+        f"/users/{parse.quote(parsed['mailbox_id'])}/sendMail",
+        payload={
+            "message": {
+                "subject": parsed["subject"],
+                "body": _normalize_html_body(parsed["body"]),
+                "toRecipients": [_mail_recipient(address) for address in parsed["recipients"]],
+            },
+            "saveToSentItems": True,
+        },
+    )
+    return {
+        "summary": f"Sent mail to {', '.join(parsed['recipients'])}.",
+        "mailbox_id": parsed["mailbox_id"],
+        "to": parsed["recipients"],
+        "subject": parsed["subject"],
+        "response": response,
+        "scope_preview": {
+            "surface": "mail",
+            "kind": "mailbox",
+            "mode": "send",
+            "target_user": parsed["mailbox_id"],
+            "recipients": parsed["recipients"],
+            "subject": parsed["subject"],
+        },
+    }
+
+
+def reply_mail_message(config: dict[str, Any], items: tuple[str, ...]) -> dict[str, Any]:
+    parsed = _parse_mail_reply_items(config, items)
+    response = _graph_request(
+        config,
+        "POST",
+        f"/users/{parse.quote(parsed['mailbox_id'])}/messages/{parse.quote(parsed['message_id'])}/reply",
+        payload={"comment": parsed["comment"]},
+    )
+    return {
+        "summary": f"Queued reply for message {parsed['message_id']}.",
+        "mailbox_id": parsed["mailbox_id"],
+        "message_id": parsed["message_id"],
+        "response": response,
+        "scope_preview": {
+            "surface": "mail",
+            "kind": "mailbox",
+            "mode": "reply",
+            "target_user": parsed["mailbox_id"],
+            "message_id": parsed["message_id"],
+        },
+    }
+
+
+def create_calendar_event(config: dict[str, Any], items: tuple[str, ...]) -> dict[str, Any]:
+    parsed = _parse_calendar_create_items(config, items)
+    path = (
+        f"/users/{parse.quote(parsed['target_user'])}/calendars/{parse.quote(parsed['calendar_id'])}/events"
+        if parsed["calendar_id"]
+        else f"/users/{parse.quote(parsed['target_user'])}/calendar/events"
+    )
+    payload: dict[str, Any] = {
+        "subject": parsed["title"],
+        "start": parsed["start"],
+        "end": parsed["end"],
+    }
+    if parsed["body"]:
+        payload["body"] = _normalize_html_body(parsed["body"])
+    if parsed["location"]:
+        payload["location"] = {"displayName": parsed["location"]}
+    event = _graph_request(config, "POST", path, payload=payload)
+    return {
+        "summary": f"Created calendar event {event.get('id') or parsed['title']}.",
+        "event": event,
+        "scope_preview": {
+            "surface": "calendar",
+            "kind": "calendar",
+            "mode": "create",
+            "target_user": parsed["target_user"],
+            "calendar_id": parsed["calendar_id"] or None,
+            "title": parsed["title"],
+            "start": parsed["start"],
+            "end": parsed["end"],
+        },
+    }
+
+
 def _scaffold_write(command_id: str, items: tuple[str, ...]) -> dict[str, Any]:
     return {
         "command": command_id,
         "implemented": False,
         "mode": "scaffold",
         "items": list(items),
+        "limitation": LIMITED_WRITE_COMMANDS.get(command_id),
     }
 
 
 def scaffold_write_command(command_id: str, items: tuple[str, ...]) -> dict[str, Any]:
     if command_id not in WRITE_COMMAND_IDS:
         raise ConnectorError("UNKNOWN_COMMAND", f"Unknown write command: {command_id}", 2, {})
+    if command_id in SUPPORTED_WRITE_COMMAND_IDS:
+        raise ConnectorError("INTERNAL_ERROR", f"{command_id} is implemented and should not use the scaffold path.", 2, {})
     return _scaffold_write(command_id, items)
+
+
+def run_write_command(command_id: str, items: tuple[str, ...]) -> dict[str, Any]:
+    config = runtime_config()
+    if command_id == "mail.send":
+        return send_mail_message(config, items)
+    if command_id == "mail.reply":
+        return reply_mail_message(config, items)
+    if command_id == "calendar.create":
+        return create_calendar_event(config, items)
+    if command_id in WRITE_COMMAND_IDS:
+        raise ConnectorError(
+            "NOT_IMPLEMENTED",
+            LIMITED_WRITE_COMMANDS.get(command_id) or f"{command_id} is not implemented yet.",
+            10,
+            _scaffold_write(command_id, items),
+        )
+    raise ConnectorError("UNKNOWN_COMMAND", f"Unknown write command: {command_id}", 2, {})
 
 
 def run_read_command(command_id: str, items: tuple[str, ...]) -> dict[str, Any]:

@@ -22,6 +22,7 @@ const DOCK_INPUT =
 const DOCK_LABEL =
   "text-xs font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wider";
 const DOCK_SECTION = "space-y-1.5";
+const OUTPUT_MAPPING_PLACEHOLDER = '{\n  "summary": "text",\n  "id": "json.id"\n}';
 
 // ── Types (from AOS_CANVAS_NODE_SPEC_FINAL.md Section 2) ────────────────────
 
@@ -127,13 +128,25 @@ export function ConnectorNodePanel({
   const credentialId = (nodeConfig.credentialId as string) ?? "";
   const selectedResource = (nodeConfig.resource as string) ?? "";
   const selectedOperation = (nodeConfig.operation as string) ?? "";
+  const outputMappingValue =
+    typeof nodeConfig.outputMapping === "string"
+      ? nodeConfig.outputMapping
+      : nodeConfig.outputMapping && typeof nodeConfig.outputMapping === "object"
+        ? JSON.stringify(nodeConfig.outputMapping, null, 2)
+        : "";
 
   // ── Load manifest ──────────────────────────────────────────────────────
   useEffect(() => {
-    if (!connected) return;
+    if (!connected) {
+      return;
+    }
     let cancelled = false;
-    setLoading(true);
-    setError(null);
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setLoading(true);
+        setError(null);
+      }
+    });
 
     request("workflows.manifest", { connectorId })
       .then((result: unknown) => {
@@ -164,7 +177,9 @@ export function ConnectorNodePanel({
 
   // ── Filtered operations for selected resource ──────────────────────────
   const filteredOperations = useMemo(() => {
-    if (!manifest || !selectedResource) return [];
+    if (!manifest || !selectedResource) {
+      return [];
+    }
     return manifest.operations.filter((op) => op.resource === selectedResource);
   }, [manifest, selectedResource]);
 
@@ -191,7 +206,9 @@ export function ConnectorNodePanel({
 
   // ── Fields filtered by appliesTo ───────────────────────────────────────
   const activeFields = useMemo(() => {
-    if (!manifest || !selectedOperation) return [];
+    if (!manifest || !selectedOperation) {
+      return [];
+    }
     return manifest.nodeInputs.filter(
       (f) => !f.appliesTo || f.appliesTo.length === 0 || f.appliesTo.includes(selectedOperation),
     );
@@ -213,7 +230,9 @@ export function ConnectorNodePanel({
 
   // ── Side-effect badge for current operation ────────────────────────────
   const sideEffectBadge = useMemo(() => {
-    if (!currentOp) return null;
+    if (!currentOp) {
+      return null;
+    }
     if (currentOp.sideEffectLevel === "outbound_delivery") {
       return (
         <span className="inline-flex items-center gap-1 text-[10px] font-medium text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded-full">
@@ -356,7 +375,9 @@ export function ConnectorNodePanel({
                   <option value="">Select operation...</option>
                   {(["Read", "Write", "Meta"] as const).map((group) => {
                     const ops = groupedOperations[group];
-                    if (!ops || ops.length === 0) return null;
+                    if (!ops || ops.length === 0) {
+                      return null;
+                    }
                     const writeDisabled =
                       group === "Write" && manifest.readiness?.canRunWriteOps === false;
                     return (
@@ -436,18 +457,13 @@ export function ConnectorNodePanel({
                 connectorId={connectorId}
                 credentialId={credentialId || undefined}
                 onTestNode={
-                  manifest.readiness?.state !== "blocked"
+                  manifest.readiness?.state !== "blocked" && currentOp.sideEffectLevel === "none"
                     ? async () => {
                         await request("workflows.connectorCommand", {
                           connectorId,
                           command: currentOp.id,
                           credentialId,
-                          args: Object.entries(nodeConfig)
-                            .filter(
-                              ([k]) =>
-                                k !== "credentialId" && k !== "resource" && k !== "operation",
-                            )
-                            .map(([, v]) => String(v ?? "")),
+                          args: buildConnectorCommandArgs(nodeConfig),
                         });
                       }
                     : undefined
@@ -459,7 +475,6 @@ export function ConnectorNodePanel({
                           connectorId,
                           command: "health",
                           credentialId,
-                          args: ["--json"],
                         });
                       }
                     : undefined
@@ -479,6 +494,37 @@ export function ConnectorNodePanel({
                 }
               />
             )}
+
+            {currentOp && (
+              <div className={DOCK_SECTION}>
+                <label className={DOCK_LABEL}>Output mapping</label>
+                <div className="text-[10px] text-[hsl(var(--muted-foreground))] -mt-0.5">
+                  Optional JSON map that copies connector result paths into named output fields.
+                </div>
+                <textarea
+                  className={DOCK_INPUT + " font-mono text-[11px] resize-y"}
+                  rows={4}
+                  value={outputMappingValue}
+                  onChange={(e) => updateConfig("outputMapping", e.target.value)}
+                  placeholder={OUTPUT_MAPPING_PLACEHOLDER}
+                  onBlur={(e) => {
+                    const raw = e.target.value.trim();
+                    if (!raw) {
+                      updateConfig("outputMapping", "");
+                      return;
+                    }
+                    try {
+                      const parsed = JSON.parse(raw) as unknown;
+                      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                        updateConfig("outputMapping", JSON.stringify(parsed, null, 2));
+                      }
+                    } catch {
+                      // Leave invalid JSON visible; workflow validation reports the issue.
+                    }
+                  }}
+                />
+              </div>
+            )}
           </>
         )}
       </div>
@@ -493,6 +539,43 @@ interface ConnectorFieldContext {
   credentialId: string;
   manifest: ConnectorManifest;
   gatewayRequest: <T = unknown>(method: string, params?: Record<string, unknown>) => Promise<T>;
+}
+
+function connectorValueToArg(value: unknown): string | undefined {
+  if (value === null || value === undefined || value === "") {
+    return undefined;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
+function buildConnectorCommandArgs(nodeConfig: Record<string, unknown>): string[] {
+  const ignored = new Set([
+    "connectorId",
+    "connectorName",
+    "connectorCategory",
+    "credentialId",
+    "resource",
+    "operation",
+    "outputMapping",
+  ]);
+  const args: string[] = [];
+  for (const [key, value] of Object.entries(nodeConfig)) {
+    if (ignored.has(key)) {
+      continue;
+    }
+    const arg = connectorValueToArg(value);
+    if (arg === undefined) {
+      continue;
+    }
+    args.push(`--${key.replaceAll("_", "-")}`, arg);
+  }
+  return args;
 }
 
 // ── DynamicField — renders a single field based on renderAs ──────────────────
@@ -513,7 +596,9 @@ function DynamicField({
   // Conditional visibility: check showWhen
   if (field.showWhen) {
     const refValue = allValues[field.showWhen.field];
-    if (refValue !== field.showWhen.equals) return null;
+    if (refValue !== field.showWhen.equals) {
+      return null;
+    }
   }
 
   const effectiveValue = value ?? field.default ?? "";

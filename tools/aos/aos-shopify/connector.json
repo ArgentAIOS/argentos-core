@@ -133,9 +133,9 @@
     "service_keys": ["SHOPIFY_SHOP_DOMAIN", "SHOPIFY_ADMIN_ACCESS_TOKEN"],
     "interactive_setup": [
       "Create a Shopify custom app for the target store.",
-      "Add SHOPIFY_SHOP_DOMAIN and SHOPIFY_ADMIN_ACCESS_TOKEN in API Keys.",
-      "Grant the read scopes needed for products, orders, and customers before enabling any worker-visible actions.",
-      "Keep write scopes disabled until a live mutation bridge is implemented and reviewed."
+      "Add SHOPIFY_SHOP_DOMAIN and SHOPIFY_ADMIN_ACCESS_TOKEN in connector service keys.",
+      "Grant the Shopify Admin read scopes needed for products, orders, and customers before enabling worker-visible reads.",
+      "Grant the corresponding Shopify Admin write scopes before using product.update, order.cancel, or fulfillment.create."
     ]
   },
   "commands": [

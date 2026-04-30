@@ -13,6 +13,21 @@ type BrowserRequestParams = {
   body?: unknown;
 };
 
+export function formatBrowserRequestDiagnostic(
+  params: BrowserRequestParams,
+  timeoutMs?: number,
+): string {
+  const profile = params.query?.profile;
+  return [
+    `Browser request: ${params.method} ${params.path}`,
+    profile ? `Profile: ${profile}` : undefined,
+    typeof timeoutMs === "number" ? `Timeout: ${timeoutMs}ms` : undefined,
+    "Diagnostic: run `argent browser status --json --timeout <ms>` and inspect gateway error details.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 function normalizeQuery(query: BrowserRequestParams["query"]): Record<string, string> | undefined {
   if (!query) {
     return undefined;
@@ -43,18 +58,26 @@ export async function callBrowserRequest<T>(
       ? resolvedTimeoutMs
       : undefined;
   const timeout = typeof resolvedTimeout === "number" ? String(resolvedTimeout) : opts.timeout;
-  const payload = await callGatewayFromCli(
-    "browser.request",
-    { ...opts, timeout },
-    {
-      method: params.method,
-      path: params.path,
-      query: normalizeQuery(params.query),
-      body: params.body,
-      timeoutMs: resolvedTimeout,
-    },
-    { progress: extra?.progress },
-  );
+  let payload: unknown;
+  try {
+    payload = await callGatewayFromCli(
+      "browser.request",
+      { ...opts, timeout },
+      {
+        method: params.method,
+        path: params.path,
+        query: normalizeQuery(params.query),
+        body: params.body,
+        timeoutMs: resolvedTimeout,
+      },
+      { progress: extra?.progress },
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`${message}\n${formatBrowserRequestDiagnostic(params, resolvedTimeout)}`, {
+      cause: err,
+    });
+  }
   if (payload === undefined) {
     throw new Error("Unexpected browser.request response");
   }

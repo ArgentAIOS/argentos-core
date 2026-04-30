@@ -6,7 +6,6 @@ import type {
   ProviderPlugin,
 } from "../../plugins/types.js";
 import type { RuntimeEnv } from "../../runtime.js";
-import { loginOpenAICodex } from "../../agent-core/ai.js";
 import {
   resolveAgentDir,
   resolveAgentWorkspaceDir,
@@ -14,6 +13,7 @@ import {
 } from "../../agents/agent-scope.js";
 import { upsertAuthProfile } from "../../agents/auth-profiles.js";
 import { normalizeProviderId } from "../../agents/model-selection.js";
+import { loginOpenAICodexDevice } from "../../agents/openai-codex-auth.js";
 import { resolveDefaultAgentWorkspaceDir } from "../../agents/workspace.js";
 import { formatCliCommand } from "../../cli/command-format.js";
 import { parseDurationMs } from "../../cli/parse-duration.js";
@@ -254,16 +254,21 @@ async function runBuiltInOpenAICodexLogin(params: {
   const resolveOAuthEmail = (value: unknown) =>
     typeof value === "string" && value.trim() ? value.trim() : "default";
 
-  const creds = await loginOpenAICodex({
-    onAuth: async ({ url }) => {
-      await openUrl(url);
+  const creds = await loginOpenAICodexDevice({
+    onStart: async (info) => {
+      params.runtime.log("Open this URL in your browser:");
+      params.runtime.log(`  ${info.verificationUri}`);
+      params.runtime.log("Enter this code:");
+      params.runtime.log(`  ${info.userCode}`);
+      await openUrl(info.verificationUri);
+      await params.prompter.note(
+        [`Open: ${info.verificationUri}`, `Code: ${info.userCode}`].join("\n"),
+        "OpenAI Codex device login",
+      );
     },
-    onPrompt: async (prompt) =>
-      await params.prompter.text({
-        message: prompt.message,
-        placeholder: prompt.placeholder ?? "http://127.0.0.1:1455/auth/callback?code=...",
-        validate: (value) => (String(value ?? "").trim() ? undefined : "Required"),
-      }),
+    onProgress: (message) => {
+      params.runtime.log(message);
+    },
   });
 
   if (!creds) {

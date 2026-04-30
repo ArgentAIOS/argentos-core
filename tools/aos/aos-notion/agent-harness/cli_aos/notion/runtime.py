@@ -340,35 +340,6 @@ def config_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def scaffold_result(
-    ctx_obj: dict[str, Any],
-    *,
-    command_id: str,
-    resource: str,
-    operation: str,
-    inputs: dict[str, Any],
-    consequential: bool = False,
-) -> dict[str, Any]:
-    return {
-        "status": "scaffold",
-        "backend": "notion-api",
-        "command_id": command_id,
-        "resource": resource,
-        "operation": operation,
-        "executed": False,
-        "consequential": consequential,
-        "live_write_available": False,
-        "scaffold_only": True,
-        "inputs": inputs,
-        "summary": "Write bridge not implemented yet; returning draft payload only.",
-        "scope": {
-            "kind": resource,
-            "selection_surface": resource,
-        },
-        "scope_preview": f"{resource}:{operation}",
-    }
-
-
 def read_database_list(ctx_obj: dict[str, Any], *, limit: int) -> dict[str, Any]:
     probe = _read_result_base(ctx_obj)
     client = create_client(ctx_obj)

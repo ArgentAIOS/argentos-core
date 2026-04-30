@@ -420,8 +420,8 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         status = "needs_setup"
         summary = f"Zapier live reads need {runtime['api_url_env']} and {runtime['api_key_env']} before they can run."
         next_steps = [
-            f"Set {runtime['api_url_env']} to the live bridge URL.",
-            f"Set {runtime['api_key_env']} to a bridge API key accepted by the configured endpoint.",
+            f"Set {runtime['api_url_env']} in operator-controlled API Keys first, or local env when running the harness directly.",
+            f"Set {runtime['api_key_env']} in operator-controlled API Keys first, or local env when running the harness directly.",
         ]
     elif not read_ready:
         status = "degraded"
@@ -465,15 +465,23 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
             "live_backend_available": read_ready,
             "live_read_available": read_ready,
             "write_bridge_available": write_ready,
+            "live_write_smoke_tested": False,
             "scaffold_only": False,
         },
         "auth": {
             "api_url_env": runtime["api_url_env"],
             "api_url_present": runtime["api_url_present"],
+            "api_url_usable": runtime["api_url_usable"],
+            "api_url_source": runtime["api_url_source"],
             "api_key_env": runtime["api_key_env"],
             "api_key_present": runtime["api_key_present"],
+            "api_key_usable": runtime["api_key_usable"],
+            "api_key_source": runtime["api_key_source"],
             "webhook_base_url_env": runtime["webhook_base_url_env"],
             "webhook_base_url_present": runtime["webhook_base_url_present"],
+            "webhook_base_url_usable": runtime["webhook_base_url_usable"],
+            "webhook_base_url_source": runtime["webhook_base_url_source"],
+            "resolution_order": ["operator-context", "service-keys", "process.env"],
         },
         "checks": [
             {
@@ -503,6 +511,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "live_backend_available": read_ready,
         "live_read_available": read_ready,
         "write_bridge_available": write_ready,
+        "live_write_smoke_tested": False,
         "scaffold_only": False,
         "probe": probe,
         "next_steps": next_steps,
@@ -533,19 +542,28 @@ def doctor_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
         "live_backend_available": read_ready,
         "live_read_available": read_ready,
         "write_bridge_available": write_ready,
+        "live_write_smoke_tested": False,
         "scaffold_only": False,
         "setup_complete": auth_ready,
         "missing_keys": _missing_keys(runtime),
         "next_steps": [
-            f"Set {runtime['api_url_env']} and {runtime['api_key_env']} in API Keys." if not auth_ready else "Confirm the configured bridge answers live read requests and accepts trigger probes.",
+            (
+                f"Set {runtime['api_url_env']} and {runtime['api_key_env']} in operator-controlled API Keys, or use local env only when running the harness directly."
+                if not auth_ready
+                else "Confirm the configured bridge answers live read requests and accepts trigger probes."
+            ),
             "Keep zap.trigger guarded by write mode and a bridge that accepts POST /trigger.",
         ],
         "probe": probe,
         "runtime": {
             "workspace_name": runtime["workspace_name"],
+            "workspace_name_source": runtime["workspace_name_source"],
             "zap_id": runtime["zap_id"],
+            "zap_id_source": runtime["zap_id_source"],
             "zap_name": runtime["zap_name"],
+            "zap_name_source": runtime["zap_name_source"],
             "zap_status": runtime["zap_status"],
+            "zap_status_source": runtime["zap_status_source"],
             "probe_mode": details.get("probe_mode", "live-read"),
             "probe_endpoint": details.get("read_probe", {}).get("details", {}).get("endpoint"),
             "write_probe_endpoint": details.get("write_probe", {}).get("details", {}).get("endpoint"),
@@ -619,6 +637,7 @@ def _normalize_trigger_response(
         "live_backend_available": read_ready,
         "live_read_available": read_ready,
         "write_bridge_available": write_ready,
+        "live_write_smoke_tested": False,
         "summary": f"Triggered Zapier zap {request_inputs['zap_id']} with event {request_inputs['event']}",
         "inputs": request_inputs,
         "trigger_builder": trigger_builder,
@@ -637,6 +656,7 @@ def _normalize_trigger_response(
             "live_backend_available": read_ready,
             "live_read_available": read_ready,
             "write_bridge_available": write_ready,
+            "live_write_smoke_tested": False,
             "scaffold_only": False,
             "api_probe": probe,
             "trigger_builder": trigger_builder,
@@ -704,6 +724,7 @@ def _live_read_result(
         "live_backend_available": True,
         "live_read_available": True,
         "write_bridge_available": False,
+        "live_write_smoke_tested": False,
         "runtime": {
             "workspace_name": runtime["workspace_name"],
             "zap_id": runtime["zap_id"],
@@ -714,6 +735,7 @@ def _live_read_result(
             "live_backend_available": True,
             "live_read_available": True,
             "write_bridge_available": False,
+            "live_write_smoke_tested": False,
             "scaffold_only": False,
             "api_probe": probe,
         },
@@ -926,54 +948,3 @@ def run_write_command(command_id: str, inputs: dict[str, Any]) -> dict[str, Any]
         result["response"] = response
         result["result"] = response
     return result
-
-
-def scaffold_write_command(command_id: str, inputs: dict[str, Any]) -> dict[str, Any]:
-    zap = _configured_zap(
-        resolve_runtime_values({}),
-        {key: str(value) for key, value in inputs.items() if value is not None},
-        [],
-    )
-    return {
-        "status": "scaffold",
-        "scaffold_only": True,
-        "executed": False,
-        "backend": BACKEND_NAME,
-        "resource": "zap",
-        "operation": command_id.split(".", 1)[1],
-        "command_id": command_id,
-        "inputs": inputs,
-        "scope": {
-            "zap_id": zap.get("zap_id"),
-            "zap_name": zap.get("zap_name"),
-            "zap_status": zap.get("zap_status"),
-            "workspace_name": zap.get("workspace_name"),
-        },
-        "side_effects_possible": True,
-        "next_step": "Keep the live read paths intact; wire a bridge before enabling this write command.",
-    }
-
-
-def scaffold_result(
-    ctx_obj: dict[str, Any],
-    *,
-    command_id: str,
-    resource: str,
-    operation: str,
-    inputs: dict[str, Any],
-    consequential: bool = False,
-) -> dict[str, Any]:
-    if command_id in WRITE_COMMAND_IDS:
-        return scaffold_write_command(command_id, inputs)
-    return {
-        "status": "scaffold",
-        "scaffold_only": True,
-        "executed": False,
-        "backend": BACKEND_NAME,
-        "resource": resource,
-        "operation": operation,
-        "command_id": command_id,
-        "inputs": inputs,
-        "side_effects_possible": consequential,
-        "next_step": "Wire the live Zapier bridge before enabling this command.",
-    }

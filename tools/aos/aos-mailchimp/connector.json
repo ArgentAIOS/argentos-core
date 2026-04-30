@@ -24,21 +24,15 @@
     "fields": [
       {
         "id": "account",
-        "label": "Account",
-        "type": "select",
-        "renderAs": "select",
+        "label": "Server Prefix",
+        "type": "text",
+        "renderAs": "text",
         "required": false,
         "expressionEnabled": false,
         "valueType": "string",
         "applies_to": ["account.read"],
-        "options": [
-          { "value": "us1", "label": "US (us1)" },
-          { "value": "us2", "label": "US (us2)" },
-          { "value": "us3", "label": "US (us3)" },
-          { "value": "eu1", "label": "EU (eu1)" },
-          { "value": "eu2", "label": "EU (eu2)" }
-        ],
-        "description": "Mailchimp server prefix (data center region). Found in Mailchimp API key."
+        "placeholder": "us21",
+        "description": "Mailchimp data center/server prefix. Usually inferred from the API key suffix, with MAILCHIMP_SERVER_PREFIX available as an override."
       },
       {
         "id": "audience_id",
@@ -155,12 +149,19 @@
   "auth": {
     "kind": "service-key",
     "required": true,
-    "service_keys": ["MAILCHIMP_API_KEY", "MAILCHIMP_SERVER_PREFIX"],
+    "service_keys": [
+      "MAILCHIMP_API_KEY",
+      "MAILCHIMP_SERVER_PREFIX",
+      "MAILCHIMP_AUDIENCE_ID",
+      "MAILCHIMP_CAMPAIGN_ID",
+      "MAILCHIMP_MEMBER_EMAIL"
+    ],
     "interactive_setup": [
       "Create a Mailchimp Marketing API key for the target account.",
-      "Add MAILCHIMP_API_KEY and MAILCHIMP_SERVER_PREFIX in API Keys before enabling live reads.",
+      "Preferred: add MAILCHIMP_API_KEY in API Keys; the connector resolves operator service keys first and falls back to process env only in its service-key helper.",
+      "Optional: add MAILCHIMP_SERVER_PREFIX in API Keys only if you need to override the data center suffix embedded in the API key.",
       "Optional: add MAILCHIMP_AUDIENCE_ID, MAILCHIMP_CAMPAIGN_ID, and MAILCHIMP_MEMBER_EMAIL to pin worker scope.",
-      "Keep campaign.create_draft and member.upsert scaffolded until Mailchimp write workflows are reviewed for approval and compliance requirements."
+      "Do not advertise Mailchimp write actions until approval, compliance, and campaign safety rules are verified."
     ]
   },
   "commands": [
@@ -267,22 +268,6 @@
       "supports_json": true,
       "resource": "report",
       "action_class": "read"
-    },
-    {
-      "id": "campaign.create_draft",
-      "summary": "Create a draft Mailchimp campaign",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "campaign",
-      "action_class": "write"
-    },
-    {
-      "id": "member.upsert",
-      "summary": "Create or update a Mailchimp audience member",
-      "required_mode": "write",
-      "supports_json": true,
-      "resource": "member",
-      "action_class": "write"
     }
   ]
 }

@@ -1,47 +1,57 @@
 from __future__ import annotations
 
-import os
 from typing import Any
 
-from .constants import BACKEND_NAME, CONNECTOR_CATEGORIES, CONNECTOR_CATEGORY, CONNECTOR_LABEL, CONNECTOR_RESOURCES
+from .constants import BACKEND_NAME, CONNECTOR_CATEGORIES, CONNECTOR_CATEGORY, CONNECTOR_LABEL, CONNECTOR_RESOURCES, DEFAULT_BASE_URL
+from .service_keys import service_key_details
 
-
-def _first_env(*names: str) -> str:
-    for name in names:
-        value = os.getenv(name, "").strip()
-        if value:
-            return value
-    return ""
+REQUIRED_SERVICE_KEYS = ["HOOTSUITE_ACCESS_TOKEN"]
+OPTIONAL_SERVICE_KEYS = [
+    "HOOTSUITE_BASE_URL",
+    "HOOTSUITE_ORGANIZATION_ID",
+    "HOOTSUITE_SOCIAL_PROFILE_ID",
+    "HOOTSUITE_TEAM_ID",
+    "HOOTSUITE_MESSAGE_ID",
+]
 
 
 def resolve_runtime_values(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
     ctx_obj = ctx_obj or {}
-    base_url = _first_env("HOOTSUITE_BASE_URL") or "https://platform.hootsuite.com"
-    access_token = _first_env("HOOTSUITE_ACCESS_TOKEN")
-    organization_id = _first_env("HOOTSUITE_ORGANIZATION_ID")
-    social_profile_id = _first_env("HOOTSUITE_SOCIAL_PROFILE_ID")
-    team_id = _first_env("HOOTSUITE_TEAM_ID")
-    message_id = _first_env("HOOTSUITE_MESSAGE_ID")
+    access_token_details = service_key_details("HOOTSUITE_ACCESS_TOKEN", ctx_obj)
+    base_url_details = service_key_details("HOOTSUITE_BASE_URL", ctx_obj)
+    organization_id_details = service_key_details("HOOTSUITE_ORGANIZATION_ID", ctx_obj)
+    social_profile_id_details = service_key_details("HOOTSUITE_SOCIAL_PROFILE_ID", ctx_obj)
+    team_id_details = service_key_details("HOOTSUITE_TEAM_ID", ctx_obj)
+    message_id_details = service_key_details("HOOTSUITE_MESSAGE_ID", ctx_obj)
+    base_url = base_url_details["value"] or DEFAULT_BASE_URL
     return {
         "backend": BACKEND_NAME,
         "base_url": base_url,
-        "access_token": access_token,
-        "organization_id": organization_id,
-        "social_profile_id": social_profile_id,
-        "team_id": team_id,
-        "message_id": message_id,
+        "access_token": access_token_details["value"],
+        "organization_id": organization_id_details["value"],
+        "social_profile_id": social_profile_id_details["value"],
+        "team_id": team_id_details["value"],
+        "message_id": message_id_details["value"],
+        "service_keys": list(REQUIRED_SERVICE_KEYS),
+        "optional_service_keys": list(OPTIONAL_SERVICE_KEYS),
         "base_url_env": "HOOTSUITE_BASE_URL",
         "access_token_env": "HOOTSUITE_ACCESS_TOKEN",
         "organization_id_env": "HOOTSUITE_ORGANIZATION_ID",
         "social_profile_id_env": "HOOTSUITE_SOCIAL_PROFILE_ID",
         "team_id_env": "HOOTSUITE_TEAM_ID",
         "message_id_env": "HOOTSUITE_MESSAGE_ID",
+        "base_url_source": base_url_details["source"] if base_url_details["present"] else "default",
+        "access_token_source": access_token_details["source"],
+        "organization_id_source": organization_id_details["source"],
+        "social_profile_id_source": social_profile_id_details["source"],
+        "team_id_source": team_id_details["source"],
+        "message_id_source": message_id_details["source"],
         "base_url_present": bool(base_url),
-        "access_token_present": bool(access_token),
-        "organization_id_present": bool(organization_id),
-        "social_profile_id_present": bool(social_profile_id),
-        "team_id_present": bool(team_id),
-        "message_id_present": bool(message_id),
+        "access_token_present": bool(access_token_details["value"]),
+        "organization_id_present": bool(organization_id_details["value"]),
+        "social_profile_id_present": bool(social_profile_id_details["value"]),
+        "team_id_present": bool(team_id_details["value"]),
+        "message_id_present": bool(message_id_details["value"]),
     }
 
 
@@ -54,11 +64,17 @@ def redacted_config_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str,
     return {
         "backend": runtime["backend"],
         "base_url": runtime["base_url"],
+        "base_url_source": runtime["base_url_source"],
         "access_token": _redact(runtime["access_token"]),
+        "access_token_source": runtime["access_token_source"],
         "organization_id": runtime["organization_id"],
+        "organization_id_source": runtime["organization_id_source"],
         "social_profile_id": runtime["social_profile_id"],
+        "social_profile_id_source": runtime["social_profile_id_source"],
         "team_id": runtime["team_id"],
+        "team_id_source": runtime["team_id_source"],
         "message_id": runtime["message_id"],
+        "message_id_source": runtime["message_id_source"],
     }
 
 
@@ -85,7 +101,6 @@ def config_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
             "default_window": "now-7d..now+7d",
         },
         "message.read": {"selection_surface": "message", "args": [runtime["message_id_env"]]},
-        "message.schedule": {"selection_surface": "message", "args": [runtime["social_profile_id_env"]]},
     }
     picker_scopes = {
         "member": {
@@ -120,8 +135,23 @@ def config_snapshot(ctx_obj: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
         "tool": "aos-hootsuite",
         "backend": BACKEND_NAME,
+        "auth": {
+            "kind": "oauth-service-key",
+            "service_keys": list(runtime["service_keys"]),
+            "optional_service_keys": list(runtime["optional_service_keys"]),
+            "access_token_env": runtime["access_token_env"],
+            "access_token_present": runtime["access_token_present"],
+            "access_token_source": runtime["access_token_source"],
+            "local_env_fallback": True,
+            "resolution_order": [
+                "operator runtime service_keys/service_key_values/api_keys/secrets",
+                "unmanaged repo service-keys.json",
+                "local environment fallback",
+            ],
+        },
         "runtime": {
-            "implementation_mode": "live_read_with_scaffolded_writes",
+            "implementation_mode": "live_read_only",
+            "live_write_smoke_tested": False,
             "command_defaults": command_defaults,
             "picker_scopes": picker_scopes,
         },

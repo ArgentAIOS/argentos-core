@@ -19,11 +19,16 @@ export type ResolvedBrowserConfig = {
   enabled: boolean;
   evaluateEnabled: boolean;
   controlPort: number;
+  cdpPortRangeStart?: number;
+  cdpPortRangeEnd?: number;
   cdpProtocol: "http" | "https";
   cdpHost: string;
   cdpIsLoopback: boolean;
   remoteCdpTimeoutMs: number;
   remoteCdpHandshakeTimeoutMs: number;
+  localLaunchTimeoutMs?: number;
+  localCdpReadyTimeoutMs?: number;
+  actionTimeoutMs?: number;
   color: string;
   executablePath?: string;
   headless: boolean;
@@ -31,7 +36,15 @@ export type ResolvedBrowserConfig = {
   attachOnly: boolean;
   defaultProfile: string;
   profiles: Record<string, BrowserProfileConfig>;
+  tabCleanup?: ResolvedBrowserTabCleanupConfig;
   ssrfPolicy?: SsrFPolicy;
+};
+
+export type ResolvedBrowserTabCleanupConfig = {
+  enabled: boolean;
+  idleMinutes: number;
+  maxTabsPerSession: number;
+  sweepMinutes: number;
 };
 
 export type ResolvedBrowserProfile = {
@@ -75,6 +88,24 @@ function normalizeTimeoutMs(raw: number | undefined, fallback: number) {
   return value < 0 ? fallback : value;
 }
 
+function normalizeStartupTimeoutMs(raw: number | undefined, fallback: number) {
+  const value = typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : fallback;
+  if (value <= 0) {
+    return fallback;
+  }
+  return Math.min(value, 120_000);
+}
+
+function normalizeNonNegativeInteger(raw: number | undefined, fallback: number) {
+  const value = typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : fallback;
+  return value < 0 ? fallback : value;
+}
+
+function normalizePositiveInteger(raw: number | undefined, fallback: number) {
+  const value = typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : fallback;
+  return value <= 0 ? fallback : value;
+}
+
 function normalizeStringList(raw: string[] | undefined): string[] | undefined {
   if (!Array.isArray(raw) || raw.length === 0) {
     return undefined;
@@ -83,6 +114,39 @@ function normalizeStringList(raw: string[] | undefined): string[] | undefined {
     .map((value) => value.trim())
     .filter((value): value is string => value.length > 0);
   return values.length > 0 ? values : undefined;
+}
+
+function resolveBrowserTabCleanupConfig(
+  cfg: BrowserConfig | undefined,
+): ResolvedBrowserTabCleanupConfig {
+  const raw = cfg?.tabCleanup;
+  return {
+    enabled: raw?.enabled ?? true,
+    idleMinutes: normalizeNonNegativeInteger(raw?.idleMinutes, 120),
+    maxTabsPerSession: normalizeNonNegativeInteger(raw?.maxTabsPerSession, 8),
+    sweepMinutes: normalizePositiveInteger(raw?.sweepMinutes, 5),
+  };
+}
+
+function resolveCdpPortRangeStart(
+  rawStart: number | undefined,
+  fallbackStart: number,
+  rangeSpan: number,
+): number {
+  const start =
+    typeof rawStart === "number" && Number.isFinite(rawStart)
+      ? Math.floor(rawStart)
+      : fallbackStart;
+  if (start < 1 || start > 65535) {
+    throw new Error(`browser.cdpPortRangeStart must be between 1 and 65535, got: ${start}`);
+  }
+  const maxStart = 65535 - rangeSpan;
+  if (start > maxStart) {
+    throw new Error(
+      `browser.cdpPortRangeStart (${start}) is too high for a ${rangeSpan + 1}-port range; max is ${maxStart}.`,
+    );
+  }
+  return start;
 }
 
 function resolveBrowserSsrFPolicy(cfg: BrowserConfig | undefined): SsrFPolicy | undefined {
@@ -197,8 +261,18 @@ export function resolveBrowserConfig(
     cfg?.remoteCdpHandshakeTimeoutMs,
     Math.max(2000, remoteCdpTimeoutMs * 2),
   );
+  const localLaunchTimeoutMs = normalizeStartupTimeoutMs(cfg?.localLaunchTimeoutMs, 15_000);
+  const localCdpReadyTimeoutMs = normalizeStartupTimeoutMs(cfg?.localCdpReadyTimeoutMs, 8_000);
+  const actionTimeoutMs = normalizeTimeoutMs(cfg?.actionTimeoutMs, 60_000);
 
   const derivedCdpRange = deriveDefaultBrowserCdpPortRange(controlPort);
+  const cdpRangeSpan = derivedCdpRange.end - derivedCdpRange.start;
+  const cdpPortRangeStart = resolveCdpPortRangeStart(
+    cfg?.cdpPortRangeStart,
+    derivedCdpRange.start,
+    cdpRangeSpan,
+  );
+  const cdpPortRangeEnd = cdpPortRangeStart + cdpRangeSpan;
 
   const rawCdpUrl = (cfg?.cdpUrl ?? "").trim();
   let cdpInfo:
@@ -234,7 +308,7 @@ export function resolveBrowserConfig(
   // Use legacy cdpUrl port for backward compatibility when no profiles configured
   const legacyCdpPort = rawCdpUrl ? cdpInfo.port : undefined;
   const profiles = ensureDefaultChromeExtensionProfile(
-    ensureDefaultProfile(cfg?.profiles, defaultColor, legacyCdpPort, derivedCdpRange.start),
+    ensureDefaultProfile(cfg?.profiles, defaultColor, legacyCdpPort, cdpPortRangeStart),
     controlPort,
   );
   const cdpProtocol = cdpInfo.parsed.protocol === "https:" ? "https" : "http";
@@ -243,17 +317,23 @@ export function resolveBrowserConfig(
     (profiles[DEFAULT_BROWSER_DEFAULT_PROFILE_NAME]
       ? DEFAULT_BROWSER_DEFAULT_PROFILE_NAME
       : DEFAULT_ARGENT_BROWSER_PROFILE_NAME);
+  const tabCleanup = resolveBrowserTabCleanupConfig(cfg);
   const ssrfPolicy = resolveBrowserSsrFPolicy(cfg);
 
   return {
     enabled,
     evaluateEnabled,
     controlPort,
+    cdpPortRangeStart,
+    cdpPortRangeEnd,
     cdpProtocol,
     cdpHost: cdpInfo.parsed.hostname,
     cdpIsLoopback: isLoopbackHost(cdpInfo.parsed.hostname),
     remoteCdpTimeoutMs,
     remoteCdpHandshakeTimeoutMs,
+    localLaunchTimeoutMs,
+    localCdpReadyTimeoutMs,
+    actionTimeoutMs,
     color: defaultColor,
     executablePath,
     headless,
@@ -261,6 +341,7 @@ export function resolveBrowserConfig(
     attachOnly,
     defaultProfile,
     profiles,
+    tabCleanup,
     ssrfPolicy,
   };
 }

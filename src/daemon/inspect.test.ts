@@ -35,7 +35,7 @@ async function writeLaunchAgent(
 }
 
 describe("findExtraGatewayServices", () => {
-  it("does not flag intentional Rust shadow services as extra gateways", async () => {
+  it("only flags actual extra gateway launch agents", async () => {
     if (process.platform !== "darwin") {
       return;
     }
@@ -44,9 +44,11 @@ describe("findExtraGatewayServices", () => {
     await writeLaunchAgent(home, "ai.argent.rust-gateway-shadow");
     await writeLaunchAgent(home, "ai.argent.rust-executive-shadow");
     await writeLaunchAgent(home, "ai.argent.unexpected-shadow", "argent substrate");
+    await writeLaunchAgent(home, "ai.argent.database-backup", "argent database backup");
+    await writeLaunchAgent(home, "ai.argent.rescue", "argent gateway --profile rescue");
 
     const services = await findExtraGatewayServices({ HOME: home });
 
-    expect(services.map((service) => service.label)).toEqual(["ai.argent.unexpected-shadow"]);
+    expect(services.map((service) => service.label)).toEqual(["ai.argent.rescue"]);
   });
 });

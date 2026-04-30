@@ -208,14 +208,7 @@ describe("canvas host", () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "argent-canvas-"));
     const a2uiRoot = path.resolve(process.cwd(), "src/canvas-host/a2ui");
     const bundlePath = path.join(a2uiRoot, "a2ui.bundle.js");
-    let createdBundle = false;
-
-    try {
-      await fs.stat(bundlePath);
-    } catch {
-      await fs.writeFile(bundlePath, "window.argentA2UI = {};", "utf8");
-      createdBundle = true;
-    }
+    await fs.stat(bundlePath);
 
     const server = await startCanvasHost({
       runtime: defaultRuntime,
@@ -240,9 +233,6 @@ describe("canvas host", () => {
       expect(js).toContain("argentA2UI");
     } finally {
       await server.close();
-      if (createdBundle) {
-        await fs.rm(bundlePath, { force: true });
-      }
       await fs.rm(dir, { recursive: true, force: true });
     }
   });

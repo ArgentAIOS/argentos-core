@@ -27,10 +27,10 @@ CONNECTOR_AUTH = {
     "service_keys": [DEFAULT_API_KEY_ENV, DEFAULT_TOKEN_ENV],
     "interactive_setup": [
         "Create or choose a Trello API key and user token for the workspace this worker should use.",
-        f"Add {DEFAULT_API_KEY_ENV} and {DEFAULT_TOKEN_ENV} in API Keys before enabling live reads.",
+        f"Add {DEFAULT_API_KEY_ENV} and {DEFAULT_TOKEN_ENV} in API Keys before enabling live reads and writes.",
         f"Optionally set {DEFAULT_BOARD_ID_ENV}, {DEFAULT_LIST_ID_ENV}, {DEFAULT_CARD_ID_ENV}, and {DEFAULT_MEMBER_ID_ENV} to pin stable worker scope defaults.",
-        "Keep card.create_draft and card.update_draft scaffolded until a live Trello write bridge is implemented.",
-        "This connector is live-read-first and reports Trello API failures instead of masking them.",
+        "The existing card.create_draft and card.update_draft command IDs now execute live Trello card writes.",
+        "This connector reports Trello API failures instead of masking them.",
     ],
 }
 
@@ -141,7 +141,7 @@ COMMAND_SPECS = [
     },
     {
         "id": "card.create_draft",
-        "summary": "Create a draft card payload",
+        "summary": "Create a Trello card",
         "required_mode": "write",
         "supports_json": True,
         "resource": "card",
@@ -149,7 +149,7 @@ COMMAND_SPECS = [
     },
     {
         "id": "card.update_draft",
-        "summary": "Update a draft card payload",
+        "summary": "Update a Trello card",
         "required_mode": "write",
         "supports_json": True,
         "resource": "card",

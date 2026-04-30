@@ -242,7 +242,14 @@ function auditGatewayServicePath(
     return;
   }
 
-  const expected = getMinimalServicePathPartsFromEnv({ platform, env });
+  const execPath = command?.programArguments?.[0];
+  const expectedRuntimeExecutablePath =
+    execPath && !isVersionManagedNodePath(execPath, platform) ? execPath : undefined;
+  const expected = getMinimalServicePathPartsFromEnv({
+    platform,
+    env,
+    runtimeExecutablePath: expectedRuntimeExecutablePath,
+  });
   const parts = servicePath
     .split(getPathModule(platform).delimiter)
     .map((entry) => entry.trim())

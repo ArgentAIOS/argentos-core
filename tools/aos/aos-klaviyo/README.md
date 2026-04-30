@@ -1,25 +1,28 @@
 # aos-klaviyo
 
-Agent-native Klaviyo connector scaffold.
+Agent-native Klaviyo connector for live Klaviyo reads.
 
-This first pass is live-read-first and keeps mutations scaffolded:
+This connector is currently live-read-only:
 
 - `account.read` confirms the connected Klaviyo account.
 - `list.list` and `list.read` expose list scope for audience pickers.
 - `profile.list` and `profile.read` expose profile scope for member pickers.
 - `campaign.list` and `campaign.read` expose campaign scope for worker-flow pickers.
-- `campaign.create` and `profile.upsert` are scaffolded write paths only.
+- no Klaviyo write commands are exposed yet.
 
 ## Auth
 
-The connector expects a private Klaviyo API key via `KLAVIYO_API_KEY`.
+The connector expects operator-controlled service keys first. For local harness
+runs, the service-key helper can fall back to matching environment variables.
 
-Optional scope hints:
+Operator service keys:
 
-- `KLAVIYO_REVISION` to pin the API revision header.
-- `KLAVIYO_LIST_ID` to preselect a list scope.
-- `KLAVIYO_PROFILE_ID` or `KLAVIYO_PROFILE_EMAIL` to preselect a profile scope.
-- `KLAVIYO_CAMPAIGN_ID` to preselect a campaign scope.
+- `KLAVIYO_API_KEY`
+- `KLAVIYO_REVISION`
+- `KLAVIYO_LIST_ID`
+- `KLAVIYO_PROFILE_ID`
+- `KLAVIYO_PROFILE_EMAIL`
+- `KLAVIYO_CAMPAIGN_ID`
 
 ## Live Reads
 
@@ -27,4 +30,4 @@ The harness uses Klaviyo's read endpoints for account, list, profile, and campai
 
 ## Writes
 
-Write commands are intentionally scaffolded and do not perform live mutations yet. They exist so the connector contract is complete and worker flows can see the eventual mutation surface.
+Write commands are intentionally not exposed yet. This connector should be treated as a truthful live-read-only surface until Klaviyo mutation safeguards and approvals are added.

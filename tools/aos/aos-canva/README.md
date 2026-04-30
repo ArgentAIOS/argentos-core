@@ -1,74 +1,70 @@
 # aos-canva
 
-Agent-native Canva Connect API connector for design automation.
+Agent-native Canva Connect API connector for design metadata, asset uploads,
+folder operations, brand-template autofill, and export jobs.
 
-This connector exposes Canva's design, template, brand template, asset, folder, and export surfaces. The standout capability is **autofill** — populating brand template placeholders with agent-supplied data to produce ready-to-export designs without manual editing.
-
-## Workflow Example
-
-```
-Agent writes social media copy
-  → autofill.create fills brand template with copy + images
-    → export.start renders to PNG
-      → post to social channel
-```
+This lane is a real AOS connector for the Canva Connect REST API, but it is not
+a generic Canva "template marketplace" wrapper and it does not advertise a fake
+clone endpoint. The live surfaces are the ones backed by documented Connect API
+endpoints.
 
 ## Auth
 
-The connector expects a Canva Connect API key via `CANVA_API_KEY`. Generate one at https://www.canva.com/developers/.
+The connector expects a Canva user access token, resolved from operator-managed
+service keys first and local process env second:
 
-Required OAuth scopes:
+- primary: `CANVA_ACCESS_TOKEN`
+- legacy fallback: `CANVA_API_KEY`
 
-- `design:content:read`, `design:content:write`, `design:meta:read`
-- `asset:read`, `asset:write`
-- `folder:read`, `folder:write`
-- `brandtemplate:content:read`, `brandtemplate:meta:read`
+Canva Connect uses OAuth 2.0 to obtain user access tokens. The harness sends
+the resolved value as a Bearer token.
 
-Optional scope hints:
+Useful optional defaults:
 
-- `CANVA_FOLDER_ID` to scope design and asset listings to a specific folder.
-- `CANVA_BRAND_TEMPLATE_ID` to preselect a brand template for autofill workflows.
-- `CANVA_EXPORT_FORMAT` to default the export format (`png`, `jpg`, `pdf`, `svg`, `mp4`, `gif`).
+- `CANVA_FOLDER_ID`
+- `CANVA_DESIGN_ID`
+- `CANVA_BRAND_TEMPLATE_ID`
+- `CANVA_EXPORT_FORMAT`
+- `CANVA_EXPORT_JOB_ID`
+- `CANVA_ASSET_FILE`
+- `CANVA_ASSET_URL`
+- `CANVA_ASSET_NAME`
+- `CANVA_AUTOFILL_DATA`
 
-## Read Commands
+## Live read commands
 
-| Command               | Description                                  |
-| --------------------- | -------------------------------------------- |
-| `design.list`         | List designs (optionally scoped to a folder) |
-| `design.get`          | Get a design by ID                           |
-| `template.list`       | List available templates                     |
-| `template.get`        | Get a template by ID                         |
-| `brand_template.list` | List brand templates                         |
-| `asset.list`          | List assets (optionally scoped to a folder)  |
-| `folder.list`         | List folders                                 |
-| `export.start`        | Start a design export job                    |
-| `export.status`       | Check export job status                      |
-| `export.download`     | Download an exported design                  |
+| Command               | Notes                                                                           |
+| --------------------- | ------------------------------------------------------------------------------- |
+| `design.list`         | Lists designs, optionally scoped through `CANVA_FOLDER_ID` via folder contents. |
+| `design.get`          | Gets design metadata by ID.                                                     |
+| `brand_template.list` | Lists enterprise brand templates the token can access.                          |
+| `brand_template.get`  | Gets brand template metadata by ID.                                             |
+| `asset.list`          | Lists image assets in a folder.                                                 |
+| `folder.list`         | Lists folder contents.                                                          |
+| `folder.get`          | Gets folder metadata by ID.                                                     |
+| `export.status`       | Gets export job status.                                                         |
+| `export.download`     | Returns the finished export job URLs.                                           |
 
-## Write Commands
+## Live write commands
 
-| Command                        | Description                                                 |
-| ------------------------------ | ----------------------------------------------------------- |
-| `design.create`                | Create a new design from a template                         |
-| `design.clone`                 | Clone an existing design                                    |
-| `brand_template.create_design` | Create a design from a brand template                       |
-| `asset.upload`                 | Upload an asset to Canva                                    |
-| `folder.create`                | Create a folder                                             |
-| `autofill.create`              | Autofill a brand template with data and create a new design |
+| Command                        | Notes                                                                 |
+| ------------------------------ | --------------------------------------------------------------------- |
+| `design.create`                | Creates a new blank Canva design using a preset design type.          |
+| `brand_template.create_design` | Starts a brand-template autofill job and returns the job payload.     |
+| `asset.upload`                 | Starts a file or URL asset upload job.                                |
+| `folder.create`                | Creates a folder under `root` or the configured parent folder.        |
+| `export.start`                 | Starts an export job for a design.                                    |
+| `autofill.create`              | Starts an autofill job directly from a brand template plus JSON data. |
+
+## Removed false advertising
+
+- No generic `template.list` or `template.get` commands are exposed. Canva
+  Connect documents brand templates, not a generic template catalog endpoint.
+- No `design.clone` command is exposed. The harness does not pretend Canva has
+  a true clone endpoint for this lane.
 
 ## Autofill
 
-The `autofill.create` action is the primary automation surface. It accepts a brand template ID and a JSON object mapping placeholder names to values. Canva replaces text and image placeholders in the template, producing a new design ready for export.
-
-```json
-{
-  "brand_template_id": "DAGxyz...",
-  "autofill_data": {
-    "headline": "Spring Sale — 30% Off",
-    "body": "Limited time offer for all products",
-    "hero_image": "https://example.com/hero.jpg"
-  }
-}
-```
-
-This enables fully automated content pipelines: copywriting agent produces text, autofill renders it into on-brand designs, export delivers print-ready or web-ready assets.
+`autofill.create` is the primary automation surface. It accepts a brand
+template ID and JSON data that maps template dataset keys to values, then
+starts Canva's asynchronous autofill job flow.

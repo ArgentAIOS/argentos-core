@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from .service_keys import service_key_env
 from typing import Any
 
 from .client import TwilioApiError, TwilioClient
@@ -132,7 +133,7 @@ def health_snapshot(ctx_obj: dict[str, Any]) -> dict[str, Any]:
                     "missing_keys": (
                         []
                         if runtime["credentials_present"]
-                        else [k for k in [runtime["account_sid_env"], runtime["auth_token_env"]] if not os.getenv(k)]
+                        else [k for k in [runtime["account_sid_env"], runtime["auth_token_env"]] if not service_key_env(k)]
                     )
                 },
             },

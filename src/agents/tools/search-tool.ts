@@ -19,6 +19,7 @@ import { type AnyAgentTool, readStringParam } from "./common.js";
 function textResult(text: string) {
   return {
     content: [{ type: "text" as const, text }],
+    details: { text },
   };
 }
 
@@ -82,7 +83,9 @@ function formatSearchResults(results: UnifiedSearchResult[], query: string): str
   // Format each group
   for (const type of ["task", "observation", "session"] as SearchResultType[]) {
     const typeResults = grouped[type];
-    if (typeResults.length === 0) continue;
+    if (typeResults.length === 0) {
+      continue;
+    }
 
     lines.push(`### ${TYPE_ICONS[type]} ${TYPE_LABELS[type]}s (${typeResults.length})`);
     lines.push("");
@@ -102,6 +105,109 @@ function formatSearchResults(results: UnifiedSearchResult[], query: string): str
   }
 
   return lines.join("\n");
+}
+
+function includesQuery(value: unknown, query: string): boolean {
+  if (typeof value !== "string") {
+    return false;
+  }
+  return value.toLowerCase().includes(query.toLowerCase());
+}
+
+function generateSnippet(text: string, query: string, maxLength = 200): string {
+  const normalizedText = text.trim();
+  if (normalizedText.length <= maxLength) {
+    return normalizedText;
+  }
+
+  const index = normalizedText.toLowerCase().indexOf(query.toLowerCase());
+  if (index < 0) {
+    return `${normalizedText.slice(0, maxLength)}...`;
+  }
+
+  const start = Math.max(0, index - Math.floor(maxLength / 3));
+  const end = Math.min(normalizedText.length, start + maxLength);
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < normalizedText.length ? "..." : "";
+  return `${prefix}${normalizedText.slice(start, end)}${suffix}`;
+}
+
+async function strictPostgresSearch(params: {
+  query: string;
+  types?: SearchResultType[];
+  limit: number;
+  since?: number;
+  agentId?: string;
+  channelId?: string;
+}): Promise<UnifiedSearchResult[]> {
+  const adapter = await getStorageAdapter();
+  const types = params.types ?? ["task", "observation", "session"];
+  const results: UnifiedSearchResult[] = [];
+
+  if (types.includes("task")) {
+    const tasks = await adapter.tasks.list({
+      agentId: params.agentId,
+      channelId: params.channelId,
+      limit: Math.max(params.limit * 5, 50),
+    });
+    for (const task of tasks) {
+      const searchable = [
+        task.title,
+        task.description,
+        task.status,
+        task.priority,
+        task.assignee,
+        ...(Array.isArray(task.tags) ? task.tags : []),
+      ]
+        .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+        .join(" ");
+      if (!includesQuery(searchable, params.query)) {
+        continue;
+      }
+      if (params.since && task.createdAt < params.since) {
+        continue;
+      }
+      results.push({
+        type: "task",
+        id: task.id,
+        title: task.title,
+        snippet: generateSnippet(task.description || task.title, params.query),
+        score: 1,
+        timestamp: task.createdAt,
+        source: "postgres",
+      });
+    }
+  }
+
+  if (types.includes("observation")) {
+    const memory =
+      params.agentId && adapter.memory.withAgentId
+        ? adapter.memory.withAgentId(params.agentId)
+        : adapter.memory;
+    const hits = await memory.searchByKeyword(params.query, Math.max(params.limit * 5, 50));
+    for (const hit of hits) {
+      const item = hit.item;
+      const timestamp = Date.parse(item.createdAt);
+      if (params.since && Number.isFinite(timestamp) && timestamp < params.since) {
+        continue;
+      }
+      const text = [item.summary, item.reflection, item.lesson]
+        .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+        .join(" ");
+      results.push({
+        type: "observation",
+        id: `memu:${item.id}`,
+        title: `[${item.memoryType}] long-term memory`,
+        snippet: generateSnippet(text || item.summary, params.query),
+        score: hit.score,
+        timestamp: Number.isFinite(timestamp) ? timestamp : Date.now(),
+        source: "postgres",
+      });
+    }
+  }
+
+  results.sort((a, b) => b.score - a.score || b.timestamp - a.timestamp);
+  return results.slice(0, params.limit);
 }
 
 // ============================================================================
@@ -132,16 +238,29 @@ EXAMPLES:
 - Search recent memory: { "query": "API error", "types": ["observation"], "since": 1706745600000 }`,
     parameters: SearchToolSchema,
     execute: async (_toolCallId, args) => {
-      if (isStrictPostgresOnly(resolveRuntimeStorageConfig(process.env))) {
-        return textResult(
-          "argent_search is temporarily unavailable in strict PostgreSQL mode. Use targeted tools (tasks, memory_recall) until unified search is migrated off legacy SQLite/DataAPI.",
-        );
-      }
       const params = args as Record<string, unknown>;
       const query = readStringParam(params, "query", { required: true });
       const types = params.types as SearchResultType[] | undefined;
       const limit = typeof params.limit === "number" ? params.limit : 20;
       const since = typeof params.since === "number" ? params.since : undefined;
+      const strictPostgres = isStrictPostgresOnly(resolveRuntimeStorageConfig(process.env));
+
+      if (strictPostgres) {
+        const results = await strictPostgresSearch({
+          query,
+          types,
+          limit,
+          since,
+          agentId: opts?.agentId,
+          channelId: opts?.channelId,
+        });
+
+        if (results.length === 0) {
+          return textResult(`No results found for: "${query}"`);
+        }
+
+        return textResult(formatSearchResults(results, query));
+      }
 
       const api = await getDataAPI();
       await getStorageAdapter();
