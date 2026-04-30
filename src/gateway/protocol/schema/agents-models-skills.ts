@@ -212,6 +212,7 @@ export const ConnectorCatalogEntrySchema = Type.Object(
       Type.Literal("ready"),
       Type.Literal("needs-setup"),
       Type.Literal("repo-only"),
+      Type.Literal("metadata-only"),
       Type.Literal("error"),
     ]),
     status: Type.Object(

@@ -11,7 +11,12 @@ const CONNECTOR_CATALOG_MODULE_DIR = path.dirname(fileURLToPath(import.meta.url)
 const DEFAULT_CONNECTOR_TIMEOUT_MS = 4_000;
 const MODE_FALLBACK = ["readonly", "write", "full", "admin"] as const;
 
-export type ConnectorInstallState = "ready" | "needs-setup" | "repo-only" | "error";
+export type ConnectorInstallState =
+  | "ready"
+  | "needs-setup"
+  | "repo-only"
+  | "metadata-only"
+  | "error";
 
 export type ConnectorCatalogCommand = {
   id: string;
@@ -64,6 +69,7 @@ type DiscoverConnectorCatalogOptions = {
   repoRoots?: string[];
   pathEnv?: string;
   timeoutMs?: number;
+  includeBuiltIns?: boolean;
 };
 
 type RepoCandidate = {
@@ -103,6 +109,73 @@ type RawCapabilities = {
   connector?: unknown;
   auth?: unknown;
 };
+
+export const APPFORGE_CORE_CONNECTOR_ID = "appforge-core";
+
+function builtInConnectorCatalogEntries(): ConnectorCatalogEntry[] {
+  return [
+    {
+      tool: APPFORGE_CORE_CONNECTOR_ID,
+      label: "AppForge Core",
+      description:
+        "Core gateway-backed AppForge bases, tables, records, and workflow event metadata.",
+      backend: "core-gateway",
+      version: "1.0.0",
+      category: "appforge",
+      categories: ["appforge", "table", "workflow"],
+      resources: ["base", "table", "record", "event"],
+      modes: ["readonly"],
+      commands: [
+        {
+          id: "appforge.bases.list",
+          summary: "List durable AppForge bases for workflow binding pickers.",
+          requiredMode: "readonly",
+          supportsJson: true,
+          resource: "base",
+          actionClass: "read",
+        },
+        {
+          id: "appforge.tables.list",
+          summary: "List durable AppForge tables and fields for a selected base.",
+          requiredMode: "readonly",
+          supportsJson: true,
+          resource: "table",
+          actionClass: "read",
+        },
+        {
+          id: "appforge.records.list",
+          summary: "List durable AppForge records for a selected base and table.",
+          requiredMode: "readonly",
+          supportsJson: true,
+          resource: "record",
+          actionClass: "read",
+        },
+        {
+          id: "workflows.emitAppForgeEvent",
+          summary: "Canonical AppForge event ingress consumed by Workflows.",
+          requiredMode: "readonly",
+          supportsJson: true,
+          resource: "event",
+          actionClass: "read",
+        },
+      ],
+      installState: "metadata-only",
+      status: {
+        ok: true,
+        label: "Metadata only",
+        detail:
+          "AppForge is available through core gateway metadata/events, not a connector CLI runtime.",
+      },
+      discovery: {
+        sources: ["repo"],
+      },
+      auth: {
+        kind: "core-gateway",
+        required: false,
+      },
+    },
+  ];
+}
 
 type CommandRunSuccess = {
   ok: true;
@@ -862,11 +935,12 @@ export async function discoverConnectorCatalog(
   const pathExecutables = discoverPathExecutables(options.pathEnv);
   const repoCandidates = discoverRepoCandidates(options.repoRoots);
   const timeoutMs = options.timeoutMs ?? DEFAULT_CONNECTOR_TIMEOUT_MS;
-  const toolNames = Array.from(new Set([...pathExecutables.keys(), ...repoCandidates.keys()])).sort(
-    (a, b) => a.localeCompare(b),
-  );
+  const builtIns = options.includeBuiltIns === false ? [] : builtInConnectorCatalogEntries();
+  const toolNames = Array.from(
+    new Set([...pathExecutables.keys(), ...repoCandidates.keys()]),
+  ).toSorted((a, b) => a.localeCompare(b));
 
-  const connectors = await Promise.all(
+  const discoveredConnectors = await Promise.all(
     toolNames.map((tool) =>
       buildCatalogEntry({
         tool,
@@ -875,6 +949,13 @@ export async function discoverConnectorCatalog(
         timeoutMs,
       }),
     ),
+  );
+  const connectorsByTool = new Map<string, ConnectorCatalogEntry>();
+  for (const connector of [...builtIns, ...discoveredConnectors]) {
+    connectorsByTool.set(connector.tool, connector);
+  }
+  const connectors = Array.from(connectorsByTool.values()).toSorted((a, b) =>
+    a.tool.localeCompare(b.tool),
   );
 
   return {
@@ -888,11 +969,11 @@ export function discoverConnectorRuntimeCatalogSync(
 ): ConnectorsCatalogResult {
   const pathExecutables = discoverPathExecutables(options.pathEnv);
   const repoCandidates = discoverRepoCandidates(options.repoRoots);
-  const toolNames = Array.from(new Set([...pathExecutables.keys(), ...repoCandidates.keys()])).sort(
-    (a, b) => a.localeCompare(b),
-  );
+  const toolNames = Array.from(
+    new Set([...pathExecutables.keys(), ...repoCandidates.keys()]),
+  ).toSorted((a, b) => a.localeCompare(b));
 
-  const connectors = toolNames.map((tool) => {
+  const discoveredConnectors = toolNames.map((tool) => {
     const repo = repoCandidates.get(tool);
     const repoMetadata = repo ? readRepoMetadata(repo) : null;
     const binaryPath = pathExecutables.get(tool) ?? findLocalHarnessBinary(tool, repo?.harnessDir);
@@ -934,6 +1015,13 @@ export function discoverConnectorRuntimeCatalogSync(
       auth: repoMetadata?.auth,
     } satisfies ConnectorCatalogEntry;
   });
+  const connectorsByTool = new Map<string, ConnectorCatalogEntry>();
+  for (const connector of [...builtInConnectorCatalogEntries(), ...discoveredConnectors]) {
+    connectorsByTool.set(connector.tool, connector);
+  }
+  const connectors = Array.from(connectorsByTool.values()).toSorted((a, b) =>
+    a.tool.localeCompare(b.tool),
+  );
 
   return {
     total: connectors.length,

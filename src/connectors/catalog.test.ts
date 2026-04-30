@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { defaultRepoRoots, discoverConnectorCatalog } from "./catalog.js";
+import {
+  APPFORGE_CORE_CONNECTOR_ID,
+  defaultRepoRoots,
+  discoverConnectorCatalog,
+} from "./catalog.js";
 
 const tempDirs: string[] = [];
 
@@ -130,6 +134,7 @@ describe("discoverConnectorCatalog", () => {
       repoRoots: [root],
       pathEnv: "",
       timeoutMs: 500,
+      includeBuiltIns: false,
     });
 
     expect(result.total).toBe(1);
@@ -216,6 +221,7 @@ describe("discoverConnectorCatalog", () => {
       repoRoots: [root],
       pathEnv: "",
       timeoutMs: 500,
+      includeBuiltIns: false,
     });
 
     expect(result.total).toBe(1);
@@ -300,6 +306,7 @@ describe("discoverConnectorCatalog", () => {
       repoRoots: [root],
       pathEnv: binDir,
       timeoutMs: 500,
+      includeBuiltIns: false,
     });
 
     expect(result.total).toBe(1);
@@ -321,5 +328,45 @@ describe("discoverConnectorCatalog", () => {
       }),
     });
     expect(result.connectors[0]?.commands).toHaveLength(1);
+  });
+
+  it("includes AppForge Core as a metadata-only built-in connector", async () => {
+    const result = await discoverConnectorCatalog({
+      repoRoots: [],
+      pathEnv: "",
+      timeoutMs: 500,
+    });
+
+    expect(result.connectors).toContainEqual(
+      expect.objectContaining({
+        tool: APPFORGE_CORE_CONNECTOR_ID,
+        label: "AppForge Core",
+        backend: "core-gateway",
+        installState: "metadata-only",
+        status: expect.objectContaining({
+          ok: true,
+          label: "Metadata only",
+        }),
+        categories: expect.arrayContaining(["appforge", "workflow"]),
+        resources: expect.arrayContaining(["base", "table", "record", "event"]),
+        commands: expect.arrayContaining([
+          expect.objectContaining({
+            id: "appforge.bases.list",
+            actionClass: "read",
+            resource: "base",
+          }),
+          expect.objectContaining({
+            id: "appforge.tables.list",
+            actionClass: "read",
+            resource: "table",
+          }),
+          expect.objectContaining({
+            id: "workflows.emitAppForgeEvent",
+            actionClass: "read",
+            resource: "event",
+          }),
+        ]),
+      }),
+    );
   });
 });
