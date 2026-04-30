@@ -1,0 +1,100 @@
+{
+  "tool": "aos-telegram",
+  "backend": "telegram-bot-api",
+  "manifest_schema_version": "1.0.0",
+  "connector": {
+    "label": "Telegram",
+    "category": "messaging",
+    "categories": ["messaging", "operator-alerts"],
+    "resources": ["chat", "message"]
+  },
+  "scope": {
+    "kind": "messaging",
+    "surface": "chat-message",
+    "scaffold_only": true,
+    "live_backend_available": false,
+    "live_read_available": false,
+    "write_bridge_available": false,
+    "workerFields": ["chat_id", "text"],
+    "fields": [
+      {
+        "id": "chat_id",
+        "label": "Chat ID",
+        "type": "text",
+        "renderAs": "text",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["message.send"],
+        "placeholder": "123456789",
+        "description": "Telegram chat ID for the operator-controlled destination."
+      },
+      {
+        "id": "text",
+        "label": "Message Text",
+        "type": "richtext",
+        "renderAs": "richtext",
+        "required": true,
+        "expressionEnabled": true,
+        "valueType": "string",
+        "applies_to": ["message.send"],
+        "placeholder": "Message body",
+        "description": "Text to send through the Telegram bot."
+      }
+    ]
+  },
+  "auth": {
+    "kind": "service-key",
+    "required": true,
+    "service_keys": ["TELEGRAM_BOT_TOKEN"],
+    "optional_service_keys": ["TELEGRAM_CHAT_ID"],
+    "interactive_setup": [
+      "Create a Telegram bot with BotFather.",
+      "Add TELEGRAM_BOT_TOKEN in operator-controlled API Keys before enabling live sends.",
+      "Optionally pin TELEGRAM_CHAT_ID for operator alert workflows.",
+      "This connector ID is manifest-only until an aos-telegram agent-harness binary is added and smoke tested."
+    ]
+  },
+  "commands": [
+    {
+      "id": "capabilities",
+      "summary": "Describe the connector manifest",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health",
+      "summary": "Report Telegram connector readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "config.show",
+      "summary": "Show redacted connector configuration",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "doctor",
+      "summary": "Run Telegram connector diagnostics",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "message.send",
+      "summary": "Send a Telegram bot message",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "message",
+      "action_class": "write"
+    }
+  ]
+}

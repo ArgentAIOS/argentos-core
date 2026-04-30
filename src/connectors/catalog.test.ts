@@ -369,4 +369,70 @@ describe("discoverConnectorCatalog", () => {
       }),
     );
   });
+
+  it("runs local harness binaries from relative repo roots using absolute executable paths", async () => {
+    const root = makeTempDir("connector-local-harness-");
+    const { harnessDir } = writeRepoFixture({
+      root,
+      tool: "aos-local",
+      description: "Agent-native local harness connector",
+      permissions: {
+        "item.list": "readonly",
+      },
+    });
+    const binDir = path.join(harnessDir, ".venv", "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    const binaryPath = path.join(binDir, "aos-local");
+    fs.writeFileSync(
+      binaryPath,
+      [
+        "#!/bin/sh",
+        'if [ "$1" = "--json" ] && [ "$2" = "capabilities" ]; then',
+        `  printf '%s' '${JSON.stringify({
+          ok: true,
+          data: {
+            tool: "aos-local",
+            backend: "local-backend",
+            commands: [
+              {
+                id: "item.list",
+                summary: "List items",
+                required_mode: "readonly",
+                supports_json: true,
+                resource: "item",
+                action_class: "read",
+              },
+            ],
+          },
+        })}'`,
+        "  exit 0",
+        "fi",
+        'if [ "$1" = "--json" ] && [ "$2" = "health" ]; then',
+        `  printf '%s' '${JSON.stringify({ ok: true, data: { status: "healthy" } })}'`,
+        "  exit 0",
+        "fi",
+        "exit 2",
+        "",
+      ].join("\n"),
+    );
+    fs.chmodSync(binaryPath, 0o755);
+
+    const relativeRoot = path.relative(process.cwd(), root);
+    const result = await discoverConnectorCatalog({
+      repoRoots: [relativeRoot],
+      pathEnv: "",
+      timeoutMs: 500,
+    });
+
+    expect(result.connectors[0]).toMatchObject({
+      tool: "aos-local",
+      installState: "ready",
+      discovery: expect.objectContaining({
+        binaryPath,
+      }),
+      status: expect.objectContaining({
+        ok: true,
+      }),
+    });
+  });
 });

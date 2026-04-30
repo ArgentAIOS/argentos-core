@@ -255,17 +255,18 @@ function discoverPathExecutables(pathEnv?: string): Map<string, string> {
 function discoverRepoCandidates(repoRoots?: string[]): Map<string, RepoCandidate> {
   const candidates = new Map<string, RepoCandidate>();
   for (const root of repoRoots ?? defaultRepoRoots()) {
-    if (!root || !fs.existsSync(root)) continue;
+    const resolvedRoot = root ? path.resolve(root) : "";
+    if (!resolvedRoot || !fs.existsSync(resolvedRoot)) continue;
     let entries: fs.Dirent[] = [];
     try {
-      entries = fs.readdirSync(root, { withFileTypes: true });
+      entries = fs.readdirSync(resolvedRoot, { withFileTypes: true });
     } catch {
       continue;
     }
     for (const entry of entries) {
       if (!entry.isDirectory() || !entry.name.startsWith("aos-")) continue;
       if (candidates.has(entry.name)) continue;
-      const repoDir = path.join(root, entry.name);
+      const repoDir = path.join(resolvedRoot, entry.name);
       const harnessDir = path.join(repoDir, "agent-harness");
       const pyprojectPath = path.join(harnessDir, "pyproject.toml");
       const permissionsPath = path.join(harnessDir, "permissions.json");
@@ -415,7 +416,8 @@ function findLocalHarnessBinary(tool: string, harnessDir?: string): string | und
     path.join(harnessDir, ".venv", "bin", tool),
     path.join(harnessDir, "venv", "bin", tool),
   ];
-  return candidates.find((candidate) => fs.existsSync(candidate));
+  const match = candidates.find((candidate) => fs.existsSync(candidate));
+  return match ? path.resolve(match) : undefined;
 }
 
 function parseEnvelopeData(raw: string): unknown {
@@ -873,8 +875,9 @@ async function buildCatalogEntry(params: {
   } else if (params.repo) {
     installState = "repo-only";
     statusLabel = "Repo only";
-    statusDetail =
-      params.repo?.harnessDir && repoMetadata?.requiresPython
+    statusDetail = !params.repo.harnessDir
+      ? "Connector manifest exists in the repo, but no runnable adapter harness is present yet."
+      : params.repo?.harnessDir && repoMetadata?.requiresPython
         ? `Connector scaffold exists in the repo but is not installed in a runnable environment yet (requires Python ${repoMetadata.requiresPython}).`
         : "Connector scaffold exists in the repo but is not installed in a runnable environment yet.";
   } else {
