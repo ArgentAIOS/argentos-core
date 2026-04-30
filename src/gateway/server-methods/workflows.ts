@@ -130,8 +130,28 @@ type WorkflowConnectorCapability = {
   installState: string;
   statusOk: boolean;
   scaffoldOnly: boolean;
-  readinessState: "blocked" | "setup_required" | "write_ready";
+  readinessState: "blocked" | "setup_required" | "read_ready" | "write_ready";
 };
+
+function workflowConnectorReadinessState(
+  connector: ConnectorCatalogEntry,
+  scaffoldOnly: boolean,
+): WorkflowConnectorCapability["readinessState"] {
+  if (
+    scaffoldOnly ||
+    connector.installState === "repo-only" ||
+    connector.installState === "error"
+  ) {
+    return "blocked";
+  }
+  if (connector.installState === "metadata-only") {
+    return "read_ready";
+  }
+  if (connector.installState === "ready") {
+    return connector.discovery.binaryPath ? "write_ready" : "read_ready";
+  }
+  return "setup_required";
+}
 
 function isWorkflowOutputConnectorCommand(command: {
   id: string;
@@ -1503,7 +1523,7 @@ export async function buildWorkflowConnectorCapabilities(): Promise<WorkflowConn
         break;
       }
     }
-    const isBlocked = scaffoldOnly || c.installState === "repo-only";
+    const readinessState = workflowConnectorReadinessState(c, scaffoldOnly);
     return {
       id: c.tool,
       name: c.label || c.tool.replace(/^aos-/, "").replace(/-/g, " "),
@@ -1517,11 +1537,7 @@ export async function buildWorkflowConnectorCapabilities(): Promise<WorkflowConn
       installState: c.installState,
       statusOk: c.status.ok,
       scaffoldOnly,
-      readinessState: isBlocked
-        ? "blocked"
-        : c.installState === "ready"
-          ? "write_ready"
-          : "setup_required",
+      readinessState,
     };
   });
 }
@@ -1555,12 +1571,12 @@ export async function validateWorkflowRuntimeCapabilities(
   );
   const availableConnectors = new Set(
     connectors
-      .filter((connector) => !connector.scaffoldOnly && connector.readinessState !== "blocked")
+      .filter((connector) => !connector.scaffoldOnly && connector.readinessState === "write_ready")
       .map((connector) => connector.id),
   );
   const outputConnectorOperations = new Set(
     connectors
-      .filter((connector) => !connector.scaffoldOnly && connector.readinessState !== "blocked")
+      .filter((connector) => !connector.scaffoldOnly && connector.readinessState === "write_ready")
       .flatMap((connector) =>
         connector.commands
           .filter(isWorkflowOutputConnectorCommand)
@@ -2954,15 +2970,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           }
         }
 
-        // Determine readiness state for sidebar badge
-        const isBlocked = scaffoldOnly || c.installState === "repo-only";
-        const readinessState: string = isBlocked
-          ? "blocked"
-          : c.installState === "ready"
-            ? "write_ready"
-            : c.installState === "needs-setup"
-              ? "setup_required"
-              : "setup_required";
+        const readinessState = workflowConnectorReadinessState(c, scaffoldOnly);
 
         return {
           id: c.tool,
