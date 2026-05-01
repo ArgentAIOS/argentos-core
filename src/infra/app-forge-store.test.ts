@@ -52,6 +52,217 @@ function record(overrides: Partial<AppForgeRecord> = {}): AppForgeRecord {
   };
 }
 
+function createFakeDurableSql() {
+  type StoredBase = {
+    id: string;
+    appId: string;
+    name: string;
+    description: string | null;
+    activeTableId: string | null;
+    revision: number;
+    updatedAt: string;
+  };
+  type StoredTable = {
+    id: string;
+    baseId: string;
+    name: string;
+    fields: unknown;
+    revision: number;
+    position: number;
+    metadata: unknown;
+    updatedAt: string;
+  };
+  type StoredRecord = {
+    id: string;
+    baseId: string;
+    tableId: string;
+    values: unknown;
+    revision: number;
+    position: number;
+    createdAt: string;
+    updatedAt: string;
+  };
+
+  const state = {
+    bases: new Map<string, StoredBase>(),
+    tables: new Map<string, StoredTable>(),
+    records: new Map<string, StoredRecord>(),
+    idempotency: new Map<string, unknown>(),
+    schemaEnsuredCount: 0,
+  };
+
+  const sql = async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const query = strings.join("?").replace(/\s+/g, " ").trim();
+
+    if (query.includes("SELECT response FROM appforge_idempotency_keys")) {
+      const response = state.idempotency.get(String(values[0]));
+      return response === undefined ? [] : [{ response }];
+    }
+
+    if (query.includes("INSERT INTO appforge_idempotency_keys")) {
+      const key = String(values[0]);
+      if (!state.idempotency.has(key)) {
+        state.idempotency.set(key, values[4]);
+      }
+      return [];
+    }
+
+    if (query.includes("INSERT INTO appforge_bases")) {
+      const [id, appId, name, description, activeTableId, revision, updatedAt] = values;
+      state.bases.set(String(id), {
+        id: String(id),
+        appId: String(appId),
+        name: String(name),
+        description: typeof description === "string" ? description : null,
+        activeTableId: typeof activeTableId === "string" ? activeTableId : null,
+        revision: Number(revision),
+        updatedAt: String(updatedAt),
+      });
+      return [];
+    }
+
+    if (query.includes("DELETE FROM appforge_tables WHERE base_id")) {
+      const baseId = String(values[0]);
+      for (const [tableId, storedTable] of state.tables) {
+        if (storedTable.baseId === baseId) {
+          state.tables.delete(tableId);
+        }
+      }
+      for (const [recordId, storedRecord] of state.records) {
+        if (storedRecord.baseId === baseId) {
+          state.records.delete(recordId);
+        }
+      }
+      return [];
+    }
+
+    if (query.includes("INSERT INTO appforge_tables")) {
+      const [id, baseId, name, fields, revision, position, metadata, updatedAt] = values;
+      state.tables.set(String(id), {
+        id: String(id),
+        baseId: String(baseId),
+        name: String(name),
+        fields,
+        revision: Number(revision),
+        position: Number(position),
+        metadata,
+        updatedAt: String(updatedAt),
+      });
+      return [];
+    }
+
+    if (query.includes("INSERT INTO appforge_records")) {
+      const [id, baseId, tableId, recordValues, revision, position, createdAt, updatedAt] = values;
+      state.records.set(String(id), {
+        id: String(id),
+        baseId: String(baseId),
+        tableId: String(tableId),
+        values: recordValues,
+        revision: Number(revision),
+        position: Number(position),
+        createdAt: String(createdAt),
+        updatedAt: String(updatedAt),
+      });
+      return [];
+    }
+
+    if (query.includes("FROM appforge_bases") && query.includes("WHERE id")) {
+      const row = state.bases.get(String(values[0]));
+      return row
+        ? [
+            {
+              id: row.id,
+              appId: row.appId,
+              name: row.name,
+              description: row.description,
+              activeTableId: row.activeTableId,
+              revision: row.revision,
+              updatedAt: row.updatedAt,
+            },
+          ]
+        : [];
+    }
+
+    if (query.includes("FROM appforge_bases") && query.includes("WHERE app_id")) {
+      return Array.from(state.bases.values())
+        .filter((row) => row.appId === String(values[0]))
+        .map((row) => ({
+          id: row.id,
+          appId: row.appId,
+          name: row.name,
+          description: row.description,
+          activeTableId: row.activeTableId,
+          revision: row.revision,
+          updatedAt: row.updatedAt,
+        }));
+    }
+
+    if (query.includes("FROM appforge_bases")) {
+      return Array.from(state.bases.values()).map((row) => ({
+        id: row.id,
+        appId: row.appId,
+        name: row.name,
+        description: row.description,
+        activeTableId: row.activeTableId,
+        revision: row.revision,
+        updatedAt: row.updatedAt,
+      }));
+    }
+
+    if (query.includes("FROM appforge_tables") && query.includes("WHERE base_id")) {
+      const baseId = String(values[0]);
+      const tableId = values.length > 1 ? String(values[1]) : null;
+      return Array.from(state.tables.values())
+        .filter((row) => row.baseId === baseId && (!tableId || row.id === tableId))
+        .toSorted((a, b) => a.position - b.position || a.id.localeCompare(b.id))
+        .map((row) => ({
+          id: row.id,
+          baseId: row.baseId,
+          name: row.name,
+          fields: row.fields,
+          revision: row.revision,
+          position: row.position,
+          metadata: row.metadata,
+          updatedAt: row.updatedAt,
+        }));
+    }
+
+    if (query.includes("FROM appforge_records") && query.includes("WHERE base_id")) {
+      const baseId = String(values[0]);
+      const tableId = String(values[1]);
+      const recordId = values.length > 2 ? String(values[2]) : null;
+      return Array.from(state.records.values())
+        .filter(
+          (row) =>
+            row.baseId === baseId && row.tableId === tableId && (!recordId || row.id === recordId),
+        )
+        .toSorted((a, b) => a.position - b.position || a.id.localeCompare(b.id))
+        .map((row) => ({
+          id: row.id,
+          baseId: row.baseId,
+          tableId: row.tableId,
+          values: row.values,
+          revision: row.revision,
+          position: row.position,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        }));
+    }
+
+    throw new Error(`Unhandled fake AppForge SQL query: ${query}`);
+  };
+
+  sql.unsafe = async (query: string) => {
+    expect(query).toContain("CREATE TABLE IF NOT EXISTS appforge_bases");
+    state.schemaEnsuredCount += 1;
+    return [];
+  };
+  sql.begin = async <T>(callback: (tx: typeof sql) => Promise<T>) => callback(sql);
+  sql.json = (value: unknown) => value;
+
+  return { sql: sql as unknown as Parameters<typeof createPostgresAppForgeStore>[0], state };
+}
+
 describe("AppForge store contract", () => {
   it("round trips bases, tables, records, revisions, and idempotent writes", async () => {
     const store = createInMemoryAppForgeStore([base()]);
@@ -183,5 +394,120 @@ describe("AppForge store contract", () => {
     await expect(store.listBases()).resolves.toEqual([]);
     expect(schemaEnsured).toBe(true);
     expect(calls.some((query) => query.includes("FROM appforge_bases"))).toBe(true);
+  });
+
+  it("preserves live gateway base, table, saved view, selected field, and records across store recreation", async () => {
+    const { sql, state } = createFakeDurableSql();
+    const firstStore = createPostgresAppForgeStore(sql);
+    const durableBase = base({
+      id: "base-live",
+      appId: "app-live",
+      name: "Live Persistence Smoke",
+      description: "Durable close/reopen proof",
+      activeTableId: "table-live",
+      revision: 0,
+      updatedAt: "2026-04-30T22:00:00.000Z",
+      tables: [
+        {
+          id: "table-live",
+          name: "Launch Reviews",
+          revision: 0,
+          activeViewId: "view-review",
+          selectedFieldId: "status",
+          fields: [
+            { id: "name", name: "Name", type: "text", required: true },
+            {
+              id: "status",
+              name: "Status",
+              type: "single_select",
+              options: ["Planning", "Review", "Done"],
+            },
+          ],
+          records: [
+            record({
+              id: "record-live",
+              values: { name: "Operator smoke", status: "Review" },
+            }),
+          ],
+          views: [
+            {
+              id: "view-review",
+              name: "Review queue",
+              type: "grid",
+              filterText: "review",
+              sortFieldId: "name",
+              sortDirection: "asc",
+              groupFieldId: "status",
+              visibleFieldIds: ["status", "name"],
+              createdAt: "2026-04-30T22:00:00.000Z",
+              updatedAt: "2026-04-30T22:05:00.000Z",
+            },
+          ],
+        } as AppForgeTable,
+      ],
+    });
+
+    await expect(
+      firstStore.putBase({
+        base: durableBase,
+        expectedRevision: 0,
+        idempotencyKey: "live-persistence-smoke",
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      base: { id: "base-live", revision: 1 },
+    });
+
+    const reopenedStore = createPostgresAppForgeStore(sql);
+
+    await expect(reopenedStore.listBases({ appId: "app-live" })).resolves.toEqual([
+      expect.objectContaining({
+        id: "base-live",
+        appId: "app-live",
+        name: "Live Persistence Smoke",
+        activeTableId: "table-live",
+        revision: 1,
+        tables: [
+          expect.objectContaining({
+            id: "table-live",
+            name: "Launch Reviews",
+            activeViewId: "view-review",
+            selectedFieldId: "status",
+            views: [
+              expect.objectContaining({
+                id: "view-review",
+                filterText: "review",
+                sortFieldId: "name",
+                sortDirection: "asc",
+                groupFieldId: "status",
+                visibleFieldIds: ["status", "name"],
+              }),
+            ],
+            records: [
+              expect.objectContaining({
+                id: "record-live",
+                values: { name: "Operator smoke", status: "Review" },
+              }),
+            ],
+          }),
+        ],
+      }),
+    ]);
+
+    await expect(reopenedStore.listTables("base-live")).resolves.toEqual([
+      expect.objectContaining({
+        id: "table-live",
+        fields: expect.arrayContaining([
+          expect.objectContaining({ id: "name", name: "Name", type: "text", required: true }),
+          expect.objectContaining({
+            id: "status",
+            name: "Status",
+            type: "single_select",
+            options: ["Planning", "Review", "Done"],
+          }),
+        ]),
+      }),
+    ]);
+    expect(state.schemaEnsuredCount).toBe(2);
   });
 });
