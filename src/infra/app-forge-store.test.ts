@@ -35,7 +35,19 @@ function table(overrides: Partial<AppForgeTable> = {}): AppForgeTable {
     id: "table-2",
     name: "Approvals",
     revision: 1,
-    fields: [{ id: "status", name: "Status", type: "single_select", options: ["Open", "Done"] }],
+    fields: [
+      {
+        id: "status",
+        name: "Status",
+        type: "single_select",
+        options: ["Open", "Done"],
+        selectOptions: [
+          { id: "opt-open", label: "Open", color: "sky" },
+          { id: "opt-done", label: "Done", color: "emerald" },
+        ],
+        defaultValue: "Open",
+      },
+    ],
     records: [],
     ...overrides,
   };
@@ -311,7 +323,17 @@ describe("AppForge store contract", () => {
           expect.objectContaining({
             id: "table-2",
             fields: [
-              { id: "status", name: "Status", type: "single_select", options: ["Open", "Done"] },
+              {
+                id: "status",
+                name: "Status",
+                type: "single_select",
+                options: ["Open", "Done"],
+                selectOptions: [
+                  { id: "opt-open", label: "Open", color: "sky" },
+                  { id: "opt-done", label: "Done", color: "emerald" },
+                ],
+                defaultValue: "Open",
+              },
             ],
             records: [expect.objectContaining({ id: "record-1" })],
           }),
@@ -324,7 +346,17 @@ describe("AppForge store contract", () => {
         id: "table-2",
         name: "Approvals",
         fields: [
-          { id: "status", name: "Status", type: "single_select", options: ["Open", "Done"] },
+          {
+            id: "status",
+            name: "Status",
+            type: "single_select",
+            options: ["Open", "Done"],
+            selectOptions: [
+              { id: "opt-open", label: "Open", color: "sky" },
+              { id: "opt-done", label: "Done", color: "emerald" },
+            ],
+            defaultValue: "Open",
+          },
         ],
       }),
     ]);

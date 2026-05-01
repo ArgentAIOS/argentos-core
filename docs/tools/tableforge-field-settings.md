@@ -19,16 +19,22 @@ Airtable-class field system.
 - Field descriptions save through the structured base path.
 - Supported default values save for text-like, number, date, checkbox, and
   select fields.
+- Required fields are enforced for live AppForge table edits by preserving the
+  previous value or falling back to the field default when an edit would leave
+  the cell empty.
 - Single-select and multi-select fields store rich select options with stable
   `id`, `label`, and `color` values.
 - Legacy `options: string[]` labels stay synchronized with rich select options
   until all consumers move to `selectOptions`.
+- Duplicate or blank select options are discarded during normalization, and
+  invalid defaults are not persisted.
 - Field type changes require an explicit apply action when the selected type
   differs from the stored type.
 
 ## Metadata-Only or Planned
 
-- `required` is live metadata only. Record validation enforcement is planned.
+- Field-level permission enforcement for required fields is planned. The current
+  live enforcement applies only inside AppForge table edits.
 - Attachment defaults are planned with the future asset storage slice.
 - Linked-record defaults are planned with the future relationship storage slice.
 - Type conversion is coercive once confirmed. This slice adds warning and

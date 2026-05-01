@@ -219,6 +219,65 @@ describe("forge structured data metadata", () => {
     });
   });
 
+  it("drops invalid defaults and duplicate select options during field normalization", () => {
+    const base = forgeStructuredDataTestUtils.normalizeBase(
+      app({
+        metadata: {
+          appForge: {
+            structured: {
+              baseId: "base-existing",
+              activeTableId: "table-review",
+              tables: [
+                {
+                  id: "table-review",
+                  name: "Reviews",
+                  fields: [
+                    {
+                      id: "status",
+                      name: "Status",
+                      type: "single_select",
+                      defaultValue: "Blocked",
+                      selectOptions: [
+                        { id: "opt-plan", label: "Planning", color: "sky" },
+                        { id: "opt-empty", label: "", color: "rose" },
+                        { id: "opt-plan-2", label: "Planning", color: "amber" },
+                        { id: "opt-review", label: "Review", color: "violet" },
+                      ],
+                    },
+                    {
+                      id: "score",
+                      name: "Score",
+                      type: "number",
+                      defaultValue: "not-a-number",
+                    },
+                    {
+                      id: "due",
+                      name: "Due Date",
+                      type: "date",
+                      defaultValue: "05/01/2026",
+                    },
+                  ],
+                  records: [],
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    expect(base.tables[0]?.fields[0]).toMatchObject({
+      options: ["Planning", "Review"],
+      selectOptions: [
+        { id: "opt-plan", label: "Planning", color: "sky" },
+        { id: "opt-review", label: "Review", color: "violet" },
+      ],
+    });
+    expect(base.tables[0]?.fields[0]?.defaultValue).toBeUndefined();
+    expect(base.tables[0]?.fields[1]?.defaultValue).toBeUndefined();
+    expect(base.tables[0]?.fields[2]?.defaultValue).toBeUndefined();
+  });
+
   it("seeds empty structured bases with the default TableForge table", () => {
     const base = forgeStructuredDataTestUtils.normalizeBase(
       app({
@@ -389,6 +448,47 @@ describe("forge structured data metadata", () => {
         ],
       }),
     ).toBe("Review");
+  });
+
+  it("hardens field updates and required cell edits before persistence", () => {
+    const status: ForgeStructuredField = {
+      id: "status",
+      name: "Status",
+      type: "single_select",
+      defaultValue: "Blocked",
+      selectOptions: [
+        { id: "opt-plan", label: "Planning", color: "sky" },
+        { id: "opt-review", label: "Review", color: "amber" },
+      ],
+    };
+    const updatedStatus = forgeStructuredDataTestUtils.normalizeFieldDraft(status, {
+      selectOptions: [
+        { id: "opt-plan", label: "Planning", color: "sky" },
+        { id: "opt-plan-copy", label: "Planning", color: "rose" },
+        { id: "opt-approved", label: "Approved", color: "emerald" },
+      ],
+      defaultValue: "Approved",
+    });
+
+    expect(updatedStatus).toMatchObject({
+      options: ["Planning", "Approved"],
+      defaultValue: "Approved",
+    });
+
+    expect(
+      forgeStructuredDataTestUtils.valueForCellUpdate(
+        { id: "name", name: "Name", type: "text", required: true },
+        "",
+        "Previous name",
+      ),
+    ).toBe("Previous name");
+    expect(
+      forgeStructuredDataTestUtils.valueForCellUpdate(
+        { id: "name", name: "Name", type: "text", required: true },
+        "",
+        "",
+      ),
+    ).toBe("Untitled");
   });
 
   it("builds gateway mirror calls for table and record mutations", () => {
