@@ -2923,7 +2923,7 @@ export function AppForge({
                               <span>
                                 <span className="block text-sm text-white/55">Required</span>
                                 <span className="text-[11px] text-white/30">
-                                  Live metadata only; enforcement lands with validation rules.
+                                  Live for table edits; empty cells keep a safe value.
                                 </span>
                               </span>
                               <input

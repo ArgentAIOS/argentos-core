@@ -11,6 +11,7 @@ import {
 } from "./app-forge-adapter.js";
 import {
   checkAppForgeRevision,
+  normalizeLegacyAppForgeField,
   type AppForgeBase,
   type AppForgeField,
   type AppForgeRecord,
@@ -185,6 +186,9 @@ function cloneTable(table: AppForgeTable): AppForgeTable {
     fields: table.fields.map((field) => ({
       ...field,
       options: field.options ? [...field.options] : undefined,
+      selectOptions: field.selectOptions
+        ? field.selectOptions.map((option) => ({ ...option }))
+        : undefined,
     })),
     records: table.records.map(cloneRecord),
   };
@@ -198,7 +202,11 @@ function cloneBase(base: AppForgeBase): AppForgeBase {
 }
 
 function fieldsFromJson(value: unknown): AppForgeField[] {
-  return Array.isArray(value) ? (value as AppForgeField[]) : [];
+  return Array.isArray(value)
+    ? value
+        .map(normalizeLegacyAppForgeField)
+        .filter((field): field is AppForgeField => Boolean(field))
+    : [];
 }
 
 function valuesFromJson(value: unknown): Record<string, AppForgeRecordValue> {

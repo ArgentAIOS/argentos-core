@@ -233,6 +233,7 @@ function normalizeSelectOptions(
   rawOptions: unknown,
 ): ForgeStructuredSelectOption[] {
   const usedIds = new Set<string>();
+  const usedLabels = new Set<string>();
   const options: ForgeStructuredSelectOption[] = [];
   if (Array.isArray(rawSelectOptions)) {
     rawSelectOptions.forEach((entry, index) => {
@@ -240,9 +241,11 @@ function normalizeSelectOptions(
         return;
       }
       const label = stringValue(entry.label);
-      if (!label) {
+      const labelKey = label?.toLowerCase();
+      if (!label || !labelKey || usedLabels.has(labelKey)) {
         return;
       }
+      usedLabels.add(labelKey);
       const rawId = stringValue(entry.id) ?? selectOptionId(label, index);
       const id = usedIds.has(rawId) ? `${rawId}-${index + 1}` : rawId;
       usedIds.add(id);
@@ -257,9 +260,11 @@ function normalizeSelectOptions(
   if (!options.length && Array.isArray(rawOptions)) {
     rawOptions.forEach((entry, index) => {
       const label = stringValue(entry);
-      if (!label) {
+      const labelKey = label?.toLowerCase();
+      if (!label || !labelKey || usedLabels.has(labelKey)) {
         return;
       }
+      usedLabels.add(labelKey);
       const id = selectOptionId(label, index);
       options.push({
         id,
@@ -289,16 +294,75 @@ function normalizeDefaultValue(
   if (!fieldSupportsDefaultValue(field.type) || rawValue === undefined) {
     return undefined;
   }
+  if (rawValue === null) {
+    return undefined;
+  }
+  if (field.type === "number") {
+    const parsed = typeof rawValue === "number" ? rawValue : Number(rawValue);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  if (field.type === "checkbox") {
+    if (typeof rawValue === "boolean") {
+      return rawValue;
+    }
+    if (typeof rawValue === "string" && /^(true|false)$/i.test(rawValue.trim())) {
+      return rawValue.trim().toLowerCase() === "true";
+    }
+    return undefined;
+  }
+  if (field.type === "date") {
+    return typeof rawValue === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawValue)
+      ? rawValue
+      : undefined;
+  }
+  if (field.type === "email") {
+    return typeof rawValue === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawValue)
+      ? rawValue
+      : undefined;
+  }
+  if (field.type === "url") {
+    if (typeof rawValue !== "string") {
+      return undefined;
+    }
+    try {
+      new URL(rawValue);
+      return rawValue;
+    } catch {
+      return undefined;
+    }
+  }
+  if (field.type === "single_select") {
+    const text = typeof rawValue === "string" ? rawValue.trim() : "";
+    return text && selectOptionLabels(field).includes(text) ? text : undefined;
+  }
+  if (field.type === "multi_select") {
+    const options = selectOptionLabels(field);
+    const entries = Array.isArray(rawValue)
+      ? rawValue.filter((entry): entry is string => typeof entry === "string")
+      : typeof rawValue === "string"
+        ? rawValue
+            .split(/[\n,]/)
+            .map((entry) => entry.trim())
+            .filter(Boolean)
+        : [];
+    const validEntries = options.length
+      ? entries.filter((entry) => options.includes(entry))
+      : entries;
+    return validEntries.length ? validEntries : undefined;
+  }
   if (
-    rawValue === null ||
     typeof rawValue === "string" ||
     typeof rawValue === "number" ||
-    typeof rawValue === "boolean" ||
-    Array.isArray(rawValue)
+    typeof rawValue === "boolean"
   ) {
-    return coerceValueForField(rawValue as ForgeStructuredRecordValue, field);
+    const text = String(rawValue);
+    return text.trim() ? text : undefined;
   }
   return undefined;
+}
+
+function isEmptyStructuredValue(value: ForgeStructuredRecordValue): boolean {
+  return value === null || value === "" || (Array.isArray(value) && value.length === 0);
 }
 
 function defaultValueForField(field: ForgeStructuredField, label = ""): ForgeStructuredRecordValue {
@@ -357,6 +421,63 @@ function coerceValueForField(
     return options.includes(text) ? text : (options[0] ?? "");
   }
   return value === null || value === undefined ? "" : String(value);
+}
+
+function valueForCellUpdate(
+  field: ForgeStructuredField,
+  value: ForgeStructuredRecordValue,
+  previousValue: ForgeStructuredRecordValue | undefined,
+): ForgeStructuredRecordValue {
+  const nextValue = coerceValueForField(value, field);
+  if (!field.required || !isEmptyStructuredValue(nextValue)) {
+    return nextValue;
+  }
+  const previous = coerceValueForField(previousValue, field);
+  if (!isEmptyStructuredValue(previous)) {
+    return previous;
+  }
+  return defaultValueForField(field, "Untitled");
+}
+
+function normalizeFieldDraft(
+  field: ForgeStructuredField,
+  updates: Partial<ForgeStructuredField>,
+): ForgeStructuredField {
+  const requestedType = updates.type ?? field.type;
+  const incomingSelectOptions =
+    updates.selectOptions !== undefined
+      ? updates.selectOptions
+      : updates.options !== undefined
+        ? normalizeSelectOptions(undefined, updates.options)
+        : field.selectOptions;
+  const nextSelectOptions = fieldSupportsOptions(requestedType)
+    ? incomingSelectOptions && incomingSelectOptions.length
+      ? normalizeSelectOptions(
+          incomingSelectOptions,
+          incomingSelectOptions.map((option) => option.label),
+        )
+      : defaultSelectOptions()
+    : undefined;
+  const hasDefaultValueUpdate = Object.prototype.hasOwnProperty.call(updates, "defaultValue");
+  const nextField: ForgeStructuredField = {
+    ...field,
+    ...updates,
+    id: field.id,
+    name: updates.name?.trim() || field.name,
+    type: requestedType,
+    selectOptions: nextSelectOptions,
+    options: nextSelectOptions?.map((option) => option.label),
+  };
+  const defaultValue = normalizeDefaultValue(
+    hasDefaultValueUpdate ? updates.defaultValue : field.defaultValue,
+    nextField,
+  );
+  if (defaultValue !== undefined) {
+    nextField.defaultValue = defaultValue;
+  } else {
+    delete nextField.defaultValue;
+  }
+  return nextField;
 }
 
 function workflowCapabilityId(app: ForgeApp): string {
@@ -1067,7 +1188,10 @@ export const forgeStructuredDataTestUtils = {
   defaultBase,
   defaultValueForField,
   fieldSupportsDefaultValue,
+  normalizeDefaultValue,
+  normalizeFieldDraft,
   normalizeSelectOptions,
+  valueForCellUpdate,
   formatStructuredSaveError,
   isRevisionConflictError,
   metadataWithBase,
@@ -1872,72 +1996,19 @@ export function useForgeStructuredData({
           if (field.id !== fieldId) {
             return field;
           }
-          const requestedType = updates.type ?? field.type;
-          const incomingSelectOptions =
-            updates.selectOptions !== undefined
-              ? updates.selectOptions
-              : updates.options !== undefined
-                ? normalizeSelectOptions(undefined, updates.options)
-                : field.selectOptions;
-          const nextSelectOptions = fieldSupportsOptions(requestedType)
-            ? incomingSelectOptions && incomingSelectOptions.length
-              ? incomingSelectOptions.map((option) => ({ ...option }))
-              : defaultSelectOptions()
-            : undefined;
-          const hasDefaultValueUpdate = Object.prototype.hasOwnProperty.call(
-            updates,
-            "defaultValue",
-          );
-          const nextField = {
-            ...field,
-            ...updates,
-            id: field.id,
-            name: updates.name?.trim() || field.name,
-            type: requestedType,
-            selectOptions: nextSelectOptions,
-            options: nextSelectOptions?.map((option) => option.label),
-          };
-          const defaultValue = normalizeDefaultValue(
-            hasDefaultValueUpdate ? updates.defaultValue : field.defaultValue,
-            nextField,
-          );
-          if (defaultValue !== undefined) {
-            nextField.defaultValue = defaultValue;
-          } else {
-            delete nextField.defaultValue;
-          }
-          return nextField;
+          return normalizeFieldDraft(field, updates);
         }),
         records: table.records.map((record) => {
           const field = table.fields.find((candidate) => candidate.id === fieldId);
           if (!field) {
             return record;
           }
-          const requestedType = updates.type ?? field.type;
-          const incomingSelectOptions =
-            updates.selectOptions !== undefined
-              ? updates.selectOptions
-              : updates.options !== undefined
-                ? normalizeSelectOptions(undefined, updates.options)
-                : field.selectOptions;
-          const nextSelectOptions = fieldSupportsOptions(requestedType)
-            ? incomingSelectOptions && incomingSelectOptions.length
-              ? incomingSelectOptions.map((option) => ({ ...option }))
-              : defaultSelectOptions()
-            : undefined;
-          const nextField = {
-            ...field,
-            ...updates,
-            id: field.id,
-            type: requestedType,
-            selectOptions: nextSelectOptions,
-            options: nextSelectOptions?.map((option) => option.label),
-          };
+          const nextField = normalizeFieldDraft(field, updates);
           return {
             ...record,
             values: {
               ...record.values,
-              [fieldId]: coerceValueForField(record.values[fieldId], nextField),
+              [fieldId]: valueForCellUpdate(nextField, record.values[fieldId] ?? null, undefined),
             },
             updatedAt: nowIso(),
           };
@@ -2159,6 +2230,12 @@ export function useForgeStructuredData({
       if (!activeTable) {
         return;
       }
+      const activeField = activeTable.fields.find((field) => field.id === fieldId);
+      if (!activeField) {
+        return;
+      }
+      const activeRecord = activeTable.records.find((record) => record.id === recordId);
+      const nextValue = valueForCellUpdate(activeField, value, activeRecord?.values[fieldId]);
       await updateActiveTable(
         (table) => ({
           ...table,
@@ -2166,7 +2243,10 @@ export function useForgeStructuredData({
             record.id === recordId
               ? {
                   ...record,
-                  values: { ...record.values, [fieldId]: value },
+                  values: {
+                    ...record.values,
+                    [fieldId]: nextValue,
+                  },
                   updatedAt: nowIso(),
                 }
               : record,
@@ -2176,7 +2256,7 @@ export function useForgeStructuredData({
           eventType: "forge.record.updated",
           tableId: activeTable.id,
           recordId,
-          payload: { tableId: activeTable.id, recordId, fieldId, value },
+          payload: { tableId: activeTable.id, recordId, fieldId, value: nextValue },
         },
         ({ nextTable }) => {
           const mirroredRecord = nextTable.records.find((candidate) => candidate.id === recordId);
