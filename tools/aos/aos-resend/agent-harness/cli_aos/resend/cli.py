@@ -21,6 +21,7 @@ from .runtime import (
     domains_list_result,
     domains_verify_result,
     email_batch_send_result,
+    email_create_draft_result,
     email_send_result,
     health_snapshot,
 )
@@ -128,12 +129,22 @@ def config_show(ctx: click.Context) -> None:
     _emit_success(ctx, "config.show", config_snapshot(ctx.obj))
 
 
+def _emit_health(ctx: click.Context, command_id: str) -> None:
+    _set_command(ctx, command_id)
+    require_mode(ctx, command_id)
+    _emit_success(ctx, command_id, health_snapshot(ctx.obj))
+
+
 @cli.command("health")
 @click.pass_context
 def health(ctx: click.Context) -> None:
-    _set_command(ctx, "health")
-    require_mode(ctx, "health")
-    _emit_success(ctx, "health", health_snapshot(ctx.obj))
+    _emit_health(ctx, "health")
+
+
+@cli.command("health.check")
+@click.pass_context
+def health_check(ctx: click.Context) -> None:
+    _emit_health(ctx, "health.check")
 
 
 @cli.command("doctor")
@@ -171,6 +182,17 @@ def email_batch_send(ctx: click.Context, to_list: tuple[str, ...], subject: str,
     _set_command(ctx, "email.batch_send")
     require_mode(ctx, "email.batch_send")
     _emit_success(ctx, "email.batch_send", email_batch_send_result(ctx.obj, to_list=list(to_list), subject=subject, html=html))
+
+
+@email_group.command("create_draft")
+@click.argument("to")
+@click.option("--subject", required=True, help="Email subject")
+@click.option("--html", required=True, help="HTML body")
+@click.pass_context
+def email_create_draft(ctx: click.Context, to: str, subject: str, html: str) -> None:
+    _set_command(ctx, "email.create_draft")
+    require_mode(ctx, "email.create_draft")
+    _emit_success(ctx, "email.create_draft", email_create_draft_result(ctx.obj, to=to, subject=subject, html=html))
 
 
 # ── Domains ────────────────────────────────────────────────────

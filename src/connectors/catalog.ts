@@ -415,6 +415,8 @@ function findLocalHarnessBinary(tool: string, harnessDir?: string): string | und
   const candidates = [
     path.join(harnessDir, ".venv", "bin", tool),
     path.join(harnessDir, "venv", "bin", tool),
+    path.join(harnessDir, "bin", tool),
+    path.join(harnessDir, "shims", tool),
   ];
   const match = candidates.find((candidate) => fs.existsSync(candidate));
   return match ? path.resolve(match) : undefined;

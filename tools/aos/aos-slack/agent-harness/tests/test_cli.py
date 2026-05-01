@@ -189,6 +189,18 @@ def _fake_slack_api(calls: list[tuple[str, dict[str, object]]]):
                 ],
                 "response_metadata": {"next_cursor": ""},
             }
+        if api_method == "conversations.history":
+            assert call_params.get("channel") == "C123"
+            return {
+                "messages": [
+                    {
+                        "ts": "1700000002.000000",
+                        "user": "U456",
+                        "text": "history item",
+                    }
+                ],
+                "has_more": False,
+            }
         if api_method == "chat.postMessage":
             assert call_params.get("channel") == "C123"
             assert call_params.get("text") == "hello there"
@@ -231,6 +243,8 @@ def test_manifest_and_permissions_are_in_sync():
     assert manifest["auth"]["service_keys"] == ["SLACK_BOT_TOKEN"]
     assert "SLACK_CHANNEL_ID" in manifest["auth"]["optional_service_keys"]
     assert manifest["scope"]["commandDefaults"]["message.reply"]["args"] == ["SLACK_CHANNEL_ID"]
+    assert manifest["scope"]["commandDefaults"]["message.send"]["args"] == ["SLACK_CHANNEL_ID"]
+    assert manifest["scope"]["commandDefaults"]["message.history"]["args"] == ["SLACK_CHANNEL_ID"]
     assert manifest["scope"]["commandDefaults"]["people.list"]["options"]["user-id"] == "SLACK_USER_ID"
 
 
@@ -243,6 +257,8 @@ def test_capabilities_json_includes_live_surface():
     assert '"doctor"' in result.output
     assert '"config.show"' in result.output
     assert '"message.search"' in result.output
+    assert '"message.send"' in result.output
+    assert '"message.history"' in result.output
     assert '"people.list"' in result.output
     assert '"reaction.list"' in result.output
 
@@ -541,6 +557,39 @@ def test_message_reply_uses_scoped_channel_and_thread_defaults(monkeypatch):
     assert calls[0][1]["channel"] == "C123"
     assert calls[0][1]["thread_ts"] == "1700000000.000000"
     assert payload["data"]["thread_ts"] == "1700000000.000000"
+
+
+def test_message_send_uses_chat_post_message_alias(monkeypatch):
+    _set_bot_token(monkeypatch)
+    _set_operator_service_keys(monkeypatch, {"SLACK_CHANNEL_ID": "C123"})
+    calls: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(runtime, "_request_json", _fake_slack_api(calls))
+
+    result = CliRunner().invoke(cli, ["--json", "--mode", "write", "message", "send", "--text", "hello there"])
+
+    assert result.exit_code == 0
+    payload = _json_output(result)
+    assert payload["command"] == "message.send"
+    assert calls[0][0] == "chat.postMessage"
+    assert calls[0][1]["channel"] == "C123"
+
+
+def test_message_history_uses_conversations_history(monkeypatch):
+    _set_bot_token(monkeypatch)
+    _set_operator_service_keys(monkeypatch, {"SLACK_CHANNEL_ID": "C123"})
+    calls: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(runtime, "_request_json", _fake_slack_api(calls))
+
+    result = CliRunner().invoke(cli, ["--json", "message", "history", "--limit", "3"])
+
+    assert result.exit_code == 0
+    payload = _json_output(result)
+    assert payload["command"] == "message.history"
+    assert calls[0][0] == "auth.test"
+    assert calls[1][0] == "conversations.history"
+    assert calls[1][1]["channel"] == "C123"
+    assert calls[1][1]["limit"] == 3
+    assert payload["data"]["messages"][0]["text"] == "history item"
 
 
 def test_reaction_list_uses_reactions_list(monkeypatch):

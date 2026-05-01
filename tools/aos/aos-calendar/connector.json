@@ -1,12 +1,29 @@
 {
   "tool": "aos-calendar",
-  "backend": "calendar-provider-api",
+  "backend": "calendar-provider-alias",
   "manifest_schema_version": "1.0.0",
   "connector": {
     "label": "Calendar",
     "category": "calendar",
     "categories": ["calendar", "productivity"],
     "resources": ["calendar", "event"]
+  },
+  "alias_contract": {
+    "status": "blocked",
+    "canonical_connector_id": "aos-calendar",
+    "provider_connector_ids": ["aos-google", "aos-m365"],
+    "decision": "aos-calendar remains a canonical workflow-facing alias until a provider binding explicitly maps it to aos-google or aos-m365 at runtime.",
+    "live_readiness_rule": "Workflows must not treat aos-calendar commands as live-ready until a concrete provider binding, OAuth surface, and smoke-tested event read command are recorded.",
+    "intended_operation_map": {
+      "event.upcoming": {
+        "provider_operation": "calendar.list",
+        "notes": "Requires provider-specific time-window filtering and OAuth account selection before live use."
+      },
+      "event.list": {
+        "provider_operation": "calendar.list",
+        "notes": "Requires provider-specific OAuth account and calendar selection before live use."
+      }
+    }
   },
   "scope": {
     "kind": "calendar",
@@ -61,7 +78,7 @@
     "interactive_setup": [
       "Choose the backing calendar provider and OAuth surface before enabling Workflows templates that reference aos-calendar.",
       "Current runnable provider-specific calendar commands are exposed through aos-google and aos-m365.",
-      "This connector ID is manifest-only until an aos-calendar adapter or explicit provider alias contract is implemented."
+      "The committed aos-calendar harness is a blocked-status alias shim only; it does not execute provider calendar reads."
     ]
   },
   "commands": [
@@ -76,6 +93,14 @@
     {
       "id": "health",
       "summary": "Report Calendar connector readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health.check",
+      "summary": "Alias for Calendar connector readiness",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "connector",

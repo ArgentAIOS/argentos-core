@@ -13,6 +13,7 @@
     "worker_visible_actions": [
       "email.send",
       "email.batch_send",
+      "email.create_draft",
       "domains.list",
       "domains.verify",
       "audiences.list",
@@ -30,7 +31,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": ["email.send", "email.batch_send"],
+        "applies_to": ["email.send", "email.batch_send", "email.create_draft"],
         "placeholder": "recipient@example.com or [\"one@example.com\", \"two@example.com\"]",
         "description": "Recipient email address(es). Can be a single email or JSON array of emails."
       },
@@ -42,7 +43,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": ["email.send", "email.batch_send"],
+        "applies_to": ["email.send", "email.batch_send", "email.create_draft"],
         "placeholder": "noreply@example.com",
         "description": "Sender email address (must be verified in Resend). Defaults to RESEND_FROM_EMAIL config."
       },
@@ -54,7 +55,7 @@
         "required": false,
         "expressionEnabled": true,
         "valueType": "string",
-        "applies_to": ["email.send", "email.batch_send"],
+        "applies_to": ["email.send", "email.batch_send", "email.create_draft"],
         "placeholder": "Your Subject Line",
         "description": "Email subject line."
       },
@@ -67,7 +68,7 @@
         "expressionEnabled": true,
         "valueType": "string",
         "rows": 6,
-        "applies_to": ["email.send"],
+        "applies_to": ["email.send", "email.create_draft"],
         "placeholder": "<h1>Welcome</h1><p>Hello {{name}}</p>",
         "description": "HTML body content for the email. Supports variables and styling."
       },
@@ -117,6 +118,11 @@
       "contacts.remove": {
         "selection_surface": "contact",
         "args": ["RESEND_AUDIENCE_ID"]
+      },
+      "email.create_draft": {
+        "selection_surface": "email",
+        "args": ["RESEND_FROM_EMAIL"],
+        "preview_only": true
       }
     },
     "pickerHints": {
@@ -178,6 +184,16 @@
       "supports_json": true,
       "resource": "email",
       "action_class": "write"
+    },
+    {
+      "id": "email.create_draft",
+      "summary": "Create a local Resend email draft without sending",
+      "required_mode": "write",
+      "supports_json": true,
+      "resource": "email",
+      "action_class": "write",
+      "preview_only": true,
+      "side_effect_level": "local_preview_only"
     },
     {
       "id": "domains.list",
@@ -254,6 +270,14 @@
     {
       "id": "health",
       "summary": "Report connector health and setup readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health.check",
+      "summary": "Workflow-compatible alias for connector health",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "connector",

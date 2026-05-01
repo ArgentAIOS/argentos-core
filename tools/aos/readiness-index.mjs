@@ -102,18 +102,28 @@ function commandClass(command) {
   return "read";
 }
 
+function isPreviewOnlyCommand(command) {
+  return (
+    command.preview_only === true ||
+    command.runtime_available === false ||
+    command.side_effect_level === "local_preview_only" ||
+    command.side_effect_level === "preview_or_scaffold_only"
+  );
+}
+
 function classifyConnector({ manifest, harness }) {
   const commands = Array.isArray(manifest.commands) ? manifest.commands : [];
   const writeCommands = commands.filter((command) => commandClass(command) === "write");
   const readCommands = commands.filter((command) => commandClass(command) === "read");
   const scope = manifest.scope ?? {};
   const serialized = JSON.stringify(manifest).toLowerCase();
+  const previewWriteCommands = writeCommands.filter(isPreviewOnlyCommand);
   const hasPreviewWrites =
     writeCommands.length > 0 &&
     (scope.write_bridge_available === false ||
-      serialized.includes("preview_only") ||
       serialized.includes("scaffolded_write") ||
-      serialized.includes("scaffolded write"));
+      serialized.includes("scaffolded write") ||
+      previewWriteCommands.length === writeCommands.length);
 
   if (!harness.present || commands.length === 0) return "manifest-only";
   if (scope.scaffold_only === true || manifest.scaffold_only === true) return "scaffold/deferred";
@@ -132,6 +142,9 @@ function classifyConnector({ manifest, harness }) {
 }
 
 function commandReadiness({ command, connectorReadiness, manifest }) {
+  if (isPreviewOnlyCommand(command)) {
+    return "preview-only";
+  }
   const actionClass = commandClass(command);
   if (actionClass === "read") {
     if (connectorReadiness === "manifest-only") return "manifest-only";

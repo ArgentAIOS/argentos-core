@@ -435,4 +435,64 @@ describe("discoverConnectorCatalog", () => {
       }),
     });
   });
+
+  it("discovers committed harness bin shims before reporting a connector as repo-only", async () => {
+    const root = makeTempDir("connector-tracked-bin-");
+    const { harnessDir } = writeRepoFixture({
+      root,
+      tool: "aos-shim",
+      description: "Agent-native shim connector",
+      permissions: {
+        health: "readonly",
+      },
+    });
+    const binDir = path.join(harnessDir, "shims");
+    fs.mkdirSync(binDir, { recursive: true });
+    const binaryPath = path.join(binDir, "aos-shim");
+    fs.writeFileSync(
+      binaryPath,
+      [
+        "#!/bin/sh",
+        'if [ "$1" = "--json" ] && [ "$2" = "capabilities" ]; then',
+        `  printf '%s' '${JSON.stringify({
+          ok: true,
+          data: {
+            tool: "aos-shim",
+            commands: [
+              {
+                id: "health",
+                required_mode: "readonly",
+                supports_json: true,
+                resource: "connector",
+                action_class: "read",
+              },
+            ],
+          },
+        })}'`,
+        "  exit 0",
+        "fi",
+        'if [ "$1" = "--json" ] && [ "$2" = "health" ]; then',
+        `  printf '%s' '${JSON.stringify({ ok: true, data: { status: "needs_setup" } })}'`,
+        "  exit 0",
+        "fi",
+        "exit 2",
+        "",
+      ].join("\n"),
+    );
+    fs.chmodSync(binaryPath, 0o755);
+
+    const result = await discoverConnectorCatalog({
+      repoRoots: [root],
+      pathEnv: "",
+      timeoutMs: 500,
+    });
+
+    expect(result.connectors[0]).toMatchObject({
+      tool: "aos-shim",
+      installState: "needs-setup",
+      discovery: expect.objectContaining({
+        binaryPath,
+      }),
+    });
+  });
 });

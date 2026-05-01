@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +57,25 @@ class FakeResendClient:
         return {"object": "contact", "id": contact_id, "deleted": True}
 
 
+def missing_resend_runtime(ctx_obj: dict[str, Any]) -> dict[str, Any]:
+    from_email = os.environ.get("RESEND_FROM_EMAIL", "")
+    return {
+        "backend": "resend-api",
+        "api_key_env": "RESEND_API_KEY",
+        "from_email_env": "RESEND_FROM_EMAIL",
+        "audience_id_env": "RESEND_AUDIENCE_ID",
+        "domain_id_env": "RESEND_DOMAIN_ID",
+        "api_key": "",
+        "from_email": from_email,
+        "audience_id": "",
+        "domain_id": "",
+        "api_key_present": False,
+        "from_email_present": bool(from_email),
+        "audience_id_present": False,
+        "domain_id_present": False,
+    }
+
+
 def invoke_json(args: list[str]) -> dict[str, Any]:
     result = CliRunner().invoke(cli, ["--json", *args])
     assert result.exit_code == 0, result.output
@@ -86,7 +106,9 @@ def test_capabilities_exposes_manifest():
 
 def test_health_requires_api_key(monkeypatch):
     monkeypatch.delenv("RESEND_API_KEY", raising=False)
-    payload = invoke_json(["health"])
+    monkeypatch.setattr(runtime, "resolve_runtime_values", missing_resend_runtime)
+    payload = invoke_json(["health.check"])
+    assert payload["command"] == "health.check"
     assert payload["data"]["status"] == "needs_setup"
     assert "RESEND_API_KEY" in json.dumps(payload["data"])
 
@@ -154,6 +176,19 @@ def test_email_send_succeeds_in_write_mode(monkeypatch):
     monkeypatch.setattr(runtime, "create_client", lambda ctx_obj: FakeResendClient())
     payload = invoke_json_with_mode("write", ["email", "send", "test@example.com", "--subject", "Hi", "--html", "<p>Hello</p>"])
     assert payload["data"]["status"] == "live_write"
+
+
+def test_email_create_draft_is_local_preview(monkeypatch):
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    monkeypatch.setenv("RESEND_FROM_EMAIL", "drafts@example.com")
+    monkeypatch.setattr(runtime, "resolve_runtime_values", missing_resend_runtime)
+
+    payload = invoke_json_with_mode("write", ["email", "create_draft", "test@example.com", "--subject", "Hi", "--html", "<p>Hello</p>"])
+
+    assert payload["command"] == "email.create_draft"
+    assert payload["data"]["status"] == "local_preview"
+    assert payload["data"]["draft"]["from"] == "drafts@example.com"
+    assert payload["data"]["missing_keys"] == ["RESEND_API_KEY"]
 
 
 def test_contacts_create_succeeds_in_write_mode(monkeypatch):

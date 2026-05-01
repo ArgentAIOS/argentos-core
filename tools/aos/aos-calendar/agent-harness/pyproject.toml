@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aos-calendar"
+version = "0.1.0"
+description = "Agent-native Calendar provider-alias harness"
+requires-python = ">=3.10"
+dependencies = ["click>=8.1"]
+
+[project.scripts]
+aos-calendar = "cli_aos.calendar.cli:cli"

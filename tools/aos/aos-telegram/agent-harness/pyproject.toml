@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aos-telegram"
+version = "0.1.0"
+description = "Agent-native Telegram connector harness"
+requires-python = ">=3.10"
+dependencies = ["click>=8.1"]
+
+[project.scripts]
+aos-telegram = "cli_aos.telegram.cli:cli"

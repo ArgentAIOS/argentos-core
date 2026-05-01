@@ -34,15 +34,15 @@
   ],
   "totals": {
     "connectors": 66,
-    "commands": 939,
-    "read_commands": 728,
-    "write_commands": 211,
+    "commands": 946,
+    "read_commands": 733,
+    "write_commands": 213,
     "by_readiness": {
-      "live-ready": 46,
+      "live-ready": 47,
       "read-only": 18,
       "preview-only": 0,
-      "manifest-only": 2,
-      "scaffold/deferred": 0
+      "manifest-only": 0,
+      "scaffold/deferred": 1
     }
   },
   "connectors": [
@@ -1152,10 +1152,10 @@
     },
     {
       "tool": "aos-calendar",
-      "backend": "calendar-provider-api",
+      "backend": "calendar-provider-alias",
       "path": "tools/aos/aos-calendar",
       "manifest_schema_version": "1.0.0",
-      "readiness": "manifest-only",
+      "readiness": "scaffold/deferred",
       "production_smoke_tested": false,
       "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
       "scope": {
@@ -1173,12 +1173,12 @@
       },
       "runtime": {
         "harness": {
-          "present": false,
-          "pyproject": false,
-          "tests": false
+          "present": true,
+          "pyproject": true,
+          "tests": true
         },
-        "command_count": 6,
-        "read_command_count": 6,
+        "command_count": 7,
+        "read_command_count": 7,
         "write_command_count": 0
       },
       "commands": [
@@ -1187,7 +1187,7 @@
           "summary": "Describe the connector manifest",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
+          "readiness": "scaffold/deferred",
           "runtime_available": false,
           "side_effect_level": "none",
           "supports_json": true
@@ -1197,7 +1197,17 @@
           "summary": "Report Calendar connector readiness",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
+          "readiness": "scaffold/deferred",
+          "runtime_available": false,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "health.check",
+          "summary": "Alias for Calendar connector readiness",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "scaffold/deferred",
           "runtime_available": false,
           "side_effect_level": "none",
           "supports_json": true
@@ -1207,7 +1217,7 @@
           "summary": "Show redacted connector configuration",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
+          "readiness": "scaffold/deferred",
           "runtime_available": false,
           "side_effect_level": "none",
           "supports_json": true
@@ -1217,7 +1227,7 @@
           "summary": "Run Calendar connector diagnostics",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
+          "readiness": "scaffold/deferred",
           "runtime_available": false,
           "side_effect_level": "none",
           "supports_json": true
@@ -1227,7 +1237,7 @@
           "summary": "List upcoming calendar events",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
+          "readiness": "scaffold/deferred",
           "runtime_available": false,
           "side_effect_level": "none",
           "supports_json": true
@@ -1237,7 +1247,7 @@
           "summary": "List calendar events",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
+          "readiness": "scaffold/deferred",
           "runtime_available": false,
           "side_effect_level": "none",
           "supports_json": true
@@ -8964,9 +8974,9 @@
           "pyproject": true,
           "tests": true
         },
-        "command_count": 13,
-        "read_command_count": 7,
-        "write_command_count": 6
+        "command_count": 15,
+        "read_command_count": 8,
+        "write_command_count": 7
       },
       "commands": [
         {
@@ -8987,6 +8997,16 @@
           "readiness": "live-ready",
           "runtime_available": true,
           "side_effect_level": "external_mutation",
+          "supports_json": true
+        },
+        {
+          "id": "email.create_draft",
+          "summary": "Create a local Resend email draft without sending",
+          "required_mode": "write",
+          "action_class": "write",
+          "readiness": "preview-only",
+          "runtime_available": true,
+          "side_effect_level": "local_preview_only",
           "supports_json": true
         },
         {
@@ -9082,6 +9102,16 @@
         {
           "id": "health",
           "summary": "Report connector health and setup readiness",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "health.check",
+          "summary": "Workflow-compatible alias for connector health",
           "required_mode": "readonly",
           "action_class": "read",
           "readiness": "read-only",
@@ -9756,9 +9786,9 @@
           "pyproject": true,
           "tests": true
         },
-        "command_count": 10,
-        "read_command_count": 9,
-        "write_command_count": 1
+        "command_count": 13,
+        "read_command_count": 11,
+        "write_command_count": 2
       },
       "commands": [
         {
@@ -9774,6 +9804,16 @@
         {
           "id": "health",
           "summary": "Report connector health and backend readiness",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "health.check",
+          "summary": "Workflow-compatible alias for connector health",
           "required_mode": "readonly",
           "action_class": "read",
           "readiness": "read-only",
@@ -9819,6 +9859,26 @@
           "readiness": "live-ready",
           "runtime_available": true,
           "side_effect_level": "external_mutation",
+          "supports_json": true
+        },
+        {
+          "id": "message.send",
+          "summary": "Send a Slack message to a channel or thread",
+          "required_mode": "write",
+          "action_class": "write",
+          "readiness": "live-ready",
+          "runtime_available": true,
+          "side_effect_level": "external_mutation",
+          "supports_json": true
+        },
+        {
+          "id": "message.history",
+          "summary": "Read recent Slack channel message history",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
           "supports_json": true
         },
         {
@@ -10782,16 +10842,16 @@
       "backend": "telegram-bot-api",
       "path": "tools/aos/aos-telegram",
       "manifest_schema_version": "1.0.0",
-      "readiness": "manifest-only",
+      "readiness": "live-ready",
       "production_smoke_tested": false,
       "production_smoke_caveat": "No production external-account smoke test evidence is recorded in this index.",
       "scope": {
         "kind": "messaging",
         "surface": "chat-message",
-        "scaffold_only": true,
-        "live_backend_available": false,
-        "live_read_available": false,
-        "write_bridge_available": false
+        "scaffold_only": false,
+        "live_backend_available": true,
+        "live_read_available": true,
+        "write_bridge_available": true
       },
       "auth": {
         "service_keys": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"],
@@ -10800,12 +10860,12 @@
       },
       "runtime": {
         "harness": {
-          "present": false,
-          "pyproject": false,
-          "tests": false
+          "present": true,
+          "pyproject": true,
+          "tests": true
         },
-        "command_count": 5,
-        "read_command_count": 4,
+        "command_count": 6,
+        "read_command_count": 5,
         "write_command_count": 1
       },
       "commands": [
@@ -10814,8 +10874,8 @@
           "summary": "Describe the connector manifest",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -10824,8 +10884,18 @@
           "summary": "Report Telegram connector readiness",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "health.check",
+          "summary": "Alias for Telegram connector readiness",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -10834,8 +10904,8 @@
           "summary": "Show redacted connector configuration",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -10844,8 +10914,8 @@
           "summary": "Run Telegram connector diagnostics",
           "required_mode": "readonly",
           "action_class": "read",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "read-only",
+          "runtime_available": true,
           "side_effect_level": "none",
           "supports_json": true
         },
@@ -10854,8 +10924,8 @@
           "summary": "Send a Telegram bot message",
           "required_mode": "write",
           "action_class": "write",
-          "readiness": "manifest-only",
-          "runtime_available": false,
+          "readiness": "live-ready",
+          "runtime_available": true,
           "side_effect_level": "external_mutation",
           "supports_json": true
         }

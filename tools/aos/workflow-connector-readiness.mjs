@@ -59,6 +59,8 @@ function localBinaryPath(runtimeRoot, id, manifest) {
   const candidates = [
     path.join(harnessDir, ".venv", "bin", tool),
     path.join(harnessDir, "venv", "bin", tool),
+    path.join(harnessDir, "bin", tool),
+    path.join(harnessDir, "shims", tool),
   ];
   return candidates.find(hasFile) ?? null;
 }
@@ -79,6 +81,25 @@ function commandIds(manifest) {
         .filter(Boolean)
         .sort()
     : [];
+}
+
+function commandById(manifest) {
+  return new Map(
+    Array.isArray(manifest?.commands)
+      ? manifest.commands
+          .filter((command) => typeof command?.id === "string")
+          .map((command) => [command.id, command])
+      : [],
+  );
+}
+
+function isPreviewOnlyCommand(command) {
+  return (
+    command?.preview_only === true ||
+    command?.runtime_available === false ||
+    command?.side_effect_level === "local_preview_only" ||
+    command?.side_effect_level === "preview_or_scaffold_only"
+  );
 }
 
 function stableUnique(values) {
@@ -161,6 +182,12 @@ function classifyConnector({ manifest, harness, binaryPath, credentials }) {
       reasons: ["missing connector manifest"],
     };
   }
+  if (manifest.scope?.scaffold_only === true || manifest.scaffold_only === true) {
+    return {
+      truth_label: "blocked",
+      reasons: ["connector is explicitly scaffold-only pending a live adapter contract"],
+    };
+  }
   if (!harness.present) {
     return {
       truth_label: "blocked",
@@ -221,6 +248,7 @@ export function buildWorkflowConnectorReadiness({
     const binaryPath = localBinaryPath(resolvedRuntimeRoot, id, manifest);
     const credentials = credentialStatus(credentialRequirements(manifest), env);
     const commands = commandIds(manifest);
+    const commandsById = commandById(manifest);
     const workflowConnectorUsages = usageByConnector.get(id) ?? [];
     const expectedOperations = stableUnique(
       workflowConnectorUsages.map((usage) => usage.operation),
@@ -235,6 +263,15 @@ export function buildWorkflowConnectorReadiness({
         `workflow operations not advertised by manifest: ${unsupportedOperations.join(", ")}`,
       ];
     }
+    const previewOnlyOperations = expectedOperations.filter((operation) =>
+      isPreviewOnlyCommand(commandsById.get(operation)),
+    );
+    if (previewOnlyOperations.length > 0) {
+      classification.reasons = [
+        ...classification.reasons,
+        `workflow operations are preview-only, not live operations: ${previewOnlyOperations.join(", ")}`,
+      ];
+    }
     return {
       connector_id: id,
       expected_by_workflows: usageByConnector.has(id),
@@ -243,6 +280,7 @@ export function buildWorkflowConnectorReadiness({
         expected: expectedOperations,
         advertised: expectedOperations.filter((operation) => commands.includes(operation)),
         missing: unsupportedOperations,
+        preview_only: previewOnlyOperations,
       },
       manifest: manifest
         ? {

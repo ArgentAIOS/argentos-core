@@ -11,11 +11,19 @@
   "scope": {
     "kind": "messaging",
     "surface": "chat-message",
-    "scaffold_only": true,
-    "live_backend_available": false,
-    "live_read_available": false,
-    "write_bridge_available": false,
+    "scaffold_only": false,
+    "live_backend_available": true,
+    "live_read_available": true,
+    "write_bridge_available": true,
+    "worker_visible_actions": ["message.send"],
     "workerFields": ["chat_id", "text"],
+    "commandDefaults": {
+      "message.send": {
+        "selection_surface": "chat",
+        "args": ["TELEGRAM_CHAT_ID"],
+        "requires_operator_destination": true
+      }
+    },
     "fields": [
       {
         "id": "chat_id",
@@ -52,7 +60,7 @@
       "Create a Telegram bot with BotFather.",
       "Add TELEGRAM_BOT_TOKEN in operator-controlled API Keys before enabling live sends.",
       "Optionally pin TELEGRAM_CHAT_ID for operator alert workflows.",
-      "This connector ID is manifest-only until an aos-telegram agent-harness binary is added and smoke tested."
+      "The committed aos-telegram harness can probe getMe and send messages, but live-ready status still requires local credentials and a smoke-tested operator destination."
     ]
   },
   "commands": [
@@ -67,6 +75,14 @@
     {
       "id": "health",
       "summary": "Report Telegram connector readiness",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "connector",
+      "action_class": "read"
+    },
+    {
+      "id": "health.check",
+      "summary": "Alias for Telegram connector readiness",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "connector",
