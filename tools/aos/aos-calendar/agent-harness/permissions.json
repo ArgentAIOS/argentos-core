@@ -1,0 +1,13 @@
+{
+  "tool": "aos-calendar",
+  "backend": "calendar-provider-alias",
+  "permissions": {
+    "capabilities": "readonly",
+    "health": "readonly",
+    "health.check": "readonly",
+    "config.show": "readonly",
+    "doctor": "readonly",
+    "event.upcoming": "readonly",
+    "event.list": "readonly"
+  }
+}

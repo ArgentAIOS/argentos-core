@@ -23,7 +23,7 @@ DEFAULT_CHANNEL_ID_ENV = "SLACK_CHANNEL_ID"
 DEFAULT_THREAD_TS_ENV = "SLACK_THREAD_TS"
 DEFAULT_USER_ID_ENV = "SLACK_USER_ID"
 
-READ_SCOPES = ["channels:read", "search:read", "users:read", "reactions:read"]
+READ_SCOPES = ["channels:read", "channels:history", "search:read", "users:read", "reactions:read"]
 WRITE_SCOPES = ["chat:write"]
 
 CONNECTOR_AUTH = {
@@ -70,6 +70,14 @@ COMMAND_SPECS = [
         "action_class": "read",
     },
     {
+        "id": "health.check",
+        "summary": "Workflow-compatible alias for connector health",
+        "required_mode": "readonly",
+        "supports_json": True,
+        "resource": "connector",
+        "action_class": "read",
+    },
+    {
         "id": "config.show",
         "summary": "Show redacted connector configuration",
         "required_mode": "readonly",
@@ -100,6 +108,22 @@ COMMAND_SPECS = [
         "supports_json": True,
         "resource": "message",
         "action_class": "write",
+    },
+    {
+        "id": "message.send",
+        "summary": "Send a Slack message to a channel or thread",
+        "required_mode": "write",
+        "supports_json": True,
+        "resource": "message",
+        "action_class": "write",
+    },
+    {
+        "id": "message.history",
+        "summary": "Read recent Slack channel message history",
+        "required_mode": "readonly",
+        "supports_json": True,
+        "resource": "message",
+        "action_class": "read",
     },
     {
         "id": "channel.list",

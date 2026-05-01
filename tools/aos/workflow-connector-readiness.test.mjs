@@ -81,3 +81,46 @@ test("truth-labels workflow connector runtime and credential gaps", () => {
   assert.equal(byId["aos-telegram"].truth_label, "blocked");
   assert.equal(report.overall_status, "blocked");
 });
+
+test("reports workflow aliases that are advertised but preview-only", () => {
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "aos-source-"));
+  const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "aos-runtime-"));
+  const workflowTemplate = path.join(sourceRoot, "workflow.ts");
+  fs.writeFileSync(
+    workflowTemplate,
+    'connectorAction("draft", "Draft Email", "aos-resend", "email", "email.create_draft", {});\n',
+  );
+
+  const resendDir = writeManifest(sourceRoot, "aos-resend", {
+    required: true,
+    service_keys: ["RESEND_API_KEY"],
+  });
+  const manifestPath = path.join(resendDir, "connector.json");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  manifest.commands.push({
+    id: "email.create_draft",
+    required_mode: "write",
+    supports_json: true,
+    preview_only: true,
+    side_effect_level: "local_preview_only",
+  });
+  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  writeHarness(sourceRoot, runtimeRoot, "aos-resend", { binary: true });
+
+  const report = buildWorkflowConnectorReadiness({
+    sourceRoot,
+    runtimeRoot,
+    workflowTemplatePath: workflowTemplate,
+    env: { RESEND_API_KEY: "test" },
+  });
+  const resend = report.connectors.find((connector) => connector.connector_id === "aos-resend");
+
+  assert.deepEqual(resend.workflow_operation_status.missing, []);
+  assert.deepEqual(resend.workflow_operation_status.preview_only, ["email.create_draft"]);
+  assert.equal(resend.truth_label, "runnable");
+  assert.ok(
+    resend.reasons.some((reason) =>
+      reason.includes("workflow operations are preview-only, not live operations"),
+    ),
+  );
+});

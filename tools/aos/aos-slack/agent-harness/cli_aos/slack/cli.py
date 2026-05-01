@@ -9,7 +9,7 @@ import click
 from . import __version__
 from .constants import COMMAND_SPECS, CONNECTOR_AUTH, CONNECTOR_CATEGORY, CONNECTOR_CATEGORIES, CONNECTOR_LABEL, CONNECTOR_RESOURCES, MANIFEST_SCHEMA_VERSION, MODE_ORDER, PERMISSIONS_PATH, TOOL_NAME
 from .errors import CliError
-from .runtime import config_snapshot, doctor_snapshot, health_snapshot, list_channels, list_people, list_reactions, mention_scan, reply_message, runtime_config, search_messages
+from .runtime import config_snapshot, doctor_snapshot, health_snapshot, history_messages, list_channels, list_people, list_reactions, mention_scan, reply_message, runtime_config, search_messages
 
 
 def _mode_allows(actual: str, required: str) -> bool:
@@ -162,18 +162,28 @@ def config_show(ctx: click.Context) -> None:
     _emit(payload, ctx.obj["json"])
 
 
-@cli.command("health")
-@click.pass_context
-def health(ctx: click.Context) -> None:
-    require_mode(ctx, "health")
+def _emit_health(ctx: click.Context, command_id: str) -> None:
+    require_mode(ctx, command_id)
     payload = _result(
         ok=True,
-        command="health",
+        command=command_id,
         mode=ctx.obj["mode"],
         started=ctx.obj["started"],
         data=health_snapshot(ctx.obj),
     )
     _emit(payload, ctx.obj["json"])
+
+
+@cli.command("health")
+@click.pass_context
+def health(ctx: click.Context) -> None:
+    _emit_health(ctx, "health")
+
+
+@cli.command("health.check")
+@click.pass_context
+def health_check(ctx: click.Context) -> None:
+    _emit_health(ctx, "health.check")
 
 
 @cli.command("doctor")
@@ -220,6 +230,33 @@ def message_reply(ctx: click.Context, channel: str | None, text: str, thread_ts:
         thread_ts=thread_ts,
         broadcast=broadcast,
     )
+
+
+@message_group.command("send")
+@click.argument("channel", required=False)
+@click.option("--text", required=True, help="Message text")
+@click.option("--thread-ts", default=None, help="Optional thread timestamp")
+@click.option("--broadcast", is_flag=True, help="Also broadcast the message")
+@click.pass_context
+def message_send(ctx: click.Context, channel: str | None, text: str, thread_ts: str | None, broadcast: bool) -> None:
+    _run(
+        ctx,
+        "message.send",
+        reply_message,
+        config=runtime_config(ctx.obj),
+        channel=channel,
+        text=text,
+        thread_ts=thread_ts,
+        broadcast=broadcast,
+    )
+
+
+@message_group.command("history")
+@click.argument("channel", required=False)
+@click.option("--limit", type=int, default=10, show_default=True)
+@click.pass_context
+def message_history(ctx: click.Context, channel: str | None, limit: int) -> None:
+    _run(ctx, "message.history", history_messages, config=runtime_config(ctx.obj), channel=channel, limit=limit)
 
 
 @cli.group("channel")

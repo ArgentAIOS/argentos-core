@@ -4,10 +4,13 @@
   "permissions": {
     "capabilities": "readonly",
     "health": "readonly",
+    "health.check": "readonly",
     "config.show": "readonly",
     "doctor": "readonly",
     "message.search": "readonly",
     "message.reply": "write",
+    "message.send": "write",
+    "message.history": "readonly",
     "channel.list": "readonly",
     "mention.scan": "readonly",
     "people.list": "readonly",
