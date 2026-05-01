@@ -36,6 +36,10 @@ const connectorMocks = vi.hoisted(() => ({
   })),
 }));
 
+const podcastMocks = vi.hoisted(() => ({
+  executeGenerate: vi.fn(),
+}));
+
 // Mock redis-client to avoid real Redis connections in tests
 vi.mock("../data/redis-client.js", () => ({
   refreshPresence: vi.fn(),
@@ -64,6 +68,12 @@ vi.mock("../connectors/catalog.js", () => ({
     ],
   })),
   runConnectorCommandJson: connectorMocks.runConnectorCommandJson,
+}));
+
+vi.mock("../agents/tools/podcast-generate-tool.js", () => ({
+  createPodcastGenerateTool: () => ({
+    execute: podcastMocks.executeGenerate,
+  }),
 }));
 
 // Mock subsystem logger
@@ -650,6 +660,206 @@ describe("executeWorkflow", () => {
       dialogue: [expect.objectContaining({ text: "[warm] Good morning from the workflow." })],
     });
     expect(result.steps[2].output.items[0].text).toBe("MEDIA:/tmp/morning-brief.mp3");
+  });
+
+  it("lets podcast_plan consume structured dialogue from the previous node", async () => {
+    const trigger = makeTrigger();
+    const synthesis = makeAgent("synthesis", "Synthesis");
+    const plan: ActionNode = {
+      kind: "action",
+      id: "podcast-plan",
+      label: "Podcast Plan",
+      config: {
+        actionType: {
+          type: "podcast_plan",
+          title: "Morning Brief",
+          script: "{{previous.text}}",
+        },
+      },
+    };
+    const workflow = makeWorkflow(
+      [trigger, synthesis, plan],
+      [edge(trigger.id, synthesis.id), edge(synthesis.id, plan.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-podcast-structured-source",
+      dispatcher: makeMockDispatcher(async () => ({
+        items: [
+          {
+            json: {
+              dialogue: [{ speaker: "ARGENT", text: "[warm] The structured brief is ready." }],
+              personas: [{ id: "argent", aliases: ["ARGENT"], voice_id: "voice-1" }],
+            },
+            text: "DocPanel brief text that is not a SPEAKER script.",
+          },
+        ],
+      })),
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.steps[2].output.items[0].json.parse).toMatchObject({
+      source: "dialogue",
+      lineCount: 1,
+    });
+    expect(result.steps[2].output.items[0].json.podcast_generate).toMatchObject({
+      dialogue: [expect.objectContaining({ text: "[warm] The structured brief is ready." })],
+      personas: [expect.objectContaining({ id: "argent", voice_id: "voice-1" })],
+    });
+    expect(result.steps[2].output.items[0].json.payloadContract).toMatchObject({
+      produces: "podcast_generate",
+      path: "json.podcast_generate",
+    });
+  });
+
+  it("resolves podcast_plan's previous text fallback before parsing", async () => {
+    const trigger = makeTrigger();
+    const script = makeAgent("podcast-script", "Podcast Script");
+    const plan: ActionNode = {
+      kind: "action",
+      id: "podcast-plan",
+      label: "Podcast Plan",
+      config: {
+        actionType: {
+          type: "podcast_plan",
+          title: "Morning Brief",
+        },
+      },
+    };
+    const workflow = makeWorkflow(
+      [trigger, script, plan],
+      [edge(trigger.id, script.id), edge(script.id, plan.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-podcast-previous-text-fallback",
+      dispatcher: makeMockDispatcher(async () => ({
+        items: [
+          {
+            json: { kind: "podcast_script" },
+            text: "ARGENT: [curious] Here is the actual script.",
+          },
+        ],
+      })),
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.steps[2].output.items[0].json.podcast_generate).toMatchObject({
+      dialogue: [expect.objectContaining({ text: "[curious] Here is the actual script." })],
+    });
+  });
+
+  it("fails podcast_generate when the tool returns no audio artifact", async () => {
+    podcastMocks.executeGenerate.mockResolvedValueOnce({
+      content: [{ type: "text", text: "No ElevenLabs API key found." }],
+    });
+    const trigger = makeTrigger();
+    const render: ActionNode = {
+      kind: "action",
+      id: "podcast-generate",
+      label: "Podcast Generate",
+      config: {
+        actionType: {
+          type: "podcast_generate",
+          title: "Morning Brief",
+          payload: {
+            dialogue: [{ text: "Audio should render.", voice_id: "voice-1" }],
+            personas: [{ id: "argent", voice_id: "voice-1" }],
+          },
+        },
+      },
+    };
+    const workflow = makeWorkflow([trigger, render], [edge(trigger.id, render.id)]);
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-podcast-no-audio",
+      dispatcher: mockDispatcher,
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.steps[1].error).toContain("podcast_generate failed to produce audio");
+    expect(result.steps[1].error).toContain("No ElevenLabs API key found");
+  });
+
+  it("delivers generated podcast media through send_message media templates", async () => {
+    const trigger = makeTrigger();
+    const mediaSource: ActionNode = {
+      kind: "action",
+      id: "podcast-generate",
+      label: "Podcast Generate",
+      config: {
+        pinnedOutput: {
+          items: [
+            {
+              json: { path: "/tmp/morning-brief.mp3" },
+              text: "MEDIA:/tmp/morning-brief.mp3",
+              artifacts: [{ type: "audio", id: "/tmp/morning-brief.mp3", title: "Podcast" }],
+            },
+          ],
+        },
+        actionType: {
+          type: "podcast_generate",
+          title: "Morning Brief",
+          payload: {
+            dialogue: [{ text: "Audio should render.", voice_id: "voice-1" }],
+            personas: [{ id: "argent", voice_id: "voice-1" }],
+          },
+        },
+      },
+    };
+    const delivery: ActionNode = {
+      kind: "action",
+      id: "delivery-status",
+      label: "Delivery Status",
+      config: {
+        actionType: {
+          type: "send_message",
+          channelType: "telegram",
+          channelId: "operator",
+          template: "Podcast ready: {{previous.json.path}}",
+          mediaTemplate: "{{previous.json.path}}",
+        },
+      },
+    };
+    const sendMessage = vi.fn(async () => ({
+      ok: true,
+      channel: "telegram",
+      to: "operator",
+      via: "direct" as const,
+      mediaUrl: "/tmp/morning-brief.mp3",
+    }));
+    const workflow = makeWorkflow(
+      [trigger, mediaSource, delivery],
+      [edge(trigger.id, mediaSource.id), edge(mediaSource.id, delivery.id)],
+    );
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "run-podcast-media-delivery",
+      dispatcher: mockDispatcher,
+      actions: { sendMessage },
+    });
+
+    expect(result.status).toBe("completed");
+    expect(sendMessage).toHaveBeenCalledWith(
+      "telegram",
+      "operator",
+      "Podcast ready: /tmp/morning-brief.mp3",
+      {
+        mediaUrl: "/tmp/morning-brief.mp3",
+        mediaUrls: undefined,
+      },
+    );
+    expect(result.steps[2].output.items[0].json).toMatchObject({
+      sent: true,
+      mediaUrl: "/tmp/morning-brief.mp3",
+    });
+    expect(result.steps[2].output.items[0].artifacts).toEqual([
+      { type: "audio", id: "/tmp/morning-brief.mp3", title: "Workflow message media" },
+    ]);
   });
 
   it("delivers output through a connector action destination", async () => {

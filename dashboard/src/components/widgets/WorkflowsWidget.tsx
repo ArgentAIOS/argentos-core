@@ -4028,6 +4028,15 @@ function ActionForm({
               placeholder="Hello {{ $json.name }}!"
             />
           </div>
+          <div className="space-y-1.5">
+            <label className={DOCK_LABEL}>Media Template</label>
+            <input
+              className={DOCK_INPUT}
+              value={cfgValue("mediaTemplate")}
+              onChange={(e) => cfgUpdate("mediaTemplate", e.target.value)}
+              placeholder="{{previous.json.path}}"
+            />
+          </div>
         </>
       )}
 
@@ -6893,6 +6902,23 @@ function truncateInline(value: string, maxLength = 180): string {
   return compact.length > maxLength ? `${compact.slice(0, maxLength - 1)}...` : compact;
 }
 
+function runPayloadContractSummary(value: Record<string, unknown>): string | null {
+  const contract = isRecord(value.payloadContract) ? value.payloadContract : null;
+  if (!contract) {
+    return null;
+  }
+  const kind = stringValue(contract.kind);
+  const produces = stringValue(contract.produces);
+  const path = stringValue(contract.path);
+  if (kind === "structured_payload" && produces) {
+    return `Payload ${produces}${path ? ` via ${path}` : ""}`;
+  }
+  if (kind === "media_artifact" && produces) {
+    return `Artifact ${produces}${path ? ` via ${path}` : ""}`;
+  }
+  return null;
+}
+
 function runValueSummary(value: unknown): string {
   if (!hasRunValue(value)) {
     return "No data";
@@ -6911,6 +6937,10 @@ function runValueSummary(value: unknown): string {
       : `${value.length} ${suffix}: ${runValueSummary(first)}`;
   }
   if (isRecord(value)) {
+    const contractSummary = runPayloadContractSummary(value);
+    if (contractSummary) {
+      return contractSummary;
+    }
     const items = Array.isArray(value.items) ? value.items : undefined;
     if (items && items.length > 0) {
       return runValueSummary(items);

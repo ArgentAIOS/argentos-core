@@ -116,6 +116,14 @@ describe("draftWorkflowFromIntent", () => {
         expect.objectContaining({ source: "delivery-status", target: "run-ledger" }),
       ]),
     );
+    const delivery = draft.workflow.nodes.find((node) => node.id === "delivery-status");
+    expect(delivery?.kind).toBe("action");
+    if (delivery?.kind === "action") {
+      expect(delivery.config.actionType).toMatchObject({
+        type: "send_message",
+        mediaTemplate: "{{previous.json.path}}",
+      });
+    }
     expect(draft.assumptions).toContain(
       "Explicit scout/lane language expanded into visible workflow agent nodes.",
     );

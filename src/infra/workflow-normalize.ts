@@ -263,6 +263,10 @@ function normalizeActionType(
         channelType: asString(actionConfig.channelType, "telegram"),
         channelId: asString(actionConfig.channelId, asString(actionConfig.to)),
         template: asString(actionConfig.template ?? actionConfig.message, "{{previous.text}}"),
+        mediaTemplate: asString(actionConfig.mediaTemplate ?? actionConfig.media_url) || undefined,
+        mediaTemplates: Array.isArray(actionConfig.mediaTemplates)
+          ? actionConfig.mediaTemplates.map((entry) => asString(entry)).filter(Boolean)
+          : undefined,
       };
     case "send_email":
       return {
@@ -329,6 +333,9 @@ function normalizeActionType(
       return {
         type: "podcast_plan",
         title: asString(actionConfig.title, "Workflow podcast"),
+        payload: isRecord(actionConfig.payload) ? actionConfig.payload : undefined,
+        payloadTemplate:
+          asString(actionConfig.payloadTemplate ?? actionConfig.payload_template) || undefined,
         script: asString(actionConfig.script, "{{previous.text}}"),
         dialogue: Array.isArray(actionConfig.dialogue)
           ? actionConfig.dialogue.filter(isRecord)

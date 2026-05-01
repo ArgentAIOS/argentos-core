@@ -356,7 +356,8 @@ export const OWNER_OPERATOR_WORKFLOW_PACKAGES: WorkflowPackage[] = [
         type: "send_message",
         channelType: "telegram",
         channelId: "{{operator.phone.telegramChatId}}",
-        template: "AI Morning Brief podcast finished: {{previous.text}}",
+        template: "AI Morning Brief podcast audio is ready: {{previous.json.path}}",
+        mediaTemplate: "{{previous.json.path}}",
       }),
       docOutput(
         "run-ledger",
