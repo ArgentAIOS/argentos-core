@@ -303,6 +303,13 @@ def invoice_list(ctx: click.Context, items: tuple[str, ...]) -> None:
     _run_read(ctx, "invoice.list", items)
 
 
+@invoice_group.command("list_overdue")
+@click.argument("items", nargs=-1)
+@click.pass_context
+def invoice_list_overdue(ctx: click.Context, items: tuple[str, ...]) -> None:
+    _run_read(ctx, "invoice.list_overdue", items)
+
+
 @invoice_group.command("search")
 @click.argument("items", nargs=-1)
 @click.pass_context

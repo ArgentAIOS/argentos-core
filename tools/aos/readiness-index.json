@@ -34,8 +34,8 @@
   ],
   "totals": {
     "connectors": 66,
-    "commands": 946,
-    "read_commands": 733,
+    "commands": 947,
+    "read_commands": 734,
     "write_commands": 213,
     "by_readiness": {
       "live-ready": 47,
@@ -8685,8 +8685,8 @@
           "pyproject": true,
           "tests": true
         },
-        "command_count": 25,
-        "read_command_count": 23,
+        "command_count": 26,
+        "read_command_count": 24,
         "write_command_count": 2
       },
       "commands": [
@@ -8803,6 +8803,16 @@
         {
           "id": "invoice.list",
           "summary": "List invoices",
+          "required_mode": "readonly",
+          "action_class": "read",
+          "readiness": "read-only",
+          "runtime_available": true,
+          "side_effect_level": "none",
+          "supports_json": true
+        },
+        {
+          "id": "invoice.list_overdue",
+          "summary": "List overdue open invoices",
           "required_mode": "readonly",
           "action_class": "read",
           "readiness": "read-only",

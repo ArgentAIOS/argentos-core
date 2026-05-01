@@ -212,6 +212,39 @@ def test_customer_list_uses_live_query(monkeypatch):
     assert calls[0]["headers"]["Authorization"] == "Bearer token"
 
 
+def test_invoice_list_overdue_uses_open_balance_due_date_query(monkeypatch):
+    _set_required_env(monkeypatch)
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(runtime, "refresh_access_token", lambda _config: {"access_token": "token"})
+
+    def fake_request_json(method, url, *, headers=None, payload=None, timeout_seconds=None):
+        calls.append({"method": method, "url": url, "headers": headers, "payload": payload})
+        return {
+            "QueryResponse": {
+                "Invoice": [
+                    {
+                        "Id": "inv-1",
+                        "DocNumber": "INV-1",
+                        "DueDate": "2026-01-01",
+                        "Balance": 125.0,
+                        "CustomerRef": {"value": "cust-1", "name": "Acme"},
+                    }
+                ]
+            }
+        }
+
+    monkeypatch.setattr(runtime, "_request_json", fake_request_json)
+
+    result = CliRunner().invoke(cli, ["--json", "invoice", "list_overdue", "due_before=2026-02-01"])
+    assert result.exit_code == 0
+    assert '"resource": "invoice"' in result.output
+    assert '"operation": "list_overdue"' in result.output
+    assert '"due_before": "2026-02-01"' in result.output
+    assert "Balance+%3E+%270%27" in calls[0]["url"]
+    assert "DueDate+%3C+%272026-02-01%27" in calls[0]["url"]
+    assert calls[0]["headers"]["Authorization"] == "Bearer token"
+
+
 def test_customer_search_uses_query_terms(monkeypatch):
     _set_required_env(monkeypatch)
     calls: list[dict[str, object]] = []

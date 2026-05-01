@@ -14,6 +14,17 @@
     "provider_connector_ids": ["aos-google", "aos-m365"],
     "decision": "aos-calendar remains a canonical workflow-facing alias until a provider binding explicitly maps it to aos-google or aos-m365 at runtime.",
     "live_readiness_rule": "Workflows must not treat aos-calendar commands as live-ready until a concrete provider binding, OAuth surface, and smoke-tested event read command are recorded.",
+    "provider_binding_contract": {
+      "required": true,
+      "allowed_provider_connector_ids": ["aos-google", "aos-m365"],
+      "binding_source": "operator-managed connector account binding, not template inference",
+      "runtime_requirement": "Resolve aos-calendar to exactly one configured provider account before dispatching event commands.",
+      "blocked_until": [
+        "provider binding is recorded",
+        "provider OAuth credentials are present",
+        "event.list or event.upcoming provider smoke passes"
+      ]
+    },
     "intended_operation_map": {
       "event.upcoming": {
         "provider_operation": "calendar.list",

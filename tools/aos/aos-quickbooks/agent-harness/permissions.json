@@ -14,6 +14,7 @@
     "vendor.search": "readonly",
     "vendor.read": "readonly",
     "invoice.list": "readonly",
+    "invoice.list_overdue": "readonly",
     "invoice.search": "readonly",
     "invoice.read": "readonly",
     "invoice.create_draft": "write",

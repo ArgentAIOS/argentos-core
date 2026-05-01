@@ -143,6 +143,14 @@ COMMAND_SPECS = [
         "action_class": "read",
     },
     {
+        "id": "invoice.list_overdue",
+        "summary": "List overdue open invoices",
+        "required_mode": "readonly",
+        "supports_json": True,
+        "resource": "invoice",
+        "action_class": "read",
+    },
+    {
         "id": "invoice.search",
         "summary": "Search invoices",
         "required_mode": "readonly",
@@ -1379,6 +1387,38 @@ def _list_resource(
     )
 
 
+def _list_overdue_invoices(config: dict[str, Any], *, limit: int, options: dict[str, str]) -> dict[str, Any]:
+    today = datetime.now(timezone.utc).date().isoformat()
+    due_before = options.get("due_before") or options.get("before") or options.get("date_to") or today
+    query = (
+        "select * from Invoice "
+        f"where Balance > '0' and DueDate < '{_escape_query_term(due_before)}' "
+        f"startposition 1 maxresults {limit}"
+    )
+    response = _query_endpoint(config, "Invoice", query)
+    results = _normalize_query_response("Invoice", response)
+    picker_options = _picker_options("invoice", results)
+    return _decorate_live_result(
+        config=config,
+        resource="invoice",
+        operation="list_overdue",
+        data={
+            "status": "ok",
+            "resource": "invoice",
+            "operation": "list_overdue",
+            "count": len(results),
+            "results": results,
+            "query": {
+                "balance": "open",
+                "due_before": due_before,
+            },
+        },
+        picker_options=picker_options,
+        due_before=due_before,
+        count=len(results),
+    )
+
+
 def _search_resource(
     config: dict[str, Any],
     resource: str,
@@ -1556,6 +1596,8 @@ def run_read_command(command_id: str, items: tuple[str, ...]) -> dict[str, Any]:
     resource, operation = command_id.split(".", 1)
     if resource == "company" and operation == "read":
         return _read_company(config)
+    if resource == "invoice" and operation == "list_overdue":
+        return _list_overdue_invoices(config, limit=_limit_from_options(options), options=options)
     if operation == "list":
         return _list_resource(config, resource, limit=_limit_from_options(options), terms=terms, options=options)
     if operation == "search":
