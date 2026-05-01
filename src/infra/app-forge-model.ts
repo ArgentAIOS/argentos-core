@@ -39,6 +39,10 @@ export type AppForgeTable = {
   fields: AppForgeField[];
   records: AppForgeRecord[];
   revision: number;
+  activeViewId?: string;
+  selectedFieldId?: string;
+  views?: unknown[];
+  metadata?: Record<string, unknown>;
 };
 
 export type AppForgeBase = {

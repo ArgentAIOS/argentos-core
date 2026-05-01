@@ -506,6 +506,75 @@ describe("forge structured data metadata", () => {
     });
   });
 
+  it("round trips saved views and selected fields through gateway-shaped tables", () => {
+    const base = forgeStructuredDataTestUtils.normalizeGatewayBase({
+      id: "base-existing",
+      appId: "app-1",
+      name: "Gateway Base",
+      activeTableId: "table-review",
+      revision: 7,
+      updatedAt: "2026-04-26T17:30:00.000Z",
+      tables: [
+        {
+          id: "table-review",
+          name: "Reviews",
+          revision: 5,
+          activeViewId: "view-review",
+          selectedFieldId: "status",
+          fields: [
+            { id: "title", name: "Title", type: "text" },
+            { id: "status", name: "Status", type: "single_select", options: ["Open", "Done"] },
+          ],
+          records: [],
+          views: [
+            {
+              id: "view-review",
+              name: "Review queue",
+              type: "grid",
+              filterText: "open",
+              sortFieldId: "title",
+              sortDirection: "desc",
+              groupFieldId: "status",
+              visibleFieldIds: ["status", "title"],
+              createdAt: "2026-04-26T17:00:00.000Z",
+              updatedAt: "2026-04-26T17:10:00.000Z",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(base?.tables[0]).toMatchObject({
+      activeViewId: "view-review",
+      selectedFieldId: "status",
+      views: [
+        expect.objectContaining({
+          id: "view-review",
+          filterText: "open",
+          sortFieldId: "title",
+          sortDirection: "desc",
+          groupFieldId: "status",
+          visibleFieldIds: ["status", "title"],
+        }),
+      ],
+    });
+    const table = base?.tables[0];
+    if (!base || !table) {
+      throw new Error("gateway base/table did not normalize");
+    }
+
+    const calls = forgeStructuredDataTestUtils.buildGatewayMirrorCalls(base, {
+      kind: "table.put",
+      table,
+    });
+
+    expect(calls[0]?.params.table).toMatchObject({
+      activeViewId: "view-review",
+      selectedFieldId: "status",
+      views: [expect.objectContaining({ visibleFieldIds: ["status", "title"] })],
+    });
+  });
+
   it("builds revision-checked gateway delete calls from previous state", () => {
     const base = forgeStructuredDataTestUtils.normalizeGatewayBase({
       id: "base-existing",

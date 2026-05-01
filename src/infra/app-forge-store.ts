@@ -123,6 +123,7 @@ type AppForgeTableRow = {
   fields: unknown;
   revision: number;
   position: number;
+  metadata?: unknown;
   updatedAt?: Date | string;
   updated_at?: Date | string;
 };
@@ -206,6 +207,32 @@ function valuesFromJson(value: unknown): Record<string, AppForgeRecordValue> {
     : {};
 }
 
+function metadataFromJson(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function tableMetadataFromTable(table: AppForgeTable): Record<string, unknown> {
+  const source = table as unknown as Record<string, unknown>;
+  const metadata = metadataFromJson(source.metadata);
+  for (const [key, value] of Object.entries(source)) {
+    if (
+      key === "id" ||
+      key === "name" ||
+      key === "fields" ||
+      key === "records" ||
+      key === "revision" ||
+      key === "metadata" ||
+      value === undefined
+    ) {
+      continue;
+    }
+    metadata[key] = value;
+  }
+  return metadata;
+}
+
 function baseRowToBase(row: AppForgeBaseRow, tables: AppForgeTable[]): AppForgeBase {
   return {
     id: row.id,
@@ -221,6 +248,7 @@ function baseRowToBase(row: AppForgeBaseRow, tables: AppForgeTable[]): AppForgeB
 
 function tableRowToTable(row: AppForgeTableRow, records: AppForgeRecord[]): AppForgeTable {
   return {
+    ...metadataFromJson(row.metadata),
     id: row.id,
     name: row.name,
     fields: fieldsFromJson(row.fields),
@@ -325,6 +353,7 @@ async function selectTableRow(
       fields,
       revision,
       position,
+      metadata,
       updated_at AS "updatedAt"
     FROM appforge_tables
     WHERE base_id = ${baseId} AND id = ${tableId}
@@ -365,6 +394,7 @@ async function listTableRows(sql: SqlClient, baseId: string): Promise<AppForgeTa
       fields,
       revision,
       position,
+      metadata,
       updated_at AS "updatedAt"
     FROM appforge_tables
     WHERE base_id = ${baseId}
@@ -421,6 +451,7 @@ async function insertTableTree(
       fields,
       revision,
       position,
+      metadata,
       updated_at
     )
     VALUES (
@@ -430,6 +461,7 @@ async function insertTableTree(
       ${tx.json(table.fields as postgres.JSONValue)},
       ${table.revision},
       ${position},
+      ${tx.json(tableMetadataFromTable(table) as postgres.JSONValue)},
       ${timestamp}
     )
   `;
@@ -675,6 +707,7 @@ export function createPostgresAppForgeStore(sql: SqlClient): AppForgeStore {
             fields,
             revision,
             position,
+            metadata,
             updated_at
           )
           VALUES (
@@ -684,6 +717,7 @@ export function createPostgresAppForgeStore(sql: SqlClient): AppForgeStore {
             ${tx.json(nextTable.fields as postgres.JSONValue)},
             ${nextTable.revision},
             ${position},
+            ${tx.json(tableMetadataFromTable(nextTable) as postgres.JSONValue)},
             ${timestamp}
           )
           ON CONFLICT (id) DO UPDATE SET
@@ -691,6 +725,7 @@ export function createPostgresAppForgeStore(sql: SqlClient): AppForgeStore {
             fields = EXCLUDED.fields,
             revision = EXCLUDED.revision,
             position = EXCLUDED.position,
+            metadata = EXCLUDED.metadata,
             updated_at = EXCLUDED.updated_at
         `;
         await tx`DELETE FROM appforge_records WHERE base_id = ${baseId} AND table_id = ${nextTable.id}`;
