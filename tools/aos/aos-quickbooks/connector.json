@@ -118,6 +118,18 @@
         "description": "Due date for the invoice or bill in ISO 8601 format."
       },
       {
+        "id": "due_before",
+        "label": "Due Before",
+        "type": "text",
+        "renderAs": "datetime",
+        "required": false,
+        "expressionEnabled": true,
+        "valueType": "datetime",
+        "applies_to": ["invoice.list_overdue"],
+        "placeholder": "YYYY-MM-DD",
+        "description": "Upper due-date bound for overdue open invoice reads. Defaults to today."
+      },
+      {
         "id": "query",
         "label": "Search Query",
         "type": "text",
@@ -253,6 +265,14 @@
     {
       "id": "invoice.list",
       "summary": "List invoices",
+      "required_mode": "readonly",
+      "supports_json": true,
+      "resource": "invoice",
+      "action_class": "read"
+    },
+    {
+      "id": "invoice.list_overdue",
+      "summary": "List overdue open invoices",
       "required_mode": "readonly",
       "supports_json": true,
       "resource": "invoice",
