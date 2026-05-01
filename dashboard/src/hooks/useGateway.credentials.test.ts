@@ -15,6 +15,20 @@ describe("shouldForceGatewayCredentialReconnect", () => {
     ).toBe(true);
   });
 
+  it("returns true when connecting and the gateway URL changes", () => {
+    expect(
+      shouldForceGatewayCredentialReconnect({
+        connected: false,
+        connecting: true,
+        suppressedAutoReconnect: false,
+        currentUrl: "ws://127.0.0.1:18789",
+        currentToken: "phase3a-smoke",
+        nextUrl: "ws://127.0.0.1:19001",
+        nextToken: "phase3a-smoke",
+      }),
+    ).toBe(true);
+  });
+
   it("returns true when reconnect was suppressed and credentials changed", () => {
     expect(
       shouldForceGatewayCredentialReconnect({

@@ -547,6 +547,18 @@ describe("forge structured data metadata", () => {
     expect(recordCalls[0]?.params.expectedRevision).toBeUndefined();
   });
 
+  it("shapes new dashboard bases for gateway writes", () => {
+    const base = forgeStructuredDataTestUtils.defaultBase(app());
+    const gatewayBase = forgeStructuredDataTestUtils.toGatewayBase(base);
+
+    expect(gatewayBase).toMatchObject({
+      id: base.id,
+      appId: base.appId,
+      revision: 0,
+      tables: [expect.objectContaining({ id: "table-main", revision: 0 })],
+    });
+  });
+
   it("preserves gateway revisions when building gateway write calls", () => {
     const base = forgeStructuredDataTestUtils.normalizeGatewayBase({
       id: "base-existing",

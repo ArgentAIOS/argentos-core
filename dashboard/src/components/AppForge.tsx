@@ -31,6 +31,7 @@ import { useState, useCallback, useRef, useEffect, useMemo, type KeyboardEvent }
 import type { AppForgeWorkflowEventRequest, ForgeApp } from "../hooks/useApps";
 import type { AppWindowState } from "../hooks/useAppWindows";
 import {
+  toGatewayBase,
   useForgeStructuredData,
   type GatewayRequestFn,
   type ForgeFieldType,
@@ -578,6 +579,7 @@ export function AppForge({
   const [newAppDescription, setNewAppDescription] = useState("");
   const [localCreatedApps, setLocalCreatedApps] = useState<ForgeApp[]>([]);
   const [workflowEventStatus, setWorkflowEventStatus] = useState<WorkflowEventStatus | null>(null);
+  const [gatewayReloadNonce, setGatewayReloadNonce] = useState(0);
   const [activeFilter, setActiveFilter] = useState<AppFilter>("all");
   const [activeSection, setActiveSection] = useState<(typeof APP_FORGE_NAV)[number]["id"]>(
     persistedUiState.activeSection ?? "desktop",
@@ -703,7 +705,7 @@ export function AppForge({
             metadata: structuredBaseMetadata({ workflowCapabilities: [] }, pendingBase),
           }),
         },
-        2_500,
+        10_000,
       );
       if (!createResponse.ok) {
         throw new Error(`Failed to create base app (${createResponse.status})`);
@@ -716,13 +718,19 @@ export function AppForge({
       let gatewayWriteFailed = false;
       if (effectiveGatewayRequest) {
         try {
-          const gatewayWrite = effectiveGatewayRequest("appforge.bases.put", {
-            base,
-            expectedRevision: 0,
-            idempotencyKey: `create-base:${created.app.id}`,
-          });
+          const gatewayWrite = effectiveGatewayRequest(
+            "appforge.bases.put",
+            {
+              base: toGatewayBase(base),
+              expectedRevision: 0,
+              idempotencyKey: `create-base:${created.app.id}`,
+            },
+            {
+              timeoutMs: 5_000,
+            },
+          );
           void gatewayWrite.catch(() => undefined);
-          await withTimeout(gatewayWrite, 2_000, "Gateway base create timed out");
+          await withTimeout(gatewayWrite, 5_000, "Gateway base create timed out");
         } catch (err) {
           gatewayWriteFailed = true;
           console.warn("[AppForge] Gateway base create failed; saving metadata fallback.", err);
@@ -736,7 +744,7 @@ export function AppForge({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ metadata }),
         },
-        2_500,
+        10_000,
       );
       if (!patchResponse.ok) {
         throw new Error(`Failed to attach structured base metadata (${patchResponse.status})`);
@@ -757,6 +765,9 @@ export function AppForge({
       setShowNewAppInput(false);
       setNewAppName("");
       setNewAppDescription("");
+      if (!gatewayWriteFailed) {
+        setGatewayReloadNonce((nonce) => nonce + 1);
+      }
       setWorkflowEventStatus({
         kind: "success",
         appId: created.app.id,
@@ -765,6 +776,7 @@ export function AppForge({
           : `${baseName} base created.`,
       });
     } catch (err) {
+      console.warn("[AppForge] Create base failed.", err);
       setWorkflowEventStatus({
         kind: "error",
         appId: "new-base",
@@ -842,6 +854,13 @@ export function AppForge({
     gatewayRequest: effectiveGatewayRequest,
     emitWorkflowEvent: onEmitWorkflowEvent,
   });
+  const structuredReload = structured.reload;
+  useEffect(() => {
+    if (gatewayReloadNonce <= 0) {
+      return;
+    }
+    structuredReload();
+  }, [gatewayReloadNonce, structuredReload]);
   useEffect(() => {
     if (structured.selectedField) {
       setPendingFieldType(structured.selectedField.type);

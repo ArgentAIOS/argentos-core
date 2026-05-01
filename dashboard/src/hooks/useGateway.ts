@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { buildDeviceAuthPayload } from "../../../src/gateway/device-auth.js";
-import { loadOrCreateDeviceIdentity, signDevicePayload } from "../../../ui/src/ui/device-identity.ts";
+import {
+  loadOrCreateDeviceIdentity,
+  signDevicePayload,
+} from "../../../ui/src/ui/device-identity.ts";
 import {
   coerceVisibleOperatorSessionKey,
   resolvePrimaryChatAgentId,
@@ -220,10 +223,14 @@ let globalMainSessionKey = DEFAULT_MAIN_SESSION_KEY;
 let globalDefaultAgentId = DEFAULT_AGENT_ID;
 let globalGatewayUrl = "";
 let globalGatewayToken = "";
+let globalConnectionUrl = "";
+let globalConnectionToken = "";
+let globalConnectGeneration = 0;
 let runtimeGatewayTokenOverride = "";
 
 export function shouldForceGatewayCredentialReconnect(params: {
   connected: boolean;
+  connecting?: boolean;
   suppressedAutoReconnect: boolean;
   currentUrl: string;
   currentToken: string;
@@ -233,7 +240,10 @@ export function shouldForceGatewayCredentialReconnect(params: {
   const credentialsChanged =
     params.currentUrl.trim() !== params.nextUrl.trim() ||
     params.currentToken.trim() !== params.nextToken.trim();
-  return (params.connected || params.suppressedAutoReconnect) && credentialsChanged;
+  return (
+    (params.connected || params.connecting === true || params.suppressedAutoReconnect) &&
+    credentialsChanged
+  );
 }
 
 function readStoredDashboardGatewayToken(): string {
@@ -998,6 +1008,27 @@ export function useGateway(config: GatewayConfig = {}) {
   // Connect to the Gateway
   const connect = useCallback(
     (opts?: { fromRetry?: boolean }) => {
+      const requestedUrl = String(url || "").trim();
+      const requestedConnectionToken = String(runtimeGatewayTokenOverride || token || "").trim();
+      const activeUrl = globalConnectionUrl || globalGatewayUrl;
+      const activeToken = globalConnectionToken || globalGatewayToken;
+      const credentialsChanged =
+        Boolean(activeUrl) &&
+        (activeUrl !== requestedUrl || activeToken !== requestedConnectionToken);
+
+      if (credentialsChanged && (globalWs || connectionPromise)) {
+        globalConnectGeneration++;
+        if (globalWs) {
+          globalWs.close(1000, "gateway-credentials-superseded");
+          globalWs = null;
+        }
+        connectionPromise = null;
+        globalConnected = false;
+        globalConnecting = false;
+        setConnected(false);
+        setConnecting(false);
+      }
+
       if (!opts?.fromRetry) {
         suppressAutoReconnectUntilManualConnect = false;
       }
@@ -1013,13 +1044,16 @@ export function useGateway(config: GatewayConfig = {}) {
 
       // Clear manual disconnect flag when explicitly connecting
       manualDisconnect = false;
+      const connectGeneration = ++globalConnectGeneration;
+      globalConnectionUrl = requestedUrl;
+      globalConnectionToken = requestedConnectionToken;
 
       connectionPromise = new Promise<void>((resolve, reject) => {
         globalConnecting = true;
         setConnecting(true);
         setError(null);
 
-        const ws = new WebSocket(url);
+        const ws = new WebSocket(requestedUrl);
         globalWs = ws;
         let connectNonce: string | null = null;
         let connectSent = false;
@@ -1124,6 +1158,9 @@ export function useGateway(config: GatewayConfig = {}) {
         };
 
         ws.onmessage = (event) => {
+          if (connectGeneration !== globalConnectGeneration) {
+            return;
+          }
           try {
             const msg: GatewayMessage = JSON.parse(event.data);
 
@@ -1153,7 +1190,7 @@ export function useGateway(config: GatewayConfig = {}) {
                 );
                 globalMainSessionKey = resolvedMain;
                 globalDefaultAgentId = resolvedAgent;
-                globalGatewayUrl = url;
+                globalGatewayUrl = requestedUrl;
                 globalGatewayToken = (runtimeGatewayTokenOverride || token).trim();
                 setMainSessionKey(resolvedMain);
                 setDefaultAgentId(resolvedAgent);
@@ -1279,6 +1316,9 @@ export function useGateway(config: GatewayConfig = {}) {
         };
 
         ws.onerror = (event) => {
+          if (connectGeneration !== globalConnectGeneration) {
+            return;
+          }
           console.error("[Gateway] WebSocket error:", event);
           setError("Connection error");
           globalConnecting = false;
@@ -1288,11 +1328,16 @@ export function useGateway(config: GatewayConfig = {}) {
         };
 
         ws.onclose = (event) => {
+          if (connectGeneration !== globalConnectGeneration) {
+            return;
+          }
           console.log("[Gateway] WebSocket closed:", event.code, event.reason);
           globalConnected = false;
           globalConnecting = false;
           globalWs = null;
           connectionPromise = null;
+          globalConnectionUrl = "";
+          globalConnectionToken = "";
           clearConnectTimer();
           setConnected(false);
           setConnecting(false);
@@ -1346,6 +1391,7 @@ export function useGateway(config: GatewayConfig = {}) {
   // Disconnect from the Gateway
   const disconnect = useCallback(() => {
     manualDisconnect = true;
+    globalConnectGeneration++;
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
       reconnectTimeout = null;
@@ -1358,6 +1404,8 @@ export function useGateway(config: GatewayConfig = {}) {
     globalConnecting = false;
     globalGatewayUrl = "";
     globalGatewayToken = "";
+    globalConnectionUrl = "";
+    globalConnectionToken = "";
     connectionPromise = null;
     setConnected(false);
     setReconnecting(false);
@@ -1368,9 +1416,10 @@ export function useGateway(config: GatewayConfig = {}) {
     const nextToken = String(runtimeGatewayTokenOverride || token || "").trim();
     const shouldRefreshCredentials = shouldForceGatewayCredentialReconnect({
       connected: globalConnected,
+      connecting: globalConnecting,
       suppressedAutoReconnect: suppressAutoReconnectUntilManualConnect,
-      currentUrl: globalGatewayUrl,
-      currentToken: globalGatewayToken,
+      currentUrl: globalConnectionUrl || globalGatewayUrl,
+      currentToken: globalConnectionToken || globalGatewayToken,
       nextUrl,
       nextToken,
     });
@@ -1380,6 +1429,7 @@ export function useGateway(config: GatewayConfig = {}) {
     console.log("[Gateway] Credentials changed; reconnecting with updated gateway auth token.");
     suppressAutoReconnectUntilManualConnect = false;
     reconnectAttempts = 0;
+    globalConnectGeneration++;
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
       reconnectTimeout = null;
@@ -1387,6 +1437,10 @@ export function useGateway(config: GatewayConfig = {}) {
     if (globalWs) {
       globalWs.close(1000, "gateway-auth-updated");
     }
+    globalWs = null;
+    globalConnected = false;
+    globalConnecting = false;
+    connectionPromise = null;
     setReconnecting(true);
     const timer = setTimeout(() => {
       connect()

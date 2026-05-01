@@ -946,7 +946,7 @@ function toGatewayTable(table: ForgeStructuredTable): GatewayStructuredTable {
   };
 }
 
-function toGatewayBase(base: ForgeStructuredBase): GatewayStructuredBase {
+export function toGatewayBase(base: ForgeStructuredBase): GatewayStructuredBase {
   return {
     ...base,
     revision: base.revision ?? 0,
@@ -1197,6 +1197,7 @@ export const forgeStructuredDataTestUtils = {
   metadataWithBase,
   normalizeGatewayBase,
   normalizeBase,
+  toGatewayBase,
 };
 
 export function useForgeStructuredData({
