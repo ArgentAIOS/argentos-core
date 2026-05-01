@@ -150,6 +150,12 @@ export function workflowFromRow(row: WorkflowRow): NormalizedWorkflowRow {
 
 export function publicWorkflowRow(row: WorkflowRow) {
   const normalized = workflowFromRow(row);
+  const importReport =
+    normalized.canvasLayout &&
+    typeof normalized.canvasLayout.importReport === "object" &&
+    !Array.isArray(normalized.canvasLayout.importReport)
+      ? normalized.canvasLayout.importReport
+      : undefined;
   return {
     ...row,
     nodes: normalized.canvasLayout.nodes,
@@ -157,6 +163,7 @@ export function publicWorkflowRow(row: WorkflowRow) {
     canvasLayout: normalized.canvasLayout,
     canvas_layout: normalized.canvasLayout,
     definition: normalized.workflow,
+    importReport,
     validation: {
       ok: !hasBlockingWorkflowIssues(normalized.issues),
       issues: normalized.issues,

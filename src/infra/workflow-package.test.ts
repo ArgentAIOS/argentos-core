@@ -243,6 +243,14 @@ describe("owner-operator workflow packages", () => {
     expect(almostReady.okForLive).toBe(false);
     expect(almostReady.status).toBe("canary_required");
     expect(almostReady.reasons.map((reason) => reason.code)).toEqual(["canary_required"]);
+    expect(almostReady.canary).toMatchObject({
+      familyId: "marketing:schedule",
+      required: true,
+      passed: false,
+    });
+    expect(almostReady.canary.checklist).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "family-canary", status: "pending" })]),
+    );
 
     const ready = auditWorkflowPackageLiveReadiness(newsletter, {
       connectors: [
@@ -276,5 +284,8 @@ describe("owner-operator workflow packages", () => {
 
     expect(ready.okForLive).toBe(true);
     expect(ready.status).toBe("live_ready");
+    expect(ready.canary.checklist).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "family-canary", status: "passed" })]),
+    );
   });
 });
