@@ -865,7 +865,43 @@ export function AppForge({
     },
     [structured],
   );
-  const visibleFields = structured.activeTable?.fields.slice(0, 6) ?? [];
+  const visibleFields = useMemo(() => {
+    const fields = structured.activeTable?.fields ?? [];
+    const visibleFieldIds = structured.activeView?.visibleFieldIds;
+    if (visibleFieldIds?.length) {
+      const fieldsById = new Map(fields.map((field) => [field.id, field]));
+      const ordered = visibleFieldIds
+        .map((fieldId) => fieldsById.get(fieldId))
+        .filter((field): field is ForgeStructuredField => Boolean(field));
+      return ordered.length ? ordered : fields;
+    }
+    return fields;
+  }, [structured.activeTable, structured.activeView]);
+  const handleToggleViewField = useCallback(
+    async (fieldId: string) => {
+      const fields = structured.activeTable?.fields ?? [];
+      if (!fields.some((field) => field.id === fieldId)) {
+        return;
+      }
+      const currentIds = structured.activeView?.visibleFieldIds?.length
+        ? structured.activeView.visibleFieldIds
+        : fields.map((field) => field.id);
+      const current = new Set(currentIds);
+      if (current.has(fieldId)) {
+        current.delete(fieldId);
+      } else {
+        current.add(fieldId);
+      }
+      const nextVisibleFieldIds = fields
+        .map((field) => field.id)
+        .filter((candidate) => current.has(candidate));
+      if (!nextVisibleFieldIds.length) {
+        return;
+      }
+      await structured.updateActiveViewSettings({ visibleFieldIds: nextVisibleFieldIds });
+    },
+    [structured],
+  );
   const handleCreateTable = useCallback(async () => {
     const name = newTableName.trim();
     await structured.addTable(name ? { name } : undefined);
@@ -1886,6 +1922,34 @@ export function AppForge({
                               </option>
                             ))}
                           </select>
+                          <details className="relative">
+                            <summary className="flex h-8 cursor-pointer list-none items-center rounded-lg border border-white/10 px-2 text-xs text-white/58 transition-colors hover:bg-white/10 hover:text-white">
+                              Fields
+                            </summary>
+                            <div className="absolute right-0 z-30 mt-2 max-h-72 w-56 overflow-auto rounded-xl border border-white/12 bg-[#0d1114] p-2 shadow-2xl">
+                              {(structured.activeTable?.fields ?? []).map((field) => {
+                                const currentVisible = structured.activeView?.visibleFieldIds
+                                  ?.length
+                                  ? structured.activeView.visibleFieldIds
+                                  : (structured.activeTable?.fields ?? []).map((item) => item.id);
+                                const checked = currentVisible.includes(field.id);
+                                return (
+                                  <label
+                                    key={field.id}
+                                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-white/68 hover:bg-white/[0.06]"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => void handleToggleViewField(field.id)}
+                                      className="h-3.5 w-3.5 rounded border-white/20 bg-black/45 accent-sky-400"
+                                    />
+                                    <span className="min-w-0 truncate">{field.name}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </details>
                         </div>
                       </div>
 

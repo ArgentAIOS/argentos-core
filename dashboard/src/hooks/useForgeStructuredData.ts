@@ -64,6 +64,7 @@ export type ForgeStructuredTable = {
   records: ForgeStructuredRecord[];
   views: ForgeStructuredView[];
   activeViewId: string;
+  selectedFieldId?: string;
   revision?: number;
 };
 
@@ -520,6 +521,7 @@ function defaultBase(app: ForgeApp): ForgeStructuredBase {
     records: defaultRecords(app),
     views: defaultViews("grid"),
     activeViewId: "view-grid",
+    selectedFieldId: "status",
   };
   return {
     id: `base-${app.id}`,
@@ -633,6 +635,7 @@ function normalizeTable(value: unknown): ForgeStructuredTable | null {
     : [];
   const normalizedViews = views.length > 0 ? views : defaultViews("grid");
   const activeViewId = stringValue(value.activeViewId);
+  const selectedFieldId = stringValue(value.selectedFieldId);
   return {
     id,
     name,
@@ -643,6 +646,10 @@ function normalizeTable(value: unknown): ForgeStructuredTable | null {
       activeViewId && normalizedViews.some((view) => view.id === activeViewId)
         ? activeViewId
         : normalizedViews[0].id,
+    selectedFieldId:
+      selectedFieldId && normalizedFields.some((field) => field.id === selectedFieldId)
+        ? selectedFieldId
+        : undefined,
     revision: numberValue(value.revision),
   };
 }
@@ -1133,6 +1140,7 @@ export function useForgeStructuredData({
   }, [activeBase, gatewayBases, gatewayRequest, sourceStatus]);
   const selectedField =
     activeTable?.fields.find((field) => field.id === selectedFieldId) ??
+    activeTable?.fields.find((field) => field.id === activeTable.selectedFieldId) ??
     activeTable?.fields[1] ??
     activeTable?.fields[0] ??
     null;
@@ -1154,7 +1162,12 @@ export function useForgeStructuredData({
   }, [selectedField, selectedFieldId]);
 
   useEffect(() => {
-    if (!selectedAppId || !activeTable || typeof window === "undefined") {
+    if (
+      !selectedAppId ||
+      !activeTable ||
+      activeTable.selectedFieldId ||
+      typeof window === "undefined"
+    ) {
       return;
     }
     const stored = window.localStorage.getItem(
@@ -1404,8 +1417,31 @@ export function useForgeStructuredData({
           fieldId,
         );
       }
+      const currentBase = activeBaseRef.current ?? activeBase;
+      const currentTable =
+        currentBase?.tables.find((table) => table.id === (activeTableRef.current?.id ?? "")) ??
+        currentBase?.tables.find((table) => table.id === currentBase.activeTableId) ??
+        activeTable;
+      if (
+        currentBase &&
+        currentTable &&
+        currentTable.selectedFieldId !== fieldId &&
+        currentTable.fields.some((field) => field.id === fieldId)
+      ) {
+        const nextTable = { ...currentTable, selectedFieldId: fieldId };
+        void persistBase(
+          {
+            ...currentBase,
+            tables: currentBase.tables.map((table) =>
+              table.id === nextTable.id ? nextTable : table,
+            ),
+          },
+          undefined,
+          { kind: "table.put", table: nextTable },
+        );
+      }
     },
-    [activeTable, selectedAppId],
+    [activeBase, activeTable, persistBase, selectedAppId],
   );
 
   const updateActiveTable = useCallback(
@@ -1475,6 +1511,7 @@ export function useForgeStructuredData({
         records: [],
         views: defaultViews("grid"),
         activeViewId: "view-grid",
+        selectedFieldId: "name",
       };
       const nextBase = {
         ...activeBase,
@@ -1584,6 +1621,9 @@ export function useForgeStructuredData({
           viewIdMap.get(source.activeViewId) ??
           viewIdMap.get(source.views[0]?.id ?? "") ??
           "view-grid",
+        selectedFieldId: source.selectedFieldId
+          ? (fieldIdMap.get(source.selectedFieldId) ?? undefined)
+          : undefined,
       };
       const nextBase = {
         ...activeBase,
@@ -1811,6 +1851,7 @@ export function useForgeStructuredData({
       };
       await updateActiveTable((table) => ({
         ...table,
+        selectedFieldId: field.id,
         fields: [...table.fields, field],
         records: table.records.map((record) => ({
           ...record,
@@ -1929,6 +1970,7 @@ export function useForgeStructuredData({
       };
       await updateActiveTable((table) => ({
         ...table,
+        selectedFieldId: field.id,
         fields: [
           ...table.fields.slice(0, sourceIndex + 1),
           field,
@@ -1956,6 +1998,7 @@ export function useForgeStructuredData({
       const nextField = activeTable.fields.find((field) => field.id !== fieldId);
       await updateActiveTable((table) => ({
         ...table,
+        selectedFieldId: nextField?.id,
         fields: table.fields.filter((field) => field.id !== fieldId),
         views: table.views.map((view) => ({
           ...view,
@@ -1998,7 +2041,21 @@ export function useForgeStructuredData({
           return table;
         }
         fields.splice(targetIndex, 0, field);
-        return { ...table, fields };
+        return {
+          ...table,
+          fields,
+          views: table.views.map((view) =>
+            view.visibleFieldIds
+              ? {
+                  ...view,
+                  visibleFieldIds: fields
+                    .map((candidate) => candidate.id)
+                    .filter((candidate) => view.visibleFieldIds?.includes(candidate)),
+                  updatedAt: nowIso(),
+                }
+              : view,
+          ),
+        };
       });
     },
     [activeTable, updateActiveTable],
