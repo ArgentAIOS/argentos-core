@@ -186,4 +186,67 @@ describe("useForgeStructuredData", () => {
     expect(FakeXMLHttpRequest.latest).toBeNull();
     expect(emitWorkflowEvent).toHaveBeenCalledOnce();
   });
+
+  it("creates saved views from the current filter, sort, and visible field order", async () => {
+    const host = installDom("?token=secret-token");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gatewayRequest: GatewayRequestFn = vi.fn(async () => {
+      throw new Error("Not connected to Gateway");
+    });
+    const emitWorkflowEvent = vi.fn(async () => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true })),
+    );
+
+    let result: StructuredDataResult | null = null;
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(
+        createElement(HookHarness, {
+          onResult: (nextResult) => {
+            result = nextResult;
+          },
+          props: {
+            apps: [app()],
+            selectedAppId: "app-1",
+            onSelectApp: vi.fn(),
+            gatewayRequest,
+            emitWorkflowEvent,
+          },
+        }),
+      );
+    });
+
+    if (!result) {
+      throw new Error("hook result did not render");
+    }
+
+    const initial = result as StructuredDataResult;
+    const fields = initial.activeTable?.fields ?? [];
+    expect(fields.length).toBeGreaterThanOrEqual(3);
+    const [nameField, statusField, ownerField] = fields;
+
+    await act(async () => {
+      await initial.updateActiveViewSettings({
+        filterText: "avery",
+        sortFieldId: statusField.id,
+        sortDirection: "desc",
+        visibleFieldIds: [ownerField.id, nameField.id],
+      });
+    });
+    await act(async () => {
+      await (result as StructuredDataResult).addView({ name: "Owners only" });
+    });
+
+    const saved = result as StructuredDataResult;
+    expect(saved.activeView).toMatchObject({
+      name: "Owners only",
+      filterText: "avery",
+      sortFieldId: statusField.id,
+      sortDirection: "desc",
+      visibleFieldIds: [ownerField.id, nameField.id],
+    });
+    expect(saved.activeTable?.views).toHaveLength(2);
+  });
 });

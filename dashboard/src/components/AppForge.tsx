@@ -27,7 +27,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, type KeyboardEvent } from "react";
 import type { AppForgeWorkflowEventRequest, ForgeApp } from "../hooks/useApps";
 import type { AppWindowState } from "../hooks/useAppWindows";
 import {
@@ -83,6 +83,11 @@ type EditingCell = {
   recordId: string;
   fieldId: string;
   value: string;
+};
+
+type ActiveGridCell = {
+  recordId: string;
+  fieldId: string;
 };
 
 const FIELD_TYPE_OPTIONS: Array<{ value: ForgeFieldType; label: string }> = [
@@ -588,6 +593,7 @@ export function AppForge({
   );
   const [hoveredBaseId, setHoveredBaseId] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const [activeGridCell, setActiveGridCell] = useState<ActiveGridCell | null>(null);
   const [newTableName, setNewTableName] = useState("");
   const [newFieldName, setNewFieldName] = useState("");
   const [newFieldType, setNewFieldType] = useState<ForgeFieldType>("text");
@@ -624,6 +630,7 @@ export function AppForge({
         setWorkflowEventStatus(null);
         setActiveFilter("all");
         setEditingCell(null);
+        setActiveGridCell(null);
         setHoveredBaseId(null);
         setNewTableName("");
         setNewFieldName("");
@@ -877,16 +884,22 @@ export function AppForge({
     }
     return fields;
   }, [structured.activeTable, structured.activeView]);
+  const visibleFieldIds = useMemo(() => visibleFields.map((field) => field.id), [visibleFields]);
+  const ensureActiveViewFieldIds = useCallback(() => {
+    const fields = structured.activeTable?.fields ?? [];
+    const currentIds = structured.activeView?.visibleFieldIds?.length
+      ? structured.activeView.visibleFieldIds
+      : fields.map((field) => field.id);
+    const fieldIds = new Set(fields.map((field) => field.id));
+    return currentIds.filter((fieldId) => fieldIds.has(fieldId));
+  }, [structured.activeTable, structured.activeView]);
   const handleToggleViewField = useCallback(
     async (fieldId: string) => {
       const fields = structured.activeTable?.fields ?? [];
       if (!fields.some((field) => field.id === fieldId)) {
         return;
       }
-      const currentIds = structured.activeView?.visibleFieldIds?.length
-        ? structured.activeView.visibleFieldIds
-        : fields.map((field) => field.id);
-      const current = new Set(currentIds);
+      const current = new Set(ensureActiveViewFieldIds());
       if (current.has(fieldId)) {
         current.delete(fieldId);
       } else {
@@ -900,7 +913,25 @@ export function AppForge({
       }
       await structured.updateActiveViewSettings({ visibleFieldIds: nextVisibleFieldIds });
     },
-    [structured],
+    [ensureActiveViewFieldIds, structured],
+  );
+  const handleMoveViewField = useCallback(
+    async (fieldId: string, direction: "left" | "right") => {
+      const currentIds = ensureActiveViewFieldIds();
+      const index = currentIds.indexOf(fieldId);
+      const targetIndex = direction === "left" ? index - 1 : index + 1;
+      if (index < 0 || targetIndex < 0 || targetIndex >= currentIds.length) {
+        return;
+      }
+      const nextVisibleFieldIds = [...currentIds];
+      const [field] = nextVisibleFieldIds.splice(index, 1);
+      if (!field) {
+        return;
+      }
+      nextVisibleFieldIds.splice(targetIndex, 0, field);
+      await structured.updateActiveViewSettings({ visibleFieldIds: nextVisibleFieldIds });
+    },
+    [ensureActiveViewFieldIds, structured],
   );
   const handleCreateTable = useCallback(async () => {
     const name = newTableName.trim();
@@ -1152,6 +1183,21 @@ export function AppForge({
     queueMicrotask(() => setFormRecordId(nextRecordId));
   }, [formRecordId, tableRecords]);
 
+  useEffect(() => {
+    if (
+      activeGridCell &&
+      viewRecords.some((record) => record.id === activeGridCell.recordId) &&
+      visibleFieldIds.includes(activeGridCell.fieldId)
+    ) {
+      return;
+    }
+    const firstRecord = viewRecords[0];
+    const firstFieldId = visibleFieldIds[0];
+    setActiveGridCell(
+      firstRecord && firstFieldId ? { recordId: firstRecord.id, fieldId: firstFieldId } : null,
+    );
+  }, [activeGridCell, viewRecords, visibleFieldIds]);
+
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, appId: string) => {
       if (deleteMode) {
@@ -1253,6 +1299,82 @@ export function AppForge({
     setEditingCell(null);
     await structured.updateCell(editingCell.recordId, editingCell.fieldId, nextValue);
   }, [editingCell, structured]);
+
+  const beginEditingCell = useCallback(
+    (recordId: string, fieldId: string) => {
+      const record = structured.activeTable?.records.find((candidate) => candidate.id === recordId);
+      const value = record ? fieldValue(record.values[fieldId]) : "";
+      setActiveGridCell({ recordId, fieldId });
+      setEditingCell({ recordId, fieldId, value });
+    },
+    [structured.activeTable],
+  );
+
+  const moveActiveGridCell = useCallback(
+    (rowDelta: number, fieldDelta: number) => {
+      if (!activeGridCell || !viewRecords.length || !visibleFieldIds.length) {
+        return;
+      }
+      const rowIndex = viewRecords.findIndex((record) => record.id === activeGridCell.recordId);
+      const fieldIndex = visibleFieldIds.indexOf(activeGridCell.fieldId);
+      const nextRowIndex = Math.min(Math.max(rowIndex + rowDelta, 0), viewRecords.length - 1);
+      const nextFieldIndex = Math.min(
+        Math.max(fieldIndex + fieldDelta, 0),
+        visibleFieldIds.length - 1,
+      );
+      const nextRecord = viewRecords[nextRowIndex];
+      const nextFieldId = visibleFieldIds[nextFieldIndex];
+      if (!nextRecord || !nextFieldId) {
+        return;
+      }
+      setActiveGridCell({ recordId: nextRecord.id, fieldId: nextFieldId });
+      setEditingCell(null);
+    },
+    [activeGridCell, viewRecords, visibleFieldIds],
+  );
+
+  const handleGridKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (editingCell || !activeGridCell) {
+        return;
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        moveActiveGridCell(0, 1);
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        moveActiveGridCell(0, -1);
+        return;
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        moveActiveGridCell(1, 0);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        moveActiveGridCell(-1, 0);
+        return;
+      }
+      if (event.key === "Tab") {
+        event.preventDefault();
+        moveActiveGridCell(0, event.shiftKey ? -1 : 1);
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        beginEditingCell(activeGridCell.recordId, activeGridCell.fieldId);
+        return;
+      }
+      if (event.key === "Backspace" || event.key === "Delete") {
+        event.preventDefault();
+        void structured.updateCell(activeGridCell.recordId, activeGridCell.fieldId, "");
+      }
+    },
+    [activeGridCell, beginEditingCell, editingCell, moveActiveGridCell, structured],
+  );
 
   async function handleReviewDecision(
     record: ForgeStructuredRecord,
@@ -2038,7 +2160,12 @@ export function AppForge({
 
                         <div className="overflow-auto">
                           {activeViewMode === "grid" && (
-                            <>
+                            <div
+                              tabIndex={0}
+                              onKeyDown={handleGridKeyDown}
+                              className="outline-none"
+                              data-testid="appforge-grid-keyboard-surface"
+                            >
                               <div className="flex flex-wrap items-center gap-2 border-b border-white/10 bg-black/16 px-3 py-2 text-xs text-white/45">
                                 <span>Add field</span>
                                 <input
@@ -2111,19 +2238,19 @@ export function AppForge({
                                           </button>
                                           <button
                                             onClick={() =>
-                                              void structured.moveField(field.id, "left")
+                                              void handleMoveViewField(field.id, "left")
                                             }
                                             className="rounded p-1 text-white/20 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white/70"
-                                            title="Move field left"
+                                            title="Move field left in this view"
                                           >
                                             <ArrowLeft className="h-3 w-3" />
                                           </button>
                                           <button
                                             onClick={() =>
-                                              void structured.moveField(field.id, "right")
+                                              void handleMoveViewField(field.id, "right")
                                             }
                                             className="rounded p-1 text-white/20 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-white/70"
-                                            title="Move field right"
+                                            title="Move field right in this view"
                                           >
                                             <ArrowRight className="h-3 w-3" />
                                           </button>
@@ -2181,15 +2308,36 @@ export function AppForge({
                                         return (
                                           <td
                                             key={field.id}
-                                            onClick={() => structured.selectField(field.id)}
-                                            onDoubleClick={() =>
-                                              setEditingCell({
+                                            tabIndex={0}
+                                            data-testid="appforge-grid-cell"
+                                            data-active={
+                                              activeGridCell?.recordId === record.id &&
+                                              activeGridCell.fieldId === field.id
+                                                ? "true"
+                                                : "false"
+                                            }
+                                            onFocus={() =>
+                                              setActiveGridCell({
                                                 recordId: record.id,
                                                 fieldId: field.id,
-                                                value,
                                               })
                                             }
-                                            className="border-r border-white/[0.07] px-4 py-2 text-white/66"
+                                            onClick={() => {
+                                              structured.selectField(field.id);
+                                              setActiveGridCell({
+                                                recordId: record.id,
+                                                fieldId: field.id,
+                                              });
+                                            }}
+                                            onDoubleClick={() =>
+                                              beginEditingCell(record.id, field.id)
+                                            }
+                                            className={`border-r border-white/[0.07] px-4 py-2 text-white/66 outline-none transition-colors ${
+                                              activeGridCell?.recordId === record.id &&
+                                              activeGridCell.fieldId === field.id
+                                                ? "bg-sky-400/10 ring-1 ring-inset ring-sky-300/45"
+                                                : "focus:bg-white/[0.04] focus:ring-1 focus:ring-inset focus:ring-white/18"
+                                            }`}
                                           >
                                             {activeEditingCell && field.type === "single_select" ? (
                                               <select
@@ -2310,7 +2458,7 @@ export function AppForge({
                                   records
                                 </span>
                               </div>
-                            </>
+                            </div>
                           )}
 
                           {activeViewMode === "kanban" && (

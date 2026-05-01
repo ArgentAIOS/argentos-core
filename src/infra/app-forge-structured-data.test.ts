@@ -639,6 +639,17 @@ describe("forge structured data metadata", () => {
               createdAt: "2026-04-26T17:00:00.000Z",
               updatedAt: "2026-04-26T17:10:00.000Z",
             },
+            {
+              id: "view-owner",
+              name: "Owner scan",
+              type: "grid",
+              filterText: "avery",
+              sortFieldId: "status",
+              sortDirection: "asc",
+              visibleFieldIds: ["title", "status"],
+              createdAt: "2026-04-26T17:20:00.000Z",
+              updatedAt: "2026-04-26T17:25:00.000Z",
+            },
           ],
         },
       ],
@@ -656,6 +667,14 @@ describe("forge structured data metadata", () => {
           groupFieldId: "status",
           visibleFieldIds: ["status", "title"],
         }),
+        expect.objectContaining({
+          id: "view-owner",
+          filterText: "avery",
+          sortFieldId: "status",
+          sortDirection: "asc",
+          groupFieldId: "",
+          visibleFieldIds: ["title", "status"],
+        }),
       ],
     });
     const table = base?.tables[0];
@@ -671,7 +690,10 @@ describe("forge structured data metadata", () => {
     expect(calls[0]?.params.table).toMatchObject({
       activeViewId: "view-review",
       selectedFieldId: "status",
-      views: [expect.objectContaining({ visibleFieldIds: ["status", "title"] })],
+      views: [
+        expect.objectContaining({ visibleFieldIds: ["status", "title"] }),
+        expect.objectContaining({ visibleFieldIds: ["title", "status"] }),
+      ],
     });
   });
 
