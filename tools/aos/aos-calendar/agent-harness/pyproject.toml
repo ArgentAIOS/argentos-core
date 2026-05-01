@@ -11,3 +11,10 @@ dependencies = ["click>=8.1"]
 
 [project.scripts]
 aos-calendar = "cli_aos.calendar.cli:cli"
+
+[tool.setuptools]
+package-dir = { "" = "." }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cli_aos*"]
