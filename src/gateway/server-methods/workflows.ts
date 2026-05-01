@@ -72,6 +72,7 @@ import {
   parseWorkflowPackageText,
   type WorkflowPackage,
   type WorkflowPackageFormat,
+  type WorkflowPackageLiveReadinessContext,
 } from "../../infra/workflow-package.js";
 import {
   buildWorkflowAgentSessionKey,
@@ -778,8 +779,11 @@ function optionalDeploymentStage(params: Record<string, unknown>) {
   throw new Error("deploymentStage must be simulate, shadow, limited_live, or live");
 }
 
-function workflowTemplateSummary(workflowPackage: WorkflowPackage) {
-  const imported = importWorkflowPackage(workflowPackage);
+function workflowTemplateSummary(
+  workflowPackage: WorkflowPackage,
+  liveContext?: WorkflowPackageLiveReadinessContext,
+) {
+  const imported = importWorkflowPackage(workflowPackage, liveContext);
   return {
     id: workflowPackage.id,
     slug: workflowPackage.slug,
@@ -793,12 +797,16 @@ function workflowTemplateSummary(workflowPackage: WorkflowPackage) {
     okForImport: imported.readiness.okForImport,
     okForPinnedTestRun: imported.readiness.okForPinnedTestRun,
     liveRequirements: imported.readiness.liveRequirements,
+    liveReadiness: imported.readiness.liveReadiness,
     notes: workflowPackage.notes ?? [],
   };
 }
 
-function workflowPackagePreviewPayload(workflowPackage: WorkflowPackage) {
-  const imported = importWorkflowPackage(workflowPackage);
+function workflowPackagePreviewPayload(
+  workflowPackage: WorkflowPackage,
+  liveContext?: WorkflowPackageLiveReadinessContext,
+) {
+  const imported = importWorkflowPackage(workflowPackage, liveContext);
   return {
     package: workflowPackage,
     workflow: applyWorkflowPackageTestFixtures(workflowPackage),
@@ -809,6 +817,16 @@ function workflowPackagePreviewPayload(workflowPackage: WorkflowPackage) {
       issues: imported.normalized.issues,
     },
   };
+}
+
+async function buildWorkflowPackageLiveReadinessContext(): Promise<WorkflowPackageLiveReadinessContext> {
+  try {
+    const catalog = await discoverConnectorCatalog();
+    return { connectors: catalog.connectors };
+  } catch (err) {
+    log.warn(`workflow template live readiness connector discovery failed: ${String(err)}`);
+    return { connectors: [] };
+  }
 }
 
 type WorkflowRunPublicStep = {
@@ -1865,6 +1883,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       const department = optionalString(params, "department");
       const runPattern = optionalString(params, "runPattern");
       const query = optionalString(params, "query")?.toLowerCase();
+      const liveContext = await buildWorkflowPackageLiveReadinessContext();
       const templates = OWNER_OPERATOR_WORKFLOW_PACKAGES.filter((workflowPackage) => {
         if (department && workflowPackage.scenario.department !== department) {
           return false;
@@ -1885,7 +1904,7 @@ export const workflowsHandlers: GatewayRequestHandlers = {
           return haystack.includes(query);
         }
         return true;
-      }).map(workflowTemplateSummary);
+      }).map((workflowPackage) => workflowTemplateSummary(workflowPackage, liveContext));
       respond(true, { templates });
     } catch (err) {
       log.warn(`workflows.templates.list failed: ${String(err)}`);
@@ -1905,7 +1924,8 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       if (!workflowPackage) {
         throw new Error(`Workflow template not found: ${slugOrId}`);
       }
-      respond(true, workflowPackagePreviewPayload(workflowPackage));
+      const liveContext = await buildWorkflowPackageLiveReadinessContext();
+      respond(true, workflowPackagePreviewPayload(workflowPackage, liveContext));
     } catch (err) {
       log.warn(`workflows.templates.get failed: ${String(err)}`);
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
@@ -1917,7 +1937,8 @@ export const workflowsHandlers: GatewayRequestHandlers = {
       const text = requireString(params, "text");
       const format = optionalWorkflowPackageFormat(params);
       const workflowPackage = parseWorkflowPackageText(text, format);
-      respond(true, workflowPackagePreviewPayload(workflowPackage));
+      const liveContext = await buildWorkflowPackageLiveReadinessContext();
+      respond(true, workflowPackagePreviewPayload(workflowPackage, liveContext));
     } catch (err) {
       log.warn(`workflows.importPreview failed: ${String(err)}`);
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));

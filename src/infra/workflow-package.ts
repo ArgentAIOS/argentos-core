@@ -67,6 +67,60 @@ export interface WorkflowPackageReadiness {
   okForPinnedTestRun: boolean;
   blockers: WorkflowIssue[];
   liveRequirements: string[];
+  liveReadiness?: WorkflowPackageLiveReadiness;
+}
+
+export type WorkflowPackageLiveReadinessStatus = "live_ready" | "canary_required" | "dry_run_only";
+
+export type WorkflowPackageLiveReadinessReasonCode =
+  | "missing_connector"
+  | "connector_repo_only"
+  | "connector_no_binary"
+  | "connector_not_ready"
+  | "missing_credentials"
+  | "missing_appforge_base"
+  | "missing_appforge_table"
+  | "appforge_metadata_only"
+  | "appforge_write_not_ready"
+  | "missing_channel"
+  | "canary_required";
+
+export interface WorkflowPackageLiveReadinessReason {
+  code: WorkflowPackageLiveReadinessReasonCode;
+  kind: "connector" | "credential" | "appforge" | "channel" | "canary";
+  id: string;
+  label: string;
+  message: string;
+}
+
+export interface WorkflowPackageLiveReadiness {
+  okForLive: boolean;
+  status: WorkflowPackageLiveReadinessStatus;
+  label: string;
+  reasons: WorkflowPackageLiveReadinessReason[];
+}
+
+export interface WorkflowPackageLiveReadinessConnector {
+  tool: string;
+  label?: string;
+  installState?: string;
+  status?: { ok?: boolean; label?: string; detail?: string };
+  modes?: string[];
+  discovery?: { binaryPath?: string };
+}
+
+export interface WorkflowPackageLiveReadinessContext {
+  connectors?: WorkflowPackageLiveReadinessConnector[];
+  credentialIds?: string[];
+  appForgeBases?: Array<{
+    id: string;
+    label?: string;
+    readReady?: boolean;
+    writeReady?: boolean;
+    tables?: Array<{ id: string; label?: string; readReady?: boolean; writeReady?: boolean }>;
+  }>;
+  channelIds?: string[];
+  canaryPassedPackageSlugs?: string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -163,6 +217,7 @@ function applyPinnedOutput(node: WorkflowNode, pinnedOutput: unknown): WorkflowN
 export function auditWorkflowPackageReadiness(
   workflowPackage: WorkflowPackage,
   normalized: WorkflowNormalizationResult,
+  liveContext?: WorkflowPackageLiveReadinessContext,
 ): WorkflowPackageReadiness {
   const blockers = normalized.issues.filter((issue) => issue.severity === "error");
   const testPinnedNodeIds = new Set(Object.keys(workflowPackage.testFixtures?.pinnedOutputs ?? {}));
@@ -204,15 +259,214 @@ export function auditWorkflowPackageReadiness(
       })),
     ],
     liveRequirements,
+    liveReadiness: auditWorkflowPackageLiveReadiness(workflowPackage, liveContext),
   };
 }
 
-export function importWorkflowPackage(workflowPackage: WorkflowPackage): ImportedWorkflowPackage {
+export function auditWorkflowPackageLiveReadiness(
+  workflowPackage: WorkflowPackage,
+  context: WorkflowPackageLiveReadinessContext = {},
+): WorkflowPackageLiveReadiness {
+  const reasons: WorkflowPackageLiveReadinessReason[] = [];
+  const connectorMap = new Map((context.connectors ?? []).map((entry) => [entry.tool, entry]));
+  const credentialIds = new Set(context.credentialIds ?? []);
+  const channelIds = new Set(context.channelIds ?? []);
+  const appForgeBases = new Map((context.appForgeBases ?? []).map((base) => [base.id, base]));
+  const requiredConnectors = collectWorkflowPackageConnectorIds(workflowPackage);
+
+  for (const connectorId of requiredConnectors) {
+    const connector = connectorMap.get(connectorId);
+    if (!connector) {
+      reasons.push({
+        code: "missing_connector",
+        kind: "connector",
+        id: connectorId,
+        label: connectorId,
+        message: `Connector ${connectorId} is not available in the connector catalog.`,
+      });
+      continue;
+    }
+    if (connectorId === "appforge-core") {
+      const hasWriteMode =
+        connector.modes?.some((mode) => mode === "write" || mode === "full" || mode === "admin") ??
+        false;
+      if (connector.installState === "metadata-only") {
+        reasons.push({
+          code: "appforge_metadata_only",
+          kind: "appforge",
+          id: connectorId,
+          label: connector.label ?? connectorId,
+          message:
+            "appforge-core is metadata/read-ready only; it is not a live AppForge write runtime.",
+        });
+      }
+      if (!hasWriteMode) {
+        reasons.push({
+          code: "appforge_write_not_ready",
+          kind: "appforge",
+          id: connectorId,
+          label: connector.label ?? connectorId,
+          message:
+            "appforge-core does not advertise write/full/admin mode for live workflow writes.",
+        });
+      }
+      continue;
+    }
+    if (connector.installState === "repo-only") {
+      reasons.push({
+        code: "connector_repo_only",
+        kind: "connector",
+        id: connectorId,
+        label: connector.label ?? connectorId,
+        message: `Connector ${connectorId} is repo-only and has no runnable installed adapter.`,
+      });
+    } else if (!connector.discovery?.binaryPath) {
+      reasons.push({
+        code: "connector_no_binary",
+        kind: "connector",
+        id: connectorId,
+        label: connector.label ?? connectorId,
+        message: `Connector ${connectorId} has no runnable binary for live execution.`,
+      });
+    } else if (connector.status?.ok !== true || connector.installState !== "ready") {
+      reasons.push({
+        code: "connector_not_ready",
+        kind: "connector",
+        id: connectorId,
+        label: connector.label ?? connectorId,
+        message: `Connector ${connectorId} is not live-ready: ${
+          connector.status?.detail ?? connector.status?.label ?? connector.installState ?? "unknown"
+        }.`,
+      });
+    }
+  }
+
+  for (const credential of workflowPackage.credentials?.required ?? []) {
+    if (credential.requiredForLive === false) {
+      continue;
+    }
+    if (!credentialIds.has(credential.id)) {
+      reasons.push({
+        code: "missing_credentials",
+        kind: "credential",
+        id: credential.id,
+        label: credential.label,
+        message: `Credential ${credential.id} (${credential.label}) is required before live execution.`,
+      });
+    }
+  }
+
+  for (const dependency of workflowPackage.dependencies ?? []) {
+    if (dependency.requiredForLive === false) {
+      continue;
+    }
+    if (dependency.kind === "channel" && !channelIds.has(dependency.id)) {
+      reasons.push({
+        code: "missing_channel",
+        kind: "channel",
+        id: dependency.id,
+        label: dependency.label ?? dependency.id,
+        message: `Channel ${dependency.id} must be bound before live delivery.`,
+      });
+    }
+    if (dependency.kind === "appforge_base") {
+      const base = appForgeBases.get(dependency.id);
+      if (!base) {
+        reasons.push({
+          code: "missing_appforge_base",
+          kind: "appforge",
+          id: dependency.id,
+          label: dependency.label ?? dependency.id,
+          message: `AppForge base ${dependency.id} must exist before live execution.`,
+        });
+      } else if (!base.writeReady) {
+        reasons.push({
+          code: "appforge_write_not_ready",
+          kind: "appforge",
+          id: dependency.id,
+          label: base.label ?? dependency.label ?? dependency.id,
+          message: `AppForge base ${dependency.id} is not write-ready for live workflow mutations.`,
+        });
+      }
+    }
+  }
+
+  for (const tableName of workflowPackage.scenario.appForgeTables ?? []) {
+    const tableReady = [...appForgeBases.values()].some((base) =>
+      (base.tables ?? []).some(
+        (table) =>
+          (table.id === tableName || table.label === tableName) &&
+          table.readReady === true &&
+          table.writeReady === true,
+      ),
+    );
+    if (!tableReady) {
+      reasons.push({
+        code: "missing_appforge_table",
+        kind: "appforge",
+        id: tableName,
+        label: tableName,
+        message: `AppForge table ${tableName} must be read/write-ready before live execution.`,
+      });
+    }
+  }
+
+  if (!context.canaryPassedPackageSlugs?.includes(workflowPackage.slug)) {
+    reasons.push({
+      code: "canary_required",
+      kind: "canary",
+      id: workflowPackage.slug,
+      label: workflowPackage.name,
+      message: "A gated live canary is required before this template can be marked live-ready.",
+    });
+  }
+
+  const okForLive = reasons.length === 0;
+  const status: WorkflowPackageLiveReadinessStatus = okForLive
+    ? "live_ready"
+    : reasons.every((reason) => reason.code === "canary_required")
+      ? "canary_required"
+      : "dry_run_only";
+  return {
+    okForLive,
+    status,
+    label:
+      status === "live_ready"
+        ? "Live ready"
+        : status === "canary_required"
+          ? "Canary required"
+          : "Import/dry-run only",
+    reasons,
+  };
+}
+
+function collectWorkflowPackageConnectorIds(workflowPackage: WorkflowPackage): string[] {
+  const connectorIds = new Set<string>();
+  for (const dependency of workflowPackage.dependencies ?? []) {
+    if (dependency.kind === "connector") {
+      connectorIds.add(dependency.id);
+    }
+  }
+  for (const node of workflowPackage.workflow.nodes) {
+    if (node.kind === "action" && node.config.actionType.type === "connector_action") {
+      connectorIds.add(node.config.actionType.connectorId);
+    }
+    if (node.kind === "output" && node.config.outputType === "connector_action") {
+      connectorIds.add(node.config.connectorId);
+    }
+  }
+  return [...connectorIds].toSorted();
+}
+
+export function importWorkflowPackage(
+  workflowPackage: WorkflowPackage,
+  liveContext?: WorkflowPackageLiveReadinessContext,
+): ImportedWorkflowPackage {
   const normalized = normalizeWorkflow(workflowPackageToNormalizationInput(workflowPackage));
   return {
     package: workflowPackage,
     normalized,
-    readiness: auditWorkflowPackageReadiness(workflowPackage, normalized),
+    readiness: auditWorkflowPackageReadiness(workflowPackage, normalized, liveContext),
   };
 }
 

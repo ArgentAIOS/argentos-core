@@ -231,9 +231,25 @@ interface WorkflowImportReport {
   okForImport: boolean;
   okForPinnedTestRun: boolean;
   liveRequirements: string[];
+  liveReadiness?: WorkflowTemplateLiveReadiness;
   blockers: WorkflowValidationIssue[];
   requirements: WorkflowBindingRequirement[];
   bindings?: Record<string, WorkflowBindingValue>;
+}
+
+interface WorkflowTemplateLiveReadinessReason {
+  code?: string;
+  kind?: string;
+  id?: string;
+  label?: string;
+  message?: string;
+}
+
+interface WorkflowTemplateLiveReadiness {
+  okForLive?: boolean;
+  status?: string;
+  label?: string;
+  reasons?: WorkflowTemplateLiveReadinessReason[];
 }
 
 type WorkflowDeploymentStage = "simulate" | "shadow" | "limited_live" | "live";
@@ -289,6 +305,7 @@ interface WorkflowImportPreviewResponse {
     okForImport?: boolean;
     okForPinnedTestRun?: boolean;
     liveRequirements?: unknown[];
+    liveReadiness?: WorkflowTemplateLiveReadiness;
     blockers?: unknown[];
   };
   validation?: { ok?: boolean; issues?: unknown[] };
@@ -312,6 +329,7 @@ interface WorkflowPackageTemplateSummary {
   okForImport?: boolean;
   okForPinnedTestRun?: boolean;
   liveRequirements?: string[];
+  liveReadiness?: WorkflowTemplateLiveReadiness;
 }
 
 interface WorkflowCronJob {
@@ -602,6 +620,7 @@ function importReportFromPreview(response: WorkflowImportPreviewResponse): Workf
     liveRequirements: Array.isArray(readiness.liveRequirements)
       ? readiness.liveRequirements.map((entry) => String(entry))
       : [],
+    liveReadiness: readiness.liveReadiness,
     blockers: normalizeValidationIssues(readiness.blockers),
     requirements,
   };
@@ -2000,6 +2019,11 @@ function NewWorkflowModal({
                 </div>
                 {packageTemplates.map((template) => {
                   const running = selectedPackageSlug === template.slug;
+                  const liveReady = template.liveReadiness?.okForLive === true;
+                  const liveLabel =
+                    template.liveReadiness?.label ??
+                    (liveReady ? "Live ready" : "Import/dry-run only");
+                  const liveReasonCount = template.liveReadiness?.reasons?.length ?? 0;
                   return (
                     <button
                       key={template.slug}
@@ -2050,6 +2074,22 @@ function NewWorkflowModal({
                             fixture-ready
                           </span>
                         )}
+                        <span
+                          className={
+                            liveReady
+                              ? "rounded bg-emerald-400/10 px-1.5 py-0.5 text-emerald-200"
+                              : "rounded bg-amber-400/10 px-1.5 py-0.5 text-amber-200"
+                          }
+                          title={
+                            template.liveReadiness?.reasons
+                              ?.map((reason) => reason.message ?? reason.code ?? reason.id ?? "")
+                              .filter(Boolean)
+                              .join("\n") || liveLabel
+                          }
+                        >
+                          {liveLabel}
+                          {!liveReady && liveReasonCount > 0 ? ` (${liveReasonCount})` : ""}
+                        </span>
                       </div>
                     </button>
                   );
@@ -7330,6 +7370,36 @@ function Sidebar({
             <div className="truncate font-medium text-[hsl(var(--foreground))]">
               {activeWorkflow.importReport.packageName}
             </div>
+            {activeWorkflow.importReport.liveReadiness && (
+              <div className="mt-1 rounded border border-amber-400/20 bg-amber-400/5 p-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-amber-200">Live readiness</span>
+                  <span
+                    className={
+                      activeWorkflow.importReport.liveReadiness.okForLive
+                        ? "text-emerald-300"
+                        : "text-amber-300"
+                    }
+                  >
+                    {activeWorkflow.importReport.liveReadiness.label ??
+                      (activeWorkflow.importReport.liveReadiness.okForLive
+                        ? "Live ready"
+                        : "Import/dry-run only")}
+                  </span>
+                </div>
+                {activeWorkflow.importReport.liveReadiness.reasons?.length ? (
+                  <div className="mt-1 space-y-0.5">
+                    {activeWorkflow.importReport.liveReadiness.reasons
+                      .slice(0, 4)
+                      .map((reason, index) => (
+                        <div key={`${reason.code ?? "reason"}-${reason.id ?? index}`}>
+                          {reason.message ?? reason.label ?? reason.code}
+                        </div>
+                      ))}
+                  </div>
+                ) : null}
+              </div>
+            )}
             {activeWorkflow.importReport.blockers.length > 0 && (
               <div className="mt-1 space-y-0.5">
                 {activeWorkflow.importReport.blockers.slice(0, 3).map((blocker, index) => (

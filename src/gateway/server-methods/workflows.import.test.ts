@@ -4,6 +4,36 @@ import { OWNER_OPERATOR_WORKFLOW_PACKAGES } from "../../infra/workflow-owner-ope
 import { serializeWorkflowPackage } from "../../infra/workflow-package.js";
 import { workflowsHandlers } from "./workflows.js";
 
+const connectorCatalogMock = vi.hoisted(() => ({
+  discoverConnectorCatalog: vi.fn(async () => ({
+    total: 2,
+    connectors: [
+      {
+        tool: "appforge-core",
+        label: "AppForge Core",
+        installState: "metadata-only",
+        status: { ok: true, label: "Metadata only" },
+        modes: ["readonly"],
+        commands: [],
+        categories: [],
+        resources: [],
+        discovery: { sources: ["repo"] },
+      },
+      {
+        tool: "aos-slack",
+        label: "Slack",
+        installState: "repo-only",
+        status: { ok: false, label: "Repo only" },
+        modes: ["readonly"],
+        commands: [],
+        categories: [],
+        resources: [],
+        discovery: { sources: ["repo"] },
+      },
+    ],
+  })),
+}));
+
 vi.mock("../../data/redis-client.js", () => ({ refreshPresence: vi.fn() }));
 vi.mock("../../logging/subsystem.js", () => ({
   createSubsystemLogger: () => {
@@ -18,6 +48,13 @@ vi.mock("../../logging/subsystem.js", () => ({
     return logger;
   },
 }));
+vi.mock("../../connectors/catalog.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../connectors/catalog.js")>();
+  return {
+    ...actual,
+    discoverConnectorCatalog: connectorCatalogMock.discoverConnectorCatalog,
+  };
+});
 
 async function callImportPreview(params: Record<string, unknown>) {
   const respond = vi.fn();
@@ -133,11 +170,32 @@ describe("workflows.templates", () => {
     const [ok, payload] = await callTemplateList();
 
     expect(ok).toBe(true);
-    const templates = (payload as { templates?: Array<{ slug?: string; nodeCount?: number }> })
-      .templates;
+    const templates = (
+      payload as {
+        templates?: Array<{
+          slug?: string;
+          nodeCount?: number;
+          liveReadiness?: { okForLive?: boolean; reasons?: Array<{ code?: string }> };
+        }>;
+      }
+    ).templates;
     expect(templates?.length).toBe(OWNER_OPERATOR_WORKFLOW_PACKAGES.length);
     expect(templates?.some((template) => template.slug === "vip-email-alert")).toBe(true);
     expect(templates?.every((template) => Number(template.nodeCount) > 0)).toBe(true);
+    const dailyMarketing = templates?.find((template) => template.slug === "daily-marketing-brief");
+    expect(dailyMarketing?.liveReadiness?.okForLive).toBe(false);
+    expect(dailyMarketing?.liveReadiness?.reasons?.map((reason) => reason.code)).toEqual(
+      expect.arrayContaining([
+        "appforge_metadata_only",
+        "appforge_write_not_ready",
+        "connector_repo_only",
+        "missing_credentials",
+        "missing_appforge_base",
+        "missing_appforge_table",
+        "missing_channel",
+        "canary_required",
+      ]),
+    );
   });
 
   it("filters templates by department and returns import-preview payloads by slug", async () => {
@@ -162,6 +220,10 @@ describe("workflows.templates", () => {
       workflow: { nodes: expect.any(Array) },
       readiness: { okForPinnedTestRun: true },
     });
+    expect(
+      (getPayload as { readiness?: { liveReadiness?: { okForLive?: boolean } } }).readiness
+        ?.liveReadiness?.okForLive,
+    ).toBe(false);
   });
 
   it("returns a user-facing error for unknown template slugs", async () => {
