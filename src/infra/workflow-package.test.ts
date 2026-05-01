@@ -6,6 +6,7 @@ import {
 } from "./workflow-owner-operator-templates.js";
 import {
   applyWorkflowPackageTestFixtures,
+  auditWorkflowPackageLiveReadiness,
   importWorkflowPackage,
   parseWorkflowPackageText,
   serializeWorkflowPackage,
@@ -153,5 +154,127 @@ describe("owner-operator workflow packages", () => {
         expect.stringContaining("connector:aos-resend"),
       ]),
     );
+  });
+
+  it("keeps templates dry-run only when live bindings are missing or connector-only metadata is read-ready", () => {
+    const dailyMarketing = OWNER_OPERATOR_WORKFLOW_PACKAGES.find(
+      (pkg) => pkg.slug === "daily-marketing-brief",
+    );
+    expect(dailyMarketing).toBeDefined();
+    if (!dailyMarketing) {
+      return;
+    }
+
+    const readiness = auditWorkflowPackageLiveReadiness(dailyMarketing, {
+      connectors: [
+        {
+          tool: "appforge-core",
+          label: "AppForge Core",
+          installState: "metadata-only",
+          status: { ok: true, label: "Metadata only" },
+          modes: ["readonly"],
+          discovery: {},
+        },
+        {
+          tool: "aos-slack",
+          label: "Slack",
+          installState: "repo-only",
+          status: { ok: false, label: "Repo only" },
+          modes: ["readonly"],
+          discovery: {},
+        },
+      ],
+    });
+
+    expect(readiness.okForLive).toBe(false);
+    expect(readiness.status).toBe("dry_run_only");
+    expect(readiness.reasons.map((reason) => reason.code)).toEqual(
+      expect.arrayContaining([
+        "appforge_metadata_only",
+        "appforge_write_not_ready",
+        "connector_repo_only",
+        "missing_credentials",
+        "missing_appforge_base",
+        "missing_appforge_table",
+        "missing_channel",
+        "canary_required",
+      ]),
+    );
+  });
+
+  it("requires a canary even after connector, credential, channel, and AppForge bindings are live-ready", () => {
+    const newsletter = OWNER_OPERATOR_WORKFLOW_PACKAGES.find(
+      (pkg) => pkg.slug === "newsletter-builder",
+    );
+    expect(newsletter).toBeDefined();
+    if (!newsletter) {
+      return;
+    }
+
+    const almostReady = auditWorkflowPackageLiveReadiness(newsletter, {
+      connectors: [
+        {
+          tool: "appforge-core",
+          label: "AppForge Core",
+          installState: "ready",
+          status: { ok: true, label: "Ready" },
+          modes: ["readonly", "write"],
+          discovery: { binaryPath: "/bin/appforge-core" },
+        },
+        {
+          tool: "aos-resend",
+          label: "Resend",
+          installState: "ready",
+          status: { ok: true, label: "Ready" },
+          modes: ["readonly", "write"],
+          discovery: { binaryPath: "/bin/aos-resend" },
+        },
+      ],
+      credentialIds: ["resend.primary"],
+      appForgeBases: [
+        {
+          id: "marketing-ops",
+          writeReady: true,
+          tables: [{ id: "Content Calendar", readReady: true, writeReady: true }],
+        },
+      ],
+    });
+
+    expect(almostReady.okForLive).toBe(false);
+    expect(almostReady.status).toBe("canary_required");
+    expect(almostReady.reasons.map((reason) => reason.code)).toEqual(["canary_required"]);
+
+    const ready = auditWorkflowPackageLiveReadiness(newsletter, {
+      connectors: [
+        {
+          tool: "appforge-core",
+          label: "AppForge Core",
+          installState: "ready",
+          status: { ok: true, label: "Ready" },
+          modes: ["readonly", "write"],
+          discovery: { binaryPath: "/bin/appforge-core" },
+        },
+        {
+          tool: "aos-resend",
+          label: "Resend",
+          installState: "ready",
+          status: { ok: true, label: "Ready" },
+          modes: ["readonly", "write"],
+          discovery: { binaryPath: "/bin/aos-resend" },
+        },
+      ],
+      credentialIds: ["resend.primary"],
+      appForgeBases: [
+        {
+          id: "marketing-ops",
+          writeReady: true,
+          tables: [{ id: "Content Calendar", readReady: true, writeReady: true }],
+        },
+      ],
+      canaryPassedPackageSlugs: ["newsletter-builder"],
+    });
+
+    expect(ready.okForLive).toBe(true);
+    expect(ready.status).toBe("live_ready");
   });
 });
