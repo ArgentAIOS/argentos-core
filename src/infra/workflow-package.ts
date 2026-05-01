@@ -93,11 +93,27 @@ export interface WorkflowPackageLiveReadinessReason {
   message: string;
 }
 
+export interface WorkflowPackageCanaryChecklistItem {
+  id: string;
+  label: string;
+  status: "passed" | "pending" | "blocked";
+  message: string;
+}
+
+export interface WorkflowPackageCanaryReadiness {
+  familyId: string;
+  familyLabel: string;
+  required: boolean;
+  passed: boolean;
+  checklist: WorkflowPackageCanaryChecklistItem[];
+}
+
 export interface WorkflowPackageLiveReadiness {
   okForLive: boolean;
   status: WorkflowPackageLiveReadinessStatus;
   label: string;
   reasons: WorkflowPackageLiveReadinessReason[];
+  canary: WorkflowPackageCanaryReadiness;
 }
 
 export interface WorkflowPackageLiveReadinessConnector {
@@ -411,7 +427,8 @@ export function auditWorkflowPackageLiveReadiness(
     }
   }
 
-  if (!context.canaryPassedPackageSlugs?.includes(workflowPackage.slug)) {
+  const canaryPassed = context.canaryPassedPackageSlugs?.includes(workflowPackage.slug) === true;
+  if (!canaryPassed) {
     reasons.push({
       code: "canary_required",
       kind: "canary",
@@ -437,6 +454,80 @@ export function auditWorkflowPackageLiveReadiness(
           ? "Canary required"
           : "Import/dry-run only",
     reasons,
+    canary: buildWorkflowPackageCanaryReadiness(workflowPackage, reasons, canaryPassed),
+  };
+}
+
+function buildWorkflowPackageCanaryReadiness(
+  workflowPackage: WorkflowPackage,
+  reasons: WorkflowPackageLiveReadinessReason[],
+  canaryPassed: boolean,
+): WorkflowPackageCanaryReadiness {
+  const reasonKinds = new Set(reasons.map((reason) => reason.kind));
+  const reasonCodes = new Set(reasons.map((reason) => reason.code));
+  const hasConnectorBlocker = reasonKinds.has("connector");
+  const hasCredentialBlocker = reasonKinds.has("credential");
+  const hasAppForgeBlocker = reasonKinds.has("appforge");
+  const hasChannelBlocker = reasonKinds.has("channel");
+  const dependenciesReady =
+    !hasConnectorBlocker && !hasCredentialBlocker && !hasAppForgeBlocker && !hasChannelBlocker;
+  const familyId = `${workflowPackage.scenario.department}:${workflowPackage.scenario.runPattern}`;
+  const familyLabel = `${workflowPackage.scenario.department} / ${workflowPackage.scenario.runPattern}`;
+
+  return {
+    familyId,
+    familyLabel,
+    required: true,
+    passed: canaryPassed,
+    checklist: [
+      {
+        id: "import-ready",
+        label: "Import-ready package validation",
+        status: "passed",
+        message: "Package imports into the canonical workflow contract.",
+      },
+      {
+        id: "dry-run-ready",
+        label: "Dry-run fixture readiness",
+        status: "passed",
+        message: "Pinned fixture execution remains the default non-live path.",
+      },
+      {
+        id: "connector-runtime",
+        label: "Runnable connector adapters",
+        status: hasConnectorBlocker ? "blocked" : "passed",
+        message: hasConnectorBlocker
+          ? "One or more required connectors are missing, repo-only, missing a binary, or not ready."
+          : "Required connectors advertise runnable live adapters.",
+      },
+      {
+        id: "live-bindings",
+        label: "Credentials and channels",
+        status: hasCredentialBlocker || hasChannelBlocker ? "blocked" : "passed",
+        message:
+          hasCredentialBlocker || hasChannelBlocker
+            ? "Required live credentials or delivery channels are not fully bound."
+            : "Required live credentials and delivery channels are present.",
+      },
+      {
+        id: "appforge-write-ready",
+        label: "AppForge write readiness",
+        status: hasAppForgeBlocker ? "blocked" : "passed",
+        message: hasAppForgeBlocker
+          ? "Required AppForge base/table resources are missing or not write-ready."
+          : "Required AppForge resources are read/write-ready.",
+      },
+      {
+        id: "family-canary",
+        label: "Template-family canary",
+        status: canaryPassed ? "passed" : dependenciesReady ? "pending" : "blocked",
+        message: canaryPassed
+          ? `A live canary has passed for ${workflowPackage.name}.`
+          : dependenciesReady && reasonCodes.has("canary_required")
+            ? `Run and approve a gated canary for the ${familyLabel} template family before live enablement.`
+            : `Resolve blocked readiness checks before running the ${familyLabel} canary.`,
+      },
+    ],
   };
 }
 

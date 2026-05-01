@@ -364,7 +364,7 @@ export function workflowRowWithCanvasOverride(
     ...row,
     nodes: normalized.workflow.nodes,
     edges: normalized.workflow.edges,
-    canvas_layout: normalized.canvasLayout,
+    canvas_layout: preserveWorkflowCanvasMetadata(normalized.canvasLayout, row.canvas_layout),
     default_on_error: normalized.workflow.defaultOnError,
     max_run_duration_ms: normalized.workflow.maxRunDurationMs ?? row.max_run_duration_ms,
     max_run_cost_usd: normalized.workflow.maxRunCostUsd ?? row.max_run_cost_usd,
@@ -436,6 +436,14 @@ function recordValue(value: unknown, label: string): Record<string, unknown> | u
   return value as Record<string, unknown>;
 }
 
+function optionalRecordValue(value: unknown): Record<string, unknown> | undefined {
+  const parsed = parseWorkflowJsonColumn(value);
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    return parsed as Record<string, unknown>;
+  }
+  return undefined;
+}
+
 function optionalArray(params: Record<string, unknown>, key: string): unknown[] | undefined {
   const v = params[key];
   if (v === undefined || v === null) {
@@ -477,6 +485,18 @@ function optionalStringValue(value: unknown): string | undefined {
 
 function workflowDefinitionParam(params: Record<string, unknown>) {
   return optionalObject(params, "definition") ?? optionalObject(params, "workflowDefinition");
+}
+
+function preserveWorkflowCanvasMetadata(canvasLayout: unknown, fallbackCanvasLayout: unknown) {
+  const fallback = optionalRecordValue(fallbackCanvasLayout);
+  if (!fallback || !("importReport" in fallback)) {
+    return canvasLayout;
+  }
+  const next = optionalRecordValue(canvasLayout) ?? {};
+  if ("importReport" in next) {
+    return canvasLayout;
+  }
+  return { ...next, importReport: fallback.importReport };
 }
 
 function workflowDeploymentStageFromDefinition(
@@ -777,6 +797,107 @@ function optionalDeploymentStage(params: Record<string, unknown>) {
     return stage;
   }
   throw new Error("deploymentStage must be simulate, shadow, limited_live, or live");
+}
+
+type WorkflowImportReportLike = {
+  packageName?: string;
+  packageSlug?: string;
+  okForImport?: boolean;
+  okForPinnedTestRun?: boolean;
+  liveReadiness?: {
+    okForLive?: boolean;
+    status?: string;
+    label?: string;
+    reasons?: Array<{ code?: string; id?: string; label?: string; message?: string }>;
+  };
+  requirements?: Array<{
+    key?: string;
+    id?: string;
+    label?: string;
+    requiredForLive?: boolean;
+  }>;
+  bindings?: Record<string, { value?: string }>;
+};
+
+export type WorkflowLiveRunGateResult =
+  | { ok: true }
+  | { ok: false; message: string; codes: string[] };
+
+function importReportFromWorkflowRow(row: WorkflowRow): WorkflowImportReportLike | undefined {
+  const canvas = optionalRecordValue(row.canvas_layout);
+  const report = canvas?.importReport ?? row.importReport;
+  if (report && typeof report === "object" && !Array.isArray(report)) {
+    return report as WorkflowImportReportLike;
+  }
+  return undefined;
+}
+
+function missingRequiredLiveBindingLabels(report: WorkflowImportReportLike): string[] {
+  const requirements = Array.isArray(report.requirements) ? report.requirements : [];
+  return requirements
+    .filter((requirement) => requirement.requiredForLive !== false)
+    .filter((requirement) => {
+      const key = requirement.key;
+      return !key || !report.bindings?.[key]?.value;
+    })
+    .map(
+      (requirement) => requirement.label ?? requirement.id ?? requirement.key ?? "required item",
+    );
+}
+
+function workflowStageRequiresLiveReadiness(stage: WorkflowDefinition["deploymentStage"]) {
+  return stage === "live" || stage === "limited_live";
+}
+
+export function evaluateWorkflowLiveRunGate(args: {
+  deploymentStage?: WorkflowDefinition["deploymentStage"];
+  importReport?: WorkflowImportReportLike;
+}): WorkflowLiveRunGateResult {
+  if (!workflowStageRequiresLiveReadiness(args.deploymentStage)) {
+    return { ok: true };
+  }
+  const report = args.importReport;
+  if (!report) {
+    return { ok: true };
+  }
+  const codes: string[] = [];
+  const messages: string[] = [];
+  const missingBindings = missingRequiredLiveBindingLabels(report);
+  if (missingBindings.length > 0) {
+    codes.push("missing_live_bindings");
+    messages.push(
+      `Missing required live bindings: ${missingBindings.slice(0, 6).join(", ")}${
+        missingBindings.length > 6 ? ` and ${missingBindings.length - 6} more` : ""
+      }.`,
+    );
+  }
+  if (report.liveReadiness?.okForLive !== true) {
+    const reasons = report.liveReadiness?.reasons ?? [];
+    for (const reason of reasons) {
+      if (reason.code) {
+        codes.push(reason.code);
+      }
+    }
+    if (reasons.length > 0) {
+      messages.push(
+        `Live readiness is not satisfied: ${reasons
+          .slice(0, 6)
+          .map((reason) => reason.message ?? reason.label ?? reason.code ?? "readiness blocker")
+          .join("; ")}${reasons.length > 6 ? `; and ${reasons.length - 6} more` : ""}.`,
+      );
+    } else {
+      codes.push("live_readiness_not_proven");
+      messages.push("Live readiness has not been proven for this imported workflow.");
+    }
+  }
+  if (messages.length === 0) {
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    message: `Live workflow run blocked. ${messages.join(" ")}`,
+    codes: [...new Set(codes)],
+  };
 }
 
 function workflowTemplateSummary(
@@ -2797,6 +2918,20 @@ export const workflowsHandlers: GatewayRequestHandlers = {
               .map((issue) => issue.message)
               .join("; ")}`,
           ),
+        );
+        return;
+      }
+      const liveGate = evaluateWorkflowLiveRunGate({
+        deploymentStage: normalizedForRun.workflow.deploymentStage,
+        importReport: importReportFromWorkflowRow(wf),
+      });
+      if (!liveGate.ok) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, liveGate.message, {
+            details: { codes: liveGate.codes },
+          }),
         );
         return;
       }

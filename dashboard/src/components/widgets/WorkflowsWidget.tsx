@@ -250,6 +250,18 @@ interface WorkflowTemplateLiveReadiness {
   status?: string;
   label?: string;
   reasons?: WorkflowTemplateLiveReadinessReason[];
+  canary?: {
+    familyId?: string;
+    familyLabel?: string;
+    required?: boolean;
+    passed?: boolean;
+    checklist?: Array<{
+      id?: string;
+      label?: string;
+      status?: "passed" | "pending" | "blocked";
+      message?: string;
+    }>;
+  };
 }
 
 type WorkflowDeploymentStage = "simulate" | "shadow" | "limited_live" | "live";
@@ -644,6 +656,7 @@ function workflowFromImportPreview(response: WorkflowImportPreviewResponse): Wor
         ? "simulate"
         : undefined;
   const definition = deploymentStage ? { ...workflow, deploymentStage } : workflow;
+  const importReport = importReportFromPreview(response);
   return {
     id,
     name: `${stringValue(workflow.name ?? pkg.name, "Imported workflow")} (imported)`,
@@ -652,11 +665,11 @@ function workflowFromImportPreview(response: WorkflowImportPreviewResponse): Wor
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     definition,
-    canvasLayout: { ...(response.canvasLayout ?? {}), nodes, edges },
     validation: response.validation
       ? { ok: response.validation.ok !== false, issues: response.validation.issues }
       : undefined,
-    importReport: importReportFromPreview(response),
+    importReport,
+    canvasLayout: { ...(response.canvasLayout ?? {}), nodes, edges, importReport },
   };
 }
 
@@ -666,6 +679,35 @@ function workflowDeploymentStage(workflow: WorkflowDefinition | null): WorkflowD
   return stage === "simulate" || stage === "shadow" || stage === "limited_live" || stage === "live"
     ? stage
     : "live";
+}
+
+function workflowStageRequiresLiveReadiness(stage: WorkflowDeploymentStage) {
+  return stage === "live" || stage === "limited_live";
+}
+
+function importReportBlockingLiveReason(report: WorkflowImportReport | undefined): string {
+  if (!report) {
+    return "";
+  }
+  const missingBindings = report.requirements.filter(
+    (requirement) => requirement.requiredForLive && !report.bindings?.[requirement.key]?.value,
+  );
+  if (missingBindings.length > 0) {
+    return `Complete ${missingBindings.length} required live binding${
+      missingBindings.length === 1 ? "" : "s"
+    } before running live.`;
+  }
+  if (report.liveReadiness?.okForLive === true) {
+    return "";
+  }
+  const firstReason = report.liveReadiness?.reasons?.[0];
+  if (firstReason?.code === "canary_required") {
+    return "Run and approve the template-family canary before live execution.";
+  }
+  if (firstReason) {
+    return firstReason.message ?? firstReason.label ?? "Resolve live readiness blockers first.";
+  }
+  return report.liveReadiness ? "Live readiness has not been proven yet." : "";
 }
 
 function withWorkflowDeploymentStage(
@@ -871,6 +913,11 @@ function normalizeWorkflowDefinition(raw: unknown): WorkflowDefinition | null {
       : Number.isFinite(Number(row.version))
         ? Number(row.version)
         : 1;
+  const importReport = isRecord(row.importReport)
+    ? (row.importReport as WorkflowImportReport)
+    : isRecord(canvasLayout?.importReport)
+      ? (canvasLayout.importReport as unknown as WorkflowImportReport)
+      : undefined;
   return {
     ...(row as Partial<WorkflowDefinition>),
     id,
@@ -894,6 +941,7 @@ function normalizeWorkflowDefinition(raw: unknown): WorkflowDefinition | null {
         ? row.trigger_config
         : undefined,
     canvasLayout: canvasLayout as WorkflowDefinition["canvasLayout"],
+    importReport,
   };
 }
 
@@ -7398,6 +7446,34 @@ function Sidebar({
                       ))}
                   </div>
                 ) : null}
+                {activeWorkflow.importReport.liveReadiness.canary?.checklist?.length ? (
+                  <div className="mt-2 border-t border-amber-400/10 pt-1">
+                    <div className="font-medium text-amber-200">
+                      Canary:{" "}
+                      {activeWorkflow.importReport.liveReadiness.canary.familyLabel ??
+                        activeWorkflow.importReport.liveReadiness.canary.familyId ??
+                        "template family"}
+                    </div>
+                    <div className="mt-1 space-y-0.5">
+                      {activeWorkflow.importReport.liveReadiness.canary.checklist
+                        .slice(0, 6)
+                        .map((item, index) => (
+                          <div
+                            key={`${item.id ?? "canary"}-${index}`}
+                            className={
+                              item.status === "passed"
+                                ? "text-emerald-300"
+                                : item.status === "pending"
+                                  ? "text-amber-300"
+                                  : "text-red-300"
+                            }
+                          >
+                            {item.label ?? item.id}: {item.status ?? "pending"}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
             {activeWorkflow.importReport.blockers.length > 0 && (
@@ -9288,6 +9364,12 @@ function WorkflowCanvasInner({
       }
       const workflow = workflows.find((candidate) => candidate.id === activeWorkflowId);
       const cleanNodes = cleanWorkflowNodes();
+      const canvasLayout = {
+        ...(workflow?.canvasLayout ?? {}),
+        nodes: cleanNodes,
+        edges,
+        ...(workflow?.importReport ? { importReport: workflow.importReport } : {}),
+      };
       const updatedAt = new Date().toISOString();
       setSaving(true);
       setLastSaveStatus(null);
@@ -9299,6 +9381,7 @@ function WorkflowCanvasInner({
                 name: workflow?.name ?? w.name,
                 nodes: cleanNodes,
                 edges,
+                canvasLayout,
                 updatedAt,
               }
             : w,
@@ -9313,6 +9396,7 @@ function WorkflowCanvasInner({
             workflowId: activeWorkflowId,
             name: workflow?.name,
             canvasData: { nodes: cleanNodes, edges },
+            canvasLayout,
             deploymentStage: workflowDeploymentStage(workflow ?? null),
             changeSummary,
           });
@@ -9423,13 +9507,14 @@ function WorkflowCanvasInner({
       report?.requirements.filter(
         (requirement) => requirement.requiredForLive && !report.bindings?.[requirement.key]?.value,
       ) ?? [];
-    if (stage === "live" && missingRequiredBindings.length > 0) {
-      setBindingWizardOpen(true);
-      setRunError(
-        `Complete ${missingRequiredBindings.length} required live binding${
-          missingRequiredBindings.length === 1 ? "" : "s"
-        } before running live.`,
-      );
+    const liveBlockReason = workflowStageRequiresLiveReadiness(stage)
+      ? importReportBlockingLiveReason(report)
+      : "";
+    if (liveBlockReason) {
+      if (missingRequiredBindings.length > 0) {
+        setBindingWizardOpen(true);
+      }
+      setRunError(liveBlockReason);
       return;
     }
     try {
@@ -9611,10 +9696,11 @@ function WorkflowCanvasInner({
     (requirement) => !activeWorkflow?.importReport?.bindings?.[requirement.key]?.value,
   );
   const importedFixtureReady = activeWorkflow?.importReport?.okForPinnedTestRun === true;
+  const activeLiveBlockReason = importReportBlockingLiveReason(activeWorkflow?.importReport);
   const livePromotionReady =
     Boolean(activeWorkflow?.importReport) &&
     activeWorkflow?.importReport?.okForImport !== false &&
-    missingLiveBindings.length === 0;
+    !activeLiveBlockReason;
 
   const loadVersionHistory = useCallback(async () => {
     if (!activeWorkflowId || !gateway.connected) {
@@ -9712,6 +9798,12 @@ function WorkflowCanvasInner({
         ? applyAll(activeWorkflow.definition)
         : undefined;
       const nextReport = { ...activeWorkflow.importReport, bindings };
+      const nextCanvasLayout = {
+        ...(activeWorkflow.canvasLayout ?? {}),
+        nodes: nextNodes,
+        edges,
+        importReport: nextReport,
+      };
       const updatedAt = new Date().toISOString();
       setNodes(nextNodes);
       setSelectedNode((prev) =>
@@ -9726,6 +9818,7 @@ function WorkflowCanvasInner({
                 edges,
                 definition: nextDefinition,
                 importReport: nextReport,
+                canvasLayout: nextCanvasLayout,
                 updatedAt,
               }
             : workflow,
@@ -9744,9 +9837,14 @@ function WorkflowCanvasInner({
       if (!activeWorkflow || !activeWorkflowId) {
         return;
       }
-      if (stage === "live" && missingLiveBindings.length > 0) {
-        setBindingWizardOpen(true);
-        setLastSaveStatus(`Bind ${missingLiveBindings.length} required item(s) before live`);
+      const liveBlockReason = workflowStageRequiresLiveReadiness(stage)
+        ? importReportBlockingLiveReason(activeWorkflow.importReport)
+        : "";
+      if (liveBlockReason) {
+        if (missingLiveBindings.length > 0) {
+          setBindingWizardOpen(true);
+        }
+        setLastSaveStatus(liveBlockReason);
         return;
       }
       const cleanNodes = cleanWorkflowNodes();
@@ -10064,10 +10162,8 @@ function WorkflowCanvasInner({
             ? "Wait for validation to finish before running."
             : !gateway.connected
               ? "Connect to the gateway before running workflows."
-              : activeDeploymentStage === "live" && missingLiveBindings.length > 0
-                ? `Bind ${missingLiveBindings.length} required item${
-                    missingLiveBindings.length === 1 ? "" : "s"
-                  } before running live.`
+              : workflowStageRequiresLiveReadiness(activeDeploymentStage) && activeLiveBlockReason
+                ? activeLiveBlockReason
                 : "";
   const scheduleDisabledReason = !activeWorkflowId
     ? "Create a workflow before scheduling."
@@ -10274,7 +10370,8 @@ function WorkflowCanvasInner({
               saving ||
               validationStatus === "checking" ||
               !gateway.connected ||
-              (activeDeploymentStage === "live" && missingLiveBindings.length > 0)
+              (workflowStageRequiresLiveReadiness(activeDeploymentStage) &&
+                Boolean(activeLiveBlockReason))
             }
             onClick={handleRun}
             className={`px-3 py-1 rounded text-[11px] font-medium transition-colors disabled:opacity-40 ${
@@ -10387,6 +10484,7 @@ function WorkflowCanvasInner({
                 {missingLiveBindings.length > 0
                   ? ` ${missingLiveBindings.length} required binding${missingLiveBindings.length === 1 ? "" : "s"} still needed for live.`
                   : " Required live bindings are complete."}
+                {activeLiveBlockReason ? ` ${activeLiveBlockReason}` : ""}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -10419,7 +10517,7 @@ function WorkflowCanvasInner({
                   title={
                     livePromotionReady
                       ? "Promote this workflow to live execution"
-                      : "Complete required bindings before live promotion"
+                      : activeLiveBlockReason || "Complete required bindings before live promotion"
                   }
                 >
                   Promote live
