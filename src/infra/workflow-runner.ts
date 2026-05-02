@@ -137,11 +137,17 @@ export interface ExecuteWorkflowParams {
   /** Manual/partial execution: stop after recording this node. */
   stopAfterNodeId?: string;
   onStepStart?: (nodeId: string, node: WorkflowNode) => void;
-  onStepComplete?: (nodeId: string, result: StepRecord) => void;
-  onRunComplete?: (status: string, steps: StepRecord[]) => void;
+  onStepComplete?: (nodeId: string, result: StepRecord) => void | Promise<void>;
+  onRunComplete?: (status: string, steps: StepRecord[]) => void | Promise<void>;
   onApprovalRequested?: (nodeId: string, request: ApprovalRequest) => void;
   /** PG sql instance for persisting approval state */
   pgSql?: PgSqlInstance | null;
+  /** Prefer durable pause/resume for waits and approvals instead of in-process blocking. */
+  durablePauses?: boolean;
+  /** Abort in-process execution before starting the next node/action or while waiting locally. */
+  abortSignal?: AbortSignal;
+  /** Authoritative cancellation hook, typically backed by workflow_runs.status. */
+  isRunCancelled?: (runId: string) => boolean | Promise<boolean>;
   redis?: Redis | null;
   resume?: WorkflowResumeOptions;
 }
@@ -181,6 +187,47 @@ interface ApprovalResolver {
 }
 
 const pendingApprovals = new Map<string, ApprovalResolver>();
+
+async function isWorkflowRunCancelled(params: ExecuteWorkflowParams): Promise<boolean> {
+  if (params.abortSignal?.aborted) {
+    return true;
+  }
+  return Boolean(await params.isRunCancelled?.(params.runId));
+}
+
+async function waitForCancellationOrDelay(
+  durationMs: number,
+  params: ExecuteWorkflowParams,
+): Promise<"elapsed" | "cancelled"> {
+  if (durationMs <= 0) {
+    return (await isWorkflowRunCancelled(params)) ? "cancelled" : "elapsed";
+  }
+  const deadline = Date.now() + durationMs;
+  while (Date.now() < deadline) {
+    if (await isWorkflowRunCancelled(params)) {
+      return "cancelled";
+    }
+    const remainingMs = deadline - Date.now();
+    await new Promise<void>((resolve) => setTimeout(resolve, Math.min(remainingMs, 250)));
+  }
+  return (await isWorkflowRunCancelled(params)) ? "cancelled" : "elapsed";
+}
+
+async function waitForApprovalDecision(
+  approvalPromise: Promise<{ approved: boolean; reason?: string }>,
+  params: ExecuteWorkflowParams,
+): Promise<{ approved: boolean; reason?: string; cancelled?: boolean }> {
+  while (true) {
+    if (await isWorkflowRunCancelled(params)) {
+      return { approved: false, reason: "Workflow run cancelled", cancelled: true };
+    }
+    const tick = new Promise<"tick">((resolve) => setTimeout(() => resolve("tick"), 250));
+    const result = await Promise.race([approvalPromise, tick]);
+    if (result !== "tick") {
+      return result;
+    }
+  }
+}
 
 /** Create a pending approval entry. Returns a promise that resolves when approved/denied. */
 function createApprovalPromise(runId: string, nodeId: string): ApprovalResolver {
@@ -223,6 +270,7 @@ export function hasPendingApproval(runId: string, nodeId: string): boolean {
  */
 export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<WorkflowRunResult> {
   const { workflow, runId, dispatcher, redis } = params;
+  const durablePauses = params.durablePauses ?? Boolean(params.pgSql);
   const runStart = Date.now();
 
   // 1. Topological sort
@@ -280,6 +328,11 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
 
   for (let i = startIndex; i < executionOrder.length; i++) {
     const node = executionOrder[i];
+
+    if (await isWorkflowRunCancelled(params)) {
+      finalStatus = "cancelled";
+      break;
+    }
 
     // Skip nodes owned by a parallel segment — already executed by fan-out.
     if (parallelBranchNodeIds.has(node.id) || joinNodeIds.has(node.id)) {
@@ -422,14 +475,17 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
           `;
           await params.pgSql`
             INSERT INTO workflow_step_runs (
-              id, run_id, node_id, node_kind,
+              id, run_id, node_id, node_kind, idempotency_key,
               status, approval_status, started_at
             ) VALUES (
               ${`step-${runId}-${node.id}`}, ${runId}, ${node.id}, 'gate',
+              ${`${runId}:${node.id}:${i}`},
               'running', 'pending',
               ${new Date().toISOString()}::timestamptz
             )
-            ON CONFLICT (id) DO UPDATE SET approval_status = 'pending', status = 'running'
+            ON CONFLICT (idempotency_key) DO UPDATE SET
+              approval_status = 'pending',
+              status = 'running'
           `;
         } catch (err) {
           log.warn("failed to persist approval state", { error: String(err) });
@@ -439,34 +495,49 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
       // Broadcast approval request to dashboard
       params.onApprovalRequested?.(node.id, approvalRequest);
 
-      // Create approval promise + optional timeout
-      const approvalEntry = createApprovalPromise(runId, node.id);
-      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-      if (approvalRequest.timeoutMs && approvalRequest.timeoutMs > 0) {
-        timeoutHandle = setTimeout(() => {
-          if (hasPendingApproval(runId, node.id)) {
-            const autoApprove = approvalRequest.timeoutAction === "approve";
-            log.info(`approval timeout — auto-${autoApprove ? "approving" : "denying"}`, {
-              runId,
-              nodeId: node.id,
-            });
-            resolveApproval(runId, node.id, autoApprove, "Timed out");
-          }
-        }, approvalRequest.timeoutMs);
-      }
+      if (durablePauses) {
+        finalStatus = "waiting_approval";
+        waitingNodeId = node.id;
+        stepResult = {
+          items: [
+            {
+              json: { gateType: "approval", waiting: true, approved: false },
+              text: "Approval requested - workflow paused for durable resume",
+            },
+          ],
+        };
+      } else {
+        // Create approval promise + optional timeout
+        const approvalEntry = createApprovalPromise(runId, node.id);
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+        if (approvalRequest.timeoutMs && approvalRequest.timeoutMs > 0) {
+          timeoutHandle = setTimeout(() => {
+            if (hasPendingApproval(runId, node.id)) {
+              const autoApprove = approvalRequest.timeoutAction === "approve";
+              log.info(`approval timeout — auto-${autoApprove ? "approving" : "denying"}`, {
+                runId,
+                nodeId: node.id,
+              });
+              resolveApproval(runId, node.id, autoApprove, "Timed out");
+            }
+          }, approvalRequest.timeoutMs);
+        }
 
-      log.info("pipeline paused — waiting for approval", { runId, nodeId: node.id });
+        log.info("pipeline paused — waiting for approval", { runId, nodeId: node.id });
 
-      // Block execution until resolved
-      const decision = await approvalEntry.promise;
-      if (timeoutHandle) clearTimeout(timeoutHandle);
+        // Block execution until resolved
+        const decision = await waitForApprovalDecision(approvalEntry.promise, params);
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+        if (decision.cancelled) {
+          pendingApprovals.delete(`${runId}:${node.id}`);
+        }
 
-      // Update PG with decision
-      if (params.pgSql) {
-        try {
-          const pgStatus = decision.approved ? "approved" : "denied";
-          const approvalRecordStatus = decision.reason === "Timed out" ? "timed_out" : pgStatus;
-          await params.pgSql`
+        // Update PG with decision
+        if (params.pgSql) {
+          try {
+            const pgStatus = decision.approved ? "approved" : "denied";
+            const approvalRecordStatus = decision.reason === "Timed out" ? "timed_out" : pgStatus;
+            await params.pgSql`
             UPDATE workflow_step_runs SET
               approval_status = ${pgStatus},
               approval_note = ${decision.reason ?? null},
@@ -474,7 +545,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
               status = 'completed'
               WHERE id = ${`step-${runId}-${node.id}`}
           `;
-          await params.pgSql`
+            await params.pgSql`
             UPDATE workflow_approvals SET
               status = ${approvalRecordStatus},
               resolved_at = NOW(),
@@ -484,50 +555,71 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
               AND node_id = ${node.id}
               AND status = 'pending'
           `;
-          if (decision.approved) {
-            await params.pgSql`
+            if (decision.cancelled) {
+              await params.pgSql`
+              UPDATE workflow_runs SET status = 'cancelled', current_node_id = NULL,
+                ended_at = NOW()
+              WHERE id = ${runId}
+            `;
+            } else if (decision.approved) {
+              await params.pgSql`
               UPDATE workflow_runs SET status = 'running', current_node_id = NULL
               WHERE id = ${runId}
             `;
-          } else {
-            await params.pgSql`
+            } else {
+              await params.pgSql`
               UPDATE workflow_runs SET status = 'failed', current_node_id = NULL,
                 error = ${decision.reason || "Approval denied by operator"},
                 ended_at = NOW()
               WHERE id = ${runId}
             `;
+            }
+          } catch (err) {
+            log.warn("failed to update approval decision in PG", { error: String(err) });
           }
-        } catch (err) {
-          log.warn("failed to update approval decision in PG", { error: String(err) });
         }
-      }
 
-      if (!decision.approved) {
-        log.info("approval denied — aborting pipeline", {
-          runId,
-          nodeId: node.id,
-          reason: decision.reason,
-        });
-        stepResult = {
-          items: [
-            {
-              json: { gateType: "approval", approved: false, reason: decision.reason },
-              text: `Approval denied: ${decision.reason || "operator denied"}`,
-            },
-          ],
-        };
-        stepStatus = "failed";
-        finalStatus = "failed";
-      } else {
-        log.info("approval granted — resuming pipeline", { runId, nodeId: node.id });
-        stepResult = {
-          items: [
-            {
-              json: { gateType: "approval", approved: true },
-              text: "Approval granted — pipeline resumed",
-            },
-          ],
-        };
+        if (decision.cancelled) {
+          log.info("approval wait cancelled — aborting pipeline", {
+            runId,
+            nodeId: node.id,
+          });
+          stepResult = {
+            items: [
+              {
+                json: { gateType: "approval", cancelled: true, approved: false },
+                text: "Workflow run cancelled during approval wait",
+              },
+            ],
+          };
+          finalStatus = "cancelled";
+        } else if (!decision.approved) {
+          log.info("approval denied — aborting pipeline", {
+            runId,
+            nodeId: node.id,
+            reason: decision.reason,
+          });
+          stepResult = {
+            items: [
+              {
+                json: { gateType: "approval", approved: false, reason: decision.reason },
+                text: `Approval denied: ${decision.reason || "operator denied"}`,
+              },
+            ],
+          };
+          stepStatus = "failed";
+          finalStatus = "failed";
+        } else {
+          log.info("approval granted — resuming pipeline", { runId, nodeId: node.id });
+          stepResult = {
+            items: [
+              {
+                json: { gateType: "approval", approved: true },
+                text: "Approval granted — pipeline resumed",
+              },
+            ],
+          };
+        }
       }
     }
 
@@ -550,15 +642,16 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
           `;
           await params.pgSql`
             INSERT INTO workflow_step_runs (
-              id, run_id, node_id, node_kind,
+              id, run_id, node_id, node_kind, idempotency_key,
               status, started_at, input_context
             ) VALUES (
               ${`step-${runId}-${node.id}`}, ${runId}, ${node.id}, 'gate',
+              ${`${runId}:${node.id}:${i}`},
               'running',
               ${new Date().toISOString()}::timestamptz,
               ${JSON.stringify({ waitResumeAt: resumeAt, durationMs })}::jsonb
             )
-            ON CONFLICT (id) DO UPDATE SET status = 'running',
+            ON CONFLICT (idempotency_key) DO UPDATE SET status = 'running',
               input_context = ${JSON.stringify({ waitResumeAt: resumeAt, durationMs })}::jsonb
           `;
         } catch (err) {
@@ -566,42 +659,73 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
         }
       }
 
-      // Block execution with a real delay
+      // Block execution with a real delay only when durable pauses are disabled.
       const MAX_IN_PROCESS_WAIT = 5 * 60 * 1000; // 5 minutes
-      if (durationMs <= MAX_IN_PROCESS_WAIT) {
+      if (!durablePauses && durationMs <= MAX_IN_PROCESS_WAIT) {
         log.info("wait_duration: in-process wait", { runId, nodeId: node.id, durationMs });
-        await new Promise<void>((resolve) => setTimeout(resolve, durationMs));
+        const waitResult = await waitForCancellationOrDelay(durationMs, params);
 
-        // Update PG status back to running
-        if (params.pgSql) {
-          try {
-            await params.pgSql`
+        if (waitResult === "cancelled") {
+          finalStatus = "cancelled";
+          if (params.pgSql) {
+            try {
+              await params.pgSql`
+                UPDATE workflow_runs SET status = 'cancelled', current_node_id = NULL,
+                  ended_at = NOW()
+                WHERE id = ${runId}
+              `;
+              await params.pgSql`
+                UPDATE workflow_step_runs SET status = 'completed', ended_at = NOW()
+                WHERE id = ${`step-${runId}-${node.id}`}
+              `;
+            } catch (err) {
+              log.warn("failed to update cancelled wait in PG", { error: String(err) });
+            }
+          }
+          stepResult = {
+            items: [
+              {
+                json: {
+                  gateType: "wait_duration",
+                  durationMs,
+                  cancelled: true,
+                },
+                text: "Workflow run cancelled during wait",
+              },
+            ],
+          };
+        } else {
+          // Update PG status back to running
+          if (params.pgSql) {
+            try {
+              await params.pgSql`
               UPDATE workflow_runs SET status = 'running', current_node_id = NULL
               WHERE id = ${runId}
             `;
-            await params.pgSql`
+              await params.pgSql`
               UPDATE workflow_step_runs SET status = 'completed', ended_at = NOW()
               WHERE id = ${`step-${runId}-${node.id}`}
             `;
-          } catch (err) {
-            log.warn("failed to update wait completion in PG", { error: String(err) });
+            } catch (err) {
+              log.warn("failed to update wait completion in PG", { error: String(err) });
+            }
           }
-        }
 
-        log.info("wait_duration: resumed after wait", { runId, nodeId: node.id });
-        stepResult = {
-          items: [
-            {
-              json: {
-                gateType: "wait_duration",
-                durationMs,
-                waited: true,
-                resumedAt: new Date().toISOString(),
+          log.info("wait_duration: resumed after wait", { runId, nodeId: node.id });
+          stepResult = {
+            items: [
+              {
+                json: {
+                  gateType: "wait_duration",
+                  durationMs,
+                  waited: true,
+                  resumedAt: new Date().toISOString(),
+                },
+                text: `Wait complete — resumed after ${durationMs}ms`,
               },
-              text: `Wait complete — resumed after ${durationMs}ms`,
-            },
-          ],
-        };
+            ],
+          };
+        }
       } else {
         // Over 5 minutes — persist and return. A cron or manual trigger resumes later.
         log.info("wait_duration: long wait, persisted for cron resume", {
@@ -652,10 +776,11 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
           `;
           await params.pgSql`
             INSERT INTO workflow_step_runs (
-              id, run_id, node_id, node_kind,
+              id, run_id, node_id, node_kind, idempotency_key,
               status, started_at, input_context
             ) VALUES (
               ${`step-${runId}-${node.id}`}, ${runId}, ${node.id}, 'gate',
+              ${`${runId}:${node.id}:${i}`},
               'running',
               ${new Date().toISOString()}::timestamptz,
               ${JSON.stringify({
@@ -666,7 +791,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
                 waitResumeAt,
               })}::jsonb
             )
-            ON CONFLICT (id) DO UPDATE SET status = 'running',
+            ON CONFLICT (idempotency_key) DO UPDATE SET status = 'running',
               input_context = ${JSON.stringify({
                 eventType,
                 eventFilter,
@@ -856,7 +981,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
     };
 
     context.history.push(record);
-    params.onStepComplete?.(node.id, record);
+    await params.onStepComplete?.(node.id, record);
 
     // Budget circuit breaker
     if (workflow.maxRunCostUsd != null && context.totalCostUsd > workflow.maxRunCostUsd) {
@@ -878,7 +1003,12 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
       break;
     }
 
-    if (finalStatus === "waiting_duration" || finalStatus === "waiting_event") {
+    if (
+      finalStatus === "waiting_duration" ||
+      finalStatus === "waiting_event" ||
+      finalStatus === "waiting_approval" ||
+      finalStatus === "cancelled"
+    ) {
       break;
     }
 
@@ -906,7 +1036,7 @@ export async function executeWorkflow(params: ExecuteWorkflowParams): Promise<Wo
     waitingNodeId,
   };
 
-  params.onRunComplete?.(result.status, result.steps);
+  await params.onRunComplete?.(result.status, result.steps);
   log.info("workflow run finished", {
     workflowId: workflow.id,
     runId,

@@ -240,6 +240,179 @@ describe("topologicalSort", () => {
   });
 });
 
+describe("workflow runtime hardening", () => {
+  function fakePgSql() {
+    const calls: string[] = [];
+    const sql = (async (strings: TemplateStringsArray) => {
+      calls.push(strings.join("?"));
+      return [];
+    }) as unknown as ReturnType<typeof import("postgres").default> & { calls: string[] };
+    sql.calls = calls;
+    return sql;
+  }
+
+  it("durably pauses short wait_duration gates instead of sleeping in process", async () => {
+    const trigger = makeTrigger();
+    const waitGate: GateNode = {
+      kind: "gate",
+      id: "wait-short",
+      label: "Short wait",
+      config: { gateType: "wait_duration", durationMs: 25 },
+    };
+    const output = makeOutput();
+    const pgSql = fakePgSql();
+
+    const result = await executeWorkflow({
+      workflow: makeWorkflow(
+        [trigger, waitGate, output],
+        [edge(trigger.id, waitGate.id), edge(waitGate.id, output.id)],
+      ),
+      runId: "run-durable-short-wait",
+      dispatcher: makeMockDispatcher(),
+      pgSql,
+    });
+
+    expect(result.status).toBe("waiting_duration");
+    expect(result.waitingNodeId).toBe(waitGate.id);
+    expect(result.steps.map((step) => step.nodeId)).toEqual([trigger.id, waitGate.id]);
+    expect(pgSql.calls.some((call) => call.includes("waiting_duration"))).toBe(true);
+    expect(pgSql.calls.some((call) => call.includes("idempotency_key"))).toBe(true);
+    expect(pgSql.calls.some((call) => call.includes("ON CONFLICT (idempotency_key)"))).toBe(true);
+  });
+
+  it("durably pauses approval gates without waiting on an in-process approval promise", async () => {
+    const trigger = makeTrigger();
+    const approvalGate: GateNode = {
+      kind: "gate",
+      id: "approval",
+      label: "Approval",
+      config: {
+        gateType: "approval",
+        approvers: ["operator"],
+        channels: ["dashboard"],
+        message: "Approve fixture",
+        showPreviousOutput: true,
+        allowEdit: false,
+        timeoutAction: "deny",
+      },
+    };
+    const output = makeOutput();
+    const pgSql = fakePgSql();
+    const approvalRequested = vi.fn();
+
+    const result = await executeWorkflow({
+      workflow: makeWorkflow(
+        [trigger, approvalGate, output],
+        [edge(trigger.id, approvalGate.id), edge(approvalGate.id, output.id)],
+      ),
+      runId: "run-durable-approval",
+      dispatcher: makeMockDispatcher(),
+      pgSql,
+      onApprovalRequested: approvalRequested,
+    });
+
+    expect(result.status).toBe("waiting_approval");
+    expect(result.waitingNodeId).toBe(approvalGate.id);
+    expect(result.steps.map((step) => step.nodeId)).toEqual([trigger.id, approvalGate.id]);
+    expect(pgSql.calls.some((call) => call.includes("idempotency_key"))).toBe(true);
+    expect(pgSql.calls.some((call) => call.includes("ON CONFLICT (idempotency_key)"))).toBe(true);
+    expect(approvalRequested).toHaveBeenCalledWith(
+      approvalGate.id,
+      expect.objectContaining({ runId: "run-durable-approval", nodeId: approvalGate.id }),
+    );
+  });
+
+  it("stops before an action when the authoritative run status is cancelled", async () => {
+    const trigger = makeTrigger();
+    const action: ActionNode = {
+      kind: "action",
+      id: "send",
+      label: "Send",
+      config: {
+        actionType: {
+          type: "send_message",
+          channelType: "telegram",
+          channelId: "operator",
+          template: "should not send",
+        },
+      },
+    };
+    const output = makeOutput();
+    const sendMessage = vi.fn(async () => ({ ok: true }));
+    const isRunCancelled = vi
+      .fn<() => Promise<boolean>>()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+
+    const result = await executeWorkflow({
+      workflow: makeWorkflow(
+        [trigger, action, output],
+        [edge(trigger.id, action.id), edge(action.id, output.id)],
+      ),
+      runId: "run-cancel-before-action",
+      dispatcher: makeMockDispatcher(),
+      actions: { sendMessage },
+      isRunCancelled,
+    });
+
+    expect(result.status).toBe("cancelled");
+    expect(result.steps.map((step) => step.nodeId)).toEqual([trigger.id]);
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("cancels an in-process wait_duration gate through AbortSignal", async () => {
+    const trigger = makeTrigger();
+    const waitGate: GateNode = {
+      kind: "gate",
+      id: "wait-cancel",
+      label: "Wait Cancel",
+      config: { gateType: "wait_duration", durationMs: 25 },
+    };
+    const output = makeOutput();
+    const abortController = new AbortController();
+    setTimeout(() => abortController.abort(), 1);
+
+    const result = await executeWorkflow({
+      workflow: makeWorkflow(
+        [trigger, waitGate, output],
+        [edge(trigger.id, waitGate.id), edge(waitGate.id, output.id)],
+      ),
+      runId: "run-cancel-during-wait",
+      dispatcher: makeMockDispatcher(),
+      durablePauses: false,
+      abortSignal: abortController.signal,
+    });
+
+    expect(result.status).toBe("cancelled");
+    expect(result.steps.map((step) => step.nodeId)).toEqual([trigger.id, waitGate.id]);
+    expect(result.steps[1].output.items[0].json).toMatchObject({
+      gateType: "wait_duration",
+      cancelled: true,
+    });
+  });
+
+  it("awaits step persistence callbacks before publishing run completion callbacks", async () => {
+    const events: string[] = [];
+    const trigger = makeTrigger();
+    const output = makeOutput();
+
+    await executeWorkflow({
+      workflow: makeWorkflow([trigger, output], [edge(trigger.id, output.id)]),
+      runId: "run-await-persistence",
+      dispatcher: makeMockDispatcher(),
+      onStepComplete: async () => {
+        await Promise.resolve();
+        events.push("step");
+      },
+      onRunComplete: () => {
+        events.push("run");
+      },
+    });
+
+    expect(events).toEqual(["step", "step", "run"]);
+  });
+});
+
 // ── Pipeline Execution ────────────────────────────────────────────
 
 describe("executeWorkflow", () => {
