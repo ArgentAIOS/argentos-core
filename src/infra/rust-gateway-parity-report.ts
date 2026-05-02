@@ -105,6 +105,21 @@ export type RustGatewayPromotionReadinessSummary = {
       noLiveProof: string[];
     }>;
   };
+  noLiveSafetyGateFixtures: {
+    mode: "synthetic-read-only";
+    liveTrafficAllowed: false;
+    authoritySwitchAllowed: false;
+    fixtures: Array<{
+      fixtureId: string;
+      surface: "chat.send" | "cron.add" | "workflows.run";
+      status: "blocked";
+      syntheticOnly: true;
+      rollbackGate: string[];
+      duplicatePreventionGate: string[];
+      tokenAuthGate: string[];
+      noLiveProof: string[];
+    }>;
+  };
   authoritySwitchChecklist: {
     status: "blocked";
     authoritySwitchAllowed: false;
@@ -235,6 +250,7 @@ export function buildRustGatewayPromotionReadinessSummary(
     canaryAndRollback: buildCanaryAndRollbackPlan(groups),
     livePromotionGateDesign: buildLivePromotionGateDesign(groups),
     shadowPromotionGateFixtures: buildShadowPromotionGateFixtures(groups),
+    noLiveSafetyGateFixtures: buildNoLiveSafetyGateFixtures(groups),
     authoritySwitchChecklist: buildAuthoritySwitchChecklist(),
     duplicatePrevention,
     gates: buildPromotionGateStatuses(report, readiness, groups, duplicatePrevention),
@@ -250,6 +266,97 @@ export function buildRustGatewayPromotionReadinessSummary(
     ],
     blockers: readiness.blockers,
     warnings: readiness.warnings,
+  };
+}
+
+function buildNoLiveSafetyGateFixtures(
+  groups: RustGatewayParityReportGroups,
+): RustGatewayPromotionReadinessSummary["noLiveSafetyGateFixtures"] {
+  const unsafeMethods = new Set(groups.unsafeBlocked.map((result) => result.method));
+  return {
+    mode: "synthetic-read-only",
+    liveTrafficAllowed: false,
+    authoritySwitchAllowed: false,
+    fixtures: [
+      {
+        fixtureId: "rust-no-live-safety-chat-send",
+        surface: "chat.send",
+        status: "blocked",
+        syntheticOnly: true,
+        rollbackGate: [
+          "Node chat.send path is health-checked before any Rust canary send authorization",
+          "Rust canary flag disablement preserves pending Node-owned run state",
+          "rollback packet includes Node fallback command and chat.send health probe",
+        ],
+        duplicatePreventionGate: [
+          "same chat request id cannot be accepted by both Node and Rust live send paths",
+          "abort and retry probes prove one live agent run owner per canary request",
+          "audit trail records rejected duplicate authority attempts before user-visible send",
+        ],
+        tokenAuthGate: [
+          "accepted send token scope matches Node role and workspace policy",
+          "rejected send token scope matches Node denial envelope",
+          "expired token and revoked role behavior match before any live send traffic",
+        ],
+        noLiveProof: [
+          "fixture is generated from skipped unsafe parity metadata only",
+          "no chat.send RPC is replayed by the Rust parity runner",
+          "Node remains live chat authority until explicit promotion",
+        ],
+      },
+      {
+        fixtureId: "rust-no-live-safety-cron-add",
+        surface: "cron.add",
+        status: "blocked",
+        syntheticOnly: true,
+        rollbackGate: [
+          "Node scheduler fallback command is rehearsed before Rust scheduler canary",
+          "Rust canary timers can be disabled or drained without firing duplicate reminders",
+          "rollback packet includes cron.status and next-run health probes",
+        ],
+        duplicatePreventionGate: [
+          "same schedule key cannot become live in both Node and Rust stores",
+          "next-run claiming proves only one authority fires a reminder for a canary timer",
+          "cron.add/update/remove/run probes preserve a single timer owner through rollback",
+        ],
+        tokenAuthGate: [
+          "accepted scheduler token scope matches Node cron.add authorization",
+          "rejected scheduler token scope matches Node denial envelope",
+          "expired token and revoked scheduler role behavior match before live timer mutation",
+        ],
+        noLiveProof: [
+          "fixture is generated from skipped unsafe parity metadata only",
+          "no cron.add RPC is replayed by the Rust parity runner",
+          "Node remains live scheduler authority until explicit promotion",
+        ],
+      },
+      {
+        fixtureId: "rust-no-live-safety-workflows-run",
+        surface: "workflows.run",
+        status: "blocked",
+        syntheticOnly: true,
+        rollbackGate: [
+          "Node workflow runner fallback path is rehearsed before Rust workflow canary",
+          "Rust canary workflow queue can be paused and drained without orphaning live runs",
+          "rollback packet includes workflow status, run detail, and terminal-state probes",
+        ],
+        duplicatePreventionGate: [
+          "same workflow run id cannot be claimed by both Node and Rust",
+          "retry and review paths prove one live run owner through terminal state",
+          "artifact and ledger writes reject split-brain run ownership before persistence",
+        ],
+        tokenAuthGate: [
+          "accepted workflow-run token scope matches Node workflow execution authorization",
+          "rejected workflow-run token scope matches Node denial envelope",
+          "expired token and revoked workflow role behavior match before live run execution",
+        ],
+        noLiveProof: [
+          "fixture is generated from skipped unsafe parity metadata only",
+          "no workflows.run RPC is replayed by the Rust parity runner",
+          "Node remains live workflow authority until explicit promotion",
+        ],
+      },
+    ].filter((fixture) => unsafeMethods.has(fixture.surface)),
   };
 }
 
