@@ -249,4 +249,146 @@ describe("useForgeStructuredData", () => {
     });
     expect(saved.activeTable?.views).toHaveLength(2);
   });
+
+  it("creates mode-specific saved views with distinct defaults", async () => {
+    const host = installDom("?token=secret-token");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gatewayRequest: GatewayRequestFn = vi.fn(async () => {
+      throw new Error("Not connected to Gateway");
+    });
+    const emitWorkflowEvent = vi.fn(async () => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true })),
+    );
+
+    let result: StructuredDataResult | null = null;
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(
+        createElement(HookHarness, {
+          onResult: (nextResult) => {
+            result = nextResult;
+          },
+          props: {
+            apps: [app()],
+            selectedAppId: "app-1",
+            onSelectApp: vi.fn(),
+            gatewayRequest,
+            emitWorkflowEvent,
+          },
+        }),
+      );
+    });
+
+    if (!result) {
+      throw new Error("hook result did not render");
+    }
+
+    const initial = result as StructuredDataResult;
+    const statusField = initial.activeTable?.fields.find((field) => field.id === "status");
+    if (!statusField) {
+      throw new Error("status field missing");
+    }
+
+    await act(async () => {
+      await initial.updateActiveViewSettings({
+        filterText: "avery",
+        sortFieldId: statusField.id,
+        sortDirection: "desc",
+      });
+    });
+    await act(async () => {
+      await (result as StructuredDataResult).addView({ type: "kanban" });
+    });
+
+    const kanban = result as StructuredDataResult;
+    expect(kanban.activeView).toMatchObject({
+      name: "By status",
+      type: "kanban",
+      filterText: "",
+      sortFieldId: "",
+      sortDirection: "asc",
+      groupFieldId: statusField.id,
+    });
+
+    await act(async () => {
+      await kanban.addView({ type: "review" });
+    });
+
+    const review = result as StructuredDataResult;
+    expect(review.activeView).toMatchObject({
+      name: "Review queue",
+      type: "review",
+      filterText: "Review",
+      groupFieldId: "",
+    });
+  });
+
+  it("persists current view, default view, selected field, and active cell in table state", async () => {
+    const host = installDom("?token=secret-token");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gatewayRequest: GatewayRequestFn = vi.fn(async () => {
+      throw new Error("Not connected to Gateway");
+    });
+    const emitWorkflowEvent = vi.fn(async () => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true })),
+    );
+
+    let result: StructuredDataResult | null = null;
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(
+        createElement(HookHarness, {
+          onResult: (nextResult) => {
+            result = nextResult;
+          },
+          props: {
+            apps: [app()],
+            selectedAppId: "app-1",
+            onSelectApp: vi.fn(),
+            gatewayRequest,
+            emitWorkflowEvent,
+          },
+        }),
+      );
+    });
+
+    const initial = result as StructuredDataResult;
+    const firstRecord = initial.activeTable?.records[0];
+    const ownerField = initial.activeTable?.fields.find((field) => field.id === "owner");
+    if (!firstRecord || !ownerField) {
+      throw new Error("record/owner field missing");
+    }
+
+    await act(async () => {
+      initial.selectField(ownerField.id);
+    });
+    await act(async () => {
+      await (result as StructuredDataResult).addView({ name: "Owners", type: "grid" });
+    });
+    const ownerViewId = (result as StructuredDataResult).activeView?.id;
+    if (!ownerViewId) {
+      throw new Error("view did not create");
+    }
+    await act(async () => {
+      await (result as StructuredDataResult).setDefaultView(ownerViewId);
+    });
+    await act(async () => {
+      await (result as StructuredDataResult).setActiveCell({
+        recordId: firstRecord.id,
+        fieldId: ownerField.id,
+      });
+    });
+
+    const saved = result as StructuredDataResult;
+    expect(saved.activeTable).toMatchObject({
+      activeViewId: ownerViewId,
+      defaultViewId: ownerViewId,
+      selectedFieldId: ownerField.id,
+      activeCell: { recordId: firstRecord.id, fieldId: ownerField.id },
+    });
+  });
 });
