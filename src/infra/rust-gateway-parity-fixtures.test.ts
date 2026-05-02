@@ -58,7 +58,7 @@ describe("rust gateway parity fixtures", () => {
     expect(summary.replayable + summary.unsafe).toBe(summary.total);
   });
 
-  it("promotes read-only status, commands, and models surfaces to schema-compatible evidence", () => {
+  it("promotes read-only status, commands, models, and sessions surfaces to schema-compatible evidence", () => {
     const fixtures = Object.fromEntries(
       RUST_GATEWAY_INITIAL_PARITY_FIXTURES.map((fixture) => [fixture.id, fixture]),
     );
@@ -75,6 +75,11 @@ describe("rust gateway parity fixtures", () => {
     });
     expect(fixtures["rpc-models-list"]).toMatchObject({
       method: "models.list",
+      safety: "read-only",
+      expectedParity: "schema-compatible",
+    });
+    expect(fixtures["rpc-sessions-list"]).toMatchObject({
+      method: "sessions.list",
       safety: "read-only",
       expectedParity: "schema-compatible",
     });

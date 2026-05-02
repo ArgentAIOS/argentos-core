@@ -1011,7 +1011,7 @@ pub fn channels_status_payload_json(ts: u64) -> String {
 }
 
 pub fn sessions_list_payload_json() -> String {
-    "{\"path\":\"shadow-sessions.json\",\"defaults\":{\"model\":\"shadow-gpt-mini\",\"modelProvider\":\"openai\"},\"sessions\":[{\"key\":\"agent:argent:main\",\"kind\":\"direct\",\"updatedAt\":1776600000000,\"totalTokens\":165,\"thinkingLevel\":\"low\",\"verboseLevel\":\"on\",\"lastAccountId\":\"shadow\",\"deliveryContext\":{\"channel\":\"whatsapp\",\"to\":\"+10000000000\",\"accountId\":\"shadow\"}}]}".to_string()
+    "{\"ts\":1776600000000,\"path\":\"shadow-sessions.json\",\"count\":1,\"defaults\":{\"model\":\"shadow-gpt-mini\",\"modelProvider\":\"openai\"},\"sessions\":[{\"key\":\"agent:argent:main\",\"kind\":\"direct\",\"updatedAt\":1776600000000,\"totalTokens\":165,\"thinkingLevel\":\"low\",\"verboseLevel\":\"on\",\"lastAccountId\":\"shadow\",\"deliveryContext\":{\"channel\":\"whatsapp\",\"to\":\"+10000000000\",\"accountId\":\"shadow\"}}]}".to_string()
 }
 
 pub fn sessions_preview_payload_json() -> String {

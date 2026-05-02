@@ -309,6 +309,10 @@ const schemaPayloadValidators: Record<string, PayloadValidator | undefined> = {
     (payload) => validateModelsListPayload(payload),
     "models.list payload includes schema-compatible model choices",
   ),
+  "sessions.list": withDescription(
+    (payload) => validateSessionsListPayload(payload),
+    "sessions.list payload includes schema-compatible session rows",
+  ),
 };
 
 function withDescription(
@@ -370,6 +374,39 @@ function validateModelsListPayload(payload: unknown): PayloadValidation {
     }
     if ("reasoning" in record && typeof record.reasoning !== "boolean") {
       return { ok: false, error: `models[${index}].reasoning is not boolean` };
+    }
+  }
+
+  return { ok: true };
+}
+
+function validateSessionsListPayload(payload: unknown): PayloadValidation {
+  const base = validateObject(payload, [
+    ["ts", "number"],
+    ["path", "string"],
+    ["count", "number"],
+    ["defaults", "object"],
+    ["sessions", "array"],
+  ]);
+  if (!base.ok) {
+    return base;
+  }
+
+  const { count, sessions } = payload as { count: number; sessions: unknown[] };
+  if (!Number.isInteger(count)) {
+    return { ok: false, error: "count is not an integer" };
+  }
+  if (count !== sessions.length) {
+    return { ok: false, error: "count does not match sessions length" };
+  }
+
+  for (const [index, session] of sessions.entries()) {
+    const row = validateObject(session, [
+      ["key", "string"],
+      ["kind", "string"],
+    ]);
+    if (!row.ok) {
+      return { ok: false, error: `sessions[${index}].${row.error}` };
     }
   }
 

@@ -154,8 +154,9 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     method: "sessions.list",
     params: {},
     safety: "read-only",
-    expectedParity: "mock-compatible",
-    reason: "Rust must not own live session state before migration; fixture is shape-only.",
+    expectedParity: "schema-compatible",
+    reason:
+      "Sessions list must expose schema-compatible read-only session rows without granting Rust live session authority.",
   },
   {
     id: "rpc-cron-status",

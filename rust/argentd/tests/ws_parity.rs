@@ -1155,6 +1155,7 @@ fn websocket_sessions_list_and_preview_return_payloads() {
     let list = read_server_text(&mut client).expect("sessions.list response should arrive");
     assert!(list.contains("\"id\":\"sessions-1\""));
     assert!(list.contains("\"sessions\""));
+    assert!(list.contains("\"count\":1"));
     assert!(list.contains("\"agent:argent:main\""));
 
     send_masked_text(

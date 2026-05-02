@@ -174,6 +174,68 @@ describe("runRustGatewayParityReplay", () => {
     expect(report.results[0]?.notes.join(" ")).toContain("reasoning is not boolean");
   });
 
+  it("passes sessions.list fixtures when session rows match the read-only shape", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "sessions",
+        method: "sessions.list",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      frame(endpoint, true, {
+        ts: 1,
+        path: `${endpoint}-sessions.json`,
+        count: 1,
+        defaults: { model: "shadow-gpt-mini" },
+        sessions: [{ key: "agent:argent:main", kind: "direct" }],
+      });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals).toEqual({ passed: 1, failed: 0, skipped: 0 });
+    expect(report.results[0]?.observedParity).toBe("schema-compatible");
+    expect(report.results[0]?.notes.join(" ")).toContain(
+      "sessions.list payload includes schema-compatible session rows",
+    );
+  });
+
+  it("fails sessions.list fixtures when count drifts from returned rows", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "sessions",
+        method: "sessions.list",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      endpoint === "node"
+        ? frame(endpoint, true, {
+            ts: 1,
+            path: "node-sessions.json",
+            count: 1,
+            defaults: {},
+            sessions: [{ key: "agent:argent:main", kind: "direct" }],
+          })
+        : frame(endpoint, true, {
+            ts: 1,
+            path: "rust-sessions.json",
+            count: 2,
+            defaults: {},
+            sessions: [{ key: "agent:argent:main", kind: "direct" }],
+          });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals.failed).toBe(1);
+    expect(report.results[0]?.observedParity).toBe("failed");
+    expect(report.results[0]?.notes.join(" ")).toContain("count does not match sessions length");
+  });
+
   it("passes mock-compatible fixtures but marks them as non-promotion evidence", async () => {
     const fixtures: RustGatewayParityFixture[] = [
       {
