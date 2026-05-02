@@ -120,6 +120,15 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
       generatedAtMs: passingReport.generatedAtMs,
       promotionReady: true,
       totals: { passed: 1, failed: 0, skipped: 0 },
+      methodCoverage: {
+        totalFixtureMethods: 1,
+        promotionBlockers: [],
+        mockOnly: [],
+        unsupported: [],
+        unsafeBlocked: [],
+        cleanEvidence: ["health"],
+        unproven: [],
+      },
       counts: {
         promotionBlockers: 0,
         mockOnly: 0,
@@ -145,6 +154,80 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
     });
     expect(summary.gates.find((gate) => gate.id === "rollback-to-node")?.status).toBe("not-run");
     expect(summary.nextRequiredGates).toContain("rollback-to-node");
+  });
+
+  it("summarizes fixture method coverage by promotion evidence class", () => {
+    const summary = buildRustGatewayPromotionReadinessSummary({
+      generatedAtMs: 0,
+      totals: { passed: 4, failed: 1, skipped: 1 },
+      results: [
+        {
+          fixtureId: "health",
+          method: "health",
+          safety: "read-only",
+          expectedParity: "schema-compatible",
+          observedParity: "schema-compatible",
+          status: "passed",
+          nodeOk: true,
+          rustOk: true,
+          notes: [],
+        },
+        {
+          fixtureId: "status",
+          method: "status",
+          safety: "read-only",
+          expectedParity: "mock-compatible",
+          observedParity: "mock-compatible",
+          status: "passed",
+          nodeOk: true,
+          rustOk: true,
+          notes: [],
+        },
+        {
+          fixtureId: "workflow",
+          method: "workflows.list",
+          safety: "read-only",
+          expectedParity: "unsupported",
+          observedParity: "unsupported",
+          status: "passed",
+          nodeOk: false,
+          rustOk: false,
+          notes: [],
+        },
+        {
+          fixtureId: "chat-send",
+          method: "chat.send",
+          safety: "unsafe",
+          expectedParity: "unsafe",
+          observedParity: "skipped",
+          status: "skipped",
+          nodeOk: null,
+          rustOk: null,
+          notes: [],
+        },
+        {
+          fixtureId: "broken",
+          method: "sessions.list",
+          safety: "read-only",
+          expectedParity: "schema-compatible",
+          observedParity: "failed",
+          status: "failed",
+          nodeOk: true,
+          rustOk: false,
+          notes: [],
+        },
+      ],
+    });
+
+    expect(summary.methodCoverage).toEqual({
+      totalFixtureMethods: 5,
+      promotionBlockers: ["sessions.list"],
+      mockOnly: ["status"],
+      unsupported: ["workflows.list"],
+      unsafeBlocked: ["chat.send"],
+      cleanEvidence: ["health"],
+      unproven: ["chat.send", "sessions.list", "status", "workflows.list"],
+    });
   });
 });
 

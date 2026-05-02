@@ -21,6 +21,15 @@ export type RustGatewayPromotionReadinessSummary = {
   generatedAtMs: number;
   promotionReady: boolean;
   totals: RustGatewayParityReplayReport["totals"];
+  methodCoverage: {
+    totalFixtureMethods: number;
+    promotionBlockers: string[];
+    mockOnly: string[];
+    unsupported: string[];
+    unsafeBlocked: string[];
+    cleanEvidence: string[];
+    unproven: string[];
+  };
   counts: {
     promotionBlockers: number;
     mockOnly: number;
@@ -125,10 +134,12 @@ export function buildRustGatewayPromotionReadinessSummary(
 ): RustGatewayPromotionReadinessSummary {
   const readiness = evaluateRustGatewayPromotionReadiness(report);
   const groups = groupRustGatewayParityResults(report);
+  const methodCoverage = buildMethodCoverage(groups);
   return {
     generatedAtMs: report.generatedAtMs,
     promotionReady: readiness.ready,
     totals: report.totals,
+    methodCoverage,
     counts: {
       promotionBlockers: groups.promotionBlockers.length,
       mockOnly: groups.mockOnly.length,
@@ -166,6 +177,46 @@ export function buildRustGatewayPromotionReadinessSummary(
     blockers: readiness.blockers,
     warnings: readiness.warnings,
   };
+}
+
+function buildMethodCoverage(
+  groups: RustGatewayParityReportGroups,
+): RustGatewayPromotionReadinessSummary["methodCoverage"] {
+  const promotionBlockers = uniqueSortedMethods(groups.promotionBlockers);
+  const mockOnly = uniqueSortedMethods(groups.mockOnly);
+  const unsupported = uniqueSortedMethods(groups.unsupported);
+  const unsafeBlocked = uniqueSortedMethods(groups.unsafeBlocked);
+  const cleanEvidence = uniqueSortedMethods(groups.cleanEvidence);
+  const unproven = uniqueSortedStrings([
+    ...promotionBlockers,
+    ...mockOnly,
+    ...unsupported,
+    ...unsafeBlocked,
+  ]);
+
+  return {
+    totalFixtureMethods: uniqueSortedStrings([
+      ...promotionBlockers,
+      ...mockOnly,
+      ...unsupported,
+      ...unsafeBlocked,
+      ...cleanEvidence,
+    ]).length,
+    promotionBlockers,
+    mockOnly,
+    unsupported,
+    unsafeBlocked,
+    cleanEvidence,
+    unproven,
+  };
+}
+
+function uniqueSortedMethods(results: RustGatewayParityReplayResult[]): string[] {
+  return uniqueSortedStrings(results.map((result) => result.method));
+}
+
+function uniqueSortedStrings(values: string[]): string[] {
+  return [...new Set(values)].toSorted((left, right) => left.localeCompare(right));
 }
 
 function buildPromotionGateStatuses(
