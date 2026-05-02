@@ -16,6 +16,7 @@ const serviceInstall = vi.fn(async () => {});
 const discoverGatewayBeacons = vi.fn(async () => []);
 const gatewayStatusCommand = vi.fn(async () => {});
 const gatewayAuthorityStatusCommand = vi.fn(async () => {});
+const gatewayAuthorityRollbackPlanCommand = vi.fn(async () => {});
 
 const runtimeLogs: string[] = [];
 const runtimeErrors: string[] = [];
@@ -108,6 +109,8 @@ vi.mock("../commands/gateway-status.js", () => ({
 }));
 
 vi.mock("../commands/gateway-authority-status.js", () => ({
+  gatewayAuthorityRollbackPlanCommand: (runtime: unknown, opts: unknown) =>
+    gatewayAuthorityRollbackPlanCommand(runtime, opts),
   gatewayAuthorityStatusCommand: (runtime: unknown, opts: unknown) =>
     gatewayAuthorityStatusCommand(runtime, opts),
 }));
@@ -158,6 +161,26 @@ describe("gateway-cli coverage", () => {
 
     expect(gatewayAuthorityStatusCommand).toHaveBeenCalledTimes(1);
     expect(gatewayAuthorityStatusCommand.mock.calls[0]?.[1]).toEqual({ json: true });
+  }, 30_000);
+
+  it("registers gateway authority rollback-node as a read-only plan command", async () => {
+    gatewayAuthorityRollbackPlanCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(
+      ["gateway", "authority", "rollback-node", "--reason", "canary drift", "--json"],
+      { from: "user" },
+    );
+
+    expect(gatewayAuthorityRollbackPlanCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityRollbackPlanCommand.mock.calls[0]?.[1]).toEqual({
+      json: true,
+      reason: "canary drift",
+    });
   }, 30_000);
 
   it("registers gateway discover and prints JSON", async () => {

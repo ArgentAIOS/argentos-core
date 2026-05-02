@@ -1,7 +1,10 @@
 import type { Command } from "commander";
 import type { CostUsageSummary } from "../../infra/session-cost-usage.js";
 import type { GatewayDiscoverOpts } from "./discover.js";
-import { gatewayAuthorityStatusCommand } from "../../commands/gateway-authority-status.js";
+import {
+  gatewayAuthorityRollbackPlanCommand,
+  gatewayAuthorityStatusCommand,
+} from "../../commands/gateway-authority-status.js";
 import { gatewayStatusCommand } from "../../commands/gateway-status.js";
 import { formatHealthChannelLines, type HealthSummary } from "../../commands/health.js";
 import { loadConfig } from "../../config/config.js";
@@ -175,10 +178,23 @@ export function registerGatewayCli(program: Command) {
     .description("Show read-only Gateway authority and rollback readiness")
     .option("--json", "Output JSON", false)
     .action(async (opts) => {
-      await runGatewayCommand(
-        async () => gatewayAuthorityStatusCommand(defaultRuntime, { json: Boolean(opts.json) }),
-        "Gateway authority status failed",
-      );
+      await runGatewayCommand(async () => {
+        await gatewayAuthorityStatusCommand(defaultRuntime, { json: Boolean(opts.json) });
+      }, "Gateway authority status failed");
+    });
+
+  authority
+    .command("rollback-node")
+    .description("Print the read-only Node rollback/fallback plan without changing authority")
+    .requiredOption("--reason <reason>", "Operator-visible reason for rollback planning")
+    .option("--json", "Output JSON", false)
+    .action(async (opts) => {
+      await runGatewayCommand(async () => {
+        await gatewayAuthorityRollbackPlanCommand(defaultRuntime, {
+          json: Boolean(opts.json),
+          reason: String(opts.reason),
+        });
+      }, "Gateway authority rollback plan failed");
     });
 
   gateway

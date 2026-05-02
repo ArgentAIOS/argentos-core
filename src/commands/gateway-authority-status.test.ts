@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { gatewayAuthorityStatusCommand } from "./gateway-authority-status.js";
+import {
+  gatewayAuthorityRollbackPlanCommand,
+  gatewayAuthorityStatusCommand,
+} from "./gateway-authority-status.js";
 
 vi.mock("./status.rust-gateway-shadow.js", () => ({
   getRustGatewayShadowSummary: vi.fn().mockResolvedValue({
@@ -70,5 +73,38 @@ describe("gatewayAuthorityStatusCommand", () => {
     const parsed = JSON.parse(logs[0] ?? "{}");
     expect(parsed.liveGatewayAuthority).toBe("node");
     expect(parsed.rollbackCommand.implemented).toBe(false);
+  });
+
+  it("prints read-only rollback plan without authority changes", async () => {
+    const logs: string[] = [];
+
+    const plan = await gatewayAuthorityRollbackPlanCommand(
+      { log: (line) => logs.push(line) },
+      { reason: "canary drift", json: false },
+    );
+
+    expect(plan.mode).toBe("read-only-plan");
+    expect(plan.executable).toBe(false);
+    expect(plan.authorityChanges).toEqual([]);
+    expect(plan.currentAuthority.liveGateway).toBe("node");
+    expect(plan.currentAuthority.rustGateway).toBe("shadow-only");
+    expect(plan.blockedActions).toContain("Does not edit config or authority state.");
+    expect(logs.join("\n")).toContain("Gateway authority rollback plan");
+    expect(logs.join("\n")).toContain("Authority changes: none");
+  });
+
+  it("prints JSON rollback plan", async () => {
+    const logs: string[] = [];
+
+    await gatewayAuthorityRollbackPlanCommand(
+      { log: (line) => logs.push(line) },
+      { reason: "operator rehearsal", json: true },
+    );
+
+    const parsed = JSON.parse(logs[0] ?? "{}");
+    expect(parsed.mode).toBe("read-only-plan");
+    expect(parsed.reason).toBe("operator rehearsal");
+    expect(parsed.currentAuthority.sessions).toBe("node");
+    expect(parsed.executable).toBe(false);
   });
 });

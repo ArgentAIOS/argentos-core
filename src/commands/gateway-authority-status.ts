@@ -8,6 +8,32 @@ export type GatewayAuthorityStatusOptions = {
   json?: boolean;
 };
 
+export type GatewayAuthorityRollbackPlanOptions = {
+  json?: boolean;
+  reason: string;
+};
+
+export type GatewayAuthorityRollbackPlan = {
+  command: "argent gateway authority rollback-node";
+  mode: "read-only-plan";
+  reason: string;
+  executable: false;
+  implemented: false;
+  authorityChanges: [];
+  currentAuthority: {
+    liveGateway: "node";
+    rustGateway: "shadow-only";
+    scheduler: "node";
+    workflows: "node";
+    channels: "node";
+    sessions: "node";
+    runs: "node";
+  };
+  requiredBeforeExecutableRollback: string[];
+  operatorRecoveryChecklist: string[];
+  blockedActions: string[];
+};
+
 export type GatewayAuthorityStatusSummary = {
   liveGatewayAuthority: "node";
   rustGatewayAuthority: "shadow-only";
@@ -25,6 +51,49 @@ export type GatewayAuthorityStatusSummary = {
   blockers: string[];
   nextCommands: string[];
 };
+
+export function buildGatewayAuthorityRollbackPlan(
+  options: GatewayAuthorityRollbackPlanOptions,
+): GatewayAuthorityRollbackPlan {
+  return {
+    command: "argent gateway authority rollback-node",
+    mode: "read-only-plan",
+    reason: options.reason.trim(),
+    executable: false,
+    implemented: false,
+    authorityChanges: [],
+    currentAuthority: {
+      liveGateway: "node",
+      rustGateway: "shadow-only",
+      scheduler: "node",
+      workflows: "node",
+      channels: "node",
+      sessions: "node",
+      runs: "node",
+    },
+    requiredBeforeExecutableRollback: [
+      "Rust canary mode promotion design has been approved.",
+      "Node fallback service start/health probe is automated and rehearsed.",
+      "Gateway authority state is persisted with an auditable previous-authority record.",
+      "Duplicate timers, channel sends, workflow runs, sessions, and agent runs are prevented.",
+      "Operator rollback verification proves Node accepts health, connect, status, sessions.list, cron.status, and channels.status after fallback.",
+    ],
+    operatorRecoveryChecklist: [
+      "Keep or restart Node gateway as live authority.",
+      "Stop accepting Rust authority writes before any Node fallback probe.",
+      "Verify no Rust-owned scheduler/workflow/channel/session/run authority exists.",
+      "Run isolated parity/status report and preserve drift logs for handoff.",
+      "Post a Threadmaster rollback packet before any future executable rollback lands.",
+    ],
+    blockedActions: [
+      "Does not stop Rust.",
+      "Does not start Node.",
+      "Does not edit config or authority state.",
+      "Does not touch schedulers, workflows, channels, sessions, or runs.",
+      "Does not use connectors, OAuth, API credentials, or live traffic.",
+    ],
+  };
+}
 
 export async function collectGatewayAuthorityStatus(): Promise<GatewayAuthorityStatusSummary> {
   const [rustShadow, parityReport, scheduler] = await Promise.all([
@@ -59,7 +128,11 @@ export async function collectGatewayAuthorityStatus(): Promise<GatewayAuthorityS
     scheduler,
     promotionReady: false,
     blockers,
-    nextCommands: ["argent status", "argent gateway authority status --json"],
+    nextCommands: [
+      "argent status",
+      "argent gateway authority status --json",
+      "argent gateway authority rollback-node --reason <reason> --json",
+    ],
   };
 }
 
@@ -96,4 +169,36 @@ export async function gatewayAuthorityStatusCommand(
     runtime.log(`- ${formatCliCommand(command)}`);
   }
   return summary;
+}
+
+export async function gatewayAuthorityRollbackPlanCommand(
+  runtime: Pick<RuntimeEnv, "log">,
+  options: GatewayAuthorityRollbackPlanOptions,
+): Promise<GatewayAuthorityRollbackPlan> {
+  const plan = buildGatewayAuthorityRollbackPlan(options);
+  if (options.json) {
+    runtime.log(JSON.stringify(plan, null, 2));
+    return plan;
+  }
+
+  runtime.log("Gateway authority rollback plan");
+  runtime.log("");
+  runtime.log(`Mode: ${plan.mode}`);
+  runtime.log(`Executable: no`);
+  runtime.log(`Reason: ${plan.reason}`);
+  runtime.log("Authority changes: none");
+  runtime.log(
+    `Current authority: gateway=${plan.currentAuthority.liveGateway}, Rust=${plan.currentAuthority.rustGateway}, scheduler=${plan.currentAuthority.scheduler}, workflows=${plan.currentAuthority.workflows}, channels=${plan.currentAuthority.channels}`,
+  );
+  runtime.log("");
+  runtime.log("Required before executable rollback:");
+  for (const item of plan.requiredBeforeExecutableRollback) {
+    runtime.log(`- ${item}`);
+  }
+  runtime.log("");
+  runtime.log("Blocked actions:");
+  for (const action of plan.blockedActions) {
+    runtime.log(`- ${action}`);
+  }
+  return plan;
 }
