@@ -330,6 +330,74 @@ describe("discoverConnectorCatalog", () => {
     expect(result.connectors[0]?.commands).toHaveLength(1);
   });
 
+  it("can catalog connector metadata without executing adapter binaries", async () => {
+    const root = makeTempDir("connector-no-exec-");
+    const binDir = makeTempDir("connector-no-exec-bin-");
+    const markerPath = path.join(binDir, "adapter-executed");
+    writeRepoFixture({
+      root,
+      tool: "aos-noexec",
+      description: "Agent-native no-exec connector",
+      permissions: {
+        "record.list": "readonly",
+      },
+      connectorMeta: {
+        connector: {
+          label: "No Exec",
+          category: "records",
+          resources: ["record"],
+        },
+        commands: [
+          {
+            id: "record.list",
+            summary: "List records",
+            required_mode: "readonly",
+            supports_json: true,
+            resource: "record",
+            action_class: "read",
+          },
+        ],
+      },
+    });
+
+    const binaryPath = path.join(binDir, "aos-noexec");
+    fs.writeFileSync(
+      binaryPath,
+      [
+        "#!/bin/sh",
+        `touch ${JSON.stringify(markerPath)}`,
+        `printf '%s' '${JSON.stringify({ ok: true, data: { status: "healthy" } })}'`,
+        "",
+      ].join("\n"),
+    );
+    fs.chmodSync(binaryPath, 0o755);
+
+    const result = await discoverConnectorCatalog({
+      repoRoots: [root],
+      pathEnv: binDir,
+      timeoutMs: 500,
+      includeBuiltIns: false,
+      executeAdapters: false,
+    });
+
+    expect(fs.existsSync(markerPath)).toBe(false);
+    expect(result.connectors[0]).toMatchObject({
+      tool: "aos-noexec",
+      label: "No Exec",
+      installState: "repo-only",
+      commands: [
+        expect.objectContaining({
+          id: "record.list",
+          requiredMode: "readonly",
+          actionClass: "read",
+        }),
+      ],
+      discovery: expect.objectContaining({
+        binaryPath,
+      }),
+    });
+  });
+
   it("includes AppForge Core as a metadata-only built-in connector", async () => {
     const result = await discoverConnectorCatalog({
       repoRoots: [],

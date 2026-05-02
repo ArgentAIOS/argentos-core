@@ -30,7 +30,9 @@ describe("connectorsHandlers", () => {
       isWebchatConnect: noop,
     });
 
-    expect(mocks.discoverConnectorCatalog).toHaveBeenCalledTimes(1);
+    expect(mocks.discoverConnectorCatalog).toHaveBeenCalledWith({
+      executeAdapters: undefined,
+    });
     expect(respond).toHaveBeenCalledWith(
       true,
       expect.objectContaining({
@@ -38,6 +40,28 @@ describe("connectorsHandlers", () => {
       }),
       undefined,
     );
+  });
+
+  it("passes explicit no-exec catalog requests through to discovery", async () => {
+    const respond = vi.fn();
+    mocks.discoverConnectorCatalog.mockResolvedValue({
+      total: 0,
+      connectors: [],
+    });
+
+    await connectorsHandlers["connectors.catalog"]({
+      params: { executeAdapters: false },
+      respond,
+      context: {} as Parameters<(typeof connectorsHandlers)["connectors.catalog"]>[0]["context"],
+      client: null,
+      req: { id: "req-2", type: "req", method: "connectors.catalog" },
+      isWebchatConnect: noop,
+    });
+
+    expect(mocks.discoverConnectorCatalog).toHaveBeenCalledWith({
+      executeAdapters: false,
+    });
+    expect(respond).toHaveBeenCalledWith(true, { total: 0, connectors: [] }, undefined);
   });
 
   it("rejects unexpected params", async () => {
@@ -48,7 +72,7 @@ describe("connectorsHandlers", () => {
       respond,
       context: {} as Parameters<(typeof connectorsHandlers)["connectors.catalog"]>[0]["context"],
       client: null,
-      req: { id: "req-2", type: "req", method: "connectors.catalog" },
+      req: { id: "req-3", type: "req", method: "connectors.catalog" },
       isWebchatConnect: noop,
     });
 
