@@ -40,6 +40,19 @@ export type GatewayAuthorityStatusSummary = {
   schedulerAuthority: "node";
   workflowAuthority: "node";
   channelAuthority: "node";
+  sessionAuthority: "node";
+  runAuthority: "node";
+  authorityBoundaries: {
+    liveAuthority: "node";
+    rustMode: "shadow-only";
+    rustMayObserve: string[];
+    rustMustNotOwn: string[];
+  };
+  promotionGates: Array<{
+    id: string;
+    status: "blocked" | "not-run" | "passing";
+    reason: string;
+  }>;
   rollbackCommand: {
     implemented: false;
     planned: "argent gateway authority rollback-node --reason <reason>";
@@ -119,6 +132,31 @@ export async function collectGatewayAuthorityStatus(): Promise<GatewayAuthorityS
     schedulerAuthority: "node",
     workflowAuthority: "node",
     channelAuthority: "node",
+    sessionAuthority: "node",
+    runAuthority: "node",
+    authorityBoundaries: {
+      liveAuthority: "node",
+      rustMode: "shadow-only",
+      rustMayObserve: [
+        "safe parity fixtures",
+        "read-only health/status/connect protocol surfaces",
+        "shadow drift and readiness reports",
+      ],
+      rustMustNotOwn: [
+        "gateway traffic authority",
+        "scheduler timers",
+        "workflow execution",
+        "channel sends",
+        "session mutation",
+        "agent run dispatch",
+        "connector execution",
+      ],
+    },
+    promotionGates: buildGatewayAuthorityPromotionGates({
+      parityReport,
+      scheduler,
+      rustShadow,
+    }),
     rollbackCommand: {
       implemented: false,
       planned: "argent gateway authority rollback-node --reason <reason>",
@@ -153,6 +191,8 @@ export async function gatewayAuthorityStatusCommand(
   runtime.log(`Scheduler authority: ${summary.schedulerAuthority}`);
   runtime.log(`Workflow authority: ${summary.workflowAuthority}`);
   runtime.log(`Channel authority: ${summary.channelAuthority}`);
+  runtime.log(`Session authority: ${summary.sessionAuthority}`);
+  runtime.log(`Run authority: ${summary.runAuthority}`);
   runtime.log(`Promotion ready: no`);
   runtime.log(`Rollback command: planned, not implemented (${summary.rollbackCommand.planned})`);
   runtime.log(
@@ -169,6 +209,61 @@ export async function gatewayAuthorityStatusCommand(
     runtime.log(`- ${formatCliCommand(command)}`);
   }
   return summary;
+}
+
+function buildGatewayAuthorityPromotionGates(params: {
+  rustShadow: GatewayAuthorityStatusSummary["rustShadow"];
+  parityReport: GatewayAuthorityStatusSummary["parityReport"];
+  scheduler: GatewayAuthorityStatusSummary["scheduler"];
+}): GatewayAuthorityStatusSummary["promotionGates"] {
+  return [
+    {
+      id: "rust-shadow-health",
+      status:
+        params.rustShadow.reachable && params.rustShadow.status === "ok" ? "passing" : "blocked",
+      reason: params.rustShadow.reachable
+        ? `Rust shadow health status is ${params.rustShadow.status ?? "unknown"}`
+        : "Rust shadow health is not reachable",
+    },
+    {
+      id: "parity-report",
+      status:
+        params.parityReport.freshness === "fresh" && params.parityReport.totals?.failed === 0
+          ? "passing"
+          : "blocked",
+      reason:
+        params.parityReport.freshness === "fresh"
+          ? `latest parity report has ${params.parityReport.totals?.failed ?? "unknown"} failures`
+          : `latest parity report is ${params.parityReport.freshness}`,
+    },
+    {
+      id: "promotion-readiness",
+      status: params.parityReport.promotionReady === true ? "passing" : "blocked",
+      reason: params.parityReport.promotionReady
+        ? "parity report says promotion is ready"
+        : "parity report still has warnings or blockers",
+    },
+    {
+      id: "scheduler-authority",
+      status:
+        params.scheduler.schedulerAuthority === "node" &&
+        params.scheduler.rustSchedulerAuthority === "shadow-only"
+          ? "passing"
+          : "blocked",
+      reason: "Node remains live scheduler authority; Rust scheduler remains shadow-only",
+    },
+    {
+      id: "rollback-rehearsal",
+      status: "not-run",
+      reason: "rollback/fallback command is planned but not implemented or rehearsed",
+    },
+    {
+      id: "duplicate-prevention",
+      status: "not-run",
+      reason:
+        "duplicate timers, workflow runs, channel sends, sessions, and agent runs are not yet proven prevented",
+    },
+  ];
 }
 
 export async function gatewayAuthorityRollbackPlanCommand(

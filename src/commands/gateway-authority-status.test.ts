@@ -60,8 +60,19 @@ describe("gatewayAuthorityStatusCommand", () => {
 
     expect(summary.liveGatewayAuthority).toBe("node");
     expect(summary.rustGatewayAuthority).toBe("shadow-only");
+    expect(summary.sessionAuthority).toBe("node");
+    expect(summary.runAuthority).toBe("node");
     expect(summary.promotionReady).toBe(false);
+    expect(summary.authorityBoundaries.rustMustNotOwn).toContain("workflow execution");
+    expect(summary.promotionGates.find((gate) => gate.id === "parity-report")).toMatchObject({
+      status: "passing",
+    });
+    expect(summary.promotionGates.find((gate) => gate.id === "promotion-readiness")).toMatchObject({
+      status: "blocked",
+    });
     expect(logs.join("\n")).toContain("Live gateway authority: node");
+    expect(logs.join("\n")).toContain("Session authority: node");
+    expect(logs.join("\n")).toContain("Run authority: node");
     expect(logs.join("\n")).toContain("Rollback command: planned, not implemented");
   });
 
@@ -72,6 +83,10 @@ describe("gatewayAuthorityStatusCommand", () => {
 
     const parsed = JSON.parse(logs[0] ?? "{}");
     expect(parsed.liveGatewayAuthority).toBe("node");
+    expect(parsed.authorityBoundaries.rustMode).toBe("shadow-only");
+    expect(parsed.promotionGates.map((gate: { id: string }) => gate.id)).toContain(
+      "rollback-rehearsal",
+    );
     expect(parsed.rollbackCommand.implemented).toBe(false);
   });
 
