@@ -188,6 +188,8 @@ describe("owner-operator workflow packages", () => {
 
     expect(readiness.okForLive).toBe(false);
     expect(readiness.status).toBe("dry_run_only");
+    expect(readiness.readinessState).toBe("blocked");
+    expect(readiness.label).toBe("Blocked");
     expect(readiness.reasons.map((reason) => reason.code)).toEqual(
       expect.arrayContaining([
         "appforge_metadata_only",
@@ -200,6 +202,13 @@ describe("owner-operator workflow packages", () => {
         "canary_required",
       ]),
     );
+    expect(readiness.requirementSummary).toMatchObject({
+      connectors: { required: expect.any(Number), repoOnly: expect.any(Number) },
+      credentials: { missing: expect.any(Number) },
+      appForge: { metadataOnly: 1, writeNotReady: expect.any(Number) },
+      channels: { missing: expect.any(Number) },
+      canary: { required: true, passed: false },
+    });
   });
 
   it("requires a canary even after connector, credential, channel, and AppForge bindings are live-ready", () => {
@@ -242,6 +251,8 @@ describe("owner-operator workflow packages", () => {
 
     expect(almostReady.okForLive).toBe(false);
     expect(almostReady.status).toBe("canary_required");
+    expect(almostReady.readinessState).toBe("canary_required");
+    expect(almostReady.label).toBe("Dry-run only / canary required");
     expect(almostReady.reasons.map((reason) => reason.code)).toEqual(["canary_required"]);
     expect(almostReady.canary).toMatchObject({
       familyId: "marketing:schedule",
@@ -284,8 +295,60 @@ describe("owner-operator workflow packages", () => {
 
     expect(ready.okForLive).toBe(true);
     expect(ready.status).toBe("live_ready");
+    expect(ready.readinessState).toBe("live_ready");
+    expect(ready.requirementSummary.canary).toEqual({ required: true, passed: true });
     expect(ready.canary.checklist).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "family-canary", status: "passed" })]),
     );
+  });
+
+  it("distinguishes not-configured templates from blocked repo-only connectors", () => {
+    const newsletter = OWNER_OPERATOR_WORKFLOW_PACKAGES.find(
+      (pkg) => pkg.slug === "newsletter-builder",
+    );
+    expect(newsletter).toBeDefined();
+    if (!newsletter) {
+      return;
+    }
+
+    const readiness = auditWorkflowPackageLiveReadiness(newsletter, {
+      connectors: [
+        {
+          tool: "appforge-core",
+          label: "AppForge Core",
+          installState: "ready",
+          status: { ok: true, label: "Ready" },
+          modes: ["readonly", "write"],
+          discovery: { binaryPath: "/bin/appforge-core" },
+        },
+        {
+          tool: "aos-resend",
+          label: "Resend",
+          installState: "ready",
+          status: { ok: true, label: "Ready" },
+          modes: ["readonly", "write"],
+          discovery: { binaryPath: "/bin/aos-resend" },
+        },
+      ],
+    });
+
+    expect(readiness.okForLive).toBe(false);
+    expect(readiness.readinessState).toBe("not_configured");
+    expect(readiness.label).toBe("Not configured");
+    expect(readiness.reasons.map((reason) => reason.code)).toEqual(
+      expect.arrayContaining([
+        "missing_credentials",
+        "missing_appforge_base",
+        "missing_appforge_table",
+        "canary_required",
+      ]),
+    );
+    expect(readiness.requirementSummary.connectors).toMatchObject({
+      required: expect.any(Number),
+      missing: 0,
+      repoOnly: 0,
+      noBinary: 0,
+      notReady: 0,
+    });
   });
 });

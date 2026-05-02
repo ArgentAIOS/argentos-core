@@ -248,8 +248,32 @@ interface WorkflowTemplateLiveReadinessReason {
 interface WorkflowTemplateLiveReadiness {
   okForLive?: boolean;
   status?: string;
+  readinessState?: "blocked" | "not_configured" | "canary_required" | "live_ready";
   label?: string;
   reasons?: WorkflowTemplateLiveReadinessReason[];
+  requirementSummary?: {
+    connectors?: {
+      required?: number;
+      ready?: number;
+      missing?: number;
+      repoOnly?: number;
+      noBinary?: number;
+      notReady?: number;
+    };
+    credentials?: { required?: number; present?: number; missing?: number };
+    appForge?: {
+      basesRequired?: number;
+      basesReady?: number;
+      basesMissing?: number;
+      tablesRequired?: number;
+      tablesReady?: number;
+      tablesMissing?: number;
+      metadataOnly?: number;
+      writeNotReady?: number;
+    };
+    channels?: { required?: number; present?: number; missing?: number };
+    canary?: { required?: boolean; passed?: boolean };
+  };
   canary?: {
     familyId?: string;
     familyLabel?: string;
@@ -683,6 +707,42 @@ function workflowDeploymentStage(workflow: WorkflowDefinition | null): WorkflowD
 
 function workflowStageRequiresLiveReadiness(stage: WorkflowDeploymentStage) {
   return stage === "live" || stage === "limited_live";
+}
+
+function liveReadinessSummaryText(readiness: WorkflowTemplateLiveReadiness | undefined): string {
+  const summary = readiness?.requirementSummary;
+  if (!summary) {
+    return "";
+  }
+  const parts: string[] = [];
+  if (summary.connectors?.required) {
+    const blocked =
+      (summary.connectors.missing ?? 0) +
+      (summary.connectors.repoOnly ?? 0) +
+      (summary.connectors.noBinary ?? 0) +
+      (summary.connectors.notReady ?? 0);
+    parts.push(`${summary.connectors.ready ?? 0}/${summary.connectors.required} connectors`);
+    if (blocked > 0) {
+      parts.push(`${blocked} connector blocker${blocked === 1 ? "" : "s"}`);
+    }
+  }
+  if (summary.credentials?.required) {
+    parts.push(`${summary.credentials.present ?? 0}/${summary.credentials.required} credentials`);
+  }
+  const appForgeRequired =
+    (summary.appForge?.basesRequired ?? 0) + (summary.appForge?.tablesRequired ?? 0);
+  if (appForgeRequired > 0) {
+    const appForgeReady =
+      (summary.appForge?.basesReady ?? 0) + (summary.appForge?.tablesReady ?? 0);
+    parts.push(`${appForgeReady}/${appForgeRequired} AppForge resources`);
+  }
+  if (summary.channels?.required) {
+    parts.push(`${summary.channels.present ?? 0}/${summary.channels.required} channels`);
+  }
+  if (summary.canary?.required) {
+    parts.push(summary.canary.passed ? "canary passed" : "canary pending");
+  }
+  return parts.join(" · ");
 }
 
 function importReportBlockingLiveReason(report: WorkflowImportReport | undefined): string {
@@ -2072,6 +2132,7 @@ function NewWorkflowModal({
                     template.liveReadiness?.label ??
                     (liveReady ? "Live ready" : "Import/dry-run only");
                   const liveReasonCount = template.liveReadiness?.reasons?.length ?? 0;
+                  const liveSummary = liveReadinessSummaryText(template.liveReadiness);
                   return (
                     <button
                       key={template.slug}
@@ -2139,6 +2200,11 @@ function NewWorkflowModal({
                           {!liveReady && liveReasonCount > 0 ? ` (${liveReasonCount})` : ""}
                         </span>
                       </div>
+                      {liveSummary && (
+                        <div className="mt-1 truncate text-[9px] text-[hsl(var(--muted-foreground))]">
+                          {liveSummary}
+                        </div>
+                      )}
                     </button>
                   );
                 })}
@@ -7435,6 +7501,11 @@ function Sidebar({
                         : "Import/dry-run only")}
                   </span>
                 </div>
+                {liveReadinessSummaryText(activeWorkflow.importReport.liveReadiness) && (
+                  <div className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">
+                    {liveReadinessSummaryText(activeWorkflow.importReport.liveReadiness)}
+                  </div>
+                )}
                 {activeWorkflow.importReport.liveReadiness.reasons?.length ? (
                   <div className="mt-1 space-y-0.5">
                     {activeWorkflow.importReport.liveReadiness.reasons
