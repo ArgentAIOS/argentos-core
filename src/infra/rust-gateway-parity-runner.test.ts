@@ -92,6 +92,28 @@ describe("runRustGatewayParityReplay", () => {
     expect(report.results[0]?.notes.join(" ")).toContain("status payload includes");
   });
 
+  it("passes commands.list fixtures when a command array is present", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "commands",
+        method: "commands.list",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      frame(endpoint, true, { commands: [{ key: "status", description: "Show status" }] });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals).toEqual({ passed: 1, failed: 0, skipped: 0 });
+    expect(report.results[0]?.observedParity).toBe("schema-compatible");
+    expect(report.results[0]?.notes.join(" ")).toContain(
+      "commands.list payload includes a commands array",
+    );
+  });
+
   it("passes mock-compatible fixtures but marks them as non-promotion evidence", async () => {
     const fixtures: RustGatewayParityFixture[] = [
       {

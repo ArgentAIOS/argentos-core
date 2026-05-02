@@ -105,9 +105,9 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     method: "commands.list",
     params: {},
     safety: "read-only",
-    expectedParity: "mock-compatible",
+    expectedParity: "schema-compatible",
     reason:
-      "Rust returns a static command list today; fixture verifies the read envelope without claiming full command registry parity.",
+      "Commands list must expose a schema-compatible read-only command array without granting Rust command authority.",
   },
   {
     id: "rpc-config-schema",

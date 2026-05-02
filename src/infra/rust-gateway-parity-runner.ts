@@ -297,6 +297,10 @@ const schemaPayloadValidators: Record<string, PayloadValidator | undefined> = {
     (payload) => (Array.isArray(payload) ? { ok: true } : { ok: false, error: "not an array" }),
     "presence payload is an array",
   ),
+  "commands.list": withDescription(
+    (payload) => validateObject(payload, [["commands", "array"]]),
+    "commands.list payload includes a commands array",
+  ),
   "config.schema": withDescription(
     (payload) => validateObject(payload, [["schema", "object"]]),
     "config schema payload includes a schema object",
