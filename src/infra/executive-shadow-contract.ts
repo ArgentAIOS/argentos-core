@@ -132,6 +132,34 @@ export type ExecutiveShadowTimelineSummary = {
   lastReleaseOutcome: string | null;
 };
 
+export type ExecutiveShadowKernelReadiness = {
+  mode: "shadow-readiness";
+  authoritySwitchAllowed: false;
+  promotionStatus: "blocked";
+  currentAuthority: {
+    gateway: "node";
+    scheduler: "node";
+    workflows: "node";
+    channels: "node";
+    sessions: "node";
+    executive: "shadow-only";
+  };
+  nodeResponsibilities: string[];
+  rustResponsibilities: string[];
+  persistenceModel: {
+    snapshotFile: string;
+    journalFile: string;
+    restartRecovery: string;
+    leaseRecovery: string;
+  };
+  promotionGates: Array<{
+    id: string;
+    status: "blocked";
+    owner: string;
+    requiredProof: string[];
+  }>;
+};
+
 export const executiveLaneStatusSchema = z.enum(["idle", "pending", "active"]);
 
 export const executiveShadowLaneStateSchema = z.object({
@@ -228,6 +256,36 @@ export const executiveShadowTimelineSummarySchema = z.object({
   lastActivationAtMs: z.number().nullable(),
   lastReleaseAtMs: z.number().nullable(),
   lastReleaseOutcome: z.string().nullable(),
+});
+
+export const executiveShadowKernelReadinessSchema = z.object({
+  mode: z.literal("shadow-readiness"),
+  authoritySwitchAllowed: z.literal(false),
+  promotionStatus: z.literal("blocked"),
+  currentAuthority: z.object({
+    gateway: z.literal("node"),
+    scheduler: z.literal("node"),
+    workflows: z.literal("node"),
+    channels: z.literal("node"),
+    sessions: z.literal("node"),
+    executive: z.literal("shadow-only"),
+  }),
+  nodeResponsibilities: z.array(z.string()),
+  rustResponsibilities: z.array(z.string()),
+  persistenceModel: z.object({
+    snapshotFile: z.string(),
+    journalFile: z.string(),
+    restartRecovery: z.string(),
+    leaseRecovery: z.string(),
+  }),
+  promotionGates: z.array(
+    z.object({
+      id: z.string(),
+      status: z.literal("blocked"),
+      owner: z.string(),
+      requiredProof: z.array(z.string()),
+    }),
+  ),
 });
 
 export const executiveShadowJournalRecordSchema = z.object({
@@ -436,6 +494,65 @@ export const executiveShadowProtocolJsonSchema = {
         },
       },
       required: ["config", "state"],
+    },
+    ExecutiveShadowKernelReadiness: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        mode: { type: "string", const: "shadow-readiness" },
+        authoritySwitchAllowed: { type: "boolean", const: false },
+        promotionStatus: { type: "string", const: "blocked" },
+        currentAuthority: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            gateway: { type: "string", const: "node" },
+            scheduler: { type: "string", const: "node" },
+            workflows: { type: "string", const: "node" },
+            channels: { type: "string", const: "node" },
+            sessions: { type: "string", const: "node" },
+            executive: { type: "string", const: "shadow-only" },
+          },
+          required: ["gateway", "scheduler", "workflows", "channels", "sessions", "executive"],
+        },
+        nodeResponsibilities: { type: "array", items: { type: "string" } },
+        rustResponsibilities: { type: "array", items: { type: "string" } },
+        persistenceModel: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            snapshotFile: { type: "string" },
+            journalFile: { type: "string" },
+            restartRecovery: { type: "string" },
+            leaseRecovery: { type: "string" },
+          },
+          required: ["snapshotFile", "journalFile", "restartRecovery", "leaseRecovery"],
+        },
+        promotionGates: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: { type: "string" },
+              status: { type: "string", const: "blocked" },
+              owner: { type: "string" },
+              requiredProof: { type: "array", items: { type: "string" } },
+            },
+            required: ["id", "status", "owner", "requiredProof"],
+          },
+        },
+      },
+      required: [
+        "mode",
+        "authoritySwitchAllowed",
+        "promotionStatus",
+        "currentAuthority",
+        "nodeResponsibilities",
+        "rustResponsibilities",
+        "persistenceModel",
+        "promotionGates",
+      ],
     },
     ExecutiveShadowOk: {
       type: "object",

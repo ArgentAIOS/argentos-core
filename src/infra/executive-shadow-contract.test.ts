@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   executiveShadowHealthSchema,
   executiveShadowJournalSchema,
+  executiveShadowKernelReadinessSchema,
   executiveShadowMetricsSchema,
   executiveShadowOkSchema,
   executiveShadowStateEnvelopeSchema,
@@ -99,6 +100,70 @@ describe("executive shadow contract schemas", () => {
       },
     ]);
     expect(payload).toHaveLength(3);
+  });
+
+  it("accepts the fail-closed kernel readiness payload", () => {
+    const payload = executiveShadowKernelReadinessSchema.parse({
+      mode: "shadow-readiness",
+      authoritySwitchAllowed: false,
+      promotionStatus: "blocked",
+      currentAuthority: {
+        gateway: "node",
+        scheduler: "node",
+        workflows: "node",
+        channels: "node",
+        sessions: "node",
+        executive: "shadow-only",
+      },
+      nodeResponsibilities: ["gateway live authority"],
+      rustResponsibilities: ["executive shadow state"],
+      persistenceModel: {
+        snapshotFile: "executive-state.json",
+        journalFile: "executive.journal.jsonl",
+        restartRecovery: "snapshot-plus-journal-replay",
+        leaseRecovery: "tick-expiry-before-promotion",
+      },
+      promotionGates: [
+        {
+          id: "authority-boundary",
+          status: "blocked",
+          owner: "master-operator",
+          requiredProof: ["no live authority switch"],
+        },
+      ],
+    });
+
+    expect(payload.authoritySwitchAllowed).toBe(false);
+    expect(payload.currentAuthority.gateway).toBe("node");
+    expect(payload.currentAuthority.executive).toBe("shadow-only");
+    expect(payload.promotionGates.every((gate) => gate.status === "blocked")).toBe(true);
+  });
+
+  it("rejects readiness payloads that imply promotion", () => {
+    expect(() =>
+      executiveShadowKernelReadinessSchema.parse({
+        mode: "shadow-readiness",
+        authoritySwitchAllowed: true,
+        promotionStatus: "ready",
+        currentAuthority: {
+          gateway: "rust",
+          scheduler: "node",
+          workflows: "node",
+          channels: "node",
+          sessions: "node",
+          executive: "shadow-only",
+        },
+        nodeResponsibilities: [],
+        rustResponsibilities: [],
+        persistenceModel: {
+          snapshotFile: "executive-state.json",
+          journalFile: "executive.journal.jsonl",
+          restartRecovery: "snapshot-plus-journal-replay",
+          leaseRecovery: "tick-expiry-before-promotion",
+        },
+        promotionGates: [],
+      }),
+    ).toThrow();
   });
 
   it("accepts the generic ok response", () => {

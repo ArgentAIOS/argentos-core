@@ -3,11 +3,13 @@ import {
   EXECUTIVE_SHADOW_DEFAULT_TIMEOUT_MS,
   executiveShadowHealthSchema,
   executiveShadowJournalSchema,
+  executiveShadowKernelReadinessSchema,
   executiveShadowMetricsSchema,
   executiveShadowOkSchema,
   executiveShadowStateEnvelopeSchema,
   type ExecutiveShadowHealth,
   type ExecutiveShadowJournalRecord,
+  type ExecutiveShadowKernelReadiness,
   type ExecutiveShadowLaneRelease,
   type ExecutiveShadowLaneRequest,
   type ExecutiveShadowMetrics,
@@ -26,6 +28,7 @@ export {
 export type {
   ExecutiveShadowHealth,
   ExecutiveShadowJournalRecord,
+  ExecutiveShadowKernelReadiness,
   ExecutiveShadowLaneRelease,
   ExecutiveShadowLaneRequest,
   ExecutiveShadowMetrics,
@@ -101,6 +104,10 @@ export class ExecutiveShadowClient {
 
   async getMetrics(): Promise<ExecutiveShadowMetrics> {
     return this.requestJson("/v1/executive/metrics", executiveShadowMetricsSchema);
+  }
+
+  async getReadiness(): Promise<ExecutiveShadowKernelReadiness> {
+    return this.requestJson("/v1/executive/readiness", executiveShadowKernelReadinessSchema);
   }
 
   async experimentalRequestLane(request: ExecutiveShadowLaneRequest): Promise<{ ok: true }> {
