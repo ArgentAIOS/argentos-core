@@ -58,6 +58,18 @@ describe("rust gateway parity fixtures", () => {
     expect(summary.replayable + summary.unsafe).toBe(summary.total);
   });
 
+  it("promotes status to schema-compatible read-only evidence", () => {
+    const statusFixture = RUST_GATEWAY_INITIAL_PARITY_FIXTURES.find(
+      (fixture) => fixture.id === "rpc-status",
+    );
+
+    expect(statusFixture).toMatchObject({
+      method: "status",
+      safety: "read-only",
+      expectedParity: "schema-compatible",
+    });
+  });
+
   it("refuses to replay unsafe fixtures", () => {
     const unsafe: RustGatewayParityFixture[] = [
       {

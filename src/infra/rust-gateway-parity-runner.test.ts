@@ -67,6 +67,31 @@ describe("runRustGatewayParityReplay", () => {
     expect(report.results[0]?.notes.join(" ")).toContain("schema/payload");
   });
 
+  it("passes status fixtures when read-only summary fields are present", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "status",
+        method: "status",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      frame(endpoint, true, {
+        heartbeat: { defaultAgentId: "main", agents: [] },
+        sessions: { paths: [], count: 0, defaults: {}, recent: [], byAgent: [] },
+        channelSummary: [],
+        queuedSystemEvents: [],
+      });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals).toEqual({ passed: 1, failed: 0, skipped: 0 });
+    expect(report.results[0]?.observedParity).toBe("schema-compatible");
+    expect(report.results[0]?.notes.join(" ")).toContain("status payload includes");
+  });
+
   it("passes mock-compatible fixtures but marks them as non-promotion evidence", async () => {
     const fixtures: RustGatewayParityFixture[] = [
       {

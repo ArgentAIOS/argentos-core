@@ -87,9 +87,9 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     surface: "status",
     method: "status",
     safety: "read-only",
-    expectedParity: "mock-compatible",
+    expectedParity: "schema-compatible",
     reason:
-      "Rust reports a synthetic gateway status and queued event view; Node remains live truth.",
+      "Status must expose a schema-compatible read-only summary while Node remains live truth.",
   },
   {
     id: "rpc-system-presence",

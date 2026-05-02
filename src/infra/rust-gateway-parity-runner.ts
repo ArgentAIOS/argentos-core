@@ -283,6 +283,16 @@ const schemaPayloadValidators: Record<string, PayloadValidator | undefined> = {
       ]),
     "health payload includes ok, durationMs, and defaultAgentId",
   ),
+  status: withDescription(
+    (payload) =>
+      validateObject(payload, [
+        ["heartbeat", "object"],
+        ["sessions", "object"],
+        ["channelSummary", "array"],
+        ["queuedSystemEvents", "array"],
+      ]),
+    "status payload includes heartbeat, sessions, channelSummary, and queuedSystemEvents",
+  ),
   "system-presence": withDescription(
     (payload) => (Array.isArray(payload) ? { ok: true } : { ok: false, error: "not an array" }),
     "presence payload is an array",
@@ -302,7 +312,7 @@ function withDescription(
 
 function validateObject(
   value: unknown,
-  fields: Array<[key: string, type: "string" | "number" | "boolean" | "object"]>,
+  fields: Array<[key: string, type: "string" | "number" | "boolean" | "object" | "array"]>,
 ): PayloadValidation {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { ok: false, error: "not an object" };
@@ -310,6 +320,12 @@ function validateObject(
   const record = value as Record<string, unknown>;
   for (const [key, type] of fields) {
     const field = record[key];
+    if (type === "array") {
+      if (!Array.isArray(field)) {
+        return { ok: false, error: `${key} is not an array` };
+      }
+      continue;
+    }
     if (type === "object") {
       if (!field || typeof field !== "object" || Array.isArray(field)) {
         return { ok: false, error: `${key} is not an object` };
