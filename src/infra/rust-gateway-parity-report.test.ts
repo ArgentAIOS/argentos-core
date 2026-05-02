@@ -199,6 +199,12 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
       authoritySwitchAllowed: false,
       fixtures: [],
     });
+    expect(summary.noLiveSafetyGateFixtures).toMatchObject({
+      mode: "synthetic-read-only",
+      liveTrafficAllowed: false,
+      authoritySwitchAllowed: false,
+      fixtures: [],
+    });
     expect(summary.authoritySwitchChecklist).toMatchObject({
       status: "blocked",
       authoritySwitchAllowed: false,
@@ -366,6 +372,26 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
         ]),
       }),
     ]);
+    expect(summary.noLiveSafetyGateFixtures.fixtures).toEqual([
+      expect.objectContaining({
+        fixtureId: "rust-no-live-safety-chat-send",
+        surface: "chat.send",
+        status: "blocked",
+        syntheticOnly: true,
+        rollbackGate: expect.arrayContaining([
+          "Node chat.send path is health-checked before any Rust canary send authorization",
+        ]),
+        duplicatePreventionGate: expect.arrayContaining([
+          "same chat request id cannot be accepted by both Node and Rust live send paths",
+        ]),
+        tokenAuthGate: expect.arrayContaining([
+          "expired token and revoked role behavior match before any live send traffic",
+        ]),
+        noLiveProof: expect.arrayContaining([
+          "no chat.send RPC is replayed by the Rust parity runner",
+        ]),
+      }),
+    ]);
   });
 
   it("builds synthetic blocked gate fixtures for all unsafe promotion surfaces", () => {
@@ -433,6 +459,102 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
     expect(summary.authoritySwitchChecklist.requiredBeforePromotion).toContain(
       "duplicate-prevention gates cover workflow, session, run, timer, and channel split-brain cases",
     );
+  });
+
+  it("builds no-live safety fixtures for rollback duplicate and token gates", () => {
+    const summary = buildRustGatewayPromotionReadinessSummary({
+      generatedAtMs: 0,
+      totals: { passed: 0, failed: 0, skipped: 3 },
+      results: [
+        {
+          fixtureId: "chat-send",
+          method: "chat.send",
+          safety: "unsafe",
+          expectedParity: "unsafe",
+          observedParity: "skipped",
+          status: "skipped",
+          nodeOk: null,
+          rustOk: null,
+          notes: [],
+        },
+        {
+          fixtureId: "cron-add",
+          method: "cron.add",
+          safety: "unsafe",
+          expectedParity: "unsafe",
+          observedParity: "skipped",
+          status: "skipped",
+          nodeOk: null,
+          rustOk: null,
+          notes: [],
+        },
+        {
+          fixtureId: "workflows-run",
+          method: "workflows.run",
+          safety: "unsafe",
+          expectedParity: "unsafe",
+          observedParity: "skipped",
+          status: "skipped",
+          nodeOk: null,
+          rustOk: null,
+          notes: [],
+        },
+      ],
+    });
+
+    expect(summary.noLiveSafetyGateFixtures).toMatchObject({
+      mode: "synthetic-read-only",
+      liveTrafficAllowed: false,
+      authoritySwitchAllowed: false,
+    });
+    expect(summary.noLiveSafetyGateFixtures.fixtures.map((fixture) => fixture.fixtureId)).toEqual([
+      "rust-no-live-safety-chat-send",
+      "rust-no-live-safety-cron-add",
+      "rust-no-live-safety-workflows-run",
+    ]);
+    expect(summary.noLiveSafetyGateFixtures.fixtures).toEqual([
+      expect.objectContaining({
+        surface: "chat.send",
+        rollbackGate: expect.arrayContaining([
+          "rollback packet includes Node fallback command and chat.send health probe",
+        ]),
+        duplicatePreventionGate: expect.arrayContaining([
+          "audit trail records rejected duplicate authority attempts before user-visible send",
+        ]),
+        tokenAuthGate: expect.arrayContaining([
+          "accepted send token scope matches Node role and workspace policy",
+        ]),
+      }),
+      expect.objectContaining({
+        surface: "cron.add",
+        rollbackGate: expect.arrayContaining([
+          "rollback packet includes cron.status and next-run health probes",
+        ]),
+        duplicatePreventionGate: expect.arrayContaining([
+          "same schedule key cannot become live in both Node and Rust stores",
+        ]),
+        tokenAuthGate: expect.arrayContaining([
+          "expired token and revoked scheduler role behavior match before live timer mutation",
+        ]),
+      }),
+      expect.objectContaining({
+        surface: "workflows.run",
+        rollbackGate: expect.arrayContaining([
+          "rollback packet includes workflow status, run detail, and terminal-state probes",
+        ]),
+        duplicatePreventionGate: expect.arrayContaining([
+          "artifact and ledger writes reject split-brain run ownership before persistence",
+        ]),
+        tokenAuthGate: expect.arrayContaining([
+          "rejected workflow-run token scope matches Node denial envelope",
+        ]),
+      }),
+    ]);
+    for (const fixture of summary.noLiveSafetyGateFixtures.fixtures) {
+      expect(fixture.noLiveProof).toContain(
+        "fixture is generated from skipped unsafe parity metadata only",
+      );
+    }
   });
 });
 
