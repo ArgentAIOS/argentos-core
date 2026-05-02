@@ -470,6 +470,96 @@ function managerInstallArgs(manager: "pnpm" | "bun" | "npm", frozen = false) {
   return frozen ? ["npm", "ci"] : ["npm", "install"];
 }
 
+function managerRelinkArgs(manager: "pnpm" | "bun" | "npm") {
+  if (manager === "pnpm") {
+    return ["pnpm", "install", "--force", "--frozen-lockfile"];
+  }
+  return null;
+}
+
+function shouldRepairPnpmInstall(manager: "pnpm" | "bun" | "npm", failedStep: UpdateStepResult) {
+  if (manager !== "pnpm" || failedStep.exitCode === 0) {
+    return false;
+  }
+  const output = `${failedStep.stderrTail ?? ""}\n${failedStep.stdoutTail ?? ""}`;
+  return output.includes("MODULE_NOT_FOUND") || output.includes("Cannot find module");
+}
+
+async function runStepWithPnpmRelinkRetry(params: {
+  name: string;
+  argv: string[];
+  cwd: string;
+  manager: "pnpm" | "bun" | "npm";
+  steps: UpdateStepResult[];
+  runCommand: CommandRunner;
+  timeoutMs: number;
+  progress?: UpdateStepProgress;
+  stepIndex: number;
+  totalSteps: number;
+  env?: NodeJS.ProcessEnv;
+}) {
+  let result = await runStep({
+    runCommand: params.runCommand,
+    name: params.name,
+    argv: params.argv,
+    cwd: params.cwd,
+    timeoutMs: params.timeoutMs,
+    env: params.env,
+    progress: params.progress,
+    stepIndex: params.stepIndex,
+    totalSteps: params.totalSteps,
+  });
+  params.steps.push(result);
+
+  if (!shouldRepairPnpmInstall(params.manager, result)) {
+    return result;
+  }
+
+  const relinkArgs = managerRelinkArgs(params.manager);
+  if (!relinkArgs) {
+    return result;
+  }
+
+  const relinkStep = await runStep({
+    runCommand: params.runCommand,
+    name: "deps relink",
+    argv: relinkArgs,
+    cwd: params.cwd,
+    timeoutMs: params.timeoutMs,
+    progress: params.progress,
+    stepIndex: params.stepIndex,
+    totalSteps: params.totalSteps,
+  });
+  params.steps.push(relinkStep);
+
+  if (relinkStep.exitCode !== 0) {
+    return result;
+  }
+
+  result = await runStep({
+    runCommand: params.runCommand,
+    name: `${params.name} retry`,
+    argv: params.argv,
+    cwd: params.cwd,
+    timeoutMs: params.timeoutMs,
+    env: params.env,
+    progress: params.progress,
+    stepIndex: params.stepIndex,
+    totalSteps: params.totalSteps,
+  });
+  params.steps.push(result);
+  return result;
+}
+
+function isRecoveredStepFailure(step: UpdateStepResult, allSteps: UpdateStepResult[]) {
+  if (step.exitCode === 0) {
+    return false;
+  }
+  return allSteps.some(
+    (candidate) => candidate.name === `${step.name} retry` && candidate.exitCode === 0,
+  );
+}
+
 function dashboardViteBuildArgs(manager: "pnpm" | "bun" | "npm") {
   if (manager === "pnpm") {
     return ["pnpm", "exec", "vite", "build"];
@@ -1014,22 +1104,26 @@ export async function runGatewayUpdate(opts: UpdateRunnerOptions = {}): Promise<
       steps.push(snapshotStep);
     }
 
-    const setupStep = await runStep(
-      step("workspace setup", managerScriptArgs(manager, "argent", ["setup"]), gitRoot),
-    );
-    steps.push(setupStep);
+    await runStepWithPnpmRelinkRetry({
+      ...step("workspace setup", managerScriptArgs(manager, "argent", ["setup"]), gitRoot),
+      manager,
+      steps,
+    });
 
-    const doctorStep = await runStep(
-      step(
+    await runStepWithPnpmRelinkRetry({
+      ...step(
         "argent doctor",
         managerScriptArgs(manager, "argent", ["doctor", "--non-interactive", "--repair"]),
         gitRoot,
         { ARGENT_UPDATE_IN_PROGRESS: "1" },
       ),
-    );
-    steps.push(doctorStep);
+      manager,
+      steps,
+    });
 
-    const failedStep = steps.slice(installStepStart).find((s) => s.exitCode !== 0);
+    const failedStep = steps
+      .slice(installStepStart)
+      .find((s) => s.exitCode !== 0 && !isRecoveredStepFailure(s, steps));
     const afterShaStep = await runStep(
       step("git rev-parse HEAD (after)", ["git", "-C", gitRoot, "rev-parse", "HEAD"], gitRoot),
     );
