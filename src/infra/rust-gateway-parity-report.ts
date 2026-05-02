@@ -206,6 +206,36 @@ export type RustGatewayPromotionReadinessSummary = {
     }>;
     remainingBeforeAuthoritySwitch: string[];
   };
+  receiptAuditStorageProof: {
+    mode: "synthetic-read-only";
+    liveTrafficAllowed: false;
+    authoritySwitchAllowed: false;
+    auditStore: {
+      status: "blocked";
+      owner: "master-operator";
+      requiredFields: string[];
+      redactionProof: string[];
+      retentionProof: string[];
+      retrievalProof: string[];
+    };
+    fixtureLinks: Array<{
+      sourceFixtureId: string;
+      surface: "chat.send" | "cron.add" | "workflows.run";
+      auditRecordType:
+        | "failed-promotion"
+        | "denied-method"
+        | "rollback-required"
+        | "duplicate-prevention";
+      requiredReceiptCodes: Array<
+        | "RUST_CANARY_DENIED"
+        | "RUST_CANARY_SCOPE_DENIED"
+        | "RUST_CANARY_ROLLBACK_REQUIRED"
+        | "RUST_CANARY_DUPLICATE_PREVENTED"
+      >;
+      noLiveProof: string[];
+    }>;
+    remainingBeforeAuthoritySwitch: string[];
+  };
   authoritySwitchChecklist: {
     status: "blocked";
     authoritySwitchAllowed: false;
@@ -341,6 +371,7 @@ export function buildRustGatewayPromotionReadinessSummary(
     failedAuthTokenParity,
     authPolicyAndCanaryScopeMatrix: buildAuthPolicyAndCanaryScopeMatrix(groups),
     rollbackDeniedMethodReceiptFixtures: buildRollbackDeniedMethodReceiptFixtures(groups),
+    receiptAuditStorageProof: buildReceiptAuditStorageProof(groups),
     authoritySwitchChecklist: buildAuthoritySwitchChecklist(),
     duplicatePrevention,
     gates: buildPromotionGateStatuses(
@@ -362,6 +393,107 @@ export function buildRustGatewayPromotionReadinessSummary(
     ],
     blockers: readiness.blockers,
     warnings: readiness.warnings,
+  };
+}
+
+function buildReceiptAuditStorageProof(
+  groups: RustGatewayParityReportGroups,
+): RustGatewayPromotionReadinessSummary["receiptAuditStorageProof"] {
+  const unsafeMethods = new Set(groups.unsafeBlocked.map((result) => result.method));
+  const fixtureLinks: RustGatewayPromotionReadinessSummary["receiptAuditStorageProof"]["fixtureLinks"] =
+    [
+      {
+        sourceFixtureId: "rust-denied-receipt-chat-send",
+        surface: "chat.send",
+        auditRecordType: "failed-promotion",
+        requiredReceiptCodes: [
+          "RUST_CANARY_DENIED",
+          "RUST_CANARY_SCOPE_DENIED",
+          "RUST_CANARY_ROLLBACK_REQUIRED",
+          "RUST_CANARY_DUPLICATE_PREVENTED",
+        ],
+        noLiveProof: [
+          "audit proof links to synthetic chat.send receipt metadata only",
+          "no chat.send receipt is written to a live audit store",
+          "Node remains live chat authority and Rust remains shadow-only",
+        ],
+      },
+      {
+        sourceFixtureId: "rust-denied-receipt-cron-add",
+        surface: "cron.add",
+        auditRecordType: "rollback-required",
+        requiredReceiptCodes: [
+          "RUST_CANARY_DENIED",
+          "RUST_CANARY_SCOPE_DENIED",
+          "RUST_CANARY_ROLLBACK_REQUIRED",
+          "RUST_CANARY_DUPLICATE_PREVENTED",
+        ],
+        noLiveProof: [
+          "audit proof links to synthetic cron.add receipt metadata only",
+          "no scheduler receipt is written to a live audit store",
+          "Node remains live scheduler authority and Rust remains shadow-only",
+        ],
+      },
+      {
+        sourceFixtureId: "rust-denied-receipt-workflows-run",
+        surface: "workflows.run",
+        auditRecordType: "duplicate-prevention",
+        requiredReceiptCodes: [
+          "RUST_CANARY_DENIED",
+          "RUST_CANARY_SCOPE_DENIED",
+          "RUST_CANARY_ROLLBACK_REQUIRED",
+          "RUST_CANARY_DUPLICATE_PREVENTED",
+        ],
+        noLiveProof: [
+          "audit proof links to synthetic workflows.run receipt metadata only",
+          "no workflow receipt is written to a live audit store",
+          "Node remains live workflow authority and Rust remains shadow-only",
+        ],
+      },
+    ].filter((fixture) => unsafeMethods.has(fixture.surface));
+
+  return {
+    mode: "synthetic-read-only",
+    liveTrafficAllowed: false,
+    authoritySwitchAllowed: false,
+    auditStore: {
+      status: "blocked",
+      owner: "master-operator",
+      requiredFields: [
+        "auditRecordId",
+        "receiptId",
+        "sourceFixtureId",
+        "surface",
+        "receiptCode",
+        "nodeAuthority",
+        "rustAuthority",
+        "tokenMaterialRedacted",
+        "authoritySwitchAllowed",
+        "createdAtMs",
+      ],
+      redactionProof: [
+        "token material must be absent from stored audit records",
+        "operator/user/customer identifiers must be hashed or omitted unless explicitly approved",
+        "stored receipt payload must preserve structured error code without raw request body",
+      ],
+      retentionProof: [
+        "audit record retention and pruning policy is named before live canary",
+        "rollback receipts survive Rust canary disablement long enough for Master review",
+        "audit records are excluded from bus logs and raw output dumps",
+      ],
+      retrievalProof: [
+        "receipt lookup by receiptId returns the stored redacted record",
+        "receipt lookup by surface can prove denied-method and rollback coverage",
+        "missing receipt lookup returns a Node-compatible not-found envelope",
+      ],
+    },
+    fixtureLinks,
+    remainingBeforeAuthoritySwitch: [
+      "durable audit store selected and approved by Master/operator",
+      "real denied-method and rollback receipts are stored before mutation",
+      "receipt retrieval proves redaction and Node fallback authority after rollback",
+      "duplicate-prevention receipt can be queried during promotion review",
+    ],
   };
 }
 
