@@ -24,6 +24,8 @@ The Workflows threadmaster is also acting as the master threadmaster for core co
 
 Suggested poll cadence for active autonomous lanes: every few minutes while editing shared files, and always immediately before rebase, commit, push, or handoff.
 
+Checkpoint cadence: prefer small, verified checkpoints to `origin/dev` over large multi-lane batch merges. When a slice is clean, rebased on latest `origin/dev`, verified, truth-labeled, and safe for `argent update`, move it through custody and land it with the next dev version instead of waiting for unrelated lanes. READY packets should not sit while another lane is stale; keep clean packets moving and open rescue/escalation tasks for the stale lane. Every checkpoint must say what is enabled, what remains dry-run/shadow/deferred, and what is explicitly not live.
+
 For targeted lane-to-lane messages, prefer the threadmaster bus:
 
 ```sh
@@ -69,6 +71,7 @@ Bus docs: `ops/threadmaster-bus/README.md`.
 ## Current Cross-Lane Contracts
 
 - Dev version contract: every successful `origin/dev` push must include a unique root `package.json` version using `YYYY.M.D-dev.N` in America/Chicago time. Start each new date at `dev.0`, increment `N` for every later push that day, and recompute after fetch/rebase if another lane landed first. Display/tag form may use `vYYYY.M.D-dev.N`; `package.json` stores no `v`.
+- Dev checkpoint cadence contract: land small, verified, safe checkpoints to `origin/dev` as soon as they are custody-clean. Do not batch unrelated lane work into giant merges. Do not block clean READY packets behind stale lanes. Use rescue tasks for stale/blocking lanes, and preserve explicit truth labels for dry-run, shadow-only, deferred, no-live-side-effect, and not-authorized surfaces.
 - AppForge -> Workflows: canonical local events through `workflows.emitAppForgeEvent`.
 - Workflows -> AppForge: metadata/capability discovery only. Do not couple to AppForge UI internals.
 - AOS connectors -> Workflows/AppForge: connector manifests, permissions, and capabilities are the source of truth.
