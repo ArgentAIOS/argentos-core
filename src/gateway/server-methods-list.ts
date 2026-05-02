@@ -38,6 +38,8 @@ const BASE_METHODS = [
   "models.list",
   "connectors.catalog",
   "agents.list",
+  "agents.profile.get",
+  "agents.profile.update",
   "family.members",
   "family.register",
   "agents.files.list",

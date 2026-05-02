@@ -40,6 +40,8 @@ export type RedactedAuthProfileStoreSummary = {
   providerStats: string[];
 };
 
+const SECRET_KEY_RE = /^(?:apiKey|key|token|secret|password|refresh|refreshToken|accessToken)$/i;
+
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -92,6 +94,30 @@ export function resolveEffectiveAgentTtsProfile(
     ...(agent ? { agent } : {}),
     source: agent ? "agent" : "global",
   };
+}
+
+function redactTtsValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactTtsValue);
+  }
+  if (!isPlainRecord(value)) {
+    return structuredClone(value);
+  }
+  const redacted: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (SECRET_KEY_RE.test(key)) {
+      continue;
+    }
+    redacted[key] = redactTtsValue(child);
+  }
+  return redacted;
+}
+
+export function redactTtsConfig(config: TtsConfig | undefined): TtsConfig | undefined {
+  if (!config) {
+    return undefined;
+  }
+  return redactTtsValue(config) as TtsConfig;
 }
 
 function credentialEmail(credential: AuthProfileCredential): string | undefined {

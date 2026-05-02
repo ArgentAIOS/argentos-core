@@ -3,6 +3,7 @@ import type { ArgentConfig } from "../config/config.js";
 import type { AuthProfileStore } from "./auth-profiles.js";
 import {
   mergeTtsConfig,
+  redactTtsConfig,
   resolveEffectiveAgentTtsProfile,
   summarizeAuthProfileStore,
 } from "./agent-profile.js";
@@ -74,6 +75,38 @@ describe("agent profile foundation", () => {
       providers: {
         elevenlabs: { apiKey: "shared", voiceId: "shared-voice" },
         fish: { voiceId: "sam-fish" },
+      },
+    });
+  });
+
+  it("redacts TTS provider secrets while preserving voice metadata", () => {
+    const redacted = redactTtsConfig({
+      provider: "elevenlabs",
+      elevenlabs: {
+        apiKey: "secret-elevenlabs",
+        voiceId: "voice-1",
+        modelId: "eleven_multilingual_v2",
+      },
+      providers: {
+        custom: {
+          token: "secret-token",
+          voiceId: "voice-2",
+          nested: { refreshToken: "secret-refresh", modelId: "model-2" },
+        },
+      },
+    });
+
+    expect(JSON.stringify(redacted)).not.toContain("secret-elevenlabs");
+    expect(JSON.stringify(redacted)).not.toContain("secret-token");
+    expect(JSON.stringify(redacted)).not.toContain("secret-refresh");
+    expect(redacted).toMatchObject({
+      provider: "elevenlabs",
+      elevenlabs: { voiceId: "voice-1", modelId: "eleven_multilingual_v2" },
+      providers: {
+        custom: {
+          voiceId: "voice-2",
+          nested: { modelId: "model-2" },
+        },
       },
     });
   });

@@ -2243,6 +2243,7 @@ type TabType =
   | "authprofiles"
   | "channels"
   | "capabilities"
+  | "persona"
   | "agent"
   | "intent"
   | "knowledge"
@@ -3143,6 +3144,69 @@ export function ConfigPanel({
     id: string;
     label: string;
   }
+  interface AgentProfileTtsConfig {
+    provider?: string;
+    persona?: string;
+    fallbackOrder?: string[];
+    personas?: Record<
+      string,
+      {
+        label?: string;
+        description?: string;
+        provider?: string;
+        prompt?: {
+          profile?: string;
+          scene?: string;
+          sampleContext?: string;
+          style?: string;
+          accent?: string;
+          pacing?: string;
+          constraints?: string[];
+        };
+      }
+    >;
+    elevenlabs?: { voiceId?: string; modelId?: string };
+    openai?: { voice?: string; model?: string };
+    edge?: { voice?: string; lang?: string };
+  }
+  interface AgentProfileResponse {
+    agentId: string;
+    defaultAgentId?: string;
+    availableAgents?: AgentOption[];
+    profile?: {
+      id?: string;
+      name?: string;
+      workspace?: string;
+      agentDir?: string;
+      identity?: {
+        name?: string;
+        theme?: string;
+        emoji?: string;
+        avatar?: string;
+        avatarUrl?: string;
+      };
+    };
+    tts?: {
+      source?: "global" | "agent";
+      effective?: AgentProfileTtsConfig;
+      global?: AgentProfileTtsConfig;
+      agent?: AgentProfileTtsConfig;
+    };
+    auth?: {
+      profileCount?: number;
+      profiles?: Array<{
+        id: string;
+        provider: string;
+        type: string;
+        email?: string;
+        metadataKeys?: string[];
+        available: boolean;
+        lastGoodForProviders?: string[];
+      }>;
+      order?: Record<string, string[]>;
+      providerStats?: string[];
+    };
+  }
   interface AgentRawConfigResponse {
     path?: string;
     raw?: string;
@@ -3312,6 +3376,21 @@ export function ConfigPanel({
   });
   const [defaultAgentId, setDefaultAgentId] = useState("main");
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([]);
+  const [personaAgentId, setPersonaAgentId] = useState("");
+  const [agentProfile, setAgentProfile] = useState<AgentProfileResponse | null>(null);
+  const [agentProfileLoading, setAgentProfileLoading] = useState(false);
+  const [agentProfileSaving, setAgentProfileSaving] = useState(false);
+  const [agentProfileMessage, setAgentProfileMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [personaProvider, setPersonaProvider] = useState("");
+  const [personaIdDraft, setPersonaIdDraft] = useState("default");
+  const [personaLabelDraft, setPersonaLabelDraft] = useState("");
+  const [personaDescriptionDraft, setPersonaDescriptionDraft] = useState("");
+  const [personaStyleDraft, setPersonaStyleDraft] = useState("");
+  const [personaVoiceIdDraft, setPersonaVoiceIdDraft] = useState("");
+  const [personaVoiceModelDraft, setPersonaVoiceModelDraft] = useState("");
   const [imagePrimaryRef, setImagePrimaryRef] = useState("google/gemini-3-flash-preview");
   const [imageFallbackRefsDraft, setImageFallbackRefsDraft] = useState(
     "anthropic/claude-sonnet-4-6",
@@ -4075,6 +4154,135 @@ export function ConfigPanel({
     [gatewayRequest, defaultAgentId, capabilitiesAgentId],
   );
 
+  const applyAgentProfileDrafts = useCallback((payload: AgentProfileResponse) => {
+    const agentTts = payload.tts?.agent ?? {};
+    const effectiveTts = payload.tts?.effective ?? {};
+    const activePersona = agentTts.persona || effectiveTts.persona || "default";
+    const personaConfig =
+      agentTts.personas?.[activePersona] ?? effectiveTts.personas?.[activePersona];
+    setPersonaProvider(agentTts.provider || effectiveTts.provider || "");
+    setPersonaIdDraft(activePersona);
+    setPersonaLabelDraft(personaConfig?.label || "");
+    setPersonaDescriptionDraft(personaConfig?.description || "");
+    setPersonaStyleDraft(personaConfig?.prompt?.style || "");
+    setPersonaVoiceIdDraft(agentTts.elevenlabs?.voiceId || effectiveTts.elevenlabs?.voiceId || "");
+    setPersonaVoiceModelDraft(
+      agentTts.elevenlabs?.modelId || effectiveTts.elevenlabs?.modelId || "",
+    );
+  }, []);
+
+  const loadAgentProfile = useCallback(
+    async (requestedAgentId?: string) => {
+      if (!gatewayRequest) {
+        setAgentProfile(null);
+        setAgentProfileMessage({
+          type: "error",
+          text: "Agent Profile unavailable: gateway request bridge is not connected.",
+        });
+        return;
+      }
+      const targetAgentId =
+        requestedAgentId?.trim() ||
+        personaAgentId.trim() ||
+        defaultAgentId.trim() ||
+        agentOptions[0]?.id ||
+        "main";
+      setAgentProfileLoading(true);
+      setAgentProfileMessage(null);
+      try {
+        const payload = await gatewayRequest<AgentProfileResponse>("agents.profile.get", {
+          agentId: targetAgentId,
+        });
+        setAgentProfile(payload);
+        const options = Array.isArray(payload.availableAgents) ? payload.availableAgents : [];
+        if (options.length > 0) {
+          setAgentOptions(options);
+        }
+        const nextDefault =
+          typeof payload.defaultAgentId === "string" && payload.defaultAgentId.trim()
+            ? payload.defaultAgentId.trim()
+            : defaultAgentId || "main";
+        setDefaultAgentId(nextDefault);
+        setPersonaAgentId(payload.agentId || targetAgentId || nextDefault);
+        applyAgentProfileDrafts(payload);
+      } catch (err) {
+        console.error("[Agent Profile] Failed to load profile:", err);
+        setAgentProfileMessage({
+          type: "error",
+          text: `Failed to load Agent Profile: ${err instanceof Error ? err.message : "request failed"}`,
+        });
+      } finally {
+        setAgentProfileLoading(false);
+      }
+    },
+    [applyAgentProfileDrafts, agentOptions, defaultAgentId, gatewayRequest, personaAgentId],
+  );
+
+  const saveAgentProfileVoice = useCallback(async () => {
+    if (!gatewayRequest) {
+      setAgentProfileMessage({
+        type: "error",
+        text: "Agent Profile unavailable: gateway request bridge is not connected.",
+      });
+      return;
+    }
+    const targetAgentId =
+      personaAgentId.trim() || agentProfile?.agentId || defaultAgentId || "main";
+    const personaId = personaIdDraft.trim() || "default";
+    setAgentProfileSaving(true);
+    setAgentProfileMessage(null);
+    try {
+      const payload = await gatewayRequest<AgentProfileResponse>("agents.profile.update", {
+        agentId: targetAgentId,
+        tts: {
+          provider: personaProvider.trim() || undefined,
+          persona: personaId,
+          personas: {
+            [personaId]: {
+              label: personaLabelDraft.trim() || undefined,
+              description: personaDescriptionDraft.trim() || undefined,
+              provider: personaProvider.trim() || undefined,
+              prompt: {
+                style: personaStyleDraft.trim() || undefined,
+              },
+            },
+          },
+          elevenlabs: {
+            voiceId: personaVoiceIdDraft.trim() || undefined,
+            modelId: personaVoiceModelDraft.trim() || undefined,
+          },
+        },
+      });
+      setAgentProfile(payload);
+      applyAgentProfileDrafts(payload);
+      setAgentProfileMessage({
+        type: "success",
+        text: `Saved Agent Persona settings for ${payload.agentId || targetAgentId}.`,
+      });
+    } catch (err) {
+      console.error("[Agent Profile] Failed to save profile:", err);
+      setAgentProfileMessage({
+        type: "error",
+        text: `Failed to save Agent Persona: ${err instanceof Error ? err.message : "request failed"}`,
+      });
+    } finally {
+      setAgentProfileSaving(false);
+    }
+  }, [
+    agentProfile?.agentId,
+    applyAgentProfileDrafts,
+    defaultAgentId,
+    gatewayRequest,
+    personaAgentId,
+    personaDescriptionDraft,
+    personaIdDraft,
+    personaLabelDraft,
+    personaProvider,
+    personaStyleDraft,
+    personaVoiceIdDraft,
+    personaVoiceModelDraft,
+  ]);
+
   const loadExecutionWorkerRuntime = useCallback(async () => {
     if (!gatewayRequest) return;
     setWorkerRuntimeLoading(true);
@@ -4578,6 +4786,12 @@ export function ConfigPanel({
     // Intentionally only refresh on tab/open transitions; manual refresh is user-driven.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, activeTab]);
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== "persona") return;
+    void loadAgentProfile(personaAgentId || defaultAgentId);
+    // Intentionally only refresh on tab/open transitions and target changes.
+  }, [isOpen, activeTab, loadAgentProfile, personaAgentId, defaultAgentId]);
 
   useEffect(() => {
     if (!isOpen || activeTab !== "knowledge") return;
@@ -7269,6 +7483,7 @@ export function ConfigPanel({
     {
       label: "System",
       items: [
+        { id: "persona" as TabType, label: "Agent Persona", icon: User, defaultView: true },
         { id: "agent" as TabType, label: "Agent", icon: Brain },
         { id: "systems" as TabType, label: "Systems", icon: Package, defaultView: true },
         { id: "capabilities" as TabType, label: "Capabilities", icon: Wrench },
@@ -11823,6 +12038,246 @@ export function ConfigPanel({
                               ))}
                             </div>
                           )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === "persona" && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div>
+                        <div className="text-white/80 text-sm font-medium">Agent Profile</div>
+                        <div className="text-white/40 text-xs">
+                          Persona voice, active voice ID, and redacted account summaries.
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={personaAgentId || agentProfile?.agentId || defaultAgentId}
+                          onChange={(event) => {
+                            const nextAgentId = event.target.value;
+                            setPersonaAgentId(nextAgentId);
+                            void loadAgentProfile(nextAgentId);
+                          }}
+                          className="bg-gray-700 text-white/80 text-sm rounded-lg px-2.5 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500/50 cursor-pointer min-w-[220px]"
+                        >
+                          {(agentOptions.length > 0
+                            ? agentOptions
+                            : [{ id: defaultAgentId || "main", label: defaultAgentId || "main" }]
+                          ).map((row) => (
+                            <option key={row.id} value={row.id}>
+                              {row.label}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => void loadAgentProfile(personaAgentId || defaultAgentId)}
+                          disabled={agentProfileLoading}
+                          className="px-3 py-2 bg-white/5 hover:bg-white/10 text-white/70 rounded-lg transition-all text-xs disabled:opacity-50 flex items-center gap-2"
+                        >
+                          <RefreshCw
+                            className={`w-3.5 h-3.5 ${agentProfileLoading ? "animate-spin" : ""}`}
+                          />
+                          Refresh
+                        </button>
+                      </div>
+                    </div>
+
+                    {agentProfileMessage && (
+                      <div
+                        className={`rounded-lg border px-3 py-2 text-xs ${
+                          agentProfileMessage.type === "success"
+                            ? "border-green-500/30 bg-green-500/10 text-green-300"
+                            : "border-red-500/30 bg-red-500/10 text-red-300"
+                        }`}
+                      >
+                        {agentProfileMessage.text}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                      <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Volume2 className="w-5 h-5 text-cyan-400" />
+                          <h3 className="text-white/90 font-medium">Voice Persona</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <label className="space-y-1">
+                            <span className="text-white/40 text-[10px] uppercase tracking-wider">
+                              Voice Provider
+                            </span>
+                            <select
+                              value={personaProvider}
+                              onChange={(event) => setPersonaProvider(event.target.value)}
+                              className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                            >
+                              <option value="">inherit</option>
+                              <option value="elevenlabs">ElevenLabs</option>
+                              <option value="openai">OpenAI</option>
+                              <option value="edge">Edge</option>
+                            </select>
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-white/40 text-[10px] uppercase tracking-wider">
+                              Persona ID
+                            </span>
+                            <input
+                              value={personaIdDraft}
+                              onChange={(event) => setPersonaIdDraft(event.target.value)}
+                              className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                              placeholder="default"
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-white/40 text-[10px] uppercase tracking-wider">
+                              Label
+                            </span>
+                            <input
+                              value={personaLabelDraft}
+                              onChange={(event) => setPersonaLabelDraft(event.target.value)}
+                              className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                              placeholder="Sam"
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-white/40 text-[10px] uppercase tracking-wider">
+                              Voice ID
+                            </span>
+                            <input
+                              value={personaVoiceIdDraft}
+                              onChange={(event) => setPersonaVoiceIdDraft(event.target.value)}
+                              className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                              placeholder="ElevenLabs voice id"
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-white/40 text-[10px] uppercase tracking-wider">
+                              Voice Model
+                            </span>
+                            <input
+                              value={personaVoiceModelDraft}
+                              onChange={(event) => setPersonaVoiceModelDraft(event.target.value)}
+                              className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none font-mono"
+                              placeholder="eleven_multilingual_v2"
+                            />
+                          </label>
+                          <label className="space-y-1 md:col-span-2">
+                            <span className="text-white/40 text-[10px] uppercase tracking-wider">
+                              Style
+                            </span>
+                            <input
+                              value={personaStyleDraft}
+                              onChange={(event) => setPersonaStyleDraft(event.target.value)}
+                              className="w-full bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                              placeholder="warm, concise, calm"
+                            />
+                          </label>
+                          <label className="space-y-1 md:col-span-2">
+                            <span className="text-white/40 text-[10px] uppercase tracking-wider">
+                              Description
+                            </span>
+                            <textarea
+                              value={personaDescriptionDraft}
+                              onChange={(event) => setPersonaDescriptionDraft(event.target.value)}
+                              className="w-full min-h-[84px] bg-gray-700 text-white/80 rounded-lg px-3 py-2 text-xs border border-white/10 focus:border-purple-500/50 outline-none"
+                              placeholder="Voice and persona notes for this agent"
+                            />
+                          </label>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-white/35 text-xs">
+                            Source: {agentProfile?.tts?.source || "global"}
+                          </div>
+                          <button
+                            onClick={() => void saveAgentProfileVoice()}
+                            disabled={agentProfileSaving || agentProfileLoading}
+                            className="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 rounded-lg transition-all text-xs font-medium disabled:opacity-50"
+                          >
+                            {agentProfileSaving ? "Saving..." : "Save Persona"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <User className="w-5 h-5 text-purple-400" />
+                            <h3 className="text-white/90 font-medium">Agent</h3>
+                          </div>
+                          <div className="grid grid-cols-1 gap-2 text-xs">
+                            <div className="flex justify-between gap-3">
+                              <span className="text-white/40">Name</span>
+                              <span className="text-white/75">
+                                {agentProfile?.profile?.name ||
+                                  agentProfile?.profile?.identity?.name ||
+                                  agentProfile?.agentId ||
+                                  "main"}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-3">
+                              <span className="text-white/40">Workspace</span>
+                              <span className="text-white/60 font-mono text-right break-all">
+                                {agentProfile?.profile?.workspace || "not resolved"}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-3">
+                              <span className="text-white/40">Agent Dir</span>
+                              <span className="text-white/60 font-mono text-right break-all">
+                                {agentProfile?.profile?.agentDir || "not resolved"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-white/5 rounded-xl p-4 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <KeyRound className="w-5 h-5 text-amber-400" />
+                            <h3 className="text-white/90 font-medium">Credentials</h3>
+                          </div>
+                          <div className="text-white/40 text-xs">
+                            {agentProfile?.auth?.profileCount ?? 0} redacted profile
+                            {(agentProfile?.auth?.profileCount ?? 0) === 1 ? "" : "s"}
+                          </div>
+                          <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                            {agentProfile?.auth?.profiles?.length ? (
+                              agentProfile.auth.profiles.map((profile) => (
+                                <div
+                                  key={profile.id}
+                                  className="rounded-lg bg-gray-800/50 border border-white/10 px-3 py-2"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-white/80 text-xs font-mono">
+                                      {profile.id}
+                                    </span>
+                                    <span
+                                      className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                                        profile.available
+                                          ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+                                          : "border-amber-400/30 bg-amber-500/10 text-amber-300"
+                                      }`}
+                                    >
+                                      {profile.available ? "available" : "cooldown"}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 text-white/45 text-xs">
+                                    {profile.provider} · {profile.type}
+                                    {profile.email ? ` · ${profile.email}` : ""}
+                                  </div>
+                                  {profile.metadataKeys?.length ? (
+                                    <div className="mt-1 text-white/30 text-[11px]">
+                                      metadata: {profile.metadataKeys.join(", ")}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ))
+                            ) : (
+                              <div className="rounded-lg border border-white/10 bg-gray-800/30 px-3 py-3 text-xs text-white/45">
+                                No auth profiles found for this agent.
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
