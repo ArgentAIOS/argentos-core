@@ -200,6 +200,35 @@ describe("owner-operator workflow packages", () => {
         "canary_required",
       ]),
     );
+    expect(readiness.deferrals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          owner: "appforge",
+          label: "Deferred on AppForge resources",
+          reasonCodes: expect.arrayContaining([
+            "appforge_metadata_only",
+            "appforge_write_not_ready",
+            "missing_appforge_base",
+            "missing_appforge_table",
+          ]),
+        }),
+        expect.objectContaining({
+          owner: "aos",
+          label: "Deferred on AOS connector runtime",
+          reasonCodes: expect.arrayContaining(["connector_repo_only"]),
+        }),
+        expect.objectContaining({
+          owner: "operator",
+          label: "Deferred on operator bindings",
+          reasonCodes: expect.arrayContaining(["missing_credentials", "missing_channel"]),
+        }),
+        expect.objectContaining({
+          owner: "workflows",
+          label: "Deferred on Workflows canary",
+          reasonCodes: ["canary_required"],
+        }),
+      ]),
+    );
   });
 
   it("requires a canary even after connector, credential, channel, and AppForge bindings are live-ready", () => {
@@ -251,6 +280,13 @@ describe("owner-operator workflow packages", () => {
     expect(almostReady.canary.checklist).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "family-canary", status: "pending" })]),
     );
+    expect(almostReady.deferrals).toEqual([
+      expect.objectContaining({
+        owner: "workflows",
+        label: "Deferred on Workflows canary",
+        reasonCodes: ["canary_required"],
+      }),
+    ]);
 
     const ready = auditWorkflowPackageLiveReadiness(newsletter, {
       connectors: [
@@ -284,6 +320,7 @@ describe("owner-operator workflow packages", () => {
 
     expect(ready.okForLive).toBe(true);
     expect(ready.status).toBe("live_ready");
+    expect(ready.deferrals).toEqual([]);
     expect(ready.canary.checklist).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "family-canary", status: "passed" })]),
     );

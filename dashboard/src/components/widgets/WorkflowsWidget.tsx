@@ -245,11 +245,19 @@ interface WorkflowTemplateLiveReadinessReason {
   message?: string;
 }
 
+interface WorkflowTemplateLiveReadinessDeferral {
+  owner?: "appforge" | "aos" | "operator" | "workflows";
+  label?: string;
+  reasonCodes?: string[];
+  message?: string;
+}
+
 interface WorkflowTemplateLiveReadiness {
   okForLive?: boolean;
   status?: string;
   label?: string;
   reasons?: WorkflowTemplateLiveReadinessReason[];
+  deferrals?: WorkflowTemplateLiveReadinessDeferral[];
   canary?: {
     familyId?: string;
     familyLabel?: string;
@@ -2072,6 +2080,7 @@ function NewWorkflowModal({
                     template.liveReadiness?.label ??
                     (liveReady ? "Live ready" : "Import/dry-run only");
                   const liveReasonCount = template.liveReadiness?.reasons?.length ?? 0;
+                  const liveDeferrals = template.liveReadiness?.deferrals ?? [];
                   return (
                     <button
                       key={template.slug}
@@ -2138,6 +2147,15 @@ function NewWorkflowModal({
                           {liveLabel}
                           {!liveReady && liveReasonCount > 0 ? ` (${liveReasonCount})` : ""}
                         </span>
+                        {liveDeferrals.slice(0, 2).map((deferral, index) => (
+                          <span
+                            key={`${deferral.owner ?? "deferral"}-${index}`}
+                            className="rounded bg-amber-400/10 px-1.5 py-0.5 text-amber-200"
+                            title={deferral.message ?? deferral.label ?? deferral.owner}
+                          >
+                            {deferral.label ?? deferral.owner ?? "Deferred"}
+                          </span>
+                        ))}
                       </div>
                     </button>
                   );
@@ -7444,6 +7462,20 @@ function Sidebar({
                           {reason.message ?? reason.label ?? reason.code}
                         </div>
                       ))}
+                  </div>
+                ) : null}
+                {activeWorkflow.importReport.liveReadiness.deferrals?.length ? (
+                  <div className="mt-2 border-t border-amber-400/10 pt-1">
+                    <div className="font-medium text-amber-200">Deferred on</div>
+                    <div className="mt-1 space-y-0.5">
+                      {activeWorkflow.importReport.liveReadiness.deferrals
+                        .slice(0, 4)
+                        .map((deferral, index) => (
+                          <div key={`${deferral.owner ?? "deferral"}-${index}`}>
+                            {deferral.label ?? deferral.owner ?? "Readiness dependency"}
+                          </div>
+                        ))}
+                    </div>
                   </div>
                 ) : null}
                 {activeWorkflow.importReport.liveReadiness.canary?.checklist?.length ? (

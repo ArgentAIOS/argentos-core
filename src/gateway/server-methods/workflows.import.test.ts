@@ -175,7 +175,11 @@ describe("workflows.templates", () => {
         templates?: Array<{
           slug?: string;
           nodeCount?: number;
-          liveReadiness?: { okForLive?: boolean; reasons?: Array<{ code?: string }> };
+          liveReadiness?: {
+            okForLive?: boolean;
+            reasons?: Array<{ code?: string }>;
+            deferrals?: Array<{ owner?: string }>;
+          };
         }>;
       }
     ).templates;
@@ -195,6 +199,9 @@ describe("workflows.templates", () => {
         "missing_channel",
         "canary_required",
       ]),
+    );
+    expect(dailyMarketing?.liveReadiness?.deferrals?.map((deferral) => deferral.owner)).toEqual(
+      expect.arrayContaining(["appforge", "aos", "operator", "workflows"]),
     );
   });
 

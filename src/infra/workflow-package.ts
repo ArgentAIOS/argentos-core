@@ -108,11 +108,19 @@ export interface WorkflowPackageCanaryReadiness {
   checklist: WorkflowPackageCanaryChecklistItem[];
 }
 
+export interface WorkflowPackageLiveReadinessDeferral {
+  owner: "appforge" | "aos" | "operator" | "workflows";
+  label: string;
+  reasonCodes: WorkflowPackageLiveReadinessReasonCode[];
+  message: string;
+}
+
 export interface WorkflowPackageLiveReadiness {
   okForLive: boolean;
   status: WorkflowPackageLiveReadinessStatus;
   label: string;
   reasons: WorkflowPackageLiveReadinessReason[];
+  deferrals: WorkflowPackageLiveReadinessDeferral[];
   canary: WorkflowPackageCanaryReadiness;
 }
 
@@ -454,8 +462,79 @@ export function auditWorkflowPackageLiveReadiness(
           ? "Canary required"
           : "Import/dry-run only",
     reasons,
+    deferrals: buildWorkflowPackageLiveReadinessDeferrals(reasons),
     canary: buildWorkflowPackageCanaryReadiness(workflowPackage, reasons, canaryPassed),
   };
+}
+
+function buildWorkflowPackageLiveReadinessDeferrals(
+  reasons: WorkflowPackageLiveReadinessReason[],
+): WorkflowPackageLiveReadinessDeferral[] {
+  const deferrals = new Map<
+    WorkflowPackageLiveReadinessDeferral["owner"],
+    WorkflowPackageLiveReadinessDeferral
+  >();
+  const add = (
+    owner: WorkflowPackageLiveReadinessDeferral["owner"],
+    label: string,
+    reason: WorkflowPackageLiveReadinessReason,
+    message: string,
+  ) => {
+    const existing = deferrals.get(owner);
+    if (existing) {
+      if (!existing.reasonCodes.includes(reason.code)) {
+        existing.reasonCodes.push(reason.code);
+      }
+      return;
+    }
+    deferrals.set(owner, { owner, label, reasonCodes: [reason.code], message });
+  };
+
+  for (const reason of reasons) {
+    if (reason.kind === "appforge") {
+      add(
+        "appforge",
+        "Deferred on AppForge resources",
+        reason,
+        "Live promotion is deferred until required AppForge bases and tables are write-ready.",
+      );
+      continue;
+    }
+    if (reason.kind === "connector") {
+      const isAosConnector = reason.id.startsWith("aos-");
+      add(
+        isAosConnector ? "aos" : "operator",
+        isAosConnector ? "Deferred on AOS connector runtime" : "Deferred on connector runtime",
+        reason,
+        isAosConnector
+          ? "Live promotion is deferred until the required AOS connector has a runnable adapter."
+          : "Live promotion is deferred until the required connector has a runnable adapter.",
+      );
+      continue;
+    }
+    if (reason.kind === "credential" || reason.kind === "channel") {
+      add(
+        "operator",
+        "Deferred on operator bindings",
+        reason,
+        "Live promotion is deferred until required credentials and delivery channels are bound.",
+      );
+      continue;
+    }
+    if (reason.kind === "canary") {
+      add(
+        "workflows",
+        "Deferred on Workflows canary",
+        reason,
+        "Live promotion is deferred until the template-family canary is run and approved.",
+      );
+    }
+  }
+
+  return [...deferrals.values()].map((deferral) => ({
+    ...deferral,
+    reasonCodes: deferral.reasonCodes.toSorted(),
+  }));
 }
 
 function buildWorkflowPackageCanaryReadiness(
