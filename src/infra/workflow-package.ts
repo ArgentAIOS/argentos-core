@@ -67,6 +67,7 @@ export interface WorkflowPackageReadiness {
   okForPinnedTestRun: boolean;
   blockers: WorkflowIssue[];
   liveRequirements: string[];
+  dryRunEvidence: WorkflowPackageDryRunEvidence;
   liveReadiness?: WorkflowPackageLiveReadiness;
 }
 
@@ -106,6 +107,32 @@ export interface WorkflowPackageCanaryReadiness {
   required: boolean;
   passed: boolean;
   checklist: WorkflowPackageCanaryChecklistItem[];
+}
+
+export interface WorkflowPackageDryRunEvidenceStep {
+  nodeId: string;
+  label: string;
+  kind: WorkflowNode["kind"];
+  status: "pinned" | "simulated";
+  artifact?: {
+    type: "docpanel" | "knowledge" | "connector" | "action";
+    label: string;
+  };
+}
+
+export interface WorkflowPackageDryRunEvidence {
+  mode: "pinned_fixture";
+  dryRunOnly: true;
+  noLiveSideEffects: true;
+  stepCount: number;
+  steps: WorkflowPackageDryRunEvidenceStep[];
+  artifacts: Array<{
+    nodeId: string;
+    label: string;
+    type: "docpanel" | "knowledge" | "connector" | "action";
+  }>;
+  ledgerNodeId?: string;
+  operatorSummary: string;
 }
 
 export interface WorkflowPackageLiveReadinessDeferral {
@@ -283,6 +310,7 @@ export function auditWorkflowPackageReadiness(
       })),
     ],
     liveRequirements,
+    dryRunEvidence: buildWorkflowPackageDryRunEvidence(workflowPackage),
     liveReadiness: auditWorkflowPackageLiveReadiness(workflowPackage, liveContext),
   };
 }
@@ -592,9 +620,14 @@ function buildWorkflowPackageCanaryReadiness(
         id: "appforge-write-ready",
         label: "AppForge write readiness",
         status: hasAppForgeBlocker ? "blocked" : "passed",
-        message: hasAppForgeBlocker
-          ? "Required AppForge base/table resources are missing or not write-ready."
-          : "Required AppForge resources are read/write-ready.",
+        message:
+          (workflowPackage.dependencies ?? []).some(
+            (dependency) => dependency.kind === "appforge_base",
+          ) || (workflowPackage.scenario.appForgeTables ?? []).length > 0
+            ? hasAppForgeBlocker
+              ? "Required AppForge base/table resources are missing or not write-ready."
+              : "Required AppForge resources are read/write-ready."
+            : "This template family does not require AppForge base/table resources.",
       },
       {
         id: "family-canary",
@@ -608,6 +641,63 @@ function buildWorkflowPackageCanaryReadiness(
       },
     ],
   };
+}
+
+function buildWorkflowPackageDryRunEvidence(
+  workflowPackage: WorkflowPackage,
+): WorkflowPackageDryRunEvidence {
+  const pinned = workflowPackage.testFixtures?.pinnedOutputs ?? {};
+  const steps = workflowPackage.workflow.nodes.map((node) => {
+    const artifact = workflowPackageNodeArtifact(node);
+    return {
+      nodeId: node.id,
+      label: "label" in node ? node.label : node.id,
+      kind: node.kind,
+      status: Object.hasOwn(pinned, node.id) ? "pinned" : "simulated",
+      ...(artifact ? { artifact } : {}),
+    } satisfies WorkflowPackageDryRunEvidenceStep;
+  });
+  const artifacts = steps
+    .filter((step) => step.artifact)
+    .map((step) => ({
+      nodeId: step.nodeId,
+      label: step.artifact?.label ?? step.label,
+      type: step.artifact?.type ?? "action",
+    }));
+  const ledgerNode = steps.find(
+    (step) => /ledger/i.test(step.label) || /ledger/i.test(step.nodeId),
+  );
+  return {
+    mode: "pinned_fixture",
+    dryRunOnly: true,
+    noLiveSideEffects: true,
+    stepCount: steps.length,
+    steps,
+    artifacts,
+    ...(ledgerNode ? { ledgerNodeId: ledgerNode.nodeId } : {}),
+    operatorSummary:
+      "Dry run uses pinned fixture outputs and shows the step ledger/artifacts without live connector, media, or channel side effects.",
+  };
+}
+
+function workflowPackageNodeArtifact(
+  node: WorkflowNode,
+): WorkflowPackageDryRunEvidenceStep["artifact"] | undefined {
+  if (node.kind === "output") {
+    if (node.config.outputType === "docpanel") {
+      return { type: "docpanel", label: node.config.titleTemplate ?? node.id };
+    }
+    if (node.config.outputType === "knowledge") {
+      return { type: "knowledge", label: node.config.collectionId ?? node.id };
+    }
+    if (node.config.outputType === "connector_action") {
+      return { type: "connector", label: node.config.connectorId };
+    }
+  }
+  if (node.kind === "action") {
+    return { type: "action", label: node.config.actionType.type };
+  }
+  return undefined;
 }
 
 function collectWorkflowPackageConnectorIds(workflowPackage: WorkflowPackage): string[] {

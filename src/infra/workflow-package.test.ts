@@ -157,7 +157,42 @@ describe("owner-operator workflow packages", () => {
       label: "Import/dry-run only",
     });
     expect(imported.readiness.liveReadiness?.reasons.map((reason) => reason.code)).toEqual(
-      expect.arrayContaining(["missing_credentials", "canary_required"]),
+      expect.arrayContaining([
+        "missing_connector",
+        "missing_credentials",
+        "missing_channel",
+        "canary_required",
+      ]),
+    );
+    expect(imported.readiness.liveRequirements).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("credential:elevenlabs.primary"),
+        expect.stringContaining("connector:aos-telegram"),
+        expect.stringContaining("channel:telegram.workflow"),
+      ]),
+    );
+    expect(imported.readiness.dryRunEvidence).toMatchObject({
+      mode: "pinned_fixture",
+      dryRunOnly: true,
+      noLiveSideEffects: true,
+      stepCount: 12,
+      ledgerNodeId: "run-ledger",
+      artifacts: expect.arrayContaining([
+        expect.objectContaining({ nodeId: "brief-doc", type: "docpanel" }),
+        expect.objectContaining({ nodeId: "run-ledger", type: "docpanel" }),
+      ]),
+    });
+    expect(imported.readiness.liveReadiness?.canary.checklist).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "connector-runtime", status: "blocked" }),
+        expect.objectContaining({ id: "live-bindings", status: "blocked" }),
+        expect.objectContaining({
+          id: "appforge-write-ready",
+          status: "passed",
+          message: "This template family does not require AppForge base/table resources.",
+        }),
+        expect.objectContaining({ id: "family-canary", status: "blocked" }),
+      ]),
     );
 
     const savedDocs: Array<{ title: string; content: string; format?: string }> = [];

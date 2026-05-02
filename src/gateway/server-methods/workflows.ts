@@ -1028,6 +1028,7 @@ function workflowTemplateSummary(
     okForImport: imported.readiness.okForImport,
     okForPinnedTestRun: imported.readiness.okForPinnedTestRun,
     liveRequirements: imported.readiness.liveRequirements,
+    dryRunEvidence: imported.readiness.dryRunEvidence,
     liveReadiness: imported.readiness.liveReadiness,
     notes: workflowPackage.notes ?? [],
   };

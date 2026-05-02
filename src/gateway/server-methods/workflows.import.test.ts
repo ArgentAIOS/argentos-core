@@ -175,6 +175,11 @@ describe("workflows.templates", () => {
         templates?: Array<{
           slug?: string;
           nodeCount?: number;
+          dryRunEvidence?: {
+            stepCount?: number;
+            ledgerNodeId?: string;
+            artifacts?: Array<{ nodeId?: string; type?: string }>;
+          };
           liveReadiness?: {
             okForLive?: boolean;
             reasons?: Array<{ code?: string }>;
@@ -186,6 +191,25 @@ describe("workflows.templates", () => {
     expect(templates?.length).toBe(OWNER_OPERATOR_WORKFLOW_PACKAGES.length);
     expect(templates?.some((template) => template.slug === "vip-email-alert")).toBe(true);
     expect(templates?.every((template) => Number(template.nodeCount) > 0)).toBe(true);
+    const morningBrief = templates?.find(
+      (template) => template.slug === "ai-morning-brief-podcast",
+    );
+    expect(morningBrief?.dryRunEvidence).toMatchObject({
+      stepCount: 12,
+      ledgerNodeId: "run-ledger",
+      artifacts: expect.arrayContaining([
+        expect.objectContaining({ nodeId: "brief-doc", type: "docpanel" }),
+        expect.objectContaining({ nodeId: "run-ledger", type: "docpanel" }),
+      ]),
+    });
+    expect(morningBrief?.liveReadiness?.reasons?.map((reason) => reason.code)).toEqual(
+      expect.arrayContaining([
+        "missing_connector",
+        "missing_credentials",
+        "missing_channel",
+        "canary_required",
+      ]),
+    );
     const dailyMarketing = templates?.find((template) => template.slug === "daily-marketing-brief");
     expect(dailyMarketing?.liveReadiness?.okForLive).toBe(false);
     expect(dailyMarketing?.liveReadiness?.reasons?.map((reason) => reason.code)).toEqual(

@@ -225,12 +225,30 @@ interface WorkflowDryRunStep {
   message: string;
 }
 
+interface WorkflowDryRunEvidence {
+  mode?: string;
+  dryRunOnly?: boolean;
+  noLiveSideEffects?: boolean;
+  stepCount?: number;
+  ledgerNodeId?: string;
+  operatorSummary?: string;
+  artifacts?: Array<{ nodeId?: string; label?: string; type?: string }>;
+  steps?: Array<{
+    nodeId?: string;
+    label?: string;
+    kind?: string;
+    status?: string;
+    artifact?: { type?: string; label?: string };
+  }>;
+}
+
 interface WorkflowImportReport {
   packageName: string;
   packageSlug?: string;
   okForImport: boolean;
   okForPinnedTestRun: boolean;
   liveRequirements: string[];
+  dryRunEvidence?: WorkflowDryRunEvidence;
   liveReadiness?: WorkflowTemplateLiveReadiness;
   blockers: WorkflowValidationIssue[];
   requirements: WorkflowBindingRequirement[];
@@ -325,6 +343,7 @@ interface WorkflowImportPreviewResponse {
     okForImport?: boolean;
     okForPinnedTestRun?: boolean;
     liveRequirements?: unknown[];
+    dryRunEvidence?: WorkflowDryRunEvidence;
     liveReadiness?: WorkflowTemplateLiveReadiness;
     blockers?: unknown[];
   };
@@ -349,6 +368,7 @@ interface WorkflowPackageTemplateSummary {
   okForImport?: boolean;
   okForPinnedTestRun?: boolean;
   liveRequirements?: string[];
+  dryRunEvidence?: WorkflowDryRunEvidence;
   liveReadiness?: WorkflowTemplateLiveReadiness;
 }
 
@@ -640,6 +660,7 @@ function importReportFromPreview(response: WorkflowImportPreviewResponse): Workf
     liveRequirements: Array.isArray(readiness.liveRequirements)
       ? readiness.liveRequirements.map((entry) => String(entry))
       : [],
+    dryRunEvidence: readiness.dryRunEvidence,
     liveReadiness: readiness.liveReadiness,
     blockers: normalizeValidationIssues(readiness.blockers),
     requirements,
@@ -2081,6 +2102,7 @@ function NewWorkflowModal({
                     (liveReady ? "Live ready" : "Import/dry-run only");
                   const liveReasonCount = template.liveReadiness?.reasons?.length ?? 0;
                   const liveDeferrals = template.liveReadiness?.deferrals ?? [];
+                  const dryRunArtifactCount = template.dryRunEvidence?.artifacts?.length ?? 0;
                   return (
                     <button
                       key={template.slug}
@@ -2129,6 +2151,27 @@ function NewWorkflowModal({
                         {template.okForPinnedTestRun && (
                           <span className="rounded bg-emerald-400/10 px-1.5 py-0.5 text-emerald-200">
                             fixture-ready
+                          </span>
+                        )}
+                        {template.dryRunEvidence?.ledgerNodeId && (
+                          <span
+                            className="rounded bg-cyan-400/10 px-1.5 py-0.5 text-cyan-200"
+                            title={template.dryRunEvidence.operatorSummary}
+                          >
+                            run ledger
+                          </span>
+                        )}
+                        {dryRunArtifactCount > 0 && (
+                          <span
+                            className="rounded bg-cyan-400/10 px-1.5 py-0.5 text-cyan-200"
+                            title={
+                              template.dryRunEvidence?.artifacts
+                                ?.map((artifact) => artifact.label ?? artifact.nodeId ?? "")
+                                .filter(Boolean)
+                                .join("\n") || "Dry-run artifacts"
+                            }
+                          >
+                            {dryRunArtifactCount} artifact{dryRunArtifactCount === 1 ? "" : "s"}
                           </span>
                         )}
                         <span
@@ -7464,6 +7507,31 @@ function Sidebar({
                       ))}
                   </div>
                 ) : null}
+                {activeWorkflow.importReport.dryRunEvidence && (
+                  <div className="mt-2 border-t border-amber-400/10 pt-1">
+                    <div className="font-medium text-cyan-200">Dry-run evidence</div>
+                    <div className="mt-1">
+                      {activeWorkflow.importReport.dryRunEvidence.operatorSummary ??
+                        "Fixture mode shows the step trace without live side effects."}
+                    </div>
+                    <div className="mt-1 space-y-0.5">
+                      <div>
+                        {activeWorkflow.importReport.dryRunEvidence.stepCount ?? 0} pinned step
+                        {activeWorkflow.importReport.dryRunEvidence.stepCount === 1 ? "" : "s"}
+                        {activeWorkflow.importReport.dryRunEvidence.ledgerNodeId
+                          ? " with run ledger"
+                          : ""}
+                      </div>
+                      {activeWorkflow.importReport.dryRunEvidence.artifacts
+                        ?.slice(0, 3)
+                        .map((artifact, index) => (
+                          <div key={`${artifact.nodeId ?? "artifact"}-${index}`}>
+                            {artifact.type ?? "artifact"}: {artifact.label ?? artifact.nodeId}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
                 {activeWorkflow.importReport.liveReadiness.deferrals?.length ? (
                   <div className="mt-2 border-t border-amber-400/10 pt-1">
                     <div className="font-medium text-amber-200">Deferred on</div>
