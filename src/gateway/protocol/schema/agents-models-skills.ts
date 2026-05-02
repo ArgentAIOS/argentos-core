@@ -159,7 +159,12 @@ export const ToolsStatusParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export const ConnectorsCatalogParamsSchema = Type.Object({}, { additionalProperties: false });
+export const ConnectorsCatalogParamsSchema = Type.Object(
+  {
+    executeAdapters: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
 
 export const ToolStatusEntrySchema = Type.Object(
   {

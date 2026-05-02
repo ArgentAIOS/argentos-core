@@ -70,6 +70,7 @@ type DiscoverConnectorCatalogOptions = {
   pathEnv?: string;
   timeoutMs?: number;
   includeBuiltIns?: boolean;
+  executeAdapters?: boolean;
 };
 
 type RepoCandidate = {
@@ -243,9 +244,15 @@ function discoverPathExecutables(pathEnv?: string): Map<string, string> {
       continue;
     }
     for (const entry of entries) {
-      if (!entry.name.startsWith("aos-")) continue;
-      if (!(entry.isFile() || entry.isSymbolicLink())) continue;
-      if (resolved.has(entry.name)) continue;
+      if (!entry.name.startsWith("aos-")) {
+        continue;
+      }
+      if (!(entry.isFile() || entry.isSymbolicLink())) {
+        continue;
+      }
+      if (resolved.has(entry.name)) {
+        continue;
+      }
       resolved.set(entry.name, path.join(dir, entry.name));
     }
   }
@@ -256,7 +263,9 @@ function discoverRepoCandidates(repoRoots?: string[]): Map<string, RepoCandidate
   const candidates = new Map<string, RepoCandidate>();
   for (const root of repoRoots ?? defaultRepoRoots()) {
     const resolvedRoot = root ? path.resolve(root) : "";
-    if (!resolvedRoot || !fs.existsSync(resolvedRoot)) continue;
+    if (!resolvedRoot || !fs.existsSync(resolvedRoot)) {
+      continue;
+    }
     let entries: fs.Dirent[] = [];
     try {
       entries = fs.readdirSync(resolvedRoot, { withFileTypes: true });
@@ -264,8 +273,12 @@ function discoverRepoCandidates(repoRoots?: string[]): Map<string, RepoCandidate
       continue;
     }
     for (const entry of entries) {
-      if (!entry.isDirectory() || !entry.name.startsWith("aos-")) continue;
-      if (candidates.has(entry.name)) continue;
+      if (!entry.isDirectory() || !entry.name.startsWith("aos-")) {
+        continue;
+      }
+      if (candidates.has(entry.name)) {
+        continue;
+      }
       const repoDir = path.join(resolvedRoot, entry.name);
       const harnessDir = path.join(repoDir, "agent-harness");
       const pyprojectPath = path.join(harnessDir, "pyproject.toml");
@@ -304,14 +317,18 @@ function extractTomlSection(source: string, sectionName: string): string | null 
 }
 
 function extractTomlString(section: string | null, key: string): string | undefined {
-  if (!section) return undefined;
+  if (!section) {
+    return undefined;
+  }
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = section.match(new RegExp(`^${escaped}\\s*=\\s*"([^"]+)"`, "m"));
   return match?.[1]?.trim() || undefined;
 }
 
 function extractTomlScripts(section: string | null): string[] {
-  if (!section) return [];
+  if (!section) {
+    return [];
+  }
   return Array.from(section.matchAll(/^([A-Za-z0-9._-]+)\s*=\s*"[^"]+"/gm), (match) =>
     match[1]?.trim(),
   ).filter((value): value is string => Boolean(value));
@@ -339,7 +356,7 @@ function parsePermissionsFile(raw: string | null): {
         resource: inferResourceFromCommandId(id),
         actionClass: inferActionClass(id),
       }))
-      .sort((left, right) => left.id.localeCompare(right.id));
+      .toSorted((left, right) => left.id.localeCompare(right.id));
     return {
       backend: typeof parsed.backend === "string" ? parsed.backend : undefined,
       commands,
@@ -394,7 +411,7 @@ function readRepoMetadata(candidate: RepoCandidate): RepoMetadata {
       actionClass: command.actionClass ?? permissionCommand?.actionClass,
     });
   }
-  const commands = Array.from(mergedCommandMap.values()).sort((left, right) =>
+  const commands = Array.from(mergedCommandMap.values()).toSorted((left, right) =>
     left.id.localeCompare(right.id),
   );
   return {
@@ -411,7 +428,9 @@ function readRepoMetadata(candidate: RepoCandidate): RepoMetadata {
 }
 
 function findLocalHarnessBinary(tool: string, harnessDir?: string): string | undefined {
-  if (!harnessDir) return undefined;
+  if (!harnessDir) {
+    return undefined;
+  }
   const candidates = [
     path.join(harnessDir, ".venv", "bin", tool),
     path.join(harnessDir, "venv", "bin", tool),
@@ -505,7 +524,7 @@ export async function runConnectorCommandJson(params: {
       maxBuffer: 1_000_000,
       env: {
         ...process.env,
-        ...(params.env ?? {}),
+        ...params.env,
         NO_COLOR: "1",
       },
     });
@@ -688,7 +707,9 @@ function inferCategories(params: {
 
 function isWorkerVisibleConnectorCommand(commandId: string): boolean {
   const normalized = commandId.trim().toLowerCase();
-  if (!normalized) return false;
+  if (!normalized) {
+    return false;
+  }
   if (normalized === "capabilities" || normalized === "health" || normalized === "doctor") {
     return false;
   }
@@ -704,10 +725,14 @@ function normalizeConnectorCommands(raw: unknown): ConnectorCatalogCommand[] {
   }
   return raw
     .map((entry) => {
-      if (!entry || typeof entry !== "object") return null;
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
       const typed = entry as Record<string, unknown>;
       const id = typeof typed.id === "string" ? typed.id.trim() : "";
-      if (!id) return null;
+      if (!id) {
+        return null;
+      }
       return {
         id,
         summary: typeof typed.summary === "string" ? typed.summary : humanizeCommandId(id),
@@ -721,7 +746,7 @@ function normalizeConnectorCommands(raw: unknown): ConnectorCatalogCommand[] {
     })
     .filter((entry): entry is ConnectorCatalogCommand => Boolean(entry))
     .filter((entry) => isWorkerVisibleConnectorCommand(entry.id))
-    .sort((left, right) => left.id.localeCompare(right.id));
+    .toSorted((left, right) => left.id.localeCompare(right.id));
 }
 
 function normalizeModes(raw: unknown): string[] {
@@ -796,18 +821,20 @@ async function buildCatalogEntry(params: {
   binaryPath?: string;
   repo?: RepoCandidate;
   timeoutMs: number;
+  executeAdapters: boolean;
 }): Promise<ConnectorCatalogEntry> {
   const repoMetadata = params.repo ? readRepoMetadata(params.repo) : null;
   const discoveredBinaryPath =
     params.binaryPath ?? findLocalHarnessBinary(params.tool, params.repo?.harnessDir);
-  const capabilityResult = discoveredBinaryPath
-    ? await runConnectorJson({
-        binaryPath: discoveredBinaryPath,
-        args: ["--json", "capabilities"],
-        cwd: params.repo?.harnessDir,
-        timeoutMs: params.timeoutMs,
-      })
-    : null;
+  const capabilityResult =
+    params.executeAdapters && discoveredBinaryPath
+      ? await runConnectorJson({
+          binaryPath: discoveredBinaryPath,
+          args: ["--json", "capabilities"],
+          cwd: params.repo?.harnessDir,
+          timeoutMs: params.timeoutMs,
+        })
+      : null;
 
   const rawCapabilities =
     capabilityResult?.ok && capabilityResult.data && typeof capabilityResult.data === "object"
@@ -842,7 +869,7 @@ async function buildCatalogEntry(params: {
   let statusLabel = "Repo only";
   let statusDetail = "Connector repo is present, but no runnable adapter binary was found yet.";
 
-  if (capabilityResult?.ok && discoveredBinaryPath) {
+  if (params.executeAdapters && capabilityResult?.ok && discoveredBinaryPath) {
     const healthResult = await runConnectorJson({
       binaryPath: discoveredBinaryPath,
       args: ["--json", "health"],
@@ -870,7 +897,7 @@ async function buildCatalogEntry(params: {
       statusLabel = "Needs setup";
       statusDetail = healthResult.detail;
     }
-  } else if (discoveredBinaryPath) {
+  } else if (discoveredBinaryPath && params.executeAdapters) {
     installState = "error";
     statusLabel = "Error";
     statusDetail = capabilityResult?.detail || "Connector binary exists but capabilities failed.";
@@ -940,6 +967,7 @@ export async function discoverConnectorCatalog(
   const pathExecutables = discoverPathExecutables(options.pathEnv);
   const repoCandidates = discoverRepoCandidates(options.repoRoots);
   const timeoutMs = options.timeoutMs ?? DEFAULT_CONNECTOR_TIMEOUT_MS;
+  const executeAdapters = options.executeAdapters ?? true;
   const builtIns = options.includeBuiltIns === false ? [] : builtInConnectorCatalogEntries();
   const toolNames = Array.from(
     new Set([...pathExecutables.keys(), ...repoCandidates.keys()]),
@@ -952,6 +980,7 @@ export async function discoverConnectorCatalog(
         binaryPath: pathExecutables.get(tool),
         repo: repoCandidates.get(tool),
         timeoutMs,
+        executeAdapters,
       }),
     ),
   );
