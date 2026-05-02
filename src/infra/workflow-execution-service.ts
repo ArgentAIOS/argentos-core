@@ -518,6 +518,16 @@ export async function executeWorkflowRunFromRow(opts: {
     resume: opts.resume,
     redis,
     pgSql: opts.sql,
+    durablePauses: true,
+    isRunCancelled: async (runId) => {
+      const [row] = await opts.sql`
+        SELECT status
+        FROM workflow_runs
+        WHERE id = ${runId}
+        LIMIT 1
+      `;
+      return (row as { status?: string } | undefined)?.status === "cancelled";
+    },
     onApprovalRequested: (nodeId, request) => {
       const node = workflow.nodes.find((candidate) => candidate.id === nodeId);
       void (async () => {
@@ -607,8 +617,8 @@ export async function executeWorkflowRunFromRow(opts: {
         nodeKind: node.kind,
       });
     },
-    onStepComplete: (nodeId, record) => {
-      void persistWorkflowStepRun(opts.sql, opts.runId, record).catch((err: unknown) => {
+    onStepComplete: async (nodeId, record) => {
+      await persistWorkflowStepRun(opts.sql, opts.runId, record).catch((err: unknown) => {
         log.warn(`failed to persist workflow step: ${String(err)}`);
       });
       opts.broadcast?.("workflow.step.completed", {
@@ -621,8 +631,8 @@ export async function executeWorkflowRunFromRow(opts: {
         tokensUsed: record.tokensUsed,
       });
     },
-    onRunComplete: (status, steps) => {
-      void finishWorkflowRun(opts.sql, opts.runId, status, steps).catch((err: unknown) => {
+    onRunComplete: async (status, steps) => {
+      await finishWorkflowRun(opts.sql, opts.runId, status, steps).catch((err: unknown) => {
         log.warn(`failed to finish workflow run: ${String(err)}`);
       });
       opts.broadcast?.("workflow.run.completed", {
@@ -951,6 +961,18 @@ export async function resumeWorkflowRunAfterEvent(opts: {
     throw new Error(`Workflow event ${opts.eventType} did not match wait filter`);
   }
 
+  const [claimedRunRow] = await opts.sql`
+    UPDATE workflow_runs
+    SET status = 'running', current_node_id = NULL
+    WHERE id = ${opts.runId}
+      AND current_node_id = ${opts.nodeId}
+      AND status = 'waiting_event'
+    RETURNING *
+  `;
+  if (!claimedRunRow) {
+    throw new Error(`Workflow event wait ${opts.runId}/${opts.nodeId} was already claimed`);
+  }
+
   const { workflow, issues } = workflowFromRow(workflowRow as unknown as WorkflowRow);
   if (hasBlockingWorkflowIssues(issues)) {
     throw new Error(
@@ -983,17 +1005,13 @@ export async function resumeWorkflowRunAfterEvent(opts: {
     WHERE run_id = ${opts.runId}
       AND node_id = ${opts.nodeId}
   `;
-  await opts.sql`
-    UPDATE workflow_runs SET status = 'running', current_node_id = NULL
-    WHERE id = ${opts.runId}
-  `;
 
   const resume = await buildWorkflowResumeOptions({
     sql: opts.sql,
     runId: opts.runId,
     resumeNodeId: opts.nodeId,
     workflow,
-    runRow: runRow as Record<string, unknown>,
+    runRow: claimedRunRow as Record<string, unknown>,
     resumeStepOutput: eventOutput,
     triggerSource: opts.triggerSource ?? "gateway:event_resume",
   });
@@ -1010,10 +1028,10 @@ export async function resumeWorkflowRunAfterEvent(opts: {
     sql: opts.sql,
     workflowRow: workflowRow as unknown as WorkflowRow,
     runId: opts.runId,
-    triggerType: String(runRow.trigger_type ?? "manual"),
+    triggerType: String(claimedRunRow.trigger_type ?? "manual"),
     triggerPayload:
-      runRow.trigger_payload && typeof runRow.trigger_payload === "object"
-        ? (runRow.trigger_payload as Record<string, unknown>)
+      claimedRunRow.trigger_payload && typeof claimedRunRow.trigger_payload === "object"
+        ? (claimedRunRow.trigger_payload as Record<string, unknown>)
         : {},
     triggerSource: opts.triggerSource ?? "gateway:event_resume",
     broadcast: opts.broadcast,
