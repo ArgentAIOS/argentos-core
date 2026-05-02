@@ -3,6 +3,7 @@ import {
   RUST_GATEWAY_INITIAL_PARITY_FIXTURES,
   type RustGatewayParityFixture,
   type RustGatewayParityLabel,
+  type RustGatewayTokenAuthGate,
 } from "./rust-gateway-parity-fixtures.js";
 
 export type RustGatewayParityEndpoint = "node" | "rust";
@@ -24,6 +25,7 @@ export type RustGatewayParityReplayResult = {
   nodeOk: boolean | null;
   rustOk: boolean | null;
   notes: string[];
+  tokenAuthGate?: RustGatewayTokenAuthGate;
 };
 
 export type RustGatewayParityReplayReport = {
@@ -222,6 +224,7 @@ function buildResult(
     method: fixture.method,
     safety: fixture.safety,
     expectedParity: fixture.expectedParity,
+    ...(fixture.tokenAuthGate ? { tokenAuthGate: fixture.tokenAuthGate } : {}),
     ...result,
   };
 }

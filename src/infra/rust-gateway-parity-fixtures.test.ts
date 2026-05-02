@@ -52,6 +52,38 @@ describe("rust gateway parity fixtures", () => {
       [],
       ["rust-gateway-parity-wrong-token"],
     ]);
+    expect(connectFixtures.map((fixture) => fixture.tokenAuthGate?.authCase)).toEqual([
+      "valid-token",
+      "missing-token",
+      "wrong-token",
+    ]);
+    expect(
+      connectFixtures.every((fixture) => fixture.tokenAuthGate?.liveTrafficAllowed === false),
+    ).toBe(true);
+    expect(
+      connectFixtures.every((fixture) => fixture.tokenAuthGate?.authoritySwitchAllowed === false),
+    ).toBe(true);
+    expect(connectFixtures[0]?.tokenAuthGate).toMatchObject({
+      expected: "accepted",
+      rejectionPoint: "connect-handshake",
+      redactionRequired: false,
+    });
+    expect(connectFixtures[1]?.tokenAuthGate).toMatchObject({
+      expected: "rejected",
+      rejectionPoint: "connect-handshake",
+      redactionRequired: false,
+    });
+    expect(connectFixtures[2]?.tokenAuthGate).toMatchObject({
+      expected: "rejected",
+      rejectionPoint: "connect-handshake",
+      redactionRequired: true,
+    });
+    expect(connectFixtures[0]?.tokenAuthGate?.coversMethods).toEqual(
+      expect.arrayContaining(["health", "status", "connectors.catalog", "workflows.list"]),
+    );
+    expect(connectFixtures[2]?.tokenAuthGate?.requiredBeforeAuthoritySwitch).toContain(
+      "expired token parity is proven before any Rust canary traffic",
+    );
     expect(JSON.stringify(connectFixtures)).not.toContain("ARGENT_GATEWAY_TOKEN");
   });
 

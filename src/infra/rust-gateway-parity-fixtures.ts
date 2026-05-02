@@ -7,6 +7,19 @@ export type RustGatewayParityLabel =
 
 export type RustGatewayFixtureSafety = "read-only" | "shadow-only" | "unsafe";
 
+export type RustGatewayTokenAuthCase = "valid-token" | "missing-token" | "wrong-token";
+
+export type RustGatewayTokenAuthGate = {
+  authCase: RustGatewayTokenAuthCase;
+  expected: "accepted" | "rejected";
+  rejectionPoint: "connect-handshake";
+  redactionRequired: boolean;
+  liveTrafficAllowed: false;
+  authoritySwitchAllowed: false;
+  coversMethods: string[];
+  requiredBeforeAuthoritySwitch: string[];
+};
+
 export type RustGatewayParityFixture = {
   id: string;
   surface:
@@ -30,6 +43,7 @@ export type RustGatewayParityFixture = {
   authTokenOverride?: string | null;
   redactionProbes?: string[];
   requiredMethods?: string[];
+  tokenAuthGate?: RustGatewayTokenAuthGate;
   timeoutMs?: number;
   safety: RustGatewayFixtureSafety;
   expectedParity: RustGatewayParityLabel;
@@ -45,6 +59,32 @@ export type RustGatewayParitySummary = {
   mockCompatible: number;
   unsupported: number;
 };
+
+export const RUST_GATEWAY_READ_ONLY_AUTH_GATED_METHODS = [
+  "connect",
+  "health",
+  "status",
+  "system-presence",
+  "commands.list",
+  "config.schema",
+  "models.list",
+  "sessions.list",
+  "channels.status",
+  "connectors.catalog",
+  "cron.status",
+  "cron.list",
+  "tools.status",
+  "node.list",
+  "workflows.list",
+] as const;
+
+const REQUIRED_TOKEN_AUTH_PROOF_BEFORE_AUTHORITY_SWITCH = [
+  "valid gateway token is accepted before replaying read-only method families",
+  "missing gateway token is rejected at connect handshake before any RPC method runs",
+  "wrong gateway token is rejected at connect handshake with structured redacted errors",
+  "expired token parity is proven before any Rust canary traffic",
+  "revoked role/scope parity is proven before any Rust canary traffic",
+];
 
 export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = [
   {
@@ -65,6 +105,16 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
       "cron.list",
       "tools.status",
     ],
+    tokenAuthGate: {
+      authCase: "valid-token",
+      expected: "accepted",
+      rejectionPoint: "connect-handshake",
+      redactionRequired: false,
+      liveTrafficAllowed: false,
+      authoritySwitchAllowed: false,
+      coversMethods: [...RUST_GATEWAY_READ_ONLY_AUTH_GATED_METHODS],
+      requiredBeforeAuthoritySwitch: REQUIRED_TOKEN_AUTH_PROOF_BEFORE_AUTHORITY_SWITCH,
+    },
     safety: "read-only",
     expectedParity: "schema-compatible",
     reason: "Both gateways should negotiate protocol v3 and return a hello-ok envelope.",
@@ -74,6 +124,16 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     surface: "connect",
     method: "connect",
     authTokenOverride: null,
+    tokenAuthGate: {
+      authCase: "missing-token",
+      expected: "rejected",
+      rejectionPoint: "connect-handshake",
+      redactionRequired: false,
+      liveTrafficAllowed: false,
+      authoritySwitchAllowed: false,
+      coversMethods: [...RUST_GATEWAY_READ_ONLY_AUTH_GATED_METHODS],
+      requiredBeforeAuthoritySwitch: REQUIRED_TOKEN_AUTH_PROOF_BEFORE_AUTHORITY_SWITCH,
+    },
     safety: "read-only",
     expectedParity: "schema-compatible",
     reason:
@@ -85,6 +145,16 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     method: "connect",
     authTokenOverride: "rust-gateway-parity-wrong-token",
     redactionProbes: ["rust-gateway-parity-wrong-token"],
+    tokenAuthGate: {
+      authCase: "wrong-token",
+      expected: "rejected",
+      rejectionPoint: "connect-handshake",
+      redactionRequired: true,
+      liveTrafficAllowed: false,
+      authoritySwitchAllowed: false,
+      coversMethods: [...RUST_GATEWAY_READ_ONLY_AUTH_GATED_METHODS],
+      requiredBeforeAuthoritySwitch: REQUIRED_TOKEN_AUTH_PROOF_BEFORE_AUTHORITY_SWITCH,
+    },
     safety: "read-only",
     expectedParity: "schema-compatible",
     reason:

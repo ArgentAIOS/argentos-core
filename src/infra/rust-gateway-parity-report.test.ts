@@ -556,6 +556,126 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
       );
     }
   });
+
+  it("summarizes failed-auth token parity without authorizing live traffic", () => {
+    const summary = buildRustGatewayPromotionReadinessSummary({
+      generatedAtMs: 0,
+      totals: { passed: 3, failed: 0, skipped: 0 },
+      results: [
+        {
+          fixtureId: "connect-v3-token",
+          method: "connect",
+          safety: "read-only",
+          expectedParity: "schema-compatible",
+          observedParity: "schema-compatible",
+          status: "passed",
+          nodeOk: true,
+          rustOk: true,
+          notes: ["schema/envelope: response envelopes are compatible"],
+          tokenAuthGate: {
+            authCase: "valid-token",
+            expected: "accepted",
+            rejectionPoint: "connect-handshake",
+            redactionRequired: false,
+            liveTrafficAllowed: false,
+            authoritySwitchAllowed: false,
+            coversMethods: ["connect", "health", "status"],
+            requiredBeforeAuthoritySwitch: ["expired token parity"],
+          },
+        },
+        {
+          fixtureId: "connect-missing-token",
+          method: "connect",
+          safety: "read-only",
+          expectedParity: "schema-compatible",
+          observedParity: "schema-compatible",
+          status: "passed",
+          nodeOk: false,
+          rustOk: false,
+          notes: ["schema/error: auth failure errors are structured and redacted"],
+          tokenAuthGate: {
+            authCase: "missing-token",
+            expected: "rejected",
+            rejectionPoint: "connect-handshake",
+            redactionRequired: false,
+            liveTrafficAllowed: false,
+            authoritySwitchAllowed: false,
+            coversMethods: ["connect", "health", "status"],
+            requiredBeforeAuthoritySwitch: ["expired token parity"],
+          },
+        },
+        {
+          fixtureId: "connect-wrong-token",
+          method: "connect",
+          safety: "read-only",
+          expectedParity: "schema-compatible",
+          observedParity: "schema-compatible",
+          status: "passed",
+          nodeOk: false,
+          rustOk: false,
+          notes: ["schema/error: auth failure errors are structured and redacted"],
+          tokenAuthGate: {
+            authCase: "wrong-token",
+            expected: "rejected",
+            rejectionPoint: "connect-handshake",
+            redactionRequired: true,
+            liveTrafficAllowed: false,
+            authoritySwitchAllowed: false,
+            coversMethods: ["connect", "health", "status"],
+            requiredBeforeAuthoritySwitch: ["expired token parity"],
+          },
+        },
+      ],
+    });
+
+    expect(summary.failedAuthTokenParity).toMatchObject({
+      mode: "synthetic-read-only",
+      liveTrafficAllowed: false,
+      authoritySwitchAllowed: false,
+      missingRequiredCases: [],
+      remainingBeforeAuthoritySwitch: expect.arrayContaining([
+        "expired token parity across read-only and canary-safe method families",
+        "revoked role/scope parity across chat, scheduler, workflow, channel, session, and run authorities",
+      ]),
+    });
+    expect(summary.failedAuthTokenParity.fixtures.map((fixture) => fixture.authCase)).toEqual([
+      "valid-token",
+      "missing-token",
+      "wrong-token",
+    ]);
+    expect(summary.failedAuthTokenParity.fixtures).toEqual([
+      expect.objectContaining({
+        fixtureId: "connect-v3-token",
+        status: "passed",
+        expected: "accepted",
+        noLiveProof: expect.arrayContaining([
+          "accepted-token proof is limited to read-only parity methods",
+        ]),
+      }),
+      expect.objectContaining({
+        fixtureId: "connect-missing-token",
+        status: "passed",
+        expected: "rejected",
+        redactionRequired: false,
+        redactionProof: "not-required",
+        noLiveProof: expect.arrayContaining([
+          "fixture fails at connect handshake before any RPC method is sent",
+        ]),
+      }),
+      expect.objectContaining({
+        fixtureId: "connect-wrong-token",
+        status: "passed",
+        expected: "rejected",
+        redactionRequired: true,
+        redactionProof: "structured-error-redacted",
+      }),
+    ]);
+    expect(summary.gates).toContainEqual({
+      id: "failed-auth-token-parity",
+      status: "passed",
+      reason: "valid, missing, and wrong-token connect fixtures passed with no live RPC execution",
+    });
+  });
 });
 
 describe("renderRustGatewayParityReplayMarkdown", () => {

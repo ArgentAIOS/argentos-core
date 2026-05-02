@@ -1,3 +1,4 @@
+import type { RustGatewayTokenAuthCase } from "./rust-gateway-parity-fixtures.js";
 import type {
   RustGatewayParityReplayReport,
   RustGatewayParityReplayResult,
@@ -120,6 +121,26 @@ export type RustGatewayPromotionReadinessSummary = {
       noLiveProof: string[];
     }>;
   };
+  failedAuthTokenParity: {
+    mode: "synthetic-read-only";
+    liveTrafficAllowed: false;
+    authoritySwitchAllowed: false;
+    fixtures: Array<{
+      fixtureId: string;
+      authCase: RustGatewayTokenAuthCase;
+      status: "passed" | "blocked";
+      expected: "accepted" | "rejected";
+      rejectionPoint: "connect-handshake";
+      redactionRequired: boolean;
+      redactionProof: "not-required" | "structured-error-redacted" | "missing";
+      nodeOk: boolean | null;
+      rustOk: boolean | null;
+      coversMethods: string[];
+      noLiveProof: string[];
+    }>;
+    missingRequiredCases: RustGatewayTokenAuthCase[];
+    remainingBeforeAuthoritySwitch: string[];
+  };
   authoritySwitchChecklist: {
     status: "blocked";
     authoritySwitchAllowed: false;
@@ -219,6 +240,7 @@ export function buildRustGatewayPromotionReadinessSummary(
   const duplicatePrevention = analyzeRustGatewayShadowDuplicateObservations(
     RUST_GATEWAY_SHADOW_DUPLICATE_PROOF_FIXTURE,
   );
+  const failedAuthTokenParity = buildFailedAuthTokenParity(report);
   return {
     generatedAtMs: report.generatedAtMs,
     promotionReady: readiness.ready,
@@ -251,9 +273,16 @@ export function buildRustGatewayPromotionReadinessSummary(
     livePromotionGateDesign: buildLivePromotionGateDesign(groups),
     shadowPromotionGateFixtures: buildShadowPromotionGateFixtures(groups),
     noLiveSafetyGateFixtures: buildNoLiveSafetyGateFixtures(groups),
+    failedAuthTokenParity,
     authoritySwitchChecklist: buildAuthoritySwitchChecklist(),
     duplicatePrevention,
-    gates: buildPromotionGateStatuses(report, readiness, groups, duplicatePrevention),
+    gates: buildPromotionGateStatuses(
+      report,
+      readiness,
+      groups,
+      duplicatePrevention,
+      failedAuthTokenParity,
+    ),
     nextRequiredGates: [
       "auth-role-scope-parity",
       "dashboard-smoke",
@@ -266,6 +295,65 @@ export function buildRustGatewayPromotionReadinessSummary(
     ],
     blockers: readiness.blockers,
     warnings: readiness.warnings,
+  };
+}
+
+function buildFailedAuthTokenParity(
+  report: RustGatewayParityReplayReport,
+): RustGatewayPromotionReadinessSummary["failedAuthTokenParity"] {
+  const fixtures = report.results
+    .filter((result) => result.tokenAuthGate)
+    .map((result) => ({
+      fixtureId: result.fixtureId,
+      authCase: result.tokenAuthGate?.authCase as RustGatewayTokenAuthCase,
+      status: result.status === "passed" ? ("passed" as const) : ("blocked" as const),
+      expected: result.tokenAuthGate?.expected ?? "rejected",
+      rejectionPoint: "connect-handshake" as const,
+      redactionRequired: result.tokenAuthGate?.redactionRequired ?? false,
+      redactionProof: result.tokenAuthGate?.redactionRequired
+        ? result.notes.some((note) => /structured and redacted/i.test(note))
+          ? ("structured-error-redacted" as const)
+          : ("missing" as const)
+        : ("not-required" as const),
+      nodeOk: result.nodeOk,
+      rustOk: result.rustOk,
+      coversMethods: result.tokenAuthGate?.coversMethods ?? [],
+      noLiveProof:
+        result.tokenAuthGate?.expected === "rejected"
+          ? [
+              "fixture fails at connect handshake before any RPC method is sent",
+              "token material is not written to the report or readiness summary",
+              "Node remains live authority and Rust remains shadow-only",
+            ]
+          : [
+              "fixture uses the isolated parity service token only",
+              "accepted-token proof is limited to read-only parity methods",
+              "Node remains live authority and Rust remains shadow-only",
+            ],
+    }));
+  const passedCases = new Set(
+    fixtures.filter((fixture) => fixture.status === "passed").map((fixture) => fixture.authCase),
+  );
+  const missingRequiredCases: RustGatewayTokenAuthCase[] = [
+    "valid-token",
+    "missing-token",
+    "wrong-token",
+  ].filter(
+    (authCase) => !passedCases.has(authCase as RustGatewayTokenAuthCase),
+  ) as RustGatewayTokenAuthCase[];
+
+  return {
+    mode: "synthetic-read-only",
+    liveTrafficAllowed: false,
+    authoritySwitchAllowed: false,
+    fixtures,
+    missingRequiredCases,
+    remainingBeforeAuthoritySwitch: [
+      "expired token parity across read-only and canary-safe method families",
+      "revoked role/scope parity across chat, scheduler, workflow, channel, session, and run authorities",
+      "operator-approved canary token scope matrix before live Rust traffic",
+      "rollback proof that rejected Rust tokens fall back to Node without duplicate work",
+    ],
   };
 }
 
@@ -662,7 +750,11 @@ function buildPromotionGateStatuses(
   readiness: RustGatewayPromotionReadiness,
   groups: RustGatewayParityReportGroups,
   duplicatePrevention: RustGatewayShadowDuplicateProof,
+  failedAuthTokenParity: RustGatewayPromotionReadinessSummary["failedAuthTokenParity"],
 ): RustGatewayPromotionReadinessSummary["gates"] {
+  const failedAuthPassed =
+    failedAuthTokenParity.missingRequiredCases.length === 0 &&
+    failedAuthTokenParity.fixtures.every((fixture) => fixture.status === "passed");
   return [
     {
       id: "isolated-parity-report",
@@ -729,6 +821,13 @@ function buildPromotionGateStatuses(
           ? "synthetic shadow observation proof covers workflow, session, run, timer, and channel duplicates without Rust authority"
           : "shadow duplicate-prevention proof is missing coverage or found duplicate conflicts",
     },
+    {
+      id: "failed-auth-token-parity",
+      status: failedAuthPassed ? "passed" : "blocked",
+      reason: failedAuthPassed
+        ? "valid, missing, and wrong-token connect fixtures passed with no live RPC execution"
+        : `missing or blocked token auth cases: ${failedAuthTokenParity.missingRequiredCases.join(",") || "none"}`,
+    },
   ];
 }
 
@@ -737,6 +836,7 @@ export function renderRustGatewayParityReplayMarkdown(
 ): string {
   const readiness = evaluateRustGatewayPromotionReadiness(report);
   const groups = groupRustGatewayParityResults(report);
+  const failedAuthTokenParity = buildFailedAuthTokenParity(report);
   const lines = [
     "# Rust Gateway Parity Replay Report",
     "",
@@ -771,6 +871,26 @@ export function renderRustGatewayParityReplayMarkdown(
 
   lines.push("## Clean Parity Evidence", "");
   lines.push(...renderGroupList(groups.cleanEvidence, "None."));
+  lines.push("");
+
+  lines.push("## Failed-Auth Token Parity", "");
+  if (failedAuthTokenParity.fixtures.length === 0) {
+    lines.push("No failed-auth token fixtures present.");
+  } else {
+    lines.push(
+      ...failedAuthTokenParity.fixtures.map(
+        (fixture) =>
+          `- ${fixture.fixtureId} (${fixture.authCase}): ${fixture.status}; covers ${fixture.coversMethods.length} read-only methods; liveTrafficAllowed=false; authoritySwitchAllowed=false`,
+      ),
+    );
+  }
+  if (failedAuthTokenParity.remainingBeforeAuthoritySwitch.length > 0) {
+    lines.push(
+      "",
+      "Remaining before authority switch:",
+      ...failedAuthTokenParity.remainingBeforeAuthoritySwitch.map((gate) => `- ${gate}`),
+    );
+  }
   lines.push("");
 
   lines.push(

@@ -135,6 +135,16 @@ describe("runRustGatewayParityReplay", () => {
         expectedParity: "schema-compatible",
         authTokenOverride: "rust-gateway-parity-wrong-token",
         redactionProbes: ["rust-gateway-parity-wrong-token"],
+        tokenAuthGate: {
+          authCase: "wrong-token",
+          expected: "rejected",
+          rejectionPoint: "connect-handshake",
+          redactionRequired: true,
+          liveTrafficAllowed: false,
+          authoritySwitchAllowed: false,
+          coversMethods: ["connect", "health"],
+          requiredBeforeAuthoritySwitch: ["expired token parity"],
+        },
       },
     ];
     const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
@@ -145,6 +155,11 @@ describe("runRustGatewayParityReplay", () => {
     expect(report.totals).toEqual({ passed: 1, failed: 0, skipped: 0 });
     expect(report.results[0]?.observedParity).toBe("schema-compatible");
     expect(report.results[0]?.notes.join(" ")).toContain("structured and redacted");
+    expect(report.results[0]?.tokenAuthGate).toMatchObject({
+      authCase: "wrong-token",
+      expected: "rejected",
+      authoritySwitchAllowed: false,
+    });
   });
 
   it("fails failed-auth fixtures when error envelopes leak token probes", async () => {
