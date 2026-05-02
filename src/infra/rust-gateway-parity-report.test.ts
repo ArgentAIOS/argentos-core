@@ -223,6 +223,12 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
       },
       canaryTokenScopes: [],
     });
+    expect(summary.rollbackDeniedMethodReceiptFixtures).toMatchObject({
+      mode: "synthetic-read-only",
+      liveTrafficAllowed: false,
+      authoritySwitchAllowed: false,
+      receipts: [],
+    });
     expect(summary.authoritySwitchChecklist).toMatchObject({
       status: "blocked",
       authoritySwitchAllowed: false,
@@ -424,6 +430,31 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
     expect(summary.authPolicyAndCanaryScopeMatrix.realIssuerExpiredToken.requiredProof).toContain(
       "authorized token issuer can mint an expired canary token without exposing secrets in git or bus",
     );
+    expect(summary.rollbackDeniedMethodReceiptFixtures.receipts).toEqual([
+      expect.objectContaining({
+        fixtureId: "rust-denied-receipt-chat-send",
+        surface: "chat.send",
+        failedPromotionReceipt: expect.objectContaining({
+          expectedCode: "RUST_CANARY_DENIED",
+          requiredFields: expect.arrayContaining([
+            "nodeAuthority",
+            "rustAuthority",
+            "authoritySwitchAllowed",
+          ]),
+        }),
+        deniedMethodReceipts: expect.arrayContaining([
+          expect.objectContaining({
+            method: "workflows.run",
+            expectedCode: "RUST_CANARY_SCOPE_DENIED",
+            requiredFields: expect.arrayContaining(["tokenMaterialRedacted"]),
+          }),
+        ]),
+        rollbackReceipt: expect.objectContaining({
+          expectedCode: "RUST_CANARY_ROLLBACK_REQUIRED",
+          requiredFields: expect.arrayContaining(["nodeHealthProbe", "duplicateWorkPrevented"]),
+        }),
+      }),
+    ]);
   });
 
   it("builds synthetic blocked gate fixtures for all unsafe promotion surfaces", () => {
@@ -508,6 +539,18 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
       "channel",
       "session",
       "run",
+    ]);
+    expect(
+      summary.rollbackDeniedMethodReceiptFixtures.receipts.map((receipt) => receipt.surface),
+    ).toEqual(["chat.send", "cron.add", "workflows.run"]);
+    expect(
+      summary.rollbackDeniedMethodReceiptFixtures.receipts.map(
+        (receipt) => receipt.rollbackReceipt.expectedCode,
+      ),
+    ).toEqual([
+      "RUST_CANARY_ROLLBACK_REQUIRED",
+      "RUST_CANARY_ROLLBACK_REQUIRED",
+      "RUST_CANARY_ROLLBACK_REQUIRED",
     ]);
   });
 

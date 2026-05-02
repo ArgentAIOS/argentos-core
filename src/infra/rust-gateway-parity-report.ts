@@ -180,6 +180,32 @@ export type RustGatewayPromotionReadinessSummary = {
     }>;
     remainingBeforeAuthoritySwitch: string[];
   };
+  rollbackDeniedMethodReceiptFixtures: {
+    mode: "synthetic-read-only";
+    liveTrafficAllowed: false;
+    authoritySwitchAllowed: false;
+    receipts: Array<{
+      fixtureId: string;
+      surface: "chat.send" | "cron.add" | "workflows.run";
+      status: "blocked";
+      syntheticOnly: true;
+      failedPromotionReceipt: {
+        expectedCode: "RUST_CANARY_DENIED";
+        requiredFields: string[];
+      };
+      deniedMethodReceipts: Array<{
+        method: string;
+        expectedCode: "RUST_CANARY_SCOPE_DENIED";
+        requiredFields: string[];
+      }>;
+      rollbackReceipt: {
+        expectedCode: "RUST_CANARY_ROLLBACK_REQUIRED";
+        requiredFields: string[];
+      };
+      noLiveProof: string[];
+    }>;
+    remainingBeforeAuthoritySwitch: string[];
+  };
   authoritySwitchChecklist: {
     status: "blocked";
     authoritySwitchAllowed: false;
@@ -314,6 +340,7 @@ export function buildRustGatewayPromotionReadinessSummary(
     noLiveSafetyGateFixtures: buildNoLiveSafetyGateFixtures(groups),
     failedAuthTokenParity,
     authPolicyAndCanaryScopeMatrix: buildAuthPolicyAndCanaryScopeMatrix(groups),
+    rollbackDeniedMethodReceiptFixtures: buildRollbackDeniedMethodReceiptFixtures(groups),
     authoritySwitchChecklist: buildAuthoritySwitchChecklist(),
     duplicatePrevention,
     gates: buildPromotionGateStatuses(
@@ -335,6 +362,126 @@ export function buildRustGatewayPromotionReadinessSummary(
     ],
     blockers: readiness.blockers,
     warnings: readiness.warnings,
+  };
+}
+
+function buildRollbackDeniedMethodReceiptFixtures(
+  groups: RustGatewayParityReportGroups,
+): RustGatewayPromotionReadinessSummary["rollbackDeniedMethodReceiptFixtures"] {
+  const unsafeMethods = new Set(groups.unsafeBlocked.map((result) => result.method));
+  const commonFailedPromotionFields = [
+    "receiptId",
+    "surface",
+    "canaryFlag",
+    "reason",
+    "nodeAuthority",
+    "rustAuthority",
+    "liveTrafficAllowed",
+    "authoritySwitchAllowed",
+  ];
+  const commonDeniedFields = [
+    "receiptId",
+    "attemptedMethod",
+    "allowedScope",
+    "deniedScope",
+    "reason",
+    "tokenMaterialRedacted",
+  ];
+  const commonRollbackFields = [
+    "receiptId",
+    "surface",
+    "rollbackCommand",
+    "nodeHealthProbe",
+    "rustCanaryDisabled",
+    "duplicateWorkPrevented",
+  ];
+
+  return {
+    mode: "synthetic-read-only",
+    liveTrafficAllowed: false,
+    authoritySwitchAllowed: false,
+    receipts: [
+      {
+        fixtureId: "rust-denied-receipt-chat-send",
+        surface: "chat.send",
+        status: "blocked",
+        syntheticOnly: true,
+        failedPromotionReceipt: {
+          expectedCode: "RUST_CANARY_DENIED",
+          requiredFields: commonFailedPromotionFields,
+        },
+        deniedMethodReceipts: ["cron.add", "cron.run", "workflows.run", "channels.send"].map(
+          (method) => ({
+            method,
+            expectedCode: "RUST_CANARY_SCOPE_DENIED" as const,
+            requiredFields: commonDeniedFields,
+          }),
+        ),
+        rollbackReceipt: {
+          expectedCode: "RUST_CANARY_ROLLBACK_REQUIRED",
+          requiredFields: commonRollbackFields,
+        },
+        noLiveProof: [
+          "receipt fixture is generated from unsafe-blocked chat.send metadata only",
+          "no chat.send or denied-method RPC is replayed",
+          "Node remains live chat authority and Rust remains shadow-only",
+        ],
+      },
+      {
+        fixtureId: "rust-denied-receipt-cron-add",
+        surface: "cron.add",
+        status: "blocked",
+        syntheticOnly: true,
+        failedPromotionReceipt: {
+          expectedCode: "RUST_CANARY_DENIED",
+          requiredFields: commonFailedPromotionFields,
+        },
+        deniedMethodReceipts: ["chat.send", "workflows.run", "channels.send"].map((method) => ({
+          method,
+          expectedCode: "RUST_CANARY_SCOPE_DENIED" as const,
+          requiredFields: commonDeniedFields,
+        })),
+        rollbackReceipt: {
+          expectedCode: "RUST_CANARY_ROLLBACK_REQUIRED",
+          requiredFields: commonRollbackFields,
+        },
+        noLiveProof: [
+          "receipt fixture is generated from unsafe-blocked cron.add metadata only",
+          "no cron.add or denied-method RPC is replayed",
+          "Node remains live scheduler authority and Rust remains shadow-only",
+        ],
+      },
+      {
+        fixtureId: "rust-denied-receipt-workflows-run",
+        surface: "workflows.run",
+        status: "blocked",
+        syntheticOnly: true,
+        failedPromotionReceipt: {
+          expectedCode: "RUST_CANARY_DENIED",
+          requiredFields: commonFailedPromotionFields,
+        },
+        deniedMethodReceipts: ["chat.send", "cron.add", "channels.send"].map((method) => ({
+          method,
+          expectedCode: "RUST_CANARY_SCOPE_DENIED" as const,
+          requiredFields: commonDeniedFields,
+        })),
+        rollbackReceipt: {
+          expectedCode: "RUST_CANARY_ROLLBACK_REQUIRED",
+          requiredFields: commonRollbackFields,
+        },
+        noLiveProof: [
+          "receipt fixture is generated from unsafe-blocked workflows.run metadata only",
+          "no workflows.run or denied-method RPC is replayed",
+          "Node remains live workflow authority and Rust remains shadow-only",
+        ],
+      },
+    ].filter((receipt) => unsafeMethods.has(receipt.surface)),
+    remainingBeforeAuthoritySwitch: [
+      "real denied-method receipt emitted by canary gate before mutation",
+      "rollback receipt emitted and rehearsed for each canary scope",
+      "receipt audit storage redacts token material and names Node fallback authority",
+      "duplicate-work prevention receipt proves no split-brain run, timer, or send",
+    ],
   };
 }
 
