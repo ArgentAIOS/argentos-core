@@ -205,6 +205,24 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
       authoritySwitchAllowed: false,
       fixtures: [],
     });
+    expect(summary.authPolicyAndCanaryScopeMatrix).toMatchObject({
+      mode: "design-only",
+      liveTrafficAllowed: false,
+      authoritySwitchAllowed: false,
+      realIssuerExpiredToken: {
+        status: "blocked",
+        owner: "master-operator",
+      },
+      clockSkewAndTtl: {
+        status: "blocked",
+        owner: "master-operator",
+      },
+      revokedRoleScopePolicy: {
+        status: "blocked",
+        owner: "master-operator",
+      },
+      canaryTokenScopes: [],
+    });
     expect(summary.authoritySwitchChecklist).toMatchObject({
       status: "blocked",
       authoritySwitchAllowed: false,
@@ -392,6 +410,20 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
         ]),
       }),
     ]);
+    expect(summary.authPolicyAndCanaryScopeMatrix.canaryTokenScopes).toEqual([
+      expect.objectContaining({
+        surface: "chat.send",
+        status: "blocked",
+        owner: "master-operator",
+        canaryFlag: "ARGENT_RUST_GATEWAY_CANARY",
+        requiredScope: "rust.gateway.canary.chat.send",
+        allowedMethods: ["chat.send"],
+        deniedMethods: ["cron.add", "cron.run", "workflows.run", "channels.send"],
+      }),
+    ]);
+    expect(summary.authPolicyAndCanaryScopeMatrix.realIssuerExpiredToken.requiredProof).toContain(
+      "authorized token issuer can mint an expired canary token without exposing secrets in git or bus",
+    );
   });
 
   it("builds synthetic blocked gate fixtures for all unsafe promotion surfaces", () => {
@@ -459,6 +491,24 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
     expect(summary.authoritySwitchChecklist.requiredBeforePromotion).toContain(
       "duplicate-prevention gates cover workflow, session, run, timer, and channel split-brain cases",
     );
+    expect(
+      summary.authPolicyAndCanaryScopeMatrix.canaryTokenScopes.map((scope) => scope.surface),
+    ).toEqual(["chat.send", "cron.add", "workflows.run"]);
+    expect(
+      summary.authPolicyAndCanaryScopeMatrix.canaryTokenScopes.map((scope) => scope.requiredScope),
+    ).toEqual([
+      "rust.gateway.canary.chat.send",
+      "rust.scheduler.canary.cron.add",
+      "rust.workflow.canary.workflows.run",
+    ]);
+    expect(summary.authPolicyAndCanaryScopeMatrix.revokedRoleScopePolicy.surfaces).toEqual([
+      "gateway",
+      "scheduler",
+      "workflow",
+      "channel",
+      "session",
+      "run",
+    ]);
   });
 
   it("builds no-live safety fixtures for rollback duplicate and token gates", () => {

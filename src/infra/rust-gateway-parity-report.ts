@@ -143,6 +143,43 @@ export type RustGatewayPromotionReadinessSummary = {
     missingRequiredCases: RustGatewayTokenAuthCase[];
     remainingBeforeAuthoritySwitch: string[];
   };
+  authPolicyAndCanaryScopeMatrix: {
+    mode: "design-only";
+    liveTrafficAllowed: false;
+    authoritySwitchAllowed: false;
+    realIssuerExpiredToken: {
+      status: "blocked";
+      owner: "master-operator";
+      requiredProof: string[];
+      noLiveProof: string[];
+    };
+    clockSkewAndTtl: {
+      status: "blocked";
+      owner: "master-operator";
+      requiredProof: string[];
+      noLiveProof: string[];
+    };
+    revokedRoleScopePolicy: {
+      status: "blocked";
+      owner: "master-operator";
+      requiredProof: string[];
+      surfaces: Array<"gateway" | "scheduler" | "workflow" | "channel" | "session" | "run">;
+      noLiveProof: string[];
+    };
+    canaryTokenScopes: Array<{
+      surface: "chat.send" | "cron.add" | "workflows.run";
+      status: "blocked";
+      owner: "master-operator";
+      canaryFlag: string;
+      requiredScope: string;
+      allowedMethods: string[];
+      deniedMethods: string[];
+      requiredProof: string[];
+      rollbackProof: string[];
+      noLiveProof: string[];
+    }>;
+    remainingBeforeAuthoritySwitch: string[];
+  };
   authoritySwitchChecklist: {
     status: "blocked";
     authoritySwitchAllowed: false;
@@ -276,6 +313,7 @@ export function buildRustGatewayPromotionReadinessSummary(
     shadowPromotionGateFixtures: buildShadowPromotionGateFixtures(groups),
     noLiveSafetyGateFixtures: buildNoLiveSafetyGateFixtures(groups),
     failedAuthTokenParity,
+    authPolicyAndCanaryScopeMatrix: buildAuthPolicyAndCanaryScopeMatrix(groups),
     authoritySwitchChecklist: buildAuthoritySwitchChecklist(),
     duplicatePrevention,
     gates: buildPromotionGateStatuses(
@@ -297,6 +335,138 @@ export function buildRustGatewayPromotionReadinessSummary(
     ],
     blockers: readiness.blockers,
     warnings: readiness.warnings,
+  };
+}
+
+function buildAuthPolicyAndCanaryScopeMatrix(
+  groups: RustGatewayParityReportGroups,
+): RustGatewayPromotionReadinessSummary["authPolicyAndCanaryScopeMatrix"] {
+  const unsafeMethods = new Set(groups.unsafeBlocked.map((result) => result.method));
+  return {
+    mode: "design-only",
+    liveTrafficAllowed: false,
+    authoritySwitchAllowed: false,
+    realIssuerExpiredToken: {
+      status: "blocked",
+      owner: "master-operator",
+      requiredProof: [
+        "authorized token issuer can mint an expired canary token without exposing secrets in git or bus",
+        "Node and Rust reject the issuer-signed expired token at connect handshake",
+        "error envelopes preserve redaction and do not leak token material",
+      ],
+      noLiveProof: [
+        "current evidence remains synthetic-read-only and never reads a live token store",
+        "no OAuth/API credentials or customer/company data are accessed",
+        "Node remains live authority and Rust remains shadow-only",
+      ],
+    },
+    clockSkewAndTtl: {
+      status: "blocked",
+      owner: "master-operator",
+      requiredProof: [
+        "Node and Rust use the same accepted clock-skew window for not-before and expires-at claims",
+        "TTL boundary tests cover just-valid, just-expired, and skew-exceeded tokens",
+        "canary packet records the issuer clock source and rollback behavior for rejected tokens",
+      ],
+      noLiveProof: [
+        "current report only defines the proof contract; it does not change token validation runtime",
+        "no live canary traffic is routed to Rust",
+        "authority switch remains disabled by default-off config",
+      ],
+    },
+    revokedRoleScopePolicy: {
+      status: "blocked",
+      owner: "master-operator",
+      surfaces: ["gateway", "scheduler", "workflow", "channel", "session", "run"],
+      requiredProof: [
+        "authorized policy source can issue a revoked role/scope canary token without secrets in git or bus",
+        "Node and Rust deny revoked role/scope tokens with matching envelopes on every authority surface",
+        "denied requests stop before RPC mutation, connector execution, scheduler mutation, or workflow run dispatch",
+      ],
+      noLiveProof: [
+        "current revoked-scope evidence is synthetic and stops at connect handshake",
+        "no connector execution, live scheduler mutation, workflow dispatch, or channel send occurs",
+        "Node remains the only live gateway/scheduler/workflow/channel/session/run authority",
+      ],
+    },
+    canaryTokenScopes: [
+      {
+        surface: "chat.send",
+        status: "blocked",
+        owner: "master-operator",
+        canaryFlag: "ARGENT_RUST_GATEWAY_CANARY",
+        requiredScope: "rust.gateway.canary.chat.send",
+        allowedMethods: ["chat.send"],
+        deniedMethods: ["cron.add", "cron.run", "workflows.run", "channels.send"],
+        requiredProof: [
+          "operator-approved canary token is scoped to isolated chat.send target only",
+          "same request id cannot be accepted by both Node and Rust live send paths",
+          "denied scheduler/workflow/channel methods return Node-compatible rejection envelopes",
+        ],
+        rollbackProof: [
+          "disable ARGENT_RUST_GATEWAY_CANARY and verify Node chat.send health before retry",
+          "audit log records the canary token id, authority, and rollback marker without token material",
+        ],
+        noLiveProof: [
+          "matrix entry is generated only when chat.send is unsafe-blocked",
+          "the parity runner does not replay chat.send",
+          "no user-visible send occurs without Master/operator authorization",
+        ],
+      },
+      {
+        surface: "cron.add",
+        status: "blocked",
+        owner: "master-operator",
+        canaryFlag: "ARGENT_RUST_SCHEDULER_CANARY",
+        requiredScope: "rust.scheduler.canary.cron.add",
+        allowedMethods: ["cron.add", "cron.status"],
+        deniedMethods: ["chat.send", "workflows.run", "channels.send"],
+        requiredProof: [
+          "operator-approved canary token is limited to isolated scheduler canary state",
+          "canary schedule key cannot become live in both Node and Rust stores",
+          "denied chat/workflow/channel methods return Node-compatible rejection envelopes",
+        ],
+        rollbackProof: [
+          "disable ARGENT_RUST_SCHEDULER_CANARY and verify cron.status and next-run ownership",
+          "drain or delete canary timer without firing duplicate reminders",
+        ],
+        noLiveProof: [
+          "matrix entry is generated only when cron.add is unsafe-blocked",
+          "the parity runner does not replay cron.add",
+          "Node remains live scheduler authority until explicit promotion",
+        ],
+      },
+      {
+        surface: "workflows.run",
+        status: "blocked",
+        owner: "master-operator",
+        canaryFlag: "ARGENT_RUST_WORKFLOW_CANARY",
+        requiredScope: "rust.workflow.canary.workflows.run",
+        allowedMethods: ["workflows.run", "workflows.list"],
+        deniedMethods: ["chat.send", "cron.add", "channels.send"],
+        requiredProof: [
+          "operator-approved canary token is limited to fixture-safe workflow package or no-op sinks",
+          "same workflow run id cannot be claimed by both Node and Rust",
+          "denied chat/scheduler/channel methods return Node-compatible rejection envelopes",
+        ],
+        rollbackProof: [
+          "disable ARGENT_RUST_WORKFLOW_CANARY and verify workflow status, run detail, and terminal-state probes",
+          "pause and drain Rust canary queue without orphaning live Node-owned runs",
+        ],
+        noLiveProof: [
+          "matrix entry is generated only when workflows.run is unsafe-blocked",
+          "the parity runner does not replay workflows.run",
+          "no connector execution or customer/company data access is allowed",
+        ],
+      },
+    ].filter((entry) => unsafeMethods.has(entry.surface)),
+    remainingBeforeAuthoritySwitch: [
+      "real issuer expired-token proof",
+      "clock-skew and TTL boundary parity",
+      "revoked role/scope policy parity across authority surfaces",
+      "operator-approved canary token scope matrix with denied-method probes",
+      "rollback and duplicate-prevention proof for every canary scope",
+    ],
   };
 }
 
