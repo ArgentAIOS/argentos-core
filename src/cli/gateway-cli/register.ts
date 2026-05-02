@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import type { CostUsageSummary } from "../../infra/session-cost-usage.js";
 import type { GatewayDiscoverOpts } from "./discover.js";
+import { gatewayAuthorityStatusCommand } from "../../commands/gateway-authority-status.js";
 import { gatewayStatusCommand } from "../../commands/gateway-status.js";
 import { formatHealthChannelLines, type HealthSummary } from "../../commands/health.js";
 import { loadConfig } from "../../config/config.js";
@@ -28,16 +29,13 @@ import {
   pickGatewayPort,
   renderBeaconLines,
 } from "./discover.js";
-import { addGatewayRunCommand, runGatewayCommand as runGatewayForeground } from "./run.js";
+import { addGatewayRunCommand } from "./run.js";
 
 function mergeGatewayCommandOptions<T extends Record<string, unknown>>(
   opts: T,
   command?: Command,
 ): T {
-  const parent =
-    command && typeof command.parent?.opts === "function"
-      ? (command.parent.opts() as Record<string, unknown>)
-      : {};
+  const parent = command && typeof command.parent?.opts === "function" ? command.parent.opts() : {};
   return {
     ...parent,
     ...opts,
@@ -166,6 +164,21 @@ export function registerGatewayCli(program: Command) {
         deep: Boolean(merged.deep),
         json: Boolean(merged.json),
       });
+    });
+
+  const authority = gateway
+    .command("authority")
+    .description("Inspect Gateway authority and Rust promotion readiness");
+
+  authority
+    .command("status")
+    .description("Show read-only Gateway authority and rollback readiness")
+    .option("--json", "Output JSON", false)
+    .action(async (opts) => {
+      await runGatewayCommand(
+        async () => gatewayAuthorityStatusCommand(defaultRuntime, { json: Boolean(opts.json) }),
+        "Gateway authority status failed",
+      );
     });
 
   gateway

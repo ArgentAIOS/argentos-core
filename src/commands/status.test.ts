@@ -280,6 +280,51 @@ vi.mock("../daemon/node-service.js", () => ({
 vi.mock("../security/audit.js", () => ({
   runSecurityAudit: mocks.runSecurityAudit,
 }));
+vi.mock("./status.rust-gateway-shadow.js", () => ({
+  getRustGatewayShadowSummary: vi.fn().mockResolvedValue({
+    reachable: true,
+    status: "ok",
+    version: "0.1.0",
+    uptimeSeconds: 12,
+    component: "argentd",
+    mode: "shadow",
+    protocolVersion: 3,
+    liveAuthority: "node",
+    gatewayAuthority: "shadow-only",
+    promotionReady: false,
+    readinessReason: "shadow parity evidence incomplete",
+    statePersistence: "memory-only",
+    baseUrl: "http://127.0.0.1:18799",
+    error: null,
+  }),
+}));
+vi.mock("./status.rust-gateway-parity-report.js", () => ({
+  getRustGatewayParityReportStatus: vi.fn().mockResolvedValue({
+    path: "/tmp/rust-gateway-parity-report.json",
+    freshness: "fresh",
+    generatedAtMs: Date.now() - 60_000,
+    ageMs: 60_000,
+    totals: { passed: 10, failed: 0, skipped: 3 },
+    promotionReady: false,
+    blockers: 0,
+    warnings: 7,
+    error: null,
+  }),
+}));
+vi.mock("./status.rust-gateway-scheduler-authority.js", () => ({
+  getRustGatewaySchedulerAuthoritySummary: vi.fn().mockResolvedValue({
+    schedulerAuthority: "node",
+    rustSchedulerAuthority: "shadow-only",
+    authorityRecord: "missing",
+    cronEnabled: true,
+    cronStorePath: "/tmp/cron/jobs.json",
+    cronJobs: 3,
+    enabledCronJobs: 2,
+    workflowRunCronJobs: 1,
+    nextWakeAtMs: 1_776_600_000_000,
+    notes: ["Node remains live scheduler authority."],
+  }),
+}));
 vi.mock("./status.executive-shadow.js", () => ({
   getExecutiveShadowSummary: vi.fn().mockResolvedValue({
     reachable: true,
@@ -338,6 +383,15 @@ describe("statusCommand", () => {
     expect(payload.securityAudit.summary.warn).toBe(1);
     expect(payload.gatewayService.label).toBe("LaunchAgent");
     expect(payload.nodeService.label).toBe("LaunchAgent");
+    expect(payload.rustGatewayShadow.reachable).toBe(true);
+    expect(payload.rustGatewayShadow.version).toBe("0.1.0");
+    expect(payload.rustGatewayShadow.protocolVersion).toBe(3);
+    expect(payload.rustGatewayShadow.gatewayAuthority).toBe("shadow-only");
+    expect(payload.rustGatewayParityReport.freshness).toBe("fresh");
+    expect(payload.rustGatewayParityReport.totals.passed).toBe(10);
+    expect(payload.rustGatewayParityReport.warnings).toBe(7);
+    expect(payload.rustGatewaySchedulerAuthority.schedulerAuthority).toBe("node");
+    expect(payload.rustGatewaySchedulerAuthority.rustSchedulerAuthority).toBe("shadow-only");
     expect(payload.executiveShadow.reachable).toBe(true);
     expect(payload.executiveShadow.activeLane).toBe("operator");
     expect(payload.executiveShadow.laneCounts.pending).toBe(2);
@@ -356,6 +410,12 @@ describe("statusCommand", () => {
     expect(logs.some((l) => l.includes("Dashboard"))).toBe(true);
     expect(logs.some((l) => l.includes("macos 14.0 (arm64)"))).toBe(true);
     expect(logs.some((l) => l.includes("Memory"))).toBe(true);
+    expect(logs.some((l) => l.includes("Rust gateway shadow"))).toBe(true);
+    expect(logs.some((l) => l.includes("authority shadow-only"))).toBe(true);
+    expect(logs.some((l) => l.includes("Rust parity report"))).toBe(true);
+    expect(logs.some((l) => l.includes("not promotion-ready"))).toBe(true);
+    expect(logs.some((l) => l.includes("Rust scheduler authority"))).toBe(true);
+    expect(logs.some((l) => l.includes("scheduler node"))).toBe(true);
     expect(logs.some((l) => l.includes("Executive shadow"))).toBe(true);
     expect(logs.some((l) => l.includes("Exec inspect"))).toBe(true);
     expect(logs.some((l) => l.includes("pending 2"))).toBe(true);

@@ -58,6 +58,52 @@ export type ExecutiveShadowKernelInspectionStatus = {
   notes: string[];
 };
 
+export type RustGatewayShadowStatus = {
+  reachable: boolean;
+  status: string | null;
+  version: string | null;
+  uptimeSeconds: number | null;
+  component: string | null;
+  mode: string | null;
+  protocolVersion: number | null;
+  liveAuthority: string | null;
+  gatewayAuthority: string | null;
+  promotionReady: boolean | null;
+  readinessReason: string | null;
+  statePersistence: string | null;
+  baseUrl: string;
+  error: string | null;
+};
+
+export type RustGatewayParityReportStatus = {
+  path: string;
+  freshness: "missing" | "fresh" | "stale" | "invalid";
+  generatedAtMs: number | null;
+  ageMs: number | null;
+  totals: {
+    passed: number;
+    failed: number;
+    skipped: number;
+  } | null;
+  promotionReady: boolean | null;
+  blockers: number | null;
+  warnings: number | null;
+  error: string | null;
+};
+
+export type RustGatewaySchedulerAuthorityStatus = {
+  schedulerAuthority: "node";
+  rustSchedulerAuthority: "shadow-only";
+  authorityRecord: "missing";
+  cronEnabled: boolean;
+  cronStorePath: string;
+  cronJobs: number;
+  enabledCronJobs: number;
+  workflowRunCronJobs: number;
+  nextWakeAtMs: number | null;
+  notes: string[];
+};
+
 export type StatusSummary = {
   shadowReplay?: {
     enabled: boolean;
@@ -76,6 +122,9 @@ export type StatusSummary = {
     defaultAgentId: string;
     agents: HeartbeatStatus[];
   };
+  rustGatewayShadow?: RustGatewayShadowStatus;
+  rustGatewayParityReport?: RustGatewayParityReportStatus;
+  rustGatewaySchedulerAuthority?: RustGatewaySchedulerAuthorityStatus;
   executiveShadow?: ExecutiveShadowStatus;
   executiveShadowKernelInspection?: ExecutiveShadowKernelInspectionStatus;
   channelSummary: string[];

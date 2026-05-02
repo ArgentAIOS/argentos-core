@@ -17,6 +17,9 @@ import { peekSystemEvents } from "../infra/system-events.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
 import { getExecutiveShadowSummary } from "./status.executive-shadow.js";
 import { resolveLinkChannelContext } from "./status.link-channel.js";
+import { getRustGatewayParityReportStatus } from "./status.rust-gateway-parity-report.js";
+import { getRustGatewaySchedulerAuthoritySummary } from "./status.rust-gateway-scheduler-authority.js";
+import { getRustGatewayShadowSummary } from "./status.rust-gateway-shadow.js";
 
 const classifyKey = (key: string, entry?: SessionEntry): SessionStatus["kind"] => {
   if (key === "global") {
@@ -85,7 +88,20 @@ export async function getStatusSummary(): Promise<StatusSummary> {
     colorize: true,
     includeAllowFrom: true,
   });
-  const executiveShadow = await getExecutiveShadowSummary();
+  const [
+    rustGatewayShadow,
+    rustGatewayParityReport,
+    rustGatewaySchedulerAuthority,
+    executiveShadow,
+  ] = await Promise.all([
+    getRustGatewayShadowSummary(),
+    getRustGatewayParityReportStatus(),
+    getRustGatewaySchedulerAuthoritySummary({
+      cronEnabled: cfg.cron?.enabled !== false && process.env.ARGENT_SKIP_CRON !== "1",
+      cronStorePath: cfg.cron?.store,
+    }),
+    getExecutiveShadowSummary(),
+  ]);
   const executiveShadowKernelInspection = await inspectExecutiveShadowAgainstKernel({
     getExecutiveSummary: async () => executiveShadow,
   });
@@ -195,6 +211,9 @@ export async function getStatusSummary(): Promise<StatusSummary> {
       defaultAgentId: agentList.defaultId,
       agents: heartbeatAgents,
     },
+    rustGatewayShadow,
+    rustGatewayParityReport,
+    rustGatewaySchedulerAuthority,
     executiveShadow,
     executiveShadowKernelInspection,
     channelSummary,

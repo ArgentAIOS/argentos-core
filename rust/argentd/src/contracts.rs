@@ -13,8 +13,8 @@ pub struct HealthStatus {
 impl HealthStatus {
     pub fn to_json(&self) -> String {
         format!(
-            "{{\"status\":\"ok\",\"uptimeSeconds\":{},\"version\":\"{}\"}}",
-            self.uptime_seconds, COMPONENT_VERSION
+            "{{\"status\":\"ok\",\"uptimeSeconds\":{},\"version\":\"{}\",\"component\":\"argentd\",\"mode\":\"shadow\",\"protocolVersion\":{},\"liveAuthority\":\"node\",\"gatewayAuthority\":\"shadow-only\",\"readiness\":{{\"promotionReady\":false,\"reason\":\"shadow parity evidence incomplete\"}},\"capabilities\":{{\"httpHealth\":true,\"websocketRpc\":true,\"statePersistence\":\"memory-only\",\"schedulerAuthority\":false,\"workflowAuthority\":false,\"channelAuthority\":false,\"sessionAuthority\":false,\"runAuthority\":false}}}}",
+            self.uptime_seconds, COMPONENT_VERSION, PROTOCOL_VERSION
         )
     }
 }

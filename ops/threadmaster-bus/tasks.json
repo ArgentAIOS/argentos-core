@@ -241,5 +241,57 @@
     "priority": "high",
     "branch": "codex/agent-persona-profile-foundation",
     "notes": []
+  },
+  {
+    "id": "task-20260501003429-4b2cb6",
+    "createdAt": "2026-05-01T00:34:29.101Z",
+    "updatedAt": "2026-05-01T00:34:29.101Z",
+    "from": "master",
+    "owner": "workflows",
+    "title": "Rust Sprint 2: review workflow/scheduler canary design",
+    "body": "Review Sprint 2 workflow/scheduler canary task before implementation. Scope: design isolated cron.add/workflows.run evidence without touching live workflow state, duplicate-run prevention required.",
+    "status": "todo",
+    "priority": "normal",
+    "branch": "unknown",
+    "notes": []
+  },
+  {
+    "id": "task-20260501003429-d4osxy",
+    "createdAt": "2026-05-01T00:34:29.269Z",
+    "updatedAt": "2026-05-01T00:34:29.269Z",
+    "from": "master",
+    "owner": "appforge",
+    "title": "Rust Sprint 2: review dashboard smoke gate skeleton",
+    "body": "Review planned dashboard smoke gate skeleton before implementation. No dashboard/AppForge API changes without coordination; initial gate can remain not-run/blocked until evidence exists.",
+    "status": "todo",
+    "priority": "normal",
+    "branch": "unknown",
+    "notes": []
+  },
+  {
+    "id": "task-20260501003429-j837wn",
+    "createdAt": "2026-05-01T00:34:29.426Z",
+    "updatedAt": "2026-05-01T00:34:29.426Z",
+    "from": "master",
+    "owner": "aos",
+    "title": "Rust Sprint 2: review connector/tool parity boundaries",
+    "body": "Review Sprint 2 connector/tool boundary. No connector exposure or connector-backed authority changes planned; connectors/tool fixtures remain mock-only unless AOS approves a read-only evidence shape.",
+    "status": "todo",
+    "priority": "normal",
+    "branch": "unknown",
+    "notes": []
+  },
+  {
+    "id": "task-20260501003429-a94q68",
+    "createdAt": "2026-05-01T00:34:29.595Z",
+    "updatedAt": "2026-05-01T00:34:29.595Z",
+    "from": "master",
+    "owner": "workflows",
+    "title": "Rust Sprint 2: auth/token and rollback dry-run review",
+    "body": "Review proposed auth/token parity matrix and rollback dry-run spec. Sprint 2 draft keeps rollback design/read-only and Node authority intact.",
+    "status": "todo",
+    "priority": "normal",
+    "branch": "unknown",
+    "notes": []
   }
 ]
