@@ -160,6 +160,56 @@ pub struct TimelineSummaryPayload {
     pub last_release_outcome: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct KernelReadinessPayload {
+    pub mode: &'static str,
+    #[serde(rename = "authoritySwitchAllowed")]
+    pub authority_switch_allowed: bool,
+    #[serde(rename = "promotionStatus")]
+    pub promotion_status: &'static str,
+    #[serde(rename = "currentAuthority")]
+    pub current_authority: KernelAuthorityPayload,
+    #[serde(rename = "nodeResponsibilities")]
+    pub node_responsibilities: Vec<&'static str>,
+    #[serde(rename = "rustResponsibilities")]
+    pub rust_responsibilities: Vec<&'static str>,
+    #[serde(rename = "persistenceModel")]
+    pub persistence_model: KernelPersistencePayload,
+    #[serde(rename = "promotionGates")]
+    pub promotion_gates: Vec<KernelPromotionGatePayload>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KernelAuthorityPayload {
+    pub gateway: &'static str,
+    pub scheduler: &'static str,
+    pub workflows: &'static str,
+    pub channels: &'static str,
+    pub sessions: &'static str,
+    pub executive: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KernelPersistencePayload {
+    #[serde(rename = "snapshotFile")]
+    pub snapshot_file: &'static str,
+    #[serde(rename = "journalFile")]
+    pub journal_file: &'static str,
+    #[serde(rename = "restartRecovery")]
+    pub restart_recovery: &'static str,
+    #[serde(rename = "leaseRecovery")]
+    pub lease_recovery: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KernelPromotionGatePayload {
+    pub id: &'static str,
+    pub status: &'static str,
+    pub owner: &'static str,
+    #[serde(rename = "requiredProof")]
+    pub required_proof: Vec<&'static str>,
+}
+
 pub fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -350,6 +400,74 @@ impl ExecutiveRuntime {
             last_release_at_ms,
             last_release_outcome,
         })
+    }
+
+    pub fn kernel_readiness_payload(&self) -> KernelReadinessPayload {
+        KernelReadinessPayload {
+            mode: "shadow-readiness",
+            authority_switch_allowed: false,
+            promotion_status: "blocked",
+            current_authority: KernelAuthorityPayload {
+                gateway: "node",
+                scheduler: "node",
+                workflows: "node",
+                channels: "node",
+                sessions: "node",
+                executive: "shadow-only",
+            },
+            node_responsibilities: vec![
+                "gateway live authority",
+                "scheduler live authority",
+                "workflow execution live authority",
+                "channel/session/run live authority",
+                "model/tool/product behavior",
+            ],
+            rust_responsibilities: vec![
+                "executive shadow state",
+                "lane arbitration shadow evidence",
+                "continuity journal",
+                "restart recovery proof",
+                "read-only health and metrics",
+            ],
+            persistence_model: KernelPersistencePayload {
+                snapshot_file: SNAPSHOT_FILE_NAME,
+                journal_file: JOURNAL_FILE_NAME,
+                restart_recovery: "snapshot-plus-journal-replay",
+                lease_recovery: "tick-expiry-before-promotion",
+            },
+            promotion_gates: vec![
+                KernelPromotionGatePayload {
+                    id: "contract-integrity",
+                    status: "blocked",
+                    owner: "master-operator",
+                    required_proof: vec![
+                        "executive shadow protocol schema regenerated and checked",
+                        "TypeScript contract validation tests pass",
+                        "Rust and TypeScript payload schemas match",
+                    ],
+                },
+                KernelPromotionGatePayload {
+                    id: "restart-and-lease-recovery",
+                    status: "blocked",
+                    owner: "master-operator",
+                    required_proof: vec![
+                        "cargo argent-execd tests pass",
+                        "restart smoke proves state and journal recovery",
+                        "lease soak proves expired active lanes do not wedge arbitration",
+                    ],
+                },
+                KernelPromotionGatePayload {
+                    id: "authority-boundary",
+                    status: "blocked",
+                    owner: "master-operator",
+                    required_proof: vec![
+                        "no live gateway/scheduler/workflow/channel/session/run authority switch",
+                        "TypeScript remains consumer/client until explicit adoption",
+                        "operator status shows executive shadow without implying live kernel authority",
+                    ],
+                },
+            ],
+        }
     }
 
     pub fn request_lane(

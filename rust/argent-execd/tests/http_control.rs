@@ -98,6 +98,21 @@ fn http_control_surface_drives_tick_and_restart_recovery() {
     assert!(journal_body.contains("\"lane\": \"operator\""));
     assert!(journal_body.contains("\"lane_activated\""));
 
+    let readiness_response = http_request(
+        &addr,
+        &format!(
+            "GET /v1/executive/readiness HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n"
+        ),
+    );
+    let readiness_body = response_body(&readiness_response);
+    assert!(readiness_body.contains("\"mode\": \"shadow-readiness\""));
+    assert!(readiness_body.contains("\"authoritySwitchAllowed\": false"));
+    assert!(readiness_body.contains("\"executive\": \"shadow-only\""));
+    assert!(readiness_body.contains("\"gateway\": \"node\""));
+    assert!(readiness_body.contains("\"snapshot-plus-journal-replay\""));
+    assert!(readiness_body.contains("\"restart-and-lease-recovery\""));
+    assert!(readiness_body.contains("\"authority-boundary\""));
+
     let shutdown_request = format!(
         "POST /v1/executive/shutdown HTTP/1.1\r\nHost: {addr}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
     );
