@@ -67,6 +67,52 @@ describe("runRustGatewayParityReplay", () => {
     expect(report.results[0]?.notes.join(" ")).toContain("schema/payload");
   });
 
+  it("passes failed-auth fixtures when structured errors are redacted", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "wrong-token",
+        method: "connect",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+        authTokenOverride: "rust-gateway-parity-wrong-token",
+        redactionProbes: ["rust-gateway-parity-wrong-token"],
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      frame(endpoint, false, undefined, "unauthorized");
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals).toEqual({ passed: 1, failed: 0, skipped: 0 });
+    expect(report.results[0]?.observedParity).toBe("schema-compatible");
+    expect(report.results[0]?.notes.join(" ")).toContain("structured and redacted");
+  });
+
+  it("fails failed-auth fixtures when error envelopes leak token probes", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "wrong-token",
+        method: "connect",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+        authTokenOverride: "rust-gateway-parity-wrong-token",
+        redactionProbes: ["rust-gateway-parity-wrong-token"],
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      endpoint === "node"
+        ? frame(endpoint, false, undefined, "unauthorized")
+        : frame(endpoint, false, undefined, "bad token rust-gateway-parity-wrong-token");
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals.failed).toBe(1);
+    expect(report.results[0]?.observedParity).toBe("failed");
+    expect(report.results[0]?.notes.join(" ")).toContain("leaked redaction probe");
+  });
+
   it("passes status fixtures when read-only summary fields are present", async () => {
     const fixtures: RustGatewayParityFixture[] = [
       {

@@ -44,6 +44,11 @@ describe("rust gateway parity fixtures", () => {
       null,
       "rust-gateway-parity-wrong-token",
     ]);
+    expect(connectFixtures.map((fixture) => fixture.redactionProbes ?? [])).toEqual([
+      [],
+      [],
+      ["rust-gateway-parity-wrong-token"],
+    ]);
     expect(JSON.stringify(connectFixtures)).not.toContain("ARGENT_GATEWAY_TOKEN");
   });
 

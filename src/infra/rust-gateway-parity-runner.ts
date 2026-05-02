@@ -152,12 +152,19 @@ async function replayFixture(params: {
   }
 
   if (params.fixture.expectedParity === "schema-compatible") {
+    const errorCheck =
+      !node.frame.ok && !rust.frame.ok
+        ? validateSchemaCompatibleErrors(params.fixture, node.frame, rust.frame)
+        : { ok: true, note: null };
     const payloadCheck =
       node.frame.ok && rust.frame.ok
         ? validateSchemaCompatiblePayloads(params.fixture, node.frame.payload, rust.frame.payload)
         : { ok: true, note: null };
-    const compatible = node.frame.ok === rust.frame.ok && payloadCheck.ok;
+    const compatible = node.frame.ok === rust.frame.ok && errorCheck.ok && payloadCheck.ok;
     const successNotes = ["schema/envelope: response envelopes are compatible"];
+    if (errorCheck.note) {
+      successNotes.push(errorCheck.note);
+    }
     if (payloadCheck.note) {
       successNotes.push(payloadCheck.note);
     }
@@ -170,6 +177,7 @@ async function replayFixture(params: {
         ? successNotes
         : [
             `schema/envelope: node ok=${node.frame.ok}, rust ok=${rust.frame.ok}`,
+            ...(errorCheck.note ? [errorCheck.note] : []),
             ...(payloadCheck.note ? [payloadCheck.note] : []),
           ],
     });
@@ -257,6 +265,46 @@ function validateSchemaCompatiblePayloads(
     ok: false,
     note: `schema/payload: ${fixture.method} invalid (${node.ok ? "node ok" : `node ${node.error}`}; ${rust.ok ? "rust ok" : `rust ${rust.error}`})`,
   };
+}
+
+function validateSchemaCompatibleErrors(
+  fixture: RustGatewayParityFixture,
+  nodeFrame: ResponseFrame,
+  rustFrame: ResponseFrame,
+): { ok: boolean; note: string | null } {
+  if (!nodeFrame.error || !rustFrame.error) {
+    return {
+      ok: false,
+      note: "schema/error: both gateways must return structured error envelopes",
+    };
+  }
+  const leakedProbe = findLeakedRedactionProbe(fixture, nodeFrame, rustFrame);
+  if (leakedProbe) {
+    return {
+      ok: false,
+      note: `schema/error: auth failure leaked redaction probe ${leakedProbe}`,
+    };
+  }
+  return {
+    ok: true,
+    note: fixture.redactionProbes?.length
+      ? "schema/error: auth failure errors are structured and redacted"
+      : "schema/error: error envelopes are structured",
+  };
+}
+
+function findLeakedRedactionProbe(
+  fixture: RustGatewayParityFixture,
+  nodeFrame: ResponseFrame,
+  rustFrame: ResponseFrame,
+): string | null {
+  const haystack = `${stableJson(nodeFrame.error)}\n${stableJson(rustFrame.error)}`;
+  for (const probe of fixture.redactionProbes ?? []) {
+    if (probe && haystack.includes(probe)) {
+      return probe;
+    }
+  }
+  return null;
 }
 
 type PayloadValidation = { ok: true } | { ok: false; error: string };

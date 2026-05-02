@@ -28,6 +28,7 @@ export type RustGatewayParityFixture = {
   method: string;
   params?: Record<string, unknown>;
   authTokenOverride?: string | null;
+  redactionProbes?: string[];
   timeoutMs?: number;
   safety: RustGatewayFixtureSafety;
   expectedParity: RustGatewayParityLabel;
@@ -68,6 +69,7 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     surface: "connect",
     method: "connect",
     authTokenOverride: "rust-gateway-parity-wrong-token",
+    redactionProbes: ["rust-gateway-parity-wrong-token"],
     safety: "read-only",
     expectedParity: "schema-compatible",
     reason:
