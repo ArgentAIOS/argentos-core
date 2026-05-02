@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  executiveShadowReadinessFailsClosed,
+  executiveShadowReadinessSchema,
   executiveShadowHealthSchema,
   executiveShadowJournalSchema,
   executiveShadowMetricsSchema,
@@ -36,6 +38,67 @@ describe("executive shadow contract schemas", () => {
       highestPendingPriority: 50,
     });
     expect(payload.laneCounts.pending).toBe(2);
+  });
+
+  it("accepts readiness only when Kernel authority fails closed", () => {
+    const payload = executiveShadowReadinessSchema.parse({
+      mode: "shadow-readiness",
+      authoritySwitchAllowed: false,
+      promotionStatus: "blocked",
+      currentAuthority: {
+        gateway: "node",
+        scheduler: "node",
+        workflows: "node",
+        channels: "node",
+        sessions: "node",
+        executive: "shadow-only",
+      },
+      nodeResponsibilities: ["gateway live authority"],
+      rustResponsibilities: ["executive shadow state"],
+      persistenceModel: {
+        snapshotFile: "executive.state.json",
+        journalFile: "executive.journal.jsonl",
+        restartRecovery: "snapshot-plus-journal-replay",
+        leaseRecovery: "tick-expiry-before-promotion",
+      },
+      promotionGates: [
+        {
+          id: "authority-boundary",
+          status: "blocked",
+          owner: "master-operator",
+          requiredProof: ["no authority switch"],
+        },
+      ],
+    });
+
+    expect(executiveShadowReadinessFailsClosed(payload)).toBe(true);
+  });
+
+  it("rejects readiness payloads that imply authority promotion", () => {
+    expect(() =>
+      executiveShadowReadinessSchema.parse({
+        mode: "shadow-readiness",
+        authoritySwitchAllowed: true,
+        promotionStatus: "ready",
+        currentAuthority: {
+          gateway: "rust",
+          scheduler: "node",
+          workflows: "node",
+          channels: "node",
+          sessions: "node",
+          executive: "shadow-only",
+        },
+        nodeResponsibilities: [],
+        rustResponsibilities: [],
+        persistenceModel: {
+          snapshotFile: "executive.state.json",
+          journalFile: "executive.journal.jsonl",
+          restartRecovery: "snapshot-plus-journal-replay",
+          leaseRecovery: "tick-expiry-before-promotion",
+        },
+        promotionGates: [],
+      }),
+    ).toThrow();
   });
 
   it("accepts a valid state envelope", () => {
