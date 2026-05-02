@@ -36,9 +36,18 @@ CONNECTOR_AUTH = {
     ],
     "interactive_setup": [
         "Create an Intuit developer app for QuickBooks Online.",
-        "Add QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REFRESH_TOKEN, and QBO_REALM_ID in API Keys.",
-        "Set QBO_API_BASE_URL to https://sandbox-quickbooks.api.intuit.com when targeting a sandbox company.",
+        "Add QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REFRESH_TOKEN, and QBO_REALM_ID in operator-controlled API Keys.",
+        "Set optional QBO_ENVIRONMENT to sandbox or production; sandbox should use https://sandbox-quickbooks.api.intuit.com.",
+        "Use QBO_API_BASE_URL only when the operator must override the environment-derived QuickBooks API base URL.",
+        "Keep refresh tokens outside git and rotate them through the operator secret store.",
         "Keep company, account, and date-window scope narrow before enabling write actions.",
+    ],
+    "optional_service_keys": [
+        "QBO_ENVIRONMENT",
+        "QBO_API_BASE_URL",
+        "QBO_TOKEN_URL",
+        "QBO_MINOR_VERSION",
+        "QBO_HTTP_TIMEOUT_SECONDS",
     ],
 }
 
@@ -259,6 +268,7 @@ COMMAND_SPECS = [
 ALL_COMMAND_SPECS = [*GLOBAL_COMMAND_SPECS, *COMMAND_SPECS]
 MODE_ORDER = ["readonly", "write", "full", "admin"]
 DEFAULT_API_BASE_URL = "https://quickbooks.api.intuit.com"
+SANDBOX_API_BASE_URL = "https://sandbox-quickbooks.api.intuit.com"
 DEFAULT_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
 DEFAULT_MINOR_VERSION = 75
 DEFAULT_TIMEOUT_SECONDS = 20.0
@@ -369,7 +379,14 @@ def _canonical_entity_name(value: str | None) -> str | None:
 
 
 def runtime_config() -> dict[str, Any]:
-    api_base_url = _env("QBO_API_BASE_URL", DEFAULT_API_BASE_URL).rstrip("/")
+    raw_environment = _env("QBO_ENVIRONMENT", "production").strip().lower()
+    environment = raw_environment if raw_environment in {"sandbox", "production"} else "production"
+    default_api_base_url = SANDBOX_API_BASE_URL if environment == "sandbox" else DEFAULT_API_BASE_URL
+    api_base_url = _env("QBO_API_BASE_URL", default_api_base_url).rstrip("/")
+    if "sandbox-quickbooks.api.intuit.com" in api_base_url:
+        environment = "sandbox"
+    elif api_base_url == DEFAULT_API_BASE_URL:
+        environment = "production"
     token_url = _env("QBO_TOKEN_URL", DEFAULT_TOKEN_URL).rstrip("/")
     minor_version = _parse_int(_env("QBO_MINOR_VERSION"), DEFAULT_MINOR_VERSION)
     timeout_seconds = _parse_float(_env("QBO_HTTP_TIMEOUT_SECONDS"), DEFAULT_TIMEOUT_SECONDS)
@@ -389,6 +406,7 @@ def runtime_config() -> dict[str, Any]:
             "kind": CONNECTOR_AUTH["kind"],
             "required": CONNECTOR_AUTH["required"],
             "service_keys": list(CONNECTOR_AUTH["service_keys"]),
+            "optional_service_keys": list(CONNECTOR_AUTH["optional_service_keys"]),
             "configured": configured,
             "missing_keys": missing_keys,
             "redacted": {
@@ -402,9 +420,10 @@ def runtime_config() -> dict[str, Any]:
         "runtime": {
             "api_base_url": api_base_url,
             "token_url": token_url,
+            "environment": environment,
             "minor_version": minor_version,
             "timeout_seconds": timeout_seconds,
-            "sandbox": "sandbox-quickbooks.api.intuit.com" in api_base_url,
+            "sandbox": environment == "sandbox",
             "auth_ready": auth_ready,
             "read_only_ready": auth_ready,
             "write_paths_implemented": True,
@@ -528,7 +547,7 @@ def health_snapshot() -> dict[str, Any]:
     if probe and not probe.get("ok"):
         next_steps.append(f"Fix the QuickBooks probe failure: {probe['message']}")
     if not config["runtime"]["auth_ready"]:
-        next_steps.append("Use a sandbox base URL if you are connecting to a sandbox company.")
+        next_steps.append("Set QBO_ENVIRONMENT=sandbox for sandbox companies or QBO_ENVIRONMENT=production for production companies.")
     snapshot["next_steps"] = next_steps
     return snapshot
 

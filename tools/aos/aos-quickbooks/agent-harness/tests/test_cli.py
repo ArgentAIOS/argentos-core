@@ -68,6 +68,18 @@ def test_runtime_config_prefers_operator_service_keys(monkeypatch):
     assert config["auth"]["redacted"]["QBO_REFRESH_TOKEN"] == "se...oken"
 
 
+def test_runtime_config_uses_sandbox_environment(monkeypatch):
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("QBO_ENVIRONMENT", "sandbox")
+    monkeypatch.delenv("QBO_API_BASE_URL", raising=False)
+
+    config = runtime.runtime_config()
+
+    assert config["runtime"]["environment"] == "sandbox"
+    assert config["runtime"]["sandbox"] is True
+    assert config["runtime"]["api_base_url"] == "https://sandbox-quickbooks.api.intuit.com"
+
+
 def test_doctor_reports_probe_failure(monkeypatch):
     _set_required_env(monkeypatch)
     monkeypatch.setattr(

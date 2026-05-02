@@ -167,10 +167,21 @@
     "kind": "oauth-service-key",
     "required": true,
     "service_keys": ["QBO_CLIENT_ID", "QBO_CLIENT_SECRET", "QBO_REFRESH_TOKEN", "QBO_REALM_ID"],
+    "optional_service_keys": [
+      "QBO_ENVIRONMENT",
+      "QBO_API_BASE_URL",
+      "QBO_TOKEN_URL",
+      "QBO_MINOR_VERSION",
+      "QBO_HTTP_TIMEOUT_SECONDS"
+    ],
     "interactive_setup": [
       "Create an Intuit developer app for QuickBooks Online.",
-      "Add QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REFRESH_TOKEN, and QBO_REALM_ID in API Keys.",
-      "Keep company, account, and date-window scope narrow before enabling write actions."
+      "Add QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REFRESH_TOKEN, and QBO_REALM_ID in operator-controlled API Keys.",
+      "Use Intuit OAuth Playground or a local OAuth callback to exchange an authorization grant for the company realmId and refresh token; store both outside git.",
+      "Set QBO_ENVIRONMENT to sandbox or production. Sandbox installs should target https://sandbox-quickbooks.api.intuit.com.",
+      "Use QBO_API_BASE_URL only when the operator must override the environment-derived QuickBooks API base URL.",
+      "Keep company, account, and date-window scope narrow before enabling write actions.",
+      "Keep QuickBooks not-live-ready until health/doctor succeeds with operator-stored credentials and an explicitly authorized sandbox or production smoke."
     ]
   },
   "commands": [
