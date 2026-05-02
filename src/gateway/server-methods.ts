@@ -1,4 +1,8 @@
 import type { GatewayRequestHandlers, GatewayRequestOptions } from "./server-methods/types.js";
+import {
+  createRustGatewayReceiptStore,
+  type RustGatewayReceiptSurface,
+} from "../infra/rust-gateway-receipt-store.js";
 import { ErrorCodes, errorShape } from "./protocol/index.js";
 import { aevpHandlers } from "./server-methods/aevp.js";
 import { agentHandlers } from "./server-methods/agent.js";
@@ -47,6 +51,7 @@ const READ_SCOPE = "operator.read";
 const WRITE_SCOPE = "operator.write";
 const APPROVALS_SCOPE = "operator.approvals";
 const PAIRING_SCOPE = "operator.pairing";
+const RUST_CANARY_DENY_RECEIPTS_FLAG = "ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS";
 
 const APPROVAL_METHODS = new Set(["exec.approval.request", "exec.approval.resolve"]);
 const NODE_ROLE_METHODS = new Set(["node.invoke.result", "node.event", "skills.bins"]);
@@ -64,6 +69,11 @@ const PAIRING_METHODS = new Set([
   "node.rename",
 ]);
 const ADMIN_METHOD_PREFIXES = ["exec.approvals."];
+const RUST_CANARY_DENIAL_METHODS = new Set<RustGatewayReceiptSurface>([
+  "chat.send",
+  "cron.add",
+  "workflows.run",
+]);
 const READ_METHODS = new Set([
   "health",
   "logs.tail",
@@ -282,6 +292,64 @@ function authorizeGatewayMethod(method: string, client: GatewayRequestOptions["c
   return errorShape(ErrorCodes.INVALID_REQUEST, "missing scope: operator.admin");
 }
 
+async function maybeDenyRustCanaryBeforeMutation(
+  req: GatewayRequestOptions["req"],
+  respond: GatewayRequestOptions["respond"],
+): Promise<boolean> {
+  if (process.env[RUST_CANARY_DENY_RECEIPTS_FLAG] !== "1") {
+    return false;
+  }
+  if (!RUST_CANARY_DENIAL_METHODS.has(req.method as RustGatewayReceiptSurface)) {
+    return false;
+  }
+  const params = (req.params ?? {}) as Record<string, unknown>;
+  const surface = req.method as RustGatewayReceiptSurface;
+  const store = createRustGatewayReceiptStore();
+  const receipt = await store.append({
+    surface,
+    receiptCode: "RUST_CANARY_DENIED",
+    sourceFixtureId: `rust-shadow-gate-${surface.replace(".", "-")}`,
+    requestId: req.id,
+    duplicateKey: deriveRustCanaryDuplicateKey(surface, params),
+    reason: `${surface} denied before mutation because ${RUST_CANARY_DENY_RECEIPTS_FLAG}=1`,
+    params,
+  });
+  respond(
+    false,
+    undefined,
+    errorShape(ErrorCodes.INVALID_REQUEST, "Rust canary denied before mutation", {
+      details: {
+        auditRecordId: receipt.auditRecordId,
+        receiptId: receipt.receiptId,
+        receiptCode: receipt.receiptCode,
+        surface: receipt.surface,
+        nodeAuthority: receipt.nodeAuthority,
+        rustAuthority: receipt.rustAuthority,
+        authoritySwitchAllowed: receipt.authoritySwitchAllowed,
+        mutationBlockedBeforeHandler: receipt.mutationBlockedBeforeHandler,
+      },
+    }),
+  );
+  return true;
+}
+
+function deriveRustCanaryDuplicateKey(
+  surface: RustGatewayReceiptSurface,
+  params: Record<string, unknown>,
+): string | null {
+  const key =
+    stringParam(params.idempotencyKey) ??
+    stringParam(params.runId) ??
+    stringParam(params.workflowId) ??
+    stringParam(params.name) ??
+    stringParam(params.sessionKey);
+  return key ? `${surface}:${key}` : null;
+}
+
+function stringParam(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...connectHandlers,
   ...connectorsHandlers,
@@ -333,6 +401,9 @@ export async function handleGatewayRequest(
   const authError = authorizeGatewayMethod(req.method, client);
   if (authError) {
     respond(false, undefined, authError);
+    return;
+  }
+  if (await maybeDenyRustCanaryBeforeMutation(req, respond)) {
     return;
   }
   const handler = opts.extraHandlers?.[req.method] ?? coreGatewayHandlers[req.method];
