@@ -429,6 +429,10 @@ const schemaPayloadValidators: Record<string, PayloadValidator | undefined> = {
     (payload) => validateCronListPayload(payload),
     "cron.list payload includes schema-compatible read-only timer rows",
   ),
+  "node.list": withDescription(
+    (payload) => validateNodeListPayload(payload),
+    "node.list payload includes schema-compatible read-only node rows",
+  ),
 };
 
 function withDescription(
@@ -577,8 +581,60 @@ function validateCronListPayload(payload: unknown): PayloadValidation {
   return { ok: true };
 }
 
+function validateNodeListPayload(payload: unknown): PayloadValidation {
+  const base = validateObject(payload, [
+    ["ts", "number"],
+    ["nodes", "array"],
+  ]);
+  if (!base.ok) {
+    return base;
+  }
+
+  const nodes = (payload as { nodes: unknown[] }).nodes;
+  for (const [index, node] of nodes.entries()) {
+    const row = validateObject(node, [
+      ["nodeId", "string"],
+      ["caps", "array"],
+      ["commands", "array"],
+      ["paired", "boolean"],
+      ["connected", "boolean"],
+    ]);
+    if (!row.ok) {
+      return { ok: false, error: `nodes[${index}].${row.error}` };
+    }
+
+    const record = node as Record<string, unknown>;
+    if ("connectedAtMs" in record && !isNullableNumber(record.connectedAtMs)) {
+      return { ok: false, error: `nodes[${index}].connectedAtMs is not number or null` };
+    }
+    if ("displayName" in record && !isOptionalString(record.displayName)) {
+      return { ok: false, error: `nodes[${index}].displayName is not string or undefined` };
+    }
+    if ("platform" in record && !isOptionalString(record.platform)) {
+      return { ok: false, error: `nodes[${index}].platform is not string or undefined` };
+    }
+    if ("remoteIp" in record && !isOptionalString(record.remoteIp)) {
+      return { ok: false, error: `nodes[${index}].remoteIp is not string or undefined` };
+    }
+    const caps = record.caps as unknown[];
+    const commands = record.commands as unknown[];
+    if (!caps.every((cap) => typeof cap === "string")) {
+      return { ok: false, error: `nodes[${index}].caps contains non-string values` };
+    }
+    if (!commands.every((command) => typeof command === "string")) {
+      return { ok: false, error: `nodes[${index}].commands contains non-string values` };
+    }
+  }
+
+  return { ok: true };
+}
+
 function isNullableNumber(value: unknown): boolean {
   return value === null || typeof value === "number";
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
 }
 
 function stableJson(value: unknown): string {

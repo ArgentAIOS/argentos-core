@@ -470,6 +470,88 @@ describe("runRustGatewayParityReplay", () => {
     expect(report.results[0]?.notes.join(" ")).toContain("schedule is not an object");
   });
 
+  it("passes node.list fixtures when node rows are read-only schema-compatible", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "node-list",
+        surface: "nodes",
+        method: "node.list",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      frame(endpoint, true, {
+        ts: 1_776_603_600_000,
+        nodes: [
+          {
+            nodeId: `${endpoint}-node-1`,
+            displayName: "Shadow Node",
+            platform: "macos",
+            remoteIp: "127.0.0.1",
+            caps: ["canvas"],
+            commands: ["canvas.navigate"],
+            connectedAtMs: 1_776_603_600_000,
+            paired: true,
+            connected: true,
+          },
+        ],
+      });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals).toEqual({ passed: 1, failed: 0, skipped: 0 });
+    expect(report.results[0]?.observedParity).toBe("schema-compatible");
+    expect(report.results[0]?.notes.join(" ")).toContain("node.list payload includes");
+  });
+
+  it("fails node.list fixtures when node row capability shape drifts", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "node-list",
+        surface: "nodes",
+        method: "node.list",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      endpoint === "node"
+        ? frame(endpoint, true, {
+            ts: 1,
+            nodes: [
+              {
+                nodeId: "node-1",
+                caps: ["canvas"],
+                commands: ["canvas.navigate"],
+                paired: true,
+                connected: true,
+              },
+            ],
+          })
+        : frame(endpoint, true, {
+            ts: 1,
+            nodes: [
+              {
+                nodeId: "rust-1",
+                caps: ["canvas", 42],
+                commands: ["canvas.navigate"],
+                paired: true,
+                connected: true,
+              },
+            ],
+          });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals.failed).toBe(1);
+    expect(report.results[0]?.notes.join(" ")).toContain(
+      "nodes[0].caps contains non-string values",
+    );
+  });
+
   it("passes mock-compatible fixtures but marks them as non-promotion evidence", async () => {
     const fixtures: RustGatewayParityFixture[] = [
       {

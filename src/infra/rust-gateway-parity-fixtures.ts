@@ -201,9 +201,9 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     method: "node.list",
     params: {},
     safety: "read-only",
-    expectedParity: "mock-compatible",
+    expectedParity: "schema-compatible",
     reason:
-      "Rust reports synthetic node presence; fixture is shape-only until node registry parity exists.",
+      "Node list must expose schema-compatible read-only node rows without granting Rust node invoke or pairing authority.",
   },
   {
     id: "rpc-tools-status",
