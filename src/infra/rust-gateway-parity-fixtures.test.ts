@@ -28,6 +28,25 @@ describe("rust gateway parity fixtures", () => {
     expect(unsafeMethods).toContain("workflows.run");
   });
 
+  it("includes failed-auth fixtures without storing real operator tokens", () => {
+    const connectFixtures = RUST_GATEWAY_INITIAL_PARITY_FIXTURES.filter((fixture) =>
+      fixture.id.startsWith("connect-"),
+    );
+
+    expect(connectFixtures.map((fixture) => fixture.id)).toEqual([
+      "connect-v3-token",
+      "connect-missing-token",
+      "connect-wrong-token",
+    ]);
+    expect(connectFixtures.every((fixture) => fixture.safety === "read-only")).toBe(true);
+    expect(connectFixtures.map((fixture) => fixture.authTokenOverride)).toEqual([
+      undefined,
+      null,
+      "rust-gateway-parity-wrong-token",
+    ]);
+    expect(JSON.stringify(connectFixtures)).not.toContain("ARGENT_GATEWAY_TOKEN");
+  });
+
   it("summarizes fixture readiness by parity label", () => {
     const summary = summarizeRustGatewayParityFixtures();
 

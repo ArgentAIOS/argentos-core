@@ -27,6 +27,7 @@ export type RustGatewayParityFixture = {
     | "agent-run";
   method: string;
   params?: Record<string, unknown>;
+  authTokenOverride?: string | null;
   timeoutMs?: number;
   safety: RustGatewayFixtureSafety;
   expectedParity: RustGatewayParityLabel;
@@ -51,6 +52,26 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     safety: "read-only",
     expectedParity: "schema-compatible",
     reason: "Both gateways should negotiate protocol v3 and return a hello-ok envelope.",
+  },
+  {
+    id: "connect-missing-token",
+    surface: "connect",
+    method: "connect",
+    authTokenOverride: null,
+    safety: "read-only",
+    expectedParity: "schema-compatible",
+    reason:
+      "Both gateways should reject a missing token without leaking expected or received token material.",
+  },
+  {
+    id: "connect-wrong-token",
+    surface: "connect",
+    method: "connect",
+    authTokenOverride: "rust-gateway-parity-wrong-token",
+    safety: "read-only",
+    expectedParity: "schema-compatible",
+    reason:
+      "Both gateways should reject a mismatched token without leaking expected or received token material.",
   },
   {
     id: "rpc-health",

@@ -333,6 +333,27 @@ fn websocket_rejects_non_connect_first_request() {
 }
 
 #[test]
+fn websocket_rejects_missing_auth_with_request_id() {
+    let (addr, handle) = spawn_server("shadow-token");
+    let mut client = open_ws(addr);
+    let _challenge = read_server_text(&mut client).expect("challenge frame should arrive");
+
+    send_masked_text(
+        &mut client,
+        r#"{"type":"req","id":"req-missing-auth","method":"connect","params":{"minProtocol":3,"maxProtocol":3,"client":{"id":"test-client","version":"1.0.0","platform":"macos","mode":"operator"}}}"#,
+    );
+    let response = read_server_text(&mut client).expect("error response should arrive");
+    assert!(response.contains("\"type\":\"res\""));
+    assert!(response.contains("\"id\":\"req-missing-auth\""));
+    assert!(response.contains("\"code\":\"INVALID_REQUEST\""));
+    assert!(response.contains("\"message\":\"invalid connect params\""));
+    assert!(!response.contains("shadow-token"));
+    assert!(read_close(&mut client));
+    drop(client);
+    join_server(handle);
+}
+
+#[test]
 fn websocket_rejects_protocol_mismatch() {
     let (addr, handle) = spawn_server("shadow-token");
     let mut client = open_ws(addr);

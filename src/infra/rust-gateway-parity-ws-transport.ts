@@ -42,9 +42,15 @@ export function createRustGatewayWsParityTransport(
     try {
       await client.open(timeoutMs);
       if (fixture.method === "connect") {
-        return await client.request(buildConnectRequest(options.token), timeoutMs);
+        return await client.request(
+          buildConnectRequest(resolveFixtureToken(options.token, fixture)),
+          timeoutMs,
+        );
       }
-      const connect = await client.request(buildConnectRequest(options.token), timeoutMs);
+      const connect = await client.request(
+        buildConnectRequest(resolveFixtureToken(options.token, fixture)),
+        timeoutMs,
+      );
       if (isRecord(connect) && connect.type === "res" && connect.ok === false) {
         return connect;
       }
@@ -181,6 +187,16 @@ function buildConnectRequest(token: string | undefined): RequestFrame {
       auth: token ? { token } : undefined,
     },
   };
+}
+
+function resolveFixtureToken(
+  defaultToken: string | undefined,
+  fixture: RustGatewayParityFixture,
+): string | undefined {
+  if (!Object.prototype.hasOwnProperty.call(fixture, "authTokenOverride")) {
+    return defaultToken;
+  }
+  return fixture.authTokenOverride ?? undefined;
 }
 
 function buildFixtureRequest(fixture: RustGatewayParityFixture): RequestFrame {

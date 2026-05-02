@@ -158,6 +158,46 @@ describe("createRustGatewayWsParityTransport", () => {
     expect(response).toMatchObject({ type: "res", ok: true });
   });
 
+  it("can send failed-auth connect fixtures without using the shared service token", async () => {
+    const sockets: FakeParityWebSocket[] = [];
+    const transport = createRustGatewayWsParityTransport({
+      nodeUrl: "ws://node",
+      rustUrl: "ws://rust",
+      token: "shared-token",
+      webSocketFactory: (url) => {
+        const socket = new FakeParityWebSocket(url);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await transport({
+      endpoint: "node",
+      fixture: {
+        ...fixture,
+        id: "connect-missing-token",
+        surface: "connect",
+        method: "connect",
+        authTokenOverride: null,
+      },
+    });
+    await transport({
+      endpoint: "rust",
+      fixture: {
+        ...fixture,
+        id: "connect-wrong-token",
+        surface: "connect",
+        method: "connect",
+        authTokenOverride: "wrong-token",
+      },
+    });
+
+    expect(
+      (sockets[0]?.sent[0] as { params?: Record<string, unknown> } | undefined)?.params,
+    ).not.toHaveProperty("auth");
+    expect(sockets[1]?.sent[0]).toMatchObject({ params: { auth: { token: "wrong-token" } } });
+  });
+
   it("returns a failed connect response instead of sending an RPC after rejected handshake", async () => {
     const sockets: RejectingConnectWebSocket[] = [];
     const transport = createRustGatewayWsParityTransport({

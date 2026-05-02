@@ -238,7 +238,10 @@ pub fn serve_websocket_session(
                     is_connected = true;
                 }
                 Err(code) => {
-                    send_text_frame(&writer, &error_response(None, code, "invalid connect params"))?;
+                    send_text_frame(
+                        &writer,
+                        &error_response(Some(&meta.id), code, "invalid connect params"),
+                    )?;
                     close_stream(&writer)?;
                     break;
                 }
