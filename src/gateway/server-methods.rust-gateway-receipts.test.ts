@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GatewayRequestContext } from "./server-methods/types.js";
+import { createRustGatewayReceiptStore } from "../infra/rust-gateway-receipt-store.js";
 import { handleGatewayRequest } from "./server-methods.js";
 
 const OLD_ENV = { ...process.env };
@@ -13,7 +14,12 @@ afterEach(() => {
 });
 
 describe("Rust gateway pre-mutation denial receipts", () => {
-  it.each([
+  const rollbackFixtures: Array<{
+    method: "chat.send" | "cron.add" | "workflows.run";
+    scopes: string[];
+    params: Record<string, unknown>;
+    expectedDuplicateKey: string;
+  }> = [
     {
       method: "chat.send",
       scopes: ["operator.write"],
@@ -45,7 +51,9 @@ describe("Rust gateway pre-mutation denial receipts", () => {
       },
       expectedDuplicateKey: "workflows.run:run-1",
     },
-  ])(
+  ];
+
+  it.each(rollbackFixtures)(
     "stores a redacted $method receipt and does not call the mutating handler",
     async (fixture) => {
       const dir = await mkdtemp(path.join(os.tmpdir(), "rust-gateway-handler-receipts-"));
@@ -169,5 +177,90 @@ describe("Rust gateway pre-mutation denial receipts", () => {
 
     expect(handler).toHaveBeenCalledOnce();
     expect(responses).toEqual([{ ok: true, payload: { status: "started" }, error: undefined }]);
+  });
+
+  it("rehearses rollback by recording receipts without partial mutation state", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "rust-gateway-rollback-rehearsal-"));
+    const storePath = path.join(dir, "receipts.jsonl");
+    process.env.ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS = "1";
+    process.env.ARGENT_RUST_GATEWAY_RECEIPT_STORE_PATH = storePath;
+    const mutationLedger = new Map<string, unknown[]>();
+    const handlers = Object.fromEntries(
+      rollbackFixtures.map((fixture) => [
+        fixture.method,
+        vi.fn(({ params, respond }) => {
+          mutationLedger.set(fixture.method, [
+            ...(mutationLedger.get(fixture.method) ?? []),
+            params,
+          ]);
+          respond(true, { status: "node-live-handler-ran" });
+        }),
+      ]),
+    );
+    const responses: Array<{ ok: boolean; error?: { details?: { receiptCode?: string } } }> = [];
+
+    for (const fixture of rollbackFixtures) {
+      for (const attempt of ["first", "second"]) {
+        await handleGatewayRequest({
+          req: {
+            type: "req",
+            id: `${fixture.method}-${attempt}`,
+            method: fixture.method,
+            params: fixture.params,
+          },
+          client: {
+            connect: {
+              client: { id: "test-client", version: "1", platform: "test", mode: "local" },
+              auth: {},
+              role: "operator",
+              scopes: fixture.scopes,
+            },
+          },
+          isWebchatConnect: () => false,
+          respond: (ok, payload, error) => responses.push({ ok, error }),
+          context: {} as GatewayRequestContext,
+          extraHandlers: handlers,
+        });
+      }
+    }
+
+    expect(mutationLedger.size).toBe(0);
+    expect(responses.every((response) => response.ok === false)).toBe(true);
+    const store = createRustGatewayReceiptStore(storePath);
+    for (const fixture of rollbackFixtures) {
+      await expect(
+        store.list({ duplicateKey: fixture.expectedDuplicateKey, limit: 2 }),
+      ).resolves.toMatchObject([
+        {
+          receiptCode: "RUST_CANARY_DENIED",
+          mutationBlockedBeforeHandler: true,
+          authoritySwitchAllowed: false,
+        },
+        {
+          receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+          mutationBlockedBeforeHandler: true,
+          authoritySwitchAllowed: false,
+        },
+      ]);
+    }
+    const raw = await readFile(storePath, "utf8");
+    expect(raw).not.toContain("super-secret-token-value");
+
+    process.env.ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS = "0";
+    await handleGatewayRequest({
+      req: {
+        type: "req",
+        id: "chat-default-authority",
+        method: "chat.send",
+        params: rollbackFixtures[0].params,
+      },
+      client: null,
+      isWebchatConnect: () => false,
+      respond: () => undefined,
+      context: {} as GatewayRequestContext,
+      extraHandlers: handlers,
+    });
+
+    expect(mutationLedger.get("chat.send")).toHaveLength(1);
   });
 });
