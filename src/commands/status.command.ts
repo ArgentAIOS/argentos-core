@@ -284,6 +284,77 @@ export async function statusCommand(
       .filter(Boolean);
     return parts.length > 0 ? parts.join(", ") : "disabled";
   })();
+  const rustGatewayShadowValue = (() => {
+    const status = summary.rustGatewayShadow;
+    if (!status) {
+      return muted("unknown");
+    }
+    if (!status.reachable) {
+      return muted(status.error ? `unavailable (${status.error})` : "unavailable");
+    }
+    const parts = [
+      ok("reachable"),
+      status.component && status.mode ? `${status.component} ${status.mode}` : status.mode,
+      status.protocolVersion != null ? `protocol v${status.protocolVersion}` : null,
+      status.gatewayAuthority ? `authority ${status.gatewayAuthority}` : null,
+      status.liveAuthority ? `live ${status.liveAuthority}` : null,
+      status.statePersistence ? `state ${status.statePersistence}` : null,
+      status.promotionReady === false ? "not promotion-ready" : null,
+      status.version ? `version ${status.version}` : null,
+      status.uptimeSeconds != null ? `uptime ${formatDuration(status.uptimeSeconds * 1000)}` : null,
+      status.baseUrl,
+    ].filter(Boolean);
+    return parts.join(" · ");
+  })();
+  const rustGatewayParityValue = (() => {
+    const report = summary.rustGatewayParityReport;
+    if (!report) {
+      return muted("unknown");
+    }
+    if (report.freshness === "missing") {
+      return muted("missing · isolated parity report not generated yet");
+    }
+    if (report.freshness === "invalid") {
+      return warn(`invalid${report.error ? ` (${report.error})` : ""} · ${report.path}`);
+    }
+    const freshness =
+      report.freshness === "fresh"
+        ? ok("fresh")
+        : warn(`stale${report.ageMs != null ? ` ${formatAge(report.ageMs)}` : ""}`);
+    const totals = report.totals
+      ? `${report.totals.passed} passed · ${report.totals.failed} failed · ${report.totals.skipped} skipped`
+      : "totals unknown";
+    const readiness =
+      report.promotionReady === true
+        ? ok("promotion-ready")
+        : report.promotionReady === false
+          ? warn("not promotion-ready")
+          : muted("readiness unknown");
+    const gaps =
+      report.blockers != null || report.warnings != null
+        ? `blockers ${report.blockers ?? "?"} · warnings ${report.warnings ?? "?"}`
+        : null;
+    return [freshness, readiness, totals, gaps, report.path].filter(Boolean).join(" · ");
+  })();
+  const rustSchedulerAuthorityValue = (() => {
+    const authority = summary.rustGatewaySchedulerAuthority;
+    if (!authority) {
+      return muted("unknown");
+    }
+    const nextWake =
+      authority.nextWakeAtMs != null ? new Date(authority.nextWakeAtMs).toISOString() : "none";
+    const parts = [
+      ok(`scheduler ${authority.schedulerAuthority}`),
+      `rust ${authority.rustSchedulerAuthority}`,
+      `authority record ${authority.authorityRecord}`,
+      authority.cronEnabled ? "cron enabled" : "cron disabled",
+      `${authority.enabledCronJobs}/${authority.cronJobs} cron jobs enabled`,
+      `${authority.workflowRunCronJobs} workflow timers`,
+      `next ${nextWake}`,
+      authority.cronStorePath,
+    ];
+    return parts.join(" · ");
+  })();
   const executiveShadowValue = (() => {
     const status = summary.executiveShadow;
     if (!status) {
@@ -378,8 +449,8 @@ export async function statusCommand(
     }
     const cache = memory.cache;
     if (cache) {
-      const summary = resolveMemoryCacheSummary(cache);
-      parts.push(colorByTone(summary.tone, summary.text));
+      const cacheSummary = resolveMemoryCacheSummary(cache);
+      parts.push(colorByTone(cacheSummary.tone, cacheSummary.text));
     }
     return parts.join(" · ");
   })();
@@ -434,6 +505,9 @@ export async function statusCommand(
     { Item: "Probes", Value: probesValue },
     { Item: "Events", Value: eventsValue },
     { Item: "Heartbeat", Value: heartbeatValue },
+    { Item: "Rust gateway shadow", Value: rustGatewayShadowValue },
+    { Item: "Rust parity report", Value: rustGatewayParityValue },
+    { Item: "Rust scheduler authority", Value: rustSchedulerAuthorityValue },
     { Item: "Executive shadow", Value: executiveShadowValue },
     { Item: "Exec inspect", Value: executiveShadowInspectionValue },
     ...(lastHeartbeatValue ? [{ Item: "Last heartbeat", Value: lastHeartbeatValue }] : []),
