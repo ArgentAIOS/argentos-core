@@ -175,7 +175,17 @@ describe("workflows.templates", () => {
         templates?: Array<{
           slug?: string;
           nodeCount?: number;
-          liveReadiness?: { okForLive?: boolean; reasons?: Array<{ code?: string }> };
+          liveReadiness?: {
+            okForLive?: boolean;
+            status?: string;
+            reasons?: Array<{ code?: string }>;
+            requirementSummary?: {
+              connectors?: { required?: number; missing?: number; blocked?: number };
+              credentials?: { required?: number; missing?: number };
+              appForgeResources?: { required?: number; missing?: number; blocked?: number };
+              channels?: { required?: number; missing?: number };
+            };
+          };
         }>;
       }
     ).templates;
@@ -184,6 +194,13 @@ describe("workflows.templates", () => {
     expect(templates?.every((template) => Number(template.nodeCount) > 0)).toBe(true);
     const dailyMarketing = templates?.find((template) => template.slug === "daily-marketing-brief");
     expect(dailyMarketing?.liveReadiness?.okForLive).toBe(false);
+    expect(dailyMarketing?.liveReadiness?.status).toBe("blocked");
+    expect(dailyMarketing?.liveReadiness?.requirementSummary?.connectors?.required).toBeGreaterThan(
+      0,
+    );
+    expect(
+      dailyMarketing?.liveReadiness?.requirementSummary?.appForgeResources?.required,
+    ).toBeGreaterThan(0);
     expect(dailyMarketing?.liveReadiness?.reasons?.map((reason) => reason.code)).toEqual(
       expect.arrayContaining([
         "appforge_metadata_only",

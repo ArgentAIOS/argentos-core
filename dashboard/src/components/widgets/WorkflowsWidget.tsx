@@ -245,11 +245,43 @@ interface WorkflowTemplateLiveReadinessReason {
   message?: string;
 }
 
+interface WorkflowTemplateLiveRequirementSummary {
+  connectors?: {
+    required?: number;
+    ready?: number;
+    missing?: number;
+    blocked?: number;
+  };
+  credentials?: {
+    required?: number;
+    bound?: number;
+    missing?: number;
+  };
+  appForgeResources?: {
+    required?: number;
+    ready?: number;
+    missing?: number;
+    blocked?: number;
+  };
+  channels?: {
+    required?: number;
+    bound?: number;
+    missing?: number;
+  };
+  canary?: {
+    required?: boolean;
+    passed?: boolean;
+    pending?: boolean;
+    blocked?: boolean;
+  };
+}
+
 interface WorkflowTemplateLiveReadiness {
   okForLive?: boolean;
   status?: string;
   label?: string;
   reasons?: WorkflowTemplateLiveReadinessReason[];
+  requirementSummary?: WorkflowTemplateLiveRequirementSummary;
   canary?: {
     familyId?: string;
     familyLabel?: string;
@@ -708,6 +740,21 @@ function importReportBlockingLiveReason(report: WorkflowImportReport | undefined
     return firstReason.message ?? firstReason.label ?? "Resolve live readiness blockers first.";
   }
   return report.liveReadiness ? "Live readiness has not been proven yet." : "";
+}
+
+function liveRequirementGapCount(summary: WorkflowTemplateLiveRequirementSummary | undefined) {
+  if (!summary) {
+    return 0;
+  }
+  return (
+    (summary.connectors?.missing ?? 0) +
+    (summary.connectors?.blocked ?? 0) +
+    (summary.credentials?.missing ?? 0) +
+    (summary.appForgeResources?.missing ?? 0) +
+    (summary.appForgeResources?.blocked ?? 0) +
+    (summary.channels?.missing ?? 0) +
+    (summary.canary?.pending || summary.canary?.blocked ? 1 : 0)
+  );
 }
 
 function withWorkflowDeploymentStage(
@@ -2072,6 +2119,9 @@ function NewWorkflowModal({
                     template.liveReadiness?.label ??
                     (liveReady ? "Live ready" : "Import/dry-run only");
                   const liveReasonCount = template.liveReadiness?.reasons?.length ?? 0;
+                  const liveGapCount = liveRequirementGapCount(
+                    template.liveReadiness?.requirementSummary,
+                  );
                   return (
                     <button
                       key={template.slug}
@@ -2138,6 +2188,11 @@ function NewWorkflowModal({
                           {liveLabel}
                           {!liveReady && liveReasonCount > 0 ? ` (${liveReasonCount})` : ""}
                         </span>
+                        {!liveReady && liveGapCount > 0 && (
+                          <span className="rounded bg-[hsl(var(--muted))]/40 px-1.5 py-0.5">
+                            {liveGapCount} live gap{liveGapCount === 1 ? "" : "s"}
+                          </span>
+                        )}
                       </div>
                     </button>
                   );
@@ -7444,6 +7499,42 @@ function Sidebar({
                           {reason.message ?? reason.label ?? reason.code}
                         </div>
                       ))}
+                  </div>
+                ) : null}
+                {activeWorkflow.importReport.liveReadiness.requirementSummary ? (
+                  <div className="mt-2 grid grid-cols-2 gap-1 border-t border-amber-400/10 pt-1">
+                    <div>
+                      Connectors:{" "}
+                      {activeWorkflow.importReport.liveReadiness.requirementSummary.connectors
+                        ?.ready ?? 0}
+                      /
+                      {activeWorkflow.importReport.liveReadiness.requirementSummary.connectors
+                        ?.required ?? 0}
+                    </div>
+                    <div>
+                      Credentials:{" "}
+                      {activeWorkflow.importReport.liveReadiness.requirementSummary.credentials
+                        ?.bound ?? 0}
+                      /
+                      {activeWorkflow.importReport.liveReadiness.requirementSummary.credentials
+                        ?.required ?? 0}
+                    </div>
+                    <div>
+                      AppForge:{" "}
+                      {activeWorkflow.importReport.liveReadiness.requirementSummary
+                        .appForgeResources?.ready ?? 0}
+                      /
+                      {activeWorkflow.importReport.liveReadiness.requirementSummary
+                        .appForgeResources?.required ?? 0}
+                    </div>
+                    <div>
+                      Channels:{" "}
+                      {activeWorkflow.importReport.liveReadiness.requirementSummary.channels
+                        ?.bound ?? 0}
+                      /
+                      {activeWorkflow.importReport.liveReadiness.requirementSummary.channels
+                        ?.required ?? 0}
+                    </div>
                   </div>
                 ) : null}
                 {activeWorkflow.importReport.liveReadiness.canary?.checklist?.length ? (

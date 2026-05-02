@@ -52,7 +52,9 @@ describe("owner-operator workflow packages", () => {
   });
 
   it("imports every package into the canonical workflow contract without blocking validation errors", () => {
-    const imports = OWNER_OPERATOR_WORKFLOW_PACKAGES.map(importWorkflowPackage);
+    const imports = OWNER_OPERATOR_WORKFLOW_PACKAGES.map((workflowPackage) =>
+      importWorkflowPackage(workflowPackage),
+    );
     const blockers = imports.flatMap((result) =>
       result.readiness.blockers.map((issue) => ({
         workflow: result.package.slug,
@@ -76,7 +78,7 @@ describe("owner-operator workflow packages", () => {
     ]);
     const showcase = OWNER_OPERATOR_WORKFLOW_PACKAGES.filter((pkg) => showcaseSlugs.has(pkg.slug));
 
-    expect(showcase.map((pkg) => pkg.slug).toSorted()).toEqual([...showcaseSlugs].toSorted());
+    expect(showcase.map((pkg) => pkg.slug).sort()).toEqual([...showcaseSlugs].sort());
     for (const workflowPackage of showcase) {
       const nodeKinds = new Set(workflowPackage.workflow.nodes.map((node) => node.kind));
       expect(workflowPackage.workflow.nodes.length, workflowPackage.slug).toBeGreaterThanOrEqual(6);
@@ -156,7 +158,7 @@ describe("owner-operator workflow packages", () => {
     );
   });
 
-  it("keeps templates dry-run only when live bindings are missing or connector-only metadata is read-ready", () => {
+  it("labels templates blocked when connector metadata cannot support live execution", () => {
     const dailyMarketing = OWNER_OPERATOR_WORKFLOW_PACKAGES.find(
       (pkg) => pkg.slug === "daily-marketing-brief",
     );
@@ -187,7 +189,16 @@ describe("owner-operator workflow packages", () => {
     });
 
     expect(readiness.okForLive).toBe(false);
-    expect(readiness.status).toBe("dry_run_only");
+    expect(readiness.status).toBe("blocked");
+    expect(readiness.label).toBe("Blocked");
+    expect(readiness.requirementSummary).toMatchObject({
+      connectors: { required: expect.any(Number), blocked: expect.any(Number) },
+      credentials: { missing: expect.any(Number) },
+      appForgeResources: { missing: expect.any(Number), blocked: expect.any(Number) },
+      channels: { missing: expect.any(Number) },
+      canary: { required: true, passed: false, blocked: true },
+    });
+    expect(readiness.requirementSummary.connectors.blocked).toBeGreaterThan(0);
     expect(readiness.reasons.map((reason) => reason.code)).toEqual(
       expect.arrayContaining([
         "appforge_metadata_only",
@@ -200,6 +211,25 @@ describe("owner-operator workflow packages", () => {
         "canary_required",
       ]),
     );
+  });
+
+  it("labels templates not configured when required live dependencies are absent", () => {
+    const newsletter = OWNER_OPERATOR_WORKFLOW_PACKAGES.find(
+      (pkg) => pkg.slug === "newsletter-builder",
+    );
+    expect(newsletter).toBeDefined();
+    if (!newsletter) {
+      return;
+    }
+
+    const readiness = auditWorkflowPackageLiveReadiness(newsletter);
+
+    expect(readiness.okForLive).toBe(false);
+    expect(readiness.status).toBe("not_configured");
+    expect(readiness.label).toBe("Not configured");
+    expect(readiness.requirementSummary.connectors.missing).toBeGreaterThan(0);
+    expect(readiness.requirementSummary.credentials.missing).toBeGreaterThan(0);
+    expect(readiness.requirementSummary.canary.blocked).toBe(true);
   });
 
   it("requires a canary even after connector, credential, channel, and AppForge bindings are live-ready", () => {
@@ -241,8 +271,16 @@ describe("owner-operator workflow packages", () => {
     });
 
     expect(almostReady.okForLive).toBe(false);
-    expect(almostReady.status).toBe("canary_required");
+    expect(almostReady.status).toBe("dry_run");
+    expect(almostReady.label).toBe("Dry-run ready");
     expect(almostReady.reasons.map((reason) => reason.code)).toEqual(["canary_required"]);
+    expect(almostReady.requirementSummary).toMatchObject({
+      connectors: { missing: 0, blocked: 0 },
+      credentials: { missing: 0 },
+      appForgeResources: { missing: 0, blocked: 0 },
+      channels: { missing: 0 },
+      canary: { required: true, passed: false, pending: true, blocked: false },
+    });
     expect(almostReady.canary).toMatchObject({
       familyId: "marketing:schedule",
       required: true,
@@ -284,6 +322,7 @@ describe("owner-operator workflow packages", () => {
 
     expect(ready.okForLive).toBe(true);
     expect(ready.status).toBe("live_ready");
+    expect(ready.requirementSummary.canary.passed).toBe(true);
     expect(ready.canary.checklist).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "family-canary", status: "passed" })]),
     );

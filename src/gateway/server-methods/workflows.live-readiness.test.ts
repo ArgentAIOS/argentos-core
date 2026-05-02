@@ -22,7 +22,7 @@ const blockedImportReport = {
   packageSlug: "daily-marketing-brief",
   liveReadiness: {
     okForLive: false,
-    status: "canary_required",
+    status: "dry_run",
     reasons: [
       {
         code: "canary_required",

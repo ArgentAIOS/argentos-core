@@ -70,7 +70,11 @@ export interface WorkflowPackageReadiness {
   liveReadiness?: WorkflowPackageLiveReadiness;
 }
 
-export type WorkflowPackageLiveReadinessStatus = "live_ready" | "canary_required" | "dry_run_only";
+export type WorkflowPackageLiveReadinessStatus =
+  | "live_ready"
+  | "dry_run"
+  | "not_configured"
+  | "blocked";
 
 export type WorkflowPackageLiveReadinessReasonCode =
   | "missing_connector"
@@ -108,11 +112,43 @@ export interface WorkflowPackageCanaryReadiness {
   checklist: WorkflowPackageCanaryChecklistItem[];
 }
 
+export interface WorkflowPackageLiveRequirementSummary {
+  connectors: {
+    required: number;
+    ready: number;
+    missing: number;
+    blocked: number;
+  };
+  credentials: {
+    required: number;
+    bound: number;
+    missing: number;
+  };
+  appForgeResources: {
+    required: number;
+    ready: number;
+    missing: number;
+    blocked: number;
+  };
+  channels: {
+    required: number;
+    bound: number;
+    missing: number;
+  };
+  canary: {
+    required: boolean;
+    passed: boolean;
+    pending: boolean;
+    blocked: boolean;
+  };
+}
+
 export interface WorkflowPackageLiveReadiness {
   okForLive: boolean;
   status: WorkflowPackageLiveReadinessStatus;
   label: string;
   reasons: WorkflowPackageLiveReadinessReason[];
+  requirementSummary: WorkflowPackageLiveRequirementSummary;
   canary: WorkflowPackageCanaryReadiness;
 }
 
@@ -439,22 +475,124 @@ export function auditWorkflowPackageLiveReadiness(
   }
 
   const okForLive = reasons.length === 0;
-  const status: WorkflowPackageLiveReadinessStatus = okForLive
-    ? "live_ready"
-    : reasons.every((reason) => reason.code === "canary_required")
-      ? "canary_required"
-      : "dry_run_only";
+  const requirementSummary = buildWorkflowPackageLiveRequirementSummary(
+    workflowPackage,
+    requiredConnectors,
+    reasons,
+    canaryPassed,
+  );
+  const status = workflowPackageLiveReadinessStatus(reasons, okForLive);
   return {
     okForLive,
     status,
     label:
       status === "live_ready"
         ? "Live ready"
-        : status === "canary_required"
-          ? "Canary required"
-          : "Import/dry-run only",
+        : status === "dry_run"
+          ? "Dry-run ready"
+          : status === "not_configured"
+            ? "Not configured"
+            : "Blocked",
     reasons,
+    requirementSummary,
     canary: buildWorkflowPackageCanaryReadiness(workflowPackage, reasons, canaryPassed),
+  };
+}
+
+function workflowPackageLiveReadinessStatus(
+  reasons: WorkflowPackageLiveReadinessReason[],
+  okForLive: boolean,
+): WorkflowPackageLiveReadinessStatus {
+  if (okForLive) {
+    return "live_ready";
+  }
+  const nonCanaryReasons = reasons.filter((reason) => reason.code !== "canary_required");
+  if (nonCanaryReasons.length === 0) {
+    return "dry_run";
+  }
+  if (
+    nonCanaryReasons.some((reason) =>
+      [
+        "connector_repo_only",
+        "connector_no_binary",
+        "connector_not_ready",
+        "appforge_metadata_only",
+        "appforge_write_not_ready",
+      ].includes(reason.code),
+    )
+  ) {
+    return "blocked";
+  }
+  return "not_configured";
+}
+
+function buildWorkflowPackageLiveRequirementSummary(
+  workflowPackage: WorkflowPackage,
+  requiredConnectors: string[],
+  reasons: WorkflowPackageLiveReadinessReason[],
+  canaryPassed: boolean,
+): WorkflowPackageLiveRequirementSummary {
+  const connectorReasons = reasons.filter((reason) => reason.kind === "connector");
+  const credentialReasons = reasons.filter((reason) => reason.kind === "credential");
+  const appForgeReasons = reasons.filter((reason) => reason.kind === "appforge");
+  const channelReasons = reasons.filter((reason) => reason.kind === "channel");
+  const appForgeResourceIds = new Set<string>();
+  for (const dependency of workflowPackage.dependencies ?? []) {
+    if (dependency.requiredForLive === false) {
+      continue;
+    }
+    if (dependency.kind === "appforge_base") {
+      appForgeResourceIds.add(`base:${dependency.id}`);
+    }
+  }
+  for (const tableName of workflowPackage.scenario.appForgeTables ?? []) {
+    appForgeResourceIds.add(`table:${tableName}`);
+  }
+  const requiredCredentials = (workflowPackage.credentials?.required ?? []).filter(
+    (credential) => credential.requiredForLive !== false,
+  );
+  const requiredChannels = (workflowPackage.dependencies ?? []).filter(
+    (dependency) => dependency.requiredForLive !== false && dependency.kind === "channel",
+  );
+  const missingReasonCount = (kindReasons: WorkflowPackageLiveReadinessReason[]) =>
+    kindReasons.filter((reason) => reason.code.startsWith("missing_")).length;
+  const blockedConnectorCount = connectorReasons.length - missingReasonCount(connectorReasons);
+  const blockedAppForgeCount = appForgeReasons.length - missingReasonCount(appForgeReasons);
+  const dependenciesReady =
+    connectorReasons.length === 0 &&
+    credentialReasons.length === 0 &&
+    appForgeReasons.length === 0 &&
+    channelReasons.length === 0;
+
+  return {
+    connectors: {
+      required: requiredConnectors.length,
+      ready: Math.max(0, requiredConnectors.length - connectorReasons.length),
+      missing: missingReasonCount(connectorReasons),
+      blocked: Math.max(0, blockedConnectorCount),
+    },
+    credentials: {
+      required: requiredCredentials.length,
+      bound: Math.max(0, requiredCredentials.length - credentialReasons.length),
+      missing: credentialReasons.length,
+    },
+    appForgeResources: {
+      required: appForgeResourceIds.size,
+      ready: Math.max(0, appForgeResourceIds.size - appForgeReasons.length),
+      missing: missingReasonCount(appForgeReasons),
+      blocked: Math.max(0, blockedAppForgeCount),
+    },
+    channels: {
+      required: requiredChannels.length,
+      bound: Math.max(0, requiredChannels.length - channelReasons.length),
+      missing: channelReasons.length,
+    },
+    canary: {
+      required: true,
+      passed: canaryPassed,
+      pending: !canaryPassed && dependenciesReady,
+      blocked: !canaryPassed && !dependenciesReady,
+    },
   };
 }
 
@@ -546,7 +684,7 @@ function collectWorkflowPackageConnectorIds(workflowPackage: WorkflowPackage): s
       connectorIds.add(node.config.connectorId);
     }
   }
-  return [...connectorIds].toSorted();
+  return [...connectorIds].sort();
 }
 
 export function importWorkflowPackage(
