@@ -150,6 +150,16 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
       },
     });
     expect(summary.fixtureIds.cleanEvidence).toEqual(["health"]);
+    expect(summary.canaryAndRollback).toMatchObject({
+      mode: "read-only-plan",
+      canaryAllowedSurfaces: ["health"],
+      canaryBlockedSurfaces: [],
+      rollbackCommand: "argent gateway authority rollback-node --reason <reason>",
+      rollbackExecutable: false,
+    });
+    expect(summary.canaryAndRollback.requiredProofBeforeCanary).toContain(
+      "fresh parity report has zero failures and no mock-only/unsupported warnings",
+    );
     expect(summary.gates).toContainEqual({
       id: "isolated-parity-report",
       status: "passed",
@@ -246,6 +256,13 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
         },
       ],
     });
+    expect(summary.canaryAndRollback.canaryAllowedSurfaces).toEqual(["health"]);
+    expect(summary.canaryAndRollback.canaryBlockedSurfaces).toEqual([
+      "chat.send",
+      "sessions.list",
+      "status",
+      "workflows.list",
+    ]);
   });
 });
 

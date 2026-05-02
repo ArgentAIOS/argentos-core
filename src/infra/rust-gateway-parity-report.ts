@@ -60,6 +60,15 @@ export type RustGatewayPromotionReadinessSummary = {
     workflows: "node";
     channels: "node";
   };
+  canaryAndRollback: {
+    mode: "read-only-plan";
+    canaryAllowedSurfaces: string[];
+    canaryBlockedSurfaces: string[];
+    rollbackCommand: "argent gateway authority rollback-node --reason <reason>";
+    rollbackExecutable: false;
+    requiredProofBeforeCanary: string[];
+    requiredProofBeforeRollbackCommand: string[];
+  };
   gates: Array<{
     id: string;
     status: "passed" | "blocked" | "not-run";
@@ -170,6 +179,7 @@ export function buildRustGatewayPromotionReadinessSummary(
       workflows: "node",
       channels: "node",
     },
+    canaryAndRollback: buildCanaryAndRollbackPlan(groups),
     gates: buildPromotionGateStatuses(report, readiness, groups),
     nextRequiredGates: [
       "auth-role-scope-parity",
@@ -183,6 +193,37 @@ export function buildRustGatewayPromotionReadinessSummary(
     ],
     blockers: readiness.blockers,
     warnings: readiness.warnings,
+  };
+}
+
+function buildCanaryAndRollbackPlan(
+  groups: RustGatewayParityReportGroups,
+): RustGatewayPromotionReadinessSummary["canaryAndRollback"] {
+  return {
+    mode: "read-only-plan",
+    canaryAllowedSurfaces: uniqueSortedStrings(groups.cleanEvidence.map((result) => result.method)),
+    canaryBlockedSurfaces: uniqueSortedStrings([
+      ...groups.mockOnly.map((result) => result.method),
+      ...groups.unsupported.map((result) => result.method),
+      ...groups.unsafeBlocked.map((result) => result.method),
+      ...groups.promotionBlockers.map((result) => result.method),
+    ]),
+    rollbackCommand: "argent gateway authority rollback-node --reason <reason>",
+    rollbackExecutable: false,
+    requiredProofBeforeCanary: [
+      "fresh parity report has zero failures and no mock-only/unsupported warnings",
+      "dashboard and Swift smoke tests pass against Rust canary endpoints",
+      "workflow, scheduler, channel, session, and run authority remain Node-owned or isolated",
+      "duplicate timers, channel sends, workflow runs, sessions, and agent runs are prevented",
+      "operator rollback packet identifies exact Node fallback command and health probes",
+    ],
+    requiredProofBeforeRollbackCommand: [
+      "Node gateway fallback start/restart path is automated and rehearsed",
+      "authority state persistence records current and previous live authorities",
+      "rollback verification probes health, connect, status, sessions.list, cron.status, and channels.status",
+      "Rust authority writes are stopped before Node fallback probe",
+      "Threadmaster merge packet includes no silent data loss and no duplicate work proof",
+    ],
   };
 }
 
