@@ -138,6 +138,93 @@ describe("owner-operator workflow packages", () => {
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 
+  it("proves Morning Brief imports and dry-runs end to end with visible DocPanel artifacts", async () => {
+    dispatchMock.mockClear();
+    const morningBrief = OWNER_OPERATOR_WORKFLOW_PACKAGES.find(
+      (pkg) => pkg.slug === "ai-morning-brief-podcast",
+    );
+    expect(morningBrief).toBeDefined();
+    if (!morningBrief) {
+      return;
+    }
+
+    const imported = importWorkflowPackage(morningBrief);
+    expect(imported.readiness.okForImport).toBe(true);
+    expect(imported.readiness.okForPinnedTestRun).toBe(true);
+    expect(imported.readiness.liveReadiness).toMatchObject({
+      okForLive: false,
+      status: "dry_run_only",
+      label: "Import/dry-run only",
+    });
+    expect(imported.readiness.liveReadiness?.reasons.map((reason) => reason.code)).toEqual(
+      expect.arrayContaining(["missing_credentials", "canary_required"]),
+    );
+
+    const savedDocs: Array<{ title: string; content: string; format?: string }> = [];
+    const saveToDocPanel = vi.fn(async (title: string, content: string, format?: string) => {
+      savedDocs.push({ title, content, format });
+      return { ok: true, docId: `doc-${savedDocs.length}` };
+    });
+    const workflow = applyWorkflowPackageTestFixtures(morningBrief);
+
+    const result = await executeWorkflow({
+      workflow,
+      runId: "morning-brief-visible-e2e-dry-run",
+      dispatcher,
+      triggerSource: "gateway:manual_test",
+      triggerPayload: morningBrief.testFixtures?.triggerPayload,
+      actions: { saveToDocPanel },
+    });
+
+    const stepLedger = result.steps.map((step) => ({
+      nodeId: step.nodeId,
+      nodeKind: step.nodeKind,
+      nodeLabel: step.nodeLabel,
+      status: step.status,
+      artifactTypes: step.output.items.flatMap((item) =>
+        (item.artifacts ?? []).map((artifact) => artifact.type),
+      ),
+    }));
+
+    expect(result.status).toBe("completed");
+    expect(stepLedger).toEqual([
+      expect.objectContaining({ nodeId: "trigger", status: "completed" }),
+      expect.objectContaining({ nodeId: "github-scout", status: "completed" }),
+      expect.objectContaining({ nodeId: "frontier-scout", status: "completed" }),
+      expect.objectContaining({ nodeId: "thought-scout", status: "completed" }),
+      expect.objectContaining({ nodeId: "synthesize-brief", status: "completed" }),
+      expect.objectContaining({
+        nodeId: "brief-doc",
+        status: "completed",
+        artifactTypes: ["docpanel"],
+      }),
+      expect.objectContaining({ nodeId: "podcast-script", status: "completed" }),
+      expect.objectContaining({ nodeId: "podcast-plan", status: "completed" }),
+      expect.objectContaining({ nodeId: "approve-podcast-render", status: "completed" }),
+      expect.objectContaining({ nodeId: "podcast-generate", status: "completed" }),
+      expect.objectContaining({ nodeId: "delivery-status", status: "completed" }),
+      expect.objectContaining({
+        nodeId: "run-ledger",
+        status: "completed",
+        artifactTypes: ["docpanel"],
+      }),
+    ]);
+    expect(saveToDocPanel).toHaveBeenCalledTimes(2);
+    expect(savedDocs).toEqual([
+      expect.objectContaining({
+        title: "AI Morning Brief — morning-brief-visible-e2e-dry-run",
+        format: "markdown",
+      }),
+      expect.objectContaining({
+        title: "AI Morning Brief Run Ledger — morning-brief-visible-e2e-dry-run",
+        format: "markdown",
+      }),
+    ]);
+    expect(savedDocs[0]?.content).toContain("Synthesis Agent: fixture result");
+    expect(savedDocs[1]?.content).toContain("Delivery Status: fixture action result");
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
   it("surfaces live requirements so import can explain missing credentials and bases", () => {
     const newsletter = OWNER_OPERATOR_WORKFLOW_PACKAGES.find(
       (pkg) => pkg.slug === "newsletter-builder",
