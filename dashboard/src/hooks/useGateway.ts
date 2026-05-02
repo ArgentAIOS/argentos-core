@@ -1,4 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { buildDeviceAuthPayload } from "../../../src/gateway/device-auth.js";
+import {
+  loadOrCreateDeviceIdentity,
+  signDevicePayload,
+} from "../../../ui/src/ui/device-identity.ts";
 import {
   coerceVisibleOperatorSessionKey,
   resolvePrimaryChatAgentId,
@@ -111,6 +116,29 @@ interface GatewayMessage {
   event?: string;
 }
 
+type GatewayHelloPayload = {
+  type?: "hello-ok";
+  snapshot?: {
+    sessionDefaults?: {
+      mainSessionKey?: string;
+      defaultAgentId?: string;
+    };
+  };
+  auth?: {
+    deviceToken?: string;
+    role?: string;
+    scopes?: string[];
+  };
+};
+
+type StoredDeviceAuthToken = {
+  deviceId: string;
+  role: string;
+  token: string;
+  scopes: string[];
+  issuedAtMs: number;
+};
+
 export interface FilesystemPermissionDeniedEvent {
   source: "agent" | "chat";
   runId?: string;
@@ -195,10 +223,14 @@ let globalMainSessionKey = DEFAULT_MAIN_SESSION_KEY;
 let globalDefaultAgentId = DEFAULT_AGENT_ID;
 let globalGatewayUrl = "";
 let globalGatewayToken = "";
+let globalConnectionUrl = "";
+let globalConnectionToken = "";
+let globalConnectGeneration = 0;
 let runtimeGatewayTokenOverride = "";
 
 export function shouldForceGatewayCredentialReconnect(params: {
   connected: boolean;
+  connecting?: boolean;
   suppressedAutoReconnect: boolean;
   currentUrl: string;
   currentToken: string;
@@ -208,7 +240,10 @@ export function shouldForceGatewayCredentialReconnect(params: {
   const credentialsChanged =
     params.currentUrl.trim() !== params.nextUrl.trim() ||
     params.currentToken.trim() !== params.nextToken.trim();
-  return (params.connected || params.suppressedAutoReconnect) && credentialsChanged;
+  return (
+    (params.connected || params.connecting === true || params.suppressedAutoReconnect) &&
+    credentialsChanged
+  );
 }
 
 function readStoredDashboardGatewayToken(): string {
@@ -233,6 +268,11 @@ const globalEventHandlers: Map<string, Set<(payload: unknown) => void>> = new Ma
 export const activeUserRunIds = new Set<string>();
 const DEBUG_GATEWAY_STREAM =
   import.meta.env.DEV && import.meta.env.VITE_DEBUG_GATEWAY_STREAM === "1";
+const DASHBOARD_GATEWAY_CLIENT_ID = "webchat";
+const DASHBOARD_GATEWAY_CLIENT_MODE = "webchat";
+const DASHBOARD_GATEWAY_ROLE = "operator";
+const DASHBOARD_GATEWAY_SCOPES = ["operator.admin", "operator.approvals", "operator.pairing"];
+const DEVICE_AUTH_STORAGE_KEY = "argent.device.auth.v1";
 
 function isPermanentConnectFailureMessage(message: string): boolean {
   const value = message.toLowerCase();
@@ -257,6 +297,71 @@ function addGatewayTokenHint(message: string): string {
     return `${message}. Open a tokenized dashboard URL or set the gateway token in Control UI settings.`;
   }
   return message;
+}
+
+function sortedScopes(scopes: string[]): string[] {
+  return [...scopes].sort((a, b) => a.localeCompare(b));
+}
+
+function loadDeviceAuthToken(params: {
+  deviceId: string;
+  role: string;
+}): StoredDeviceAuthToken | null {
+  try {
+    const raw = localStorage.getItem(DEVICE_AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredDeviceAuthToken>;
+    if (
+      parsed.deviceId !== params.deviceId ||
+      parsed.role !== params.role ||
+      typeof parsed.token !== "string" ||
+      !parsed.token
+    ) {
+      return null;
+    }
+    return {
+      deviceId: parsed.deviceId,
+      role: parsed.role,
+      token: parsed.token,
+      scopes: Array.isArray(parsed.scopes)
+        ? parsed.scopes.filter((scope): scope is string => typeof scope === "string")
+        : [],
+      issuedAtMs: typeof parsed.issuedAtMs === "number" ? parsed.issuedAtMs : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function storeDeviceAuthToken(params: {
+  deviceId: string;
+  role: string;
+  token: string;
+  scopes: string[];
+}) {
+  try {
+    const entry: StoredDeviceAuthToken = {
+      deviceId: params.deviceId,
+      role: params.role,
+      token: params.token,
+      scopes: sortedScopes(params.scopes),
+      issuedAtMs: Date.now(),
+    };
+    localStorage.setItem(DEVICE_AUTH_STORAGE_KEY, JSON.stringify(entry));
+  } catch {
+    // Best effort only; the dashboard can fall back to the shared token.
+  }
+}
+
+function clearDeviceAuthToken(params: { deviceId: string; role: string }) {
+  try {
+    const existing = loadDeviceAuthToken(params);
+    if (existing) {
+      localStorage.removeItem(DEVICE_AUTH_STORAGE_KEY);
+    }
+  } catch {
+    // Best effort only.
+  }
 }
 
 function parseFilesystemPathDenial(rawError: string): {
@@ -903,6 +1008,27 @@ export function useGateway(config: GatewayConfig = {}) {
   // Connect to the Gateway
   const connect = useCallback(
     (opts?: { fromRetry?: boolean }) => {
+      const requestedUrl = String(url || "").trim();
+      const requestedConnectionToken = String(runtimeGatewayTokenOverride || token || "").trim();
+      const activeUrl = globalConnectionUrl || globalGatewayUrl;
+      const activeToken = globalConnectionToken || globalGatewayToken;
+      const credentialsChanged =
+        Boolean(activeUrl) &&
+        (activeUrl !== requestedUrl || activeToken !== requestedConnectionToken);
+
+      if (credentialsChanged && (globalWs || connectionPromise)) {
+        globalConnectGeneration++;
+        if (globalWs) {
+          globalWs.close(1000, "gateway-credentials-superseded");
+          globalWs = null;
+        }
+        connectionPromise = null;
+        globalConnected = false;
+        globalConnecting = false;
+        setConnected(false);
+        setConnecting(false);
+      }
+
       if (!opts?.fromRetry) {
         suppressAutoReconnectUntilManualConnect = false;
       }
@@ -918,19 +1044,84 @@ export function useGateway(config: GatewayConfig = {}) {
 
       // Clear manual disconnect flag when explicitly connecting
       manualDisconnect = false;
+      const connectGeneration = ++globalConnectGeneration;
+      globalConnectionUrl = requestedUrl;
+      globalConnectionToken = requestedConnectionToken;
 
       connectionPromise = new Promise<void>((resolve, reject) => {
         globalConnecting = true;
         setConnecting(true);
         setError(null);
 
-        const ws = new WebSocket(url);
+        const ws = new WebSocket(requestedUrl);
         globalWs = ws;
+        let connectNonce: string | null = null;
+        let connectSent = false;
+        let connectTimer: ReturnType<typeof setTimeout> | null = null;
+        let connectDeviceIdentity: Awaited<ReturnType<typeof loadOrCreateDeviceIdentity>> | null =
+          null;
+        let connectCanFallbackToShared = false;
 
-        ws.onopen = () => {
-          console.log("[Gateway] WebSocket opened, sending connect...");
+        const clearConnectTimer = () => {
+          if (connectTimer !== null) {
+            clearTimeout(connectTimer);
+            connectTimer = null;
+          }
+        };
+
+        const sendConnect = async () => {
+          if (connectSent || ws.readyState !== WebSocket.OPEN) {
+            return;
+          }
+          connectSent = true;
+          clearConnectTimer();
+
           const requestedToken = (runtimeGatewayTokenOverride || token).trim();
-          // Send connect handshake
+          const isSecureBrowserContext = typeof crypto !== "undefined" && !!crypto.subtle;
+          connectDeviceIdentity = null;
+          connectCanFallbackToShared = false;
+
+          let authToken: string | undefined = requestedToken || undefined;
+          let device:
+            | {
+                id: string;
+                publicKey: string;
+                signature: string;
+                signedAt: number;
+                nonce: string | undefined;
+              }
+            | undefined;
+
+          if (isSecureBrowserContext) {
+            const deviceIdentity = await loadOrCreateDeviceIdentity();
+            connectDeviceIdentity = deviceIdentity;
+            const storedDeviceToken = loadDeviceAuthToken({
+              deviceId: deviceIdentity.deviceId,
+              role: DASHBOARD_GATEWAY_ROLE,
+            })?.token;
+            authToken = storedDeviceToken ?? authToken;
+            connectCanFallbackToShared = Boolean(storedDeviceToken && requestedToken);
+
+            const signedAtMs = Date.now();
+            const payload = buildDeviceAuthPayload({
+              deviceId: deviceIdentity.deviceId,
+              clientId: DASHBOARD_GATEWAY_CLIENT_ID,
+              clientMode: DASHBOARD_GATEWAY_CLIENT_MODE,
+              role: DASHBOARD_GATEWAY_ROLE,
+              scopes: DASHBOARD_GATEWAY_SCOPES,
+              signedAtMs,
+              token: authToken ?? null,
+              nonce: connectNonce,
+            });
+            device = {
+              id: deviceIdentity.deviceId,
+              publicKey: deviceIdentity.publicKey,
+              signature: await signDevicePayload(deviceIdentity.privateKey, payload),
+              signedAt: signedAtMs,
+              nonce: connectNonce ?? undefined,
+            };
+          }
+
           const connectMsg: GatewayMessage = {
             type: "req",
             id: `connect-${Date.now()}`,
@@ -939,19 +1130,37 @@ export function useGateway(config: GatewayConfig = {}) {
               minProtocol: 3,
               maxProtocol: 3,
               client: {
-                id: "webchat",
+                id: DASHBOARD_GATEWAY_CLIENT_ID,
                 version: "1.0.0",
-                platform: "web",
-                mode: "webchat",
+                platform: navigator.platform || "web",
+                mode: DASHBOARD_GATEWAY_CLIENT_MODE,
               },
+              role: DASHBOARD_GATEWAY_ROLE,
+              scopes: DASHBOARD_GATEWAY_SCOPES,
+              device,
               caps: ["tool-events"],
-              auth: requestedToken ? { token: requestedToken } : undefined,
+              auth: authToken ? { token: authToken } : undefined,
+              userAgent: navigator.userAgent,
+              locale: navigator.language,
             },
           };
           ws.send(JSON.stringify(connectMsg));
         };
 
+        ws.onopen = () => {
+          console.log("[Gateway] WebSocket opened, waiting for connect challenge...");
+          connectNonce = null;
+          connectSent = false;
+          clearConnectTimer();
+          connectTimer = setTimeout(() => {
+            void sendConnect();
+          }, 750);
+        };
+
         ws.onmessage = (event) => {
+          if (connectGeneration !== globalConnectGeneration) {
+            return;
+          }
           try {
             const msg: GatewayMessage = JSON.parse(event.data);
 
@@ -959,14 +1168,15 @@ export function useGateway(config: GatewayConfig = {}) {
               // Check if this is the connect response
               if (msg.ok && (msg.payload as Record<string, unknown>)?.type === "hello-ok") {
                 console.log("[Gateway] Connected successfully!");
-                const helloPayload = msg.payload as {
-                  snapshot?: {
-                    sessionDefaults?: {
-                      mainSessionKey?: string;
-                      defaultAgentId?: string;
-                    };
-                  };
-                };
+                const helloPayload = msg.payload as GatewayHelloPayload;
+                if (helloPayload.auth?.deviceToken && connectDeviceIdentity) {
+                  storeDeviceAuthToken({
+                    deviceId: connectDeviceIdentity.deviceId,
+                    role: helloPayload.auth.role ?? DASHBOARD_GATEWAY_ROLE,
+                    token: helloPayload.auth.deviceToken,
+                    scopes: helloPayload.auth.scopes ?? DASHBOARD_GATEWAY_SCOPES,
+                  });
+                }
                 const defaults = helloPayload.snapshot?.sessionDefaults;
                 const resolvedMain =
                   typeof defaults?.mainSessionKey === "string" && defaults.mainSessionKey.trim()
@@ -980,7 +1190,7 @@ export function useGateway(config: GatewayConfig = {}) {
                 );
                 globalMainSessionKey = resolvedMain;
                 globalDefaultAgentId = resolvedAgent;
-                globalGatewayUrl = url;
+                globalGatewayUrl = requestedUrl;
                 globalGatewayToken = (runtimeGatewayTokenOverride || token).trim();
                 setMainSessionKey(resolvedMain);
                 setDefaultAgentId(resolvedAgent);
@@ -995,6 +1205,12 @@ export function useGateway(config: GatewayConfig = {}) {
               } else if (!msg.ok && msg.id?.startsWith("connect-")) {
                 // Connect failed
                 console.error("[Gateway] Connect failed:", msg.error);
+                if (connectCanFallbackToShared && connectDeviceIdentity) {
+                  clearDeviceAuthToken({
+                    deviceId: connectDeviceIdentity.deviceId,
+                    role: DASHBOARD_GATEWAY_ROLE,
+                  });
+                }
                 const rawError = msg.error?.message || "Connection failed";
                 if (isPermanentConnectFailureMessage(rawError)) {
                   suppressAutoReconnectUntilManualConnect = true;
@@ -1019,6 +1235,16 @@ export function useGateway(config: GatewayConfig = {}) {
                 }
               }
             } else if (msg.type === "event" && msg.event) {
+              if (msg.event === "connect.challenge") {
+                const payload = msg.payload as { nonce?: unknown } | undefined;
+                const nonce = payload && typeof payload.nonce === "string" ? payload.nonce : "";
+                if (nonce) {
+                  connectNonce = nonce;
+                  void sendConnect();
+                }
+                return;
+              }
+
               if (msg.event === "agent") {
                 const payload = (msg.payload ?? {}) as {
                   runId?: string;
@@ -1090,6 +1316,9 @@ export function useGateway(config: GatewayConfig = {}) {
         };
 
         ws.onerror = (event) => {
+          if (connectGeneration !== globalConnectGeneration) {
+            return;
+          }
           console.error("[Gateway] WebSocket error:", event);
           setError("Connection error");
           globalConnecting = false;
@@ -1099,11 +1328,17 @@ export function useGateway(config: GatewayConfig = {}) {
         };
 
         ws.onclose = (event) => {
+          if (connectGeneration !== globalConnectGeneration) {
+            return;
+          }
           console.log("[Gateway] WebSocket closed:", event.code, event.reason);
           globalConnected = false;
           globalConnecting = false;
           globalWs = null;
           connectionPromise = null;
+          globalConnectionUrl = "";
+          globalConnectionToken = "";
+          clearConnectTimer();
           setConnected(false);
           setConnecting(false);
 
@@ -1156,6 +1391,7 @@ export function useGateway(config: GatewayConfig = {}) {
   // Disconnect from the Gateway
   const disconnect = useCallback(() => {
     manualDisconnect = true;
+    globalConnectGeneration++;
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
       reconnectTimeout = null;
@@ -1168,6 +1404,8 @@ export function useGateway(config: GatewayConfig = {}) {
     globalConnecting = false;
     globalGatewayUrl = "";
     globalGatewayToken = "";
+    globalConnectionUrl = "";
+    globalConnectionToken = "";
     connectionPromise = null;
     setConnected(false);
     setReconnecting(false);
@@ -1178,9 +1416,10 @@ export function useGateway(config: GatewayConfig = {}) {
     const nextToken = String(runtimeGatewayTokenOverride || token || "").trim();
     const shouldRefreshCredentials = shouldForceGatewayCredentialReconnect({
       connected: globalConnected,
+      connecting: globalConnecting,
       suppressedAutoReconnect: suppressAutoReconnectUntilManualConnect,
-      currentUrl: globalGatewayUrl,
-      currentToken: globalGatewayToken,
+      currentUrl: globalConnectionUrl || globalGatewayUrl,
+      currentToken: globalConnectionToken || globalGatewayToken,
       nextUrl,
       nextToken,
     });
@@ -1190,6 +1429,7 @@ export function useGateway(config: GatewayConfig = {}) {
     console.log("[Gateway] Credentials changed; reconnecting with updated gateway auth token.");
     suppressAutoReconnectUntilManualConnect = false;
     reconnectAttempts = 0;
+    globalConnectGeneration++;
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
       reconnectTimeout = null;
@@ -1197,6 +1437,10 @@ export function useGateway(config: GatewayConfig = {}) {
     if (globalWs) {
       globalWs.close(1000, "gateway-auth-updated");
     }
+    globalWs = null;
+    globalConnected = false;
+    globalConnecting = false;
+    connectionPromise = null;
     setReconnecting(true);
     const timer = setTimeout(() => {
       connect()

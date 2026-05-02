@@ -946,7 +946,7 @@ function toGatewayTable(table: ForgeStructuredTable): GatewayStructuredTable {
   };
 }
 
-function toGatewayBase(base: ForgeStructuredBase): GatewayStructuredBase {
+export function toGatewayBase(base: ForgeStructuredBase): GatewayStructuredBase {
   return {
     ...base,
     revision: base.revision ?? 0,
@@ -1197,6 +1197,7 @@ export const forgeStructuredDataTestUtils = {
   metadataWithBase,
   normalizeGatewayBase,
   normalizeBase,
+  toGatewayBase,
 };
 
 export function useForgeStructuredData({
@@ -1841,11 +1842,26 @@ export function useForgeStructuredData({
         createdAt,
         updatedAt: createdAt,
       };
-      await updateActiveTable((table) => ({
-        ...table,
-        views: [...table.views, view],
-        activeViewId: view.id,
-      }));
+      await updateActiveTable((table) => {
+        const sourceView = table.views.find((candidate) => candidate.id === table.activeViewId);
+        return {
+          ...table,
+          views: [
+            ...table.views,
+            {
+              ...view,
+              filterText: sourceView?.filterText ?? "",
+              sortFieldId: sourceView?.sortFieldId ?? "",
+              sortDirection: sourceView?.sortDirection ?? "asc",
+              groupFieldId: sourceView?.groupFieldId ?? "",
+              visibleFieldIds: sourceView?.visibleFieldIds
+                ? [...sourceView.visibleFieldIds]
+                : table.fields.map((field) => field.id),
+            },
+          ],
+          activeViewId: view.id,
+        };
+      });
     },
     [updateActiveTable],
   );

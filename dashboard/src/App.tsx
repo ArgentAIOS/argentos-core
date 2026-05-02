@@ -823,7 +823,12 @@ const initialLogs: LogEntry[] = [
 
 // Gateway configuration - get token from your argentos config
 // Use dynamic URL based on current hostname (allows access from any machine on network)
-const GATEWAY_URL = `ws://${window.location.hostname}:18789`;
+function resolveGatewayUrl(): string {
+  const override = String(import.meta.env.VITE_ARGENT_GATEWAY_URL ?? "").trim();
+  return override || `ws://${window.location.hostname}:18789`;
+}
+
+const GATEWAY_URL = resolveGatewayUrl();
 const CONTROL_SETTINGS_KEY = "argent.control.settings.v1";
 const TTS_DISPLAY_MODE_KEY = "argent.tts-display-mode";
 const DASHBOARD_MODE_STORAGE_KEY = "argent.dashboard.mode";
