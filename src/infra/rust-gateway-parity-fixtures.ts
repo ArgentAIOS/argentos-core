@@ -124,8 +124,9 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     method: "models.list",
     params: {},
     safety: "read-only",
-    expectedParity: "mock-compatible",
-    reason: "Rust reports a synthetic model catalog; fixture checks read envelope shape only.",
+    expectedParity: "schema-compatible",
+    reason:
+      "Models list must expose schema-compatible read-only model choices without granting Rust provider authority.",
   },
   {
     id: "rpc-channels-status",

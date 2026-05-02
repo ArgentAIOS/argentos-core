@@ -114,6 +114,66 @@ describe("runRustGatewayParityReplay", () => {
     );
   });
 
+  it("passes models.list fixtures when model choices match the protocol shape", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "models",
+        method: "models.list",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      frame(endpoint, true, {
+        models: [
+          {
+            id: "shadow-gpt-mini",
+            name: "Shadow GPT Mini",
+            provider: "openai",
+            contextWindow: 32768,
+            reasoning: false,
+          },
+        ],
+      });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals).toEqual({ passed: 1, failed: 0, skipped: 0 });
+    expect(report.results[0]?.observedParity).toBe("schema-compatible");
+    expect(report.results[0]?.notes.join(" ")).toContain(
+      "models.list payload includes schema-compatible model choices",
+    );
+  });
+
+  it("fails models.list fixtures when a model choice field drifts", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "models",
+        method: "models.list",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      endpoint === "node"
+        ? frame(endpoint, true, {
+            models: [{ id: "node-model", name: "Node Model", provider: "openai" }],
+          })
+        : frame(endpoint, true, {
+            models: [
+              { id: "rust-model", name: "Rust Model", provider: "openai", reasoning: "yes" },
+            ],
+          });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals.failed).toBe(1);
+    expect(report.results[0]?.observedParity).toBe("failed");
+    expect(report.results[0]?.notes.join(" ")).toContain("reasoning is not boolean");
+  });
+
   it("passes mock-compatible fixtures but marks them as non-promotion evidence", async () => {
     const fixtures: RustGatewayParityFixture[] = [
       {

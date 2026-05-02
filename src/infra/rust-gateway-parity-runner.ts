@@ -305,6 +305,10 @@ const schemaPayloadValidators: Record<string, PayloadValidator | undefined> = {
     (payload) => validateObject(payload, [["schema", "object"]]),
     "config schema payload includes a schema object",
   ),
+  "models.list": withDescription(
+    (payload) => validateModelsListPayload(payload),
+    "models.list payload includes schema-compatible model choices",
+  ),
 };
 
 function withDescription(
@@ -340,6 +344,35 @@ function validateObject(
       return { ok: false, error: `${key} is not ${type}` };
     }
   }
+  return { ok: true };
+}
+
+function validateModelsListPayload(payload: unknown): PayloadValidation {
+  const base = validateObject(payload, [["models", "array"]]);
+  if (!base.ok) {
+    return base;
+  }
+
+  const models = (payload as { models: unknown[] }).models;
+  for (const [index, model] of models.entries()) {
+    const choice = validateObject(model, [
+      ["id", "string"],
+      ["name", "string"],
+      ["provider", "string"],
+    ]);
+    if (!choice.ok) {
+      return { ok: false, error: `models[${index}].${choice.error}` };
+    }
+
+    const record = model as Record<string, unknown>;
+    if ("contextWindow" in record && !Number.isInteger(record.contextWindow)) {
+      return { ok: false, error: `models[${index}].contextWindow is not an integer` };
+    }
+    if ("reasoning" in record && typeof record.reasoning !== "boolean") {
+      return { ok: false, error: `models[${index}].reasoning is not boolean` };
+    }
+  }
+
   return { ok: true };
 }
 
