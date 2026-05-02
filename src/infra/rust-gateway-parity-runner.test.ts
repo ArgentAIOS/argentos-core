@@ -340,6 +340,136 @@ describe("runRustGatewayParityReplay", () => {
     expect(report.results[0]?.notes.join(" ")).toContain("count does not match sessions length");
   });
 
+  it("passes cron.status fixtures when scheduler status is read-only schema-compatible", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "cron-status",
+        surface: "timers",
+        method: "cron.status",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      frame(endpoint, true, {
+        enabled: true,
+        storePath: `${endpoint}/cron/jobs.json`,
+        jobs: 1,
+        nextWakeAtMs: 1_776_603_600_000,
+      });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals).toEqual({ passed: 1, failed: 0, skipped: 0 });
+    expect(report.results[0]?.observedParity).toBe("schema-compatible");
+    expect(report.results[0]?.notes.join(" ")).toContain("cron.status payload includes");
+  });
+
+  it("fails cron.status fixtures when scheduler counts drift from the schema", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "cron-status",
+        surface: "timers",
+        method: "cron.status",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      endpoint === "node"
+        ? frame(endpoint, true, {
+            enabled: true,
+            storePath: "node/cron/jobs.json",
+            jobs: 1,
+            nextWakeAtMs: null,
+          })
+        : frame(endpoint, true, {
+            enabled: true,
+            storePath: "rust/cron/jobs.json",
+            jobs: 1.5,
+          });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals.failed).toBe(1);
+    expect(report.results[0]?.notes.join(" ")).toContain("jobs is not a non-negative integer");
+  });
+
+  it("passes cron.list fixtures when timer rows are read-only schema-compatible", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "cron-list",
+        surface: "timers",
+        method: "cron.list",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      frame(endpoint, true, {
+        jobs: [
+          {
+            id: `${endpoint}-cron-1`,
+            name: "daily",
+            enabled: true,
+            schedule: { kind: "every", everyMs: 60_000 },
+            payload: { kind: "systemEvent", text: "hello" },
+            nextRunAt: 1_776_603_600_000,
+          },
+        ],
+      });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals).toEqual({ passed: 1, failed: 0, skipped: 0 });
+    expect(report.results[0]?.observedParity).toBe("schema-compatible");
+    expect(report.results[0]?.notes.join(" ")).toContain("cron.list payload includes");
+  });
+
+  it("fails cron.list fixtures when timer rows omit schedule shape", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "cron-list",
+        surface: "timers",
+        method: "cron.list",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      endpoint === "node"
+        ? frame(endpoint, true, {
+            jobs: [
+              {
+                id: "node-cron-1",
+                name: "daily",
+                enabled: true,
+                schedule: { kind: "every", everyMs: 60_000 },
+                payload: { kind: "systemEvent", text: "hello" },
+              },
+            ],
+          })
+        : frame(endpoint, true, {
+            jobs: [
+              {
+                id: "rust-cron-1",
+                name: "daily",
+                enabled: true,
+                payload: { kind: "systemEvent", text: "hello" },
+              },
+            ],
+          });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals.failed).toBe(1);
+    expect(report.results[0]?.notes.join(" ")).toContain("schedule is not an object");
+  });
+
   it("passes mock-compatible fixtures but marks them as non-promotion evidence", async () => {
     const fixtures: RustGatewayParityFixture[] = [
       {

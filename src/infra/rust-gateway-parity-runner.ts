@@ -421,6 +421,14 @@ const schemaPayloadValidators: Record<string, PayloadValidator | undefined> = {
     (payload) => validateSessionsListPayload(payload),
     "sessions.list payload includes schema-compatible session rows",
   ),
+  "cron.status": withDescription(
+    (payload) => validateCronStatusPayload(payload),
+    "cron.status payload includes enabled flag, store path, job counts, and next wake shape",
+  ),
+  "cron.list": withDescription(
+    (payload) => validateCronListPayload(payload),
+    "cron.list payload includes schema-compatible read-only timer rows",
+  ),
 };
 
 function withDescription(
@@ -519,6 +527,58 @@ function validateSessionsListPayload(payload: unknown): PayloadValidation {
   }
 
   return { ok: true };
+}
+
+function validateCronStatusPayload(payload: unknown): PayloadValidation {
+  const base = validateObject(payload, [
+    ["enabled", "boolean"],
+    ["storePath", "string"],
+    ["jobs", "number"],
+  ]);
+  if (!base.ok) {
+    return base;
+  }
+
+  const record = payload as Record<string, unknown>;
+  if (!Number.isInteger(record.jobs) || (record.jobs as number) < 0) {
+    return { ok: false, error: "jobs is not a non-negative integer" };
+  }
+  if ("nextWakeAtMs" in record && !isNullableNumber(record.nextWakeAtMs)) {
+    return { ok: false, error: "nextWakeAtMs is not number or null" };
+  }
+  return { ok: true };
+}
+
+function validateCronListPayload(payload: unknown): PayloadValidation {
+  const base = validateObject(payload, [["jobs", "array"]]);
+  if (!base.ok) {
+    return base;
+  }
+
+  const jobs = (payload as { jobs: unknown[] }).jobs;
+  for (const [index, job] of jobs.entries()) {
+    const row = validateObject(job, [
+      ["id", "string"],
+      ["name", "string"],
+      ["enabled", "boolean"],
+      ["schedule", "object"],
+      ["payload", "object"],
+    ]);
+    if (!row.ok) {
+      return { ok: false, error: `jobs[${index}].${row.error}` };
+    }
+
+    const record = job as Record<string, unknown>;
+    if ("nextRunAt" in record && !isNullableNumber(record.nextRunAt)) {
+      return { ok: false, error: `jobs[${index}].nextRunAt is not number or null` };
+    }
+  }
+
+  return { ok: true };
+}
+
+function isNullableNumber(value: unknown): boolean {
+  return value === null || typeof value === "number";
 }
 
 function stableJson(value: unknown): string {

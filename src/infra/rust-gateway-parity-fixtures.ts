@@ -181,8 +181,9 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     method: "cron.status",
     params: {},
     safety: "read-only",
-    expectedParity: "mock-compatible",
-    reason: "Rust must not own timers yet; fixture is shape-only and does not execute schedules.",
+    expectedParity: "schema-compatible",
+    reason:
+      "Cron status must expose scheduler state shape while Node remains the only live timer authority.",
   },
   {
     id: "rpc-cron-list",
@@ -190,8 +191,9 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     method: "cron.list",
     params: {},
     safety: "read-only",
-    expectedParity: "mock-compatible",
-    reason: "Rust must not own schedules yet; fixture is shape-only and does not list live timers.",
+    expectedParity: "schema-compatible",
+    reason:
+      "Cron list must expose a read-only jobs array while Rust remains shadow-only and cannot mutate timers.",
   },
   {
     id: "rpc-node-list",
