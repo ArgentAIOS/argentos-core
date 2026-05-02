@@ -60,7 +60,7 @@ describe("rust gateway parity fixtures", () => {
 
     expect(summary.total).toBe(RUST_GATEWAY_INITIAL_PARITY_FIXTURES.length);
     expect(summary.schemaCompatible).toBeGreaterThan(0);
-    expect(summary.mockCompatible).toBeGreaterThan(0);
+    expect(summary.mockCompatible).toBe(0);
     expect(summary.unsupported).toBe(0);
     expect(summary.unsafe).toBeGreaterThan(0);
     expect(summary.replayable + summary.unsafe).toBe(summary.total);
@@ -113,6 +113,12 @@ describe("rust gateway parity fixtures", () => {
     });
     expect(fixtures["rpc-tools-status"]).toMatchObject({
       method: "tools.status",
+      safety: "read-only",
+      expectedParity: "schema-compatible",
+    });
+    expect(fixtures["rpc-connectors-catalog"]).toMatchObject({
+      method: "connectors.catalog",
+      params: { executeAdapters: false },
       safety: "read-only",
       expectedParity: "schema-compatible",
     });

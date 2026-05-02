@@ -717,6 +717,74 @@ describe("runRustGatewayParityReplay", () => {
     expect(report.results[0]?.notes.join(" ")).toContain("not promotion evidence");
   });
 
+  it("validates connectors.catalog as no-exec schema-compatible parity", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "connectors-catalog",
+        method: "connectors.catalog",
+        params: { executeAdapters: false },
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const payload = {
+      total: 1,
+      connectors: [
+        {
+          tool: "aos-noexec",
+          label: "No Exec",
+          categories: ["records"],
+          resources: ["record"],
+          modes: ["readonly"],
+          commands: [
+            {
+              id: "record.list",
+              requiredMode: "readonly",
+              actionClass: "read",
+              supportsJson: true,
+            },
+          ],
+          installState: "repo-only",
+          status: { ok: true, label: "Repo only" },
+          discovery: { sources: ["repo"] },
+        },
+      ],
+    };
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      frame(endpoint, true, endpoint === "node" ? payload : { ...payload });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.results[0]?.status).toBe("passed");
+    expect(report.results[0]?.observedParity).toBe("schema-compatible");
+    expect(report.results[0]?.notes.join(" ")).toContain(
+      "connectors.catalog payload includes schema-compatible no-exec connector metadata",
+    );
+  });
+
+  it("fails connectors.catalog parity when static catalog counts drift", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "connectors-catalog",
+        method: "connectors.catalog",
+        params: { executeAdapters: false },
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      endpoint === "node"
+        ? frame(endpoint, true, { total: 1, connectors: [] })
+        : frame(endpoint, true, { total: 0, connectors: [] });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals.failed).toBe(1);
+    expect(report.results[0]?.notes.join(" ")).toContain("total does not match connectors length");
+  });
+
   it("passes unsupported fixtures when rust explicitly rejects the method", async () => {
     const fixtures: RustGatewayParityFixture[] = [
       {

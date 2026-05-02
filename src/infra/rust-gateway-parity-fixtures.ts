@@ -159,12 +159,12 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     id: "rpc-connectors-catalog",
     surface: "catalog",
     method: "connectors.catalog",
-    params: {},
+    params: { executeAdapters: false },
     timeoutMs: 10_000,
     safety: "read-only",
-    expectedParity: "mock-compatible",
+    expectedParity: "schema-compatible",
     reason:
-      "Rust does not discover live AOS manifests yet; fixture guards catalog envelope shape only.",
+      "Connector catalog parity must use the no-exec snapshot contract so Rust can verify schema shape without running adapters.",
   },
   {
     id: "rpc-sessions-list",

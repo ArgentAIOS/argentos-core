@@ -413,6 +413,10 @@ const schemaPayloadValidators: Record<string, PayloadValidator | undefined> = {
     (payload) => validateChannelsStatusPayload(payload),
     "channels.status payload includes schema-compatible read-only channel metadata",
   ),
+  "connectors.catalog": withDescription(
+    (payload) => validateConnectorsCatalogPayload(payload),
+    "connectors.catalog payload includes schema-compatible no-exec connector metadata",
+  ),
   "config.schema": withDescription(
     (payload) => validateObject(payload, [["schema", "object"]]),
     "config schema payload includes a schema object",
@@ -743,6 +747,101 @@ function validateToolsStatusPayload(payload: unknown): PayloadValidation {
   return { ok: true };
 }
 
+function validateConnectorsCatalogPayload(payload: unknown): PayloadValidation {
+  const base = validateObject(payload, [
+    ["total", "number"],
+    ["connectors", "array"],
+  ]);
+  if (!base.ok) {
+    return base;
+  }
+
+  const { total, connectors } = payload as { total: number; connectors: unknown[] };
+  if (!Number.isInteger(total) || total < 0) {
+    return { ok: false, error: "total is not a non-negative integer" };
+  }
+  if (total !== connectors.length) {
+    return { ok: false, error: "total does not match connectors length" };
+  }
+
+  for (const [index, connector] of connectors.entries()) {
+    const row = validateObject(connector, [
+      ["tool", "string"],
+      ["label", "string"],
+      ["categories", "array"],
+      ["resources", "array"],
+      ["modes", "array"],
+      ["commands", "array"],
+      ["installState", "string"],
+      ["status", "object"],
+      ["discovery", "object"],
+    ]);
+    if (!row.ok) {
+      return { ok: false, error: `connectors[${index}].${row.error}` };
+    }
+
+    const record = connector as Record<string, unknown>;
+    if (
+      !["ready", "needs-setup", "repo-only", "metadata-only", "error"].includes(
+        String(record.installState),
+      )
+    ) {
+      return { ok: false, error: `connectors[${index}].installState is not recognized` };
+    }
+    if (!allStrings(record.categories)) {
+      return { ok: false, error: `connectors[${index}].categories contains non-string values` };
+    }
+    if (!allStrings(record.resources)) {
+      return { ok: false, error: `connectors[${index}].resources contains non-string values` };
+    }
+    if (!allStrings(record.modes)) {
+      return { ok: false, error: `connectors[${index}].modes contains non-string values` };
+    }
+    const status = validateObject(record.status, [
+      ["ok", "boolean"],
+      ["label", "string"],
+    ]);
+    if (!status.ok) {
+      return { ok: false, error: `connectors[${index}].status.${status.error}` };
+    }
+    const discovery = record.discovery as Record<string, unknown>;
+    if (!Array.isArray(discovery.sources) || !allStrings(discovery.sources)) {
+      return { ok: false, error: `connectors[${index}].discovery.sources is not string array` };
+    }
+
+    for (const [commandIndex, command] of (record.commands as unknown[]).entries()) {
+      const commandRow = validateObject(command, [["id", "string"]]);
+      if (!commandRow.ok) {
+        return {
+          ok: false,
+          error: `connectors[${index}].commands[${commandIndex}].${commandRow.error}`,
+        };
+      }
+      const commandRecord = command as Record<string, unknown>;
+      if ("requiredMode" in commandRecord && !isOptionalString(commandRecord.requiredMode)) {
+        return {
+          ok: false,
+          error: `connectors[${index}].commands[${commandIndex}].requiredMode is not string or undefined`,
+        };
+      }
+      if ("actionClass" in commandRecord && !isOptionalString(commandRecord.actionClass)) {
+        return {
+          ok: false,
+          error: `connectors[${index}].commands[${commandIndex}].actionClass is not string or undefined`,
+        };
+      }
+      if ("supportsJson" in commandRecord && typeof commandRecord.supportsJson !== "boolean") {
+        return {
+          ok: false,
+          error: `connectors[${index}].commands[${commandIndex}].supportsJson is not boolean`,
+        };
+      }
+    }
+  }
+
+  return { ok: true };
+}
+
 function validateWorkflowsListPayload(payload: unknown): PayloadValidation {
   const base = validateObject(payload, [
     ["workflows", "array"],
@@ -831,6 +930,10 @@ function hasArrayRecordKey(value: unknown, key: string): boolean {
 
 function isOptionalString(value: unknown): boolean {
   return value === undefined || typeof value === "string";
+}
+
+function allStrings(value: unknown): boolean {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
 function stableJson(value: unknown): string {
