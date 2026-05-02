@@ -470,6 +470,80 @@ describe("runRustGatewayParityReplay", () => {
     expect(report.results[0]?.notes.join(" ")).toContain("schedule is not an object");
   });
 
+  it("passes channels.status fixtures when channel metadata is read-only schema-compatible", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "channels-status",
+        surface: "channels",
+        method: "channels.status",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async () =>
+      frame("channels", true, {
+        ts: 1_776_603_600_000,
+        channelOrder: ["whatsapp"],
+        channelLabels: { whatsapp: "WhatsApp" },
+        channelDetailLabels: { whatsapp: "WhatsApp" },
+        channelSystemImages: { whatsapp: "message.circle" },
+        channelMeta: [
+          {
+            id: "whatsapp",
+            label: "WhatsApp",
+            detailLabel: "WhatsApp",
+            systemImage: "message.circle",
+          },
+        ],
+        channels: { whatsapp: { configured: false } },
+        channelAccounts: { whatsapp: [] },
+        channelDefaultAccountId: { whatsapp: "default" },
+      });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals).toEqual({ passed: 1, failed: 0, skipped: 0 });
+    expect(report.results[0]?.observedParity).toBe("schema-compatible");
+    expect(report.results[0]?.notes.join(" ")).toContain("channels.status payload includes");
+  });
+
+  it("fails channels.status fixtures when channel account metadata is missing", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "channels-status",
+        surface: "channels",
+        method: "channels.status",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      endpoint === "node"
+        ? frame(endpoint, true, {
+            ts: 1,
+            channelOrder: ["whatsapp"],
+            channelLabels: { whatsapp: "WhatsApp" },
+            channels: { whatsapp: { configured: false } },
+            channelAccounts: { whatsapp: [] },
+            channelDefaultAccountId: { whatsapp: "default" },
+          })
+        : frame(endpoint, true, {
+            ts: 1,
+            channelOrder: ["whatsapp"],
+            channelLabels: { whatsapp: "WhatsApp" },
+            channels: { whatsapp: { configured: false } },
+            channelAccounts: {},
+            channelDefaultAccountId: { whatsapp: "default" },
+          });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals.failed).toBe(1);
+    expect(report.results[0]?.notes.join(" ")).toContain("channelAccounts missing whatsapp array");
+  });
+
   it("passes node.list fixtures when node rows are read-only schema-compatible", async () => {
     const fixtures: RustGatewayParityFixture[] = [
       {

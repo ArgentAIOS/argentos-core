@@ -151,8 +151,9 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     method: "channels.status",
     params: {},
     safety: "read-only",
-    expectedParity: "mock-compatible",
-    reason: "Rust has no channel adapter authority; fixture only checks response envelope shape.",
+    expectedParity: "schema-compatible",
+    reason:
+      "Channels status must expose schema-compatible read-only channel summary metadata without granting Rust channel send/logout authority.",
   },
   {
     id: "rpc-connectors-catalog",

@@ -409,6 +409,10 @@ const schemaPayloadValidators: Record<string, PayloadValidator | undefined> = {
     (payload) => validateObject(payload, [["commands", "array"]]),
     "commands.list payload includes a commands array",
   ),
+  "channels.status": withDescription(
+    (payload) => validateChannelsStatusPayload(payload),
+    "channels.status payload includes schema-compatible read-only channel metadata",
+  ),
   "config.schema": withDescription(
     (payload) => validateObject(payload, [["schema", "object"]]),
     "config schema payload includes a schema object",
@@ -581,6 +585,59 @@ function validateCronListPayload(payload: unknown): PayloadValidation {
   return { ok: true };
 }
 
+function validateChannelsStatusPayload(payload: unknown): PayloadValidation {
+  const base = validateObject(payload, [
+    ["ts", "number"],
+    ["channelOrder", "array"],
+    ["channelLabels", "object"],
+    ["channels", "object"],
+    ["channelAccounts", "object"],
+    ["channelDefaultAccountId", "object"],
+  ]);
+  if (!base.ok) {
+    return base;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const channelOrder = record.channelOrder as unknown[];
+  if (!channelOrder.every((channelId) => typeof channelId === "string" && channelId.length > 0)) {
+    return { ok: false, error: "channelOrder contains non-string channel ids" };
+  }
+
+  for (const channelId of channelOrder as string[]) {
+    if (!hasStringRecordKey(record.channelLabels, channelId)) {
+      return { ok: false, error: `channelLabels missing ${channelId}` };
+    }
+    if (!hasRecordKey(record.channels, channelId)) {
+      return { ok: false, error: `channels missing ${channelId}` };
+    }
+    if (!hasArrayRecordKey(record.channelAccounts, channelId)) {
+      return { ok: false, error: `channelAccounts missing ${channelId} array` };
+    }
+    if (!hasStringRecordKey(record.channelDefaultAccountId, channelId)) {
+      return { ok: false, error: `channelDefaultAccountId missing ${channelId}` };
+    }
+  }
+
+  if ("channelMeta" in record) {
+    if (!Array.isArray(record.channelMeta)) {
+      return { ok: false, error: "channelMeta is not an array" };
+    }
+    for (const [index, meta] of record.channelMeta.entries()) {
+      const row = validateObject(meta, [
+        ["id", "string"],
+        ["label", "string"],
+        ["detailLabel", "string"],
+      ]);
+      if (!row.ok) {
+        return { ok: false, error: `channelMeta[${index}].${row.error}` };
+      }
+    }
+  }
+
+  return { ok: true };
+}
+
 function validateNodeListPayload(payload: unknown): PayloadValidation {
   const base = validateObject(payload, [
     ["ts", "number"],
@@ -631,6 +688,18 @@ function validateNodeListPayload(payload: unknown): PayloadValidation {
 
 function isNullableNumber(value: unknown): boolean {
   return value === null || typeof value === "number";
+}
+
+function hasRecordKey(value: unknown, key: string): boolean {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) && key in value);
+}
+
+function hasStringRecordKey(value: unknown, key: string): boolean {
+  return hasRecordKey(value, key) && typeof (value as Record<string, unknown>)[key] === "string";
+}
+
+function hasArrayRecordKey(value: unknown, key: string): boolean {
+  return hasRecordKey(value, key) && Array.isArray((value as Record<string, unknown>)[key]);
 }
 
 function isOptionalString(value: unknown): boolean {
