@@ -229,6 +229,25 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
       authoritySwitchAllowed: false,
       receipts: [],
     });
+    expect(summary.receiptAuditStorageProof).toMatchObject({
+      mode: "synthetic-read-only",
+      liveTrafficAllowed: false,
+      authoritySwitchAllowed: false,
+      fixtureLinks: [],
+      auditStore: {
+        status: "blocked",
+        owner: "master-operator",
+        requiredFields: expect.arrayContaining([
+          "auditRecordId",
+          "receiptId",
+          "tokenMaterialRedacted",
+          "authoritySwitchAllowed",
+        ]),
+        redactionProof: expect.arrayContaining([
+          "token material must be absent from stored audit records",
+        ]),
+      },
+    });
     expect(summary.authoritySwitchChecklist).toMatchObject({
       status: "blocked",
       authoritySwitchAllowed: false,
@@ -455,6 +474,25 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
         }),
       }),
     ]);
+    expect(summary.receiptAuditStorageProof.fixtureLinks).toEqual([
+      expect.objectContaining({
+        sourceFixtureId: "rust-denied-receipt-chat-send",
+        surface: "chat.send",
+        auditRecordType: "failed-promotion",
+        requiredReceiptCodes: expect.arrayContaining([
+          "RUST_CANARY_DENIED",
+          "RUST_CANARY_SCOPE_DENIED",
+          "RUST_CANARY_ROLLBACK_REQUIRED",
+          "RUST_CANARY_DUPLICATE_PREVENTED",
+        ]),
+        noLiveProof: expect.arrayContaining([
+          "no chat.send receipt is written to a live audit store",
+        ]),
+      }),
+    ]);
+    expect(summary.receiptAuditStorageProof.auditStore.retrievalProof).toContain(
+      "receipt lookup by receiptId returns the stored redacted record",
+    );
   });
 
   it("builds synthetic blocked gate fixtures for all unsafe promotion surfaces", () => {
@@ -552,6 +590,24 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
       "RUST_CANARY_ROLLBACK_REQUIRED",
       "RUST_CANARY_ROLLBACK_REQUIRED",
     ]);
+    expect(summary.receiptAuditStorageProof.fixtureLinks.map((link) => link.surface)).toEqual([
+      "chat.send",
+      "cron.add",
+      "workflows.run",
+    ]);
+    expect(summary.receiptAuditStorageProof.auditStore).toMatchObject({
+      status: "blocked",
+      owner: "master-operator",
+      requiredFields: expect.arrayContaining([
+        "sourceFixtureId",
+        "receiptCode",
+        "nodeAuthority",
+        "rustAuthority",
+      ]),
+      retentionProof: expect.arrayContaining([
+        "audit records are excluded from bus logs and raw output dumps",
+      ]),
+    });
   });
 
   it("builds no-live safety fixtures for rollback duplicate and token gates", () => {
