@@ -87,6 +87,7 @@ import { buildToolsStatusPayload } from "./tools.js";
 
 const log = createSubsystemLogger("gateway/workflows");
 const WORKFLOW_SCHEDULE_CRON_MARKER = "[workflow_schedule]";
+export const WORKFLOWS_LIST_NO_LIVE_DATA_SNAPSHOT = "rust-parity-v1";
 
 const WORKFLOW_PRIMITIVES = [
   { id: "trigger", label: "Trigger", description: "Start condition" },
@@ -186,7 +187,7 @@ function stableJson(value: unknown): string {
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
     return `{${Object.keys(record)
-      .sort()
+      .toSorted()
       .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
       .join(",")}}`;
   }
@@ -392,6 +393,115 @@ function optionalBoolean(params: Record<string, unknown>, key: string): boolean 
     throw new Error(`${key} must be a boolean`);
   }
   return v;
+}
+
+function noLiveDataWorkflowRows(): WorkflowRow[] {
+  const now = "2026-05-02T19:19:28.000Z";
+  const baseNodes = [
+    {
+      id: "trigger-manual",
+      kind: "trigger",
+      label: "Synthetic trigger",
+      config: { triggerType: "manual" },
+    },
+    {
+      id: "output-doc",
+      kind: "output",
+      label: "Synthetic output",
+      config: { outputType: "docpanel", target: "doc_panel" },
+    },
+  ];
+  const baseEdges = [{ id: "trigger-output", source: "trigger-manual", target: "output-doc" }];
+  const baseCanvas = {
+    nodes: [
+      {
+        id: "trigger-manual",
+        type: "trigger",
+        position: { x: 0, y: 0 },
+        data: { label: "Synthetic trigger", triggerType: "manual" },
+      },
+      {
+        id: "output-doc",
+        type: "output",
+        position: { x: 240, y: 0 },
+        data: { label: "Synthetic output", outputType: "docpanel", target: "doc_panel" },
+      },
+    ],
+    edges: [{ id: "trigger-output", source: "trigger-manual", target: "output-doc" }],
+  };
+
+  return [
+    {
+      id: "wf-rust-parity-active",
+      name: "Rust Parity Synthetic Active Workflow",
+      description: "Synthetic no-live-data workflow row for Rust shadow parity.",
+      version: 1,
+      is_active: true,
+      owner_agent_id: "rust-parity-agent",
+      trigger_type: "manual",
+      trigger_config: { fixture: true },
+      nodes: baseNodes,
+      edges: baseEdges,
+      canvas_layout: baseCanvas,
+      default_on_error: { strategy: "fail" },
+      max_run_duration_ms: 300_000,
+      max_run_cost_usd: "0",
+      deployment_stage: "simulate",
+      run_count: 0,
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: "wf-rust-parity-draft",
+      name: "Rust Parity Synthetic Draft Workflow",
+      description: "Inactive synthetic row for list filtering parity.",
+      version: 1,
+      is_active: false,
+      owner_agent_id: "rust-parity-agent",
+      trigger_type: "manual",
+      trigger_config: { fixture: true },
+      nodes: baseNodes,
+      edges: baseEdges,
+      canvas_layout: baseCanvas,
+      default_on_error: { strategy: "fail" },
+      max_run_duration_ms: 300_000,
+      max_run_cost_usd: "0",
+      deployment_stage: "simulate",
+      run_count: 0,
+      created_at: now,
+      updated_at: now,
+    },
+  ] as WorkflowRow[];
+}
+
+export function workflowListNoLiveDataSnapshot(params: Record<string, unknown>) {
+  const limit = optionalNumber(params, "limit") ?? 50;
+  const offset = optionalNumber(params, "offset") ?? 0;
+  const activeOnly = optionalBoolean(params, "activeOnly") ?? false;
+  const ownerAgentId = optionalString(params, "ownerAgentId");
+  const rows = noLiveDataWorkflowRows().filter((row) => {
+    if (activeOnly && row.is_active !== true) {
+      return false;
+    }
+    return !ownerAgentId || row.owner_agent_id === ownerAgentId;
+  });
+
+  return {
+    workflows: rows
+      .slice(offset, offset + limit)
+      .map((row) => publicWorkflowRow(row as unknown as WorkflowRow)),
+    total: rows.length,
+    limit,
+    offset,
+    snapshot: {
+      id: WORKFLOWS_LIST_NO_LIVE_DATA_SNAPSHOT,
+      source: "synthetic",
+      noLiveData: true,
+      workflowExecution: false,
+      workflowRunsMutated: false,
+      authority: "node-live-rust-shadow",
+    },
+  };
 }
 
 function timestampIso(value: unknown): string | undefined {
@@ -612,7 +722,7 @@ function workflowScheduleCronDescription(row: WorkflowRow): string {
 }
 
 export function duplicatedWorkflowShouldStartActive(source: WorkflowRow): boolean {
-  return resolveWorkflowSchedule(source) ? false : true;
+  return !resolveWorkflowSchedule(source);
 }
 
 function workflowScheduleCronSpec(row: WorkflowRow, schedule: { expr: string; timezone?: string }) {
@@ -2438,6 +2548,15 @@ export const workflowsHandlers: GatewayRequestHandlers = {
 
   "workflows.list": async ({ params, respond }) => {
     try {
+      const snapshot = optionalString(params, "snapshot");
+      if (snapshot) {
+        if (snapshot !== WORKFLOWS_LIST_NO_LIVE_DATA_SNAPSHOT) {
+          throw new Error(`Unsupported workflows.list snapshot "${snapshot}"`);
+        }
+        respond(true, workflowListNoLiveDataSnapshot(params));
+        return;
+      }
+
       const sql = await getSql();
       const limit = optionalNumber(params, "limit") ?? 50;
       const offset = optionalNumber(params, "offset") ?? 0;
