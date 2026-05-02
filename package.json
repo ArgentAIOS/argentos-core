@@ -101,6 +101,7 @@
     "protocol:gen:executive-shadow": "node --import tsx scripts/executive-shadow-protocol-gen.ts",
     "protocol:gen:swift": "node --import tsx scripts/protocol-gen-swift.ts",
     "release:check": "node --import tsx scripts/release-check.ts",
+    "rust-gateway:parity:report": "node --import tsx scripts/rust-gateway-parity-report.ts",
     "stack:reset": "bash scripts/dev/reset-stack.sh",
     "start": "node scripts/run-node.mjs",
     "sync:hosted-installers:site": "node --import tsx scripts/sync-hosted-installers-to-site.ts",
