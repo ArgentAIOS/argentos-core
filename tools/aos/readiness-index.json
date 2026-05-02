@@ -8281,7 +8281,7 @@
         "write_bridge_available": true
       },
       "auth": {
-        "service_keys": ["PINECONE_API_KEY", "PINECONE_VECTOR_ID"],
+        "service_keys": ["PINECONE_API_KEY", "PINECONE_ENVIRONMENT", "PINECONE_VECTOR_ID"],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -8675,7 +8675,17 @@
         "write_bridge_available": null
       },
       "auth": {
-        "service_keys": ["QBO_CLIENT_ID", "QBO_CLIENT_SECRET", "QBO_REALM_ID", "QBO_REFRESH_TOKEN"],
+        "service_keys": [
+          "QBO_API_BASE_URL",
+          "QBO_CLIENT_ID",
+          "QBO_CLIENT_SECRET",
+          "QBO_ENVIRONMENT",
+          "QBO_HTTP_TIMEOUT_SECONDS",
+          "QBO_MINOR_VERSION",
+          "QBO_REALM_ID",
+          "QBO_REFRESH_TOKEN",
+          "QBO_TOKEN_URL"
+        ],
         "operator_service_keys_preferred": true,
         "local_env_fallback_only": true
       },
@@ -10166,6 +10176,7 @@
           "PAYMENT_ID",
           "SQUARE_ACCESS_TOKEN",
           "SQUARE_CUSTOMER_ID",
+          "SQUARE_ENVIRONMENT",
           "SQUARE_ITEM_ID",
           "SQUARE_LOCATION_ID",
           "SQUARE_ORDER_ID",
@@ -10736,6 +10747,7 @@
           "TEAMS_CLIENT_ID",
           "TEAMS_CLIENT_SECRET",
           "TEAMS_GRAPH_BASE_URL",
+          "TEAMS_HTTP_TIMEOUT_SECONDS",
           "TEAMS_TEAM_ID",
           "TEAMS_TENANT_ID",
           "TEAMS_TOKEN_URL",

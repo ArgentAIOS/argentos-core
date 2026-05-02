@@ -51,11 +51,24 @@ Write paths use live QuickBooks Online API calls and remain permission-gated:
   - QBO_CLIENT_SECRET
   - QBO_REFRESH_TOKEN
   - QBO_REALM_ID
+- Optional service keys:
+  - QBO_ENVIRONMENT (`sandbox` or `production`; defaults to `production`)
+  - QBO_API_BASE_URL (override only; sandbox base URL is `https://sandbox-quickbooks.api.intuit.com`)
+  - QBO_TOKEN_URL
+  - QBO_MINOR_VERSION
+  - QBO_HTTP_TIMEOUT_SECONDS
 - Interactive setup:
 - Create an Intuit developer app for QuickBooks Online.
-- Add QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REFRESH_TOKEN, and QBO_REALM_ID in API Keys.
-- Set QBO_API_BASE_URL to `https://sandbox-quickbooks.api.intuit.com` when targeting a sandbox company.
+- Add QBO_CLIENT_ID and QBO_CLIENT_SECRET in operator-controlled API Keys, not in git or bus notes.
+- Use Intuit OAuth Playground or a local OAuth callback to authorize the target company and capture the returned `realmId`.
+- Exchange the authorization grant for a refresh token, then store QBO_REALM_ID and QBO_REFRESH_TOKEN in the operator secret store.
+- Set QBO_ENVIRONMENT to `sandbox` for sandbox companies or `production` for production companies. Use QBO_API_BASE_URL only when an operator needs a non-default API base URL.
 - Keep company, account, and date-window scope narrow before enabling write actions.
+
+QuickBooks must remain `needs_setup` / not-live-ready until the four required
+values are present outside git and `aos-quickbooks --json health` succeeds.
+Do not run live Intuit reads or writes until Master authorizes a controlled
+sandbox or production smoke after secrets are stored outside git.
 
 ## Next Steps
 
