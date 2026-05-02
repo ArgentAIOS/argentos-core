@@ -843,6 +843,59 @@ describe("forge structured data metadata", () => {
     });
   });
 
+  it("recovers stale selected field and active cell from the active view", () => {
+    const base = forgeStructuredDataTestUtils.normalizeGatewayBase({
+      id: "base-existing",
+      appId: "app-1",
+      name: "Gateway Base",
+      activeTableId: "table-review",
+      revision: 7,
+      updatedAt: "2026-04-26T17:30:00.000Z",
+      tables: [
+        {
+          id: "table-review",
+          name: "Reviews",
+          revision: 5,
+          activeViewId: "missing-view",
+          defaultViewId: "view-follow-up",
+          selectedFieldId: "deleted-field",
+          activeCell: { recordId: "record-1", fieldId: "deleted-field" },
+          fields: [
+            { id: "title", name: "Title", type: "text" },
+            { id: "status", name: "Status", type: "single_select", options: ["Open", "Done"] },
+            { id: "owner", name: "Owner", type: "text" },
+          ],
+          records: [
+            {
+              id: "record-1",
+              revision: 1,
+              values: { title: "First review", status: "Open", owner: "Avery" },
+              createdAt: "2026-04-26T17:05:00.000Z",
+              updatedAt: "2026-04-26T17:06:00.000Z",
+            },
+          ],
+          views: [
+            {
+              id: "view-follow-up",
+              name: "Follow-up queue",
+              type: "grid",
+              visibleFieldIds: ["status", "title"],
+              createdAt: "2026-04-26T17:00:00.000Z",
+              updatedAt: "2026-04-26T17:10:00.000Z",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(base?.tables[0]).toMatchObject({
+      activeViewId: "view-follow-up",
+      defaultViewId: "view-follow-up",
+      selectedFieldId: "status",
+      activeCell: { recordId: "record-1", fieldId: "status" },
+    });
+  });
+
   it("builds revision-checked gateway delete calls from previous state", () => {
     const base = forgeStructuredDataTestUtils.normalizeGatewayBase({
       id: "base-existing",

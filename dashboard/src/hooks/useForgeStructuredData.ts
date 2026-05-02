@@ -340,21 +340,22 @@ function normalizeActiveCell(
   value: unknown,
   fields: ForgeStructuredField[],
   records: ForgeStructuredRecord[],
+  fallbackFieldId?: string,
 ): ForgeStructuredActiveCell | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
   const recordId = stringValue(value.recordId);
   const fieldId = stringValue(value.fieldId);
-  if (
-    !recordId ||
-    !fieldId ||
-    !records.some((record) => record.id === recordId) ||
-    !fields.some((field) => field.id === fieldId)
-  ) {
+  if (!recordId || !records.some((record) => record.id === recordId)) {
     return undefined;
   }
-  return { recordId, fieldId };
+  const nextFieldId =
+    fieldId && fields.some((field) => field.id === fieldId) ? fieldId : fallbackFieldId;
+  if (!nextFieldId || !fields.some((field) => field.id === nextFieldId)) {
+    return undefined;
+  }
+  return { recordId, fieldId: nextFieldId };
 }
 
 function selectOptionLabels(field: ForgeStructuredField): string[] {
@@ -670,6 +671,14 @@ function normalizeVisibleFieldIds(
   return uniqueFieldIds.length ? uniqueFieldIds : undefined;
 }
 
+function firstVisibleFieldId(
+  view: ForgeStructuredView | undefined,
+  fields: ForgeStructuredField[],
+): string | undefined {
+  const fieldIds = new Set(fields.map((field) => field.id));
+  return view?.visibleFieldIds?.find((fieldId) => fieldIds.has(fieldId)) ?? fields[0]?.id;
+}
+
 function normalizeView(value: unknown, fields: ForgeStructuredField[]): ForgeStructuredView | null {
   if (!isRecord(value)) {
     return null;
@@ -860,33 +869,39 @@ function normalizeTable(value: unknown): ForgeStructuredTable | null {
   const normalizedViews = views.length > 0 ? views : defaultViews("grid");
   const activeViewId = stringValue(value.activeViewId) ?? stringValue(metadata.activeViewId);
   const defaultViewId = stringValue(value.defaultViewId) ?? stringValue(metadata.defaultViewId);
-  const selectedFieldId =
+  const resolvedActiveViewId =
+    activeViewId && normalizedViews.some((view) => view.id === activeViewId)
+      ? activeViewId
+      : defaultViewId && normalizedViews.some((view) => view.id === defaultViewId)
+        ? defaultViewId
+        : normalizedViews[0].id;
+  const resolvedDefaultViewId =
+    defaultViewId && normalizedViews.some((view) => view.id === defaultViewId)
+      ? defaultViewId
+      : normalizedViews[0].id;
+  const resolvedActiveView = normalizedViews.find((view) => view.id === resolvedActiveViewId);
+  const rawSelectedFieldId =
     stringValue(value.selectedFieldId) ?? stringValue(metadata.selectedFieldId);
-  const activeCell = normalizeActiveCell(
-    value.activeCell ?? metadata.activeCell,
-    normalizedFields,
-    records,
-  );
+  const rawActiveCell = value.activeCell ?? metadata.activeCell;
+  const rawActiveCellFieldId = isRecord(rawActiveCell) ? stringValue(rawActiveCell.fieldId) : "";
+  const rawActiveCellFieldIsValid =
+    rawActiveCellFieldId && normalizedFields.some((field) => field.id === rawActiveCellFieldId)
+      ? rawActiveCellFieldId
+      : undefined;
+  const selectedFieldId =
+    rawSelectedFieldId && normalizedFields.some((field) => field.id === rawSelectedFieldId)
+      ? rawSelectedFieldId
+      : (rawActiveCellFieldIsValid ?? firstVisibleFieldId(resolvedActiveView, normalizedFields));
+  const activeCell = normalizeActiveCell(rawActiveCell, normalizedFields, records, selectedFieldId);
   return {
     id,
     name,
     fields: normalizedFields,
     records,
     views: normalizedViews,
-    activeViewId:
-      activeViewId && normalizedViews.some((view) => view.id === activeViewId)
-        ? activeViewId
-        : defaultViewId && normalizedViews.some((view) => view.id === defaultViewId)
-          ? defaultViewId
-          : normalizedViews[0].id,
-    defaultViewId:
-      defaultViewId && normalizedViews.some((view) => view.id === defaultViewId)
-        ? defaultViewId
-        : normalizedViews[0].id,
-    selectedFieldId:
-      selectedFieldId && normalizedFields.some((field) => field.id === selectedFieldId)
-        ? selectedFieldId
-        : undefined,
+    activeViewId: resolvedActiveViewId,
+    defaultViewId: resolvedDefaultViewId,
+    selectedFieldId,
     activeCell,
     revision: numberValue(value.revision),
   };
