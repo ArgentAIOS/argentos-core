@@ -68,6 +68,34 @@ export type ExecutiveShadowMetrics = {
   highestPendingPriority: number | null;
 };
 
+export type ExecutiveShadowReadiness = {
+  mode: "shadow-readiness";
+  authoritySwitchAllowed: false;
+  promotionStatus: "blocked";
+  currentAuthority: {
+    gateway: string;
+    scheduler: string;
+    workflows: string;
+    channels: string;
+    sessions: string;
+    executive: string;
+  };
+  nodeResponsibilities: string[];
+  rustResponsibilities: string[];
+  persistenceModel: {
+    snapshotFile: string;
+    journalFile: string;
+    restartRecovery: string;
+    leaseRecovery: string;
+  };
+  promotionGates: Array<{
+    id: string;
+    status: "blocked" | "proven";
+    owner: string;
+    requiredProof: string[];
+  }>;
+};
+
 export type ExecutiveShadowJournalRecord = {
   seq: number;
   at_ms: number;
@@ -196,6 +224,51 @@ export const executiveShadowMetricsSchema = z.object({
   nextLeaseExpiryAtMs: z.number().nullable(),
   highestPendingPriority: z.number().nullable(),
 });
+
+export const executiveShadowReadinessSchema = z.object({
+  mode: z.literal("shadow-readiness"),
+  authoritySwitchAllowed: z.literal(false),
+  promotionStatus: z.literal("blocked"),
+  currentAuthority: z.object({
+    gateway: z.string(),
+    scheduler: z.string(),
+    workflows: z.string(),
+    channels: z.string(),
+    sessions: z.string(),
+    executive: z.string(),
+  }),
+  nodeResponsibilities: z.array(z.string()),
+  rustResponsibilities: z.array(z.string()),
+  persistenceModel: z.object({
+    snapshotFile: z.string(),
+    journalFile: z.string(),
+    restartRecovery: z.string(),
+    leaseRecovery: z.string(),
+  }),
+  promotionGates: z.array(
+    z.object({
+      id: z.string(),
+      status: z.enum(["blocked", "proven"]),
+      owner: z.string(),
+      requiredProof: z.array(z.string()),
+    }),
+  ),
+});
+
+export function executiveShadowReadinessFailsClosed(readiness: ExecutiveShadowReadiness): boolean {
+  return (
+    readiness.authoritySwitchAllowed === false &&
+    readiness.promotionStatus === "blocked" &&
+    readiness.currentAuthority.gateway === "node" &&
+    readiness.currentAuthority.scheduler === "node" &&
+    readiness.currentAuthority.workflows === "node" &&
+    readiness.currentAuthority.channels === "node" &&
+    readiness.currentAuthority.sessions === "node" &&
+    readiness.currentAuthority.executive === "shadow-only" &&
+    readiness.promotionGates.length > 0 &&
+    readiness.promotionGates.every((gate) => gate.status === "blocked" || gate.status === "proven")
+  );
+}
 
 export const executiveShadowTimelineEventSchema = z.object({
   seq: z.number(),
@@ -349,6 +422,74 @@ export const executiveShadowProtocolJsonSchema = {
         "lastRecoveredAtMs",
         "nextLeaseExpiryAtMs",
         "highestPendingPriority",
+      ],
+    },
+    ExecutiveShadowReadiness: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        mode: { type: "string", const: "shadow-readiness" },
+        authoritySwitchAllowed: { type: "boolean", const: false },
+        promotionStatus: { type: "string", const: "blocked" },
+        currentAuthority: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            gateway: { type: "string" },
+            scheduler: { type: "string" },
+            workflows: { type: "string" },
+            channels: { type: "string" },
+            sessions: { type: "string" },
+            executive: { type: "string" },
+          },
+          required: ["gateway", "scheduler", "workflows", "channels", "sessions", "executive"],
+        },
+        nodeResponsibilities: {
+          type: "array",
+          items: { type: "string" },
+        },
+        rustResponsibilities: {
+          type: "array",
+          items: { type: "string" },
+        },
+        persistenceModel: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            snapshotFile: { type: "string" },
+            journalFile: { type: "string" },
+            restartRecovery: { type: "string" },
+            leaseRecovery: { type: "string" },
+          },
+          required: ["snapshotFile", "journalFile", "restartRecovery", "leaseRecovery"],
+        },
+        promotionGates: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: { type: "string" },
+              status: { type: "string", enum: ["blocked", "proven"] },
+              owner: { type: "string" },
+              requiredProof: {
+                type: "array",
+                items: { type: "string" },
+              },
+            },
+            required: ["id", "status", "owner", "requiredProof"],
+          },
+        },
+      },
+      required: [
+        "mode",
+        "authoritySwitchAllowed",
+        "promotionStatus",
+        "currentAuthority",
+        "nodeResponsibilities",
+        "rustResponsibilities",
+        "persistenceModel",
+        "promotionGates",
       ],
     },
     ExecutiveShadowTimelineSummary: {

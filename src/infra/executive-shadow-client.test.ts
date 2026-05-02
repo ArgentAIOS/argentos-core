@@ -77,6 +77,129 @@ describe("ExecutiveShadowClient", () => {
     expect(metrics.highestPendingPriority).toBe(50);
   });
 
+  it("reads readiness from the fail-closed Kernel readiness endpoint", async () => {
+    let seenUrl = "";
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      seenUrl = String(input);
+      return new Response(
+        JSON.stringify({
+          mode: "shadow-readiness",
+          authoritySwitchAllowed: false,
+          promotionStatus: "blocked",
+          currentAuthority: {
+            gateway: "node",
+            scheduler: "node",
+            workflows: "node",
+            channels: "node",
+            sessions: "node",
+            executive: "shadow-only",
+          },
+          nodeResponsibilities: ["gateway live authority"],
+          rustResponsibilities: ["executive shadow state"],
+          persistenceModel: {
+            snapshotFile: "executive.state.json",
+            journalFile: "executive.journal.jsonl",
+            restartRecovery: "snapshot-plus-journal-replay",
+            leaseRecovery: "tick-expiry-before-promotion",
+          },
+          promotionGates: [
+            {
+              id: "authority-boundary",
+              status: "blocked",
+              owner: "master-operator",
+              requiredProof: ["no authority switch"],
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    });
+
+    const client = createExecutiveShadowClient({ fetchImpl });
+    const readiness = await client.getReadiness();
+
+    expect(seenUrl).toBe(`${EXECUTIVE_SHADOW_DEFAULT_BASE_URL}/v1/executive/readiness`);
+    expect(readiness.authoritySwitchAllowed).toBe(false);
+    expect(readiness.promotionStatus).toBe("blocked");
+  });
+
+  it("fails closed when readiness implies authority promotion", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            mode: "shadow-readiness",
+            authoritySwitchAllowed: true,
+            promotionStatus: "ready",
+            currentAuthority: {
+              gateway: "rust",
+              scheduler: "node",
+              workflows: "node",
+              channels: "node",
+              sessions: "node",
+              executive: "shadow-only",
+            },
+            nodeResponsibilities: [],
+            rustResponsibilities: [],
+            persistenceModel: {
+              snapshotFile: "executive.state.json",
+              journalFile: "executive.journal.jsonl",
+              restartRecovery: "snapshot-plus-journal-replay",
+              leaseRecovery: "tick-expiry-before-promotion",
+            },
+            promotionGates: [],
+          }),
+          { status: 200 },
+        ),
+    );
+    const client = createExecutiveShadowClient({ fetchImpl });
+
+    await expect(client.getReadiness()).rejects.toThrow();
+  });
+
+  it("fails closed when readiness moves Gateway off Node live authority", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            mode: "shadow-readiness",
+            authoritySwitchAllowed: false,
+            promotionStatus: "blocked",
+            currentAuthority: {
+              gateway: "rust",
+              scheduler: "node",
+              workflows: "node",
+              channels: "node",
+              sessions: "node",
+              executive: "shadow-only",
+            },
+            nodeResponsibilities: [],
+            rustResponsibilities: [],
+            persistenceModel: {
+              snapshotFile: "executive.state.json",
+              journalFile: "executive.journal.jsonl",
+              restartRecovery: "snapshot-plus-journal-replay",
+              leaseRecovery: "tick-expiry-before-promotion",
+            },
+            promotionGates: [
+              {
+                id: "authority-boundary",
+                status: "blocked",
+                owner: "master-operator",
+                requiredProof: ["no authority switch"],
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    );
+    const client = createExecutiveShadowClient({ fetchImpl });
+
+    await expect(client.getReadiness()).rejects.toThrow(
+      "Executive shadow readiness is not fail-closed",
+    );
+  });
+
   it("reads compact timeline summaries", async () => {
     let seenUrl = "";
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {

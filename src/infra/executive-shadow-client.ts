@@ -5,12 +5,15 @@ import {
   executiveShadowJournalSchema,
   executiveShadowMetricsSchema,
   executiveShadowOkSchema,
+  executiveShadowReadinessFailsClosed,
+  executiveShadowReadinessSchema,
   executiveShadowStateEnvelopeSchema,
   type ExecutiveShadowHealth,
   type ExecutiveShadowJournalRecord,
   type ExecutiveShadowLaneRelease,
   type ExecutiveShadowLaneRequest,
   type ExecutiveShadowMetrics,
+  type ExecutiveShadowReadiness,
   type ExecutiveShadowShutdownRequest,
   type ExecutiveShadowStateEnvelope,
   type ExecutiveShadowTimelineSummary,
@@ -29,6 +32,7 @@ export type {
   ExecutiveShadowLaneRelease,
   ExecutiveShadowLaneRequest,
   ExecutiveShadowMetrics,
+  ExecutiveShadowReadiness,
   ExecutiveShadowShutdownRequest,
   ExecutiveShadowStateEnvelope,
   ExecutiveShadowTimelineSummary,
@@ -101,6 +105,17 @@ export class ExecutiveShadowClient {
 
   async getMetrics(): Promise<ExecutiveShadowMetrics> {
     return this.requestJson("/v1/executive/metrics", executiveShadowMetricsSchema);
+  }
+
+  async getReadiness(): Promise<ExecutiveShadowReadiness> {
+    const readiness = await this.requestJson(
+      "/v1/executive/readiness",
+      executiveShadowReadinessSchema,
+    );
+    if (!executiveShadowReadinessFailsClosed(readiness)) {
+      throw new Error("Executive shadow readiness is not fail-closed");
+    }
+    return readiness;
   }
 
   async experimentalRequestLane(request: ExecutiveShadowLaneRequest): Promise<{ ok: true }> {
