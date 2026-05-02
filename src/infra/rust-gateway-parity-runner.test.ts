@@ -738,6 +738,50 @@ describe("runRustGatewayParityReplay", () => {
     expect(report.results[0]?.observedParity).toBe("unsupported");
   });
 
+  it("validates workflows.list snapshot as no-live-data schema-compatible parity", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "workflows-list",
+        method: "workflows.list",
+        params: { snapshot: "rust-parity-v1" },
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const payload = {
+      workflows: [
+        {
+          id: "workflow-shadow-1",
+          name: "Shadow Workflow",
+          nodes: [],
+          edges: [],
+          definition: {},
+          validation: { ok: true, issues: [] },
+          is_active: false,
+          run_count: 0,
+        },
+      ],
+      total: 1,
+      limit: 50,
+      offset: 0,
+      snapshot: {
+        id: "rust-parity-v1",
+        noLiveData: true,
+        workflowExecution: false,
+        workflowRunsMutated: false,
+        authority: "node-live-rust-shadow",
+      },
+    };
+    const transport: RustGatewayParityReplayTransport = async () => frame("node", true, payload);
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.results[0]?.status).toBe("passed");
+    expect(report.results[0]?.observedParity).toBe("schema-compatible");
+    expect(report.results[0]?.notes.join(" ")).toContain("no-live-data workflow snapshot");
+  });
+
   it("skips unsafe fixtures without calling transport", async () => {
     const fixtures: RustGatewayParityFixture[] = [
       {

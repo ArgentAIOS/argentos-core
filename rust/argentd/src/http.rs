@@ -607,6 +607,10 @@ pub fn cron_list_payload_json() -> String {
     "{\"jobs\":[{\"id\":\"cron-shadow-1\",\"name\":\"daily\",\"enabled\":true,\"schedule\":{\"kind\":\"every\",\"everyMs\":60000},\"sessionTarget\":\"main\",\"wakeMode\":\"next-heartbeat\",\"payload\":{\"kind\":\"systemEvent\",\"text\":\"hello\"},\"nextRunAt\":1776603600000}]}".to_string()
 }
 
+pub fn workflows_list_payload_json() -> String {
+    "{\"workflows\":[{\"id\":\"workflow-shadow-1\",\"name\":\"Shadow Workflow\",\"description\":\"Rust shadow-only workflow read fixture\",\"nodes\":[],\"edges\":[],\"canvasLayout\":{\"nodes\":[],\"edges\":[]},\"canvas_layout\":{\"nodes\":[],\"edges\":[]},\"definition\":{},\"validation\":{\"ok\":true,\"issues\":[]},\"is_active\":false,\"run_count\":0}],\"total\":1,\"limit\":50,\"offset\":0,\"snapshot\":{\"id\":\"rust-parity-v1\",\"noLiveData\":true,\"workflowExecution\":false,\"workflowRunsMutated\":false,\"authority\":\"node-live-rust-shadow\"}}".to_string()
+}
+
 pub fn jobs_overview_payload_json() -> String {
     "{\"templatesCount\":2,\"assignmentsCount\":3,\"enabledAssignmentsCount\":2,\"runningJobsCount\":1,\"blockedRunsCount\":0,\"dueNowCount\":1,\"agents\":[{\"agentId\":\"argent\",\"total\":2,\"enabled\":2,\"blockedTasks\":0,\"dueNow\":1,\"nextDueAt\":1776603600000},{\"agentId\":\"main\",\"total\":1,\"enabled\":0,\"blockedTasks\":1,\"dueNow\":0,\"nextDueAt\":1776607200000}]}".to_string()
 }

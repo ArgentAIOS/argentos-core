@@ -441,6 +441,10 @@ const schemaPayloadValidators: Record<string, PayloadValidator | undefined> = {
     (payload) => validateToolsStatusPayload(payload),
     "tools.status payload includes schema-compatible read-only tool metadata",
   ),
+  "workflows.list": withDescription(
+    (payload) => validateWorkflowsListPayload(payload),
+    "workflows.list payload includes schema-compatible no-live-data workflow snapshot rows",
+  ),
 };
 
 function withDescription(
@@ -733,6 +737,76 @@ function validateToolsStatusPayload(payload: unknown): PayloadValidation {
     }
     if ("optional" in record && typeof record.optional !== "boolean") {
       return { ok: false, error: `tools[${index}].optional is not boolean` };
+    }
+  }
+
+  return { ok: true };
+}
+
+function validateWorkflowsListPayload(payload: unknown): PayloadValidation {
+  const base = validateObject(payload, [
+    ["workflows", "array"],
+    ["total", "number"],
+    ["limit", "number"],
+    ["offset", "number"],
+    ["snapshot", "object"],
+  ]);
+  if (!base.ok) {
+    return base;
+  }
+
+  const { workflows, total, limit, offset, snapshot } = payload as {
+    workflows: unknown[];
+    total: number;
+    limit: number;
+    offset: number;
+    snapshot: Record<string, unknown>;
+  };
+  if (!Number.isInteger(total) || total < 0) {
+    return { ok: false, error: "total is not a non-negative integer" };
+  }
+  if (!Number.isInteger(limit) || limit < 0) {
+    return { ok: false, error: "limit is not a non-negative integer" };
+  }
+  if (!Number.isInteger(offset) || offset < 0) {
+    return { ok: false, error: "offset is not a non-negative integer" };
+  }
+  if (
+    snapshot.id !== "rust-parity-v1" ||
+    snapshot.noLiveData !== true ||
+    snapshot.workflowExecution !== false ||
+    snapshot.workflowRunsMutated !== false ||
+    snapshot.authority !== "node-live-rust-shadow"
+  ) {
+    return { ok: false, error: "snapshot metadata does not prove no-live-data parity" };
+  }
+
+  for (const [index, workflow] of workflows.entries()) {
+    const row = validateObject(workflow, [
+      ["id", "string"],
+      ["name", "string"],
+      ["nodes", "array"],
+      ["edges", "array"],
+      ["definition", "object"],
+      ["validation", "object"],
+    ]);
+    if (!row.ok) {
+      return { ok: false, error: `workflows[${index}].${row.error}` };
+    }
+
+    const record = workflow as Record<string, unknown>;
+    const validation = record.validation as Record<string, unknown>;
+    if (typeof validation.ok !== "boolean") {
+      return { ok: false, error: `workflows[${index}].validation.ok is not boolean` };
+    }
+    if (!Array.isArray(validation.issues)) {
+      return { ok: false, error: `workflows[${index}].validation.issues is not an array` };
+    }
+    if ("is_active" in record && typeof record.is_active !== "boolean") {
+      return { ok: false, error: `workflows[${index}].is_active is not boolean` };
+    }
+    if ("run_count" in record && typeof record.run_count !== "number") {
+      return { ok: false, error: `workflows[${index}].run_count is not number` };
     }
   }
 

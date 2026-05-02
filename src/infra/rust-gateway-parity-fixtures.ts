@@ -220,10 +220,11 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     id: "rpc-workflows-list",
     surface: "workflows",
     method: "workflows.list",
-    params: {},
+    params: { snapshot: "rust-parity-v1" },
     safety: "read-only",
-    expectedParity: "unsupported",
-    reason: "Rust gateway does not implement workflow authority or workflow read APIs yet.",
+    expectedParity: "schema-compatible",
+    reason:
+      "Workflow list parity uses the no-live-data rust-parity-v1 snapshot contract only; normal DB-backed workflows.list remains Node-owned live authority.",
   },
   {
     id: "rpc-chat-send",
