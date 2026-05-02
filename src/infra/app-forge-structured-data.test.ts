@@ -155,6 +155,57 @@ describe("forge structured data metadata", () => {
     });
   });
 
+  it("drops stale or duplicate visible field ids instead of persisting blank views", () => {
+    const base = forgeStructuredDataTestUtils.normalizeBase(
+      app({
+        metadata: {
+          appForge: {
+            structured: {
+              baseId: "base-existing",
+              activeTableId: "table-review",
+              tables: [
+                {
+                  id: "table-review",
+                  name: "Reviews",
+                  fields: [
+                    { id: "title", name: "Title", type: "text" },
+                    { id: "status", name: "Status", type: "single_select" },
+                  ],
+                  records: [],
+                  views: [
+                    {
+                      id: "view-valid",
+                      name: "Valid columns",
+                      type: "grid",
+                      visibleFieldIds: ["status", "missing", "status", "title"],
+                    },
+                    {
+                      id: "view-stale",
+                      name: "Stale columns",
+                      type: "grid",
+                      visibleFieldIds: ["missing", "deleted"],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    expect(base.tables[0]?.views).toEqual([
+      expect.objectContaining({
+        id: "view-valid",
+        visibleFieldIds: ["status", "title"],
+      }),
+      expect.objectContaining({
+        id: "view-stale",
+        visibleFieldIds: undefined,
+      }),
+    ]);
+  });
+
   it("normalizes live field configuration metadata", () => {
     const base = forgeStructuredDataTestUtils.normalizeBase(
       app({
