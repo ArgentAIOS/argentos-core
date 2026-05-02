@@ -128,6 +128,9 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
         unsafeBlocked: [],
         cleanEvidence: ["health"],
         unproven: [],
+        readOnlyUnproven: [],
+        authorityBlocked: [],
+        nextSafeFixtureCandidates: [],
       },
       counts: {
         promotionBlockers: 0,
@@ -227,6 +230,21 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
       unsafeBlocked: ["chat.send"],
       cleanEvidence: ["health"],
       unproven: ["chat.send", "sessions.list", "status", "workflows.list"],
+      readOnlyUnproven: ["status", "workflows.list"],
+      authorityBlocked: ["chat.send"],
+      nextSafeFixtureCandidates: [
+        {
+          method: "status",
+          currentEvidence: "mock-compatible",
+          recommendation: "replace synthetic success with a schema-compatible read-only fixture",
+        },
+        {
+          method: "workflows.list",
+          currentEvidence: "unsupported",
+          recommendation:
+            "assign owner and add a schema-compatible read-only fixture or explicit de-scope",
+        },
+      ],
     });
   });
 });

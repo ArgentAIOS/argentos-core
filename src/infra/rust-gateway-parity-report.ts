@@ -29,6 +29,13 @@ export type RustGatewayPromotionReadinessSummary = {
     unsafeBlocked: string[];
     cleanEvidence: string[];
     unproven: string[];
+    readOnlyUnproven: string[];
+    authorityBlocked: string[];
+    nextSafeFixtureCandidates: Array<{
+      method: string;
+      currentEvidence: "mock-compatible" | "unsupported";
+      recommendation: string;
+    }>;
   };
   counts: {
     promotionBlockers: number;
@@ -187,11 +194,12 @@ function buildMethodCoverage(
   const unsupported = uniqueSortedMethods(groups.unsupported);
   const unsafeBlocked = uniqueSortedMethods(groups.unsafeBlocked);
   const cleanEvidence = uniqueSortedMethods(groups.cleanEvidence);
+  const readOnlyUnproven = uniqueSortedStrings([...mockOnly, ...unsupported]);
+  const authorityBlocked = unsafeBlocked;
   const unproven = uniqueSortedStrings([
     ...promotionBlockers,
-    ...mockOnly,
-    ...unsupported,
-    ...unsafeBlocked,
+    ...readOnlyUnproven,
+    ...authorityBlocked,
   ]);
 
   return {
@@ -208,6 +216,21 @@ function buildMethodCoverage(
     unsafeBlocked,
     cleanEvidence,
     unproven,
+    readOnlyUnproven,
+    authorityBlocked,
+    nextSafeFixtureCandidates: [
+      ...mockOnly.map((method) => ({
+        method,
+        currentEvidence: "mock-compatible" as const,
+        recommendation: "replace synthetic success with a schema-compatible read-only fixture",
+      })),
+      ...unsupported.map((method) => ({
+        method,
+        currentEvidence: "unsupported" as const,
+        recommendation:
+          "assign owner and add a schema-compatible read-only fixture or explicit de-scope",
+      })),
+    ],
   };
 }
 
