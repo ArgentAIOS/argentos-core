@@ -15,6 +15,7 @@ const serviceIsLoaded = vi.fn().mockResolvedValue(true);
 const serviceInstall = vi.fn(async () => {});
 const discoverGatewayBeacons = vi.fn(async () => []);
 const gatewayStatusCommand = vi.fn(async () => {});
+const gatewayAuthorityStatusCommand = vi.fn(async () => {});
 
 const runtimeLogs: string[] = [];
 const runtimeErrors: string[] = [];
@@ -106,6 +107,11 @@ vi.mock("../commands/gateway-status.js", () => ({
   gatewayStatusCommand: (opts: unknown) => gatewayStatusCommand(opts),
 }));
 
+vi.mock("../commands/gateway-authority-status.js", () => ({
+  gatewayAuthorityStatusCommand: (runtime: unknown, opts: unknown) =>
+    gatewayAuthorityStatusCommand(runtime, opts),
+}));
+
 describe("gateway-cli coverage", () => {
   it("registers call/health commands and routes to callGateway", async () => {
     runtimeLogs.length = 0;
@@ -138,6 +144,20 @@ describe("gateway-cli coverage", () => {
     await program.parseAsync(["gateway", "probe", "--json"], { from: "user" });
 
     expect(gatewayStatusCommand).toHaveBeenCalledTimes(1);
+  }, 30_000);
+
+  it("registers gateway authority status and routes to read-only status command", async () => {
+    gatewayAuthorityStatusCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(["gateway", "authority", "status", "--json"], { from: "user" });
+
+    expect(gatewayAuthorityStatusCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityStatusCommand.mock.calls[0]?.[1]).toEqual({ json: true });
   }, 30_000);
 
   it("registers gateway discover and prints JSON", async () => {
@@ -360,6 +380,7 @@ describe("gateway-cli coverage", () => {
     runtimeLogs.length = 0;
     runtimeErrors.length = 0;
     serviceIsLoaded.mockResolvedValue(true);
+    startGatewayServer.mockReset();
 
     const { GatewayLockError } = await import("../infra/gateway-lock.js");
     startGatewayServer.mockRejectedValueOnce(
