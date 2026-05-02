@@ -74,6 +74,23 @@ export type RustGatewayPromotionReadinessSummary = {
     requiredProofBeforeCanary: string[];
     requiredProofBeforeRollbackCommand: string[];
   };
+  livePromotionGateDesign: {
+    mode: "design-only";
+    authoritySwitchAllowed: false;
+    defaultOffConfigFlags: Array<{
+      flag: string;
+      default: false;
+      purpose: string;
+    }>;
+    gates: Array<{
+      surface: "chat.send" | "cron.add" | "workflows.run" | "authority-switch";
+      status: "blocked";
+      owner: "master-operator";
+      requiredProof: string[];
+      rollbackProof: string[];
+      duplicatePreventionProof: string[];
+    }>;
+  };
   duplicatePrevention: RustGatewayShadowDuplicateProof;
   gates: Array<{
     id: string;
@@ -189,6 +206,7 @@ export function buildRustGatewayPromotionReadinessSummary(
       channels: "node",
     },
     canaryAndRollback: buildCanaryAndRollbackPlan(groups),
+    livePromotionGateDesign: buildLivePromotionGateDesign(groups),
     duplicatePrevention,
     gates: buildPromotionGateStatuses(report, readiness, groups, duplicatePrevention),
     nextRequiredGates: [
@@ -203,6 +221,121 @@ export function buildRustGatewayPromotionReadinessSummary(
     ],
     blockers: readiness.blockers,
     warnings: readiness.warnings,
+  };
+}
+
+function buildLivePromotionGateDesign(
+  groups: RustGatewayParityReportGroups,
+): RustGatewayPromotionReadinessSummary["livePromotionGateDesign"] {
+  const unsafeMethods = new Set(groups.unsafeBlocked.map((result) => result.method));
+  const liveSurfaceGates: RustGatewayPromotionReadinessSummary["livePromotionGateDesign"]["gates"] =
+    [
+      {
+        surface: "chat.send",
+        status: "blocked",
+        owner: "master-operator",
+        requiredProof: [
+          "explicit Master/operator authorization for Rust canary chat send traffic",
+          "isolated canary session target that cannot reach production users by default",
+          "Node and Rust response envelopes agree for accepted, rejected, and aborted sends",
+          "audit log records source authority and rollback marker for every canary send",
+        ],
+        rollbackProof: [
+          "Node chat.send path remains available and health-checked before canary",
+          "Rust canary flag can be disabled without losing pending Node-run state",
+        ],
+        duplicatePreventionProof: [
+          "same request id cannot be accepted by both Node and Rust live send paths",
+          "abort/retry semantics prove one live agent run owner per canary request",
+        ],
+      },
+      {
+        surface: "cron.add",
+        status: "blocked",
+        owner: "master-operator",
+        requiredProof: [
+          "explicit Master/operator authorization for isolated Rust scheduler canary",
+          "scheduler authority state records Node-live and Rust-canary ownership separately",
+          "canary timer store is isolated from Node production timers unless promotion is approved",
+          "cron.add, cron.update, cron.remove, and cron.run canary probes are reversible",
+        ],
+        rollbackProof: [
+          "Node scheduler restart/fallback command is rehearsed before Rust scheduler canary",
+          "Rust canary timers can be drained or disabled without firing duplicate reminders",
+        ],
+        duplicatePreventionProof: [
+          "same schedule key cannot exist as live in both Node and Rust stores",
+          "next-run claiming proves only one authority fires a reminder for a canary timer",
+        ],
+      },
+      {
+        surface: "workflows.run",
+        status: "blocked",
+        owner: "master-operator",
+        requiredProof: [
+          "explicit Master/operator authorization for isolated Rust workflow-run canary",
+          "workflow canary package uses fixture-safe connectors or no-op side-effect sinks",
+          "workflow run state records Node-live and Rust-canary authorities distinctly",
+          "workflow execution, retry, review, and trace envelopes match the Node contract",
+        ],
+        rollbackProof: [
+          "Node workflow runner fallback path is rehearsed before Rust workflow canary",
+          "Rust canary workflow queue can be paused and drained without orphaning live runs",
+        ],
+        duplicatePreventionProof: [
+          "same workflow run id cannot be claimed by both Node and Rust",
+          "retry/review paths prove one live run owner through terminal state",
+        ],
+      },
+    ].filter((gate) => unsafeMethods.has(gate.surface));
+
+  liveSurfaceGates.push({
+    surface: "authority-switch",
+    status: "blocked",
+    owner: "master-operator",
+    requiredProof: [
+      "fresh parity report has zero failed, mock-compatible, or unsupported read-only fixtures",
+      "dashboard and Swift smoke tests pass against Rust canary endpoints",
+      "explicit signed/recorded Master/operator promotion decision names affected authorities",
+      "config/state persistence records previous Node authority and proposed Rust authority",
+    ],
+    rollbackProof: [
+      "Node fallback command is implemented, rehearsed, and included in the READY packet",
+      "rollback probes health, connect, status, sessions.list, cron.status, and channels.status",
+      "promotion packet proves no data loss, no duplicate work, and no stuck Rust writes",
+    ],
+    duplicatePreventionProof: [
+      "workflow, session, run, timer, and channel duplicate-prevention gates all pass",
+      "authority persistence rejects split-brain Node-live and Rust-live ownership",
+    ],
+  });
+
+  return {
+    mode: "design-only",
+    authoritySwitchAllowed: false,
+    defaultOffConfigFlags: [
+      {
+        flag: "ARGENT_RUST_GATEWAY_CANARY",
+        default: false,
+        purpose: "allows Rust canary routing only after explicit Master/operator approval",
+      },
+      {
+        flag: "ARGENT_RUST_SCHEDULER_CANARY",
+        default: false,
+        purpose: "keeps Rust scheduler mutation surfaces disabled outside isolated canary proof",
+      },
+      {
+        flag: "ARGENT_RUST_WORKFLOW_CANARY",
+        default: false,
+        purpose: "keeps Rust workflow execution disabled outside isolated canary proof",
+      },
+      {
+        flag: "ARGENT_RUST_AUTHORITY_PROMOTION",
+        default: false,
+        purpose: "prevents Rust live authority switch unless the promotion packet is approved",
+      },
+    ],
+    gates: liveSurfaceGates,
   };
 }
 

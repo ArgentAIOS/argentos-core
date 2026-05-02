@@ -160,6 +160,39 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
     expect(summary.canaryAndRollback.requiredProofBeforeCanary).toContain(
       "fresh parity report has zero failures and no mock-only/unsupported warnings",
     );
+    expect(summary.livePromotionGateDesign).toMatchObject({
+      mode: "design-only",
+      authoritySwitchAllowed: false,
+    });
+    expect(summary.livePromotionGateDesign.defaultOffConfigFlags).toEqual([
+      expect.objectContaining({
+        flag: "ARGENT_RUST_GATEWAY_CANARY",
+        default: false,
+      }),
+      expect.objectContaining({
+        flag: "ARGENT_RUST_SCHEDULER_CANARY",
+        default: false,
+      }),
+      expect.objectContaining({
+        flag: "ARGENT_RUST_WORKFLOW_CANARY",
+        default: false,
+      }),
+      expect.objectContaining({
+        flag: "ARGENT_RUST_AUTHORITY_PROMOTION",
+        default: false,
+      }),
+    ]);
+    expect(summary.livePromotionGateDesign.gates).toContainEqual(
+      expect.objectContaining({
+        surface: "authority-switch",
+        status: "blocked",
+        owner: "master-operator",
+        requiredProof: expect.arrayContaining([
+          "fresh parity report has zero failed, mock-compatible, or unsupported read-only fixtures",
+          "explicit signed/recorded Master/operator promotion decision names affected authorities",
+        ]),
+      }),
+    );
     expect(summary.duplicatePrevention).toMatchObject({
       mode: "shadow-observation-only",
       status: "passed",
@@ -272,6 +305,26 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
       "sessions.list",
       "status",
       "workflows.list",
+    ]);
+    expect(summary.livePromotionGateDesign.gates).toEqual([
+      expect.objectContaining({
+        surface: "chat.send",
+        status: "blocked",
+        owner: "master-operator",
+        requiredProof: expect.arrayContaining([
+          "explicit Master/operator authorization for Rust canary chat send traffic",
+        ]),
+        rollbackProof: expect.arrayContaining([
+          "Node chat.send path remains available and health-checked before canary",
+        ]),
+        duplicatePreventionProof: expect.arrayContaining([
+          "same request id cannot be accepted by both Node and Rust live send paths",
+        ]),
+      }),
+      expect.objectContaining({
+        surface: "authority-switch",
+        status: "blocked",
+      }),
     ]);
   });
 });
