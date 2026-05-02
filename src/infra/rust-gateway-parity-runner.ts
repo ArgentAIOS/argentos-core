@@ -253,18 +253,78 @@ function validateSchemaCompatiblePayloads(
   rustPayload: unknown,
 ): { ok: boolean; note: string | null } {
   const validator = schemaPayloadValidators[fixture.method];
+  const notes: string[] = [];
   if (!validator) {
-    return { ok: true, note: null };
+    const discovery = validateRequiredMethodDiscovery(fixture, nodePayload, rustPayload);
+    return discovery.ok ? { ok: true, note: discovery.note } : discovery;
   }
   const node = validator(nodePayload);
   const rust = validator(rustPayload);
   if (node.ok && rust.ok) {
-    return { ok: true, note: `schema/payload: ${validator.description}` };
+    notes.push(`schema/payload: ${validator.description}`);
+    const discovery = validateRequiredMethodDiscovery(fixture, nodePayload, rustPayload);
+    if (!discovery.ok) {
+      return discovery;
+    }
+    if (discovery.note) {
+      notes.push(discovery.note);
+    }
+    return { ok: true, note: notes.join("; ") };
   }
+
   return {
     ok: false,
     note: `schema/payload: ${fixture.method} invalid (${node.ok ? "node ok" : `node ${node.error}`}; ${rust.ok ? "rust ok" : `rust ${rust.error}`})`,
   };
+}
+
+function validateRequiredMethodDiscovery(
+  fixture: RustGatewayParityFixture,
+  nodePayload: unknown,
+  rustPayload: unknown,
+): { ok: boolean; note: string | null } {
+  if (!fixture.requiredMethods?.length) {
+    return { ok: true, note: null };
+  }
+  const nodeMethods = extractFeatureMethods(nodePayload);
+  const rustMethods = extractFeatureMethods(rustPayload);
+  if (!nodeMethods || !rustMethods) {
+    return {
+      ok: false,
+      note: `schema/methods: ${fixture.method} must expose features.methods arrays`,
+    };
+  }
+  const missingFromNode = fixture.requiredMethods.filter((method) => !nodeMethods.has(method));
+  const missingFromRust = fixture.requiredMethods.filter((method) => !rustMethods.has(method));
+  if (missingFromNode.length > 0 || missingFromRust.length > 0) {
+    return {
+      ok: false,
+      note: `schema/methods: required discovery drift (node missing ${formatMethodList(missingFromNode)}; rust missing ${formatMethodList(missingFromRust)})`,
+    };
+  }
+  return {
+    ok: true,
+    note: `schema/methods: both gateways advertise required read-only methods (${fixture.requiredMethods.length})`,
+  };
+}
+
+function extractFeatureMethods(payload: unknown): Set<string> | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const features = (payload as Record<string, unknown>).features;
+  if (!features || typeof features !== "object" || Array.isArray(features)) {
+    return null;
+  }
+  const methods = (features as Record<string, unknown>).methods;
+  if (!Array.isArray(methods) || !methods.every((method) => typeof method === "string")) {
+    return null;
+  }
+  return new Set(methods);
+}
+
+function formatMethodList(methods: string[]): string {
+  return methods.length > 0 ? methods.join(",") : "none";
 }
 
 function validateSchemaCompatibleErrors(

@@ -29,6 +29,7 @@ export type RustGatewayParityFixture = {
   params?: Record<string, unknown>;
   authTokenOverride?: string | null;
   redactionProbes?: string[];
+  requiredMethods?: string[];
   timeoutMs?: number;
   safety: RustGatewayFixtureSafety;
   expectedParity: RustGatewayParityLabel;
@@ -50,6 +51,20 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     id: "connect-v3-token",
     surface: "connect",
     method: "connect",
+    requiredMethods: [
+      "health",
+      "status",
+      "system-presence",
+      "commands.list",
+      "config.schema",
+      "models.list",
+      "sessions.list",
+      "channels.status",
+      "connectors.catalog",
+      "cron.status",
+      "cron.list",
+      "tools.status",
+    ],
     safety: "read-only",
     expectedParity: "schema-compatible",
     reason: "Both gateways should negotiate protocol v3 and return a hello-ok envelope.",

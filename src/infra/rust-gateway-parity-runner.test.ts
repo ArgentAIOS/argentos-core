@@ -67,6 +67,64 @@ describe("runRustGatewayParityReplay", () => {
     expect(report.results[0]?.notes.join(" ")).toContain("schema/payload");
   });
 
+  it("passes connect fixtures when both gateways advertise required read-only methods", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "connect-methods",
+        method: "connect",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+        requiredMethods: ["health", "status", "commands.list"],
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async () =>
+      frame("connect", true, {
+        type: "hello-ok",
+        protocol: 3,
+        server: {},
+        features: { methods: ["health", "status", "commands.list"] },
+        snapshot: {},
+      });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals).toEqual({ passed: 1, failed: 0, skipped: 0 });
+    expect(report.results[0]?.notes.join(" ")).toContain(
+      "both gateways advertise required read-only methods",
+    );
+  });
+
+  it("fails connect fixtures when required method discovery drifts", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "connect-methods",
+        method: "connect",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+        requiredMethods: ["health", "status", "commands.list"],
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      frame(endpoint, true, {
+        type: "hello-ok",
+        protocol: 3,
+        server: {},
+        features: {
+          methods:
+            endpoint === "node" ? ["health", "status", "commands.list"] : ["health", "status"],
+        },
+        snapshot: {},
+      });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals.failed).toBe(1);
+    expect(report.results[0]?.notes.join(" ")).toContain("required discovery drift");
+    expect(report.results[0]?.notes.join(" ")).toContain("rust missing commands.list");
+  });
+
   it("passes failed-auth fixtures when structured errors are redacted", async () => {
     const fixtures: RustGatewayParityFixture[] = [
       {
