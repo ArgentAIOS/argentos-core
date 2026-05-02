@@ -655,6 +655,21 @@ function defaultViews(type: ForgeStructuredViewType = "grid"): ForgeStructuredVi
   ];
 }
 
+function normalizeVisibleFieldIds(
+  value: unknown,
+  fields: ForgeStructuredField[],
+): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const fieldIds = new Set(fields.map((field) => field.id));
+  const visibleFieldIds = value.filter(
+    (entry): entry is string => typeof entry === "string" && fieldIds.has(entry),
+  );
+  const uniqueFieldIds = [...new Set(visibleFieldIds)];
+  return uniqueFieldIds.length ? uniqueFieldIds : undefined;
+}
+
 function normalizeView(value: unknown, fields: ForgeStructuredField[]): ForgeStructuredView | null {
   if (!isRecord(value)) {
     return null;
@@ -668,9 +683,7 @@ function normalizeView(value: unknown, fields: ForgeStructuredField[]): ForgeStr
   const fieldIds = new Set(fields.map((field) => field.id));
   const sortFieldId = stringValue(value.sortFieldId);
   const groupFieldId = stringValue(value.groupFieldId);
-  const visibleFieldIds = Array.isArray(value.visibleFieldIds)
-    ? value.visibleFieldIds.filter((entry): entry is string => typeof entry === "string")
-    : undefined;
+  const visibleFieldIds = normalizeVisibleFieldIds(value.visibleFieldIds, fields);
   return {
     id,
     name,
@@ -679,7 +692,7 @@ function normalizeView(value: unknown, fields: ForgeStructuredField[]): ForgeStr
     sortFieldId: sortFieldId && fieldIds.has(sortFieldId) ? sortFieldId : "",
     sortDirection: value.sortDirection === "desc" ? "desc" : "asc",
     groupFieldId: groupFieldId && fieldIds.has(groupFieldId) ? groupFieldId : "",
-    visibleFieldIds: visibleFieldIds?.filter((fieldId) => fieldIds.has(fieldId)),
+    visibleFieldIds,
     createdAt: stringValue(value.createdAt) ?? nowIso(),
     updatedAt: stringValue(value.updatedAt) ?? nowIso(),
   };
@@ -2030,7 +2043,7 @@ export function useForgeStructuredData({
                     : "asc"
                   : view.sortDirection,
               visibleFieldIds: updates.visibleFieldIds
-                ? updates.visibleFieldIds.filter((fieldId) => fieldIds.has(fieldId))
+                ? normalizeVisibleFieldIds(updates.visibleFieldIds, table.fields)
                 : view.visibleFieldIds,
               updatedAt: nowIso(),
             };
@@ -2279,7 +2292,10 @@ export function useForgeStructuredData({
           ...view,
           sortFieldId: view.sortFieldId === fieldId ? "" : view.sortFieldId,
           groupFieldId: view.groupFieldId === fieldId ? "" : view.groupFieldId,
-          visibleFieldIds: view.visibleFieldIds?.filter((candidate) => candidate !== fieldId),
+          visibleFieldIds: normalizeVisibleFieldIds(
+            view.visibleFieldIds?.filter((candidate) => candidate !== fieldId),
+            table.fields.filter((field) => field.id !== fieldId),
+          ),
           updatedAt: nowIso(),
         })),
         records: table.records.map((record) => {
@@ -2323,9 +2339,12 @@ export function useForgeStructuredData({
             view.visibleFieldIds
               ? {
                   ...view,
-                  visibleFieldIds: fields
-                    .map((candidate) => candidate.id)
-                    .filter((candidate) => view.visibleFieldIds?.includes(candidate)),
+                  visibleFieldIds: normalizeVisibleFieldIds(
+                    fields
+                      .map((candidate) => candidate.id)
+                      .filter((candidate) => view.visibleFieldIds?.includes(candidate)),
+                    fields,
+                  ),
                   updatedAt: nowIso(),
                 }
               : view,
