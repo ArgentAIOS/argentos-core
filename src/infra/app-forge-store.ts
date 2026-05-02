@@ -191,6 +191,14 @@ function cloneTable(table: AppForgeTable): AppForgeTable {
         : undefined,
     })),
     records: table.records.map(cloneRecord),
+    views: table.views
+      ? table.views.map((view) =>
+          view !== null && typeof view === "object" && !Array.isArray(view)
+            ? { ...(view as Record<string, unknown>) }
+            : view,
+        )
+      : undefined,
+    activeCell: table.activeCell ? { ...table.activeCell } : undefined,
   };
 }
 
@@ -201,29 +209,62 @@ function cloneBase(base: AppForgeBase): AppForgeBase {
   };
 }
 
+function parseJsonContainer(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return value;
+  }
+}
+
 function fieldsFromJson(value: unknown): AppForgeField[] {
-  return Array.isArray(value)
-    ? value
+  const parsed = parseJsonContainer(value);
+  return Array.isArray(parsed)
+    ? parsed
         .map(normalizeLegacyAppForgeField)
         .filter((field): field is AppForgeField => Boolean(field))
     : [];
 }
 
 function valuesFromJson(value: unknown): Record<string, AppForgeRecordValue> {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, AppForgeRecordValue>)
+  const parsed = parseJsonContainer(value);
+  return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, AppForgeRecordValue>)
     : {};
 }
 
 function metadataFromJson(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
+  const parsed = parseJsonContainer(value);
+  return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
     : {};
 }
 
 function tableMetadataFromTable(table: AppForgeTable): Record<string, unknown> {
   const source = table as unknown as Record<string, unknown>;
   const metadata = metadataFromJson(source.metadata);
+  if (table.views !== undefined) {
+    metadata.views = table.views.map((view) =>
+      view !== null && typeof view === "object" && !Array.isArray(view)
+        ? { ...(view as Record<string, unknown>) }
+        : view,
+    );
+  }
+  if (table.activeViewId !== undefined) {
+    metadata.activeViewId = table.activeViewId;
+  }
+  if (table.defaultViewId !== undefined) {
+    metadata.defaultViewId = table.defaultViewId;
+  }
+  if (table.selectedFieldId !== undefined) {
+    metadata.selectedFieldId = table.selectedFieldId;
+  }
+  if (table.activeCell !== undefined) {
+    metadata.activeCell = { ...table.activeCell };
+  }
   for (const [key, value] of Object.entries(source)) {
     if (
       key === "id" ||
@@ -232,6 +273,11 @@ function tableMetadataFromTable(table: AppForgeTable): Record<string, unknown> {
       key === "records" ||
       key === "revision" ||
       key === "metadata" ||
+      key === "views" ||
+      key === "activeViewId" ||
+      key === "defaultViewId" ||
+      key === "selectedFieldId" ||
+      key === "activeCell" ||
       value === undefined
     ) {
       continue;
@@ -239,6 +285,10 @@ function tableMetadataFromTable(table: AppForgeTable): Record<string, unknown> {
     metadata[key] = value;
   }
   return metadata;
+}
+
+function tableMetadataJson(table: AppForgeTable): postgres.JSONValue {
+  return JSON.parse(JSON.stringify(tableMetadataFromTable(table))) as postgres.JSONValue;
 }
 
 function baseRowToBase(row: AppForgeBaseRow, tables: AppForgeTable[]): AppForgeBase {
@@ -451,6 +501,7 @@ async function insertTableTree(
   position: number,
 ): Promise<void> {
   const timestamp = nowIso();
+  const metadata = tableMetadataJson(table);
   await tx`
     INSERT INTO appforge_tables (
       id,
@@ -469,7 +520,7 @@ async function insertTableTree(
       ${tx.json(table.fields as postgres.JSONValue)},
       ${table.revision},
       ${position},
-      ${tx.json(tableMetadataFromTable(table) as postgres.JSONValue)},
+      ${tx.json(metadata)},
       ${timestamp}
     )
   `;
@@ -706,6 +757,7 @@ export function createPostgresAppForgeStore(sql: SqlClient): AppForgeStore {
           ...table,
           revision: (currentTableRow?.revision ?? 0) + 1,
         });
+        const metadata = tableMetadataJson(nextTable);
 
         await tx`
           INSERT INTO appforge_tables (
@@ -725,7 +777,7 @@ export function createPostgresAppForgeStore(sql: SqlClient): AppForgeStore {
             ${tx.json(nextTable.fields as postgres.JSONValue)},
             ${nextTable.revision},
             ${position},
-            ${tx.json(tableMetadataFromTable(nextTable) as postgres.JSONValue)},
+            ${tx.json(metadata)},
             ${timestamp}
           )
           ON CONFLICT (id) DO UPDATE SET

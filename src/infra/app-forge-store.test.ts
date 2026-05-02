@@ -362,6 +362,78 @@ describe("AppForge store contract", () => {
     ]);
   });
 
+  it("preserves in-memory table view state across base writes and list reloads", async () => {
+    const store = createInMemoryAppForgeStore();
+    const durableBase = base({
+      id: "base-memory",
+      appId: "app-memory",
+      activeTableId: "table-memory",
+      revision: 0,
+      tables: [
+        {
+          id: "table-memory",
+          name: "Leads",
+          revision: 0,
+          activeViewId: "view-status",
+          defaultViewId: "view-status",
+          selectedFieldId: "status",
+          activeCell: { recordId: "record-memory", fieldId: "status" },
+          fields: [
+            { id: "name", name: "Name", type: "text", required: true },
+            { id: "status", name: "Status", type: "single_select", options: ["New", "Won"] },
+          ],
+          records: [
+            record({
+              id: "record-memory",
+              values: { name: "Gateway lead", status: "New" },
+            }),
+          ],
+          views: [
+            {
+              id: "view-status",
+              name: "By status",
+              type: "kanban",
+              groupFieldId: "status",
+              visibleFieldIds: ["name", "status"],
+            },
+            {
+              id: "view-review",
+              name: "Follow-up queue",
+              type: "review",
+              filterText: "New",
+              sortFieldId: "name",
+              visibleFieldIds: ["status", "name"],
+            },
+          ],
+        } as AppForgeTable,
+      ],
+    });
+
+    await expect(store.putBase({ base: durableBase, expectedRevision: 0 })).resolves.toMatchObject({
+      ok: true,
+      base: { id: "base-memory", revision: 1 },
+    });
+
+    await expect(store.listBases({ appId: "app-memory" })).resolves.toEqual([
+      expect.objectContaining({
+        id: "base-memory",
+        tables: [
+          expect.objectContaining({
+            id: "table-memory",
+            activeViewId: "view-status",
+            defaultViewId: "view-status",
+            selectedFieldId: "status",
+            activeCell: { recordId: "record-memory", fieldId: "status" },
+            views: [
+              expect.objectContaining({ id: "view-status", name: "By status" }),
+              expect.objectContaining({ id: "view-review", name: "Follow-up queue" }),
+            ],
+          }),
+        ],
+      }),
+    ]);
+  });
+
   it("keeps AppForge schema exports aligned with the durable migration", () => {
     expect(pgSchema.appForgeBases).toBeDefined();
     expect(pgSchema.appForgeTables).toBeDefined();
@@ -445,7 +517,9 @@ describe("AppForge store contract", () => {
           name: "Launch Reviews",
           revision: 0,
           activeViewId: "view-review",
+          defaultViewId: "view-review",
           selectedFieldId: "status",
+          activeCell: { recordId: "record-live", fieldId: "status" },
           fields: [
             { id: "name", name: "Name", type: "text", required: true },
             {
@@ -491,6 +565,15 @@ describe("AppForge store contract", () => {
     });
 
     const reopenedStore = createPostgresAppForgeStore(sql);
+    const storedTable = state.tables.get("table-live");
+    if (storedTable) {
+      storedTable.fields = JSON.stringify(storedTable.fields);
+      storedTable.metadata = JSON.stringify(storedTable.metadata);
+    }
+    const storedRecord = state.records.get("record-live");
+    if (storedRecord) {
+      storedRecord.values = JSON.stringify(storedRecord.values);
+    }
 
     await expect(reopenedStore.listBases({ appId: "app-live" })).resolves.toEqual([
       expect.objectContaining({
@@ -504,7 +587,9 @@ describe("AppForge store contract", () => {
             id: "table-live",
             name: "Launch Reviews",
             activeViewId: "view-review",
+            defaultViewId: "view-review",
             selectedFieldId: "status",
+            activeCell: { recordId: "record-live", fieldId: "status" },
             views: [
               expect.objectContaining({
                 id: "view-review",

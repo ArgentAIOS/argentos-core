@@ -308,7 +308,7 @@ describe("forge structured data metadata", () => {
       "capability",
     ]);
     expect(base.tables[0]?.views).toEqual([
-      expect.objectContaining({ id: "view-grid", name: "Grid", type: "grid" }),
+      expect.objectContaining({ id: "view-grid", name: "All records", type: "grid" }),
     ]);
     expect(base.tables[0]?.activeViewId).toBe("view-grid");
   });
@@ -339,7 +339,7 @@ describe("forge structured data metadata", () => {
     expect(base.tables[0]?.views).toEqual([
       expect.objectContaining({
         id: "view-grid",
-        name: "Grid",
+        name: "All records",
         type: "grid",
         sortDirection: "asc",
       }),
@@ -632,12 +632,22 @@ describe("forge structured data metadata", () => {
           name: "Reviews",
           revision: 5,
           activeViewId: "view-review",
+          defaultViewId: "view-owner",
           selectedFieldId: "status",
+          activeCell: { recordId: "record-1", fieldId: "status" },
           fields: [
             { id: "title", name: "Title", type: "text" },
             { id: "status", name: "Status", type: "single_select", options: ["Open", "Done"] },
           ],
-          records: [],
+          records: [
+            {
+              id: "record-1",
+              revision: 1,
+              values: { title: "First review", status: "Open" },
+              createdAt: "2026-04-26T17:05:00.000Z",
+              updatedAt: "2026-04-26T17:06:00.000Z",
+            },
+          ],
           views: [
             {
               id: "view-review",
@@ -669,7 +679,9 @@ describe("forge structured data metadata", () => {
 
     expect(base?.tables[0]).toMatchObject({
       activeViewId: "view-review",
+      defaultViewId: "view-owner",
       selectedFieldId: "status",
+      activeCell: { recordId: "record-1", fieldId: "status" },
       views: [
         expect.objectContaining({
           id: "view-review",
@@ -701,10 +713,81 @@ describe("forge structured data metadata", () => {
 
     expect(calls[0]?.params.table).toMatchObject({
       activeViewId: "view-review",
+      defaultViewId: "view-owner",
       selectedFieldId: "status",
+      activeCell: { recordId: "record-1", fieldId: "status" },
       views: [
         expect.objectContaining({ visibleFieldIds: ["status", "title"] }),
         expect.objectContaining({ visibleFieldIds: ["title", "status"] }),
+      ],
+    });
+  });
+
+  it("normalizes saved views and active field state from gateway table metadata", () => {
+    const base = forgeStructuredDataTestUtils.normalizeGatewayBase({
+      id: "base-existing",
+      appId: "app-1",
+      name: "Gateway Base",
+      activeTableId: "table-review",
+      revision: 7,
+      updatedAt: "2026-04-26T17:30:00.000Z",
+      tables: [
+        {
+          id: "table-review",
+          name: "Reviews",
+          revision: 5,
+          fields: [
+            { id: "title", name: "Title", type: "text" },
+            { id: "status", name: "Status", type: "single_select", options: ["Open", "Done"] },
+          ],
+          records: [
+            {
+              id: "record-1",
+              revision: 1,
+              values: { title: "First review", status: "Open" },
+              createdAt: "2026-04-26T17:05:00.000Z",
+              updatedAt: "2026-04-26T17:06:00.000Z",
+            },
+          ],
+          metadata: {
+            activeViewId: "view-follow-up",
+            defaultViewId: "view-follow-up",
+            selectedFieldId: "status",
+            activeCell: { recordId: "record-1", fieldId: "status" },
+            views: [
+              {
+                id: "view-follow-up",
+                name: "Follow-up queue",
+                type: "grid",
+                filterText: "open",
+                sortFieldId: "title",
+                sortDirection: "desc",
+                groupFieldId: "status",
+                visibleFieldIds: ["status", "title"],
+                createdAt: "2026-04-26T17:00:00.000Z",
+                updatedAt: "2026-04-26T17:10:00.000Z",
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(base?.tables[0]).toMatchObject({
+      activeViewId: "view-follow-up",
+      defaultViewId: "view-follow-up",
+      selectedFieldId: "status",
+      activeCell: { recordId: "record-1", fieldId: "status" },
+      views: [
+        expect.objectContaining({
+          id: "view-follow-up",
+          name: "Follow-up queue",
+          filterText: "open",
+          sortFieldId: "title",
+          sortDirection: "desc",
+          groupFieldId: "status",
+          visibleFieldIds: ["status", "title"],
+        }),
       ],
     });
   });
