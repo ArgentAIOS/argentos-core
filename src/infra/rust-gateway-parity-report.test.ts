@@ -160,10 +160,20 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
     expect(summary.canaryAndRollback.requiredProofBeforeCanary).toContain(
       "fresh parity report has zero failures and no mock-only/unsupported warnings",
     );
+    expect(summary.duplicatePrevention).toMatchObject({
+      mode: "shadow-observation-only",
+      status: "passed",
+      coveredSurfaces: ["channel", "run", "session", "timer", "workflow"],
+      missingSurfaces: [],
+      conflicts: [],
+    });
     expect(summary.gates).toContainEqual({
       id: "isolated-parity-report",
       status: "passed",
       reason: "isolated Node-vs-Rust replay completed without failed fixtures",
+    });
+    expect(summary.gates.find((gate) => gate.id === "duplicate-prevention")).toMatchObject({
+      status: "passed",
     });
     expect(summary.gates.find((gate) => gate.id === "rollback-to-node")?.status).toBe("not-run");
     expect(summary.nextRequiredGates).toContain("rollback-to-node");

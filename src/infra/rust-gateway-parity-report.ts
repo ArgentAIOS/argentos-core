@@ -2,6 +2,11 @@ import type {
   RustGatewayParityReplayReport,
   RustGatewayParityReplayResult,
 } from "./rust-gateway-parity-runner.js";
+import {
+  analyzeRustGatewayShadowDuplicateObservations,
+  RUST_GATEWAY_SHADOW_DUPLICATE_PROOF_FIXTURE,
+  type RustGatewayShadowDuplicateProof,
+} from "./rust-gateway-shadow-duplicates.js";
 
 export type RustGatewayPromotionReadiness = {
   ready: boolean;
@@ -69,6 +74,7 @@ export type RustGatewayPromotionReadinessSummary = {
     requiredProofBeforeCanary: string[];
     requiredProofBeforeRollbackCommand: string[];
   };
+  duplicatePrevention: RustGatewayShadowDuplicateProof;
   gates: Array<{
     id: string;
     status: "passed" | "blocked" | "not-run";
@@ -151,6 +157,9 @@ export function buildRustGatewayPromotionReadinessSummary(
   const readiness = evaluateRustGatewayPromotionReadiness(report);
   const groups = groupRustGatewayParityResults(report);
   const methodCoverage = buildMethodCoverage(groups);
+  const duplicatePrevention = analyzeRustGatewayShadowDuplicateObservations(
+    RUST_GATEWAY_SHADOW_DUPLICATE_PROOF_FIXTURE,
+  );
   return {
     generatedAtMs: report.generatedAtMs,
     promotionReady: readiness.ready,
@@ -180,7 +189,8 @@ export function buildRustGatewayPromotionReadinessSummary(
       channels: "node",
     },
     canaryAndRollback: buildCanaryAndRollbackPlan(groups),
-    gates: buildPromotionGateStatuses(report, readiness, groups),
+    duplicatePrevention,
+    gates: buildPromotionGateStatuses(report, readiness, groups, duplicatePrevention),
     nextRequiredGates: [
       "auth-role-scope-parity",
       "dashboard-smoke",
@@ -287,6 +297,7 @@ function buildPromotionGateStatuses(
   report: RustGatewayParityReplayReport,
   readiness: RustGatewayPromotionReadiness,
   groups: RustGatewayParityReportGroups,
+  duplicatePrevention: RustGatewayShadowDuplicateProof,
 ): RustGatewayPromotionReadinessSummary["gates"] {
   return [
     {
@@ -348,8 +359,11 @@ function buildPromotionGateStatuses(
     },
     {
       id: "duplicate-prevention",
-      status: "not-run",
-      reason: "no duplicate timer/channel/run prevention test has been implemented",
+      status: duplicatePrevention.status,
+      reason:
+        duplicatePrevention.status === "passed"
+          ? "synthetic shadow observation proof covers workflow, session, run, timer, and channel duplicates without Rust authority"
+          : "shadow duplicate-prevention proof is missing coverage or found duplicate conflicts",
     },
   ];
 }
