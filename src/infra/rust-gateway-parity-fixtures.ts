@@ -7,10 +7,16 @@ export type RustGatewayParityLabel =
 
 export type RustGatewayFixtureSafety = "read-only" | "shadow-only" | "unsafe";
 
-export type RustGatewayTokenAuthCase = "valid-token" | "missing-token" | "wrong-token";
+export type RustGatewayTokenAuthCase =
+  | "valid-token"
+  | "missing-token"
+  | "wrong-token"
+  | "expired-token"
+  | "revoked-scope";
 
 export type RustGatewayTokenAuthGate = {
   authCase: RustGatewayTokenAuthCase;
+  evidenceKind: "real-connect-token" | "synthetic-rejection-shape";
   expected: "accepted" | "rejected";
   rejectionPoint: "connect-handshake";
   redactionRequired: boolean;
@@ -82,8 +88,10 @@ const REQUIRED_TOKEN_AUTH_PROOF_BEFORE_AUTHORITY_SWITCH = [
   "valid gateway token is accepted before replaying read-only method families",
   "missing gateway token is rejected at connect handshake before any RPC method runs",
   "wrong gateway token is rejected at connect handshake with structured redacted errors",
-  "expired token parity is proven before any Rust canary traffic",
-  "revoked role/scope parity is proven before any Rust canary traffic",
+  "expired-token rejection shape is proven without live token-store access",
+  "revoked-scope rejection shape is proven without live role-policy access",
+  "live token expiry clock semantics are proven before any Rust canary traffic",
+  "live role/scope policy semantics are proven before any Rust canary traffic",
 ];
 
 export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = [
@@ -107,6 +115,7 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     ],
     tokenAuthGate: {
       authCase: "valid-token",
+      evidenceKind: "real-connect-token",
       expected: "accepted",
       rejectionPoint: "connect-handshake",
       redactionRequired: false,
@@ -126,6 +135,7 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     authTokenOverride: null,
     tokenAuthGate: {
       authCase: "missing-token",
+      evidenceKind: "real-connect-token",
       expected: "rejected",
       rejectionPoint: "connect-handshake",
       redactionRequired: false,
@@ -147,6 +157,7 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     redactionProbes: ["rust-gateway-parity-wrong-token"],
     tokenAuthGate: {
       authCase: "wrong-token",
+      evidenceKind: "real-connect-token",
       expected: "rejected",
       rejectionPoint: "connect-handshake",
       redactionRequired: true,
@@ -159,6 +170,50 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     expectedParity: "schema-compatible",
     reason:
       "Both gateways should reject a mismatched token without leaking expected or received token material.",
+  },
+  {
+    id: "connect-expired-token",
+    surface: "connect",
+    method: "connect",
+    authTokenOverride: "rust-gateway-parity-expired-token",
+    redactionProbes: ["rust-gateway-parity-expired-token"],
+    tokenAuthGate: {
+      authCase: "expired-token",
+      evidenceKind: "synthetic-rejection-shape",
+      expected: "rejected",
+      rejectionPoint: "connect-handshake",
+      redactionRequired: true,
+      liveTrafficAllowed: false,
+      authoritySwitchAllowed: false,
+      coversMethods: [...RUST_GATEWAY_READ_ONLY_AUTH_GATED_METHODS],
+      requiredBeforeAuthoritySwitch: REQUIRED_TOKEN_AUTH_PROOF_BEFORE_AUTHORITY_SWITCH,
+    },
+    safety: "read-only",
+    expectedParity: "schema-compatible",
+    reason:
+      "Synthetic expired-token proof verifies both gateways reject token-shaped auth failures without live token-store access.",
+  },
+  {
+    id: "connect-revoked-scope-token",
+    surface: "connect",
+    method: "connect",
+    authTokenOverride: "rust-gateway-parity-revoked-scope-token",
+    redactionProbes: ["rust-gateway-parity-revoked-scope-token"],
+    tokenAuthGate: {
+      authCase: "revoked-scope",
+      evidenceKind: "synthetic-rejection-shape",
+      expected: "rejected",
+      rejectionPoint: "connect-handshake",
+      redactionRequired: true,
+      liveTrafficAllowed: false,
+      authoritySwitchAllowed: false,
+      coversMethods: [...RUST_GATEWAY_READ_ONLY_AUTH_GATED_METHODS],
+      requiredBeforeAuthoritySwitch: REQUIRED_TOKEN_AUTH_PROOF_BEFORE_AUTHORITY_SWITCH,
+    },
+    safety: "read-only",
+    expectedParity: "schema-compatible",
+    reason:
+      "Synthetic revoked-scope proof verifies both gateways reject role/scope-shaped auth failures without live policy access.",
   },
   {
     id: "rpc-health",

@@ -137,6 +137,7 @@ describe("runRustGatewayParityReplay", () => {
         redactionProbes: ["rust-gateway-parity-wrong-token"],
         tokenAuthGate: {
           authCase: "wrong-token",
+          evidenceKind: "real-connect-token",
           expected: "rejected",
           rejectionPoint: "connect-handshake",
           redactionRequired: true,

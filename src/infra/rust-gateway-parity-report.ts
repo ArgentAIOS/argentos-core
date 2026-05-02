@@ -128,6 +128,7 @@ export type RustGatewayPromotionReadinessSummary = {
     fixtures: Array<{
       fixtureId: string;
       authCase: RustGatewayTokenAuthCase;
+      evidenceKind: "real-connect-token" | "synthetic-rejection-shape";
       status: "passed" | "blocked";
       expected: "accepted" | "rejected";
       rejectionPoint: "connect-handshake";
@@ -137,6 +138,7 @@ export type RustGatewayPromotionReadinessSummary = {
       rustOk: boolean | null;
       coversMethods: string[];
       noLiveProof: string[];
+      remainingLiveProof: string[];
     }>;
     missingRequiredCases: RustGatewayTokenAuthCase[];
     remainingBeforeAuthoritySwitch: string[];
@@ -306,6 +308,7 @@ function buildFailedAuthTokenParity(
     .map((result) => ({
       fixtureId: result.fixtureId,
       authCase: result.tokenAuthGate?.authCase as RustGatewayTokenAuthCase,
+      evidenceKind: result.tokenAuthGate?.evidenceKind ?? "real-connect-token",
       status: result.status === "passed" ? ("passed" as const) : ("blocked" as const),
       expected: result.tokenAuthGate?.expected ?? "rejected",
       rejectionPoint: "connect-handshake" as const,
@@ -319,17 +322,38 @@ function buildFailedAuthTokenParity(
       rustOk: result.rustOk,
       coversMethods: result.tokenAuthGate?.coversMethods ?? [],
       noLiveProof:
-        result.tokenAuthGate?.expected === "rejected"
+        result.tokenAuthGate?.evidenceKind === "synthetic-rejection-shape"
           ? [
+              "fixture uses a synthetic token string against isolated local parity services",
               "fixture fails at connect handshake before any RPC method is sent",
-              "token material is not written to the report or readiness summary",
+              "no live token store, role policy, connector, or customer data is accessed",
               "Node remains live authority and Rust remains shadow-only",
             ]
-          : [
-              "fixture uses the isolated parity service token only",
-              "accepted-token proof is limited to read-only parity methods",
-              "Node remains live authority and Rust remains shadow-only",
-            ],
+          : result.tokenAuthGate?.expected === "rejected"
+            ? [
+                "fixture fails at connect handshake before any RPC method is sent",
+                "token material is not written to the report or readiness summary",
+                "Node remains live authority and Rust remains shadow-only",
+              ]
+            : [
+                "fixture uses the isolated parity service token only",
+                "accepted-token proof is limited to read-only parity methods",
+                "Node remains live authority and Rust remains shadow-only",
+              ],
+      remainingLiveProof:
+        result.tokenAuthGate?.authCase === "expired-token"
+          ? [
+              "real expired token fixture from authorized token issuer",
+              "clock-skew and token TTL parity between Node and Rust",
+              "rollback proof for rejected expired-token canary requests",
+            ]
+          : result.tokenAuthGate?.authCase === "revoked-scope"
+            ? [
+                "real revoked role/scope fixture from authorized policy source",
+                "role/scope denial parity across gateway, scheduler, workflow, channel, session, and run surfaces",
+                "rollback proof for rejected revoked-scope canary requests",
+              ]
+            : [],
     }));
   const passedCases = new Set(
     fixtures.filter((fixture) => fixture.status === "passed").map((fixture) => fixture.authCase),
@@ -338,6 +362,8 @@ function buildFailedAuthTokenParity(
     "valid-token",
     "missing-token",
     "wrong-token",
+    "expired-token",
+    "revoked-scope",
   ].filter(
     (authCase) => !passedCases.has(authCase as RustGatewayTokenAuthCase),
   ) as RustGatewayTokenAuthCase[];
@@ -349,8 +375,8 @@ function buildFailedAuthTokenParity(
     fixtures,
     missingRequiredCases,
     remainingBeforeAuthoritySwitch: [
-      "expired token parity across read-only and canary-safe method families",
-      "revoked role/scope parity across chat, scheduler, workflow, channel, session, and run authorities",
+      "live expired-token issuer fixture and clock-skew semantics",
+      "live revoked role/scope policy fixture across gateway authority surfaces",
       "operator-approved canary token scope matrix before live Rust traffic",
       "rollback proof that rejected Rust tokens fall back to Node without duplicate work",
     ],
@@ -825,7 +851,7 @@ function buildPromotionGateStatuses(
       id: "failed-auth-token-parity",
       status: failedAuthPassed ? "passed" : "blocked",
       reason: failedAuthPassed
-        ? "valid, missing, and wrong-token connect fixtures passed with no live RPC execution"
+        ? "valid, missing, wrong, expired, and revoked-scope token fixtures passed with no live RPC execution"
         : `missing or blocked token auth cases: ${failedAuthTokenParity.missingRequiredCases.join(",") || "none"}`,
     },
   ];

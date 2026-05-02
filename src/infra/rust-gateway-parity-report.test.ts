@@ -560,7 +560,7 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
   it("summarizes failed-auth token parity without authorizing live traffic", () => {
     const summary = buildRustGatewayPromotionReadinessSummary({
       generatedAtMs: 0,
-      totals: { passed: 3, failed: 0, skipped: 0 },
+      totals: { passed: 5, failed: 0, skipped: 0 },
       results: [
         {
           fixtureId: "connect-v3-token",
@@ -574,6 +574,7 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
           notes: ["schema/envelope: response envelopes are compatible"],
           tokenAuthGate: {
             authCase: "valid-token",
+            evidenceKind: "real-connect-token",
             expected: "accepted",
             rejectionPoint: "connect-handshake",
             redactionRequired: false,
@@ -595,6 +596,7 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
           notes: ["schema/error: auth failure errors are structured and redacted"],
           tokenAuthGate: {
             authCase: "missing-token",
+            evidenceKind: "real-connect-token",
             expected: "rejected",
             rejectionPoint: "connect-handshake",
             redactionRequired: false,
@@ -616,6 +618,7 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
           notes: ["schema/error: auth failure errors are structured and redacted"],
           tokenAuthGate: {
             authCase: "wrong-token",
+            evidenceKind: "real-connect-token",
             expected: "rejected",
             rejectionPoint: "connect-handshake",
             redactionRequired: true,
@@ -623,6 +626,50 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
             authoritySwitchAllowed: false,
             coversMethods: ["connect", "health", "status"],
             requiredBeforeAuthoritySwitch: ["expired token parity"],
+          },
+        },
+        {
+          fixtureId: "connect-expired-token",
+          method: "connect",
+          safety: "read-only",
+          expectedParity: "schema-compatible",
+          observedParity: "schema-compatible",
+          status: "passed",
+          nodeOk: false,
+          rustOk: false,
+          notes: ["schema/error: auth failure errors are structured and redacted"],
+          tokenAuthGate: {
+            authCase: "expired-token",
+            evidenceKind: "synthetic-rejection-shape",
+            expected: "rejected",
+            rejectionPoint: "connect-handshake",
+            redactionRequired: true,
+            liveTrafficAllowed: false,
+            authoritySwitchAllowed: false,
+            coversMethods: ["connect", "health", "status"],
+            requiredBeforeAuthoritySwitch: ["live token expiry clock semantics"],
+          },
+        },
+        {
+          fixtureId: "connect-revoked-scope-token",
+          method: "connect",
+          safety: "read-only",
+          expectedParity: "schema-compatible",
+          observedParity: "schema-compatible",
+          status: "passed",
+          nodeOk: false,
+          rustOk: false,
+          notes: ["schema/error: auth failure errors are structured and redacted"],
+          tokenAuthGate: {
+            authCase: "revoked-scope",
+            evidenceKind: "synthetic-rejection-shape",
+            expected: "rejected",
+            rejectionPoint: "connect-handshake",
+            redactionRequired: true,
+            liveTrafficAllowed: false,
+            authoritySwitchAllowed: false,
+            coversMethods: ["connect", "health", "status"],
+            requiredBeforeAuthoritySwitch: ["live role/scope policy semantics"],
           },
         },
       ],
@@ -634,14 +681,16 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
       authoritySwitchAllowed: false,
       missingRequiredCases: [],
       remainingBeforeAuthoritySwitch: expect.arrayContaining([
-        "expired token parity across read-only and canary-safe method families",
-        "revoked role/scope parity across chat, scheduler, workflow, channel, session, and run authorities",
+        "live expired-token issuer fixture and clock-skew semantics",
+        "live revoked role/scope policy fixture across gateway authority surfaces",
       ]),
     });
     expect(summary.failedAuthTokenParity.fixtures.map((fixture) => fixture.authCase)).toEqual([
       "valid-token",
       "missing-token",
       "wrong-token",
+      "expired-token",
+      "revoked-scope",
     ]);
     expect(summary.failedAuthTokenParity.fixtures).toEqual([
       expect.objectContaining({
@@ -669,11 +718,37 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
         redactionRequired: true,
         redactionProof: "structured-error-redacted",
       }),
+      expect.objectContaining({
+        fixtureId: "connect-expired-token",
+        evidenceKind: "synthetic-rejection-shape",
+        status: "passed",
+        expected: "rejected",
+        redactionProof: "structured-error-redacted",
+        noLiveProof: expect.arrayContaining([
+          "no live token store, role policy, connector, or customer data is accessed",
+        ]),
+        remainingLiveProof: expect.arrayContaining([
+          "real expired token fixture from authorized token issuer",
+          "clock-skew and token TTL parity between Node and Rust",
+        ]),
+      }),
+      expect.objectContaining({
+        fixtureId: "connect-revoked-scope-token",
+        evidenceKind: "synthetic-rejection-shape",
+        status: "passed",
+        expected: "rejected",
+        redactionProof: "structured-error-redacted",
+        remainingLiveProof: expect.arrayContaining([
+          "real revoked role/scope fixture from authorized policy source",
+          "role/scope denial parity across gateway, scheduler, workflow, channel, session, and run surfaces",
+        ]),
+      }),
     ]);
     expect(summary.gates).toContainEqual({
       id: "failed-auth-token-parity",
       status: "passed",
-      reason: "valid, missing, and wrong-token connect fixtures passed with no live RPC execution",
+      reason:
+        "valid, missing, wrong, expired, and revoked-scope token fixtures passed with no live RPC execution",
     });
   });
 });

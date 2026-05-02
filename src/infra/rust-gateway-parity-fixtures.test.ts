@@ -37,12 +37,16 @@ describe("rust gateway parity fixtures", () => {
       "connect-v3-token",
       "connect-missing-token",
       "connect-wrong-token",
+      "connect-expired-token",
+      "connect-revoked-scope-token",
     ]);
     expect(connectFixtures.every((fixture) => fixture.safety === "read-only")).toBe(true);
     expect(connectFixtures.map((fixture) => fixture.authTokenOverride)).toEqual([
       undefined,
       null,
       "rust-gateway-parity-wrong-token",
+      "rust-gateway-parity-expired-token",
+      "rust-gateway-parity-revoked-scope-token",
     ]);
     expect(connectFixtures[0]?.requiredMethods).toEqual(
       expect.arrayContaining(["health", "status", "commands.list", "sessions.list"]),
@@ -51,11 +55,22 @@ describe("rust gateway parity fixtures", () => {
       [],
       [],
       ["rust-gateway-parity-wrong-token"],
+      ["rust-gateway-parity-expired-token"],
+      ["rust-gateway-parity-revoked-scope-token"],
     ]);
     expect(connectFixtures.map((fixture) => fixture.tokenAuthGate?.authCase)).toEqual([
       "valid-token",
       "missing-token",
       "wrong-token",
+      "expired-token",
+      "revoked-scope",
+    ]);
+    expect(connectFixtures.map((fixture) => fixture.tokenAuthGate?.evidenceKind)).toEqual([
+      "real-connect-token",
+      "real-connect-token",
+      "real-connect-token",
+      "synthetic-rejection-shape",
+      "synthetic-rejection-shape",
     ]);
     expect(
       connectFixtures.every((fixture) => fixture.tokenAuthGate?.liveTrafficAllowed === false),
@@ -78,11 +93,23 @@ describe("rust gateway parity fixtures", () => {
       rejectionPoint: "connect-handshake",
       redactionRequired: true,
     });
+    expect(connectFixtures[3]?.tokenAuthGate).toMatchObject({
+      expected: "rejected",
+      rejectionPoint: "connect-handshake",
+      redactionRequired: true,
+      evidenceKind: "synthetic-rejection-shape",
+    });
+    expect(connectFixtures[4]?.tokenAuthGate).toMatchObject({
+      expected: "rejected",
+      rejectionPoint: "connect-handshake",
+      redactionRequired: true,
+      evidenceKind: "synthetic-rejection-shape",
+    });
     expect(connectFixtures[0]?.tokenAuthGate?.coversMethods).toEqual(
       expect.arrayContaining(["health", "status", "connectors.catalog", "workflows.list"]),
     );
     expect(connectFixtures[2]?.tokenAuthGate?.requiredBeforeAuthoritySwitch).toContain(
-      "expired token parity is proven before any Rust canary traffic",
+      "live token expiry clock semantics are proven before any Rust canary traffic",
     );
     expect(JSON.stringify(connectFixtures)).not.toContain("ARGENT_GATEWAY_TOKEN");
   });
