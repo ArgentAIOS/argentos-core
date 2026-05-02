@@ -212,8 +212,9 @@ export const RUST_GATEWAY_INITIAL_PARITY_FIXTURES: RustGatewayParityFixture[] = 
     method: "tools.status",
     params: {},
     safety: "read-only",
-    expectedParity: "mock-compatible",
-    reason: "Rust has no dynamic tool/plugin registry yet; fixture is shape-only.",
+    expectedParity: "schema-compatible",
+    reason:
+      "Tools status must expose schema-compatible read-only tool metadata without granting Rust tool or connector execution authority.",
   },
   {
     id: "rpc-workflows-list",

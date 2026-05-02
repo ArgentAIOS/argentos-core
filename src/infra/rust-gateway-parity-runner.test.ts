@@ -626,6 +626,77 @@ describe("runRustGatewayParityReplay", () => {
     );
   });
 
+  it("passes tools.status fixtures when tool metadata is read-only schema-compatible", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "tools-status",
+        surface: "tools",
+        method: "tools.status",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      frame(endpoint, true, {
+        agentId: "argent",
+        sessionKey: "agent:argent:main",
+        total: 2,
+        tools: [
+          {
+            name: "health",
+            label: "Health",
+            description: "Read gateway health.",
+            source: "core",
+          },
+          {
+            name: `${endpoint}-plugin-tool`,
+            source: "plugin",
+            pluginId: "plugin-shadow",
+            optional: true,
+          },
+        ],
+      });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals).toEqual({ passed: 1, failed: 0, skipped: 0 });
+    expect(report.results[0]?.observedParity).toBe("schema-compatible");
+    expect(report.results[0]?.notes.join(" ")).toContain("tools.status payload includes");
+  });
+
+  it("fails tools.status fixtures when total drifts from tool rows", async () => {
+    const fixtures: RustGatewayParityFixture[] = [
+      {
+        ...baseFixture,
+        id: "tools-status",
+        surface: "tools",
+        method: "tools.status",
+        safety: "read-only",
+        expectedParity: "schema-compatible",
+      },
+    ];
+    const transport: RustGatewayParityReplayTransport = async ({ endpoint }) =>
+      endpoint === "node"
+        ? frame(endpoint, true, {
+            agentId: "argent",
+            sessionKey: "agent:argent:main",
+            total: 1,
+            tools: [{ name: "health", source: "core" }],
+          })
+        : frame(endpoint, true, {
+            agentId: "argent",
+            sessionKey: "agent:argent:main",
+            total: 2,
+            tools: [{ name: "health", source: "core" }],
+          });
+
+    const report = await runRustGatewayParityReplay({ fixtures, transport });
+
+    expect(report.totals.failed).toBe(1);
+    expect(report.results[0]?.notes.join(" ")).toContain("total does not match tools length");
+  });
+
   it("passes mock-compatible fixtures but marks them as non-promotion evidence", async () => {
     const fixtures: RustGatewayParityFixture[] = [
       {

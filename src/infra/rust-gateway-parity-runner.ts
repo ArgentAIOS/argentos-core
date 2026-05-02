@@ -437,6 +437,10 @@ const schemaPayloadValidators: Record<string, PayloadValidator | undefined> = {
     (payload) => validateNodeListPayload(payload),
     "node.list payload includes schema-compatible read-only node rows",
   ),
+  "tools.status": withDescription(
+    (payload) => validateToolsStatusPayload(payload),
+    "tools.status payload includes schema-compatible read-only tool metadata",
+  ),
 };
 
 function withDescription(
@@ -680,6 +684,55 @@ function validateNodeListPayload(payload: unknown): PayloadValidation {
     }
     if (!commands.every((command) => typeof command === "string")) {
       return { ok: false, error: `nodes[${index}].commands contains non-string values` };
+    }
+  }
+
+  return { ok: true };
+}
+
+function validateToolsStatusPayload(payload: unknown): PayloadValidation {
+  const base = validateObject(payload, [
+    ["agentId", "string"],
+    ["sessionKey", "string"],
+    ["total", "number"],
+    ["tools", "array"],
+  ]);
+  if (!base.ok) {
+    return base;
+  }
+
+  const { total, tools } = payload as { total: number; tools: unknown[] };
+  if (!Number.isInteger(total) || total < 0) {
+    return { ok: false, error: "total is not a non-negative integer" };
+  }
+  if (total !== tools.length) {
+    return { ok: false, error: "total does not match tools length" };
+  }
+
+  for (const [index, tool] of tools.entries()) {
+    const row = validateObject(tool, [
+      ["name", "string"],
+      ["source", "string"],
+    ]);
+    if (!row.ok) {
+      return { ok: false, error: `tools[${index}].${row.error}` };
+    }
+
+    const record = tool as Record<string, unknown>;
+    if (!["core", "plugin", "connector"].includes(String(record.source))) {
+      return { ok: false, error: `tools[${index}].source is not recognized` };
+    }
+    if ("label" in record && !isOptionalString(record.label)) {
+      return { ok: false, error: `tools[${index}].label is not string or undefined` };
+    }
+    if ("description" in record && !isOptionalString(record.description)) {
+      return { ok: false, error: `tools[${index}].description is not string or undefined` };
+    }
+    if ("pluginId" in record && !isOptionalString(record.pluginId)) {
+      return { ok: false, error: `tools[${index}].pluginId is not string or undefined` };
+    }
+    if ("optional" in record && typeof record.optional !== "boolean") {
+      return { ok: false, error: `tools[${index}].optional is not boolean` };
     }
   }
 
