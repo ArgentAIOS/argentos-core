@@ -193,6 +193,31 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
         ]),
       }),
     );
+    expect(summary.shadowPromotionGateFixtures).toMatchObject({
+      mode: "synthetic-read-only",
+      liveTrafficAllowed: false,
+      authoritySwitchAllowed: false,
+      fixtures: [],
+    });
+    expect(summary.authoritySwitchChecklist).toMatchObject({
+      status: "blocked",
+      authoritySwitchAllowed: false,
+      currentAuthority: {
+        liveGateway: "node",
+        rustGateway: "shadow-only",
+        scheduler: "node",
+        workflows: "node",
+        channels: "node",
+      },
+      requiredBeforePromotion: expect.arrayContaining([
+        "fresh parity report has zero failed, mock-compatible, or unsupported read-only fixtures",
+        "chat.send, cron.add, and workflows.run canary gates have explicit Master/operator authorization",
+        "token/auth role-scope parity proves rejected and expired-token behavior before live traffic",
+      ]),
+      requiredBeforeRollback: expect.arrayContaining([
+        "Node fallback command is implemented, rehearsed, and included in the promotion packet",
+      ]),
+    });
     expect(summary.duplicatePrevention).toMatchObject({
       mode: "shadow-observation-only",
       status: "passed",
@@ -326,6 +351,88 @@ describe("buildRustGatewayPromotionReadinessSummary", () => {
         status: "blocked",
       }),
     ]);
+    expect(summary.shadowPromotionGateFixtures.fixtures).toEqual([
+      expect.objectContaining({
+        fixtureId: "rust-shadow-gate-chat-send",
+        surface: "chat.send",
+        status: "blocked",
+        canaryFlag: "ARGENT_RUST_GATEWAY_CANARY",
+        syntheticOnly: true,
+        requiredProof: expect.arrayContaining([
+          "token/auth role-scope parity covers accepted, rejected, and expired-token sends",
+        ]),
+        noLiveProof: expect.arrayContaining([
+          "no chat.send RPC is replayed by the Rust parity runner",
+        ]),
+      }),
+    ]);
+  });
+
+  it("builds synthetic blocked gate fixtures for all unsafe promotion surfaces", () => {
+    const summary = buildRustGatewayPromotionReadinessSummary({
+      generatedAtMs: 0,
+      totals: { passed: 0, failed: 0, skipped: 3 },
+      results: [
+        {
+          fixtureId: "chat-send",
+          method: "chat.send",
+          safety: "unsafe",
+          expectedParity: "unsafe",
+          observedParity: "skipped",
+          status: "skipped",
+          nodeOk: null,
+          rustOk: null,
+          notes: [],
+        },
+        {
+          fixtureId: "cron-add",
+          method: "cron.add",
+          safety: "unsafe",
+          expectedParity: "unsafe",
+          observedParity: "skipped",
+          status: "skipped",
+          nodeOk: null,
+          rustOk: null,
+          notes: [],
+        },
+        {
+          fixtureId: "workflows-run",
+          method: "workflows.run",
+          safety: "unsafe",
+          expectedParity: "unsafe",
+          observedParity: "skipped",
+          status: "skipped",
+          nodeOk: null,
+          rustOk: null,
+          notes: [],
+        },
+      ],
+    });
+
+    expect(summary.shadowPromotionGateFixtures).toMatchObject({
+      mode: "synthetic-read-only",
+      liveTrafficAllowed: false,
+      authoritySwitchAllowed: false,
+    });
+    expect(summary.shadowPromotionGateFixtures.fixtures.map((fixture) => fixture.surface)).toEqual([
+      "chat.send",
+      "cron.add",
+      "workflows.run",
+    ]);
+    expect(
+      summary.shadowPromotionGateFixtures.fixtures.map((fixture) => fixture.canaryFlag),
+    ).toEqual([
+      "ARGENT_RUST_GATEWAY_CANARY",
+      "ARGENT_RUST_SCHEDULER_CANARY",
+      "ARGENT_RUST_WORKFLOW_CANARY",
+    ]);
+    expect(summary.authoritySwitchChecklist).toMatchObject({
+      status: "blocked",
+      authoritySwitchAllowed: false,
+    });
+    expect(summary.authoritySwitchChecklist.requiredBeforePromotion).toContain(
+      "duplicate-prevention gates cover workflow, session, run, timer, and channel split-brain cases",
+    );
   });
 });
 
