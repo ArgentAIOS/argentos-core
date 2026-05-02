@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { OWNER_OPERATOR_WORKFLOW_PACKAGES } from "../../infra/workflow-owner-operator-templates.js";
 import { publicWorkflowRun } from "./workflows.js";
 
 describe("publicWorkflowRun", () => {
@@ -100,5 +101,130 @@ describe("publicWorkflowRun", () => {
       "step_started",
       "approval_requested",
     ]);
+  });
+
+  it("preserves Morning Brief dry-run step ledger and DocPanel artifacts", () => {
+    const morningBrief = OWNER_OPERATOR_WORKFLOW_PACKAGES.find(
+      (pkg) => pkg.slug === "ai-morning-brief-podcast",
+    );
+    expect(morningBrief).toBeDefined();
+    if (!morningBrief) {
+      return;
+    }
+
+    const runId = "morning-brief-run-detail-smoke";
+    const startedAt = Date.parse("2026-05-02T21:30:00.000Z");
+    const steps = morningBrief.workflow.nodes.map((node, index) => ({
+      id: `step-${index + 1}`,
+      run_id: runId,
+      workflow_id: morningBrief.workflow.id,
+      node_id: node.id,
+      node_kind: node.kind,
+      status: "completed",
+      started_at: new Date(startedAt + index * 1000).toISOString(),
+      ended_at: new Date(startedAt + index * 1000 + 500).toISOString(),
+      duration_ms: 500,
+      output_items: {
+        items:
+          node.kind === "output" && node.config.outputType === "docpanel"
+            ? [
+                {
+                  text: `${node.label}: dry-run DocPanel artifact`,
+                  artifacts: [
+                    {
+                      type: "docpanel",
+                      title: node.config.title,
+                      docId: `doc-${node.id}`,
+                    },
+                  ],
+                },
+              ]
+            : [{ text: `${"label" in node ? node.label : node.id}: dry-run result` }],
+      },
+    }));
+
+    const detail = publicWorkflowRun(
+      {
+        id: runId,
+        workflow_id: morningBrief.workflow.id,
+        workflow_name: morningBrief.workflow.name,
+        workflow_version: 1,
+        status: "completed",
+        trigger_type: "manual_test",
+        trigger_payload: morningBrief.testFixtures?.triggerPayload,
+        started_at: new Date(startedAt).toISOString(),
+        ended_at: new Date(startedAt + steps.length * 1000).toISOString(),
+        workflow_nodes: morningBrief.workflow.nodes,
+        metadata: {
+          dryRunOnly: true,
+          noLiveSideEffects: true,
+          liveReadinessStatus: "dry_run_only",
+          blockers: [
+            "missing_connector",
+            "missing_credentials",
+            "missing_channel",
+            "canary_required",
+          ],
+        },
+      },
+      { steps },
+    );
+
+    expect(detail).toMatchObject({
+      runId,
+      workflowName: "AI Morning Brief Podcast",
+      status: "completed",
+      metadata: {
+        dryRunOnly: true,
+        noLiveSideEffects: true,
+        liveReadinessStatus: "dry_run_only",
+        blockers: expect.arrayContaining([
+          "missing_connector",
+          "missing_credentials",
+          "missing_channel",
+          "canary_required",
+        ]),
+      },
+    });
+    expect(detail.steps).toHaveLength(12);
+    expect(detail.steps.map((step) => step.status)).toEqual(Array(12).fill("completed"));
+    expect(detail.steps.map((step) => step.nodeId)).toEqual([
+      "trigger",
+      "github-scout",
+      "frontier-scout",
+      "thought-scout",
+      "synthesize-brief",
+      "brief-doc",
+      "podcast-script",
+      "podcast-plan",
+      "approve-podcast-render",
+      "podcast-generate",
+      "delivery-status",
+      "run-ledger",
+    ]);
+    expect(detail.steps.find((step) => step.nodeId === "brief-doc")).toMatchObject({
+      nodeName: "AI Morning Brief — {{context.runId}}",
+      output: {
+        items: [
+          {
+            artifacts: [expect.objectContaining({ type: "docpanel", docId: "doc-brief-doc" })],
+          },
+        ],
+      },
+    });
+    expect(detail.steps.find((step) => step.nodeId === "run-ledger")).toMatchObject({
+      nodeName: "AI Morning Brief Run Ledger — {{context.runId}}",
+      output: {
+        items: [
+          {
+            artifacts: [expect.objectContaining({ type: "docpanel", docId: "doc-run-ledger" })],
+          },
+        ],
+      },
+    });
+    expect(detail.timeline.at(-1)).toMatchObject({
+      type: "run_finished",
+      status: "completed",
+    });
   });
 });
