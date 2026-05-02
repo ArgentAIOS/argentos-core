@@ -104,6 +104,49 @@ Returns a compact operator-readable summary derived from the journal:
 }
 ```
 
+### `GET /v1/executive/readiness`
+
+Returns the current shadow-readiness contract for Kernel/Executive promotion:
+
+```json
+{
+  "mode": "shadow-readiness",
+  "authoritySwitchAllowed": false,
+  "promotionStatus": "blocked",
+  "currentAuthority": {
+    "gateway": "node",
+    "scheduler": "node",
+    "workflows": "node",
+    "channels": "node",
+    "sessions": "node",
+    "executive": "shadow-only"
+  },
+  "persistenceModel": {
+    "snapshotFile": "executive-state.json",
+    "journalFile": "executive.journal.jsonl",
+    "restartRecovery": "snapshot-plus-journal-replay",
+    "leaseRecovery": "tick-expiry-before-promotion"
+  },
+  "promotionGates": [
+    {
+      "id": "contract-integrity",
+      "status": "blocked",
+      "owner": "master-operator"
+    },
+    {
+      "id": "restart-and-lease-recovery",
+      "status": "blocked",
+      "owner": "master-operator"
+    },
+    {
+      "id": "authority-boundary",
+      "status": "blocked",
+      "owner": "master-operator"
+    }
+  ]
+}
+```
+
 ### `GET /v1/executive/journal?limit=<n>`
 
 Returns the most recent journal records. This is the continuity/debugging
