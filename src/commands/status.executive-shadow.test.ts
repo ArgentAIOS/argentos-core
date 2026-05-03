@@ -102,6 +102,16 @@ describe("getExecutiveShadowSummary", () => {
     expect(summary).toEqual({
       reachable: true,
       kernelStatus: "fail-closed",
+      productionDaemon: {
+        binary: "argent-execd",
+        status: "fail-closed",
+        checkedEndpoint: "/v1/executive/readiness",
+        readOnly: true,
+        authoritySwitchAllowed: false,
+        destructiveProcessControlUsed: false,
+        productionRolloutAttempted: false,
+        detail: "argent-execd reachable; readiness is fail-closed and authoritySwitchAllowed=false",
+      },
       activeLane: "operator",
       tickCount: 4,
       bootCount: 2,
@@ -214,6 +224,15 @@ describe("getExecutiveShadowSummary", () => {
 
     expect(summary.reachable).toBe(true);
     expect(summary.kernelStatus).toBe("unsafe");
+    expect(summary.productionDaemon).toMatchObject({
+      binary: "argent-execd",
+      status: "unsafe",
+      readOnly: true,
+      authoritySwitchAllowed: false,
+      destructiveProcessControlUsed: false,
+      productionRolloutAttempted: false,
+    });
+    expect(summary.productionDaemon.detail).toContain("unsafe");
     expect(summary.readiness).toMatchObject({
       status: "unsafe",
       promotionStatus: "blocked",
@@ -274,6 +293,15 @@ describe("getExecutiveShadowSummary", () => {
 
     expect(summary.reachable).toBe(true);
     expect(summary.kernelStatus).toBe("unavailable");
+    expect(summary.productionDaemon).toMatchObject({
+      binary: "argent-execd",
+      status: "unavailable",
+      readOnly: true,
+      authoritySwitchAllowed: false,
+      destructiveProcessControlUsed: false,
+      productionRolloutAttempted: false,
+    });
+    expect(summary.productionDaemon.detail).toContain("ECONNREFUSED");
     expect(summary.readiness).toMatchObject({
       status: "unavailable",
       promotionStatus: "blocked",
@@ -304,6 +332,8 @@ describe("getExecutiveShadowSummary", () => {
 
     expect(summary.reachable).toBe(false);
     expect(summary.kernelStatus).toBe("unavailable");
+    expect(summary.productionDaemon.status).toBe("unavailable");
+    expect(summary.productionDaemon.detail).toContain("ECONNREFUSED");
     expect(summary.error).toContain("ECONNREFUSED");
   });
 });

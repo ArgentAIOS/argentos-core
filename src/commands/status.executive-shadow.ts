@@ -27,6 +27,7 @@ export type ExecutiveShadowReadinessSummary = {
 export type ExecutiveShadowSummary = {
   reachable: boolean;
   kernelStatus: "fail-closed" | "unsafe" | "unavailable";
+  productionDaemon: ExecutiveShadowProductionDaemonStatus;
   activeLane: string | null;
   tickCount: number | null;
   bootCount: number | null;
@@ -44,6 +45,17 @@ export type ExecutiveShadowSummary = {
   stateDir: string | null;
   readiness: ExecutiveShadowReadinessSummary | null;
   error: string | null;
+};
+
+export type ExecutiveShadowProductionDaemonStatus = {
+  binary: "argent-execd";
+  status: "fail-closed" | "unsafe" | "unavailable";
+  checkedEndpoint: "/v1/executive/readiness";
+  readOnly: true;
+  authoritySwitchAllowed: false;
+  destructiveProcessControlUsed: false;
+  productionRolloutAttempted: false;
+  detail: string;
 };
 
 export async function getExecutiveShadowSummary(
@@ -68,6 +80,7 @@ export async function getExecutiveShadowSummary(
     return {
       reachable: true,
       kernelStatus: readiness.status,
+      productionDaemon: buildProductionDaemonStatus(readiness),
       activeLane: health.activeLane ?? null,
       tickCount: health.tickCount ?? null,
       bootCount: health.bootCount ?? null,
@@ -86,6 +99,7 @@ export async function getExecutiveShadowSummary(
     return {
       reachable: false,
       kernelStatus: "unavailable",
+      productionDaemon: buildProductionDaemonStatus(buildReadinessError(error)),
       activeLane: null,
       tickCount: null,
       bootCount: null,
@@ -101,6 +115,27 @@ export async function getExecutiveShadowSummary(
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+function buildProductionDaemonStatus(
+  readiness: ExecutiveShadowReadinessSummary,
+): ExecutiveShadowProductionDaemonStatus {
+  const detail =
+    readiness.status === "fail-closed"
+      ? "argent-execd reachable; readiness is fail-closed and authoritySwitchAllowed=false"
+      : readiness.status === "unsafe"
+        ? `argent-execd reachable; readiness payload is unsafe${readiness.error ? ` (${readiness.error})` : ""}`
+        : `argent-execd readiness unavailable${readiness.error ? ` (${readiness.error})` : ""}`;
+  return {
+    binary: "argent-execd",
+    status: readiness.status,
+    checkedEndpoint: "/v1/executive/readiness",
+    readOnly: true,
+    authoritySwitchAllowed: false,
+    destructiveProcessControlUsed: false,
+    productionRolloutAttempted: false,
+    detail,
+  };
 }
 
 function buildReadinessSummary(
