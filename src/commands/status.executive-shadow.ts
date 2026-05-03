@@ -1,3 +1,4 @@
+import { ZodError } from "zod";
 import {
   createExecutiveShadowClient,
   type ExecutiveShadowClientOptions,
@@ -6,6 +7,7 @@ import {
 import { executiveShadowReadinessFailsClosed } from "../infra/executive-shadow-contract.js";
 
 export type ExecutiveShadowReadinessSummary = {
+  status: "fail-closed" | "unsafe" | "unavailable";
   mode: "shadow-readiness";
   promotionStatus: "blocked";
   authoritySwitchAllowed: false;
@@ -24,6 +26,7 @@ export type ExecutiveShadowReadinessSummary = {
 
 export type ExecutiveShadowSummary = {
   reachable: boolean;
+  kernelStatus: "fail-closed" | "unsafe" | "unavailable";
   activeLane: string | null;
   tickCount: number | null;
   bootCount: number | null;
@@ -64,6 +67,7 @@ export async function getExecutiveShadowSummary(
         : buildReadinessError(readinessResult.error);
     return {
       reachable: true,
+      kernelStatus: readiness.status,
       activeLane: health.activeLane ?? null,
       tickCount: health.tickCount ?? null,
       bootCount: health.bootCount ?? null,
@@ -81,6 +85,7 @@ export async function getExecutiveShadowSummary(
   } catch (error) {
     return {
       reachable: false,
+      kernelStatus: "unavailable",
       activeLane: null,
       tickCount: null,
       bootCount: null,
@@ -109,6 +114,7 @@ function buildReadinessSummary(
     { blocked: 0, proven: 0 },
   );
   return {
+    status: "fail-closed",
     mode: readiness.mode,
     promotionStatus: readiness.promotionStatus,
     authoritySwitchAllowed: readiness.authoritySwitchAllowed,
@@ -124,7 +130,10 @@ function buildReadinessSummary(
 }
 
 function buildReadinessError(error: unknown): ExecutiveShadowReadinessSummary {
+  const message = error instanceof Error ? error.message : String(error);
+  const status = isUnsafeReadinessError(error) ? "unsafe" : "unavailable";
   return {
+    status,
     mode: "shadow-readiness",
     promotionStatus: "blocked",
     authoritySwitchAllowed: false,
@@ -147,6 +156,16 @@ function buildReadinessError(error: unknown): ExecutiveShadowReadinessSummary {
     gateCounts: { blocked: 0, proven: 0 },
     nodeResponsibilities: [],
     rustResponsibilities: [],
-    error: error instanceof Error ? error.message : String(error),
+    error: message,
   };
+}
+
+function isUnsafeReadinessError(error: unknown): boolean {
+  if (error instanceof ZodError) {
+    return true;
+  }
+  if (error instanceof Error && error.name === "ExecutiveShadowClientError") {
+    return false;
+  }
+  return error instanceof Error && error.message.includes("not fail-closed");
 }
