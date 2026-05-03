@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-05-03 13:50 UTC
+Last updated: 2026-05-03 14:12 UTC
 
 ## Latest contained build
 
@@ -8,6 +8,14 @@ Last updated: 2026-05-03 13:50 UTC
 - Source READY packet: `tm-20260503134225-3qu1mw`
 - Contained source: `0d02d402` as custody `012d30ea`
 - Master packet: `tm-20260503134922-j5u217`
+
+## Active rollback gate
+
+- Branch: `origin/codex/rust-gateway-executable-rollback-20260503`
+- Task: `task-20260503132702-2un2zw`
+- Goal: keep `argent gateway authority rollback-node --reason <reason> --json` executable as a local-only proof.
+- Current proof shape: before/after authority snapshots both show Node live and Rust shadow-only, `authorityChanges=[]`, `productionTrafficUsed=false`, and `authoritySwitchAllowed=false`.
+- Paired rehearsal: disposable loopback `rehearse-loopback` proves canary receipts for `chat.send`, `cron.add`, and `workflows.run` using temp HOME/state, random local port/token, and no installed service control.
 
 ## What is now true
 
