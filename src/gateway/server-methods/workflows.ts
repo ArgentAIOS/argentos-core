@@ -5,6 +5,7 @@ import postgres from "postgres";
 import type { ArgentConfig } from "../../config/config.js";
 import type { CronService } from "../../cron/service.js";
 import type { CronJob, CronJobCreate, CronJobPatch } from "../../cron/types.js";
+import type { StorageConfig } from "../../data/storage-config.js";
 import type { WorkflowDefinition, WorkflowNode } from "../../infra/workflow-types.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { createOutboundSendDeps } from "../../cli/deps.js";
@@ -201,6 +202,90 @@ function jsonEqual(left: unknown, right: unknown): boolean {
 function isPgBacked(): boolean {
   const cfg = resolveRuntimeStorageConfig(process.env);
   return cfg.backend === "postgres" || cfg.backend === "dual";
+}
+
+type WorkflowBackendStatus = {
+  ok: true;
+  label: string;
+  backend: StorageConfig["backend"];
+  readFrom: StorageConfig["readFrom"];
+  writeTo: StorageConfig["writeTo"];
+  postgres: {
+    requiredForSavedWorkflows: true;
+    activeForRuntime: boolean;
+    connectionSource: "env" | "config" | "default" | "not_applicable";
+    status: "configured" | "not_configured";
+  };
+  dryRun: {
+    graphPayloadAvailable: true;
+    requiresPostgres: false;
+    message: string;
+  };
+  savedWorkflows: {
+    available: boolean;
+    requiresPostgres: true;
+    message: string;
+  };
+  operatorMessages: string[];
+};
+
+function resolvePostgresConnectionSource(
+  env: NodeJS.ProcessEnv,
+  storage: StorageConfig,
+): WorkflowBackendStatus["postgres"]["connectionSource"] {
+  if (storage.backend !== "postgres" && storage.backend !== "dual") {
+    return "not_applicable";
+  }
+  if (env.ARGENT_PG_URL?.trim() || env.PG_URL?.trim()) {
+    return "env";
+  }
+  if (storage.postgres?.connectionString?.trim()) {
+    return "config";
+  }
+  return "default";
+}
+
+export function buildWorkflowBackendStatus(options?: {
+  env?: NodeJS.ProcessEnv;
+  storage?: StorageConfig;
+}): WorkflowBackendStatus {
+  const env = options?.env ?? process.env;
+  const storage = options?.storage ?? resolveRuntimeStorageConfig(env);
+  const pgActive = storage.backend === "postgres" || storage.backend === "dual";
+  const connectionSource = resolvePostgresConnectionSource(env, storage);
+  const savedWorkflowsAvailable = pgActive;
+  const dryRunMessage =
+    "Canvas payload dry-runs can validate workflow shape and step readiness without PostgreSQL.";
+  const savedMessage = savedWorkflowsAvailable
+    ? "Saved workflow create/list/run paths are configured to use PostgreSQL at runtime."
+    : "Saved workflow create/list/run paths require PostgreSQL; use canvas payload dry-run or configure storage.backend=postgres/dual.";
+
+  return {
+    ok: true,
+    label: savedWorkflowsAvailable
+      ? "Saved workflows configured; dry-run also available without PostgreSQL"
+      : "Dry-run available; saved workflows need PostgreSQL",
+    backend: storage.backend,
+    readFrom: storage.readFrom,
+    writeTo: storage.writeTo,
+    postgres: {
+      requiredForSavedWorkflows: true,
+      activeForRuntime: pgActive,
+      connectionSource,
+      status: pgActive ? "configured" : "not_configured",
+    },
+    dryRun: {
+      graphPayloadAvailable: true,
+      requiresPostgres: false,
+      message: dryRunMessage,
+    },
+    savedWorkflows: {
+      available: savedWorkflowsAvailable,
+      requiresPostgres: true,
+      message: savedMessage,
+    },
+    operatorMessages: [dryRunMessage, savedMessage],
+  };
 }
 
 async function getSql(): Promise<ReturnType<typeof postgres>> {
@@ -2108,6 +2193,15 @@ export async function startAppForgeEventTriggeredWorkflows(opts: {
 // ── Handlers ────────────────────────────────────────────────────────────────
 
 export const workflowsHandlers: GatewayRequestHandlers = {
+  "workflows.backendStatus": async ({ respond }) => {
+    try {
+      respond(true, buildWorkflowBackendStatus());
+    } catch (err) {
+      log.warn(`workflows.backendStatus failed: ${String(err)}`);
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
   // ── Import / Export ───────────────────────────────────────────────────────
 
   "workflows.templates.list": async ({ params, respond }) => {
