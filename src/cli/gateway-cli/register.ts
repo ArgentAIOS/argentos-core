@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import type { CostUsageSummary } from "../../infra/session-cost-usage.js";
 import type { GatewayDiscoverOpts } from "./discover.js";
 import {
+  gatewayAuthorityDisposableLoopbackRehearsalCommand,
   gatewayAuthorityDisposableLoopbackSmokeCommand,
   gatewayAuthorityLocalRehearsalCommand,
   gatewayAuthorityLocalSmokeCommand,
@@ -356,6 +357,22 @@ export function registerGatewayCli(program: Command) {
           ...(installedCanary ? { installedCanary } : {}),
         });
       }, "Gateway authority local rehearsal failed");
+    });
+
+  authority
+    .command("rehearse-loopback")
+    .description("Rehearse disposable loopback Rust Gateway canary and rollback proof")
+    .requiredOption("--reason <reason>", "Operator-visible reason for local rehearsal")
+    .option("--confirm-local-only", "Confirm this is a local-only test-path rehearsal", false)
+    .option("--json", "Output JSON", false)
+    .action(async (opts) => {
+      await runGatewayCommand(async () => {
+        await gatewayAuthorityDisposableLoopbackRehearsalCommand(defaultRuntime, {
+          json: Boolean(opts.json),
+          reason: String(opts.reason),
+          confirmLocalOnly: Boolean(opts.confirmLocalOnly),
+        });
+      }, "Gateway authority loopback rehearsal failed");
     });
 
   authority

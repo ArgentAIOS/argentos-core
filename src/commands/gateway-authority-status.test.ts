@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  collectGatewayAuthorityDisposableLoopbackRehearsal,
   collectGatewayAuthorityDisposableLoopbackSmoke,
   gatewayAuthorityLocalSmokeCommand,
   gatewayAuthorityLocalRehearsalCommand,
@@ -548,6 +549,21 @@ describe("gatewayAuthorityStatusCommand", () => {
     expect(smoke.blockers).toContain("explicit local-only loopback smoke opt-in is required");
   });
 
+  it("blocks disposable loopback rehearsal without explicit local-only opt-in", async () => {
+    const rehearsal = await collectGatewayAuthorityDisposableLoopbackRehearsal({
+      reason: "missing opt-in",
+      confirmLocalOnly: false,
+    });
+
+    expect(rehearsal.status).toBe("blocked");
+    expect(rehearsal.disposableHarness.started).toBe(false);
+    expect(rehearsal.rollback.authorityChanges).toEqual([]);
+    expect(rehearsal.authoritySwitchAllowed).toBe(false);
+    expect(rehearsal.blockers).toContain(
+      "explicit local-only loopback rehearsal opt-in is required",
+    );
+  });
+
   it("proves disposable loopback smoke with temp state and redacted receipts", async () => {
     const close = vi.fn(async () => undefined);
     const mkdir = vi.fn(async () => undefined);
@@ -641,6 +657,96 @@ describe("gatewayAuthorityStatusCommand", () => {
     expect(calls.filter((call) => call.method === "workflows.run")).toHaveLength(2);
     expect(close).toHaveBeenCalledWith({
       reason: "disposable loopback canary smoke complete",
+    });
+  });
+
+  it("rehearses disposable loopback before/after canary with rollback proof", async () => {
+    const close = vi.fn(async () => undefined);
+    const callGateway = vi.fn(async (request: { method: string; params?: unknown }) => {
+      if (request.method === "rustGateway.canaryReceipts.status") {
+        const canaryEnabled = process.env.ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS === "1";
+        const receipts = canaryEnabled
+          ? [
+              ...["chat.send", "cron.add", "workflows.run"].map((surface) => ({
+                surface,
+                receiptCode: "RUST_CANARY_DENIED",
+                tokenMaterialRedacted: true,
+                authoritySwitchAllowed: false,
+                mutationBlockedBeforeHandler: true,
+              })),
+              ...["chat.send", "cron.add", "workflows.run"].map((surface) => ({
+                surface,
+                receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+                tokenMaterialRedacted: true,
+                authoritySwitchAllowed: false,
+                mutationBlockedBeforeHandler: true,
+              })),
+            ]
+          : [];
+        return {
+          status: "ok",
+          dashboardVisible: true,
+          productionTrafficUsed: false,
+          canaryFlagEnabled: canaryEnabled,
+          policy: { containsSecrets: false },
+          authority: {
+            nodeAuthority: "live",
+            rustAuthority: "shadow-only",
+            authoritySwitchAllowed: false,
+          },
+          receipts,
+        };
+      }
+      throw new Error("Rust canary denied before mutation");
+    });
+
+    const rehearsal = await collectGatewayAuthorityDisposableLoopbackRehearsal({
+      reason: "local rollback proof",
+      confirmLocalOnly: true,
+      dependencies: {
+        mkdtemp: async () => "/tmp/rust-gateway-loopback-rehearsal-test",
+        rm: vi.fn(async () => undefined),
+        mkdir: vi.fn(async () => undefined),
+        writeFile: vi.fn(async () => undefined),
+        getFreePort: async () => 19877,
+        randomToken: () => "random-loopback-rehearsal-token",
+        startGateway: vi.fn(async () => ({ close }) as never),
+        callGateway: callGateway as never,
+      },
+    });
+
+    expect(rehearsal.status).toBe("rehearsed");
+    expect(rehearsal.before).toMatchObject({
+      status: "ok",
+      canaryFlagEnabled: false,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+    });
+    expect(rehearsal.after).toMatchObject({
+      status: "ok",
+      canaryFlagEnabled: true,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+      receiptCount: 6,
+      redactionVerified: true,
+      denialReceiptPresent: true,
+      duplicatePreventionReceiptPresent: true,
+    });
+    expect(rehearsal.rollback).toMatchObject({
+      mode: "read-only-plan",
+      executable: false,
+      authorityChanges: [],
+    });
+    expect(rehearsal.receiptProof.generatedSurfaces).toEqual([
+      "chat.send",
+      "cron.add",
+      "workflows.run",
+    ]);
+    expect(rehearsal.authorityChanges).toEqual([]);
+    expect(rehearsal.authoritySwitchAllowed).toBe(false);
+    expect(rehearsal.blockers).toEqual([]);
+    expect(close).toHaveBeenCalledWith({
+      reason: "disposable loopback rehearsal complete",
     });
   });
 
