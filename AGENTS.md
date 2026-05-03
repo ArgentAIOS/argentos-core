@@ -8,14 +8,7 @@ Do not move core foundation work to `ArgentAIOS/argentos`.
 
 Business, commercial packaging, private licensing-server behavior, and private product contracts belong outside core and must not be assumed in this repository.
 
-Before any push, PR, merge, or handoff, verify:
-
-```sh
-git remote get-url origin
-pwd
-git rev-parse --abbrev-ref HEAD
-pnpm check:repo-lane
-```
+Before any push, PR, merge, or handoff, run: `pnpm check:repo-lane` (the sentinel script verifies repo, branch, lane, and forbidden remotes in one pass).
 
 Expected lane:
 
