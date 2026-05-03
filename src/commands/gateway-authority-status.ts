@@ -124,6 +124,7 @@ export type GatewayAuthorityLocalSmoke = {
   authoritySwitchAllowed: false;
   authorityChanges: [];
   installedDaemonCanary: GatewayInstalledDaemonCanaryStatus;
+  installedServiceReadiness: GatewayInstalledServiceReadiness;
   noDefaultSwitchProof: {
     liveGatewayAuthority: "node";
     rustGatewayAuthority: "shadow-only";
@@ -215,6 +216,7 @@ export type GatewayAuthorityStatusSummary = {
   parityReport: Awaited<ReturnType<typeof getRustGatewayParityReportStatus>>;
   scheduler: Awaited<ReturnType<typeof getRustGatewaySchedulerAuthoritySummary>>;
   installedDaemonCanary: GatewayInstalledDaemonCanaryStatus;
+  installedServiceReadiness: GatewayInstalledServiceReadiness;
   promotionReady: false;
   blockers: string[];
   nextCommands: string[];
@@ -267,6 +269,41 @@ export type GatewayInstalledDaemonCanaryStatus = {
   receiptSurfaces: string[];
   blockers: string[];
   error: string | null;
+};
+
+export type GatewayInstalledServiceReadiness = {
+  status: "not-configured" | "blocked" | "read-only-ready";
+  proofKind: "none" | "local-self-check" | "loopback-local-daemon";
+  queried: boolean;
+  localOnly: true;
+  installedServiceControlUsed: false;
+  productionTrafficUsed: false;
+  authoritySwitchAllowed: false;
+  authorityChanges: [];
+  methodExposure: {
+    method: "rustGateway.canaryReceipts.status";
+    exposed: boolean;
+    source: "not-configured" | "queried-loopback" | "local-self-check";
+  };
+  tokenDiscovery: {
+    status: "explicit-only" | "missing";
+    secretStoredOrExposed: false;
+  };
+  receiptPersistence: {
+    status: "not-proven" | "proven";
+    receiptProofComplete: boolean;
+    missingReceiptSurfaces: string[];
+  };
+  rollbackReadiness: {
+    rollbackNodeExecutableLocalProof: true;
+    productionInstalledDaemonRollback: "blocked";
+    authoritySwitchAllowed: false;
+    reason: string;
+  };
+  missingCapabilities: string[];
+  remainingPromotionGaps: string[];
+  proof: string[];
+  nextCommands: string[];
 };
 
 const LOCAL_CANARY_SELF_CHECK_URL = "local-canary-self-check://rust-gateway/smoke-local";
@@ -345,6 +382,7 @@ export async function collectGatewayAuthorityStatus(
     getRustGatewaySchedulerAuthoritySummary(),
     collectInstalledDaemonCanaryStatus(options.installedCanary),
   ]);
+  const installedServiceReadiness = buildInstalledServiceReadiness(installedDaemonCanary);
   const blockers = [
     "Rust gateway is shadow-only.",
     "Rollback/fallback command is local-only and does not switch authority.",
@@ -398,6 +436,7 @@ export async function collectGatewayAuthorityStatus(
     parityReport,
     scheduler,
     installedDaemonCanary,
+    installedServiceReadiness,
     promotionReady: false,
     blockers,
     nextCommands: [
@@ -446,6 +485,9 @@ export async function gatewayAuthorityStatusCommand(
     )} · productionTrafficUsed=${String(
       summary.installedDaemonCanary.productionTrafficUsed,
     )} · authoritySwitchAllowed=${String(summary.installedDaemonCanary.authoritySwitchAllowed)}`,
+  );
+  runtime.log(
+    `Installed service readiness: ${summary.installedServiceReadiness.status} · proof=${summary.installedServiceReadiness.proofKind} · missing=${summary.installedServiceReadiness.missingCapabilities.length}`,
   );
   runtime.log("");
   runtime.log("Next commands:");
@@ -559,6 +601,7 @@ export async function collectGatewayAuthorityLocalSmoke(
   const installedDaemonCanary = await collectInstalledDaemonCanaryStatus(
     buildLocalSmokeCanaryOptions(options),
   );
+  const installedServiceReadiness = buildInstalledServiceReadiness(installedDaemonCanary);
   const blockers = buildLocalSmokeBlockers({
     explicitOptIn: options.confirmLocalOnly === true,
     installedDaemonCanary,
@@ -575,6 +618,7 @@ export async function collectGatewayAuthorityLocalSmoke(
     authoritySwitchAllowed: false,
     authorityChanges: [],
     installedDaemonCanary,
+    installedServiceReadiness,
     noDefaultSwitchProof: {
       liveGatewayAuthority: "node",
       rustGatewayAuthority: "shadow-only",
@@ -1374,6 +1418,114 @@ function installedCanaryStatus(
     method: "rustGateway.canaryReceipts.status",
     ...status,
   };
+}
+
+function buildInstalledServiceReadiness(
+  status: GatewayInstalledDaemonCanaryStatus,
+): GatewayInstalledServiceReadiness {
+  const proofKind = installedServiceProofKind(status);
+  const methodExposure = {
+    method: "rustGateway.canaryReceipts.status" as const,
+    exposed: status.status === "ok" || status.status === "unsafe",
+    source:
+      proofKind === "local-self-check"
+        ? ("local-self-check" as const)
+        : status.queried
+          ? ("queried-loopback" as const)
+          : ("not-configured" as const),
+  };
+  const tokenDiscovery = {
+    status: status.configured ? ("explicit-only" as const) : ("missing" as const),
+    secretStoredOrExposed: false as const,
+  };
+  const receiptPersistence = {
+    status: status.receiptProofComplete ? ("proven" as const) : ("not-proven" as const),
+    receiptProofComplete: status.receiptProofComplete,
+    missingReceiptSurfaces: status.missingReceiptSurfaces,
+  };
+  const missingCapabilities = new Set<string>();
+  if (!status.configured) {
+    missingCapabilities.add("explicit-loopback-url");
+    missingCapabilities.add("explicit-token-or-password");
+  }
+  if (!status.queried) {
+    missingCapabilities.add("local-daemon-query");
+  }
+  if (!methodExposure.exposed) {
+    missingCapabilities.add("rustGateway.canaryReceipts.status-exposure");
+  }
+  if (!status.receiptProofComplete) {
+    missingCapabilities.add("receipt-persistence-complete-surfaces");
+  }
+  if (status.productionTrafficUsed !== false) {
+    missingCapabilities.add("productionTrafficUsed=false");
+  }
+  if (status.authoritySwitchAllowed !== false) {
+    missingCapabilities.add("authoritySwitchAllowed=false");
+  }
+
+  const remainingPromotionGaps = [
+    "production-installed-daemon-canary",
+    "production-installed-daemon-rollback",
+    "Rust authority promotion",
+  ];
+  const readinessStatus =
+    status.status === "ok" &&
+    status.receiptProofComplete &&
+    status.productionTrafficUsed === false &&
+    status.authoritySwitchAllowed === false
+      ? "read-only-ready"
+      : status.configured || status.queried
+        ? "blocked"
+        : "not-configured";
+
+  return {
+    status: readinessStatus,
+    proofKind,
+    queried: status.queried,
+    localOnly: true,
+    installedServiceControlUsed: false,
+    productionTrafficUsed: false,
+    authoritySwitchAllowed: false,
+    authorityChanges: [],
+    methodExposure,
+    tokenDiscovery,
+    receiptPersistence,
+    rollbackReadiness: {
+      rollbackNodeExecutableLocalProof: true,
+      productionInstalledDaemonRollback: "blocked",
+      authoritySwitchAllowed: false,
+      reason:
+        "rollback-node is executable as a local-only authority snapshot proof; installed production daemon rollback is not proven without explicit operator authorization.",
+    },
+    missingCapabilities: [...missingCapabilities].toSorted(),
+    remainingPromotionGaps,
+    proof: [
+      "readiness is derived from the read-only installed daemon canary status query",
+      "no service start, stop, restart, install, unload, or config mutation is performed",
+      "explicit loopback URL and token/password are required before querying an installed daemon",
+      "rollback-node remains local-only and reports authorityChanges=[]",
+      "Node remains live gateway/scheduler/workflow/channel/session/run authority",
+      "Rust remains shadow-only",
+    ],
+    nextCommands: [
+      "argent gateway authority status --installed-canary-url ws://127.0.0.1:<port> --installed-canary-token <token> --json",
+      "argent gateway authority smoke-local --reason <reason> --confirm-local-only --installed-canary-url ws://127.0.0.1:<port> --installed-canary-token <token> --json",
+      "argent gateway authority rollback-node --reason <reason> --json",
+    ],
+  };
+}
+
+function installedServiceProofKind(
+  status: GatewayInstalledDaemonCanaryStatus,
+): GatewayInstalledServiceReadiness["proofKind"] {
+  if (status.url === LOCAL_CANARY_SELF_CHECK_URL) {
+    return "local-self-check";
+  }
+  if (status.configured || status.queried) {
+    return "loopback-local-daemon";
+  }
+  return "none";
 }
 
 function isLoopbackInstalledCanaryUrl(url: string): boolean {
