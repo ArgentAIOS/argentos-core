@@ -145,6 +145,22 @@ argent gateway authority smoke-local \
   --json
 ```
 
+Installed daemon status proof:
+
+```bash
+argent gateway authority status \
+  --installed-canary-url ws://127.0.0.1:<port> \
+  --installed-canary-token <token> \
+  --json
+```
+
+`authority status` performs the narrow read-only installed-daemon query. It accepts only a
+loopback/local URL and explicit credentials, then calls `rustGateway.canaryReceipts.status`. A
+promotion-gate packet should include `installedDaemonCanary.status=ok`,
+`receiptProofComplete=true`, `missingReceiptSurfaces=[]`, `productionTrafficUsed=false`, and
+`authoritySwitchAllowed=false`. If any guarded surface is missing, the JSON names it in
+`missingReceiptSurfaces` so the packet can be BLOCKED with the exact daemon proof gap.
+
 Disposable loopback daemon smoke:
 
 ```bash
@@ -219,6 +235,8 @@ send traffic through a daemon. A passing local smoke requires:
 - `canaryFlagEnabled=true` for a disposable local canary harness.
 - Receipt redaction is verified.
 - Denial and duplicate-prevention receipts are present.
+- `receiptProofComplete=true` and `missingReceiptSurfaces=[]` for `chat.send`, `cron.add`, and
+  `workflows.run`.
 
 Common blocked states:
 
