@@ -163,6 +163,25 @@ plugins out of the proof process. It does not use `launchctl`, `systemd`, `schta
 production service, bundled plugins, connector credentials, production traffic, or an authority
 switch.
 
+Disposable loopback rehearsal and rollback proof:
+
+```bash
+ARGENT_SKIP_PLUGINS=1 argent gateway authority rehearse-loopback \
+  --reason "local Rust Gateway rehearsal" \
+  --confirm-local-only \
+  --json
+```
+
+`rehearse-loopback` is the next local promotion-blocker proof after `smoke-loopback`. It starts the
+same disposable loopback Gateway with temp HOME/state, random local port, and random token, but first
+queries `rustGateway.canaryReceipts.status` with the local canary flag default-off. It then enables
+the canary flag only in the temporary process environment, generates denied and duplicate-prevented
+receipts for `chat.send`, `cron.add`, and `workflows.run`, queries the status again, and includes the
+paired `rollback-node` JSON plan. A passing rehearsal proves `canaryFlagEnabled=false` before
+explicit local-only enablement, `canaryFlagEnabled=true` after, `productionTrafficUsed=false`,
+`authoritySwitchAllowed=false`, redacted receipt material, and `authorityChanges=[]` in the rollback
+plan. It still does not start, stop, restart, install, configure, or promote any production daemon.
+
 The installed-canary URL must be loopback/local: `localhost`, `127.0.0.1`, `::1`, or an
 SSH-forwarded loopback URL. Non-loopback URLs are blocked before the CLI queries anything so this
 proof cannot accidentally become production daemon traffic.

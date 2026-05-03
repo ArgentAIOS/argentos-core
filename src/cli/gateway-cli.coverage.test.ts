@@ -18,6 +18,7 @@ const gatewayStatusCommand = vi.fn(async () => {});
 const gatewayAuthorityStatusCommand = vi.fn(async () => {});
 const gatewayAuthorityLocalSmokeCommand = vi.fn(async () => {});
 const gatewayAuthorityDisposableLoopbackSmokeCommand = vi.fn(async () => {});
+const gatewayAuthorityDisposableLoopbackRehearsalCommand = vi.fn(async () => {});
 const gatewayAuthorityLocalRehearsalCommand = vi.fn(async () => {});
 const gatewayAuthorityRollbackPlanCommand = vi.fn(async () => {});
 
@@ -112,6 +113,8 @@ vi.mock("../commands/gateway-status.js", () => ({
 }));
 
 vi.mock("../commands/gateway-authority-status.js", () => ({
+  gatewayAuthorityDisposableLoopbackRehearsalCommand: (runtime: unknown, opts: unknown) =>
+    gatewayAuthorityDisposableLoopbackRehearsalCommand(runtime, opts),
   gatewayAuthorityDisposableLoopbackSmokeCommand: (runtime: unknown, opts: unknown) =>
     gatewayAuthorityDisposableLoopbackSmokeCommand(runtime, opts),
   gatewayAuthorityLocalSmokeCommand: (runtime: unknown, opts: unknown) =>
@@ -390,6 +393,35 @@ describe("gateway-cli coverage", () => {
         password: undefined,
         timeoutMs: undefined,
       },
+    });
+  }, 30_000);
+
+  it("registers gateway authority rehearse-loopback as a disposable local rollback proof", async () => {
+    gatewayAuthorityDisposableLoopbackRehearsalCommand.mockClear();
+
+    const { registerGatewayCli } = await import("./gateway-cli.js");
+    const program = new Command();
+    program.exitOverride();
+    registerGatewayCli(program);
+
+    await program.parseAsync(
+      [
+        "gateway",
+        "authority",
+        "rehearse-loopback",
+        "--reason",
+        "local rollback rehearsal",
+        "--confirm-local-only",
+        "--json",
+      ],
+      { from: "user" },
+    );
+
+    expect(gatewayAuthorityDisposableLoopbackRehearsalCommand).toHaveBeenCalledTimes(1);
+    expect(gatewayAuthorityDisposableLoopbackRehearsalCommand.mock.calls[0]?.[1]).toEqual({
+      json: true,
+      reason: "local rollback rehearsal",
+      confirmLocalOnly: true,
     });
   }, 30_000);
 

@@ -40,6 +40,13 @@ export type GatewayAuthorityDisposableLoopbackSmokeOptions = {
   dependencies?: GatewayAuthorityDisposableLoopbackSmokeDependencies;
 };
 
+export type GatewayAuthorityDisposableLoopbackRehearsalOptions = {
+  json?: boolean;
+  reason: string;
+  confirmLocalOnly?: boolean;
+  dependencies?: GatewayAuthorityDisposableLoopbackSmokeDependencies;
+};
+
 export type GatewayAuthorityRollbackPlanOptions = {
   json?: boolean;
   reason: string;
@@ -149,6 +156,23 @@ export type GatewayAuthorityDisposableLoopbackSmoke = {
   proof: string[];
 };
 
+export type GatewayAuthorityDisposableLoopbackRehearsal = {
+  command: "argent gateway authority rehearse-loopback";
+  mode: "disposable-loopback-rehearsal";
+  status: "blocked" | "rehearsed";
+  reason: string;
+  explicitOptIn: boolean;
+  disposableHarness: GatewayAuthorityDisposableLoopbackSmoke["disposableHarness"];
+  before: GatewayInstalledDaemonCanaryStatus;
+  after: GatewayInstalledDaemonCanaryStatus;
+  rollback: GatewayAuthorityRollbackPlan;
+  authoritySwitchAllowed: false;
+  authorityChanges: [];
+  receiptProof: GatewayAuthorityDisposableLoopbackSmoke["receiptProof"];
+  blockers: string[];
+  proof: string[];
+};
+
 export type GatewayAuthorityStatusSummary = {
   liveGatewayAuthority: "node";
   rustGatewayAuthority: "shadow-only";
@@ -214,9 +238,9 @@ export type GatewayInstalledDaemonCanaryStatus = {
   method: "rustGateway.canaryReceipts.status";
   queried: boolean;
   url: string | null;
-  productionTrafficUsed: false | boolean | null;
+  productionTrafficUsed: boolean | null;
   canaryFlagEnabled: boolean | null;
-  authoritySwitchAllowed: false | boolean | null;
+  authoritySwitchAllowed: boolean | null;
   dashboardVisible: boolean | null;
   receiptCount: number | null;
   redactionVerified: boolean | null;
@@ -769,6 +793,290 @@ export async function collectGatewayAuthorityDisposableLoopbackSmoke(
   }
 }
 
+export async function collectGatewayAuthorityDisposableLoopbackRehearsal(
+  options: GatewayAuthorityDisposableLoopbackRehearsalOptions,
+): Promise<GatewayAuthorityDisposableLoopbackRehearsal> {
+  const rollback = buildGatewayAuthorityRollbackPlan({ json: false, reason: options.reason });
+  if (options.confirmLocalOnly !== true) {
+    const notStartedHarness: GatewayAuthorityDisposableLoopbackSmoke["disposableHarness"] = {
+      started: false,
+      url: null,
+      bind: "loopback",
+      tempHomeUsed: false,
+      tempStateUsed: false,
+      randomPortUsed: false,
+      randomTokenUsed: false,
+      installedServiceControlUsed: false,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+    };
+    return {
+      command: "argent gateway authority rehearse-loopback",
+      mode: "disposable-loopback-rehearsal",
+      status: "blocked",
+      reason: options.reason.trim(),
+      explicitOptIn: false,
+      disposableHarness: notStartedHarness,
+      before: installedCanaryStatus({
+        status: "blocked",
+        configured: false,
+        queried: false,
+        url: null,
+        productionTrafficUsed: false,
+        canaryFlagEnabled: false,
+        authoritySwitchAllowed: false,
+        dashboardVisible: null,
+        receiptCount: null,
+        redactionVerified: null,
+        denialReceiptPresent: null,
+        duplicatePreventionReceiptPresent: null,
+        receiptSurfaces: [],
+        blockers: ["pass --confirm-local-only before starting disposable loopback rehearsal"],
+        error: null,
+      }),
+      after: installedCanaryStatus({
+        status: "blocked",
+        configured: false,
+        queried: false,
+        url: null,
+        productionTrafficUsed: false,
+        canaryFlagEnabled: false,
+        authoritySwitchAllowed: false,
+        dashboardVisible: null,
+        receiptCount: null,
+        redactionVerified: null,
+        denialReceiptPresent: null,
+        duplicatePreventionReceiptPresent: null,
+        receiptSurfaces: [],
+        blockers: ["pass --confirm-local-only before enabling local canary receipts"],
+        error: null,
+      }),
+      rollback,
+      authoritySwitchAllowed: false,
+      authorityChanges: [],
+      receiptProof: {
+        generatedSurfaces: [],
+        denialReceiptPresent: false,
+        duplicatePreventionReceiptPresent: false,
+        redactionVerified: false,
+        receiptCount: 0,
+      },
+      blockers: ["explicit local-only loopback rehearsal opt-in is required"],
+      proof: ["no disposable loopback daemon was started because --confirm-local-only was missing"],
+    };
+  }
+
+  const deps = options.dependencies ?? {};
+  const mkdtemp = deps.mkdtemp ?? ((prefix: string) => fs.mkdtemp(path.join(os.tmpdir(), prefix)));
+  const rm =
+    deps.rm ??
+    ((targetPath: string) => fs.rm(targetPath, { recursive: true, force: true }).then(() => {}));
+  const mkdir =
+    deps.mkdir ??
+    ((targetPath: string) => fs.mkdir(targetPath, { recursive: true }).then(() => {}));
+  const writeFile =
+    deps.writeFile ?? ((targetPath: string, content: string) => fs.writeFile(targetPath, content));
+  const getFreePort = deps.getFreePort ?? getFreeLoopbackPort;
+  const randomToken = deps.randomToken ?? (() => `loopback-rehearsal-${randomUUID()}`);
+  const startGateway = deps.startGateway ?? startGatewayServer;
+  const requestGateway = deps.callGateway ?? callGateway;
+  const previousEnv = snapshotDisposableLoopbackEnv();
+  const tempHome = await mkdtemp("rust-gateway-loopback-rehearsal-home-");
+  const token = randomToken();
+  const port = await getFreePort();
+  const url = `ws://127.0.0.1:${port}`;
+  const storePath = path.join(tempHome, ".argentos", "rust-gateway", "receipts.jsonl");
+  const configPath = path.join(tempHome, ".argentos", "argent.json");
+  let server: GatewayServer | null = null;
+
+  const requestStatus = (params: {
+    url: string;
+    token?: string;
+    password?: string;
+    timeoutMs: number;
+  }) =>
+    requestGateway({
+      url: params.url,
+      token: params.token,
+      password: params.password,
+      timeoutMs: params.timeoutMs,
+      method: "rustGateway.canaryReceipts.status",
+      params: { limit: 20 },
+    });
+
+  try {
+    await writeDisposableLoopbackConfig({ configPath, mkdir, writeFile });
+    applyDisposableLoopbackEnv({
+      tempHome,
+      token,
+      storePath,
+      configPath,
+      canaryReceiptsEnabled: false,
+    });
+    server = await startGateway(port, {
+      bind: "loopback",
+      auth: { mode: "token", token },
+      controlUiEnabled: false,
+    });
+
+    const before = await collectInstalledDaemonCanaryStatus({ url, token, requestStatus });
+    process.env.ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS = "1";
+    for (const surface of CANARY_RECEIPT_SURFACES) {
+      const params = buildDisposableLoopbackCanaryParams(surface);
+      await expectRustCanaryDenial(requestGateway({ url, token, method: surface, params }));
+      await expectRustCanaryDenial(requestGateway({ url, token, method: surface, params }));
+    }
+    const after = await collectInstalledDaemonCanaryStatus({ url, token, requestStatus });
+    const blockers = [
+      ...buildLocalRehearsalBlockers({ explicitOptIn: true, before, after }),
+      ...(after.receiptSurfaces.length === CANARY_RECEIPT_SURFACES.length
+        ? []
+        : ["not all required canary receipt surfaces were generated"]),
+    ];
+
+    return {
+      command: "argent gateway authority rehearse-loopback",
+      mode: "disposable-loopback-rehearsal",
+      status: blockers.length === 0 ? "rehearsed" : "blocked",
+      reason: options.reason.trim(),
+      explicitOptIn: true,
+      disposableHarness: {
+        started: true,
+        url,
+        bind: "loopback",
+        tempHomeUsed: true,
+        tempStateUsed: true,
+        randomPortUsed: true,
+        randomTokenUsed: true,
+        installedServiceControlUsed: false,
+        productionTrafficUsed: false,
+        authoritySwitchAllowed: false,
+      },
+      before,
+      after,
+      rollback,
+      authoritySwitchAllowed: false,
+      authorityChanges: [],
+      receiptProof: {
+        generatedSurfaces: after.receiptSurfaces,
+        denialReceiptPresent: after.denialReceiptPresent === true,
+        duplicatePreventionReceiptPresent: after.duplicatePreventionReceiptPresent === true,
+        redactionVerified: after.redactionVerified === true,
+        receiptCount: after.receiptCount ?? 0,
+      },
+      blockers,
+      proof: [
+        "started a disposable Gateway server bound to 127.0.0.1 with temp HOME/state",
+        "queried rustGateway.canaryReceipts.status before enabling the local canary flag",
+        "proved canaryFlagEnabled=false before explicit local-only enablement",
+        "enabled canary receipts only through ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS=1 in temp env",
+        "generated denied and duplicate-prevented receipts for chat.send, cron.add, and workflows.run",
+        "queried rustGateway.canaryReceipts.status after local canary receipt generation",
+        "paired rollback-node plan reports authorityChanges=[] and executable=false",
+        "no launchctl/systemd/schtasks or installed production service control was used",
+        "productionTrafficUsed=false and authoritySwitchAllowed=false",
+      ],
+    };
+  } catch (error) {
+    const fallback = installedCanaryStatus({
+      status: "blocked",
+      configured: server !== null,
+      queried: false,
+      url,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: null,
+      authoritySwitchAllowed: false,
+      dashboardVisible: null,
+      receiptCount: null,
+      redactionVerified: null,
+      denialReceiptPresent: null,
+      duplicatePreventionReceiptPresent: null,
+      receiptSurfaces: [],
+      blockers: ["disposable loopback rehearsal failed"],
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return {
+      command: "argent gateway authority rehearse-loopback",
+      mode: "disposable-loopback-rehearsal",
+      status: "blocked",
+      reason: options.reason.trim(),
+      explicitOptIn: true,
+      disposableHarness: {
+        started: server !== null,
+        url,
+        bind: "loopback",
+        tempHomeUsed: true,
+        tempStateUsed: true,
+        randomPortUsed: true,
+        randomTokenUsed: true,
+        installedServiceControlUsed: false,
+        productionTrafficUsed: false,
+        authoritySwitchAllowed: false,
+      },
+      before: fallback,
+      after: fallback,
+      rollback,
+      authoritySwitchAllowed: false,
+      authorityChanges: [],
+      receiptProof: {
+        generatedSurfaces: [],
+        denialReceiptPresent: false,
+        duplicatePreventionReceiptPresent: false,
+        redactionVerified: false,
+        receiptCount: 0,
+      },
+      blockers: [
+        "disposable loopback Gateway rehearsal failed",
+        error instanceof Error ? error.message : String(error),
+      ],
+      proof: [
+        "attempted only a disposable loopback Gateway harness",
+        "no installed production service control was used",
+        "no authority switch was attempted",
+      ],
+    };
+  } finally {
+    if (server) {
+      await server.close({ reason: "disposable loopback rehearsal complete" });
+    }
+    restoreDisposableLoopbackEnv(previousEnv);
+    await rm(tempHome);
+  }
+}
+
+export async function gatewayAuthorityDisposableLoopbackRehearsalCommand(
+  runtime: Pick<RuntimeEnv, "log">,
+  options: GatewayAuthorityDisposableLoopbackRehearsalOptions,
+): Promise<GatewayAuthorityDisposableLoopbackRehearsal> {
+  const rehearsal = await collectGatewayAuthorityDisposableLoopbackRehearsal(options);
+  if (options.json) {
+    runtime.log(JSON.stringify(rehearsal, null, 2));
+    return rehearsal;
+  }
+
+  runtime.log("Gateway authority disposable loopback rehearsal");
+  runtime.log("");
+  runtime.log(`Mode: ${rehearsal.mode}`);
+  runtime.log(`Status: ${rehearsal.status}`);
+  runtime.log(`Explicit local-only opt-in: ${rehearsal.explicitOptIn ? "yes" : "no"}`);
+  runtime.log(`Loopback URL: ${rehearsal.disposableHarness.url ?? "not-started"}`);
+  runtime.log(`Before canary: ${rehearsal.before.status}`);
+  runtime.log(`After canary: ${rehearsal.after.status}`);
+  runtime.log(`Rollback: ${rehearsal.rollback.mode}`);
+  runtime.log(`Authority changes: none`);
+  runtime.log(`Production traffic allowed: no`);
+  runtime.log(`Authority switch allowed: no`);
+  runtime.log(`Receipt count: ${rehearsal.receiptProof.receiptCount}`);
+  if (rehearsal.blockers.length > 0) {
+    runtime.log("");
+    runtime.log("Blockers:");
+    for (const blocker of rehearsal.blockers) {
+      runtime.log(`- ${blocker}`);
+    }
+  }
+  return rehearsal;
+}
+
 export async function gatewayAuthorityDisposableLoopbackSmokeCommand(
   runtime: Pick<RuntimeEnv, "log">,
   options: GatewayAuthorityDisposableLoopbackSmokeOptions,
@@ -1290,6 +1598,7 @@ function applyDisposableLoopbackEnv(params: {
   token: string;
   storePath: string;
   configPath: string;
+  canaryReceiptsEnabled?: boolean;
 }) {
   process.env.HOME = params.tempHome;
   process.env.USERPROFILE = params.tempHome;
@@ -1303,7 +1612,11 @@ function applyDisposableLoopbackEnv(params: {
   process.env.ARGENT_SKIP_CANVAS_HOST = "1";
   process.env.ARGENT_SKIP_BROWSER_CONTROL_SERVER = "1";
   process.env.ARGENT_SKIP_DASHBOARD_API = "1";
-  process.env.ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS = "1";
+  if (params.canaryReceiptsEnabled === false) {
+    delete process.env.ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS;
+  } else {
+    process.env.ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS = "1";
+  }
   process.env.ARGENT_RUST_GATEWAY_RECEIPT_STORE_PATH = params.storePath;
 }
 
