@@ -2047,7 +2047,15 @@ export async function buildWorkflowDryRunTrace(workflow: WorkflowDefinition): Pr
   steps: WorkflowDryRunTraceStep[];
   issues: WorkflowIssue[];
 }> {
-  const issues = await validateWorkflowRuntimeCapabilities(workflow);
+  const runtimeIssues = await validateWorkflowRuntimeCapabilities(workflow);
+  const issues =
+    workflow.deploymentStage === "simulate"
+      ? runtimeIssues.map((issue) => ({
+          ...issue,
+          severity: "warning" as const,
+          message: `${issue.message} Local simulate dry-run continues; live execution remains gated.`,
+        }))
+      : runtimeIssues;
   const steps: WorkflowDryRunTraceStep[] = [];
 
   try {
