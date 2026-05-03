@@ -94,6 +94,15 @@ describe("ExecutiveShadowClient integration", () => {
 
     const before = await client.getHealth();
     expect(before.status).toBe("ok");
+    const readiness = await client.getReadiness();
+    expect(readiness.authoritySwitchAllowed).toBe(false);
+    expect(readiness.promotionStatus).toBe("blocked");
+    expect(readiness.currentAuthority.gateway).toBe("node");
+    expect(readiness.currentAuthority.scheduler).toBe("node");
+    expect(readiness.currentAuthority.workflows).toBe("node");
+    expect(readiness.currentAuthority.channels).toBe("node");
+    expect(readiness.currentAuthority.sessions).toBe("node");
+    expect(readiness.currentAuthority.executive).toBe("shadow-only");
 
     await client.experimentalRequestLane({
       lane: "operator",

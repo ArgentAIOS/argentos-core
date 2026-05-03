@@ -339,6 +339,38 @@ vi.mock("./status.executive-shadow.js", () => ({
     lastEventSummary: "lane operator activated (lease expires at 13000)",
     lastEventType: "lane_activated",
     stateDir: "/tmp/executive",
+    readiness: {
+      mode: "shadow-readiness",
+      authoritySwitchAllowed: false,
+      promotionStatus: "blocked",
+      failClosed: true,
+      currentAuthority: {
+        gateway: "node",
+        scheduler: "node",
+        workflows: "node",
+        channels: "node",
+        sessions: "node",
+        executive: "shadow-only",
+      },
+      persistenceModel: {
+        snapshotFile: "executive-state.json",
+        journalFile: "executive.journal.jsonl",
+        restartRecovery: "snapshot-plus-journal-replay",
+        leaseRecovery: "tick-expiry-before-promotion",
+      },
+      promotionGates: [
+        {
+          id: "authority-boundary",
+          status: "blocked",
+          owner: "master-operator",
+          requiredProof: ["no authority switch"],
+        },
+      ],
+      gateCounts: { blocked: 1, proven: 0 },
+      nodeResponsibilities: ["gateway live authority"],
+      rustResponsibilities: ["executive shadow state"],
+      error: null,
+    },
     error: null,
   }),
 }));
@@ -395,6 +427,9 @@ describe("statusCommand", () => {
     expect(payload.executiveShadow.reachable).toBe(true);
     expect(payload.executiveShadow.activeLane).toBe("operator");
     expect(payload.executiveShadow.laneCounts.pending).toBe(2);
+    expect(payload.executiveShadow.readiness.failClosed).toBe(true);
+    expect(payload.executiveShadow.readiness.currentAuthority.gateway).toBe("node");
+    expect(payload.executiveShadow.readiness.currentAuthority.executive).toBe("shadow-only");
     expect(payload.executiveShadowKernelInspection.laneMatch).toBe(true);
   });
 
@@ -417,6 +452,9 @@ describe("statusCommand", () => {
     expect(logs.some((l) => l.includes("Rust scheduler authority"))).toBe(true);
     expect(logs.some((l) => l.includes("scheduler node"))).toBe(true);
     expect(logs.some((l) => l.includes("Executive shadow"))).toBe(true);
+    expect(logs.some((l) => l.includes("readiness fail-closed"))).toBe(true);
+    expect(logs.some((l) => l.includes("switchBlocked"))).toBe(true);
+    expect(logs.some((l) => l.includes("executive shadow-only"))).toBe(true);
     expect(logs.some((l) => l.includes("Exec inspect"))).toBe(true);
     expect(logs.some((l) => l.includes("pending 2"))).toBe(true);
     expect(logs.some((l) => l.includes("Channels"))).toBe(true);

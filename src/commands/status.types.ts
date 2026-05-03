@@ -43,6 +43,39 @@ export type ExecutiveShadowStatus = {
   lastEventSummary: string | null;
   lastEventType: string | null;
   stateDir: string | null;
+  readiness: {
+    mode: "shadow-readiness";
+    promotionStatus: "blocked";
+    authoritySwitchAllowed: false;
+    failClosed: boolean;
+    currentAuthority: {
+      gateway: string;
+      scheduler: string;
+      workflows: string;
+      channels: string;
+      sessions: string;
+      executive: string;
+    };
+    persistenceModel: {
+      snapshotFile: string;
+      journalFile: string;
+      restartRecovery: string;
+      leaseRecovery: string;
+    };
+    promotionGates: Array<{
+      id: string;
+      status: "blocked" | "proven";
+      owner: string;
+      requiredProof: string[];
+    }>;
+    gateCounts: {
+      blocked: number;
+      proven: number;
+    };
+    nodeResponsibilities: string[];
+    rustResponsibilities: string[];
+    error: string | null;
+  } | null;
   error: string | null;
 };
 
