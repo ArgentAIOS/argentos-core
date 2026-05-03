@@ -1,6 +1,9 @@
 import type { GatewayRequestHandlers, GatewayRequestOptions } from "./server-methods/types.js";
 import {
   createRustGatewayReceiptStore,
+  describeRustGatewayReceiptStorePolicy,
+  type RustGatewayPromotionReceipt,
+  type RustGatewayReceiptCode,
   type RustGatewayReceiptSurface,
 } from "../infra/rust-gateway-receipt-store.js";
 import { ErrorCodes, errorShape } from "./protocol/index.js";
@@ -101,6 +104,7 @@ const READ_METHODS = new Set([
   "cron.list",
   "cron.status",
   "cron.runs",
+  "rustGateway.canaryReceipts.status",
   "system-presence",
   "last-heartbeat",
   "node.list",
@@ -350,6 +354,58 @@ function stringParam(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+const CANARY_STATUS_SURFACES: RustGatewayReceiptSurface[] = [
+  "chat.send",
+  "cron.add",
+  "workflows.run",
+];
+
+const CANARY_STATUS_RECEIPT_CODES = new Set<RustGatewayReceiptCode>([
+  "RUST_CANARY_DENIED",
+  "RUST_CANARY_DUPLICATE_PREVENTED",
+]);
+
+function buildCanarySurfaceStatus(receipts: RustGatewayPromotionReceipt[]) {
+  return CANARY_STATUS_SURFACES.map((surface) => {
+    const surfaceReceipts = receipts.filter((receipt) => receipt.surface === surface);
+    return {
+      surface,
+      denied: surfaceReceipts.some((receipt) => receipt.receiptCode === "RUST_CANARY_DENIED"),
+      duplicatePrevented: surfaceReceipts.some(
+        (receipt) => receipt.receiptCode === "RUST_CANARY_DUPLICATE_PREVENTED",
+      ),
+      receiptCount: surfaceReceipts.length,
+      latestReceiptCode: surfaceReceipts.at(-1)?.receiptCode ?? null,
+    };
+  });
+}
+
+async function buildRustGatewayCanaryReceiptStatus(params: Record<string, unknown>) {
+  const limitParam = typeof params.limit === "number" ? params.limit : 20;
+  const limit = Math.min(Math.max(Math.trunc(limitParam), 1), 100);
+  const receipts = await createRustGatewayReceiptStore().list({ limit });
+  const canaryReceipts = receipts.filter(
+    (receipt) =>
+      CANARY_STATUS_SURFACES.includes(receipt.surface) &&
+      CANARY_STATUS_RECEIPT_CODES.has(receipt.receiptCode),
+  );
+
+  return {
+    status: "ok",
+    dashboardVisible: true,
+    productionTrafficUsed: false,
+    canaryFlagEnabled: process.env[RUST_CANARY_DENY_RECEIPTS_FLAG] === "1",
+    policy: describeRustGatewayReceiptStorePolicy(),
+    authority: {
+      nodeAuthority: "live",
+      rustAuthority: "shadow-only",
+      authoritySwitchAllowed: false,
+    },
+    surfaces: buildCanarySurfaceStatus(canaryReceipts),
+    receipts: canaryReceipts,
+  };
+}
+
 export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...connectHandlers,
   ...connectorsHandlers,
@@ -392,6 +448,9 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...specforgeHandlers,
   ...intentHandlers,
   ...workflowsHandlers,
+  "rustGateway.canaryReceipts.status": async ({ params, respond }) => {
+    respond(true, await buildRustGatewayCanaryReceiptStatus(params), undefined);
+  },
 };
 
 export async function handleGatewayRequest(

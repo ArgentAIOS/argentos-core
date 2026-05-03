@@ -155,6 +155,98 @@ describe("Rust gateway pre-mutation denial receipts", () => {
     expect(raw.match(/workflows\.run:run-duplicate/g)).toHaveLength(2);
   });
 
+  it("surfaces redacted canary receipts through an operator-read dashboard status method", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "rust-gateway-dashboard-receipts-"));
+    const storePath = path.join(dir, "receipts.jsonl");
+    process.env.ARGENT_RUST_GATEWAY_RECEIPT_STORE_PATH = storePath;
+    process.env.ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS = "1";
+    const store = createRustGatewayReceiptStore(storePath);
+    await store.append({
+      surface: "chat.send",
+      receiptCode: "RUST_CANARY_DENIED",
+      sourceFixtureId: "rust-shadow-gate-chat-send",
+      requestId: "chat-dashboard-1",
+      duplicateKey: "chat.send:dashboard",
+      reason: "chat.send denied before mutation token=super-secret-token-value",
+      params: { token: "super-secret-token-value" },
+    });
+    await store.append({
+      surface: "chat.send",
+      receiptCode: "RUST_CANARY_DENIED",
+      sourceFixtureId: "rust-shadow-gate-chat-send",
+      requestId: "chat-dashboard-2",
+      duplicateKey: "chat.send:dashboard",
+      reason: "chat.send denied before mutation token=super-secret-token-value",
+      params: { token: "super-secret-token-value" },
+    });
+    const responses: Array<{ ok: boolean; payload: unknown; error: unknown }> = [];
+
+    await handleGatewayRequest({
+      req: {
+        type: "req",
+        id: "dashboard-status-1",
+        method: "rustGateway.canaryReceipts.status",
+        params: { limit: 5 },
+      },
+      client: {
+        connect: {
+          client: { id: "dashboard-client", version: "1", platform: "test", mode: "local" },
+          auth: {},
+          role: "operator",
+          scopes: ["operator.read"],
+        },
+      },
+      isWebchatConnect: () => false,
+      respond: (ok, payload, error) => responses.push({ ok, payload, error }),
+      context: {} as GatewayRequestContext,
+    });
+
+    expect(responses).toHaveLength(1);
+    expect(responses[0]?.ok).toBe(true);
+    expect(JSON.stringify(responses[0]?.payload)).not.toContain("super-secret-token-value");
+    expect(responses[0]?.payload).toMatchObject({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      policy: {
+        path: storePath,
+        containsSecrets: false,
+        liveAuthoritySwitchAllowed: false,
+      },
+      authority: {
+        nodeAuthority: "live",
+        rustAuthority: "shadow-only",
+        authoritySwitchAllowed: false,
+      },
+      surfaces: expect.arrayContaining([
+        {
+          surface: "chat.send",
+          denied: true,
+          duplicatePrevented: true,
+          receiptCount: 2,
+          latestReceiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+        },
+      ]),
+      receipts: expect.arrayContaining([
+        expect.objectContaining({
+          surface: "chat.send",
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+          mutationBlockedBeforeHandler: true,
+        }),
+        expect.objectContaining({
+          surface: "chat.send",
+          receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+          mutationBlockedBeforeHandler: true,
+        }),
+      ]),
+    });
+  });
+
   it("leaves Node live handlers untouched by default", async () => {
     const handler = vi.fn(({ respond }) => respond(true, { status: "started" }));
     const responses: unknown[] = [];
