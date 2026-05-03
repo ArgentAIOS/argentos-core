@@ -128,6 +128,72 @@ describe("gateway local-daemon Rust canary receipt smoke", () => {
         expect(raw).toContain("rust-gateway-receipt-store-v1");
         expect(raw).not.toContain("super-secret-token-value");
 
+        const dashboardStatus = await client.request<{
+          dashboardVisible: boolean;
+          productionTrafficUsed: boolean;
+          canaryFlagEnabled: boolean;
+          policy: {
+            path: string;
+            containsSecrets: boolean;
+            liveAuthoritySwitchAllowed: boolean;
+          };
+          authority: {
+            nodeAuthority: string;
+            rustAuthority: string;
+            authoritySwitchAllowed: boolean;
+          };
+          surfaces: Array<{
+            surface: string;
+            denied: boolean;
+            duplicatePrevented: boolean;
+            receiptCount: number;
+            latestReceiptCode: string | null;
+          }>;
+          receipts: Array<{
+            surface: string;
+            receiptCode: string;
+            redactedParams: string;
+            tokenMaterialRedacted: boolean;
+            authoritySwitchAllowed: boolean;
+            mutationBlockedBeforeHandler: boolean;
+          }>;
+        }>("rustGateway.canaryReceipts.status", { limit: 10 });
+        expect(dashboardStatus).toMatchObject({
+          dashboardVisible: true,
+          productionTrafficUsed: false,
+          canaryFlagEnabled: true,
+          policy: {
+            path: storePath,
+            containsSecrets: false,
+            liveAuthoritySwitchAllowed: false,
+          },
+          authority: {
+            nodeAuthority: "live",
+            rustAuthority: "shadow-only",
+            authoritySwitchAllowed: false,
+          },
+        });
+        expect(dashboardStatus.surfaces).toEqual(
+          CANARY_SURFACES.map((surface) => ({
+            surface: surface.method,
+            denied: true,
+            duplicatePrevented: true,
+            receiptCount: 2,
+            latestReceiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+          })),
+        );
+        expect(dashboardStatus.receipts).toHaveLength(6);
+        expect(JSON.stringify(dashboardStatus)).not.toContain("super-secret-token-value");
+        expect(
+          dashboardStatus.receipts.every(
+            (receipt) =>
+              receipt.tokenMaterialRedacted &&
+              !receipt.authoritySwitchAllowed &&
+              receipt.mutationBlockedBeforeHandler &&
+              !receipt.redactedParams.includes("super-secret-token-value"),
+          ),
+        ).toBe(true);
+
         process.env.ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS = "0";
         await expect(client.request("health")).resolves.toMatchObject({ ok: true });
       } finally {
