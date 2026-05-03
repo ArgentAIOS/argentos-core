@@ -1,0 +1,1626 @@
+{
+  "snapshotAt": "2026-05-03T22:44:14.760Z",
+  "totalErrors": 270,
+  "errors": [
+    {
+      "file": "src/agents/compaction.ts",
+      "line": 162,
+      "code": "TS2345",
+      "message": "Argument of type 'AbortSignal' is not assignable to parameter of type 'Record<string, string>'."
+    },
+    {
+      "file": "src/agents/intent-runtime-gate-core.ts",
+      "line": 51,
+      "code": "TS2339",
+      "message": "Property 'requiredSuites' does not exist on type 'IntentSimulationGateConfig'."
+    },
+    {
+      "file": "src/agents/model-catalog.ts",
+      "line": 72,
+      "code": "TS2673",
+      "message": "Constructor of class 'AuthStorage' is private and only accessible within the class declaration."
+    },
+    {
+      "file": "src/agents/model-catalog.ts",
+      "line": 73,
+      "code": "TS2673",
+      "message": "Constructor of class 'ModelRegistry' is private and only accessible within the class declaration."
+    },
+    {
+      "file": "src/agents/models-config.providers.ts",
+      "line": 166,
+      "code": "TS2322",
+      "message": "Type '({ id: string; name: string; reasoning: false; input: (\"text\" | \"image\")[]; cost: { input: number; output: number; cacheRead: number; cacheWrite: number; }; contextWindow: number; maxTokens: number; } | null)[]' is not assignable to type 'ModelDefinitionConfig[]'."
+    },
+    {
+      "file": "src/agents/models-config.providers.ts",
+      "line": 180,
+      "code": "TS2677",
+      "message": "A type predicate's type must be assignable to its parameter's type."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/compact.ts",
+      "line": 435,
+      "code": "TS2322",
+      "message": "Type 'ToolDefinition<TSchema, unknown, any>[]' is not assignable to type 'ToolDefinition[]'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/compact.ts",
+      "line": 440,
+      "code": "TS2345",
+      "message": "Argument of type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/agent-session\", { with: { \"resolution-mode\": \"import\" } }).AgentSession' is not assignable to parameter of type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-coding-agent@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-coding-agent/dist/core/agent-session\", { with: { \"resolution-mode\": \"import\" } }).AgentSession'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/compact.ts",
+      "line": 513,
+      "code": "TS2339",
+      "message": "Property 'firstKeptEntryId' does not exist on type 'SessionCompactionResult'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/compact.ts",
+      "line": 514,
+      "code": "TS2322",
+      "message": "Type 'number | undefined' is not assignable to type 'number'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/compact.ts",
+      "line": 516,
+      "code": "TS2339",
+      "message": "Property 'details' does not exist on type 'SessionCompactionResult'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/extra-params.ts",
+      "line": 213,
+      "code": "TS2345",
+      "message": "Argument of type '{ reasoning?: \"minimal\" | \"low\" | \"medium\" | \"high\" | \"xhigh\" | undefined; thinkingBudgets?: ThinkingBudgets; temperature?: number; maxTokens?: number; ... 11 more ...; maxRetries?: number | undefined; }' is not assignable to parameter of type 'SimpleStreamOptions'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run.ts",
+      "line": 809,
+      "code": "TS2322",
+      "message": "Type 'Model<Api> | undefined' is not assignable to type 'Model<Api>'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run.ts",
+      "line": 823,
+      "code": "TS18048",
+      "message": "'model' is possibly 'undefined'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run.ts",
+      "line": 829,
+      "code": "TS18048",
+      "message": "'model' is possibly 'undefined'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run.ts",
+      "line": 835,
+      "code": "TS18048",
+      "message": "'model' is possibly 'undefined'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run.ts",
+      "line": 837,
+      "code": "TS18048",
+      "message": "'model' is possibly 'undefined'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run.ts",
+      "line": 1270,
+      "code": "TS2339",
+      "message": "Property 'apiKey' does not exist on type 'never'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run.ts",
+      "line": 1325,
+      "code": "TS2339",
+      "message": "Property 'apiKey' does not exist on type 'never'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run.ts",
+      "line": 1326,
+      "code": "TS2339",
+      "message": "Property 'apiKey' does not exist on type 'never'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run.ts",
+      "line": 1597,
+      "code": "TS2345",
+      "message": "Argument of type 'string | undefined' is not assignable to parameter of type 'never'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run.ts",
+      "line": 1705,
+      "code": "TS2352",
+      "message": "Conversion of type 'ToolCall | TextContent | ThinkingContent' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 233,
+      "code": "TS2532",
+      "message": "Object is possibly 'undefined'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1120,
+      "code": "TS2322",
+      "message": "Type 'ToolDefinition<TSchema, unknown, any>[]' is not assignable to type 'ToolDefinition[]'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1130,
+      "code": "TS2352",
+      "message": "Conversion of type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/agent-session\", { with: { \"resolution-mode\": \"import\" } }).AgentSession' to type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-coding-agent@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-coding-agent/dist/core/agent-session\", { with: { \"resolution-mode\": \"import\" } }).AgentSession' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1172,
+      "code": "TS2352",
+      "message": "Conversion of type 'AuthStorage' to type 'AuthStorageWithRuntimeOverrides' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1182,
+      "code": "TS2322",
+      "message": "Type 'ModelRegistry' is not assignable to type 'OpenAICodexModelRegistryLike'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1265,
+      "code": "TS2322",
+      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1269,
+      "code": "TS2322",
+      "message": "Type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).StreamFn' is not assignable to type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).StreamFn'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1272,
+      "code": "TS2322",
+      "message": "Type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).StreamFn' is not assignable to type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).StreamFn'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1279,
+      "code": "TS2322",
+      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1310,
+      "code": "TS2339",
+      "message": "Property 'replaceMessages' does not exist on type 'Agent'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1511,
+      "code": "TS2322",
+      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1523,
+      "code": "TS2339",
+      "message": "Property 'replaceMessages' does not exist on type 'Agent'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1532,
+      "code": "TS2345",
+      "message": "Argument of type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1534,
+      "code": "TS2339",
+      "message": "Property 'replaceMessages' does not exist on type 'Agent'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1564,
+      "code": "TS2345",
+      "message": "Argument of type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1569,
+      "code": "TS2339",
+      "message": "Property 'replaceMessages' does not exist on type 'Agent'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1574,
+      "code": "TS2322",
+      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/attempt.ts",
+      "line": 1653,
+      "code": "TS2322",
+      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/run/message-sanitizer.ts",
+      "line": 98,
+      "code": "TS2339",
+      "message": "Property 'details' does not exist on type 'AgentMessage'."
+    },
+    {
+      "file": "src/agents/pi-embedded-runner/system-prompt.ts",
+      "line": 94,
+      "code": "TS2339",
+      "message": "Property 'setSystemPrompt' does not exist on type 'Agent'."
+    },
+    {
+      "file": "src/agents/pi-extensions/compaction-safeguard.ts",
+      "line": 166,
+      "code": "TS2345",
+      "message": "Argument of type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+    },
+    {
+      "file": "src/agents/pi-extensions/compaction-safeguard.ts",
+      "line": 185,
+      "code": "TS2339",
+      "message": "Property 'getApiKey' does not exist on type 'ModelRegistry'."
+    },
+    {
+      "file": "src/agents/pi-extensions/compaction-safeguard.ts",
+      "line": 215,
+      "code": "TS2345",
+      "message": "Argument of type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+    },
+    {
+      "file": "src/agents/pi-extensions/compaction-safeguard.ts",
+      "line": 215,
+      "code": "TS2345",
+      "message": "Argument of type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+    },
+    {
+      "file": "src/agents/pi-extensions/compaction-safeguard.ts",
+      "line": 222,
+      "code": "TS2322",
+      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+    },
+    {
+      "file": "src/agents/pi-extensions/compaction-safeguard.ts",
+      "line": 273,
+      "code": "TS2345",
+      "message": "Argument of type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to parameter of type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+    },
+    {
+      "file": "src/agents/pi-extensions/compaction-safeguard.ts",
+      "line": 282,
+      "code": "TS2322",
+      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+    },
+    {
+      "file": "src/agents/pi-extensions/compaction-safeguard.ts",
+      "line": 296,
+      "code": "TS2322",
+      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+    },
+    {
+      "file": "src/agents/pi-extensions/context-pruning/extension.ts",
+      "line": 24,
+      "code": "TS2322",
+      "message": "Type 'import(\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-agent-core@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-agent-core/dist/types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]' is not assignable to type 'import(\"/Users/sem/code/argent-core/worktrees/p0-tooling-20260503/src/argent-agent/pi-types\", { with: { \"resolution-mode\": \"import\" } }).AgentMessage[]'."
+    },
+    {
+      "file": "src/agents/pi-model-discovery.ts",
+      "line": 10,
+      "code": "TS2673",
+      "message": "Constructor of class 'AuthStorage' is private and only accessible within the class declaration."
+    },
+    {
+      "file": "src/agents/pi-model-discovery.ts",
+      "line": 14,
+      "code": "TS2673",
+      "message": "Constructor of class 'ModelRegistry' is private and only accessible within the class declaration."
+    },
+    {
+      "file": "src/agents/pi-tool-definition-adapter.ts",
+      "line": 119,
+      "code": "TS2322",
+      "message": "Type 'AbortSignal | AgentToolUpdateCallback<unknown> | undefined' is not assignable to type 'AgentToolUpdateCallback<unknown> | undefined'."
+    },
+    {
+      "file": "src/agents/pi-tool-definition-adapter.ts",
+      "line": 120,
+      "code": "TS2322",
+      "message": "Type 'AbortSignal | ExtensionContext | undefined' is not assignable to type 'AbortSignal | undefined'."
+    },
+    {
+      "file": "src/agents/pi-tools.loop-detect.ts",
+      "line": 36,
+      "code": "TS2322",
+      "message": "Type '(toolCallId: string, params: any, signal: AbortSignal | undefined, onUpdate: AgentToolUpdateCallback<unknown> | undefined) => Promise<string | AgentToolResult<...>>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/pi-tools.policy.ts",
+      "line": 284,
+      "code": "TS2339",
+      "message": "Property 'sessionStore' does not exist on type 'ArgentConfig'."
+    },
+    {
+      "file": "src/agents/pi-tools.schema.ts",
+      "line": 5,
+      "code": "TS2351",
+      "message": "This expression is not constructable."
+    },
+    {
+      "file": "src/agents/pi-tools.ts",
+      "line": 395,
+      "code": "TS2561",
+      "message": "Object literal may only specify known properties, but 'disableImageTool' does not exist in type '{ sandboxBrowserBridgeUrl?: string | undefined; allowHostBrowserControl?: boolean | undefined; agentSessionKey?: string | undefined; agentChannel?: GatewayMessageChannel | undefined; ... 21 more ...; disableMessageTool?: boolean | undefined; }'. Did you mean to write 'disableMessageTool'?"
+    },
+    {
+      "file": "src/agents/session-tool-result-guard-wrapper.ts",
+      "line": 97,
+      "code": "TS2352",
+      "message": "Conversion of type 'Record<string, unknown>' to type 'AgentMessage & { details?: unknown; role?: string | undefined; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
+    },
+    {
+      "file": "src/agents/skills/config.ts",
+      "line": 81,
+      "code": "TS2339",
+      "message": "Property 'source' does not exist on type 'Skill'."
+    },
+    {
+      "file": "src/agents/skills/personal.ts",
+      "line": 722,
+      "code": "TS2322",
+      "message": "Type '({ id: string; name: string; source: string; kind: \"personal\"; state: PersonalSkillCandidateState; score: number; confidence: number; provenanceCount: number; reasons: string[]; } | null)[]' is not assignable to type 'SkillMatchCandidate[]'."
+    },
+    {
+      "file": "src/agents/skills/personal.ts",
+      "line": 783,
+      "code": "TS2677",
+      "message": "A type predicate's type must be assignable to its parameter's type."
+    },
+    {
+      "file": "src/agents/skills/personal.ts",
+      "line": 784,
+      "code": "TS18047",
+      "message": "'b' is possibly 'null'."
+    },
+    {
+      "file": "src/agents/skills/personal.ts",
+      "line": 784,
+      "code": "TS18047",
+      "message": "'a' is possibly 'null'."
+    },
+    {
+      "file": "src/agents/skills/personal.ts",
+      "line": 784,
+      "code": "TS18047",
+      "message": "'a' is possibly 'null'."
+    },
+    {
+      "file": "src/agents/skills/personal.ts",
+      "line": 784,
+      "code": "TS18047",
+      "message": "'b' is possibly 'null'."
+    },
+    {
+      "file": "src/agents/skills/room-reader.ts",
+      "line": 193,
+      "code": "TS2339",
+      "message": "Property 'source' does not exist on type 'Skill'."
+    },
+    {
+      "file": "src/agents/skills/workspace.ts",
+      "line": 419,
+      "code": "TS2345",
+      "message": "Argument of type 'SkillEntry' is not assignable to parameter of type '{ skill: { source?: string | undefined; }; }'."
+    },
+    {
+      "file": "src/agents/skills/workspace.ts",
+      "line": 425,
+      "code": "TS2677",
+      "message": "A type predicate's type must be assignable to its parameter's type."
+    },
+    {
+      "file": "src/agents/skills/workspace.ts",
+      "line": 426,
+      "code": "TS18047",
+      "message": "'b' is possibly 'null'."
+    },
+    {
+      "file": "src/agents/skills/workspace.ts",
+      "line": 426,
+      "code": "TS18047",
+      "message": "'a' is possibly 'null'."
+    },
+    {
+      "file": "src/agents/skills/workspace.ts",
+      "line": 426,
+      "code": "TS18047",
+      "message": "'a' is possibly 'null'."
+    },
+    {
+      "file": "src/agents/skills/workspace.ts",
+      "line": 426,
+      "code": "TS18047",
+      "message": "'b' is possibly 'null'."
+    },
+    {
+      "file": "src/agents/skills/workspace.ts",
+      "line": 428,
+      "code": "TS2322",
+      "message": "Type '({ name: string; source: string; kind: \"generic\"; score: number; reasons: string[]; } | null)[]' is not assignable to type 'SkillMatchCandidate[]'."
+    },
+    {
+      "file": "src/agents/tool-claim-validation.ts",
+      "line": 935,
+      "code": "TS18048",
+      "message": "'taskResultReplyEvidence' is possibly 'undefined'."
+    },
+    {
+      "file": "src/agents/tool-claim-validation.ts",
+      "line": 935,
+      "code": "TS2339",
+      "message": "Property 'length' does not exist on type 'TaskResultReplyEvidence'."
+    },
+    {
+      "file": "src/agents/tool-claim-validation.ts",
+      "line": 951,
+      "code": "TS2322",
+      "message": "Type 'string[]' is not assignable to type 'CommitmentEvidenceKind[]'."
+    },
+    {
+      "file": "src/agents/tools/apps-tool.ts",
+      "line": 78,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/atera-integration.ts",
+      "line": 359,
+      "code": "TS2741",
+      "message": "Property 'details' is missing in type '{ content: { type: \"text\"; text: string; }[]; }' but required in type 'AgentToolResult<unknown>'."
+    },
+    {
+      "file": "src/agents/tools/audio-alert-tool.ts",
+      "line": 211,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; details?: undefined; } | { content: { type: \"text\"; text: string; }[]; details: { path: string; model: string; voice: string; ... 4 more ...; error?: undefined; }; } | { ...; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/audio-generation-tool.ts",
+      "line": 152,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; details?: undefined; } | { content: { type: \"text\"; text: string; }[]; details: { path: string; provider: Provider; error?: undefined; }; } | { ...; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/doc-panel-delete-tool.ts",
+      "line": 47,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/doc-panel-get-tool.ts",
+      "line": 60,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/doc-panel-list-tool.ts",
+      "line": 48,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/doc-panel-search-tool.ts",
+      "line": 53,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/doc-panel-tool.ts",
+      "line": 79,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/doc-panel-update-tool.ts",
+      "line": 63,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/family-tool.ts",
+      "line": 1656,
+      "code": "TS2353",
+      "message": "Object literal may only specify known properties, and 'warning' does not exist in type '{ ok: boolean; childSessionKey?: string | undefined; runId?: string | undefined; error?: string | undefined; }'."
+    },
+    {
+      "file": "src/agents/tools/heygen-video-tool.ts",
+      "line": 591,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<AgentToolResult<unknown> | { content: { type: \"text\"; text: string; }[]; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/image-generation-tool.ts",
+      "line": 235,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; details?: undefined; } | { content: { type: \"text\"; text: string; }[]; details: { path: string; provider: Provider; error?: undefined; }; } | { ...; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/marketplace-tool.ts",
+      "line": 456,
+      "code": "TS2352",
+      "message": "Conversion of type 'CatalogItem' to type 'MarketplacePackageRecord' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
+    },
+    {
+      "file": "src/agents/tools/memu-tools.ts",
+      "line": 768,
+      "code": "TS2322",
+      "message": "Type 'string' is not assignable to type '\"query-intent\"'."
+    },
+    {
+      "file": "src/agents/tools/memu-tools.ts",
+      "line": 1635,
+      "code": "TS2367",
+      "message": "This comparison appears to be unintentional because the types '\"query-intent\" | undefined' and '\"latent-project-match\"' have no overlap."
+    },
+    {
+      "file": "src/agents/tools/memu-tools.ts",
+      "line": 1697,
+      "code": "TS2367",
+      "message": "This comparison appears to be unintentional because the types '\"query-intent\" | undefined' and '\"latent-project-match\"' have no overlap."
+    },
+    {
+      "file": "src/agents/tools/memu-tools.ts",
+      "line": 2245,
+      "code": "TS2345",
+      "message": "Argument of type '{ item: { id: string; memoryType?: string | undefined; summary?: string | undefined; createdAt?: string | undefined; happenedAt?: string | null | undefined; }; score: number; }' is not assignable to parameter of type '{ id: string; type: string; summary: string; score: number; eventAt: number; createdAt: string | undefined; happenedAt: string | null | undefined; }'."
+    },
+    {
+      "file": "src/agents/tools/memu-tools.ts",
+      "line": 2245,
+      "code": "TS2339",
+      "message": "Property 'summary' does not exist on type '{ item: { id: string; memoryType?: string | undefined; summary?: string | undefined; createdAt?: string | undefined; happenedAt?: string | null | undefined; }; score: number; }'."
+    },
+    {
+      "file": "src/agents/tools/memu-tools.ts",
+      "line": 3253,
+      "code": "TS2353",
+      "message": "Object literal may only specify known properties, and 'decompositionUsed' does not exist in type 'MemoryRecallTelemetryMeta'."
+    },
+    {
+      "file": "src/agents/tools/memu-tools.ts",
+      "line": 3297,
+      "code": "TS2345",
+      "message": "Argument of type 'string | null' is not assignable to parameter of type 'string'."
+    },
+    {
+      "file": "src/agents/tools/memu-tools.ts",
+      "line": 3458,
+      "code": "TS2322",
+      "message": "Type 'string | undefined' is not assignable to type 'string'."
+    },
+    {
+      "file": "src/agents/tools/memu-tools.ts",
+      "line": 3486,
+      "code": "TS2367",
+      "message": "This comparison appears to be unintentional because the types '\"query-intent\" | undefined' and '\"latent-project-match\"' have no overlap."
+    },
+    {
+      "file": "src/agents/tools/memu-tools.ts",
+      "line": 3911,
+      "code": "TS2322",
+      "message": "Type '{ item: { memoryType?: string | undefined; summary?: string | undefined; }; score: number; }[]' is not assignable to type '{ item: any; score: number; categories: string[]; }[]'."
+    },
+    {
+      "file": "src/agents/tools/msp-tool-framework.ts",
+      "line": 480,
+      "code": "TS2741",
+      "message": "Property 'details' is missing in type '{ content: { type: \"text\"; text: string; }[]; }' but required in type 'AgentToolResult<unknown>'."
+    },
+    {
+      "file": "src/agents/tools/os-docs-tool.ts",
+      "line": 111,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/plugin-builder-tool.ts",
+      "line": 847,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/podcast-generate-tool.ts",
+      "line": 516,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; details?: undefined; } | { content: { type: \"text\"; text: string; }[]; details: { path: string; rawPath: string; modelId: string; ... 7 more ...; error?: undefined; }; } | { ...; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/sessions-search-tool.ts",
+      "line": 43,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/slack-signal-monitor-tool.ts",
+      "line": 485,
+      "code": "TS2322",
+      "message": "Type '\"\" | CronMonitorCandidate' is not assignable to type 'CronMonitorCandidate | undefined'."
+    },
+    {
+      "file": "src/agents/tools/slack-signal-monitor-tool.ts",
+      "line": 746,
+      "code": "TS2339",
+      "message": "Property 'tasks' does not exist on type 'Promise<StorageAdapter>'."
+    },
+    {
+      "file": "src/agents/tools/slack-signal-monitor-tool.ts",
+      "line": 984,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<AgentToolResult<unknown> | { content: { type: \"text\"; text: string; }[]; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/tasks-tools.ts",
+      "line": 392,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/team-status-tool.ts",
+      "line": 42,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/terminal-tool.ts",
+      "line": 104,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/tts-generate-tool.ts",
+      "line": 192,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; details?: undefined; } | { content: { type: \"text\"; text: string; }[]; details: { path: string; model: string; voice: string; voiceId: string; sizeBytes: number; error?: undefined; }; } | { ...; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/agents/tools/visual-presence-tool.ts",
+      "line": 127,
+      "code": "TS2353",
+      "message": "Object literal may only specify known properties, and 'agentSessionKey' does not exist in type 'GatewayCallOptions'."
+    },
+    {
+      "file": "src/agents/tools/visual-presence-tool.ts",
+      "line": 160,
+      "code": "TS2353",
+      "message": "Object literal may only specify known properties, and 'agentSessionKey' does not exist in type 'GatewayCallOptions'."
+    },
+    {
+      "file": "src/agents/tools/visual-presence-tool.ts",
+      "line": 203,
+      "code": "TS2353",
+      "message": "Object literal may only specify known properties, and 'agentSessionKey' does not exist in type 'GatewayCallOptions'."
+    },
+    {
+      "file": "src/agents/tools/visual-presence-tool.ts",
+      "line": 241,
+      "code": "TS2353",
+      "message": "Object literal may only specify known properties, and 'agentSessionKey' does not exist in type 'GatewayCallOptions'."
+    },
+    {
+      "file": "src/agents/tools/youtube-thumbnail-tool.ts",
+      "line": 280,
+      "code": "TS2322",
+      "message": "Type '(_toolCallId: string, args: any) => Promise<{ content: { type: \"text\"; text: string; }[]; details?: undefined; } | { content: { type: \"text\"; text: string; }[]; details: { path: string; provider: Provider; prompt: string; aspect_ratio: string; error?: undefined; }; } | { ...; }>' is not assignable to type '(toolCallId: string, params: any, signal?: AbortSignal | undefined, onUpdate?: AgentToolUpdateCallback<unknown> | undefined) => Promise<AgentToolResult<unknown>>'."
+    },
+    {
+      "file": "src/argent-agent/compaction-utils.ts",
+      "line": 238,
+      "code": "TS2322",
+      "message": "Type '{ role: \"user\"; content: { type: \"text\"; text: string; }[]; }' is not assignable to type 'Message'."
+    },
+    {
+      "file": "src/argent-agent/compat.ts",
+      "line": 52,
+      "code": "TS2367",
+      "message": "This comparison appears to be unintentional because the types '\"minimal\" | \"low\" | \"medium\" | \"high\" | \"xhigh\"' and '\"off\"' have no overlap."
+    },
+    {
+      "file": "src/argent-agent/core-loop.ts",
+      "line": 623,
+      "code": "TS2339",
+      "message": "Property 'candidates' does not exist on type 'ExtractionResult'."
+    },
+    {
+      "file": "src/argent-agent/core-loop.ts",
+      "line": 626,
+      "code": "TS2339",
+      "message": "Property 'candidates' does not exist on type 'ExtractionResult'."
+    },
+    {
+      "file": "src/argent-agent/core-loop.ts",
+      "line": 626,
+      "code": "TS7006",
+      "message": "Parameter 'c' implicitly has an 'any' type."
+    },
+    {
+      "file": "src/argent-agent/proxy-stream.ts",
+      "line": 141,
+      "code": "TS2352",
+      "message": "Conversion of type 'TextContent' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
+    },
+    {
+      "file": "src/argent-agent/proxy-stream.ts",
+      "line": 173,
+      "code": "TS2352",
+      "message": "Conversion of type 'ThinkingContent' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
+    },
+    {
+      "file": "src/argent-agent/proxy-stream.ts",
+      "line": 196,
+      "code": "TS2352",
+      "message": "Conversion of type 'ToolCall' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
+    },
+    {
+      "file": "src/argent-agent/proxy-stream.ts",
+      "line": 215,
+      "code": "TS2352",
+      "message": "Conversion of type 'ToolCall' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
+    },
+    {
+      "file": "src/argent-agent/sis/storage.ts",
+      "line": 124,
+      "code": "TS2740",
+      "message": "Type '{ [x: string]: any; }' is missing the following properties from type 'Lesson': id, text, sourceEpisodeId, createdAt, and 7 more."
+    },
+    {
+      "file": "src/argent-agent/sis/storage.ts",
+      "line": 137,
+      "code": "TS2740",
+      "message": "Type '{ [x: string]: any; }' is missing the following properties from type 'Lesson': id, text, sourceEpisodeId, createdAt, and 7 more."
+    },
+    {
+      "file": "src/argent-agent/sis/storage.ts",
+      "line": 151,
+      "code": "TS2322",
+      "message": "Type '{ [x: string]: any; }[]' is not assignable to type 'Lesson[]'."
+    },
+    {
+      "file": "src/argent-agent/sis/storage.ts",
+      "line": 241,
+      "code": "TS2322",
+      "message": "Type '{ [x: string]: any; }[]' is not assignable to type 'LessonInjectionRecord[]'."
+    },
+    {
+      "file": "src/argent-agent/sis/storage.ts",
+      "line": 284,
+      "code": "TS2322",
+      "message": "Type '{ [x: string]: any; }[]' is not assignable to type 'Endorsement[]'."
+    },
+    {
+      "file": "src/argent-agent/sis/storage.ts",
+      "line": 285,
+      "code": "TS2322",
+      "message": "Type '{ [x: string]: any; }[]' is not assignable to type 'Endorsement[]'."
+    },
+    {
+      "file": "src/argent-agent/sis/storage.ts",
+      "line": 389,
+      "code": "TS2322",
+      "message": "Type '{ [x: string]: any; }[]' is not assignable to type 'Lesson[]'."
+    },
+    {
+      "file": "src/argent-ai/google-shared.ts",
+      "line": 16,
+      "code": "TS2307",
+      "message": "Cannot find module '@mariozechner/pi-ai/dist/providers/google-shared.js' or its corresponding type declarations."
+    },
+    {
+      "file": "src/browser/control-auth.ts",
+      "line": 61,
+      "code": "TS2367",
+      "message": "This comparison appears to be unintentional because the types '\"token\" | undefined' and '\"none\"' have no overlap."
+    },
+    {
+      "file": "src/browser/control-auth.ts",
+      "line": 65,
+      "code": "TS2367",
+      "message": "This comparison appears to be unintentional because the types '\"token\" | undefined' and '\"trusted-proxy\"' have no overlap."
+    },
+    {
+      "file": "src/browser/control-auth.ts",
+      "line": 78,
+      "code": "TS2367",
+      "message": "This comparison appears to be unintentional because the types '\"token\" | undefined' and '\"none\"' have no overlap."
+    },
+    {
+      "file": "src/browser/control-auth.ts",
+      "line": 81,
+      "code": "TS2367",
+      "message": "This comparison appears to be unintentional because the types '\"token\" | undefined' and '\"trusted-proxy\"' have no overlap."
+    },
+    {
+      "file": "src/browser/pw-session.mock-setup.ts",
+      "line": 2,
+      "code": "TS2307",
+      "message": "Cannot find module '../test-utils/vitest-mock-fn.js' or its corresponding type declarations."
+    },
+    {
+      "file": "src/channels/plugins/catalog.ts",
+      "line": 41,
+      "code": "TS2741",
+      "message": "Property 'org' is missing in type '{ config: number; workspace: number; global: number; bundled: number; }' but required in type 'Record<PluginOrigin, number>'."
+    },
+    {
+      "file": "src/cli/intent-cli.ts",
+      "line": 65,
+      "code": "TS2322",
+      "message": "Type 'unknown[]' is not assignable to type 'IntentSimulationScenario[]'."
+    },
+    {
+      "file": "src/cli/migrate-cli.ts",
+      "line": 1081,
+      "code": "TS2322",
+      "message": "Type 'Dirent<string>[]' is not assignable to type 'Dirent<NonSharedBuffer>[]'."
+    },
+    {
+      "file": "src/cli/migrate-cli.ts",
+      "line": 1086,
+      "code": "TS2345",
+      "message": "Argument of type 'NonSharedBuffer' is not assignable to parameter of type 'string'."
+    },
+    {
+      "file": "src/cli/migrate-cli.ts",
+      "line": 1088,
+      "code": "TS2367",
+      "message": "This comparison appears to be unintentional because the types 'NonSharedBuffer' and 'string' have no overlap."
+    },
+    {
+      "file": "src/commands/agent.ts",
+      "line": 437,
+      "code": "TS2304",
+      "message": "Cannot find name 'ensureAuthProfileStore'."
+    },
+    {
+      "file": "src/commands/gateway-authority-status.ts",
+      "line": 1761,
+      "code": "TS2339",
+      "message": "Property 'protocolVersion' does not exist on type '{ auth?: { issuedAtMs?: number | undefined; role: string; scopes: string[]; deviceToken: string; } | undefined; canvasHostUrl?: string | undefined; type: \"hello-ok\"; snapshot: { configPath?: string | undefined; ... 5 more ...; uptimeMs: number; }; policy: { ...; }; protocol: number; server: { ...; }; features: { ......'."
+    },
+    {
+      "file": "src/commands/gateway-authority-status.ts",
+      "line": 1761,
+      "code": "TS2339",
+      "message": "Property 'protocolVersion' does not exist on type '{ auth?: { issuedAtMs?: number | undefined; role: string; scopes: string[]; deviceToken: string; } | undefined; canvasHostUrl?: string | undefined; type: \"hello-ok\"; snapshot: { configPath?: string | undefined; ... 5 more ...; uptimeMs: number; }; policy: { ...; }; protocol: number; server: { ...; }; features: { ......'."
+    },
+    {
+      "file": "src/commands/health.ts",
+      "line": 192,
+      "code": "TS2339",
+      "message": "Property 'storage' does not exist on type 'ArgentConfig'."
+    },
+    {
+      "file": "src/commands/onboard-non-interactive/local.ts",
+      "line": 98,
+      "code": "TS2322",
+      "message": "Type 'string' is not assignable to type 'AuthChoice'."
+    },
+    {
+      "file": "src/commands/status.command.ts",
+      "line": 421,
+      "code": "TS2339",
+      "message": "Property 'productionDaemon' does not exist on type 'RustGatewayShadowStatus'."
+    },
+    {
+      "file": "src/commands/status.command.ts",
+      "line": 422,
+      "code": "TS2339",
+      "message": "Property 'productionDaemon' does not exist on type 'RustGatewayShadowStatus'."
+    },
+    {
+      "file": "src/config/load-profile.ts",
+      "line": 34,
+      "code": "TS2353",
+      "message": "Object literal may only specify known properties, and 'enabled' does not exist in type '{ every?: string | undefined; activeHours?: { start?: string | undefined; end?: string | undefined; timezone?: string | undefined; } | undefined; model?: string | undefined; session?: string | undefined; ... 6 more ...; verifier?: { ...; } | undefined; }'."
+    },
+    {
+      "file": "src/config/load-profile.ts",
+      "line": 57,
+      "code": "TS2353",
+      "message": "Object literal may only specify known properties, and 'enabled' does not exist in type '{ every?: string | undefined; activeHours?: { start?: string | undefined; end?: string | undefined; timezone?: string | undefined; } | undefined; model?: string | undefined; session?: string | undefined; ... 6 more ...; verifier?: { ...; } | undefined; }'."
+    },
+    {
+      "file": "src/connectors/catalog.ts",
+      "line": 726,
+      "code": "TS2322",
+      "message": "Type '({ id: string; summary: string; requiredMode: string | undefined; supportsJson: boolean | undefined; resource: string | undefined; actionClass: string | undefined; } | null)[]' is not assignable to type 'ConnectorCatalogCommand[]'."
+    },
+    {
+      "file": "src/connectors/catalog.ts",
+      "line": 747,
+      "code": "TS2677",
+      "message": "A type predicate's type must be assignable to its parameter's type."
+    },
+    {
+      "file": "src/connectors/catalog.ts",
+      "line": 748,
+      "code": "TS18047",
+      "message": "'entry' is possibly 'null'."
+    },
+    {
+      "file": "src/connectors/catalog.ts",
+      "line": 749,
+      "code": "TS18047",
+      "message": "'left' is possibly 'null'."
+    },
+    {
+      "file": "src/connectors/catalog.ts",
+      "line": 749,
+      "code": "TS18047",
+      "message": "'right' is possibly 'null'."
+    },
+    {
+      "file": "src/connectors/catalog.ts",
+      "line": 903,
+      "code": "TS2339",
+      "message": "Property 'detail' does not exist on type 'CommandRunSuccess | CommandRunFailure'."
+    },
+    {
+      "file": "src/connectors/session.ts",
+      "line": 67,
+      "code": "TS2322",
+      "message": "Type '({ tool: string; label: string | undefined; selectedCommands: string[]; scope: Record<string, unknown> | undefined; } | null)[]' is not assignable to type 'SessionConnectorSelection[]'."
+    },
+    {
+      "file": "src/connectors/session.ts",
+      "line": 92,
+      "code": "TS2677",
+      "message": "A type predicate's type must be assignable to its parameter's type."
+    },
+    {
+      "file": "src/data/connection.ts",
+      "line": 14,
+      "code": "TS2694",
+      "message": "Namespace 'Database' has no exported member 'default'."
+    },
+    {
+      "file": "src/data/connection.ts",
+      "line": 60,
+      "code": "TS2531",
+      "message": "Object is possibly 'null'."
+    },
+    {
+      "file": "src/data/connection.ts",
+      "line": 61,
+      "code": "TS2531",
+      "message": "Object is possibly 'null'."
+    },
+    {
+      "file": "src/data/migrate/seed-family-memory.ts",
+      "line": 149,
+      "code": "TS2352",
+      "message": "Conversion of type 'RowList<Row[]>' to type '{ id: string; title: string; description: string | null; status: string; priority: string | null; source: string | null; created_at: string; updated_at: string; }[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
+    },
+    {
+      "file": "src/data/migrate/seed-family-memory.ts",
+      "line": 193,
+      "code": "TS2352",
+      "message": "Conversion of type 'RowList<Row[]>' to type '{ id: string; title: string; content: string; confidence: number; created_at: string; }[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
+    },
+    {
+      "file": "src/data/migrate/seed-family-memory.ts",
+      "line": 248,
+      "code": "TS2345",
+      "message": "Argument of type '(row: { id: string; }) => string' is not assignable to parameter of type '(value: Row, index: number, array: Row[]) => string'."
+    },
+    {
+      "file": "src/data/migrate/sqlite-to-pg.ts",
+      "line": 121,
+      "code": "TS2769",
+      "message": "No overload matches this call."
+    },
+    {
+      "file": "src/data/migrate/sqlite-to-pg.ts",
+      "line": 661,
+      "code": "TS2322",
+      "message": "Type 'PgTableWithColumns<{ name: \"tasks\"; schema: undefined; columns: { id: PgColumn<{ name: \"id\"; tableName: \"tasks\"; dataType: \"string\"; columnType: \"PgText\"; data: string; driverParam: string; notNull: true; hasDefault: false; ... 6 more ...; generated: undefined; }, {}, {}>; ... 20 more ...; jobTemplateId: PgColumn<.....' is not assignable to type 'PgTableWithColumns<{ name: \"resources\"; schema: undefined; columns: { id: PgColumn<{ name: \"id\"; tableName: \"resources\"; dataType: \"string\"; columnType: \"PgText\"; data: string; driverParam: string; notNull: true; hasDefault: false; ... 6 more ...; generated: undefined; }, {}, {}>; ... 8 more ...; updatedAt: PgColumn...'."
+    },
+    {
+      "file": "src/data/migrate/validate-stack.ts",
+      "line": 78,
+      "code": "TS2351",
+      "message": "This expression is not constructable."
+    },
+    {
+      "file": "src/data/pg-adapter.ts",
+      "line": 3403,
+      "code": "TS2339",
+      "message": "Property 'agentId' does not exist on type 'PgAdapter'."
+    },
+    {
+      "file": "src/data/pg-adapter.ts",
+      "line": 3517,
+      "code": "TS2339",
+      "message": "Property 'agentId' does not exist on type 'PgAdapter'."
+    },
+    {
+      "file": "src/data/pg-adapter.ts",
+      "line": 3521,
+      "code": "TS2339",
+      "message": "Property 'agentId' does not exist on type 'PgAdapter'."
+    },
+    {
+      "file": "src/data/redis-agent-state.ts",
+      "line": 26,
+      "code": "TS2709",
+      "message": "Cannot use namespace 'Redis' as a type."
+    },
+    {
+      "file": "src/data/redis-agent-state.ts",
+      "line": 33,
+      "code": "TS2709",
+      "message": "Cannot use namespace 'Redis' as a type."
+    },
+    {
+      "file": "src/data/redis-client.ts",
+      "line": 14,
+      "code": "TS2709",
+      "message": "Cannot use namespace 'Redis' as a type."
+    },
+    {
+      "file": "src/data/redis-client.ts",
+      "line": 20,
+      "code": "TS2709",
+      "message": "Cannot use namespace 'Redis' as a type."
+    },
+    {
+      "file": "src/data/redis-client.ts",
+      "line": 24,
+      "code": "TS2351",
+      "message": "This expression is not constructable."
+    },
+    {
+      "file": "src/data/redis-client.ts",
+      "line": 31,
+      "code": "TS7006",
+      "message": "Parameter 'times' implicitly has an 'any' type."
+    },
+    {
+      "file": "src/data/redis-client.ts",
+      "line": 42,
+      "code": "TS7006",
+      "message": "Parameter 'err' implicitly has an 'any' type."
+    },
+    {
+      "file": "src/data/redis-client.ts",
+      "line": 83,
+      "code": "TS2709",
+      "message": "Cannot use namespace 'Redis' as a type."
+    },
+    {
+      "file": "src/data/redis-client.ts",
+      "line": 98,
+      "code": "TS2709",
+      "message": "Cannot use namespace 'Redis' as a type."
+    },
+    {
+      "file": "src/data/redis-client.ts",
+      "line": 114,
+      "code": "TS2709",
+      "message": "Cannot use namespace 'Redis' as a type."
+    },
+    {
+      "file": "src/data/redis-client.ts",
+      "line": 120,
+      "code": "TS2709",
+      "message": "Cannot use namespace 'Redis' as a type."
+    },
+    {
+      "file": "src/data/redis-client.ts",
+      "line": 126,
+      "code": "TS2709",
+      "message": "Cannot use namespace 'Redis' as a type."
+    },
+    {
+      "file": "src/data/redis-client.ts",
+      "line": 128,
+      "code": "TS7006",
+      "message": "Parameter 'k' implicitly has an 'any' type."
+    },
+    {
+      "file": "src/data/redis-client.ts",
+      "line": 149,
+      "code": "TS2709",
+      "message": "Cannot use namespace 'Redis' as a type."
+    },
+    {
+      "file": "src/data/redis-client.ts",
+      "line": 166,
+      "code": "TS2709",
+      "message": "Cannot use namespace 'Redis' as a type."
+    },
+    {
+      "file": "src/data/redis-client.ts",
+      "line": 216,
+      "code": "TS2709",
+      "message": "Cannot use namespace 'Redis' as a type."
+    },
+    {
+      "file": "src/data/redis-client.ts",
+      "line": 236,
+      "code": "TS2709",
+      "message": "Cannot use namespace 'Redis' as a type."
+    },
+    {
+      "file": "src/data/redis-shared-context.ts",
+      "line": 33,
+      "code": "TS2709",
+      "message": "Cannot use namespace 'Redis' as a type."
+    },
+    {
+      "file": "src/gateway/mcp-http.ts",
+      "line": 37,
+      "code": "TS2339",
+      "message": "Property 'version' does not exist on type 'ArgentConfig'."
+    },
+    {
+      "file": "src/gateway/mcp-tools.ts",
+      "line": 236,
+      "code": "TS2339",
+      "message": "Property 'name' does not exist on type 'AgentDefaultsConfig'."
+    },
+    {
+      "file": "src/gateway/mcp-tools.ts",
+      "line": 473,
+      "code": "TS2339",
+      "message": "Property 'cron' does not exist on type 'CronSchedule'."
+    },
+    {
+      "file": "src/gateway/mcp-tools.ts",
+      "line": 473,
+      "code": "TS2339",
+      "message": "Property 'intervalMinutes' does not exist on type 'CronSchedule'."
+    },
+    {
+      "file": "src/gateway/mcp-tools.ts",
+      "line": 474,
+      "code": "TS2339",
+      "message": "Property 'intervalMinutes' does not exist on type 'CronSchedule'."
+    },
+    {
+      "file": "src/gateway/mcp-tools.ts",
+      "line": 475,
+      "code": "TS2339",
+      "message": "Property 'at' does not exist on type 'CronSchedule'."
+    },
+    {
+      "file": "src/gateway/server-methods/commands.ts",
+      "line": 72,
+      "code": "TS2554",
+      "message": "Expected 2 arguments, but got 1."
+    },
+    {
+      "file": "src/gateway/server-methods/commands.ts",
+      "line": 93,
+      "code": "TS2322",
+      "message": "Type 'string | undefined' is not assignable to type 'ThinkLevel | undefined'."
+    },
+    {
+      "file": "src/gateway/server-methods/connectors.ts",
+      "line": 34,
+      "code": "TS2339",
+      "message": "Property 'INTERNAL_ERROR' does not exist on type '{ readonly NOT_LINKED: \"NOT_LINKED\"; readonly NOT_PAIRED: \"NOT_PAIRED\"; readonly AGENT_TIMEOUT: \"AGENT_TIMEOUT\"; readonly INVALID_REQUEST: \"INVALID_REQUEST\"; readonly UNAVAILABLE: \"UNAVAILABLE\"; }'."
+    },
+    {
+      "file": "src/gateway/server-methods/copilot.ts",
+      "line": 225,
+      "code": "TS2339",
+      "message": "Property 'task' does not exist on type 'JobTaskContext'."
+    },
+    {
+      "file": "src/gateway/server-methods/execution-worker.ts",
+      "line": 50,
+      "code": "TS18046",
+      "message": "'control' is of type 'unknown'."
+    },
+    {
+      "file": "src/gateway/server-methods/execution-worker.ts",
+      "line": 80,
+      "code": "TS18046",
+      "message": "'control' is of type 'unknown'."
+    },
+    {
+      "file": "src/gateway/server-methods/execution-worker.ts",
+      "line": 113,
+      "code": "TS18046",
+      "message": "'result' is of type 'unknown'."
+    },
+    {
+      "file": "src/gateway/server-methods/execution-worker.ts",
+      "line": 143,
+      "code": "TS18046",
+      "message": "'control' is of type 'unknown'."
+    },
+    {
+      "file": "src/gateway/server-methods/jobs-orchestrator.ts",
+      "line": 64,
+      "code": "TS2339",
+      "message": "Property 'enqueueEvent' does not exist on type '{ stop: () => void; updateConfig: (_cfg?: ArgentConfig | undefined) => void; getStatus: () => { enabled: boolean; pollMs: number; running: boolean; lastCycleAt: null; lastCycleMs: null; metrics: { ...; }; }; }'."
+    },
+    {
+      "file": "src/gateway/server-methods/providers.ts",
+      "line": 105,
+      "code": "TS2322",
+      "message": "Type 'number' is not assignable to type 'string'."
+    },
+    {
+      "file": "src/gateway/server-methods/specforge.ts",
+      "line": 41,
+      "code": "TS2345",
+      "message": "Argument of type 'string' is not assignable to parameter of type 'KnownProvider'."
+    },
+    {
+      "file": "src/gateway/server-methods/system.ts",
+      "line": 149,
+      "code": "TS2339",
+      "message": "Property 'INTERNAL_ERROR' does not exist on type '{ readonly NOT_LINKED: \"NOT_LINKED\"; readonly NOT_PAIRED: \"NOT_PAIRED\"; readonly AGENT_TIMEOUT: \"AGENT_TIMEOUT\"; readonly INVALID_REQUEST: \"INVALID_REQUEST\"; readonly UNAVAILABLE: \"UNAVAILABLE\"; }'."
+    },
+    {
+      "file": "src/gateway/server-methods/terminal.ts",
+      "line": 190,
+      "code": "TS2339",
+      "message": "Property 'INTERNAL_ERROR' does not exist on type '{ readonly NOT_LINKED: \"NOT_LINKED\"; readonly NOT_PAIRED: \"NOT_PAIRED\"; readonly AGENT_TIMEOUT: \"AGENT_TIMEOUT\"; readonly INVALID_REQUEST: \"INVALID_REQUEST\"; readonly UNAVAILABLE: \"UNAVAILABLE\"; }'."
+    },
+    {
+      "file": "src/gateway/server-methods/terminal.ts",
+      "line": 198,
+      "code": "TS2339",
+      "message": "Property 'INVALID_PARAMS' does not exist on type '{ readonly NOT_LINKED: \"NOT_LINKED\"; readonly NOT_PAIRED: \"NOT_PAIRED\"; readonly AGENT_TIMEOUT: \"AGENT_TIMEOUT\"; readonly INVALID_REQUEST: \"INVALID_REQUEST\"; readonly UNAVAILABLE: \"UNAVAILABLE\"; }'."
+    },
+    {
+      "file": "src/gateway/server-methods/terminal.ts",
+      "line": 203,
+      "code": "TS2339",
+      "message": "Property 'INVALID_PARAMS' does not exist on type '{ readonly NOT_LINKED: \"NOT_LINKED\"; readonly NOT_PAIRED: \"NOT_PAIRED\"; readonly AGENT_TIMEOUT: \"AGENT_TIMEOUT\"; readonly INVALID_REQUEST: \"INVALID_REQUEST\"; readonly UNAVAILABLE: \"UNAVAILABLE\"; }'."
+    },
+    {
+      "file": "src/gateway/server-methods/terminal.ts",
+      "line": 238,
+      "code": "TS2339",
+      "message": "Property 'INVALID_PARAMS' does not exist on type '{ readonly NOT_LINKED: \"NOT_LINKED\"; readonly NOT_PAIRED: \"NOT_PAIRED\"; readonly AGENT_TIMEOUT: \"AGENT_TIMEOUT\"; readonly INVALID_REQUEST: \"INVALID_REQUEST\"; readonly UNAVAILABLE: \"UNAVAILABLE\"; }'."
+    },
+    {
+      "file": "src/gateway/server-methods/terminal.ts",
+      "line": 244,
+      "code": "TS2339",
+      "message": "Property 'INVALID_PARAMS' does not exist on type '{ readonly NOT_LINKED: \"NOT_LINKED\"; readonly NOT_PAIRED: \"NOT_PAIRED\"; readonly AGENT_TIMEOUT: \"AGENT_TIMEOUT\"; readonly INVALID_REQUEST: \"INVALID_REQUEST\"; readonly UNAVAILABLE: \"UNAVAILABLE\"; }'."
+    },
+    {
+      "file": "src/gateway/server-methods/terminal.ts",
+      "line": 263,
+      "code": "TS2339",
+      "message": "Property 'INVALID_PARAMS' does not exist on type '{ readonly NOT_LINKED: \"NOT_LINKED\"; readonly NOT_PAIRED: \"NOT_PAIRED\"; readonly AGENT_TIMEOUT: \"AGENT_TIMEOUT\"; readonly INVALID_REQUEST: \"INVALID_REQUEST\"; readonly UNAVAILABLE: \"UNAVAILABLE\"; }'."
+    },
+    {
+      "file": "src/gateway/server-methods/terminal.ts",
+      "line": 268,
+      "code": "TS2339",
+      "message": "Property 'INVALID_PARAMS' does not exist on type '{ readonly NOT_LINKED: \"NOT_LINKED\"; readonly NOT_PAIRED: \"NOT_PAIRED\"; readonly AGENT_TIMEOUT: \"AGENT_TIMEOUT\"; readonly INVALID_REQUEST: \"INVALID_REQUEST\"; readonly UNAVAILABLE: \"UNAVAILABLE\"; }'."
+    },
+    {
+      "file": "src/gateway/server-methods/terminal.ts",
+      "line": 282,
+      "code": "TS2339",
+      "message": "Property 'INVALID_PARAMS' does not exist on type '{ readonly NOT_LINKED: \"NOT_LINKED\"; readonly NOT_PAIRED: \"NOT_PAIRED\"; readonly AGENT_TIMEOUT: \"AGENT_TIMEOUT\"; readonly INVALID_REQUEST: \"INVALID_REQUEST\"; readonly UNAVAILABLE: \"UNAVAILABLE\"; }'."
+    },
+    {
+      "file": "src/gateway/server.impl.ts",
+      "line": 270,
+      "code": "TS2353",
+      "message": "Object literal may only specify known properties, and 'config' does not exist in type '{ allowKeychainPrompt?: boolean | undefined; }'."
+    },
+    {
+      "file": "src/gateway/server.impl.ts",
+      "line": 913,
+      "code": "TS2322",
+      "message": "Type 'ExecutionWorkerRunnerLike' is not assignable to type 'ExecutionWorkerRunner'."
+    },
+    {
+      "file": "src/gateway/server.impl.ts",
+      "line": 965,
+      "code": "TS2322",
+      "message": "Type 'ExecutionWorkerRunnerLike' is not assignable to type 'ExecutionWorkerRunner'."
+    },
+    {
+      "file": "src/gateway/test-helpers.mocks.ts",
+      "line": 237,
+      "code": "TS2675",
+      "message": "Cannot extend a class '\"/Users/sem/code/argent-core/node_modules/.pnpm/@mariozechner+pi-coding-agent@0.70.2_@modelcontextprotocol+sdk@1.29.0_zod@4.3.6__ws@8.20.0_zod@4.3.6/node_modules/@mariozechner/pi-coding-agent/dist/core/model-registry\".ModelRegistry'. Class constructor is marked as private."
+    },
+    {
+      "file": "src/infra/contemplation-runner.ts",
+      "line": 1166,
+      "code": "TS2353",
+      "message": "Object literal may only specify known properties, and 'fallback' does not exist in type 'Episode'."
+    },
+    {
+      "file": "src/infra/contemplation-runner.ts",
+      "line": 1172,
+      "code": "TS18048",
+      "message": "'episode' is possibly 'undefined'."
+    },
+    {
+      "file": "src/infra/contemplation-runner.ts",
+      "line": 1173,
+      "code": "TS18048",
+      "message": "'episode' is possibly 'undefined'."
+    },
+    {
+      "file": "src/infra/contemplation-runner.ts",
+      "line": 1181,
+      "code": "TS18048",
+      "message": "'episode' is possibly 'undefined'."
+    },
+    {
+      "file": "src/infra/contemplation-runner.ts",
+      "line": 1191,
+      "code": "TS18048",
+      "message": "'episode' is possibly 'undefined'."
+    },
+    {
+      "file": "src/infra/contemplation-runner.ts",
+      "line": 1192,
+      "code": "TS18048",
+      "message": "'episode' is possibly 'undefined'."
+    },
+    {
+      "file": "src/infra/contemplation-runner.ts",
+      "line": 1193,
+      "code": "TS18048",
+      "message": "'episode' is possibly 'undefined'."
+    },
+    {
+      "file": "src/infra/dispatch-contracts.ts",
+      "line": 624,
+      "code": "TS2349",
+      "message": "This expression is not callable."
+    },
+    {
+      "file": "src/infra/dispatch-contracts.ts",
+      "line": 670,
+      "code": "TS2349",
+      "message": "This expression is not callable."
+    },
+    {
+      "file": "src/infra/dispatch-contracts.ts",
+      "line": 704,
+      "code": "TS2349",
+      "message": "This expression is not callable."
+    },
+    {
+      "file": "src/infra/dispatch-contracts.ts",
+      "line": 728,
+      "code": "TS2349",
+      "message": "This expression is not callable."
+    },
+    {
+      "file": "src/infra/dispatch-contracts.ts",
+      "line": 728,
+      "code": "TS2349",
+      "message": "This expression is not callable."
+    },
+    {
+      "file": "src/infra/dispatch-contracts.ts",
+      "line": 729,
+      "code": "TS2349",
+      "message": "This expression is not callable."
+    },
+    {
+      "file": "src/infra/dispatch-contracts.ts",
+      "line": 729,
+      "code": "TS2349",
+      "message": "This expression is not callable."
+    },
+    {
+      "file": "src/infra/dispatch-contracts.ts",
+      "line": 730,
+      "code": "TS2349",
+      "message": "This expression is not callable."
+    },
+    {
+      "file": "src/infra/dispatch-contracts.ts",
+      "line": 730,
+      "code": "TS2349",
+      "message": "This expression is not callable."
+    },
+    {
+      "file": "src/infra/heartbeat-runner.ts",
+      "line": 1149,
+      "code": "TS2339",
+      "message": "Property 'dashboard' does not exist on type 'ArgentConfig'."
+    },
+    {
+      "file": "src/infra/pg-secret-store.ts",
+      "line": 431,
+      "code": "TS2345",
+      "message": "Argument of type 'string | undefined' is not assignable to parameter of type 'string'."
+    },
+    {
+      "file": "src/infra/pg-secret-store.ts",
+      "line": 436,
+      "code": "TS2322",
+      "message": "Type 'string[] | null | undefined' is not assignable to type 'string[] | undefined'."
+    },
+    {
+      "file": "src/infra/pg-secret-store.ts",
+      "line": 439,
+      "code": "TS2322",
+      "message": "Type 'string[] | null | undefined' is not assignable to type 'string[] | undefined'."
+    },
+    {
+      "file": "src/infra/pg-secret-store.ts",
+      "line": 442,
+      "code": "TS2322",
+      "message": "Type 'string[] | null | undefined' is not assignable to type 'string[] | undefined'."
+    },
+    {
+      "file": "src/infra/pg-secret-store.ts",
+      "line": 472,
+      "code": "TS2345",
+      "message": "Argument of type 'string | undefined' is not assignable to parameter of type 'string'."
+    },
+    {
+      "file": "src/infra/rust-gateway-parity-report.ts",
+      "line": 403,
+      "code": "TS2322",
+      "message": "Type '{ sourceFixtureId: string; surface: string; auditRecordType: string; requiredReceiptCodes: string[]; noLiveProof: string[]; }[]' is not assignable to type '{ sourceFixtureId: string; surface: \"workflows.run\" | \"cron.add\" | \"chat.send\"; auditRecordType: \"duplicate-prevention\" | \"failed-promotion\" | \"denied-method\" | \"rollback-required\"; requiredReceiptCodes: (\"RUST_CANARY_DENIED\" | ... 2 more ... | \"RUST_CANARY_DUPLICATE_PREVENTED\")[]; noLiveProof: string[]; }[]'."
+    },
+    {
+      "file": "src/infra/rust-gateway-parity-report.ts",
+      "line": 535,
+      "code": "TS2322",
+      "message": "Type '{ fixtureId: string; surface: string; status: string; syntheticOnly: boolean; failedPromotionReceipt: { expectedCode: string; requiredFields: string[]; }; deniedMethodReceipts: { method: string; expectedCode: \"RUST_CANARY_SCOPE_DENIED\"; requiredFields: string[]; }[]; rollbackReceipt: { ...; }; noLiveProof: string[];...' is not assignable to type '{ fixtureId: string; surface: \"workflows.run\" | \"cron.add\" | \"chat.send\"; status: \"blocked\"; syntheticOnly: true; failedPromotionReceipt: { expectedCode: \"RUST_CANARY_DENIED\"; requiredFields: string[]; }; deniedMethodReceipts: { ...; }[]; rollbackReceipt: { ...; }; noLiveProof: string[]; }[]'."
+    },
+    {
+      "file": "src/infra/rust-gateway-parity-report.ts",
+      "line": 671,
+      "code": "TS2322",
+      "message": "Type '{ surface: string; status: string; owner: string; canaryFlag: string; requiredScope: string; allowedMethods: string[]; deniedMethods: string[]; requiredProof: string[]; rollbackProof: string[]; noLiveProof: string[]; }[]' is not assignable to type '{ surface: \"workflows.run\" | \"cron.add\" | \"chat.send\"; status: \"blocked\"; owner: \"master-operator\"; canaryFlag: string; requiredScope: string; allowedMethods: string[]; deniedMethods: string[]; requiredProof: string[]; rollbackProof: string[]; noLiveProof: string[]; }[]'."
+    },
+    {
+      "file": "src/infra/rust-gateway-parity-report.ts",
+      "line": 843,
+      "code": "TS2322",
+      "message": "Type '{ fixtureId: string; surface: string; status: string; syntheticOnly: boolean; rollbackGate: string[]; duplicatePreventionGate: string[]; tokenAuthGate: string[]; noLiveProof: string[]; }[]' is not assignable to type '{ fixtureId: string; surface: \"workflows.run\" | \"cron.add\" | \"chat.send\"; status: \"blocked\"; syntheticOnly: true; rollbackGate: string[]; duplicatePreventionGate: string[]; tokenAuthGate: string[]; noLiveProof: string[]; }[]'."
+    },
+    {
+      "file": "src/infra/rust-gateway-parity-report.ts",
+      "line": 930,
+      "code": "TS2322",
+      "message": "Type '{ surface: string; status: string; owner: string; requiredProof: string[]; rollbackProof: string[]; duplicatePreventionProof: string[]; }[]' is not assignable to type '{ surface: \"workflows.run\" | \"cron.add\" | \"chat.send\" | \"authority-switch\"; status: \"blocked\"; owner: \"master-operator\"; requiredProof: string[]; rollbackProof: string[]; duplicatePreventionProof: string[]; }[]'."
+    },
+    {
+      "file": "src/infra/rust-gateway-parity-report.ts",
+      "line": 1049,
+      "code": "TS2322",
+      "message": "Type '{ fixtureId: string; surface: string; status: string; canaryFlag: string; syntheticOnly: boolean; requiredProof: string[]; noLiveProof: string[]; }[]' is not assignable to type '{ fixtureId: string; surface: \"workflows.run\" | \"cron.add\" | \"chat.send\"; status: \"blocked\"; canaryFlag: string; syntheticOnly: true; requiredProof: string[]; noLiveProof: string[]; }[]'."
+    },
+    {
+      "file": "src/infra/secret-audit.ts",
+      "line": 162,
+      "code": "TS7006",
+      "message": "Parameter 'row' implicitly has an 'any' type."
+    },
+    {
+      "file": "src/infra/secret-audit.ts",
+      "line": 181,
+      "code": "TS7006",
+      "message": "Parameter 'row' implicitly has an 'any' type."
+    },
+    {
+      "file": "src/infra/sis-runner.ts",
+      "line": 746,
+      "code": "TS2352",
+      "message": "Conversion of type 'SisConsolidationContract' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
+    },
+    {
+      "file": "src/infra/workflow-package.ts",
+      "line": 688,
+      "code": "TS2339",
+      "message": "Property 'titleTemplate' does not exist on type 'OutputPayloadConfig & { outputType: \"docpanel\"; title: string; format?: string | undefined; }'."
+    },
+    {
+      "file": "src/media/input-files.ts",
+      "line": 39,
+      "code": "TS2322",
+      "message": "Type 'Promise<{ default: JSZip; files: { [key: string]: JSZipObject; }; file(path: string): JSZipObject | null; file(path: RegExp): JSZipObject[]; file<T extends JSZip.InputType>(path: string, data: InputByType[T] | Promise<...>, options?: JSZipFileOptions | undefined): JSZip; file<T extends JSZip.InputType>(path: string,...' is not assignable to type 'Promise<JSZip>'."
+    },
+    {
+      "file": "src/media/input-files.ts",
+      "line": 46,
+      "code": "TS2322",
+      "message": "Type 'JSZip | null' is not assignable to type 'JSZip'."
+    },
+    {
+      "file": "src/media/input-files.ts",
+      "line": 249,
+      "code": "TS2339",
+      "message": "Property 'default' does not exist on type 'JSZip'."
+    },
+    {
+      "file": "src/media/input-files.ts",
+      "line": 346,
+      "code": "TS2339",
+      "message": "Property 'default' does not exist on type 'JSZip'."
+    },
+    {
+      "file": "src/memory/extract/prompts/index.ts",
+      "line": 124,
+      "code": "TS2741",
+      "message": "Property 'episode' is missing in type '{ profile: string; event: string; knowledge: string; behavior: string; skill: string; tool: string; self: string; }' but required in type 'Record<MemoryType, string>'."
+    },
+    {
+      "file": "src/memory/identity/reflection.ts",
+      "line": 104,
+      "code": "TS2322",
+      "message": "Type 'string | null' is not assignable to type 'string | undefined'."
+    },
+    {
+      "file": "src/memory/identity/self-model.ts",
+      "line": 196,
+      "code": "TS2741",
+      "message": "Property 'missing' is missing in type '{ name: \"IDENTITY_CONTEXT.md\"; content: string; path: string; }' but required in type 'WorkspaceBootstrapFile'."
+    },
+    {
+      "file": "src/memory/memu-store.ts",
+      "line": 1767,
+      "code": "TS2739",
+      "message": "Type '{ id: `${string}-${string}-${string}-${string}-${string}`; provider: string; model: string; tier: string; sessionType: string; complexityScore: number; durationMs: number; success: boolean; errorType: string | null; ... 7 more ...; createdAt: string; }' is missing the following properties from type 'ModelFeedbackRecord': selfEvalScore, selfEvalReasoning"
+    },
+    {
+      "file": "src/tui/components/filterable-select-list.ts",
+      "line": 114,
+      "code": "TS2345",
+      "message": "Argument of type '\"selectCancel\"' is not assignable to parameter of type 'keyof Keybindings'."
+    },
+    {
+      "file": "src/tui/components/searchable-select-list.ts",
+      "line": 283,
+      "code": "TS2345",
+      "message": "Argument of type '\"selectCancel\"' is not assignable to parameter of type 'keyof Keybindings'."
+    },
+    {
+      "file": "src/utils/agent-fetch.demo.ts",
+      "line": 29,
+      "code": "TS2339",
+      "message": "Property 'manifest' does not exist on type '{ hasLlmsTxt: boolean; hasLlmsFullTxt: boolean; hasAgentCard: boolean; manifest?: LlmsManifest | undefined; agentCard?: Record<string, unknown> | undefined; supportsMarkdown: boolean; } | { ...; }'."
+    },
+    {
+      "file": "src/utils/agent-fetch.demo.ts",
+      "line": 30,
+      "code": "TS2339",
+      "message": "Property 'manifest' does not exist on type '{ hasLlmsTxt: boolean; hasLlmsFullTxt: boolean; hasAgentCard: boolean; manifest?: LlmsManifest | undefined; agentCard?: Record<string, unknown> | undefined; supportsMarkdown: boolean; } | { ...; }'."
+    },
+    {
+      "file": "src/utils/agent-fetch.demo.ts",
+      "line": 31,
+      "code": "TS2339",
+      "message": "Property 'manifest' does not exist on type '{ hasLlmsTxt: boolean; hasLlmsFullTxt: boolean; hasAgentCard: boolean; manifest?: LlmsManifest | undefined; agentCard?: Record<string, unknown> | undefined; supportsMarkdown: boolean; } | { ...; }'."
+    },
+    {
+      "file": "src/wallet/wallet.ts",
+      "line": 91,
+      "code": "TS2307",
+      "message": "Cannot find module '@coinbase/agentkit' or its corresponding type declarations."
+    },
+    {
+      "file": "src/wizard/onboarding.local-runtime.ts",
+      "line": 43,
+      "code": "TS2339",
+      "message": "Property 'trim' does not exist on type 'never'."
+    }
+  ]
+}
