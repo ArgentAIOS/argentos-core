@@ -98,6 +98,22 @@ describe("gatewayAuthorityStatusCommand", () => {
     expect(parsed.installedDaemonCanary.queried).toBe(false);
     expect(parsed.installedDaemonCanary.productionTrafficUsed).toBe(false);
     expect(parsed.installedDaemonCanary.authoritySwitchAllowed).toBe(false);
+    expect(parsed.installedServiceReadiness).toMatchObject({
+      status: "not-configured",
+      proofKind: "none",
+      localOnly: true,
+      installedServiceControlUsed: false,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+      authorityChanges: [],
+      missingCapabilities: [
+        "explicit-loopback-url",
+        "explicit-token-or-password",
+        "local-daemon-query",
+        "receipt-persistence-complete-surfaces",
+        "rustGateway.canaryReceipts.status-exposure",
+      ],
+    });
     expect(parsed.nextCommands).toContain(
       "pnpm rust-gateway:parity:report -- --startup-timeout-ms 60000 --request-timeout-ms 10000",
     );
@@ -159,6 +175,38 @@ describe("gatewayAuthorityStatusCommand", () => {
       productionTrafficUsed: false,
       authoritySwitchAllowed: false,
       error: "ECONNREFUSED",
+    });
+    expect(summary.installedServiceReadiness).toMatchObject({
+      status: "blocked",
+      proofKind: "loopback-local-daemon",
+      queried: true,
+      methodExposure: {
+        method: "rustGateway.canaryReceipts.status",
+        exposed: false,
+        source: "queried-loopback",
+      },
+      tokenDiscovery: {
+        status: "explicit-only",
+        secretStoredOrExposed: false,
+      },
+      receiptPersistence: {
+        status: "not-proven",
+        receiptProofComplete: false,
+      },
+      rollbackReadiness: {
+        rollbackNodeExecutableLocalProof: true,
+        productionInstalledDaemonRollback: "blocked",
+        authoritySwitchAllowed: false,
+      },
+      missingCapabilities: [
+        "receipt-persistence-complete-surfaces",
+        "rustGateway.canaryReceipts.status-exposure",
+      ],
+      remainingPromotionGaps: [
+        "production-installed-daemon-canary",
+        "production-installed-daemon-rollback",
+        "Rust authority promotion",
+      ],
     });
   });
 
@@ -304,6 +352,40 @@ describe("gatewayAuthorityStatusCommand", () => {
       missingReceiptSurfaces: [],
       receiptSurfaces: ["chat.send", "cron.add", "workflows.run"],
       blockers: [],
+    });
+    expect(summary.installedServiceReadiness).toMatchObject({
+      status: "read-only-ready",
+      proofKind: "loopback-local-daemon",
+      queried: true,
+      localOnly: true,
+      installedServiceControlUsed: false,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+      authorityChanges: [],
+      methodExposure: {
+        exposed: true,
+        source: "queried-loopback",
+      },
+      tokenDiscovery: {
+        status: "explicit-only",
+        secretStoredOrExposed: false,
+      },
+      receiptPersistence: {
+        status: "proven",
+        receiptProofComplete: true,
+        missingReceiptSurfaces: [],
+      },
+      rollbackReadiness: {
+        rollbackNodeExecutableLocalProof: true,
+        productionInstalledDaemonRollback: "blocked",
+        authoritySwitchAllowed: false,
+      },
+      missingCapabilities: [],
+      remainingPromotionGaps: [
+        "production-installed-daemon-canary",
+        "production-installed-daemon-rollback",
+        "Rust authority promotion",
+      ],
     });
   });
 
@@ -487,6 +569,21 @@ describe("gatewayAuthorityStatusCommand", () => {
       productionTrafficUsed: false,
       authoritySwitchAllowed: false,
     });
+    expect(smoke.installedServiceReadiness).toMatchObject({
+      status: "not-configured",
+      proofKind: "none",
+      queried: false,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+      authorityChanges: [],
+      missingCapabilities: [
+        "explicit-loopback-url",
+        "explicit-token-or-password",
+        "local-daemon-query",
+        "receipt-persistence-complete-surfaces",
+        "rustGateway.canaryReceipts.status-exposure",
+      ],
+    });
     expect(smoke.blockers).toContain("explicit local-only smoke opt-in is required");
     expect(smoke.blockers).toContain("installed daemon canary status is not configured");
     expect(smoke.operatorGuidance.join("\n")).toContain("--installed-canary-url");
@@ -567,6 +664,24 @@ describe("gatewayAuthorityStatusCommand", () => {
       receiptProofComplete: true,
       missingReceiptSurfaces: [],
     });
+    expect(smoke.installedServiceReadiness).toMatchObject({
+      status: "read-only-ready",
+      proofKind: "loopback-local-daemon",
+      queried: true,
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+      authorityChanges: [],
+      missingCapabilities: [],
+      receiptPersistence: {
+        status: "proven",
+        receiptProofComplete: true,
+        missingReceiptSurfaces: [],
+      },
+      rollbackReadiness: {
+        rollbackNodeExecutableLocalProof: true,
+        productionInstalledDaemonRollback: "blocked",
+      },
+    });
     expect(smoke.blockers).toEqual([]);
     expect(smoke.operatorGuidance.join("\n")).toContain("PASS");
     expect(smoke.proof).toContain(
@@ -599,6 +714,16 @@ describe("gatewayAuthorityStatusCommand", () => {
       denialReceiptPresent: true,
       duplicatePreventionReceiptPresent: true,
       receiptSurfaces: ["chat.send", "cron.add", "workflows.run"],
+    });
+    expect(smoke.installedServiceReadiness).toMatchObject({
+      status: "read-only-ready",
+      proofKind: "local-self-check",
+      methodExposure: {
+        method: "rustGateway.canaryReceipts.status",
+        exposed: true,
+        source: "local-self-check",
+      },
+      missingCapabilities: [],
     });
     expect(smoke.blockers).toEqual([]);
     expect(smoke.proof.join("\n")).toContain("in-process disposable canary receipt harness");

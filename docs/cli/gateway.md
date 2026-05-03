@@ -161,6 +161,15 @@ promotion-gate packet should include `installedDaemonCanary.status=ok`,
 `authoritySwitchAllowed=false`. If any guarded surface is missing, the JSON names it in
 `missingReceiptSurfaces` so the packet can be BLOCKED with the exact daemon proof gap.
 
+The same JSON also includes `installedServiceReadiness`, which is the operator-facing gate for an
+installed/local service. It distinguishes `proofKind=loopback-local-daemon` from
+`proofKind=local-self-check`, lists `missingCapabilities` such as
+`rustGateway.canaryReceipts.status-exposure`, `receipt-persistence-complete-surfaces`, missing
+explicit credentials, or missing loopback daemon query, and keeps production rollback truth-labeled
+as blocked under `rollbackReadiness.productionInstalledDaemonRollback`. A `read-only-ready` service
+readiness status means the local loopback daemon exposed the canary status method and completed the
+receipt proof; it still does not authorize production traffic or Rust authority promotion.
+
 Disposable loopback daemon smoke:
 
 ```bash
@@ -245,6 +254,16 @@ Common blocked states:
 - `blocked`: URL is not loopback/local; use a disposable local daemon or SSH-forwarded loopback URL.
 - `unavailable`: the daemon could not be reached or the status RPC timed out.
 - `unsafe`: the daemon payload did not prove the safety invariants above.
+
+Common `installedServiceReadiness.missingCapabilities`:
+
+- `explicit-loopback-url`: no local daemon URL was provided.
+- `explicit-token-or-password`: no explicit local credential was provided.
+- `local-daemon-query`: the service readiness check has not queried a daemon.
+- `rustGateway.canaryReceipts.status-exposure`: the daemon did not expose the read-only canary
+  status method.
+- `receipt-persistence-complete-surfaces`: the daemon did not prove redacted denial and
+  duplicate-prevention receipts for all guarded surfaces.
 
 Generate the local parity proof separately:
 
