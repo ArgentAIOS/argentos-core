@@ -468,12 +468,90 @@ describe("gatewayAuthorityStatusCommand", () => {
       authoritySwitchAllowed: false,
       receiptCount: 2,
       redactionVerified: true,
+      denialReceiptPresent: true,
+      duplicatePreventionReceiptPresent: true,
     });
     expect(smoke.blockers).toEqual([]);
     expect(smoke.operatorGuidance.join("\n")).toContain("PASS");
     expect(smoke.proof).toContain(
       "smoke does not start, stop, restart, install, or configure any daemon",
     );
+  });
+
+  it("passes local smoke with the built-in local canary self-check without daemon credentials", async () => {
+    const smoke = await gatewayAuthorityLocalSmokeCommand(
+      { log: () => undefined },
+      {
+        reason: "dev.23 local canary self-check",
+        confirmLocalOnly: true,
+        localCanarySelfCheck: true,
+        json: true,
+      },
+    );
+
+    expect(smoke.status).toBe("passed");
+    expect(smoke.installedDaemonCanary).toMatchObject({
+      status: "ok",
+      configured: true,
+      queried: true,
+      url: "local-canary-self-check://rust-gateway/smoke-local",
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      authoritySwitchAllowed: false,
+      receiptCount: 6,
+      redactionVerified: true,
+      denialReceiptPresent: true,
+      duplicatePreventionReceiptPresent: true,
+      receiptSurfaces: ["chat.send", "cron.add", "workflows.run"],
+    });
+    expect(smoke.blockers).toEqual([]);
+    expect(smoke.proof.join("\n")).toContain("in-process disposable canary receipt harness");
+  });
+
+  it("blocks local smoke when duplicate-prevention receipt proof is missing", async () => {
+    const requestStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: true,
+      policy: { containsSecrets: false },
+      authority: {
+        nodeAuthority: "live",
+        rustAuthority: "shadow-only",
+        authoritySwitchAllowed: false,
+      },
+      receipts: [
+        {
+          surface: "chat.send",
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+        {
+          surface: "cron.add",
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+      ],
+    });
+
+    const smoke = await gatewayAuthorityLocalSmokeCommand(
+      { log: () => undefined },
+      {
+        reason: "dev.23 local smoke",
+        confirmLocalOnly: true,
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          requestStatus,
+        },
+      },
+    );
+
+    expect(smoke.status).toBe("blocked");
+    expect(smoke.installedDaemonCanary.status).toBe("ok");
+    expect(smoke.blockers).toContain("RUST_CANARY_DUPLICATE_PREVENTED receipt must be present");
   });
 
   it("blocks local smoke when canary status implies production traffic or authority switch", async () => {

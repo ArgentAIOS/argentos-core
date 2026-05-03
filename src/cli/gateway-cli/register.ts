@@ -226,6 +226,11 @@ export function registerGatewayCli(program: Command) {
       "Confirm this is a local-only smoke against a test harness",
       false,
     )
+    .option(
+      "--local-canary-self-check",
+      "Use the built-in local-only canary receipt self-check without daemon credentials",
+      false,
+    )
     .option("--json", "Output JSON", false)
     .option("--installed-canary-url <url>", "Explicit installed Gateway WebSocket URL to query")
     .option(
@@ -270,6 +275,7 @@ export function registerGatewayCli(program: Command) {
           json: Boolean(opts.json),
           reason,
           confirmLocalOnly: Boolean(opts.confirmLocalOnly),
+          localCanarySelfCheck: Boolean(opts.localCanarySelfCheck),
           ...(installedCanary ? { installedCanary } : {}),
         });
       }, "Gateway authority local smoke failed");
