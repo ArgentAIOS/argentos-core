@@ -23,6 +23,7 @@ export type GatewayAuthorityLocalSmokeOptions = {
   json?: boolean;
   reason: string;
   confirmLocalOnly?: boolean;
+  localCanarySelfCheck?: boolean;
   installedCanary?: GatewayInstalledDaemonCanaryOptions;
 };
 
@@ -162,9 +163,16 @@ export type GatewayInstalledDaemonCanaryStatus = {
   dashboardVisible: boolean | null;
   receiptCount: number | null;
   redactionVerified: boolean | null;
+  denialReceiptPresent: boolean | null;
+  duplicatePreventionReceiptPresent: boolean | null;
+  receiptSurfaces: string[];
   blockers: string[];
   error: string | null;
 };
+
+const LOCAL_CANARY_SELF_CHECK_URL = "local-canary-self-check://rust-gateway/smoke-local";
+const LOCAL_CANARY_SELF_CHECK_TOKEN = "local-self-check-redacted";
+const CANARY_RECEIPT_SURFACES = ["chat.send", "cron.add", "workflows.run"] as const;
 
 export function buildGatewayAuthorityRollbackPlan(
   options: GatewayAuthorityRollbackPlanOptions,
@@ -344,6 +352,9 @@ export async function collectGatewayAuthorityLocalRehearsal(
         dashboardVisible: null,
         receiptCount: null,
         redactionVerified: null,
+        denialReceiptPresent: null,
+        duplicatePreventionReceiptPresent: null,
+        receiptSurfaces: [],
         blockers: ["pass --confirm-local-only before checking after-canary rehearsal status"],
         error: null,
       });
@@ -421,7 +432,9 @@ export async function gatewayAuthorityLocalRehearsalCommand(
 export async function collectGatewayAuthorityLocalSmoke(
   options: GatewayAuthorityLocalSmokeOptions,
 ): Promise<GatewayAuthorityLocalSmoke> {
-  const installedDaemonCanary = await collectInstalledDaemonCanaryStatus(options.installedCanary);
+  const installedDaemonCanary = await collectInstalledDaemonCanaryStatus(
+    buildLocalSmokeCanaryOptions(options),
+  );
   const blockers = buildLocalSmokeBlockers({
     explicitOptIn: options.confirmLocalOnly === true,
     installedDaemonCanary,
@@ -461,7 +474,9 @@ export async function collectGatewayAuthorityLocalSmoke(
     operatorGuidance: buildLocalSmokeOperatorGuidance(installedDaemonCanary, blockers),
     proof: [
       "smoke is read-only and queries only rustGateway.canaryReceipts.status",
-      "smoke does not start, stop, restart, install, or configure any daemon",
+      options.localCanarySelfCheck
+        ? "local self-check uses an in-process disposable canary receipt harness with no network or credentials"
+        : "smoke does not start, stop, restart, install, or configure any daemon",
       "smoke does not enable canary flags; operator must use a disposable local harness",
       "smoke preserves authorityChanges=[] and authoritySwitchAllowed=false",
       "Node remains live gateway/scheduler/workflow/channel/session/run authority",
@@ -529,6 +544,9 @@ async function collectInstalledDaemonCanaryStatus(
       dashboardVisible: null,
       receiptCount: null,
       redactionVerified: null,
+      denialReceiptPresent: null,
+      duplicatePreventionReceiptPresent: null,
+      receiptSurfaces: [],
       blockers: [
         "installed daemon canary status is default-off; pass --installed-canary-url and explicit credentials to query",
       ],
@@ -547,6 +565,9 @@ async function collectInstalledDaemonCanaryStatus(
       dashboardVisible: null,
       receiptCount: null,
       redactionVerified: null,
+      denialReceiptPresent: null,
+      duplicatePreventionReceiptPresent: null,
+      receiptSurfaces: [],
       blockers: ["explicit installed daemon token or password is required before querying"],
       error: null,
     });
@@ -578,6 +599,9 @@ async function collectInstalledDaemonCanaryStatus(
       dashboardVisible: null,
       receiptCount: null,
       redactionVerified: null,
+      denialReceiptPresent: null,
+      duplicatePreventionReceiptPresent: null,
+      receiptSurfaces: [],
       blockers: ["installed daemon canary status query failed"],
       error: error instanceof Error ? error.message : String(error),
     });
@@ -605,10 +629,23 @@ function normalizeInstalledDaemonCanaryPayload(
     typeof record?.dashboardVisible === "boolean" ? record.dashboardVisible : null;
   const policyContainsSecrets =
     typeof policy?.containsSecrets === "boolean" ? policy.containsSecrets : null;
-  const redactionVerified = receipts.every((receipt) => {
-    const receiptRecord = objectRecord(receipt);
+  const receiptRecords = receipts.map((receipt) => objectRecord(receipt)).filter(Boolean);
+  const redactionVerified = receiptRecords.every((receiptRecord) => {
     return receiptRecord?.tokenMaterialRedacted !== false;
   });
+  const denialReceiptPresent = receiptRecords.some((receiptRecord) => {
+    return receiptRecord?.receiptCode === "RUST_CANARY_DENIED";
+  });
+  const duplicatePreventionReceiptPresent = receiptRecords.some((receiptRecord) => {
+    return receiptRecord?.receiptCode === "RUST_CANARY_DUPLICATE_PREVENTED";
+  });
+  const receiptSurfaces = Array.from(
+    new Set(
+      receiptRecords.flatMap((receiptRecord) =>
+        typeof receiptRecord?.surface === "string" ? [receiptRecord.surface] : [],
+      ),
+    ),
+  ).toSorted();
 
   if (!record || record.status !== "ok") {
     blockers.push("status payload is missing or not ok");
@@ -637,6 +674,9 @@ function normalizeInstalledDaemonCanaryPayload(
     dashboardVisible,
     receiptCount: receipts.length,
     redactionVerified,
+    denialReceiptPresent,
+    duplicatePreventionReceiptPresent,
+    receiptSurfaces,
     blockers,
     error: null,
   });
@@ -692,6 +732,12 @@ function buildLocalRehearsalBlockers(params: {
   if ((params.after.receiptCount ?? 0) < 2) {
     blockers.push("after status must include denial and duplicate-prevention receipts");
   }
+  if (params.after.denialReceiptPresent !== true) {
+    blockers.push("after status must include a RUST_CANARY_DENIED receipt");
+  }
+  if (params.after.duplicatePreventionReceiptPresent !== true) {
+    blockers.push("after status must include a RUST_CANARY_DUPLICATE_PREVENTED receipt");
+  }
   return blockers;
 }
 
@@ -727,6 +773,12 @@ function buildLocalSmokeBlockers(params: {
   }
   if ((status.receiptCount ?? 0) < 2) {
     blockers.push("at least denial and duplicate-prevention receipts must be present");
+  }
+  if (status.denialReceiptPresent !== true) {
+    blockers.push("RUST_CANARY_DENIED receipt must be present");
+  }
+  if (status.duplicatePreventionReceiptPresent !== true) {
+    blockers.push("RUST_CANARY_DUPLICATE_PREVENTED receipt must be present");
   }
   return blockers;
 }
@@ -775,6 +827,66 @@ function buildLocalSmokeOperatorGuidance(
     "Do not treat this as promotion-ready until productionTrafficUsed=false, authoritySwitchAllowed=false, and receipt redaction are proven.",
     "Post BLOCKED with the failing invariant if rerun cannot clear it.",
   ];
+}
+
+function buildLocalSmokeCanaryOptions(
+  options: GatewayAuthorityLocalSmokeOptions,
+): GatewayInstalledDaemonCanaryOptions | undefined {
+  if (!options.localCanarySelfCheck) {
+    return options.installedCanary;
+  }
+  return {
+    url: LOCAL_CANARY_SELF_CHECK_URL,
+    token: LOCAL_CANARY_SELF_CHECK_TOKEN,
+    timeoutMs: options.installedCanary?.timeoutMs,
+    requestStatus: async () => buildLocalCanaryReceiptSelfCheckPayload(),
+  };
+}
+
+function buildLocalCanaryReceiptSelfCheckPayload(): Record<string, unknown> {
+  const receipts = CANARY_RECEIPT_SURFACES.flatMap((surface) => [
+    {
+      surface,
+      receiptCode: "RUST_CANARY_DENIED",
+      redactedParams: "[redacted local self-check payload]",
+      tokenMaterialRedacted: true,
+      authoritySwitchAllowed: false,
+      mutationBlockedBeforeHandler: true,
+    },
+    {
+      surface,
+      receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+      redactedParams: "[redacted local self-check duplicate]",
+      tokenMaterialRedacted: true,
+      authoritySwitchAllowed: false,
+      mutationBlockedBeforeHandler: true,
+    },
+  ]);
+
+  return {
+    status: "ok",
+    dashboardVisible: true,
+    productionTrafficUsed: false,
+    canaryFlagEnabled: true,
+    policy: {
+      path: ".omx/state/rust-gateway-canary/local-self-check",
+      containsSecrets: false,
+      liveAuthoritySwitchAllowed: false,
+    },
+    authority: {
+      nodeAuthority: "live",
+      rustAuthority: "shadow-only",
+      authoritySwitchAllowed: false,
+    },
+    surfaces: CANARY_RECEIPT_SURFACES.map((surface) => ({
+      surface,
+      denied: true,
+      duplicatePrevented: true,
+      receiptCount: 2,
+      latestReceiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+    })),
+    receipts,
+  };
 }
 
 function objectRecord(value: unknown): Record<string, unknown> | null {

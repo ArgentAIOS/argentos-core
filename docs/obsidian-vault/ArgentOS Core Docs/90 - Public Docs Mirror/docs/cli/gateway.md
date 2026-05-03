@@ -123,6 +123,23 @@ Local installed-canary smoke:
 argent gateway authority smoke-local \
   --reason "local canary receipt proof" \
   --confirm-local-only \
+  --local-canary-self-check \
+  --json
+```
+
+The built-in `--local-canary-self-check` path is the safest first proof. It uses an in-process,
+disposable canary receipt self-check and does not query a daemon, require a token/password, start a
+service, send production traffic, or switch authority. It still exercises the same `smoke-local`
+PASS criteria: denial and duplicate-prevention receipts for `chat.send`, `cron.add`, and
+`workflows.run`, redacted receipt material, `productionTrafficUsed=false`, and
+`authoritySwitchAllowed=false`.
+
+Installed daemon smoke:
+
+```bash
+argent gateway authority smoke-local \
+  --reason "local canary receipt proof" \
+  --confirm-local-only \
   --installed-canary-url ws://127.0.0.1:<port> \
   --installed-canary-token <token> \
   --json
@@ -138,7 +155,8 @@ The smoke is intentionally default-blocked. It only queries
 send traffic through a daemon. A passing local smoke requires:
 
 - `--confirm-local-only` was provided.
-- The installed canary URL and explicit token/password were provided.
+- The installed canary URL and explicit token/password were provided, or
+  `--local-canary-self-check` was used for the built-in local-only self-check.
 - `rustGateway.canaryReceipts.status` returned `status=ok`.
 - `productionTrafficUsed=false`.
 - `authoritySwitchAllowed=false`.

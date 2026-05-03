@@ -225,6 +225,7 @@ describe("gateway-cli coverage", () => {
         "ws://127.0.0.1:18789",
         "--installed-canary-token",
         "test-token",
+        "--local-canary-self-check",
         "--installed-canary-timeout",
         "1250",
         "--json",
@@ -237,6 +238,7 @@ describe("gateway-cli coverage", () => {
       json: true,
       reason: "dev.20 operator smoke",
       confirmLocalOnly: true,
+      localCanarySelfCheck: true,
       installedCanary: {
         url: "ws://127.0.0.1:18789",
         token: "test-token",
@@ -269,6 +271,7 @@ describe("gateway-cli coverage", () => {
     expect(help).toContain("smoke-local");
     expect(help).toContain("--reason <reason>");
     expect(help).toContain("--confirm-local-only");
+    expect(help).toContain("--local-canary-self-check");
     expect(help).toContain("--installed-canary-url <url>");
     expect(gatewayAuthorityLocalSmokeCommand).not.toHaveBeenCalled();
   }, 30_000);
