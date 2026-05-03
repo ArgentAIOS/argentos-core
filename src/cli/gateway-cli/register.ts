@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import type { CostUsageSummary } from "../../infra/session-cost-usage.js";
 import type { GatewayDiscoverOpts } from "./discover.js";
 import {
+  gatewayAuthorityLocalRehearsalCommand,
   gatewayAuthorityRollbackPlanCommand,
   gatewayAuthorityStatusCommand,
 } from "../../commands/gateway-authority-status.js";
@@ -213,6 +214,52 @@ export function registerGatewayCli(program: Command) {
           ...(installedCanary ? { installedCanary } : {}),
         });
       }, "Gateway authority status failed");
+    });
+
+  authority
+    .command("rehearse-local")
+    .description("Rehearse local-only Rust Gateway canary authority evidence without switching")
+    .requiredOption("--reason <reason>", "Operator-visible reason for local rehearsal")
+    .option("--confirm-local-only", "Confirm this is a local-only test-path rehearsal", false)
+    .option("--json", "Output JSON", false)
+    .option("--installed-canary-url <url>", "Explicit installed Gateway WebSocket URL to query")
+    .option(
+      "--installed-canary-token <token>",
+      "Explicit installed Gateway token for canary status",
+    )
+    .option(
+      "--installed-canary-password <password>",
+      "Explicit installed Gateway password for canary status",
+    )
+    .option("--installed-canary-timeout <ms>", "Installed canary query timeout in ms")
+    .action(async (opts) => {
+      await runGatewayCommand(async () => {
+        const installedCanary =
+          opts.installedCanaryUrl || opts.installedCanaryToken || opts.installedCanaryPassword
+            ? {
+                url:
+                  typeof opts.installedCanaryUrl === "string" ? opts.installedCanaryUrl : undefined,
+                token:
+                  typeof opts.installedCanaryToken === "string"
+                    ? opts.installedCanaryToken
+                    : undefined,
+                password:
+                  typeof opts.installedCanaryPassword === "string"
+                    ? opts.installedCanaryPassword
+                    : undefined,
+                timeoutMs:
+                  typeof opts.installedCanaryTimeout === "string"
+                    ? Number(opts.installedCanaryTimeout)
+                    : undefined,
+              }
+            : undefined;
+        await gatewayAuthorityLocalRehearsalCommand(defaultRuntime, {
+          json: Boolean(opts.json),
+          reason: String(opts.reason),
+          confirmLocalOnly: Boolean(opts.confirmLocalOnly),
+          ...(installedCanary ? { installedCanary } : {}),
+        });
+      }, "Gateway authority local rehearsal failed");
     });
 
   authority
