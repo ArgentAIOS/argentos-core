@@ -19,6 +19,13 @@ export type GatewayAuthorityLocalRehearsalOptions = {
   afterCanary?: GatewayInstalledDaemonCanaryOptions;
 };
 
+export type GatewayAuthorityLocalSmokeOptions = {
+  json?: boolean;
+  reason: string;
+  confirmLocalOnly?: boolean;
+  installedCanary?: GatewayInstalledDaemonCanaryOptions;
+};
+
 export type GatewayAuthorityRollbackPlanOptions = {
   json?: boolean;
   reason: string;
@@ -69,6 +76,32 @@ export type GatewayAuthorityLocalRehearsal = {
     surfaces: Array<"chat.send" | "cron.add" | "workflows.run">;
   };
   blockers: string[];
+  proof: string[];
+};
+
+export type GatewayAuthorityLocalSmoke = {
+  command: "argent gateway authority smoke-local";
+  mode: "local-operator-smoke";
+  status: "passed" | "blocked";
+  reason: string;
+  explicitOptIn: boolean;
+  pairedRehearsalCommand: "argent gateway authority rehearse-local";
+  liveProductionTrafficAllowed: false;
+  authoritySwitchAllowed: false;
+  authorityChanges: [];
+  installedDaemonCanary: GatewayInstalledDaemonCanaryStatus;
+  noDefaultSwitchProof: {
+    liveGatewayAuthority: "node";
+    rustGatewayAuthority: "shadow-only";
+    schedulerAuthority: "node";
+    workflowAuthority: "node";
+    channelAuthority: "node";
+    sessionAuthority: "node";
+    runAuthority: "node";
+  };
+  passCriteria: string[];
+  blockers: string[];
+  operatorGuidance: string[];
   proof: string[];
 };
 
@@ -242,6 +275,7 @@ export async function collectGatewayAuthorityStatus(
       "argent status",
       "argent gateway authority status --json",
       "argent gateway authority status --installed-canary-url ws://127.0.0.1:<port> --installed-canary-token <token> --json",
+      "argent gateway authority smoke-local --reason <reason> --confirm-local-only --installed-canary-url ws://127.0.0.1:<port> --installed-canary-token <token> --json",
       "argent gateway authority rollback-node --reason <reason> --json",
     ],
   };
@@ -381,6 +415,91 @@ export async function gatewayAuthorityLocalRehearsalCommand(
     }
   }
   return rehearsal;
+}
+
+export async function collectGatewayAuthorityLocalSmoke(
+  options: GatewayAuthorityLocalSmokeOptions,
+): Promise<GatewayAuthorityLocalSmoke> {
+  const installedDaemonCanary = await collectInstalledDaemonCanaryStatus(options.installedCanary);
+  const blockers = buildLocalSmokeBlockers({
+    explicitOptIn: options.confirmLocalOnly === true,
+    installedDaemonCanary,
+  });
+
+  return {
+    command: "argent gateway authority smoke-local",
+    mode: "local-operator-smoke",
+    status: blockers.length === 0 ? "passed" : "blocked",
+    reason: options.reason.trim(),
+    explicitOptIn: options.confirmLocalOnly === true,
+    pairedRehearsalCommand: "argent gateway authority rehearse-local",
+    liveProductionTrafficAllowed: false,
+    authoritySwitchAllowed: false,
+    authorityChanges: [],
+    installedDaemonCanary,
+    noDefaultSwitchProof: {
+      liveGatewayAuthority: "node",
+      rustGatewayAuthority: "shadow-only",
+      schedulerAuthority: "node",
+      workflowAuthority: "node",
+      channelAuthority: "node",
+      sessionAuthority: "node",
+      runAuthority: "node",
+    },
+    passCriteria: [
+      "operator passed --confirm-local-only",
+      "installed daemon canary status was explicitly configured and queried",
+      "rustGateway.canaryReceipts.status returned ok",
+      "productionTrafficUsed=false",
+      "authoritySwitchAllowed=false",
+      "canaryFlagEnabled=true for a local-only canary harness",
+      "redactionVerified=true",
+      "at least denial and duplicate-prevention receipts are present",
+    ],
+    blockers,
+    operatorGuidance: buildLocalSmokeOperatorGuidance(installedDaemonCanary, blockers),
+    proof: [
+      "smoke is read-only and queries only rustGateway.canaryReceipts.status",
+      "smoke does not start, stop, restart, install, or configure any daemon",
+      "smoke does not enable canary flags; operator must use a disposable local harness",
+      "smoke preserves authorityChanges=[] and authoritySwitchAllowed=false",
+      "Node remains live gateway/scheduler/workflow/channel/session/run authority",
+    ],
+  };
+}
+
+export async function gatewayAuthorityLocalSmokeCommand(
+  runtime: Pick<RuntimeEnv, "log">,
+  options: GatewayAuthorityLocalSmokeOptions,
+): Promise<GatewayAuthorityLocalSmoke> {
+  const smoke = await collectGatewayAuthorityLocalSmoke(options);
+  if (options.json) {
+    runtime.log(JSON.stringify(smoke, null, 2));
+    return smoke;
+  }
+
+  runtime.log("Gateway authority local smoke");
+  runtime.log("");
+  runtime.log(`Mode: ${smoke.mode}`);
+  runtime.log(`Status: ${smoke.status}`);
+  runtime.log(`Explicit local-only opt-in: ${smoke.explicitOptIn ? "yes" : "no"}`);
+  runtime.log(`Installed canary: ${smoke.installedDaemonCanary.status}`);
+  runtime.log(`Authority changes: none`);
+  runtime.log(`Production traffic allowed: no`);
+  runtime.log(`Authority switch allowed: no`);
+  if (smoke.blockers.length > 0) {
+    runtime.log("");
+    runtime.log("Blockers:");
+    for (const blocker of smoke.blockers) {
+      runtime.log(`- ${blocker}`);
+    }
+  }
+  runtime.log("");
+  runtime.log("Operator guidance:");
+  for (const line of smoke.operatorGuidance) {
+    runtime.log(`- ${line}`);
+  }
+  return smoke;
 }
 
 async function collectInstalledDaemonCanaryStatus(
@@ -573,6 +692,88 @@ function buildLocalRehearsalBlockers(params: {
     blockers.push("after status must include denial and duplicate-prevention receipts");
   }
   return blockers;
+}
+
+function buildLocalSmokeBlockers(params: {
+  explicitOptIn: boolean;
+  installedDaemonCanary: GatewayInstalledDaemonCanaryStatus;
+}): string[] {
+  const blockers: string[] = [];
+  const status = params.installedDaemonCanary;
+  if (!params.explicitOptIn) {
+    blockers.push("explicit local-only smoke opt-in is required");
+  }
+  if (!status.configured) {
+    blockers.push("installed daemon canary status is not configured");
+  }
+  if (!status.queried) {
+    blockers.push("installed daemon canary status was not queried");
+  }
+  if (status.status !== "ok") {
+    blockers.push(`installed daemon canary status must be ok; got ${status.status}`);
+  }
+  if (status.productionTrafficUsed !== false) {
+    blockers.push("productionTrafficUsed must be false");
+  }
+  if (status.authoritySwitchAllowed !== false) {
+    blockers.push("authoritySwitchAllowed must be false");
+  }
+  if (status.canaryFlagEnabled !== true) {
+    blockers.push("canaryFlagEnabled must be true for the local-only smoke harness");
+  }
+  if (status.redactionVerified !== true) {
+    blockers.push("redactionVerified must be true");
+  }
+  if ((status.receiptCount ?? 0) < 2) {
+    blockers.push("at least denial and duplicate-prevention receipts must be present");
+  }
+  return blockers;
+}
+
+function buildLocalSmokeOperatorGuidance(
+  status: GatewayInstalledDaemonCanaryStatus,
+  blockers: string[],
+): string[] {
+  if (blockers.length === 0) {
+    return [
+      "PASS: local-only canary receipt smoke is complete.",
+      "Keep Node live authority; this is not production promotion approval.",
+      "Post the JSON output with the branch/commit/test proof before requesting containment.",
+    ];
+  }
+  if (!status.configured) {
+    return [
+      "Start or identify a loopback/local installed Gateway daemon that exposes rustGateway.canaryReceipts.status.",
+      "Rerun with --installed-canary-url and an explicit token or password.",
+      "Use --confirm-local-only only for a disposable local canary harness, not production traffic.",
+    ];
+  }
+  if (!status.queried) {
+    return [
+      "Provide an explicit installed daemon token or password before querying.",
+      "Do not put credentials in git or bus; pass them only through local operator shell/env handling.",
+      "Rerun the smoke after credentials are available.",
+    ];
+  }
+  if (status.status === "unavailable") {
+    return [
+      `Fix daemon reachability for ${status.url ?? "the configured URL"} and rerun.`,
+      "This command does not start, stop, restart, or install services.",
+      "Keep using argent gateway authority status for read-only diagnosis while blocked.",
+    ];
+  }
+  if (status.canaryFlagEnabled !== true) {
+    return [
+      "Run the disposable local canary harness with ARGENT_RUST_GATEWAY_CANARY_DENY_RECEIPTS=1.",
+      "Generate denied and duplicate-prevented receipts for chat.send, cron.add, and workflows.run.",
+      "Rerun this smoke against that local harness; do not enable production traffic.",
+    ];
+  }
+  return [
+    "Inspect the blockers list; at least one safety invariant failed.",
+    "Do not treat this as promotion-ready until productionTrafficUsed=false, authoritySwitchAllowed=false, and receipt redaction are proven.",
+    "Post BLOCKED with the failing invariant if rerun cannot clear it.",
+  ];
 }
 
 function objectRecord(value: unknown): Record<string, unknown> | null {
