@@ -127,6 +127,7 @@
     "test:install:local:smoke": "bash scripts/test-install-local-smoke.sh",
     "test:install:smoke": "bash scripts/test-install-sh-docker.sh",
     "test:live": "ARGENT_LIVE_TEST=1 vitest run --config vitest.live.config.ts",
+    "test:slice": "node scripts/test-slice.mjs",
     "test:ui": "pnpm --dir ui test",
     "test:watch": "vitest",
     "threadmaster:ack": "node scripts/threadmaster-bus.mjs ack",
@@ -138,11 +139,13 @@
     "threadmaster:task-add": "node scripts/threadmaster-bus.mjs task-add",
     "threadmaster:task-list": "node scripts/threadmaster-bus.mjs task-list",
     "threadmaster:task-update": "node scripts/threadmaster-bus.mjs task-update",
+    "tsc:since": "node scripts/tsc-since.mjs",
     "tui": "node scripts/run-node.mjs tui",
     "tui:dev": "ARGENT_PROFILE=dev node scripts/run-node.mjs --dev tui",
     "ui:build": "node scripts/ui.js build",
     "ui:dev": "node scripts/ui.js dev",
-    "ui:install": "node scripts/ui.js install"
+    "ui:install": "node scripts/ui.js install",
+    "verified": "pnpm test:slice && pnpm check:repo-lane && pnpm tsc:since"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "0.14.0",
