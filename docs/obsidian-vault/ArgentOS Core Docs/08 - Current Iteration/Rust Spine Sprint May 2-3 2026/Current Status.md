@@ -1,13 +1,13 @@
 # Current Status
 
-Last updated: 2026-05-03 14:16 UTC
+Last updated: 2026-05-03 17:41 UTC
 
 ## Latest contained build
 
-- Package: `2026.5.3-dev.7`
-- Source READY packets: `tm-20260503134737-j6bnt4`, `tm-20260503140811-swrwbd`
-- Contained sources: Workflows `96de5f07` as custody `443ecfc5`; Gateway rollback clarification `9aad435a` as custody `f32483e4`
-- Master packet: pending after push
+- Package: `2026.5.3-dev.11`
+- Source READY packets: `tm-20260503172534-q64r3n`
+- Contained sources: Gateway installed daemon runtime probe `8d18e11a` as custody `1ffccc55`
+- Master packet: `tm-20260503173005-g0of5n`
 
 ## Current Rust spine checkpoint
 
@@ -16,6 +16,7 @@ Last updated: 2026-05-03 14:16 UTC
 - Gateway installed-daemon canary: `authority status-installed --json` now uses the configured local Gateway URL plus explicit/env/config auth provenance without printing secrets; the older `authority status --installed-canary-url ws://127.0.0.1:<port> --installed-canary-token <token> --json` path still reports `receiptProofComplete`, required receipt surfaces, and exact missing surfaces for the local daemon proof gate.
 - Gateway installed service readiness: the same status JSON now includes `installedServiceReadiness` to separate disposable/self-check proof from loopback-local daemon proof, name exact missing capabilities, and keep production installed daemon rollback blocked.
 - Gateway installed daemon runtime probe: `status-installed --json` now reports whether the daemon handshake advertised `rustGateway.canaryReceipts.status` before attempting the canary RPC, so blocked packets can distinguish missing method advertisement, handler dispatch failure, and handshake failure without service mutation.
+- Gateway installed daemon receipt persistence branch: `status-installed --generate-local-receipts --confirm-local-only --reason ... --json` is now the explicit local-only path to call `rustGateway.canaryReceipts.generateLocalProof`, append synthetic redacted denial and duplicate-prevention receipts for `chat.send`, `cron.add`, and `workflows.run`, and then re-query `rustGateway.canaryReceipts.status` without running the guarded mutations or controlling the installed service.
 - Workflows: `workflows.backendStatus` now reports the workflow run/session handoff contract and duplicate-prevention expectations for future Rust ownership.
 - Workflows dry-run stays local/no-PostgreSQL. Live workflow runs remain Node-owned and PostgreSQL-gated.
 

@@ -167,6 +167,14 @@ argent gateway authority status-installed \
   --token <token> \
   --json
 
+argent gateway authority status-installed \
+  --url ws://127.0.0.1:<port> \
+  --token <token> \
+  --generate-local-receipts \
+  --confirm-local-only \
+  --reason "installed daemon local receipt proof" \
+  --json
+
 argent gateway authority status \
   --installed-canary-url ws://127.0.0.1:<port> \
   --installed-canary-token <token> \
@@ -174,8 +182,13 @@ argent gateway authority status \
 ```
 
 `authority status` performs the narrow read-only installed-daemon query. It accepts only a
-loopback/local URL and explicit credentials, then calls `rustGateway.canaryReceipts.status`. A
-promotion-gate packet should include `installedDaemonCanary.status=ok`,
+loopback/local URL and explicit credentials, then calls `rustGateway.canaryReceipts.status`.
+`status-installed --generate-local-receipts --confirm-local-only --reason ...` is the explicit
+operator path for filling a local installed daemon receipt store: it first calls
+`rustGateway.canaryReceipts.generateLocalProof` with synthetic redaction fixtures, then re-queries
+`rustGateway.canaryReceipts.status`. The generation path does not call `chat.send`, `cron.add`, or
+`workflows.run`, does not start/stop/reconfigure a service, and still requires a loopback/local
+daemon target. A promotion-gate packet should include `installedDaemonCanary.status=ok`,
 `receiptProofComplete=true`, `missingReceiptSurfaces=[]`, `productionTrafficUsed=false`, and
 `authoritySwitchAllowed=false`. If any guarded surface is missing, the JSON names it in
 `missingReceiptSurfaces` so the packet can be BLOCKED with the exact daemon proof gap.

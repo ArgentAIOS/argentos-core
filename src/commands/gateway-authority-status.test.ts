@@ -571,6 +571,83 @@ describe("gatewayAuthorityStatusCommand", () => {
     });
   });
 
+  it("generates local installed daemon receipts before status when explicitly confirmed", async () => {
+    const receipts = ["chat.send", "cron.add", "workflows.run"].flatMap((surface) => [
+      {
+        surface,
+        receiptCode: "RUST_CANARY_DENIED",
+        tokenMaterialRedacted: true,
+        authoritySwitchAllowed: false,
+      },
+      {
+        surface,
+        receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+        tokenMaterialRedacted: true,
+        authoritySwitchAllowed: false,
+      },
+    ]);
+    const requestGenerateLocalReceiptProof = vi.fn().mockResolvedValue({
+      status: "ok",
+      receiptCount: 6,
+    });
+    const requestStatus = vi.fn().mockResolvedValue({
+      status: "ok",
+      dashboardVisible: true,
+      productionTrafficUsed: false,
+      canaryFlagEnabled: false,
+      policy: { containsSecrets: false },
+      authority: {
+        nodeAuthority: "live",
+        rustAuthority: "shadow-only",
+        authoritySwitchAllowed: false,
+      },
+      receipts,
+    });
+
+    const status = await gatewayAuthorityInstalledStatusCommand(
+      { log: () => undefined },
+      {
+        installedCanary: {
+          url: "ws://127.0.0.1:18789",
+          token: "test-token",
+          timeoutMs: 1250,
+          generateLocalReceiptProof: {
+            confirmLocalOnly: true,
+            reason: "operator proof",
+            proofRunId: "proof-1",
+          },
+          requestGenerateLocalReceiptProof,
+          requestStatus,
+        },
+      },
+    );
+
+    expect(requestGenerateLocalReceiptProof).toHaveBeenCalledWith({
+      url: "ws://127.0.0.1:18789",
+      token: "test-token",
+      password: undefined,
+      timeoutMs: 1250,
+      confirmLocalOnly: true,
+      reason: "operator proof",
+      proofRunId: "proof-1",
+    });
+    expect(requestGenerateLocalReceiptProof.mock.invocationCallOrder[0]).toBeLessThan(
+      requestStatus.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+    expect(status).toMatchObject({
+      status: "read-only-ready",
+      productionTrafficUsed: false,
+      authoritySwitchAllowed: false,
+      authorityChanges: [],
+      installedDaemonCanary: {
+        receiptProofComplete: true,
+        missingReceiptSurfaces: [],
+        receiptCount: 6,
+      },
+    });
+    expect(status.proof.join("\n")).toContain("--generate-local-receipts");
+  });
+
   it("marks unsafe installed daemon canary payloads without relabeling readiness", async () => {
     const requestStatus = vi.fn().mockResolvedValue({
       status: "ok",

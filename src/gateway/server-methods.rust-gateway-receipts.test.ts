@@ -247,6 +247,112 @@ describe("Rust gateway pre-mutation denial receipts", () => {
     });
   });
 
+  it("generates local-only installed daemon receipt proof behind explicit confirmation", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "rust-gateway-local-proof-"));
+    const storePath = path.join(dir, "receipts.jsonl");
+    process.env.ARGENT_RUST_GATEWAY_RECEIPT_STORE_PATH = storePath;
+    const deniedResponses: Array<{ ok: boolean; error?: { message?: string } }> = [];
+
+    await handleGatewayRequest({
+      req: {
+        type: "req",
+        id: "local-proof-missing-confirm",
+        method: "rustGateway.canaryReceipts.generateLocalProof",
+        params: { reason: "missing confirm" },
+      },
+      client: {
+        connect: {
+          client: { id: "test-client", version: "1", platform: "test", mode: "local" },
+          auth: {},
+          role: "operator",
+          scopes: ["operator.admin"],
+        },
+      },
+      isWebchatConnect: () => false,
+      respond: (ok, _payload, error) => deniedResponses.push({ ok, error }),
+      context: {} as GatewayRequestContext,
+      extraHandlers: {},
+    });
+
+    expect(deniedResponses).toMatchObject([
+      {
+        ok: false,
+        error: {
+          message: "confirmLocalOnly=true is required for local canary receipt proof generation",
+        },
+      },
+    ]);
+
+    const responses: Array<{ ok: boolean; payload?: unknown; error?: unknown }> = [];
+    await handleGatewayRequest({
+      req: {
+        type: "req",
+        id: "local-proof",
+        method: "rustGateway.canaryReceipts.generateLocalProof",
+        params: {
+          confirmLocalOnly: true,
+          reason: "installed daemon local proof",
+          proofRunId: "proof-run-1",
+        },
+      },
+      client: {
+        connect: {
+          client: { id: "test-client", version: "1", platform: "test", mode: "local" },
+          auth: {},
+          role: "operator",
+          scopes: ["operator.admin"],
+        },
+      },
+      isWebchatConnect: () => false,
+      respond: (ok, payload, error) => responses.push({ ok, payload, error }),
+      context: {} as GatewayRequestContext,
+      extraHandlers: {},
+    });
+
+    expect(responses[0]).toMatchObject({
+      ok: true,
+      payload: {
+        status: "ok",
+        proofRunId: "proof-run-1",
+        productionTrafficUsed: false,
+        authority: {
+          nodeAuthority: "live",
+          rustAuthority: "shadow-only",
+          authoritySwitchAllowed: false,
+        },
+        generatedSurfaces: ["chat.send", "cron.add", "workflows.run"],
+        receiptCount: 6,
+      },
+    });
+
+    const store = createRustGatewayReceiptStore(storePath);
+    for (const fixture of [
+      { surface: "chat.send", duplicateKey: "chat.send:idem-proof-run-1" },
+      { surface: "cron.add", duplicateKey: "cron.add:cron-proof-run-1" },
+      { surface: "workflows.run", duplicateKey: "workflows.run:run-proof-run-1" },
+    ] as const) {
+      await expect(
+        store.list({ duplicateKey: fixture.duplicateKey, limit: 2 }),
+      ).resolves.toMatchObject([
+        {
+          surface: fixture.surface,
+          receiptCode: "RUST_CANARY_DENIED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+        {
+          surface: fixture.surface,
+          receiptCode: "RUST_CANARY_DUPLICATE_PREVENTED",
+          tokenMaterialRedacted: true,
+          authoritySwitchAllowed: false,
+        },
+      ]);
+    }
+
+    const raw = await readFile(storePath, "utf8");
+    expect(raw).not.toContain("super-secret-token-value");
+  });
+
   it("leaves Node live handlers untouched by default", async () => {
     const handler = vi.fn(({ respond }) => respond(true, { status: "started" }));
     const responses: unknown[] = [];
@@ -317,7 +423,7 @@ describe("Rust gateway pre-mutation denial receipts", () => {
     }
 
     expect(mutationLedger.size).toBe(0);
-    expect(responses.every((response) => response.ok === false)).toBe(true);
+    expect(responses.every((response) => !response.ok)).toBe(true);
     const store = createRustGatewayReceiptStore(storePath);
     for (const fixture of rollbackFixtures) {
       await expect(
