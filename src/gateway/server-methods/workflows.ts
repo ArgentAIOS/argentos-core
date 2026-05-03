@@ -219,6 +219,9 @@ type WorkflowBackendStatus = {
   dryRun: {
     graphPayloadAvailable: true;
     requiresPostgres: false;
+    method: "workflows.dryRun";
+    command: string;
+    noLiveSideEffects: true;
     message: string;
   };
   savedWorkflows: {
@@ -286,6 +289,9 @@ export function buildWorkflowBackendStatus(options?: {
     dryRun: {
       graphPayloadAvailable: true,
       requiresPostgres: false,
+      method: "workflows.dryRun",
+      command: "argent gateway call workflows.dryRun --params '<canvas-payload-json>' --json",
+      noLiveSideEffects: true,
       message: dryRunMessage,
     },
     savedWorkflows: {

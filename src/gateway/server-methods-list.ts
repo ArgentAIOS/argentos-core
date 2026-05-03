@@ -164,6 +164,7 @@ const BASE_METHODS = [
   "intent.simulate",
   // Workflows
   "workflows.backendStatus",
+  "workflows.dryRun",
   "workflows.emitAppForgeEvent",
   "workflows.importPreview",
   "workflows.templates.list",
