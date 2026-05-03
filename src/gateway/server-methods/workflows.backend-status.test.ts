@@ -54,8 +54,14 @@ describe("workflow backend status", () => {
         available: false,
         requiresPostgres: true,
       },
+      scheduleCron: {
+        available: false,
+        requiresPostgres: true,
+        status: "skipped_no_postgres",
+      },
     });
     expect(status.operatorMessages.join(" ")).toContain("without PostgreSQL");
+    expect(status.operatorMessages.join(" ")).toContain("cron reconciliation is skipped");
   });
 
   it("marks saved workflow runtime configured when PostgreSQL is active", () => {
@@ -69,6 +75,11 @@ describe("workflow backend status", () => {
     expect(status.savedWorkflows).toMatchObject({
       available: true,
       requiresPostgres: true,
+    });
+    expect(status.scheduleCron).toMatchObject({
+      available: true,
+      requiresPostgres: true,
+      status: "configured",
     });
   });
 
@@ -86,6 +97,7 @@ describe("workflow backend status", () => {
         ok: true,
         dryRun: expect.objectContaining({ requiresPostgres: false }),
         savedWorkflows: expect.objectContaining({ requiresPostgres: true }),
+        scheduleCron: expect.objectContaining({ status: "skipped_no_postgres" }),
       }),
     );
   });

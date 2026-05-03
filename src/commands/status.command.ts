@@ -62,6 +62,12 @@ type WorkflowBackendStatus = {
     requiresPostgres: true;
     message: string;
   };
+  scheduleCron?: {
+    available: boolean;
+    requiresPostgres: true;
+    status: "configured" | "skipped_no_postgres";
+    message: string;
+  };
   operatorMessages?: string[];
 };
 
@@ -493,6 +499,11 @@ export async function statusCommand(
       status.postgres.status === "configured"
         ? ok(`postgres ${status.postgres.connectionSource}`)
         : muted("postgres not configured");
+    const scheduleCron = status.scheduleCron
+      ? status.scheduleCron.available
+        ? ok("cron reconciliation configured")
+        : muted("cron reconciliation skipped without PostgreSQL")
+      : null;
     return [
       status.label,
       `backend ${status.backend}`,
@@ -501,7 +512,10 @@ export async function statusCommand(
       dryRun,
       saved,
       postgres,
-    ].join(" · ");
+      scheduleCron,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   })();
   const lastHeartbeatValue = (() => {
     if (!opts.deep) {

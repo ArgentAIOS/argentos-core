@@ -609,6 +609,13 @@ describe("statusCommand", () => {
             requiresPostgres: true,
             message: "Saved workflow create/list/run paths require PostgreSQL.",
           },
+          scheduleCron: {
+            available: false,
+            requiresPostgres: true,
+            status: "skipped_no_postgres",
+            message:
+              "Scheduled workflow cron reconciliation is skipped without PostgreSQL; local/parity gateways can still validate dry-run readiness without running saved workflow schedules.",
+          },
         };
       }
       return {};
@@ -620,6 +627,7 @@ describe("statusCommand", () => {
     expect(logs.join("\n")).toContain("Workflows backend");
     expect(logs.join("\n")).toContain("dry-run available without PostgreSQL");
     expect(logs.join("\n")).toContain("saved workflows need PostgreSQL");
+    expect(logs.join("\n")).toContain("cron reconciliation skipped without PostgreSQL");
 
     mocks.callGateway.mockReset().mockResolvedValue({});
   });
